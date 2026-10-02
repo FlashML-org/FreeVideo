@@ -13,7 +13,7 @@
 
 FreeVideo 让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
 
-https://github.com/user-attachments/assets/4d391114-1b21-47d9-ba61-3feaf4ff9fe0
+https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## 简介
 

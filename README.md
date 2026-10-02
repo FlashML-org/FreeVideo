@@ -13,7 +13,7 @@
 
 Make videos on the computer you already own. FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, and adapts its acceleration path to your&nbsp;hardware.
 
-https://github.com/user-attachments/assets/4d391114-1b21-47d9-ba61-3feaf4ff9fe0
+https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## About
 
