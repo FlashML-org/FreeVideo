@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "windows_cp312": [
+    {
+      "cuda": "cu130",
+      "package": "torch",
+      "version": "2.13.0+cu130",
+      "filename": "torch-2.13.0+cu130-cp312-cp312-win_amd64.whl",
+      "sha256": "2efab1e83604ca628c6d85b9e188c153690980498d1297081a9dad704919303c",
+      "bytes": 1915519202,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu130",
+      "package": "torchvision",
+      "version": "0.28.0+cu130",
+      "filename": "torchvision-0.28.0+cu130-cp312-cp312-win_amd64.whl",
+      "sha256": "5ae0ff50fcb43a189250a5fdb36a7dc780ea5caff469653cab1e3f32ed5d385c",
+      "bytes": 9091113,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu130/torchvision-0.28.0%2Bcu130-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu130/torchvision-0.28.0%2Bcu130-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu130",
+      "package": "torchaudio",
+      "version": "2.11.0+cu130",
+      "filename": "torchaudio-2.11.0+cu130-cp312-cp312-win_amd64.whl",
+      "sha256": "f74949f9ace1e4a6cf9468bdb3211b9cfa0af6ea348125471ac71c8621d6c77d",
+      "bytes": 1722734,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu130/torchaudio-2.11.0%2Bcu130-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu130/torchaudio-2.11.0%2Bcu130-cp312-cp312-win_amd64.whl"
+      }
+    }
+  ]
+}

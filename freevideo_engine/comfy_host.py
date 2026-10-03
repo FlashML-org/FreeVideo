@@ -160,9 +160,19 @@ def _prepare(root, comfy, machine, run, download):
                 error.args = (str(error) + '. Attempt logs: ' + ', '.join(package_logs),)
                 raise
 
-        package_install('torch-' + cuda,
-            lambda environment, _: execute([uv, 'pip', 'install', '--python', python, *rows], environment, 'Prepare ComfyUI GPU packages'),
-            'Prepare ComfyUI GPU packages')
+        prepared = False
+        if os.name == 'nt':
+            from .torch_download import install
+            def check():
+                if machine.get('disk_mode') == 'extreme':
+                    from .install_disk import check_floor
+                    check_floor((root, comfy))
+            prepared = install(uv, python, rows, cuda, root=root, networking=plan, env=env, ui=ui,
+                run=lambda args, environment: execute(args, environment, 'Prepare ComfyUI GPU packages'), check=check)
+        if not prepared:
+            package_install('torch-' + cuda,
+                lambda environment, _: execute([uv, 'pip', 'install', '--python', python, *rows], environment, 'Prepare ComfyUI GPU packages'),
+                'Prepare ComfyUI GPU packages')
         ui.phase('Install ComfyUI packages', stage_offset + 2, stage_total)
         package_install('pypi', lambda environment, _: execute(
             [uv, 'pip', 'install', '--python', python, '-r', requirements, '-c', pins], environment, 'Install ComfyUI packages'),

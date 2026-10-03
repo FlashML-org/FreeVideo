@@ -31,4 +31,4 @@ freevideo = "freevideo_engine.cli:main"
 include = ["freevideo_engine*"]
 
 [tool.setuptools.package-data]
-freevideo_engine = ["build-version.txt", "dependencies.json", "model_files.json", "model_shares.json", "prepared_models.json", "bootstrap_versions.json", "uv_downloads.json", "test_prompts.json", "windows_process_host.ps1", "windows_bootstrap.ps1", "assets/*.png", "assets/*.ico", "launcher/*.qml", "launcher/licenses/*.txt", "licenses/*.txt"]
+freevideo_engine = ["build-version.txt", "dependencies.json", "model_files.json", "model_shares.json", "prepared_models.json", "bootstrap_versions.json", "uv_downloads.json", "torch_downloads.json", "test_prompts.json", "windows_process_host.ps1", "windows_bootstrap.ps1", "assets/*.png", "assets/*.ico", "launcher/*.qml", "launcher/licenses/*.txt", "licenses/*.txt"]

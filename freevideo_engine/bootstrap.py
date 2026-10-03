@@ -958,7 +958,22 @@ class Installer:
             task(name + '-venv', environment, ('python',), writer)
             command = [uv, 'pip', 'install', '--python', python, *spec['torch'], '-c', constraints_file(name, self.system)]
             family = 'torch-' + spec['cuda'] + '-' + spec['torch'][0].split('==')[1]
-            task(name + '-torch', lambda label=name, argv=command, group=family: self.packages(label + '-torch', argv, group),
+            def torch_packages(label=name, argv=command, group=family, role=spec, executable=python):
+                if self.system == 'Windows':
+                    from .torch_download import install
+                    def check():
+                        if self.cancel.is_set():
+                            raise RuntimeError('Installation cancelled; partial download retained.')
+                        if self.plan.get('disk_mode') == 'extreme':
+                            from .install_disk import check_floor
+                            check_floor((self.root,))
+                    if install(uv, executable, role['torch'], role['cuda'], root=self.root,
+                               networking=self.network, env=self.env, ui=self.ui,
+                               run=lambda args, env: self.command(label + '-torch', args, env=env),
+                               constraints=['-c', constraints_file(label, self.system)], check=check):
+                        return
+                return self.packages(label + '-torch', argv, group)
+            task(name + '-torch', torch_packages,
                  (name + '-venv',), writer)
         name = 'unified' if self.layout == 'unified' else 'engine'
         python, encoder_python = self.pythons['engine'], self.pythons['encoder']
@@ -1014,7 +1029,10 @@ class Installer:
             raise ValueError('The installation cache points outside this FreeVideo folder; '
                              'space-saving cleanup stopped without removing it.')
         # Use uv's lock-aware cleanup; never unlink its internal files ourselves.
-        return self.command('release-package-cache', [uv, 'cache', 'clean', '--cache-dir', cache])
+        result = self.command('release-package-cache', [uv, 'cache', 'clean', '--cache-dir', cache])
+        from .torch_download import release_cache
+        release_cache(self.root)
+        return result
 
     def clone(self, name, url, commit, sparse=None):
         return network.clone(self.root / 'vendor' / name, url, commit, sparse=sparse, run=self.command,

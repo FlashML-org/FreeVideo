@@ -656,7 +656,7 @@ class DownloadError(RuntimeError):
 
 def download(candidates, path, expected, progress=None, *, network=None, env=None, size=None,
              algorithm='sha256', git_blob=False, headers_for=None, stall_seconds=None, category='download',
-             low_speed_limit=1024, max_seconds=None, cycles=2):
+             low_speed_limit=1024, max_seconds=None, cycles=2, slow_seconds=None, keep_partial=False):
     """Resume across ranked sources; hash before accepting, retain rejected bytes."""
     network = network or {}
     path = Path(path)
@@ -667,7 +667,9 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
         if size is not None and candidate.stat().st_size != size:
             return False
         event(network, category=category, source=source, file=path.name, action='verifying', algorithm=algorithm)
-        return hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models')) == expected
+        check = network.get('resource_check') if keep_partial else None
+        return hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models'),
+                         progress=(lambda done, total: check()) if check else None) == expected
     if path.is_file():
         if matches(path):
             return
@@ -697,10 +699,22 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
             pass
     # Try the next ranked candidate promptly. The final candidate gets bounded
     # retries; every mirror must honor the retained prefix, with no silent reset.
+    measured_rates = {}
     for cycle in range(cycles):
+        # Once every route has been tried, keep the fastest observed route even
+        # if the user's entire connection is slow. Do not oscillate forever.
+        if cycle and slow_seconds is not None:
+            candidates.sort(key=lambda row: -measured_rates.get((row[0], row[2]), 0))
         for candidate_index, (name, url, route) in enumerate(candidates):
             for restart in range(3 if model else 2):
                 offset = partial.stat().st_size if partial.exists() else 0
+                if keep_partial and size is not None and offset == size:
+                    if matches(partial, name):
+                        from .file_ops import publish
+                        publish(partial, path)
+                        return
+                    retain_partial(partial, 'hash-rejected')
+                    offset = 0
                 if size and offset > size:
                     retain_partial(partial, 'oversized')
                     offset = 0
@@ -716,7 +730,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                 event(network, category=category, source=name, route=route, file=path.name, action='attempt', method='curl', cycle=cycle, resume_bytes=offset)
                 attempt_env = route_environment(network, category, name, env, route)
                 command = curl_command(timeout, attempt_env) + ['--output', str(partial), '--write-out', '%{http_code}']
-                if not model:
+                if not model and slow_seconds is None:
                     command += ['--speed-limit', str(low_speed_limit), '--speed-time', str(stall_seconds)]
                 if max_seconds is not None:
                     command += ['--max-time', str(max_seconds)]
@@ -737,6 +751,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                 started = time.monotonic()
                 oversized = None
                 stalled = False
+                slow = False
                 last_body, previous_done = started, offset
                 recent = deque([(started, offset)])
                 try:
@@ -759,11 +774,18 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                             # turn these excess bytes into progress or an ETA.
                             oversized = done
                             break
+                        recent.append((now, done))
+                        window = max(5, slow_seconds or 0)
+                        while len(recent) > 2 and recent[1][0] < now - window:
+                            recent.popleft()
+                        if (slow_seconds is not None and cycle == 0 and len(candidates) > 1
+                                and now - recent[0][0] >= slow_seconds
+                                and (done - recent[0][1]) / (now - recent[0][0]) < low_speed_limit):
+                            slow = True
+                            break
                         if progress:
-                            recent.append((now, done))
-                            while len(recent) > 2 and recent[1][0] < now - 5:
-                                recent.popleft()
-                            progress(done, size or 0, max(0, done - recent[0][1]) / max(.001, now - recent[0][0]))
+                            sample = next((row for row in recent if row[0] >= now - 5), recent[0])
+                            progress(done, size or 0, max(0, done - sample[1]) / max(.001, now - sample[0]))
                         try:
                             process.wait(timeout=.25)
                         except subprocess.TimeoutExpired:
@@ -779,6 +801,9 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                     status = process.stdout.read(16).decode(errors='replace')
                     process.stdout.close()
                 current_size = partial.stat().st_size if partial.exists() else 0
+                if slow_seconds is not None:
+                    measured_rates[name, route] = (max(0, current_size - offset) /
+                        max(.001, time.monotonic() - started)) if slow else 0
                 if model and current_size > offset:
                     remember_source()
                 if oversized is not None:
@@ -801,7 +826,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                     event(network, category=category, source=name, file=path.name, action='fallback', reason='integrity-mismatch')
                     break
                 if offset and (process.returncode == 33 or process.returncode == 22 and status == '416') and restart == 0:
-                    if model:
+                    if model or keep_partial:
                         event(network, category=category, source=name, file=path.name,
                               action='resume-refused', resume_bytes=offset, reason='source-does-not-support-range')
                         break
@@ -813,13 +838,14 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                     retry_wait(network, restart, category=category, source=name, file=path.name,
                                resume_bytes=current_size, reason='no-progress' if stalled else 'connection-interrupted')
                     continue
+                reason = 'no-progress' if stalled else 'slow-transfer' if slow else 'curl-' + str(process.returncode)
                 alternatives = route_order(network, category, name, env)
                 if alternatives.index(route) + 1 < len(alternatives):
                     event(network, category=category, source=name, route=alternatives[alternatives.index(route)+1],
-                          file=path.name, action='route-retry', reason='no-progress' if stalled else 'curl-' + str(process.returncode), resume_bytes=current_size)
+                          file=path.name, action='route-retry', reason=reason, resume_bytes=current_size)
                 else:
                     source_health(network, category, name, False)
-                    event(network, category=category, source=name, route=route, file=path.name, action='fallback', reason='no-progress' if stalled else 'curl-' + str(process.returncode), http_status=status)
+                    event(network, category=category, source=name, route=route, file=path.name, action='fallback', reason=reason, http_status=status, resume_bytes=current_size)
                 break
         if model and partial.exists() and partial.stat().st_size:
             if not network.get('allow_model_restart'):
