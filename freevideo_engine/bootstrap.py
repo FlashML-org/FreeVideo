@@ -883,7 +883,8 @@ class Installer:
                 self.ui.end(key, success=success, detail=(getattr(progress, 'last_notice', None) or 'Log: ' + str(log))
                             if self.ui.verbose or not success else 'Ready')
         if child.returncode:
-            raise RuntimeError('%s failed; all files retained. See %s\n%s' % (label, log, log.read_text(errors='replace', encoding='utf-8')[-2500:]))
+            from .failure_details import setup_command_failure
+            raise RuntimeError(setup_command_failure(label, log, child.returncode))
         return log
 
     def component_tasks(self, uv):
@@ -1300,7 +1301,7 @@ def main(argv=None):
         installer.execute()
         installer.state['status'] = 'complete'
     except BaseException as error:
-        installer.state.update(status='failed', error=repr(error))
+        installer.state.update(status='failed', error='%s: %s' % (type(error).__name__, error))
         ui.phase('Setup interrupted' if isinstance(error, KeyboardInterrupt) else 'Setup failed', ui.done, ui.total)
     finally:
         try:
@@ -1321,6 +1322,7 @@ def main(argv=None):
         if args.verbose:
             print('Configuration: %s' % (installer.root / 'machine.json'))
         return 0
+    ui.event('failure', error=installer.state.get('resource_guard') or installer.state['error'])
     print('\nSetup failed: %s\nAll files retained. Logs: %s\nRerun the same setup command to resume.' %
           (installer.state.get('resource_guard') or installer.state['error'], installer.run_dir), file=sys.stderr)
     return 1

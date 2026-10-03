@@ -420,7 +420,7 @@ class Controller:
                 self.setup.runner.cancel()
             if not row['busy'] and row['status'] != 'running':
                 if row['status'] != 'complete' and not (row.get('action') == 'plan' and row.get('plan')):
-                    raise RuntimeError(row.get('error') or row.get('tail', '')[-2000:] or 'Installation stopped; completed files are retained.')
+                    raise RuntimeError(row.get('error') or row.get('tail', '') or 'Installation stopped; completed files are retained.')
                 if self.cancelled.is_set():
                     raise RuntimeError('Stopped; files retained')
                 return row

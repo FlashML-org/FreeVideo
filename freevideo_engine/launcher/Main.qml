@@ -212,17 +212,27 @@ ApplicationWindow {
                         id: failureBody; x: 18; y: 18; width: parent.width - 36; spacing: 10
                         FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true; spacing: 8
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
-                            FButton { objectName: "copyError"; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
+                            FButton { objectName: "copyError"; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
+                            FButton { objectName: "exportError"; text: t("Export redacted report", "导出脱敏报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
                             visible: errorDetailsOpen; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
                             TextArea { id: errorText; objectName: "failureDetails"; text: s.error; readOnly: true; selectByMouse: true; wrapMode: Text.Wrap; color: theme.muted; font.family: theme.mono; font.pixelSize: theme.micro; background: null; textFormat: TextEdit.PlainText }
                         }
                     }
+                }
+
+                FText {
+                    visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro
+                    color: s.report.status === "error" ? theme.danger : theme.muted
+                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                        s.report.status === "error" ? t("Export failed: ", "导出失败：") + s.report.error :
+                        t("Report saved locally: ", "报告已保存到本机：") + s.report.path +
+                        (s.report.collection_errors ? t("\nSome diagnostics were unavailable; see manifest.json in the ZIP.", "\n部分诊断信息未能收集，原因记录在 ZIP 内的 manifest.json。") : "")
                 }
 
                 ColumnLayout {
@@ -538,10 +548,15 @@ ApplicationWindow {
                     onActivated: backend.terminal(s.logs[currentIndex].path)
                 }
                 Item { Layout.fillWidth: true }
-                FButton { text: t("Copy", "复制"); flat: true; implicitHeight: 28; implicitWidth: 64; leftPadding: 8; rightPadding: 8; font.pixelSize: theme.micro; onClicked: backend.copy(s.log) }
-                FButton { text: t("Clear", "清空"); flat: true; implicitHeight: 28; implicitWidth: 64; leftPadding: 8; rightPadding: 8; font.pixelSize: theme.micro; onClicked: backend.clearTerminal() }
                 FButton { text: "×"; Accessible.name: t("Close terminal", "收起终端"); flat: true; implicitWidth: 30; implicitHeight: 28; leftPadding: 4; rightPadding: 4; onClicked: terminalOpen = false }
             }
+            Flow {
+                Layout.fillWidth: true; spacing: 6
+                FButton { text: t("Copy full log", "复制完整日志"); flat: true; implicitHeight: 28; leftPadding: 8; rightPadding: 8; font.pixelSize: theme.micro; onClicked: backend.copyLog() }
+                FButton { text: t("Export report", "导出报告"); flat: true; implicitHeight: 28; leftPadding: 8; rightPadding: 8; font.pixelSize: theme.micro; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                FButton { text: t("Clear", "清空"); flat: true; implicitHeight: 28; implicitWidth: 64; leftPadding: 8; rightPadding: 8; font.pixelSize: theme.micro; onClicked: backend.clearTerminal() }
+            }
+            FText { Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted; text: t("Recent output is shown here. Copy or export to get the full redacted log.", "这里显示最近的输出；复制或导出可获取完整脱敏日志。") }
             ScrollView {
                 id: terminalScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                 TextArea {
@@ -687,7 +702,16 @@ ApplicationWindow {
                         ColumnLayout {
                             id: settingsError; x: 14; y: 14; width: parent.width - 28; spacing: 8
                             FText { text: s.failure.title + "\n" + (s.failure.action || s.failure.detail); color: theme.danger; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
-                            FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
+                            Flow {
+                                Layout.fillWidth: true; spacing: 8
+                                FButton { text: t("Copy full details", "复制完整详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
+                                FButton { text: t("Export redacted report", "导出脱敏报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                            }
+                            FText {
+                                visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted
+                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                                    s.report.status === "error" ? s.report.error : t("Saved: ", "已保存：") + s.report.path
+                            }
                         }
                     }
                 }

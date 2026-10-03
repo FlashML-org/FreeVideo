@@ -2,6 +2,7 @@
 import locale
 import os
 from pathlib import Path
+import threading
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -42,6 +43,7 @@ class Session:
         self.token = ''
         self.error = ''
         self.notice = ''
+        self.report = dict(status='idle', path='', error='')
         self.compatibility = dict(available=False, level=0, automatic=False)
         self.probe = Probe()
         self.tail = Tail()
@@ -289,6 +291,39 @@ class Session:
             Store(root).acknowledge(installed_identity(root), self.compatibility['notice']['id'])
         self.notice = ''
 
+    def full_log(self):
+        from .diagnostics import read_complete
+        from .failure_details import redacted_launcher_error
+        if self.tail.path is None:
+            return self.tail.text
+        raw, _ = read_complete(self.tail.path)
+        return redacted_launcher_error(raw.decode('utf-8-sig', errors='replace'),
+                                       [(self.token, '<REDACTED>')] if self.token else [])
+
+    def export_report(self, output):
+        if self.report['status'] == 'running':
+            return
+        from .diagnostics import collect, Redactor
+        root = self.engine_root()
+        # Capture the failure and selected logs before another action changes
+        # the screen. Collection does not need a working Python/GPU runtime.
+        notes = self.snapshot()['error']
+        logs = tuple(path for _, path in self.controller.terminal_sources())
+        replacements = [(self.token, '<REDACTED>')] if self.token else []
+        self.report = dict(status='running', path=str(output), error='')
+
+        def work():
+            try:
+                result = collect(root, root / 'machine.json', None, Path(output),
+                                 complete=True, extra_files=logs, notes=notes)
+                self.report = dict(status='complete', path=str(output), error='',
+                                   collection_errors=len(result['errors']))
+            except Exception as error:
+                self.report = dict(status='error', path=str(output),
+                                   error=Redactor(replacements).text(str(error)))
+
+        threading.Thread(target=work, name='freevideo-export-report', daemon=True).start()
+
     def dismiss_update(self):
         self.update_snoozed = True
         if self.updater and self.updater.state['status'] == 'downloading':
@@ -391,8 +426,7 @@ class Session:
             self.tail.read(final=not self.controller.terminal_running(selected))
 
     def snapshot(self):
-        from .diagnostics import Redactor
-        from .failure_details import launcher_failure
+        from .failure_details import launcher_failure, redacted_launcher_error
         from .launcher_copy import display, progress_view, source_name
         zh = self.language.startswith('zh')
         row = self.controller.state
@@ -403,7 +437,8 @@ class Session:
         shortcut = row.get('shortcut') or {}
         if shortcut.get('status') == 'failed':
             errors.append(shortcut.get('error', ''))
-        error = Redactor([(self.token, '<REDACTED>')] if self.token else []).text('\n'.join(str(e) for e in errors if e))
+        error = redacted_launcher_error('\n'.join(str(e) for e in errors if e),
+                                        [(self.token, '<REDACTED>')] if self.token else [])
         by_id = {r['id']: r for r in self.model_groups}
         ready = bool(row.get('selection', {}).get('ready') or row.get('status') == 'open')
         models = []
@@ -458,6 +493,7 @@ class Session:
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy,
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']), models=len(self.form['offline_models'])),
             selected=bool(self.selected), error=error, notice=self.notice, compatibility=self.compatibility,
+            report=dict(self.report),
             models=models, overall=overall, progress=progress, detail=clean(progress.get('detail', '')),
             progress_text=progress_text(progress, self.language.startswith('zh')),
             elapsed=duration(time.monotonic()-self.started) if self.started else '', summary=' · '.join(estimate),

@@ -1,4 +1,4 @@
-"""Bounded, copyable request failures for interactive callers. No GPU imports."""
+"""Readable, copyable failures for interactive callers. No GPU imports."""
 import json
 from pathlib import Path
 import re
@@ -6,11 +6,84 @@ import re
 from .diagnostics import Redactor
 
 
+STEP_OUTPUT = '\n\nFull step output:\n'
+
+
+def redacted_launcher_error(value, replacements=()):
+    redactor = Redactor(replacements)
+    # Seed structured secrets (including GPU UUIDs) from a doctor's full JSON
+    # before redacting the surrounding exception or retained launcher log.
+    output = str(value).partition(STEP_OUTPUT)[2].lstrip()
+    if output.startswith('{'):
+        try:
+            report, _ = json.JSONDecoder().raw_decode(output)
+            redactor.structured(report)
+        except ValueError:
+            pass
+    return redactor.text(value)
+
+
+def setup_command_failure(label, log, exit_code):
+    """Keep the complete failed step, with required GPU failures before metadata."""
+    log = Path(log)
+    try:
+        output = log.read_text(encoding='utf-8', errors='replace')
+    except OSError as error:
+        output = 'Could not read the retained step log: ' + str(error)
+    lines = ['Failed step: %s (exit code %s)' % (label, exit_code)]
+    if label == 'kernels':
+        try:
+            report = json.loads((log.parent / 'kernel-capabilities.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            report = {}
+        if isinstance(report, dict):
+            probes = report.get('kernel_probes', [])
+            probes = [row for row in probes if isinstance(row, dict)] if isinstance(probes, list) else []
+            linear_ok = any(row.get('backend') == 'linear' and row.get('status') == 'complete' for row in probes)
+            attention_ok = any(row.get('backend') not in (None, 'linear') and row.get('status') == 'complete' for row in probes)
+            if probes and not linear_ok:
+                lines.append('Required linear kernel did not pass.')
+            if probes and not attention_ok:
+                lines.append('No attention backend passed.')
+            for row in probes:
+                # An optional backend failure is not the reason setup stopped
+                # when another attention backend passed.
+                if row.get('status') == 'complete' or (row.get('backend') != 'linear' and attention_ok):
+                    continue
+                reason = row.get('error') or row.get('stderr_tail') or row.get('stdout_tail') or row.get('status', 'unknown')
+                lines.append('%s: %s' % (row.get('backend', 'unknown'), reason))
+            paths = report.get('paths', {})
+            if isinstance(paths, dict):
+                for name, row in paths.items():
+                    if isinstance(row, dict) and row.get('exists') is False:
+                        lines.append('Required path missing (%s): %s' % (name, row.get('path', 'unknown')))
+        if len(lines) == 1:
+            # The doctor can fail before it writes a JSON report, e.g. during
+            # an import. Keep that exception visible above the full traceback.
+            causes = re.findall(r'^[\w.]+(?:Error|Exception):[^\n]*', output, re.M)
+            if causes:
+                lines.append(causes[-1])
+    lines.append('Retained step log: ' + str(log))
+    return '\n'.join(lines) + STEP_OUTPUT + output
+
+
 def launcher_failure(value, *, zh=False):
     """Short guidance for known failures; callers retain the full error separately."""
     if not value:
         return dict(title='', detail='', action='', kind='')
-    text = str(value)[-65536:]
+    text = str(value)
+    summary = text.partition(STEP_OUTPUT)[0]
+    if 'Failed step: kernels (' in summary:
+        detail = summary[summary.index('Failed step: kernels ('):]
+        detail = detail.partition('\nRetained step log:')[0]
+        if zh:
+            detail = detail.replace('Failed step: kernels (exit code ', '失败步骤：GPU 检查（退出码 ').replace(')\n', '）\n', 1)
+            detail = detail.replace('Required linear kernel did not pass.', '必需的 linear 运算检查未通过。')
+            detail = detail.replace('No attention backend passed.', '没有可用的 attention 后端。')
+            detail = detail.replace('Required path missing', '缺少必需目录')
+        return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail,
+                    action='展开详情或导出脱敏报告，查看完整检查结果。' if zh else
+                           'Open the details or export a redacted report for the complete results.', kind='kernels')
     rules = (
         (r'Installation RAM monitoring failed|Cannot read process-tree memory', 'memory-monitor',
          ('Memory usage could not be read', '暂时无法读取进程内存'),
@@ -38,10 +111,12 @@ def launcher_failure(value, *, zh=False):
     # Validation messages are already actionable. Show the cause, not a stack
     # trace or a guessed hardware diagnosis, and leave long details expandable.
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    detail = next((line for line in reversed(lines) if not line.startswith(('File ', 'Traceback', '^'))), '')
+    causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
+    detail = causes[-1] if causes else next((line for line in reversed(lines)
+        if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Rerun the same setup command'))), '')
     detail = re.sub(r'^(?:ValueError|RuntimeError|OSError):\s*', '', detail)
     return dict(title='暂时未能完成' if zh else 'Couldn’t complete this step',
-                detail=detail[:400], action='', kind='unknown')
+                detail=detail, action='', kind='unknown')
 
 
 def _read(path, limit, *, tail=False):

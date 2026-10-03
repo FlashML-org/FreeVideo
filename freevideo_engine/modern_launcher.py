@@ -143,6 +143,22 @@ def create_ui(session, *, show=True):
         def copy(self, value):
             app.clipboard().setText(value)
 
+        @Slot()
+        def copyLog(self):
+            self.invoke(lambda: app.clipboard().setText(session.full_log()))
+
+        @Slot()
+        def exportReport(self):
+            if session.report['status'] == 'running':
+                return
+            path, _ = QFileDialog.getSaveFileName(None, session.t('Export redacted report', '导出脱敏报告'),
+                'freevideo-diagnostics-' + time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '.zip',
+                'ZIP (*.zip)')
+            if path:
+                if not path.lower().endswith('.zip'):
+                    path += '.zip'
+                self.invoke(session.export_report, path)
+
         @Slot(str)
         def link(self, value):
             from .windows_ux import open_browser

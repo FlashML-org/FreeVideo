@@ -250,6 +250,8 @@ class Runner:
                         try:
                             message = json.loads(line)
                             if message.get('event') == 'freevideo_ui':
+                                if message.get('kind') == 'failure' and isinstance(message.get('error'), str):
+                                    error = message['error']
                                 self.events.put(('progress', message))
                             elif message.get('event') == 'local_model_progress':
                                 self.events.put(('progress', local_model_ui(message)))

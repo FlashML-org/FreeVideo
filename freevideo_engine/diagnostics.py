@@ -199,7 +199,7 @@ def latest(root, category):
     return max(directories, key=lambda p: p.name) if directories else None
 
 
-def collect(root, config, run, output, *, complete=False):
+def collect(root, config, run, output, *, complete=False, extra_files=(), notes=''):
     root, config = root.expanduser().resolve(), config.expanduser().absolute()
     if run is not None and (not run.is_dir() or is_link(run)):
         raise ValueError('--run must be a real report directory')
@@ -333,6 +333,14 @@ def collect(root, config, run, output, *, complete=False):
         add_path('source/dependencies.json', Path(__file__).with_name('dependencies.json'))
         source = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path(__file__).parent.glob('*.py'))}
         add('source/hashes.json', json.dumps(source).encode())
+        # Read structured reports first so their secrets are also redacted
+        # when they occur in a launcher's plain-text error or log.
+        if notes:
+            add('launcher/error.txt', str(notes).encode('utf-8'))
+        # These are retained log paths selected by the local launcher, never
+        # archive names or directories supplied by a web request.
+        for index, path in enumerate(extra_files):
+            add_path('launcher/selected-%d.log' % index, Path(path))
         disk = shutil.disk_usage(output.parent)
         add('current/collector.json', json.dumps({'python': sys.version, 'disk_free_bytes': disk.free,
                                                 'selected_run': str(selected) if selected else None}).encode())

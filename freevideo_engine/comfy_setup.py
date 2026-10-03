@@ -342,12 +342,20 @@ class Setup:
                 self.state['tail'] = (self.state.get('tail', '') + value)[-8192:]
             elif kind == 'done':
                 self.state.update({key: value[key] for key in ('status', 'action', 'error', 'wall_seconds', 'log')})
+                if value['status'] == 'failed' and not value.get('error'):
+                    # Older/bootstrap failures may not emit a structured error.
+                    # Recover the complete retained output once, after exit.
+                    try:
+                        self.state['error'] = (Path(value['log']) / 'launcher.log').read_text(encoding='utf-8', errors='replace')
+                    except OSError:
+                        self.state['error'] = value.get('output') or self.state.get('tail', '')
                 if value['action'] == 'plan' and value['status'] in ('complete', 'failed'):
                     try:
                         self.plan = preflight_json(value['output'])
                         self.state.update(plan=self.plan, plan_id=uuid.uuid4().hex)
                     except ValueError:
-                        self.state.update(status='failed', error='Setup inspection failed; see retained details')
+                        self.state.update(status='failed', error='Setup inspection failed\n' +
+                                          (self.state.get('error') or value.get('output', '')))
                 elif value['action'] == 'setup' and value['status'] == 'complete':
                     try:
                         self.bind(value['root'])
