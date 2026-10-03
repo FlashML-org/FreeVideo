@@ -22,6 +22,7 @@ FreeVideo is a local inference engine for running MiniMax H3 on consumer GPUs. B
 - **Hardware-adaptive execution**: Chooses the FP8 compute path for each GPU architecture, either native FP8 or FP8 storage with BF16 compute, and automatically probes the available attention kernels.
 - **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
+- **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [side-by-side examples](docs/LORA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
 - **One-click deployment**: The Windows launcher sets up ComfyUI, the runtime environment and the models, reuses existing models, and supports offline installation.
 

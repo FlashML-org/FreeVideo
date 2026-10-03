@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from src.models.ops import fp8_linear as official
+from .lora_online import apply as apply_lora, quantized as lora_quantized
 
 
 @triton.jit
@@ -54,23 +55,25 @@ def row_scale(scale, rows):
 def project_with_scale(module, value, scale=None):
     if scale is None or not isinstance(module, official.Fp8Linear):
         return module(value)
-    return module.forward_quantized(*quantize_fixed_scale(value, scale), out_dtype=value.dtype)
+    return lora_quantized(module, value, *quantize_fixed_scale(value, scale))
 
 
 def sliced_projection(module, value, channels, quantized=None):
     from .weight_only import WeightOnlyLinear
     if isinstance(module, WeightOnlyLinear):
-        return module.project(value, channels)
+        return apply_lora(module, value, module.project(value, channels), channels)
     if not isinstance(module, official.Fp8Linear):
-        return torch.nn.functional.linear(value, module.weight[channels],
-                                          None if module.bias is None else module.bias[channels])
+        result = torch.nn.functional.linear(value, module.weight[channels],
+                                           None if module.bias is None else module.bias[channels])
+        return apply_lora(module, value, result, channels)
     quantized = official.quantize_activation(value) if quantized is None else quantized
     x_fp8, scale = quantized
     weight_scale = module.weight_scale if module.weight_scale.numel() == 1 else module.weight_scale[:, channels].contiguous()
     from .fp8_gemm import scaled_mm
     result = scaled_mm(x_fp8, module.weight_fp8[channels].t(), scale, weight_scale,
                        out_dtype=value.dtype, implementation=getattr(module, 'freevideo_fp8_gemm', 'torch'))
-    return result if module.bias is None else result + module.bias[channels]
+    result = result if module.bias is None else result + module.bias[channels]
+    return apply_lora(module, value, result, channels)
 
 
 def install_chunked_ff(module, chunk, recompute=False):
@@ -94,8 +97,17 @@ def install_chunked_ff(module, chunk, recompute=False):
         if not official.per_tensor_gemm():
             for start in range(0, len(rows), chunk):
                 section = slice(start, start + chunk)
-                h = self.net[0].proj.forward_quantized(x_fp8[section], row_scale(x_scale, section), out_dtype=rows.dtype)
-                output[section] = self.net[2].forward_quantized(*official.swiglu_quantize(h), out_dtype=rows.dtype)
+                h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], row_scale(x_scale, section))
+                quantized = official.swiglu_quantize(h)
+                result = self.net[2].forward_quantized(*quantized, out_dtype=rows.dtype)
+                if hasattr(self.net[2], '_freevideo_lora'):
+                    tile = torch.empty((len(h), width), device=rows.device, dtype=rows.dtype)
+                    maxima = torch.empty(len(h), device=rows.device, dtype=torch.float32)
+                    official._swiglu_rowmax_kernel[(len(h),)](h, tile, maxima, width, BLOCK_K=2048, num_warps=16)
+                    apply_lora(self.net[2], tile, result)
+                    del tile, maxima
+                output[section] = result
+                del h, quantized, result
             return output.reshape(shape)
         try:
             activation = None if recompute else torch.empty((len(rows), width), device=rows.device, dtype=rows.dtype)
@@ -108,7 +120,7 @@ def install_chunked_ff(module, chunk, recompute=False):
         maxima = torch.empty(len(rows), device=rows.device, dtype=torch.float32)
         for start in range(0, len(rows), chunk):
             section = slice(start, min(start + chunk, len(rows)))
-            h = self.net[0].proj.forward_quantized(x_fp8[section], x_scale, out_dtype=rows.dtype)
+            h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], x_scale)
             tile = torch.empty((len(h), width), device=rows.device, dtype=rows.dtype) if recompute else activation[section]
             official._swiglu_rowmax_kernel[(len(h),)](h, tile, maxima[section], width, BLOCK_K=2048, num_warps=16)
             del h, tile
@@ -119,14 +131,14 @@ def install_chunked_ff(module, chunk, recompute=False):
         for start in range(0, len(rows), chunk):
             section = slice(start, min(start + chunk, len(rows)))
             if recompute:
-                h = self.net[0].proj.forward_quantized(x_fp8[section], x_scale, out_dtype=rows.dtype)
+                h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], x_scale)
                 tile = torch.empty((len(h), width), device=rows.device, dtype=rows.dtype)
                 unused_maxima = torch.empty(len(h), device=rows.device, dtype=torch.float32)
                 official._swiglu_rowmax_kernel[(len(h),)](h, tile, unused_maxima, width, BLOCK_K=2048, num_warps=16)
                 del h, unused_maxima
             else:
                 tile = activation[section]
-            output[section] = self.net[2].forward_quantized(*quantize_fixed_scale(tile, scale), out_dtype=rows.dtype)
+            output[section] = lora_quantized(self.net[2], tile, *quantize_fixed_scale(tile, scale))
             del tile
         return output.reshape(shape)
 

@@ -374,6 +374,8 @@ class Policy:
     evidence: str
     notes: list[str]
     capacity_trial: bool = False
+    lora_max_block_bytes: int = 0
+    lora_root_bytes: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -429,10 +431,22 @@ def decoder_workspace(canvas=None):
 
 def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
            gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
-           demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation'):
+           demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation',
+           lora_max_block_bytes=0, lora_root_bytes=0):
     from .geometry import geometry
     if stage not in ('encoding', 'generation'):
         raise ValueError('Resource planning stage must be encoding or generation')
+    if type(lora_max_block_bytes) is not int or lora_max_block_bytes < 0:
+        raise ValueError('LoRA block bytes must be a nonnegative integer')
+    if type(lora_root_bytes) is not int or lora_root_bytes < 0:
+        raise ValueError('LoRA root bytes must be a nonnegative integer')
+    if stage == 'encoding':
+        lora_max_block_bytes = lora_root_bytes = 0
+    block_bytes = BLOCK_BYTES + lora_max_block_bytes
+    # Two transfer slots plus bounded raw-SwiGLU/LoRA workspace. Resident and
+    # retained-host blocks below use the enlarged per-block storage as well.
+    lora_workspace = (128 * 2**20 + 2 * lora_max_block_bytes + lora_root_bytes
+                      if lora_max_block_bytes or lora_root_bytes else 0)
     if canvas is not None:
         checked = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
         if any(canvas.get(k) != checked[k] for k in ('width', 'height', 'frames', 'video_tokens')):
@@ -454,6 +468,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     reserve_gpu, reserve_ram = budget['gpu_system_reserve_bytes']/GiB, budget['ram_system_reserve_bytes']/GiB
     gpu_budget, ram_budget = budget['gpu_budget_bytes'], budget['ram_budget_bytes']
     desktop = hardware.system == 'Windows'
+    request_gpu_budget = gpu_budget
+    gpu_budget -= lora_workspace
     # What this machine has actually held, for the weight cache only.
     #
     # Retaining weights is worth a 20 GB disk read per step, and only while
@@ -513,7 +529,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # whose margin was measured.
     if not desktop and gpu_reserve_gib is None and free_gpu < 10 * GiB and gpu_budget < residual_need:
         reserve_gpu = MIN_GPU_RESERVE_GIB
-        gpu_budget = free_gpu - int(reserve_gpu * GiB)
+        request_gpu_budget = free_gpu - int(reserve_gpu * GiB)
+        gpu_budget = request_gpu_budget - lora_workspace
     # The encoding phase already has a measured host floor. Do not discard a
     # preloaded encoder because the later video stage needs a larger minimum;
     # automatic_profile replans generation after conditioning has been saved.
@@ -775,12 +792,12 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # weight traffic is 6.78 s of 878 s sampling, and block 45 on mapped
         # weights ran no slower than block 5 on pinned weights. It still
         # relieves host RAM, so the leftover goes to it rather than staying idle.
-        resident = max(0, min(RESIDENT_VRAM_CEILING, int((gpu_budget - reserve) / BLOCK_BYTES)))
+        resident = max(0, min(RESIDENT_VRAM_CEILING, int((gpu_budget - reserve) / block_bytes)))
     if not small:
         # One measured requirement for the group in use, so the block count is
         # continuous across the band edges rather than restarting at each.
         resident = max(0, min(RESIDENT_VRAM_CEILING,
-                              int((gpu_budget - activation_bytes(head, effective_tokens)) / BLOCK_BYTES)))
+                              int((gpu_budget - activation_bytes(head, effective_tokens)) / block_bytes)))
     # Placement alone is numerically neutral. Scale the activation allowance
     # with the actual token count before spending memory on resident weights.
     # The small staging path is anchored to the complete 243-frame Ada run;
@@ -812,13 +829,13 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             # Saving a transfer slot must not turn fully retained host weights
             # into per-step disk reads. Compare both placements, including the
             # full FF workspace, before spending that slot.
-            with_slot = min(resident, max(0, int((gpu_budget - windows_workspace) / BLOCK_BYTES)))
-            without_slot = min(resident, max(0, int((gpu_budget - windows_workspace + BLOCK_BYTES) / BLOCK_BYTES)))
-            host_need = (50 - with_slot) * BLOCK_BYTES + int(2.5 * GiB)
-            if host_need > ram_budget >= (50 - without_slot) * BLOCK_BYTES + int(2.5 * GiB):
+            with_slot = min(resident, max(0, int((gpu_budget - windows_workspace) / block_bytes)))
+            without_slot = min(resident, max(0, int((gpu_budget - windows_workspace + BLOCK_BYTES) / block_bytes)))
+            host_need = (50 - with_slot) * block_bytes + int(2.5 * GiB)
+            if host_need > ram_budget >= (50 - without_slot) * block_bytes + int(2.5 * GiB):
                 prefetch = False
                 windows_workspace -= BLOCK_BYTES
-        resident = min(resident, max(0, int((gpu_budget - windows_workspace) / BLOCK_BYTES)))
+        resident = min(resident, max(0, int((gpu_budget - windows_workspace) / block_bytes)))
         # Do not enable FF recomputation merely to retain all host mappings.
         # Native 5060 Ti measurements show that doing so makes the same layer
         # 18% slower. Reopening an unpinned layer can hit the OS file cache and
@@ -849,7 +866,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         head, resident, prefetch = 4, 0, False
         cpu_outputs = residual_offload = True
     pin = max(0, min(22_000_000_000, retention_budget - HOST_WEIGHT_HEADROOM)) / 1e9
-    pin = min(pin, (50 - resident) * BLOCK_BYTES / 1e9)
+    pin = min(pin, (50 - resident) * block_bytes / 1e9)
     if small:
         # Only locking every offloaded layer removes the offloader's own
         # staging buffers, so a partial pin pays full memory for both: a
@@ -892,10 +909,10 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # A card too small for what RAM asks still streams from disk; the retained
     # subset below is what bounds that case.
     host_room = retention_budget - host_activation - 2 * GiB
-    ram_wants = max(0, 50 - max(0, int(host_room // BLOCK_BYTES)))
+    ram_wants = max(0, 50 - max(0, int(host_room // block_bytes)))
     if not small:
         resident = min(resident, max(RESIDENT_TARGET, ram_wants))
-    streamed_weights = (50 - resident) * BLOCK_BYTES + host_activation + 2 * GiB > retention_budget
+    streamed_weights = (50 - resident) * block_bytes + host_activation + 2 * GiB > retention_budget
     if streamed_weights:
         # When the remaining weights exceed RAM, a bounded retained subset
         # prevents rereading those bytes every step. This addresses disk I/O,
@@ -913,8 +930,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                                                cpu_outputs=cpu_outputs, canvas=canvas)
                          if ram_budget >= 8 * GiB else HOST_WEIGHT_HEADROOM)
         host_headroom += residual_host
-        pin = max(0, min((50 - resident) * BLOCK_BYTES, retention_budget - host_headroom)) / 1e9
-    if small and not streamed_weights and pin * 1e9 < (50 - resident) * BLOCK_BYTES:
+        pin = max(0, min((50 - resident) * block_bytes, retention_budget - host_headroom)) / 1e9
+    if small and not streamed_weights and pin * 1e9 < (50 - resident) * block_bytes:
         # All or nothing only when the weights already sit in RAM. On a
         # disk-backed request the partial pin is not a transfer optimisation
         # at all -- it is the bounded retained subset that stops those bytes
@@ -1010,6 +1027,10 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                      (original_reserve_gpu, reserve_gpu, free_gpu / GiB, residual_need / GiB))
     # The transformer is released before decode. Full-GPU VAE decode measured
     # below 14 GiB on SM120; keep additional margin for other devices/backends.
+    if lora_workspace:
+        notes.append('Online LoRA reserves %d bytes per block plus %d bytes for transfer slots and bounded workspace.'
+                     % (lora_max_block_bytes, lora_workspace))
+    gpu_budget = request_gpu_budget
     decoder_offload = gpu_budget < 20 * GiB
     if reference_rows:
         notes.append('Reference conditioning adds %d packed rows; activation placement scales with total rows. This is a starting estimate, not a verified reference-capacity result.' % reference_rows)
@@ -1059,4 +1080,5 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                                resident_blocks=vae_resident,
                                linear_compute_cache=decoder_linear_cache),
                   'Architecture-specific candidate; validate this exact policy on the target GPU.', notes,
-                  capacity_trial=capacity_trial)
+                  capacity_trial=capacity_trial, lora_max_block_bytes=lora_max_block_bytes,
+                  lora_root_bytes=lora_root_bytes)

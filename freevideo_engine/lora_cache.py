@@ -31,6 +31,11 @@ def _targets(name):
     while any(name.startswith(prefix) for prefix in prefixes):
         prefix = next(prefix for prefix in prefixes if name.startswith(prefix))
         name = name[len(prefix):]
+    # Community H3 trainers also export Kohya-style flattened module names.
+    # Only the known H3 block grammar is expanded; underscores inside qkv_proj
+    # and out_proj are meaningful and must not become dots.
+    name = re.sub(r'^lora_unet_blocks_(\d+)_(attn|mlp)_(out_proj|qkv_proj|fc1|fc2)(?=\.|$)',
+                  r'blocks.\1.\2.\3', name)
     name = re.sub(r'^blocks\.', 'transformer_blocks.', name)
     name = name.replace('token_refiner.blocks.', 'token_refiner.refiner_blocks.')
     name = name.replace('final_layer.adaln_proj.linear', 'norm_out.linear')
@@ -335,7 +340,9 @@ def main():
     args = parser.parse_args()
     request = json.loads(args.request.read_text(encoding='utf-8'))
     torch.set_num_threads(8)
-    output, report = prepare(request['cache'], request['adapters'])
+    from .lora_online_cache import prepare as prepare_online
+    output, report = (prepare if request.get('mode') == 'fused' else prepare_online)(
+        request['cache'], request['adapters'])
     save(request['result'], {'cache': str(output), 'report': report})
 
 

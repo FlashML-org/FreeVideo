@@ -14,6 +14,7 @@ include scripts/bootstrap_linux.sh scripts/build_windows.py scripts/windows_app.
 include scripts/scan_windows_release.py
 include scripts/build_launcher_notices.py
 prune docs
+include docs/LORA.md docs/LORA.zh-CN.md
 prune tests
 prune benchmarks
 prune distribution

@@ -173,5 +173,7 @@ def first_pass_policy(profile, canvas, sampling_plan):
     backend = profile['engine']['attention']
     selected = choose(hardware, attention=backend, available_backends=set(backend.split('/')),
                       gpu_reserve_gib=gpu_reserve / GiB, ram_reserve_gib=ram_reserve / GiB,
+                      lora_max_block_bytes=policy.get('lora_max_block_bytes', 0),
+                      lora_root_bytes=policy.get('lora_root_bytes', 0),
                       canvas=first, allow_capacity_trial=policy.get('capacity_trial', False)).legacy_profile()
     return dict(geometry=first, profile=selected)

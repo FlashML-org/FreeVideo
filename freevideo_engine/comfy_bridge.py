@@ -368,7 +368,7 @@ def progress_message(event):
               'conditioning_cache_hit': 'Reusing prompt cache', 'encoder_complete': 'Prompt ready',
               'video_start': 'Loading video model',
               'decode_resume': 'Reusing completed sampling · retrying video and audio decoding',
-              'lora_prepare_start': 'Preparing or reusing the LoRA FP8 variant',
+              'lora_prepare_start': 'Loading LoRAs',
               'resource_retry': 'Adjusting memory placement and retrying'}
     if name == 'decode_phase':
         return {'label': str(event.get('phase', 'Decoding video and audio')), 'timing_phase': 'decode'}
@@ -392,7 +392,7 @@ def progress_message(event):
             label += ' · %s / %s blocks' % (event.get('done', 0), event['total'])
         return {'label': label, 'timing_phase': 'load'}
     if name == 'lora_prepare':
-        return {'label': 'Preparing LoRA variant · %s / %s groups' % (event.get('done', '?'), event.get('total', '?')),
+        return {'label': 'Loading LoRAs · %s / %s' % (event.get('done', '?'), event.get('total', '?')),
                 'timing_phase': 'load'}
     if name in labels:
         phase = ('encoding' if name.startswith('encoding') or name.startswith('encoder_')

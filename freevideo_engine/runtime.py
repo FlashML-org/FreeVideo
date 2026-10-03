@@ -102,6 +102,13 @@ class Engine:
         self.refiner_released = False
         started = time.perf_counter()
         manifest = json.loads((self.cache / 'manifest.json').read_text(encoding='utf-8'))
+        online_lora = manifest.get('online_lora', {})
+        self.online_lora_root = online_lora.get('blocks', {}).get('root', {}).get('file')
+        if online_lora:
+            if not head_chunk or not inference_kernels:
+                raise ValueError('Online LoRA requires bounded attention; select the automatic generation profile')
+            ff_chunk = ff_chunk or 2048
+        lora_paths = [self.cache / spec['file'] for spec in online_lora.get('blocks', {}).values()]
         from .adaln_assets import SLIM_FORMAT, validate_catalog, restore_projections
         portable_adaln = manifest.get('format') == SLIM_FORMAT
         if portable_adaln:
@@ -153,7 +160,7 @@ class Engine:
                 streamed_paths += [self.cache / f'adaln/{index:02d}.safetensors'
                                    for index in range(resident_blocks, len(model.transformer_blocks))]
             if streamed_prefixes:
-                streamed_source = SafetensorLayers(streamed_paths, streamed_prefixes)
+                streamed_source = SafetensorLayers(streamed_paths + lora_paths, streamed_prefixes)
                 self.stream_weight_source = streamed_source
                 # Only source-backed placeholders may remain empty between
                 # refinement requests; pinned groups keep their own storage.
@@ -192,6 +199,10 @@ class Engine:
         if result.unexpected_keys or any(not key.startswith('transformer_blocks.') for key in result.missing_keys):
             raise ValueError('Unexpected root weight keys')
         del root_weights
+        if online_lora:
+            from .lora_online import attach_block
+            attach_block(model, 'root', self.cache, manifest, _load_safetensors,
+                         device='cpu' if offload_refiner else 'cuda')
         if streamed_source is not None and streamed_refiner_count:
             # Refiner weights live in root.safetensors and otherwise remain a
             # second large CPU allocation until LayerOffloader is constructed.
@@ -246,6 +257,9 @@ class Engine:
             if result.unexpected_keys or any(not key.startswith('adaln_proj.step_') for key in result.missing_keys):
                 raise ValueError(f'Incomplete block {index}: {result}')
             del weights
+            if online_lora:
+                from .lora_online import attach_block
+                attach_block(block, index, self.cache, manifest, _load_safetensors)
             if not adaln_cache:
                 # ``weights.update(adaln)`` leaves the source dictionary alive
                 # until the next iteration. Drop it before replacing this
@@ -328,7 +342,7 @@ class Engine:
             paths += [self.cache / f'blocks/{index:02d}.safetensors' for index in range(resident_blocks, len(model.transformer_blocks))]
             if not adaln_cache:
                 paths += [self.cache / f'adaln/{index:02d}.safetensors' for index in range(resident_blocks, len(model.transformer_blocks))]
-            self.stream_weight_source = SafetensorLayers(paths, prefixes)
+            self.stream_weight_source = SafetensorLayers(paths + lora_paths, prefixes)
         self.host_preload_seconds = 0.
         self.pinned_model_bytes = prepared_pins['logical']
         self.pinned_host_allocated_bytes = 0
@@ -387,6 +401,7 @@ class Engine:
                                           if fa4_path is not None else None),
                        'precision': precision, 'fp8_linears': len(manifest.get('linears', {})),
                        'linear_compute': linear_compute,
+                       'online_lora': online_lora.get('summary'),
                        'fp8_gemm': actual_fp8_gemm,
                        'fp8_scale_granularity': manifest.get('scale_granularity'),
                        'fp8_ff_recompute': fp8_ff_recompute,
@@ -678,6 +693,9 @@ class Engine:
             prefix = 'token_refiner.refiner_blocks.'
             values = {name.removeprefix(prefix): tensor for name, tensor in
                       _load_safetensors(self.cache / 'root.safetensors').items() if name.startswith(prefix)}
+            if self.online_lora_root:
+                values.update({name.removeprefix(prefix): tensor for name, tensor in
+                               _load_safetensors(self.cache / self.online_lora_root).items()})
             refiner.load_state_dict(values, strict=True, assign=True)
             del values
         # load_prompt returns [tokens, width]; generate_latents adds the batch

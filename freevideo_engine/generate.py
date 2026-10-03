@@ -151,6 +151,10 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 ('vram_gib', 'ram_gib', 'attention', 'gpu_reserve_gib', 'ram_reserve_gib')}
             options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))
+            if getattr(args, '_lora_max_block_bytes', 0):
+                options['lora_max_block_bytes'] = args._lora_max_block_bytes
+            if getattr(args, '_lora_root_bytes', 0):
+                options['lora_root_bytes'] = args._lora_root_bytes
             if encoding_stage:
                 options['stage'] = 'encoding'
             try:
@@ -334,7 +338,8 @@ def _run(args):
             if active_loras:
                 lora_request = artifacts / 'lora-request.json'
                 lora_result = artifacts / 'lora-result.json'
-                save(lora_request, {'cache': str(args.cache.resolve()), 'adapters': active_loras, 'result': str(lora_result)})
+                save(lora_request, {'cache': str(args.cache.resolve()), 'adapters': active_loras, 'result': str(lora_result),
+                    'mode': 'online' if profile['engine'].get('head_chunk') and profile['engine'].get('inference_kernels') else 'fused'})
                 lora_env = dict(os.environ, PYTHONPATH=str(repo), CUDA_VISIBLE_DEVICES='', PYTHONUNBUFFERED='1')
                 lora_env[LOCK_ENV] = str(descriptor)
                 print(json.dumps({'event': 'lora_prepare_start'}), flush=True)
@@ -344,6 +349,11 @@ def _run(args):
                 prepared = json.loads(lora_result.read_text(encoding='utf-8'))
                 args.cache = Path(prepared['cache'])
                 report['lora'] = prepared['report']
+                args._lora_max_block_bytes = prepared['report'].get('max_block_bytes', 0)
+                args._lora_root_bytes = prepared['report'].get('root_bytes', 0)
+                if args._lora_max_block_bytes or args._lora_root_bytes:
+                    profile.setdefault('policy', {})['lora_max_block_bytes'] = args._lora_max_block_bytes
+                    profile['policy']['lora_root_bytes'] = args._lora_root_bytes
             resource_identity = local_identity(hardware, args.cache)
             history = ResourceHistory(history_path())
             history.recover_pending()
