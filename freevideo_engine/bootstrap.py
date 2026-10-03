@@ -699,6 +699,8 @@ class Installer:
             HF_HUB_OFFLINE='0', TRANSFORMERS_OFFLINE='0',
             PIP_DISABLE_PIP_VERSION_CHECK='1',
             PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8', PYTHONPATH=str(SOURCE), OMP_NUM_THREADS='4', MKL_NUM_THREADS='4')
+        from .triton_compat import environment as compiler_environment
+        self.env = compiler_environment(self.root, self.env)
         self.env[LOCK_ENV] = str(self.runtime_fd)
         self.env.update(FREEVIDEO_NETWORK_PLAN=str(self.run_dir / 'plan.json'),
                         FREEVIDEO_NETWORK_EVENTS=str(self.run_dir / 'network.jsonl'))

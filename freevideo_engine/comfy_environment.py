@@ -34,4 +34,5 @@ def isolated_environment(root, source, environ=None):
             env.pop(name, None)
     env.update(FREEVIDEO_HOME=str(root), FREEVIDEO_PROXY_MODE=proxy_mode, PYTHONPATH=str(source), PYTHONNOUSERSITE='1',
                PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
-    return env
+    from .triton_compat import environment
+    return environment(root, env)

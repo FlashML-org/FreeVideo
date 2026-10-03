@@ -112,7 +112,8 @@ def environment(root, value, environ=None):
         env.pop(key, None)
     python = inside(root, value['python']).parent
     env['PATH'] = os.pathsep.join([str(python), str(python/'Scripts'), str(python/'Lib/site-packages/bin'), env.get('PATH', '')])
-    return env
+    from .triton_compat import environment as compiler_environment
+    return compiler_environment(root/'engine', env)
 
 
 def configuration(root, value, hardware):

@@ -1,6 +1,32 @@
-"""Windows Unicode environment compatibility at FreeVideo's Triton entry points."""
+"""Windows Unicode compatibility for compiler configuration and kernel loading."""
 from functools import wraps
 import os
+from pathlib import Path
+
+
+COMPILER_ENVIRONMENT_KEYS = (
+    'TRITON_CACHE_DIR', 'TORCHINDUCTOR_CACHE_DIR', 'CUDA_CACHE_PATH',
+    'TORCHINDUCTOR_USE_STATIC_CUDA_LAUNCHER',
+)
+
+
+def environment(root, environ):
+    """Configure child compilers before imports, including encoder prewarming."""
+    env = dict(environ)
+    cache = Path(root) / 'kernel-cache'
+    for key, folder in (('TRITON_CACHE_DIR', 'triton'),
+                        ('TORCHINDUCTOR_CACHE_DIR', 'inductor'),
+                        ('CUDA_CACHE_PATH', 'cuda')):
+        if not env.get(key):
+            env[key] = str(cache / folder)
+    if os.name == 'nt' and any(not os.path.abspath(env[key]).isascii()
+                              for key in ('TRITON_CACHE_DIR', 'TORCHINDUCTOR_CACHE_DIR')):
+        # The static launcher passes a UTF-8 narrow filename to cuModuleLoad.
+        # Triton's normal launcher loads the same cubin bytes with
+        # cuModuleLoadData, avoiding Windows filename encoding at that boundary.
+        # Keep explicit caller choices and leave torch.compile enabled.
+        env.setdefault('TORCHINDUCTOR_USE_STATIC_CUDA_LAUNCHER', '0')
+    return env
 
 
 def activate():

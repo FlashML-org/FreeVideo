@@ -342,13 +342,16 @@ class SessionOwner:
     def start(self, root, source, python, environment):
         import hashlib
         import psutil
+        from .triton_compat import COMPILER_ENVIRONMENT_KEYS, environment as compiler_environment
+        environment = compiler_environment(root, environment)
         self.stop_prewarm()
         source = Path(source).resolve()
         signature = hashlib.sha256()
         for file in sorted((source/'freevideo_engine').glob('*.py')):
             signature.update(file.name.encode())
             signature.update(file.read_bytes())
-        identity = (str(source), str(python), signature.hexdigest(), environment.get('CUDA_VISIBLE_DEVICES'))
+        compiler = tuple(environment.get(key) for key in COMPILER_ENVIRONMENT_KEYS)
+        identity = (str(source), str(python), signature.hexdigest(), environment.get('CUDA_VISIBLE_DEVICES'), compiler)
         if self.process is not None and self.process.poll() is None and self.identity == identity:
             return str(self.endpoint)
         self.close()

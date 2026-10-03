@@ -228,18 +228,16 @@ def environment(machine):
     need their own.
     """
     inherited = lambda name, fallback: os.environ.get(name) or fallback
-    cache = Path(machine['root']) / 'kernel-cache'
-    return dict(os.environ, FREEVIDEO_HOME=machine['root'], FREEVIDEO_VDN_ROOT=machine['vdn_root'],
+    env = dict(os.environ, FREEVIDEO_HOME=machine['root'], FREEVIDEO_VDN_ROOT=machine['vdn_root'],
                 PATH=(str(Path(machine['git']).parent) + os.pathsep if machine.get('git') else '') + os.environ.get('PATH', ''),
                 FREEVIDEO_MODEL_ROOT=machine['model_root'], FREEVIDEO_COMFY_ROOT=machine['comfy_root'],
                 FREEVIDEO_COMFY_PYTHON=machine['comfy_python'],
                 CUDA_VISIBLE_DEVICES=inherited('CUDA_VISIBLE_DEVICES', machine['gpu_uuid']),
                 PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8',
                 FREEVIDEO_LOCK_PATH=inherited('FREEVIDEO_LOCK_PATH', str(Path(machine['root']) / 'engine.lock')),
-                TRITON_CACHE_DIR=inherited('TRITON_CACHE_DIR', str(cache / 'triton')),
-                CUDA_CACHE_PATH=inherited('CUDA_CACHE_PATH', str(cache / 'cuda')),
-                TORCHINDUCTOR_CACHE_DIR=inherited('TORCHINDUCTOR_CACHE_DIR', str(cache / 'inductor')),
                 OMP_NUM_THREADS='8', MKL_NUM_THREADS='8')
+    from .triton_compat import environment as compiler_environment
+    return compiler_environment(machine['root'], env)
 
 
 def command_for(machine, case, destination, args):
