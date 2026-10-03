@@ -41,7 +41,8 @@ def validate_metrics(row, canvas, *, preencoded=False):
     steps = engine.get('step_seconds', [])
     from .two_pass import steps as planned_steps
     sampling_plan = row['request'].get('sampling_plan')
-    if (engine.get('sampling_plan') != sampling_plan or engine.get('config', {}).get('steps') != 8
+    if (engine.get('sampling_plan') != sampling_plan
+            or engine.get('config', {}).get('steps') != (sampling_plan or {}).get('base_steps', 8)
             or len(steps) != planned_steps(sampling_plan) or not all(finite_number(v) for v in steps)):
         raise ValueError('Expected all planned denoising steps with finite timings and matching sampling strategy')
     timings = [('request', ('request_seconds',)),

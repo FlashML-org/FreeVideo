@@ -82,7 +82,7 @@ def _canvas(value, options, text_tokens=None):
                               seconds=value.get('seconds') if value.get('frames') is None else None)
     canvas['steps'] = options['engine']['steps']
     canvas['task'] = options['engine']['task']
-    if value.get('sampling_plan', {}).get('enabled'):
+    if value.get('sampling_plan', {}).get('enabled') or value.get('sampling_plan', {}).get('version') == 2:
         canvas['sampling_plan'] = value['sampling_plan']
     if type(canvas['steps']) is not int or canvas['steps'] <= 0:
         raise ValueError('Forecast steps must be a positive integer')

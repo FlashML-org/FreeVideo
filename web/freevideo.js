@@ -321,6 +321,14 @@ app.registerExtension({
                     quality.label = text('Two-pass sampling', '二次采样');
                     quality.tooltip = text('Generate the scene, then refine it at the target resolution.', '先生成画面，再以目标分辨率精修。');
                 }
+                for (const [name, en, zh] of [['base_steps', 'First-pass steps', '一采步数'], ['refine_steps', 'Second-pass steps', '二采步数']]) {
+                    const steps = this.widgets?.find(w => w.name === name);
+                    if (steps) {
+                        steps.label = text(en, zh);
+                        steps.tooltip = text('Changing sampling steps may reduce generation quality. Defaults: 8 + 2. Second-pass steps must be fewer than first-pass steps.',
+                            '修改采样步数可能降低生成质量。默认一采 8 步、二采 2 步；二采步数必须小于一采步数。');
+                    }
+                }
                 resultPanel(this);
                 this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => openStudio(this), {serialize: false});
                 const removed = this.onRemoved;

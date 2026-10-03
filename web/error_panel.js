@@ -109,7 +109,7 @@ export function createErrorReport(detail, context = {}) {
     const inputs = context.snapshot?.output?.[context.node?.id]?.inputs
         || (nodeType === 'FreeVideoGenerate' ? detail?.current_inputs : null);
     const settings = {};
-    for (const key of ['width', 'height', 'seconds', 'seed', 'two_pass']) {
+    for (const key of ['width', 'height', 'seconds', 'seed', 'two_pass', 'base_steps', 'refine_steps']) {
         const value = Array.isArray(inputs?.[key]) && inputs[key].length === 1 ? inputs[key][0] : inputs?.[key];
         if (typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value)) settings[key] = value;
     }

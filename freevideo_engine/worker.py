@@ -50,7 +50,9 @@ def generate(request, resident=None):
         if 'sampling_plan' in request:
             from .two_pass import plan
             expected = plan(request['geometry'], request['sampling_plan']['requested'],
-                            request['engine_options'].get('task', 't2va'))
+                            request['engine_options'].get('task', 't2va'),
+                            base_steps=request['engine_options'].get('steps', 8),
+                            refine_steps=request['sampling_plan']['refine_steps'] if request['sampling_plan']['enabled'] else 2)
             if request['sampling_plan'] != expected:
                 raise ValueError('Sampling plan does not match the requested canvas and task')
             metrics['sampling_plan'] = expected
@@ -171,8 +173,8 @@ def generate(request, resident=None):
                     from .two_pass import upscale_workspace, crop_latents
                     from .two_pass_metrics import combine
                     from .latent_upscale import upscale
-                    if engine.steps != 8:
-                        raise ValueError('Two-pass generation requires the original DMD8 schedule')
+                    if engine.steps != sampling_plan['base_steps']:
+                        raise ValueError('Engine steps disagree with the requested sampling plan')
                     pass_budget = (min(request['gpu_budget_bytes'],
                         metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes'])
                         if request.get('automatic_pass_cache', False) else None)
@@ -183,11 +185,12 @@ def generate(request, resident=None):
                         pass_cache_budget_bytes=pass_budget, gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
                         compute_options=first_options,
                         pass_resident_blocks=first_options.get('resident_blocks') if first_options else None,
-                        step_callback=memory_diagnostics.complete, progress_total=10,
+                        step_callback=memory_diagnostics.complete, progress_total=sampling_plan['total_steps'],
                         budget_refresh=refresh_budget if live_budget is not None else None)
                     metrics.update(sampling_passes=[first], sample_stage='latent_upscale')
                     save(request['metrics'], metrics)
-                    print(json.dumps(dict(event='latent_upscale', completed_steps=8, total=10)), flush=True)
+                    print(json.dumps(dict(event='latent_upscale', completed_steps=sampling_plan['base_steps'],
+                                          total=sampling_plan['total_steps'])), flush=True)
                     tick = time.perf_counter()
                     if live_budget is not None:
                         refresh_budget('upscale')
@@ -268,10 +271,11 @@ def generate(request, resident=None):
                         sampling_complete(video, sound, combine(first, receipt, lifted, sampling_plan))
                     restart_seed = (request['seed'] + sampling_plan['restart_seed_offset']) % (1 << 64)
                     latents, audio, second = engine.sample(request['conditioning'], restart_seed,
-                        **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=2,
+                        **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=sampling_plan['refine_steps'],
                         final_step_callback=None if decoder_cached else decode_read_ahead.start,
                         step_callback=memory_diagnostics.complete, sampling_complete_callback=refined_complete,
-                        progress_offset=8, progress_total=10, gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
+                        progress_offset=sampling_plan['base_steps'], progress_total=sampling_plan['total_steps'],
+                        gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
                         budget_refresh=refresh_budget if live_budget is not None else None)
                     sampled = combine(first, second, lifted, sampling_plan)
                     metrics.pop('sample_stage', None)

@@ -38,7 +38,8 @@ def completed_sampling(metrics):
     except (ValueError, AttributeError, TypeError):
         return False
     return (metrics.get('finite_latents') is True and isinstance(config, dict)
-            and type(config.get('steps')) is int and config['steps'] == 8
+            and type(config.get('steps')) is int
+            and config['steps'] == (metrics.get('sampling_plan') or {}).get('base_steps', 8)
             and isinstance(steps, list) and len(steps) == total
             and all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in steps)
             and isinstance(metrics.get('sampling_provenance'), dict) and bool(metrics['sampling_provenance']))

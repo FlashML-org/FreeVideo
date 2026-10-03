@@ -483,7 +483,7 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     times = metrics.get('step_seconds', [])
     from .two_pass import steps as sampling_steps, same_strategy
     total_steps = sampling_steps(metrics.get('sampling_plan'))
-    if (type(steps) is not int or steps != 8 or len(times) != total_steps
+    if (type(steps) is not int or steps != canvas.get('steps', 8) or len(times) != total_steps
             or not same_strategy(metrics, canvas) or not all(finite_number(t) and t > 0 for t in times)):
         raise ValueError('A probe or incomplete sample cannot become a resource observation.')
     rgb_shape, dtype = _retained_array_header(Path(artifacts)/'rgb.npy')

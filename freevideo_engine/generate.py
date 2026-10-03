@@ -170,6 +170,9 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 row.update(capacity_trial=True, resource_error=details)
             row['status'] = 'admitted'
             profile = selected.legacy_profile()
+            if 'steps' in canvas:
+                profile['engine']['steps'] = canvas['steps']
+                profile['policy']['engine']['steps'] = canvas['steps']
             row['budget_bytes'] = dict(gpu=profile['gpu_budget_gb']*1e9, ram=profile['inference_ram_budget_gb']*1e9)
             row['reserve_bytes'] = dict(gpu=profile.get('policy', {}).get('gpu_system_reserve_bytes'),
                                         ram=profile.get('policy', {}).get('ram_system_reserve_bytes'))
@@ -266,6 +269,14 @@ def _run(args):
     from .geometry import geometry
     canvas = geometry(getattr(args, 'width', 1344), getattr(args, 'height', 768),
                       frames=getattr(args, 'frames', None), seconds=getattr(args, 'seconds', None))
+    from .two_pass import validate_steps
+    requested_steps = getattr(args, 'base_steps', None)
+    refine_steps = getattr(args, 'refine_steps', 2)
+    two_pass = getattr(args, 'two_pass', True)
+    if requested_steps is not None:
+        validate_steps(requested_steps, refine_steps, two_pass)
+        if requested_steps != 8:
+            canvas['steps'] = requested_steps
     from .media_request import read as read_media, task_for, cache_key
     media = read_media(getattr(args, 'media', None))
     active_loras = [row for row in media.get('loras', []) if row['strength'] != 0]
@@ -294,6 +305,13 @@ def _run(args):
                        inference_ram_budget_gb=profile['ram_budget_bytes'] / 1e9,
                        engine=profile['engine'], decoder=profile['decoder'],
                        allocator_config=profile['allocator_config'], policy=profile)
+    base_steps = requested_steps if requested_steps is not None else profile['engine'].get('steps', 8)
+    validate_steps(base_steps, refine_steps, two_pass)
+    profile['engine']['steps'] = base_steps
+    if 'engine' in profile.get('policy', {}):
+        profile['policy']['engine']['steps'] = base_steps
+    if base_steps != 8:
+        canvas['steps'] = base_steps
     if args.base:
         profile['engine']['base'] = str(args.base.resolve())
     if args.checkpoint:
@@ -488,12 +506,10 @@ def _run(args):
             if not condition.is_file():
                 raise FileNotFoundError(condition)
             from .two_pass import plan as plan_sampling, ensure_checkpoint
-            sampling_plan = plan_sampling(canvas, getattr(args, 'two_pass', True),
-                                          profile['engine'].get('task', 't2va'))
+            sampling_plan = plan_sampling(canvas, two_pass, profile['engine'].get('task', 't2va'),
+                                          base_steps=base_steps, refine_steps=refine_steps)
             report['sampling_plan'] = sampling_plan
-            if sampling_plan['enabled']:
-                if profile['engine'].get('steps', 8) != 8:
-                    raise ValueError('Automatic two-pass generation requires the original DMD8 schedule')
+            if sampling_plan['enabled'] or sampling_plan['version'] == 2:
                 canvas['sampling_plan'] = sampling_plan
             print(json.dumps(dict(event='sampling_plan', **sampling_plan)), flush=True)
             save(destination.with_suffix('.request.json'), report)
@@ -507,7 +523,7 @@ def _run(args):
                 hardware, resident_credit, live = automatic_profile(args, canvas, stage='after-encoding',
                     evidence=planning, descriptor=descriptor, environment=env)
                 report['reclaimable_resident_models'] = resident_credit
-                live['engine'].update({k: profile['engine'][k] for k in ('base', 'checkpoint', 'task') if k in profile['engine']})
+                live['engine'].update({k: profile['engine'][k] for k in ('base', 'checkpoint', 'task', 'steps') if k in profile['engine']})
                 profile = live
                 report['profile'] = profile
             from .prediction import predict
@@ -519,7 +535,7 @@ def _run(args):
                 tokens = next((row['observation'].get('text_tokens', row.get('geometry', {}).get('text_tokens'))
                     for row in reversed(observations)
                     if row['observation'].get('conditioning_sha256') == condition_hash), None)
-            if state and args.attention == 'auto' and tokens is not None:
+            if state and args.attention == 'auto' and tokens is not None and sampling_plan['version'] == 1:
                 profile, applied = tuning.apply_profile(state, profile, canvas, tokens)
                 report['profile'] = profile
                 report['tuning']['profile_id'] = applied

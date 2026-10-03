@@ -41,6 +41,10 @@ class FreeVideoGenerate(io.ComfyNode):
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
                 io.Boolean.Input('two_pass', display_name='Two-pass sampling', default=True, optional=True,
                     tooltip='Generate the scene, then refine it at the target resolution.'),
+                io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=32, optional=True,
+                    tooltip='Default: 8. Changing sampling steps may reduce generation quality.'),
+                io.Int.Input('refine_steps', display_name='Second-pass steps', default=2, min=1, max=31, optional=True,
+                    tooltip='Default: 2. Must be fewer than first-pass steps. Changing sampling steps may reduce generation quality.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.extra_pnginfo],
@@ -51,6 +55,8 @@ class FreeVideoGenerate(io.ComfyNode):
     def validate_inputs(cls, text, width, height, seconds, seed, **kwargs):
         try:
             comfy_bridge.validate_request(text, width, height, seconds, seed)
+            from .two_pass import validate_steps
+            validate_steps(kwargs.get('base_steps', 8), kwargs.get('refine_steps', 2), kwargs.get('two_pass', True))
             comfy_bridge.installation()
         except (OSError, ValueError, KeyError) as error:
             return str(error)
@@ -64,7 +70,9 @@ class FreeVideoGenerate(io.ComfyNode):
 
     @classmethod
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
-                references=None, loras=None, conditioning=None, media=None, two_pass=True):
+                references=None, loras=None, conditioning=None, media=None, two_pass=True, base_steps=8, refine_steps=2):
+        from .two_pass import validate_steps
+        validate_steps(base_steps, refine_steps, two_pass)
         from .comfy_media import export
         import folder_paths
         import comfy.model_management as memory
@@ -76,7 +84,7 @@ class FreeVideoGenerate(io.ComfyNode):
         from .resident_process import OWNER
         gpu_prewarm = OWNER.stop_prewarm()
         node_id = cls.hidden.unique_id
-        bar = ProgressBar(8, node_id=node_id)
+        bar = ProgressBar(base_steps + (refine_steps if two_pass else 0), node_id=node_id)
         last_message = [None]
         last_count = [None]
         def progress(message):
@@ -103,6 +111,7 @@ class FreeVideoGenerate(io.ComfyNode):
         try:
             output = comfy_bridge.generate(text, width, height, seconds, seed, output_root,
                 metadata=metadata.get('workflow', metadata), progress=progress, two_pass=two_pass,
+                base_steps=base_steps, refine_steps=refine_steps,
                 encoder_prewarm=gpu_prewarm or cpu_prewarm,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,

@@ -115,7 +115,7 @@ def computation_identity(identity, config, geometry, *, purpose='generation'):
         raise ValueError('Durable resource history requires GPU UUID and operating system')
     computation = _canonical_config(config, purpose)
     canvas = {name: geometry.get(name) for name in ('width', 'height', 'frames')}
-    if geometry.get('sampling_plan', {}).get('enabled'):
+    if geometry.get('sampling_plan', {}).get('enabled') or geometry.get('sampling_plan', {}).get('version') == 2:
         canvas['sampling_plan'] = geometry['sampling_plan']
     for key, default in (('steps', 8), ('task', 't2va')):
         configured = computation['engine'].pop(key, None)

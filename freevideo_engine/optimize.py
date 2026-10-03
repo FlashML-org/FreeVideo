@@ -75,8 +75,9 @@ def read_baseline(path, expected):
             continue
         preencoded = row.get('input_mode') == 'preencoded'
         validate_metrics(row, row['geometry'], preencoded=preencoded)
-        if row['engine'].get('sampling_plan', {}).get('enabled'):
-            continue  # Optimizer compares an unchanged 8-step sampler, not a two-pass output.
+        if (row['engine'].get('sampling_plan', {}).get('enabled')
+                or row['engine'].get('config', {}).get('steps') != 8):
+            continue  # Optimizer comparisons require the unchanged eight-step sampler.
         if not isinstance(row['id'], str) or Path(row['id']).name != row['id'] or row['id'] in ('.', '..'):
             raise ValueError('Invalid baseline case identifier')
         case = directory / row['id']

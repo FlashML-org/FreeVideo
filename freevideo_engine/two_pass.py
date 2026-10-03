@@ -1,4 +1,4 @@
-"""Automatic 8 + 2 generation planning, without importing Torch."""
+"""Generation planning with an 8 + 2 default, without importing Torch."""
 from math import gcd
 from pathlib import Path
 
@@ -11,7 +11,18 @@ UPSCALER = dict(
     role='latent_upscaler')
 
 
-def plan(canvas, enabled=True, task='t2va'):
+def validate_steps(base_steps=8, refine_steps=2, enabled=True):
+    if type(enabled) is not bool:
+        raise ValueError('Two-pass generation must be a boolean')
+    if type(base_steps) is not int or not 1 <= base_steps <= 32:
+        raise ValueError('First-pass steps must be an integer between 1 and 32')
+    if type(refine_steps) is not int or not 1 <= refine_steps <= 31:
+        raise ValueError('Second-pass steps must be an integer between 1 and 31')
+    if enabled and refine_steps >= base_steps:
+        raise ValueError('Second-pass steps must be fewer than first-pass steps')
+
+
+def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=2):
     """Align the smaller canvas, lift, center-crop, then refine at the target.
 
     Odd multiples of 32 need up to 32 extra pixels before the latent crop.
@@ -20,12 +31,14 @@ def plan(canvas, enabled=True, task='t2va'):
     """
     from .geometry import geometry
     from .media_request import TASKS
+    validate_steps(base_steps, refine_steps, enabled)
     if task not in TASKS:
         raise ValueError('Unsupported two-pass conditioning task: ' + str(task))
     target = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
     shape = {key: target[key] for key in ('width', 'height', 'frames')}
-    result = dict(version=1, requested=bool(enabled), enabled=False, mode='vdn8',
-                  base_steps=8, refine_steps=0, total_steps=8, first=shape, second=None)
+    default = base_steps == 8 and (not enabled or refine_steps == 2)
+    result = dict(version=1 if default else 2, requested=enabled, enabled=False, mode='vdn%d' % base_steps,
+                  base_steps=base_steps, refine_steps=0, total_steps=base_steps, first=shape, second=None)
     if not enabled:
         result['reason'] = 'Two-pass generation is disabled.'
         return result
@@ -45,14 +58,17 @@ def plan(canvas, enabled=True, task='t2va'):
                 top=(lift['height'] - target['height']) // 2,
                 width=target['width'], height=target['height'])
     upscaling = first != lift
-    result.update(enabled=True, mode='vdn8-lbh-tail2', refine_steps=2, total_steps=10,
+    result.update(enabled=True, mode='vdn%d-lbh-tail%d' % (base_steps, refine_steps),
+                  refine_steps=refine_steps, total_steps=base_steps + refine_steps,
                   first=first, second=shape, upscale_target=lift, crop=crop,
                   restart_seed_offset=1,
                   upscaler_sha256=UPSCALER['sha256'] if upscaling else None,
                   audio_policy='first_pass_preserved_with_audio_clock_conditioning',
-                  reason='8 steps on a smaller canvas, learned latent upscale, then the original DMD8 schedule tail (2 steps).')
+                  reason='%d steps on a smaller canvas, learned latent upscale, then the DMD schedule tail (%d steps).' % (base_steps, refine_steps))
+    if default:
+        result['reason'] = '8 steps on a smaller canvas, learned latent upscale, then the original DMD8 schedule tail (2 steps).'
     if not upscaling:
-        result['reason'] = 'Small canvas: 8 steps and 2 refinement steps at the same target size, without upscaling.'
+        result['reason'] = 'Small canvas: %d steps and %d refinement steps at the same target size, without upscaling.' % (base_steps, refine_steps)
     return result
 
 
@@ -72,11 +88,15 @@ def steps(sampling_plan=None):
     """Validate the supported receipt rather than trusting a supplied NFE count."""
     if sampling_plan is None:
         return 8
-    expected = 10 if sampling_plan.get('enabled') is True else 8
-    if (sampling_plan.get('version') != 1 or sampling_plan.get('base_steps') != 8
-            or sampling_plan.get('refine_steps') != expected - 8
-            or sampling_plan.get('total_steps') != expected):
-        raise ValueError('Invalid 8 + 2 sampling plan')
+    enabled = sampling_plan.get('enabled')
+    base, refine = sampling_plan.get('base_steps'), sampling_plan.get('refine_steps')
+    validate_steps(base, refine if enabled else 2, enabled)
+    expected = base + refine if enabled else base
+    if (type(sampling_plan.get('version')) is not int or sampling_plan['version'] not in (1, 2)
+            or (sampling_plan['version'] == 1 and (base != 8 or refine != (2 if enabled else 0)))
+            or (not enabled and (type(refine) is not int or refine != 0))
+            or type(sampling_plan.get('total_steps')) is not int or sampling_plan['total_steps'] != expected):
+        raise ValueError('Invalid sampling step plan')
     return expected
 
 
@@ -89,7 +109,7 @@ def same_strategy(left, right):
     except (ValueError, AttributeError, TypeError):
         return False
     # Until a two-resolution cost model is calibrated, use exact-plan evidence.
-    return steps(a) == 8 or a == b
+    return a == b if (a or {}).get('enabled') or (b or {}).get('enabled') else True
 
 
 def checkpoint_path():
@@ -176,4 +196,6 @@ def first_pass_policy(profile, canvas, sampling_plan):
                       lora_max_block_bytes=policy.get('lora_max_block_bytes', 0),
                       lora_root_bytes=policy.get('lora_root_bytes', 0),
                       canvas=first, allow_capacity_trial=policy.get('capacity_trial', False)).legacy_profile()
+    selected['engine']['steps'] = sampling_plan['base_steps']
+    selected['policy']['engine']['steps'] = sampling_plan['base_steps']
     return dict(geometry=first, profile=selected)

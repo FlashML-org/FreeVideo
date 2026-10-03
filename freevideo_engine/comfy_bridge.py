@@ -331,15 +331,17 @@ def progress_message(event):
     if name == 'sampling_plan':
         first, second = event.get('first', {}), event.get('second')
         if event.get('enabled') and second:
-            return dict(label='Two-pass · %d × %d → %d × %d · 8 + 2 steps' %
-                        (first['width'], first['height'], second['width'], second['height']),
+            return dict(label='Two-pass · %d × %d → %d × %d · %d + %d steps' %
+                        (first['width'], first['height'], second['width'], second['height'],
+                         event.get('base_steps', 8), event.get('refine_steps', 2)),
                         detail='Audio is preserved from the first pass', sampling_plan=event)
-        return dict(label='Single-pass · 8 steps', detail=event.get('reason'), sampling_plan=event)
+        return dict(label='Single-pass · %d steps' % event.get('base_steps', 8), detail=event.get('reason'), sampling_plan=event)
     if name == 'latent_upscaler_prepare':
         return dict(label='Preparing two-pass upscaler', timing_phase='load')
     if name == 'latent_upscale':
+        done, total = event.get('completed_steps', 8), event.get('total', 10)
         return dict(label='Upscaling before the second pass', phase='sampling', stage='latent_upscale',
-                    done=8, total=10, display_fraction=.8, timing_phase='sampling',
+                    done=done, total=total, display_fraction=done / total, timing_phase='sampling',
                     estimated_step_seconds=None, step_elapsed_seconds=0., remaining_seconds=None,
                     uniform_remaining_steps=False)
     if name == 'ram_budget_warning':
@@ -415,9 +417,12 @@ def engine_environment(root, source, environ=None):
 
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
-             release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None):
+             release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
+             base_steps=8, refine_steps=2):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
+    from .two_pass import validate_steps
+    validate_steps(base_steps, refine_steps, two_pass)
     canvas = validate_request(prompt, width, height, seconds, seed)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
@@ -439,7 +444,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     command = [machine['python'], '-B', '-m', 'freevideo_engine.managed', '--root', str(root),
                'generate', '--prompt-file', str(run / 'prompt.txt'), '--out', str(output),
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
-               '--two-pass' if two_pass else '--no-two-pass']
+               '--two-pass' if two_pass else '--no-two-pass',
+               '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
     if resources['gpu_reserve_gib'] is not None:
         command += ['--gpu-reserve-gib', str(resources['gpu_reserve_gib'])]
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
@@ -482,7 +488,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             state['command'] = command
         from .media_request import task_for
         from .two_pass import plan
-        planned = plan(canvas, two_pass, task_for(extra.get('media', {})))
+        planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
         whole_progress.sampling_plan = planned
         whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
         send_progress({'label': 'Preparing %.3f s video + audio · %d × %d' %
@@ -516,7 +522,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         engine = json.loads(output.with_suffix('.engine.json').read_text(encoding='utf-8'))
         from .two_pass import steps, plan
         completed_steps = steps(report.get('sampling_plan'))
-        expected_plan = plan(canvas, two_pass, report.get('profile', {}).get('engine', {}).get('task', 't2va'))
+        expected_plan = plan(canvas, two_pass, report.get('profile', {}).get('engine', {}).get('task', 't2va'),
+                             base_steps=base_steps, refine_steps=refine_steps)
         if (report.get('success') is not True or engine.get('success') is not True
                 or not output.is_file() or not output.stat().st_size
                 or len(engine.get('step_seconds', [])) != completed_steps

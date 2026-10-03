@@ -178,7 +178,7 @@ export function openStudio(node) {
     const canvasNote = el('div', null, 'fv-canvas-note'), dimensions = el('span'), duration = el('span'); canvasNote.append(dimensions, duration); canvas.append(canvasNote);
     const twoPass = el('input'); twoPass.type = 'checkbox'; twoPass.checked = value(node, 'two_pass') !== false;
     twoPass.disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
-    twoPass.onchange = () => set(node, 'two_pass', twoPass.checked);
+    twoPass.onchange = () => { set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
     const twoPassLabel = el('label', null, 'fv-two-pass');
     twoPassLabel.title = t('Generate the scene, then refine it at the target resolution.', '先生成画面，再以目标分辨率精修。');
     twoPass.title = twoPassLabel.title;
@@ -205,6 +205,39 @@ export function openStudio(node) {
     const width = el('input'), height = el('input');
     for (const [w, name, label] of [[width, 'width', t('Width', '宽度')], [height, 'height', t('Height', '高度')]]) { w.type = 'number'; w.min = '256'; w.max = '4096'; w.step = '32'; w.value = value(node, name); w.disabled = dimensionsLinked; w.setAttribute('aria-label', label); custom.append(field(label, w)); w.onchange = () => { if (w.value && w.reportValidity()) { set(node, name, Number(w.value)); selected = 'custom'; node.properties.freevideo_aspect = selected; ratio = Number(width.value) / Number(height.value); updateCanvas(); } }; }
     advanced.append(custom);
+    const samplingFields = el('div', null, 'fv-fields'); samplingFields.style.marginTop = '14px';
+    const baseSteps = el('input'), refineSteps = el('input');
+    const samplingWarning = el('p', t('Changing sampling steps may reduce generation quality. Defaults: 8 + 2 steps.', '修改采样步数可能降低生成质量。默认一采 8 步、二采 2 步。'), 'fv-muted');
+    samplingWarning.id = `fv-sampling-warning-${node.id}`;
+    samplingWarning.style.color = 'var(--fv-warning)';
+    for (const [input, name, label, fallback, maximum] of [
+        [baseSteps, 'base_steps', t('First-pass steps', '一采步数'), 8, 32],
+        [refineSteps, 'refine_steps', t('Second-pass steps', '二采步数'), 2, 31],
+    ]) {
+        input.type = 'number'; input.min = '1'; input.max = String(maximum); input.step = '1'; input.required = true;
+        input.value = value(node, name) ?? fallback;
+        input.setAttribute('aria-label', label); input.setAttribute('aria-describedby', samplingWarning.id);
+        input.oninput = () => syncSamplingSteps();
+        input.onchange = () => input.reportValidity();
+        samplingFields.append(field(label, input));
+    }
+    function syncSamplingSteps() {
+        baseSteps.disabled = linked(node, 'base_steps') || !widget(node, 'base_steps');
+        refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
+        baseSteps.min = twoPass.checked ? '2' : '1';
+        refineSteps.max = String(Math.max(1, Math.min(31, Number(baseSteps.value || 8) - 1)));
+        refineSteps.setCustomValidity(twoPass.checked && !refineSteps.disabled && Number(refineSteps.value) >= Number(baseSteps.value)
+            ? t('Second-pass steps must be fewer than first-pass steps.', '二采步数必须小于一采步数。') : '');
+        refineSteps.title = twoPass.checked ? t('Must be fewer than first-pass steps.', '必须小于一采步数。')
+            : t('Enable two-pass sampling to use this setting.', '开启二次采样后生效。');
+        for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
+            if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
+                set(node, name, Number(input.value));
+            }
+        }
+    }
+    syncSamplingSteps();
+    advanced.append(samplingFields, samplingWarning);
     const seedFields = el('div', null, 'fv-fields'); seedFields.style.marginTop = '14px';
     const seed = el('input'); seed.type = 'number'; seed.min = '0'; seed.max = String(2 ** 53 - 1); seed.step = '1'; seed.value = value(node, 'seed'); seed.disabled = linked(node, 'seed'); seed.setAttribute('aria-label', t('Seed', '种子'));
     seed.onchange = () => { if (seed.value && seed.reportValidity()) set(node, 'seed', Number(seed.value)); };
