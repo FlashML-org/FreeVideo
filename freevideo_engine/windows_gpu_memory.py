@@ -89,3 +89,46 @@ class AdapterMemory:
         if self.adapter:
             pointer, self.adapter = self.adapter, c.c_void_p()
             method(pointer, 2, c.c_uint32)(pointer)
+
+
+# Page-locked host memory counts against the process's WDDM non-local budget,
+# which Windows sets near half of physical RAM however much RAM is free. An
+# RTX 5060 Ti with 27.98 GiB of RAM reported a 13.24 GiB budget: 30 pinned
+# blocks and two transfer slots used 13.06 GiB and ran; 32 blocks failed with
+# cudaErrorMemoryAllocation at the token refiner's first copy. The transfer
+# slots (0.81 GiB) and the refiner slot (0.36 GiB) are allocated after weight
+# pinning; the rest covers driver allocations and other processes moving the budget.
+NONLOCAL_PIN_RESERVE = 2 * 2**30
+
+
+def nonlocal_readout_bytes(canvas, attention_width, text_rows=1024):
+    """Page-locked attention readouts the CPU-output path allocates after weight pinning.
+
+    One soft-attention readout spans every row and one linear readout every
+    video row, each in BF16, at the full-resolution pass; the half-resolution
+    first pass may still hold its quarter-sized pair in the host cache.
+    """
+    canvas = canvas or {}
+    video = canvas.get('video_tokens', 72576)
+    rows = video + text_rows + canvas.get('reference_video_tokens', 0) + canvas.get('reference_audio_tokens', 0)
+    return int(1.25 * (rows + video) * attention_width * 2)
+
+
+def nonlocal_pin_capacity(reserve=NONLOCAL_PIN_RESERVE):
+    """Bytes this process may still page-lock inside its non-local budget, or None if unreadable."""
+    reader = None
+    try:
+        reader = AdapterMemory()
+        segment = reader.sample()['nonlocal']
+    except (OSError, AttributeError, ValueError, KeyError):
+        return None
+    finally:
+        if reader is not None:
+            try:
+                reader.close()
+            except OSError:
+                pass  # The budget was already read; a failed release changes nothing here.
+    budget, usage = segment.get('budget_bytes'), segment.get('usage_bytes')
+    if type(budget) is not int or budget <= 0 or type(usage) is not int or usage < 0:
+        return None
+    return max(0, budget - usage - reserve)

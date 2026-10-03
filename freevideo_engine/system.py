@@ -88,18 +88,21 @@ def weight_cache_headroom(*, system=None, streamed=False, cpu_outputs=True, canv
     host attention outputs. Linux streaming with GPU attention outputs measured
     2.56 GiB non-weight working memory in a complete 768p/243-frame request.
     3.5 GiB leaves growth/staging room inside the already OS-reserved budget.
-    Linux CPU readouts measured 4.56 GiB beyond retained weights in the same
-    complete request. Keep 5 GiB at that geometry; larger requests additionally
-    reserve 2.5 GiB per reference token volume for their growing host readouts.
-    Unknown geometry retains the original allowance. This is a starting
-    estimate; complete local observations and runtime RAM guards still apply.
+    CPU readouts measured 4.56 GiB beyond retained weights on Linux.
+    Keep 5 GiB at that geometry there; Windows page-locks the readouts on top
+    of about 4.0 GiB of non-pinned private working set (12/32 Ada laptop) and
+    keeps its 8 GiB. Larger requests additionally reserve 2.5 GiB per reference
+    token volume for their growing host readouts.
+    Unstreamed placements, platforms without a measurement and unknown
+    geometry retain the original allowance. This is a starting estimate;
+    complete local observations and runtime RAM guards still apply.
     """
     if system is None:
         system = 'Windows' if windows() else 'Linux'
-    if system != 'Linux' or not streamed:
+    if system not in ('Linux', 'Windows') or not streamed:
         return HOST_WEIGHT_HEADROOM
     if not cpu_outputs:
-        return int(3.5 * 2**30)
+        return int(3.5 * 2**30) if system == 'Linux' else HOST_WEIGHT_HEADROOM
     if canvas is None:
         return HOST_WEIGHT_HEADROOM
     from .geometry import geometry
@@ -107,7 +110,10 @@ def weight_cache_headroom(*, system=None, streamed=False, cpu_outputs=True, canv
     if any(canvas.get(key) != checked[key] for key in ('width', 'height', 'frames', 'video_tokens')):
         raise ValueError('Host cache allowance requires consistent request geometry')
     growth = max(0., checked['video_tokens'] / (72 * 1008) - 1.)
-    return int((5. + 2.5 * growth) * 2**30)
+    # Windows page-locks these readouts on top of the ~4.0 GiB measured there,
+    # so it keeps its original 8 GiB at the measured geometry and grows with it.
+    base = HOST_WEIGHT_HEADROOM / 2**30 if system == 'Windows' else 5.
+    return int((base + 2.5 * growth) * 2**30)
 
 
 def effective_available():

@@ -40,7 +40,7 @@ def _pin_reservation(sizes):
 
 
 @torch.no_grad()
-def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None):
+def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_reserve_bytes=None):
     """Pack immutable CPU parameters into persistent pinned planes, one per dtype.
 
     This optional mode trades pageable/mapped storage for locked host residency.
@@ -90,6 +90,26 @@ def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None):
         available = min(available, commit_available)
     live_cap = available - headroom_bytes
     max_bytes = live_cap if max_bytes is None else min(max_bytes, live_cap)
+    from .system import windows
+    if windows():
+        # Free RAM does not bound locked pages on Windows: the WDDM non-local
+        # budget does. A 20 s request on a 27.98 GiB machine pinned 9.67 GiB;
+        # its CPU readouts then took non-local usage to 13.14 of 13.24 GiB and
+        # cudaHostAlloc failed with 10.68 GiB of VRAM free. The reserve covers
+        # locked buffers allocated after the weights; the caller adds its
+        # request's CPU attention readouts to the default.
+        from .windows_gpu_memory import nonlocal_pin_capacity, NONLOCAL_PIN_RESERVE
+        reserve = NONLOCAL_PIN_RESERVE if nonlocal_reserve_bytes is None else nonlocal_reserve_bytes
+        capacity = nonlocal_pin_capacity(reserve)
+        if capacity is None and memory.get('total_bytes'):
+            # Without a DXGI reading, assume the Windows default of half of RAM.
+            try:
+                pinned = torch.cuda.memory.host_memory_stats()['allocated_bytes.current']
+            except (RuntimeError, KeyError, AttributeError):
+                pinned = 0
+            capacity = max(0, memory['total_bytes'] // 2 - pinned - reserve)
+        if capacity is not None:
+            max_bytes = min(max_bytes, capacity)
 
     groups, sizes, reserved = [], [], 0
     for entries in layer_groups:
@@ -229,7 +249,7 @@ def unload_streamed_layer(layer, source, index):
 
 
 @torch.no_grad()
-def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_bytes):
+def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_bytes, nonlocal_reserve_bytes=None):
     """Retain one affordable pinned layer or release it before loading the next.
 
     Return logical pinned bytes and the charged allocator reservation. A partial
@@ -242,7 +262,8 @@ def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_b
     reserved = _pin_reservation(sizes.values())
     pinned = 0
     if 0 < reserved <= pin_budget_bytes:
-        pinned = pin_layer_weights([layer], max_bytes=pin_budget_bytes, headroom_bytes=headroom_bytes)
+        pinned = pin_layer_weights([layer], max_bytes=pin_budget_bytes, headroom_bytes=headroom_bytes,
+                                   nonlocal_reserve_bytes=nonlocal_reserve_bytes)
         if pinned == sum(sizes.values()) and all(value.is_pinned() for _, value in cpu_weights(layer)):
             return pinned, reserved
     unload_streamed_layer(layer, source, index)

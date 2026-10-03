@@ -123,6 +123,12 @@ class Engine:
                                          varlen_smooth_k=varlen_smooth_k)
         model = skeleton(self.base, Path(checkpoint))
         validate_catalog(manifest, len(model.transformer_blocks))
+        # Locked buffers allocated after the weights must also fit the Windows
+        # non-local budget: CPU attention readouts grow with this request's rows.
+        from .windows_gpu_memory import NONLOCAL_PIN_RESERVE, nonlocal_readout_bytes
+        self.nonlocal_reserve_bytes = NONLOCAL_PIN_RESERVE + (nonlocal_readout_bytes(
+            self.canvas, model.config.num_attention_heads * model.config.attention_head_dim)
+            if attention_cpu_outputs else 0)
         if resident_blocks > len(model.transformer_blocks):
             raise ValueError('More resident blocks requested than the model contains')
         # Build the streamed source before binding transformer blocks.  The
@@ -170,7 +176,8 @@ class Engine:
                 tick = time.perf_counter()
                 logical, reserved = prepare_streamed_layer(block, streamed_source, index,
                     pin_budget_bytes=max(0, int(pin_host_gb * 1e9) - prepared_pins['reserved']),
-                    headroom_bytes=self.weight_cache_headroom_bytes)
+                    headroom_bytes=self.weight_cache_headroom_bytes,
+                    nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
                 prepared_pins['logical'] += logical
                 prepared_pins['reserved'] += reserved
                 prepared_pins['seconds'] += time.perf_counter() - tick
@@ -358,12 +365,14 @@ class Engine:
                     pin_layers = [self.offload_layers[index] for index in interleaved_layer_order(len(self.offload_layers))]
                     pin_order = 'interleaved'
                 self.pinned_model_bytes = pin_layer_weights(pin_layers, max_bytes=int(pin_host_gb * 1e9) if pin_host_gb else None,
-                                                           headroom_bytes=host_headroom)
+                                                           headroom_bytes=host_headroom,
+                                                           nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
                 pin_seconds = time.perf_counter() - pin_start
             self.pinned_host_allocated_bytes = torch.cuda.memory.host_memory_stats()['allocated_bytes.current']
             print(json.dumps({'event': 'host_weights_pinned', 'seconds': pin_seconds,
                               'logical_bytes': self.pinned_model_bytes,
                               'working_headroom_bytes': host_headroom,
+                              'nonlocal_reserve_bytes': self.nonlocal_reserve_bytes,
                               'pin_order': pin_order,
                               'host_allocator_bytes': self.pinned_host_allocated_bytes}), flush=True)
         if preload_host:
@@ -386,6 +395,7 @@ class Engine:
                                'resident_upload_submit_seconds': upload_submit_seconds,
                                'resident_upload_overlaps_block_preparation': True,
                                'weight_cache_headroom_bytes': self.weight_cache_headroom_bytes,
+                               'nonlocal_reserve_bytes': self.nonlocal_reserve_bytes,
                                'weight_cache_pin_order': pin_order,
                                'host_pinning_during_load': incremental_pinning,
                                'host_preload_seconds': self.host_preload_seconds,
