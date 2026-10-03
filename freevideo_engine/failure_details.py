@@ -88,8 +88,8 @@ def launcher_failure(value, *, zh=False):
             detail = detail.replace('No attention backend passed.', '没有可用的 attention 后端。')
             detail = detail.replace('Required path missing', '缺少必需目录')
         return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail,
-                    action='展开详情或导出脱敏报告，查看完整检查结果。' if zh else
-                           'Open the details or export a redacted report for the complete results.', kind='kernels')
+                    action='展开详情或导出报告，查看完整检查结果。' if zh else
+                           'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
         (r'Installation RAM monitoring failed|Cannot read process-tree memory', 'memory-monitor',
          ('Memory usage could not be read', '暂时无法读取进程内存'),
@@ -169,6 +169,7 @@ def generation_failure(run, exit_code=None):
         last = planning[-1]
         if not phase:
             lines.append('Stage: ' + str(last.get('stage', 'unknown')))
+        lines.append('\nLast resource-planning snapshot (before this failure; not the stopping sample):')
         state = last.get('idle_cache') or {}
         accounting = state.get('ram_accounting', {}) if isinstance(state, dict) else {}
         if not isinstance(accounting, dict):

@@ -151,7 +151,7 @@ def create_ui(session, *, show=True):
         def exportReport(self):
             if session.report['status'] == 'running':
                 return
-            path, _ = QFileDialog.getSaveFileName(None, session.t('Export redacted report', '导出脱敏报告'),
+            path, _ = QFileDialog.getSaveFileName(None, session.t('Export report', '导出报告'),
                 'freevideo-diagnostics-' + time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '.zip',
                 'ZIP (*.zip)')
             if path:

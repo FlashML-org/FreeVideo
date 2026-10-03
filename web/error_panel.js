@@ -1,6 +1,7 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 const reports = new WeakSet();
 const captured = new WeakMap();
+const diagnosticReports = new WeakSet();
 const scalar = value => typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
 const list = value => Array.isArray(value) ? value : [];
 const record = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -130,6 +131,10 @@ export function createErrorReport(detail, context = {}) {
             note: 'Review the report before sharing. It contains the reported error, not a full installation diagnostic bundle.'},
     };
     reports.add(report);
+    const failedNode = graphNode || (String(context.node?.id) === nodeId ? context.node : null);
+    const reportId = failedNode?.freevideoReportId || context.progress?.report_id;
+    if (stage === 'execution' && nodeType === 'FreeVideoGenerate' && /^[a-f0-9]{32}$/.test(reportId || ''))
+        diagnosticReports.add(report);
     if (detail && typeof detail === 'object') captured.set(detail, report);
     return report;
 }
@@ -155,6 +160,15 @@ export function failureAdvice(value, t) {
         return row('vram', ['GPU memory allocation failed', '显存分配失败'],
             ['The GPU could not allocate the memory needed at this stage.', '这一阶段的显存申请没有成功。'],
             ['Close other GPU workloads and retry so FreeVideo can replan using the newly available memory. Your resolution, duration and steps are kept.', '关闭其他占用显卡的任务后重试，FreeVideo 会根据新的可用显存重新规划，保留你的分辨率、时长和步数。']);
+    const ramReasons = /RAM guard:\s*([a-z_, ]+)\./i.exec(text)?.[1] || '';
+    if (ramReasons.includes('system_or_commit_pressure') && !ramReasons.includes('working_memory_budget'))
+        return row('ram', ['System memory headroom is too low', '系统可用内存不足'],
+            ['Memory headroom fell below the safety threshold during execution, so generation stopped. Earlier planning values may be higher.', '运行时测得的系统内存余量低于保护线，生成已停止。此前资源规划时的数值可能更高。'],
+            ['Close memory-heavy applications and duplicate FreeVideo/ComfyUI instances, then retry. Export the report if it still fails.', '关闭占用内存较多的程序及重复运行的 FreeVideo／ComfyUI 后重试。仍失败时请导出报告。']);
+    if (ramReasons.includes('working_memory_budget') && !ramReasons.includes('system_or_commit_pressure'))
+        return row('ram', ['The configured RAM limit was reached', '已触及设置的 RAM 限额'],
+            ['The worker exceeded the enforced RAM budget from a manual limit or selected profile.', '生成进程超过了手动限额或所选配置规定的 RAM 预算。'],
+            ['Review the RAM limit or selected profile. Automatic mode replans from available memory. Export the report if it still fails.', '检查 RAM 限额或所选配置；自动模式会根据可用内存重新规划。仍失败时请导出报告。']);
     if (/RAM guard:|crossed its RAM budget|Insufficient currently available memory/i.test(text))
         return row('ram', ['Available memory or an explicit RAM limit reached', '可用内存或手动 RAM 限额不足'],
             ['Automatic RAM estimates can be exceeded while memory is available. This stop indicates system pressure or an explicitly enforced limit.', '自动模式允许在系统仍有余量时超出预估 RAM；停止意味着系统内存压力，或触及了手动设置的硬限制。'],
@@ -201,7 +215,7 @@ export function createErrorPanel(t) {
     if (!document.getElementById('freevideo-error-style')) {
         const style = document.createElement('style'); style.id = 'freevideo-error-style';
         style.textContent = `.fv-failure{border:1px solid var(--fv-danger,#dc7c7c);border-radius:var(--fv-r-md,12px);padding:12px 14px;margin:10px 0;text-align:left;min-width:0}
-.fv-failure[hidden]{display:none}.fv-failure-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:8px}.fv-failure-actions{display:flex;flex-wrap:wrap;gap:8px}
+.fv-failure[hidden],.fv-failure button[hidden]{display:none!important}.fv-failure-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:8px}.fv-failure-actions{display:flex;flex-wrap:wrap;gap:8px}
 .fv-failure textarea{box-sizing:border-box;width:100%;height:180px;min-height:100px;resize:vertical;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg,#202126);color:var(--fv-ink,#eee);font:12px/1.5 monospace;padding:9px;white-space:pre-wrap}
 .fv-failure button,.fv-failure-dialog>button{min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised,#303138);color:var(--fv-ink,#eee);padding:5px 12px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer}
 .fv-failure p{font-size:14px;line-height:1.6;margin:8px 0}.fv-failure summary{cursor:pointer;margin-top:12px}.fv-failure .fv-failure-cause{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}.fv-failure .fv-failure-privacy{font-size:12px;color:var(--fv-muted,#bbb)}
@@ -213,7 +227,7 @@ export function createErrorPanel(t) {
     const head = document.createElement('div'); head.className = 'fv-failure-head';
     const title = document.createElement('strong'); title.textContent = t('Generation failed', '生成失败');
     const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = t('Copy error', '复制错误');
-    const download = document.createElement('button'); download.type = 'button'; download.textContent = t('Export redacted report', '导出脱敏报告');
+    const download = document.createElement('button'); download.type = 'button'; download.textContent = t('Export report', '导出报告');
     const actions = document.createElement('div'); actions.className = 'fv-failure-actions';
     actions.append(copy, download);
     const explanation = document.createElement('p'), action = document.createElement('p');
@@ -246,7 +260,7 @@ export function createErrorPanel(t) {
             link = document.createElement('a'); link.href = url;
             link.download = 'freevideo-error-' + currentReport.created_at.replace(/[:.]/g, '-') + '.json';
             document.body.append(link); link.click();
-            downloadStatus.textContent = t('Report download started.', '已开始下载错误报告。');
+            downloadStatus.textContent = t('Error summary download started.', '已开始下载错误摘要。');
         } catch {
             // Keep the same redacted JSON available even if downloads are
             // disabled by the browser or the page is served over plain HTTP.
@@ -281,6 +295,11 @@ export function createErrorPanel(t) {
         cause.textContent = reasons.length ? reasons.join('\n') : [report.message, report.error_details].filter(Boolean).join('\n');
         details.value = report.details; disclosure.open = false; element.hidden = false;
         downloadStatus.textContent = '';
+        download.hidden = diagnosticReports.has(report);
+        privacy.textContent = download.hidden
+            ? t('Use Download report in the preview or node panel for the diagnostic report.', '完整诊断请使用预览区或节点面板中的“下载报告”。')
+            : t('Known input text, paths and common credentials are removed. Export saves a local error summary; review it before sharing.',
+                '已去除已知输入文本、路径和常见凭据。导出会保存本地错误摘要，分享前可查看内容。');
         copy.textContent = t('Copy error', '复制错误');
         if (popup) showFailureDialog(report, t);
         return report;
