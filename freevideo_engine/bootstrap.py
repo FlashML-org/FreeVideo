@@ -21,7 +21,7 @@ from urllib.parse import unquote, urlsplit
 
 from .hardware import Hardware, GiB, cgroup_capacity
 from . import __version__
-from .policy import choose
+from .policy import resource_budget
 from .monitoring import save
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
@@ -206,11 +206,10 @@ def plan(args, *, local_progress=None):
             errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
     if not args.hardware_json and not shutil.which('curl'):
         errors.append('Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.')
-    policy = None
+    resources = None
     try:
-        policy = choose(hardware, vram_gib=vram_gib, ram_gib=ram_gib,
-                        available_backends={'sage2', 'torch-flash', 'cudnn'},
-                        allow_capacity_trial=True).to_dict()
+        resources = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib)
+        resources['ram_budget_bytes'] = max(0, resources['ram_budget_bytes'])
     except ValueError as error:
         errors.append(str(error))
     model_dir = Path(args.models or saved.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
@@ -316,10 +315,11 @@ def plan(args, *, local_progress=None):
         if error:
             errors.append(error)
     from .model_transfer import policy as transfer_policy
-    build = build_parallelism(policy['ram_budget_bytes'], snapshot.get('cpu_threads') or 1) if policy and not windows_target else None
-    transfers = transfer_policy(policy['ram_budget_bytes'], build['estimated_peak_bytes'] if build else 0) if policy else None
+    build = build_parallelism(resources['ram_budget_bytes'], snapshot.get('cpu_threads') or 1) if resources and not windows_target else None
+    transfers = transfer_policy(resources['ram_budget_bytes'], build['estimated_peak_bytes'] if build else 0) if resources else None
     from .model_status import inventory as model_inventory
-    return {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': policy,
+    return {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': None,
+            'installation_resources': resources,
             'storage': storage,
             'storage_preparation': ('Download verified slim FP8 weights and fixed AdaLN tables; no original transformer or local conversion'
                                     if prepared else 'Stream CPU merge directly to FP8 groups; no complete BF16 intermediate cache'),
@@ -449,12 +449,10 @@ def display_details(value, ui=None):
     limits = [value.get(key) for key in ('vram_gib', 'ram_gib')]
     rows.append(('Resources', 'Automatic · current available VRAM/RAM' if all(v is None for v in limits)
                  else 'Capacity limits · VRAM %s / RAM %s' % tuple('auto' if v is None else '%g GiB' % v for v in limits)))
-    p = value['policy_estimate']
-    if p:
-        rows += [('Budgets', 'GPU %.2f GiB / RAM %.2f GiB · system reserves %.2f / %.2f GiB' %
-                  tuple(p[k]/GiB for k in ('gpu_budget_bytes', 'ram_budget_bytes', 'gpu_system_reserve_bytes', 'ram_system_reserve_bytes'))),
-                 ('Strategy', '%s · %s · %d resident blocks · %.2f GB pinned weights' %
-                  (p['engine']['linear_compute'], p['engine']['attention'], p['engine']['resident_blocks'], p['engine']['pin_host_gb']))]
+    resources = value.get('installation_resources') or value.get('policy_estimate')
+    if resources:
+        rows.append(('Installation RAM budget', '%.2f GiB · system growth reserve %.2f GiB' %
+                     (resources['ram_budget_bytes']/GiB, resources['ram_system_reserve_bytes']/GiB)))
     rows.append(('Install root', value['root']))
     rows.append(('Environment', value['environment_layout'] + ' · text encoder exits before video models load'))
     rows.append(('Kernel installation', value.get('kernel_install', 'Local Sage2 build')))
@@ -645,6 +643,7 @@ class Installer:
 
     def initialize(self, value, ui):
         self.plan = value
+        self.resources = value.get('installation_resources') or value.get('policy_estimate') or {}
         self.root = Path(value['root'])
         self.layout = value.get('environment_layout', 'unified')
         self.system = value['inventory'].get('hardware', {}).get('system', platform.system())
@@ -757,12 +756,12 @@ class Installer:
                         # sampled. Allow two resamples, while checking the live
                         # system floor on every attempt. A complete over-budget
                         # reading and persistent failures still stop the work.
-                        if available < floor or (used is not None and used > self.plan['policy_estimate']['ram_budget_bytes']):
+                        if available < floor or (used is not None and used > self.resources['ram_budget_bytes']):
                             self.state['resource_guard'] = 'Installation crossed its RAM budget or the %d GiB emergency system floor.' % (floor / GiB)
                             if row.get('private_commit_bytes') is not None:
                                 self.state['resource_guard'] += (' ' + setup_memory_status(row) +
                                     ' · Process budget %.1f GiB (working set; commit is diagnostic).' %
-                                    (self.plan['policy_estimate']['ram_budget_bytes']/GiB))
+                                    (self.resources['ram_budget_bytes']/GiB))
                             self.cancel.set()
                             break
                         if (used is None and (self.system != 'Windows' or unreadable >= 3)

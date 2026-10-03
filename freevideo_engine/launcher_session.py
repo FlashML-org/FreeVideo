@@ -303,12 +303,17 @@ class Session:
     def update(self, token=''):
         if not self.updater or self.updater.busy or self.controller.busy or self.importer.busy:
             return
-        from .launcher_update import launch_download, RELEASE_PAGE
+        from .launcher_update import launch_download, RELEASE_PAGE, DownloadedLauncherUnavailable
         from .windows_ux import open_browser
         row = self.updater.state
         if row['status'] == 'ready':
             self.persist()
-            launch_download(row['candidate'], self.updater.root, token=self.updater.token)
+            try:
+                launch_download(row['candidate'], self.updater.root, token=self.updater.token)
+            except DownloadedLauncherUnavailable:
+                self.error = ''
+                self.updater.run('download', row['candidate'])
+                return
             self.closing = True
         elif row.get('candidate'):
             if self.updater.current.get('packaging') == 'onedir':

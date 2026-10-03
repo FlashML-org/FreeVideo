@@ -385,26 +385,9 @@ class Policy:
                     policy=self.to_dict())
 
 
-def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
-           gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
-           demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation'):
-    from .geometry import geometry
-    if stage not in ('encoding', 'generation'):
-        raise ValueError('Resource planning stage must be encoding or generation')
-    if canvas is not None:
-        checked = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
-        if any(canvas.get(k) != checked[k] for k in ('width', 'height', 'frames', 'video_tokens')):
-            raise ValueError('Resource policy requires aligned, consistent request geometry')
-    reference_rows = 0
-    if canvas is not None:
-        for name in ('reference_video_tokens', 'reference_audio_tokens'):
-            count = canvas.get(name, 0)
-            if type(count) is not int or count < 0:
-                raise ValueError('Reference token counts must be nonnegative integers')
-            reference_rows += count
-    effective_tokens = canvas['video_tokens'] + reference_rows if canvas is not None else None
-    if hardware.capability < (8, 0):
-        raise ValueError('This engine targets Ampere and newer NVIDIA GPUs.')
+def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
+                    gpu_reserve_gib=None, ram_reserve_gib=None):
+    """Live capacity and growth reserves, without admitting a generation request."""
     # Saved policies store whole bytes. Validate in that same unit so the
     # minimum reserve survives the bytes -> GiB round trip between passes.
     if gpu_reserve_gib is not None and (not math.isfinite(gpu_reserve_gib) or
@@ -431,6 +414,46 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         raise ValueError('System RAM headroom must be finite and nonnegative.')
     gpu_budget = free_gpu - int(reserve_gpu * GiB)
     ram_budget = free_ram - int(reserve_ram * GiB)
+    return dict(gpu_capacity_bytes=gpu_total, ram_capacity_bytes=ram_total,
+                gpu_available_bytes=free_gpu, ram_available_bytes=free_ram,
+                gpu_system_reserve_bytes=int(reserve_gpu * GiB),
+                ram_system_reserve_bytes=int(reserve_ram * GiB),
+                gpu_budget_bytes=gpu_budget, ram_budget_bytes=ram_budget)
+
+
+def decoder_workspace(canvas=None):
+    """Existing offloaded decoder allowance; fixed weights do not shrink with video length."""
+    area = canvas['width'] * canvas['height'] / (1344 * 768) if canvas is not None else 1.
+    return int(3.25 * GiB * max(1., area))
+
+
+def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
+           gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
+           demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation'):
+    from .geometry import geometry
+    if stage not in ('encoding', 'generation'):
+        raise ValueError('Resource planning stage must be encoding or generation')
+    if canvas is not None:
+        checked = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
+        if any(canvas.get(k) != checked[k] for k in ('width', 'height', 'frames', 'video_tokens')):
+            raise ValueError('Resource policy requires aligned, consistent request geometry')
+    reference_rows = 0
+    if canvas is not None:
+        for name in ('reference_video_tokens', 'reference_audio_tokens'):
+            count = canvas.get(name, 0)
+            if type(count) is not int or count < 0:
+                raise ValueError('Reference token counts must be nonnegative integers')
+            reference_rows += count
+    effective_tokens = canvas['video_tokens'] + reference_rows if canvas is not None else None
+    if hardware.capability < (8, 0):
+        raise ValueError('This engine targets Ampere and newer NVIDIA GPUs.')
+    budget = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib,
+                             gpu_reserve_gib=gpu_reserve_gib, ram_reserve_gib=ram_reserve_gib)
+    gpu_total, ram_total = budget['gpu_capacity_bytes'], budget['ram_capacity_bytes']
+    free_gpu, free_ram = budget['gpu_available_bytes'], budget['ram_available_bytes']
+    reserve_gpu, reserve_ram = budget['gpu_system_reserve_bytes']/GiB, budget['ram_system_reserve_bytes']/GiB
+    gpu_budget, ram_budget = budget['gpu_budget_bytes'], budget['ram_budget_bytes']
+    desktop = hardware.system == 'Windows'
     # What this machine has actually held, for the weight cache only.
     #
     # Retaining weights is worth a 20 GB disk read per step, and only while
@@ -459,9 +482,16 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                                                ram_total - int(reserve_ram * GiB)))
     small_adjustment = (int(4.6 * GiB * (effective_tokens / (72 * 1008) - 1.))
                         if canvas is not None else 0)
-    residual_need = max(5 * GiB, RESIDUAL_ACTIVATION_RESERVE + small_adjustment)
+    # Scale the existing activation estimate with output and reference rows.
+    # Keep the decoder's fixed workspace funded; neither weights nor its
+    # temporal tile shrink in proportion to the number of output frames.
+    fixed_workspace = decoder_workspace(canvas)
+    residual_need = max(fixed_workspace, RESIDUAL_ACTIVATION_RESERVE + small_adjustment)
     residual_floor = (residual_need if desktop else
-                      max(5 * GiB, RESIDUAL_ADMISSION_FLOOR + small_adjustment))
+                      max(fixed_workspace, RESIDUAL_ADMISSION_FLOOR + small_adjustment))
+    # Preserve the reference-canvas trial boundary while allowing smaller
+    # requests to reach their geometry-aware placement below 5 GiB.
+    gpu_minimum = max(fixed_workspace, min(5 * GiB, residual_floor))
     original_reserve_gpu = reserve_gpu
     # Let a foreground request spend growth headroom before rejecting it.
     # This is live free memory, not the card's nominal capacity: a busy larger
@@ -488,9 +518,10 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # preloaded encoder because the later video stage needs a larger minimum;
     # automatic_profile replans generation after conditioning has been saved.
     ram_minimum = ENCODER_HOST_BYTES if stage == 'encoding' else 4*GiB
-    if gpu_budget < 5 * GiB or ram_budget < ram_minimum:
+    if gpu_budget < gpu_minimum or ram_budget < ram_minimum:
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
-                                  ram_minimum_bytes=ram_minimum)
+                                  gpu_minimum_bytes=gpu_minimum, ram_minimum_bytes=ram_minimum,
+                                  canvas=canvas)
     if ram_budget < ENCODER_HOST_BYTES:
         # Say so here rather than let a request spend a minute loading a
         # 14.6 GiB encoder and die before the first sampling step, which is
@@ -498,7 +529,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # this is what the note below offers.
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
                                   reserve_gpu, reserve_ram, canvas=canvas,
-                                  ram_minimum_bytes=ENCODER_HOST_BYTES,
+                                  gpu_minimum_bytes=gpu_minimum, ram_minimum_bytes=ENCODER_HOST_BYTES,
                                   ram_requirement='text_encoder_host')
     # A foreground generation may try the existing bounded path below a
     # measured estimate after reclaiming owned idle caches. This does not add
@@ -994,8 +1025,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # these repeatedly-read weights before spending RAM on host copies. At the
     # reference canvas a streamed/offloaded clip measured 3.07 GiB whole-GPU;
     # 3.25 GiB includes the transfer slot and a small workspace allowance.
-    area_ratio = (canvas['width'] * canvas['height'] / (1344 * 768)) if canvas is not None else 1.
-    vae_workspace = int(3.25 * GiB * max(1., area_ratio))
+    vae_workspace = decoder_workspace(canvas)
     vae_resident = max(0, min(36, int((gpu_budget - vae_workspace) / 268574720))) if decoder_offload else 0
     # The bounded decoder loader stores Linear weights in the FP16 dtype that
     # autocast would use anyway. This reduces streamed transfer volume and

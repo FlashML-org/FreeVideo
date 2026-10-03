@@ -395,7 +395,8 @@ class TransferSizeError(RuntimeError):
 def run_sdk(source, row, path, plan, progress_callback, networking, transfer_complete=None):
     from .ram import ProcessMemory
     from .hardware import cgroup_capacity
-    selected = dict(plan.get('model_transfer') or policy(plan.get('policy_estimate', {}).get('ram_budget_bytes', 16*GiB)))
+    resources = plan.get('installation_resources') or plan.get('policy_estimate') or {}
+    selected = dict(plan.get('model_transfer') or policy(resources.get('ram_budget_bytes', 16*GiB)))
     # The compiler and desktop can consume RAM after preflight. Recheck here.
     available = system_memory()['available_bytes']
     _, group_available = cgroup_capacity()

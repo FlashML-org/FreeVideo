@@ -116,7 +116,8 @@ def enrich(result, value):
     result['coverage']['installation_memory'] = bool(result['worker_resources']['ram'] or
                                                      result['worker_resources']['ram_samples'])
     result['coverage']['worker_memory'] = bool(result['worker_resources']['ram'])
-    estimate = d.mapping(d.mapping(state.get('plan')).get('policy_estimate'))
+    plan = d.mapping(state.get('plan'))
+    estimate = d.mapping(plan.get('installation_resources') or plan.get('policy_estimate'))
     result['budgets'].update(d.numbers({'ram': estimate.get('ram_budget_bytes')}, ('ram',)))
     for row in d.sequence(state.get('steps'))[-32:]:
         row = d.mapping(row)

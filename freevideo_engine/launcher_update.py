@@ -189,11 +189,15 @@ def download(candidate, root, token='', *, progress=None, cancel=None):
     return target
 
 
+class DownloadedLauncherUnavailable(ValueError):
+    """The cached executable needs downloading again before it can be started."""
+
+
 def launch_download(candidate, root, *, token='', popen=None):
     candidate = manifest(candidate)
     path = executable_path(root, candidate)
     if not verified(path, candidate['asset']):
-        raise ValueError('Downloaded launcher is missing or changed; download again')
+        raise DownloadedLauncherUnavailable('Downloaded launcher is missing or changed; download again')
     env = dict(os.environ, FREEVIDEO_LAUNCHER_HOME=str(Path(root).absolute().resolve()))
     if token:
         env['GITHUB_TOKEN'] = token  # Session only; never stored in a receipt or command.

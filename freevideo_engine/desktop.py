@@ -465,14 +465,13 @@ class Desktop:
         """Figures go in tiles; only what a figure cannot say stays as text."""
         gib = lambda value: '%.1f GiB' % (value/2**30)
         h = self.plan['inventory']['hardware']
-        estimate = self.plan['policy_estimate']
+        estimate = self.plan.get('installation_resources') or self.plan.get('policy_estimate')
         local = self.plan.get('local_models')
         tiles = [(self.t('VRAM free', '空闲显存'), '%s / %s' % (gib(h['vram_free']), gib(h['vram_total']))),
                  (self.t('RAM available', '可用内存'), '%s / %s' % (gib(h['ram_available']), gib(h['ram_total']))),
                  (self.t('To download', '需下载'), gib(self.plan['model_download_bytes']))]
         if estimate:
-            tiles.append((self.t('Work budget · GPU / RAM', '运行预算 · GPU／RAM'), '%.1f / %.1f GiB' % (
-                estimate['gpu_budget_bytes']/2**30, estimate['ram_budget_bytes']/2**30)))
+            tiles.append((self.t('Installation RAM budget', '安装内存预算'), gib(estimate['ram_budget_bytes'])))
         for disk in self.plan['disks'][:1]:
             tiles.append((self.t('Disk needed', '磁盘需求'),
                           '%s / %s' % (gib(disk['needed_bytes']), gib(disk['free_bytes']))))

@@ -3,7 +3,7 @@ import time
 import webbrowser
 
 from . import branding
-from .launcher_update import RELEASE_PAGE, launch_download
+from .launcher_update import RELEASE_PAGE, launch_download, DownloadedLauncherUnavailable
 
 
 class UpdateUI:
@@ -78,6 +78,8 @@ class UpdateUI:
             else:
                 self.client.token = self.token.get().strip()
                 self.client.run('check')
+        except DownloadedLauncherUnavailable:
+            self.client.run('download', row['candidate'])
         except Exception as error:
             from .diagnostics import Redactor
             self.client.state = dict(status='error', error=Redactor([(self.client.token, '<REDACTED>')]).text(str(error)),
