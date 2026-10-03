@@ -71,7 +71,7 @@ def layout(path):
         raise ValueError('This ComfyUI is too old for native VIDEO / V3 nodes. Update ComfyUI first; its files have not been changed.')
     candidates = []
     for parent in (root, root.parent):
-        for name in ('python_embeded', 'python_embedded', '.venv', 'venv', 'env'):
+        for name in ('python_embeded', 'python_embedded', '.venv', 'venv', 'env', 'python'):
             directory = parent / name
             candidates.extend([directory / 'python.exe', directory / 'Scripts/python.exe', directory / 'bin/python'])
     python = next((p.resolve() for p in candidates if p.is_file()), None)
@@ -96,6 +96,19 @@ def managed_python(engine, comfy):
         return str(python)
     except (OSError, ValueError, KeyError, TypeError):
         return None
+
+
+def managed_frontend(selected):
+    """Identify our frontend even after reopening makes `separate` false.
+
+    Do not resolve the executable: venv Python is a symlink on Linux, but its
+    environment and installed packages still belong to the venv directory.
+    """
+    python = Path(os.path.abspath(selected['python']))
+    environment = python.parent.parent
+    return (python.parent.name in ('Scripts', 'bin')
+            and environment.name.startswith('comfyui-')
+            and environment.parent.resolve() == (Path(selected['engine']) / 'envs').resolve())
 
 
 # Run with the host's Python, without importing Torch or creating __pycache__.
@@ -445,7 +458,7 @@ class Controller:
             raise ValueError('Place the engine beside the new ComfyUI folder, so ComfyUI can be downloaded atomically.')
         cached_python = managed_python(engine, Path(descriptor['root']))
         host = (dict(ready=False, python=None, libraries=[str(Path(descriptor['root']) / 'models')])
-                if fresh and not cached_python else probe_host(descriptor, values.get('python') or cached_python))
+                if fresh and not cached_python else probe_host(descriptor, values.get('python') or descriptor.get('python') or cached_python))
         descriptor.update(python=host.get('python'), separate=values.get('separate', False) or not host.get('ready'))
         # Validate before copying even the small launcher payload.
         folders = SimpleNamespace(base_path=descriptor['root'], models_dir=str(Path(descriptor['root']) / 'models'),
@@ -571,19 +584,31 @@ class Controller:
         env['FREEVIDEO_COMFY_LOG'] = str(self.server_log)
         command = [selected['python'], '-u', '-B', str(Path(selected['root']) / 'main.py'), '--listen', parsed.hostname,
                    '--port', str(parsed.port or 80), '--disable-auto-launch']
+        managed = managed_frontend(selected)
+        if managed:
+            # This environment has ComfyUI core dependencies, not the user's
+            # custom-node packages. Scope both prestartup scripts and imports;
+            # a plugin can otherwise run pip, replace Torch, or call sys.exit.
+            command += ['--disable-all-custom-nodes', '--whitelist-custom-nodes', node_target(selected['root']).name]
+        context = dict(environment='freevideo-managed' if managed else 'existing-comfyui',
+                       custom_nodes='FreeVideo' if managed else 'all')
         if selected.get('portable') and not selected['separate']:
             command.append('--windows-standalone-build')
         from .windows_ux import external_python
         with self._server_lock, external_python(), self.server_log.open('wb') as log:
             if self._closed or self.cancelled.is_set():
                 raise RuntimeError('ComfyUI startup cancelled')
+            if managed:
+                log.write(b'[FreeVideo] Separate environment: loading FreeVideo custom nodes only. '
+                          b'Use your original ComfyUI launcher for other plugins.\n')
+                log.flush()
             # Keep durable embedded output, but own the whole tree: Windows
             # Job / Linux supervisor also reclaim independently grouped model
             # workers when the launcher dies without running Python cleanup.
             server = processes.popen(command, cwd=selected['root'], env=env, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
             self.server = server
-        save(directory / 'launch.json', dict(command=command, pid=server.pid, root=selected['root'], url=url))
+        save(directory / 'launch.json', dict(command=command, pid=server.pid, root=selected['root'], url=url, **context))
         self.state = dict(self.state, task=dict(progress=dict(label='Starting ComfyUI', detail='Loading nodes and the web interface'), log=str(directory)))
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
@@ -593,7 +618,8 @@ class Controller:
                 raise RuntimeError('ComfyUI startup cancelled')
             if server.poll() is not None:
                 from .failure_details import startup_failure
-                raise RuntimeError(startup_failure('ComfyUI could not start.', directory / 'comfy.log'))
+                raise RuntimeError(startup_failure('ComfyUI could not start.', directory / 'comfy.log',
+                                                  exit_code=server.returncode, context=context))
             info = server_info(url)
             if matches_server(info, selected['root'], selected['engine'], selected['source']):
                 self.stage('open', done=1, label='Ready')

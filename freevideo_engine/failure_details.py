@@ -73,6 +73,12 @@ def launcher_failure(value, *, zh=False):
         return dict(title='', detail='', action='', kind='')
     text = str(value)
     summary = text.partition(STEP_OUTPUT)[0]
+    if text.startswith('ComfyUI could not start.'):
+        return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
+                    detail='ComfyUI 进程在启动时退出。' if zh else 'The ComfyUI process exited during startup.',
+                    action='展开详情查看退出码与插件错误；已有 ComfyUI 可使用原启动器检查。' if zh else
+                           'Open details for the exit code and plugin errors. For an existing ComfyUI, also check its original launcher.',
+                    kind='comfy-startup')
     if 'Failed step: kernels (' in summary:
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
@@ -202,6 +208,10 @@ def generation_failure(run, exit_code=None):
     return re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', value)
 
 
-def startup_failure(message, log):
+def startup_failure(message, log, *, exit_code=None, context=None):
     detail = _read(Path(log), 8192, tail=True).strip()
+    if exit_code is not None:
+        message += '\nProcess exit code: ' + str(exit_code)
+    if context:
+        message += '\nEnvironment: ' + context['environment'] + '\nCustom nodes: ' + context['custom_nodes']
     return Redactor().text(message + ('\n\n' + detail if detail else '\nNo readable process output was produced.') + '\n\nLog: ' + str(log))
