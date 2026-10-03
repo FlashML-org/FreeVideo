@@ -93,11 +93,10 @@ def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_r
     from .system import windows
     if windows():
         # Free RAM does not bound locked pages on Windows: the WDDM non-local
-        # budget does. A 20 s request on a 27.98 GiB machine pinned 9.67 GiB;
-        # its CPU readouts then took non-local usage to 13.14 of 13.24 GiB and
-        # cudaHostAlloc failed with 10.68 GiB of VRAM free. The reserve covers
-        # locked buffers allocated after the weights; the caller adds its
-        # request's CPU attention readouts to the default.
+        # budget does. A 3.5 GiB working allowance on a 27.98 GiB machine pinned
+        # past it on the second request, and every retry failed the same way.
+        # The reserve covers locked buffers allocated after the weights; the
+        # caller adds its request's CPU attention readouts to the default.
         from .windows_gpu_memory import nonlocal_pin_capacity, NONLOCAL_PIN_RESERVE
         reserve = NONLOCAL_PIN_RESERVE if nonlocal_reserve_bytes is None else nonlocal_reserve_bytes
         capacity = nonlocal_pin_capacity(reserve)
@@ -361,6 +360,9 @@ class LayerOffloader:
         self.prefetch_wait_seconds = 0.
         self.direct_read_layers = 0
         self.direct_read_bytes = 0
+        # The weight source outlives this pass; report only this pass's view hits.
+        self.host_view_hits_start = getattr(weight_source, 'host_view_hits', 0)
+        self.host_view_hit_bytes_start = getattr(weight_source, 'host_view_hit_bytes', 0)
         self.hooks = []
         self.expected = 0
         self.closed = False
@@ -428,7 +430,9 @@ class LayerOffloader:
             raise RuntimeError('Pass cache admission requires an idle step boundary')
         remaining = self.cache_budget_bytes = max(0, int(max_bytes))
         candidates = set()
-        for index in sorted(range(len(self.layers)), key=lambda i: self.pinned_layers[i]):
+        # Disk reads cost most, then copies from RAM-resident views, then pinned H2D.
+        views = getattr(self.weight_source, 'host_views', None) or {}
+        for index in sorted(range(len(self.layers)), key=lambda i: (self.pinned_layers[i], i in views)):
             if not allow_growth and index not in self.cached:
                 continue
             if max_layers is not None and len(candidates) >= max_layers:
@@ -660,6 +664,11 @@ class LayerOffloader:
                 'h2d_seconds': sum(row[2].elapsed_time(row[3]) for row in self.transfers) / 1000,
                 'direct_read_layers': self.direct_read_layers,
                 'direct_read_bytes': self.direct_read_bytes,
+                'host_view_layers': len(getattr(self.weight_source, 'host_views', None) or {}),
+                'host_view_bytes': getattr(self.weight_source, 'host_view_bytes', 0),
+                'host_view_hits': getattr(self.weight_source, 'host_view_hits', 0) - self.host_view_hits_start,
+                'host_view_hit_bytes': getattr(self.weight_source, 'host_view_hit_bytes', 0) - self.host_view_hit_bytes_start,
+                'host_view_released': getattr(self.weight_source, 'host_view_released', 0),
                 'host_prefetch': self.host_prefetch,
                 'host_prefetch_reads': self.host_prefetch_reads,
                 'host_prefetch_wait_seconds': self.host_prefetch_wait_seconds,

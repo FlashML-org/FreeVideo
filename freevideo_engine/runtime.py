@@ -126,9 +126,15 @@ class Engine:
         # Locked buffers allocated after the weights must also fit the Windows
         # non-local budget: CPU attention readouts grow with this request's rows.
         from .windows_gpu_memory import NONLOCAL_PIN_RESERVE, nonlocal_readout_bytes
-        self.nonlocal_reserve_bytes = NONLOCAL_PIN_RESERVE + (nonlocal_readout_bytes(
-            self.canvas, model.config.num_attention_heads * model.config.attention_head_dim)
-            if attention_cpu_outputs else 0)
+        readouts = (nonlocal_readout_bytes(self.canvas, model.config.num_attention_heads * model.config.attention_head_dim)
+                    if attention_cpu_outputs else 0)
+        self.nonlocal_reserve_bytes = NONLOCAL_PIN_RESERVE + readouts
+        # RAM views fill during the first pass; leave what the refine pass will
+        # still allocate. A 20 s request that let views take that room drove
+        # physical availability to 0.01 GiB when its full-size readouts arrived.
+        from .streamed_weights import HOST_VIEW_RESERVE
+        self.host_view_reserve_bytes = HOST_VIEW_RESERVE + readouts + (
+            residual_host_headroom(self.canvas) if residual_offload else 0)
         if resident_blocks > len(model.transformer_blocks):
             raise ValueError('More resident blocks requested than the model contains')
         # Build the streamed source before binding transformer blocks.  The
@@ -166,7 +172,8 @@ class Engine:
                 streamed_paths += [self.cache / f'adaln/{index:02d}.safetensors'
                                    for index in range(resident_blocks, len(model.transformer_blocks))]
             if streamed_prefixes:
-                streamed_source = SafetensorLayers(streamed_paths + lora_paths, streamed_prefixes)
+                streamed_source = SafetensorLayers(streamed_paths + lora_paths, streamed_prefixes, host_views=True,
+                                                   host_view_reserve=self.host_view_reserve_bytes)
                 self.stream_weight_source = streamed_source
                 # Only source-backed placeholders may remain empty between
                 # refinement requests; pinned groups keep their own storage.
@@ -349,7 +356,8 @@ class Engine:
             paths += [self.cache / f'blocks/{index:02d}.safetensors' for index in range(resident_blocks, len(model.transformer_blocks))]
             if not adaln_cache:
                 paths += [self.cache / f'adaln/{index:02d}.safetensors' for index in range(resident_blocks, len(model.transformer_blocks))]
-            self.stream_weight_source = SafetensorLayers(paths + lora_paths, prefixes)
+            self.stream_weight_source = SafetensorLayers(paths + lora_paths, prefixes, host_views=True,
+                                                         host_view_reserve=self.host_view_reserve_bytes)
         self.host_preload_seconds = 0.
         self.pinned_model_bytes = prepared_pins['logical']
         self.pinned_host_allocated_bytes = 0
@@ -396,6 +404,7 @@ class Engine:
                                'resident_upload_overlaps_block_preparation': True,
                                'weight_cache_headroom_bytes': self.weight_cache_headroom_bytes,
                                'nonlocal_reserve_bytes': self.nonlocal_reserve_bytes,
+                               'host_view_reserve_bytes': self.host_view_reserve_bytes,
                                'weight_cache_pin_order': pin_order,
                                'host_pinning_during_load': incremental_pinning,
                                'host_preload_seconds': self.host_preload_seconds,
@@ -748,6 +757,8 @@ class Engine:
             self.schedule_hook.remove()
         self.transformer = None
         self.offload_layers = []
+        if self.stream_weight_source is not None:
+            self.stream_weight_source.release_host_views()
         self.stream_weight_source = None
         self.attention = None
         self.closed = True

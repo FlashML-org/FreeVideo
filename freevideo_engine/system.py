@@ -84,11 +84,13 @@ def residual_host_headroom(canvas=None):
 def weight_cache_headroom(*, system=None, streamed=False, cpu_outputs=True, canvas=None):
     """Separate host work from weight caching, without counting swap as RAM.
 
-    The 8 GiB Windows allowance covers its measured private working set and
-    host attention outputs. Linux streaming with GPU attention outputs measured
-    2.56 GiB non-weight working memory in a complete 768p/243-frame request.
-    3.5 GiB leaves growth/staging room inside the already OS-reserved budget.
-    CPU readouts measured 4.56 GiB beyond retained weights on Linux.
+    Streaming with GPU attention outputs measured 2.56 GiB of non-weight
+    working memory in a complete 768p/243-frame Linux request, and 2.63 GiB on
+    Windows (RTX 4060 Ti 16 GiB: 10.69 GiB peak private working set holding
+    8.06 GiB of pinned weights). 3.5 GiB leaves growth/staging room inside the
+    already OS-reserved budget on both platforms; Windows previously kept 8 GiB
+    here, sized for host attention outputs, and streamed weights it had room
+    to retain. CPU readouts measured 4.56 GiB beyond retained weights on Linux.
     Keep 5 GiB at that geometry there; Windows page-locks the readouts on top
     of about 4.0 GiB of non-pinned private working set (12/32 Ada laptop) and
     keeps its 8 GiB. Larger requests additionally reserve 2.5 GiB per reference
@@ -102,7 +104,7 @@ def weight_cache_headroom(*, system=None, streamed=False, cpu_outputs=True, canv
     if system not in ('Linux', 'Windows') or not streamed:
         return HOST_WEIGHT_HEADROOM
     if not cpu_outputs:
-        return int(3.5 * 2**30) if system == 'Linux' else HOST_WEIGHT_HEADROOM
+        return int(3.5 * 2**30)
     if canvas is None:
         return HOST_WEIGHT_HEADROOM
     from .geometry import geometry

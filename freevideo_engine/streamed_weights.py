@@ -251,8 +251,34 @@ class LayerReadAhead:
         self.pending_bytes = 0
 
 
+# Streamed layers kept in RAM as read-only file views must leave this much
+# physical memory free. A 27.98 GiB Windows machine started sampling at
+# 7.31 GiB available and ran the refine pass at 6.98 GiB: 0.35 GiB of later
+# growth, plus a 2 GiB floor for the rest of the system.
+HOST_VIEW_RESERVE = int(2.5 * 2**30)
+# Below this much available memory, views are handed back one layer per use,
+# so a request that grows (a larger refine pass, readouts, another program)
+# trades them for disk reads instead of pushing Windows toward its floor.
+HOST_VIEW_SHED = int(1.5 * 2**30)
+
+
+def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
+    """Whether one more layer may stay in RAM as a read-only file view.
+
+    Read-only views charge no commit (a 412 MiB block mapped and touched moved
+    Windows commit by 1 MiB; a private copy moved it by 415 MiB), and Windows
+    can drop their clean pages without writing the pagefile. Only physical
+    memory bounds them.
+    """
+    from .system import system_memory
+    memory = system_memory()
+    available = memory.get('physical_available_bytes') or memory['available_bytes']
+    return available - size >= reserve
+
+
 class SafetensorLayers:
-    def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None):
+    def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None, host_views=False,
+                 host_view_reserve=HOST_VIEW_RESERVE):
         from .system import windows
         self.direct_read = windows() if direct_read is None else direct_read
         self.prefixes = tuple(prefixes)
@@ -261,6 +287,14 @@ class SafetensorLayers:
         self.handle_files = {}
         self.keys = {}
         self.byte_ranges = {}
+        # Layers that pinning could not hold but RAM can: read-only views of
+        # their checkpoint bytes, adopted right after the first direct read.
+        self.host_views = {} if host_views and self.direct_read else None
+        self.host_view_reserve = host_view_reserve
+        self.host_view_bytes = 0
+        self.host_view_hits = 0
+        self.host_view_hit_bytes = 0
+        self.host_view_released = 0
         for path in sorted(set(Path(p).resolve() for p in paths)):
             self.files[path] = self.identity(path)
             with _open_safetensors(path, framework='np') as handle:
@@ -338,12 +372,28 @@ class SafetensorLayers:
                     or size != count * plane.element_size()):
                 raise ValueError('Invalid streamed destination: ' + key)
             reads.setdefault(self.keys[key], []).append((start, size, dtype, offset))
+        for path in reads:
+            self.check(path)
+        entry = self.host_views.get(index) if self.host_views is not None else None
+        if entry is not None:
+            views, _, size = entry
+            # torch copies release the GIL, so the inference thread keeps launching.
+            try:
+                for source, dtype, begin, length in views:
+                    planes[dtype].detach().view(torch.uint8)[begin:begin + length].copy_(source)
+            finally:
+                for path in reads:
+                    self.check(path)
+            self.host_view_hits += 1
+            self.host_view_hit_bytes += size
+            del entry, views
+            if not host_view_fits(0, HOST_VIEW_SHED):
+                self._release(index)
+            return True
         # numpy exposes a writable byte view of CPU/pinned storage without
         # copying, including BF16/FP8 planes that numpy cannot represent directly.
         buffers = {dtype: memoryview(plane.detach().view(torch.uint8).numpy()).cast('B')
                    for dtype, plane in planes.items()}
-        for path in reads:
-            self.check(path)
         try:
             for path, entries in reads.items():
                 with path.open('rb', buffering=0) as stream:
@@ -360,10 +410,63 @@ class SafetensorLayers:
                             if not count:
                                 raise ValueError('Incomplete streamed checkpoint: ' + str(path))
                             done += count
+            if self.host_views is not None:
+                size = sum(row[1] for entries in reads.values() for row in entries)
+                if host_view_fits(size, self.host_view_reserve):
+                    self._adopt(index, reads, planes, size)
         finally:
             for path in reads:
                 self.check(path)
         return True
+
+    def _adopt(self, index, reads, planes, size):
+        """Keep the layer just read resident as read-only views of its checkpoint."""
+        import mmap
+        import os
+        import warnings
+        import torch
+        views, mappings = [], []
+        for path, entries in reads.items():
+            with path.open('rb', buffering=0) as stream:
+                observed = _file_identity(os.fstat(stream.fileno()))
+                if observed != self.handle_files[path]:
+                    raise CheckpointChangedError(path, 'handle', self.handle_files[path], observed)
+                try:
+                    mapping = mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ)
+                except OSError:
+                    # Address space or mapping refused: this layer keeps its direct reads.
+                    for opened in mappings:
+                        opened.close()
+                    return
+            mappings.append(mapping)
+            with warnings.catch_warnings():
+                # Read-only checkpoint bytes; these tensors are only ever copy sources.
+                warnings.simplefilter('ignore', UserWarning)
+                data = torch.frombuffer(mapping, dtype=torch.uint8)
+            for start, length, dtype, offset in entries:
+                views.append((data[start:start + length], dtype, offset * planes[dtype].element_size(), length))
+        # The direct read just left these pages in the file cache. Touch every
+        # page now, so they join this process's working set before the next
+        # streamed reads recycle the standby list.
+        for source, *_ in views:
+            source[::mmap.PAGESIZE].sum()
+        self.host_views[index] = (views, mappings, size)
+        self.host_view_bytes += size
+
+    def _release(self, index):
+        views, mappings, size = self.host_views.pop(index)
+        del views
+        for mapping in mappings:
+            try:
+                mapping.close()
+            except BufferError:
+                pass  # A tensor view is still referenced; the mapping closes when it is collected.
+        self.host_view_bytes -= size
+        self.host_view_released += 1
+
+    def release_host_views(self):
+        for index in list(self.host_views or ()):
+            self._release(index)
 
     def read_ahead(self, layouts, pinned):
         from .system import windows
