@@ -1,6 +1,6 @@
 # Community LoRAs
 
-English · [中文](LORA.zh-CN.md)
+English · [中文](LoRA.zh-CN.md)
 
 FreeVideo supports community LoRAs for MiniMax H3. Each comparison uses the same prompt and seed.
 

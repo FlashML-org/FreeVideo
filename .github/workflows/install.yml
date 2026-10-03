@@ -202,7 +202,7 @@ jobs:
 
           Run MiniMax H3 on your own GPU, with FreeVideo inside ComfyUI.
 
-          Now supports community LoRAs. [See comparisons](https://github.com/FlashML-org/FreeVideo/blob/main/docs/LORA.md).
+          Now supports community LoRAs. [See comparisons](https://github.com/FlashML-org/FreeVideo/blob/main/docs/LoRA.md).
 
           1. [Download FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe) and run it.
           2. Select an existing ComfyUI folder or install a new one. Add existing model folders to reuse your files; missing models download automatically.
@@ -214,7 +214,7 @@ jobs:
 
           FreeVideo 让 MiniMax H3 在消费级显卡上本地运行，打开 ComfyUI 即可创作。
 
-          支持社区 LoRA。[查看效果对比](https://github.com/FlashML-org/FreeVideo/blob/main/docs/LORA.zh-CN.md)。
+          支持社区 LoRA。[查看效果对比](https://github.com/FlashML-org/FreeVideo/blob/main/docs/LoRA.zh-CN.md)。
 
           1. [下载 FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe) 并运行。
           2. 选择已有的 ComfyUI 或安装新的 ComfyUI。可添加模型目录以复用文件，缺失的模型会自动下载。

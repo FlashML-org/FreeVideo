@@ -1,6 +1,6 @@
 # 社区 LoRA
 
-[English](LORA.md) · 中文
+[English](LoRA.md) · 中文
 
 FreeVideo 支持 MiniMax H3 社区 LoRA。每组对照使用相同的提示词和 seed。
 
