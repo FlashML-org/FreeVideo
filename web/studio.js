@@ -222,11 +222,12 @@ export function openStudio(node) {
         samplingFields.append(field(label, input));
     }
     function syncSamplingSteps() {
-        baseSteps.disabled = linked(node, 'base_steps') || !widget(node, 'base_steps');
+        const baseLinked = linked(node, 'base_steps');
+        baseSteps.disabled = baseLinked || !widget(node, 'base_steps');
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
         baseSteps.min = twoPass.checked ? '2' : '1';
-        refineSteps.max = String(Math.max(1, Math.min(31, Number(baseSteps.value || 8) - 1)));
-        refineSteps.setCustomValidity(twoPass.checked && !refineSteps.disabled && Number(refineSteps.value) >= Number(baseSteps.value)
+        refineSteps.max = baseLinked ? '31' : String(Math.max(1, Math.min(31, Number(baseSteps.value || 8) - 1)));
+        refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) >= Number(baseSteps.value)
             ? t('Second-pass steps must be fewer than first-pass steps.', '二采步数必须小于一采步数。') : '');
         refineSteps.title = twoPass.checked ? t('Must be fewer than first-pass steps.', '必须小于一采步数。')
             : t('Enable two-pass sampling to use this setting.', '开启二次采样后生效。');
