@@ -200,11 +200,17 @@ function resultPanel(node) {
     node.addDOMWidget('freevideo_prompt_guide', 'freevideo_prompt_guide', promptGuide(),
         {serialize: false, getMinHeight: () => 58, getMaxHeight: () => 76});
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "result";
-    const progress = createGenerationProgress(text); panel.append(progress.element);
+    const progress = createGenerationProgress(text, undefined, {api}); panel.append(progress.element, progress.report);
+    node.freevideoReportProgress = message => {
+        progress.updateReport(message);
+        if (message.new_request) node.freevideoReportId = null;
+        if (message.report_id) node.freevideoReportId = message.report_id;
+    };
     node.freevideoShowProgress = message => {
         const retry = message.reset ? undefined : message.retry || node.freevideoProgress?.retry;
         node.freevideoProgress = {...message, retry, received_at: message.received_at ?? Date.now()}; progress.update(node.freevideoProgress);
         if (panel.firstElementChild !== progress.element) panel.prepend(progress.element);
+        if (progress.report.parentNode !== panel) panel.append(progress.report);
         node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
     };
     node.freevideoStopProgress = () => { node.freevideoProgress = null; progress.hide(); };
@@ -247,6 +253,7 @@ function resultPanel(node) {
     };
     node.freevideoShowResult = function (message) {
         const value = message?.freevideo_summary?.[0]; if (!value) return;
+        node.freevideoReportId = null; progress.report.hidden = true;
         node.freevideoStopProgress();
         node.freevideoClearFailure();
         node.freevideoLastResult = value;
@@ -283,6 +290,7 @@ window.addEventListener('freevideo-media', () => syncPrompts());
 const progressConnection = createProgressConnection(api, message => {
     const node = app.graph?.getNodeById(message.node);
     if (!node?.freevideoShowProgress) return false;
+    node.freevideoReportProgress?.(message);
     if (message.result) node.freevideoShowResult({freevideo_summary: [message.result]});
     else if (['failed', 'cancelled'].includes(message.phase)) node.freevideoStopProgress();
     else node.freevideoShowProgress(message);

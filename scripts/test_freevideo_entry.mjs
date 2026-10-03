@@ -32,7 +32,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         errorText: value => String(value),
         openStudio: node => opened.push(node),
         loraPanel: () => () => {}, loraWarning: () => 'LoRA warning', promptGuide: () => new Element('guide'),
-        createGenerationProgress: () => ({element: new Element('progress'), update() {}, hide() {}, dispose() {}}),
+        createGenerationProgress: () => ({element: new Element('progress'), report: new Element('report'), updateReport() {}, update() {}, hide() {}, dispose() {}}),
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
         installNavigation: callback => installed.push(callback),

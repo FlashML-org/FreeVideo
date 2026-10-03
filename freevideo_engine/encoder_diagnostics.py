@@ -54,6 +54,7 @@ class EncoderTrace:
         self.current = None
         self.counters = {}
         self.finished = False
+        self.publish_progress = not request.get('idle_preload', False)
         torch = sys.modules.get('torch')
         initialized = bool(torch is not None and torch.cuda.is_initialized())
         self.data = dict(success=False, load_stages=[],
@@ -85,6 +86,9 @@ class EncoderTrace:
     def stage(self, name, **metrics):
         if name not in STAGES:
             raise ValueError('Unknown encoder diagnostic stage')
+        if self.publish_progress:
+            # Forward only a known stage, never request text, paths or metrics.
+            print(json.dumps(dict(event='encoder_phase', stage=name)), flush=True)
         now = time.perf_counter()
         self._close_stage(now)
         self.current = name

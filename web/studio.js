@@ -255,7 +255,8 @@ export function openStudio(node) {
     stage.setAttribute('aria-label', t('Video preview', '视频预览'));
     const stageMedia = el('div', null, 'fv-stage-media');
     stage.append(stageMedia); previewSpace.append(stage);
-    const progress = createGenerationProgress(t, undefined, {compact: true}); stage.append(progress.element);
+    const progress = createGenerationProgress(t, undefined, {compact: true, api}); stage.append(progress.element);
+    progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
     cleanup.push(createPreviewScene(stage, progress.element, stageMedia));
     let revealTimer = null;
@@ -301,12 +302,13 @@ export function openStudio(node) {
     const metrics = [];
     for (const label of [t('Sampling', '采样耗时'), t('Request total', '请求总计'), t('VRAM peak', '显存峰值'), t('RAM peak', '内存峰值')]) { const box = el('div', null, 'fv-stat'), n = el('strong', '—'); box.append(n, el('span', label)); stats.append(box); metrics.push(n); }
     const prewarm = el('div', node.freevideoPrewarm || '', 'fv-prewarm');
-    output.append(status, stats, budget, links, prewarm);
+    output.append(status, stats, budget, links, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
     function showResult(r) {
         if (!r?.video || disposed) return; result = r;
+        progress.report.hidden = !node.freevideoReportId;
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
         stats.hidden = false;
@@ -550,6 +552,7 @@ export function openStudio(node) {
     listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });
     const progressChanged = e => {
         if (String(e.detail.node) !== String(node.id)) return;
+        progress.updateReport(e.detail);
         if (['failed', 'cancelled'].includes(e.detail.phase) || e.detail.result) {
             busy = cancelling = false; updateRunButton();
             if (e.detail.phase === 'cancelled') { hideProgress(); status.textContent = t('Cancelled', '已取消'); }

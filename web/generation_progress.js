@@ -9,7 +9,36 @@ const duration = value => {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 };
 
-export function createGenerationProgress(t, now = () => Date.now(), {compact = false} = {}) {
+function encodingLabel(label, t) {
+    const labels = {
+        'Starting text encoder': ['Starting text encoder', '启动文本编码器'],
+        'Preparing text encoder GPU': ['Preparing GPU', '准备显卡'],
+        'Checking text encoder cache': ['Checking prompt cache', '检查提示词缓存'],
+        'Loading text encoder': ['Loading text encoder', '加载文本编码器'],
+        'Reading text encoder weights': ['Reading text encoder weights', '读取文本编码器权重'],
+        'Preparing text encoder model': ['Preparing text encoder', '准备文本编码器'],
+        'Loading text encoder onto GPU': ['Loading text encoder onto GPU', '将文本编码器加载到显卡'],
+        'Reusing text encoder': ['Reusing text encoder', '复用文本编码器'],
+        'Using text encoder already on GPU': ['Reusing text encoder', '复用文本编码器'],
+        'Preparing text and image tokens': ['Processing prompt and images', '处理提示词与参考图片'],
+        'Preparing text encoding': ['Preparing text encoding', '准备文本编码'],
+        'Encoding text and images': ['Encoding prompt and images', '编码提示词与参考图片'],
+        'Encoding prompt': ['Preparing prompt', '准备提示词'],
+        'Preparing reference media': ['Preparing references', '准备参考素材'],
+        'Encoding reference media': ['Encoding references', '编码参考素材'],
+        'Releasing encoder weights after insufficient GPU memory': ['Adjusting encoder memory', '调整文本编码器显存'],
+        'Retrying text encoding with more GPU workspace': ['Retrying prompt encoding', '重试提示词编码'],
+        'Preparing prompt data': ['Preparing prompt data', '整理提示词编码结果'],
+        'Saving prompt cache': ['Saving prompt cache', '保存提示词缓存'],
+        'Reusing prompt cache': ['Reusing prompt cache', '复用提示词缓存'],
+        'Prompt ready': ['Prompt ready', '提示词已就绪'],
+        'Releasing idle models and checking available memory again': ['Preparing encoder memory', '准备编码器内存'],
+        'Retaining and checking input media': ['Preparing references', '准备参考素材'],
+    };
+    return t(...(labels[label] || ['Preparing prompt and references', '准备提示词与参考素材']));
+}
+
+export function createGenerationProgress(t, now = () => Date.now(), {compact = false, api = null} = {}) {
     const element = el('section', 'fv-generation-progress'); element.hidden = true;
     if (compact) element.classList.add('fv-generation-compact');
     const heading = el('div', 'fv-generation-heading'); heading.setAttribute('role', 'status');
@@ -53,6 +82,35 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const fraction = value => Math.min(1, Math.max(0, value));
     const newRequest = message => message.new_request === true || message.overall?.reset === true
         || (message.reset === true && !message.phase);
+    const report = el('button', 'fv-report-download fv-quiet'); report.type = 'button'; report.hidden = true;
+    let reportId = null;
+    const reportLabel = () => t('Download report', '下载报告');
+    report.textContent = reportLabel();
+    function updateReport(message) {
+        if (newRequest(message)) { reportId = null; report.hidden = true; }
+        if (typeof message.report_id === 'string' && /^[a-f0-9]{32}$/.test(message.report_id)) {
+            if (reportId !== message.report_id) { report.disabled = false; report.textContent = reportLabel(); }
+            reportId = message.report_id; report.hidden = false;
+        }
+        if (message.result) report.hidden = true; // The saved video's report link takes over.
+    }
+    report.onclick = async () => {
+        if (!reportId || report.disabled) return;
+        const id = reportId;
+        report.disabled = true; report.textContent = t('Preparing report…', '正在整理报告…');
+        try {
+            const path = `/freevideo/report/${id}`;
+            const response = await (api ? api.fetchApi(path) : fetch(path));
+            if (!response.ok) throw new Error('Report unavailable');
+            const blob = await response.blob(), url = URL.createObjectURL(blob);
+            const link = document.createElement('a'); link.href = url; link.download = 'video.debug.json';
+            document.body.append(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            if (id === reportId) report.textContent = reportLabel();
+        } catch {
+            if (id === reportId) report.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试');
+        } finally { if (id === reportId) report.disabled = false; }
+    };
     const counted = value => Number.isInteger(value.total) && value.total > 0 && Number.isInteger(value.done)
         && value.done >= 0 && value.done <= value.total;
 
@@ -156,11 +214,13 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             : overall.status === 'failed' ? t('Stopped', '已停止')
             : left !== null && left > 0 ? `${t('Remaining', '预计剩余')} ≈ ${duration(left)}`
             : t('Estimating remaining time…', '正在估算剩余时间…');
-        silence.hidden = ended || age < 15;
+        elapsed.hidden = compact && (ended || (left !== null && left > 0));
+        silence.hidden = ended || age < (compact ? 45 : 15);
         silence.textContent = t(`Last engine update ${duration(age)} ago`, `距上次引擎进度更新 ${duration(age)}`);
         drawOverall();
     }
     function update(message) {
+        updateReport(message);
         // Older servers may still forward this diagnostic-only event. It is
         // not a stage change or something the user needs to act on.
         if (message.warning === 'ram_budget_warning' && !message.phase) return;
@@ -194,6 +254,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         const phase = message.phase || message.label;
         if (message.reset || phase !== (state.phase || state.label)) state = {};
         state = {...state, ...message}; sampledAt = valid(message.received_at) ? message.received_at : now();
+        element.dataset.phase = message.phase || message.timing_phase || '';
         if (message.overall && typeof message.overall === 'object') {
             overall = {...message.overall}; overallAt = sampledAt;
         }
@@ -209,11 +270,12 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                 offload_release: t('Releasing sampling buffers', '正在释放采样缓冲'),
                 transformer_release: t('Preparing video decoding', '正在准备视频解码'),
             }[message.stage] || t('Preparing video decoding', '正在准备视频解码')
+            : message.timing_phase === 'encoding' ? encodingLabel(message.label, t)
             : message.label || t('Preparing video', '正在准备视频');
         if (compact && !complete) {
             const phase = message.phase || message.timing_phase;
             label.textContent = sampling ? `${t('Sampling', '采样')} ${message.done} / ${message.total}`
-                : phase === 'encoding' ? t('Preparing prompt', '准备提示词')
+                : phase === 'encoding' ? encodingLabel(message.label, t)
                 : phase === 'load' ? t('Loading model', '加载模型')
                 : phase === 'decode' ? message.label === 'Saving MP4 and audio' ? t('Saving video', '保存视频')
                     : message.label === 'Loading and decoding audio' ? t('Decoding audio', '解码音频')
@@ -243,5 +305,5 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         if (timer !== null) clearInterval(timer); timer = null; state = {}; overall = {}; shownFraction = null;
         stopCount(); countShown = null;
     }
-    return {element, update, hide, dispose: hide};
+    return {element, report, updateReport, update, hide, dispose: hide};
 }

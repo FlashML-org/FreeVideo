@@ -328,6 +328,33 @@ def progress_message(event):
         sampling['timing_phase'] = 'sampling'
         return sampling
     name = event.get('event')
+    if name == 'encoder_phase':
+        labels = {
+            'worker_import': 'Starting text encoder',
+            'worker_cuda_setup': 'Preparing text encoder GPU',
+            'encoder_torch_import': 'Starting text encoder',
+            'encoder_options': 'Starting text encoder',
+            'encoder_cuda_setup': 'Preparing text encoder GPU',
+            'encoder_path_config': 'Starting text encoder',
+            'encoder_native_import': 'Starting text encoder',
+            'encoder_media_prepare': 'Preparing reference media',
+            'encoder_lookup': 'Checking text encoder cache',
+            'encoder_load': 'Loading text encoder',
+            'encoder_checkpoint_map': 'Reading text encoder weights',
+            'encoder_construct': 'Preparing text encoder model',
+            'encoder_tokenize': 'Preparing text and image tokens',
+            'encoder_device_load': 'Loading text encoder onto GPU',
+            'encoder_page_release': 'Preparing text encoding',
+            'encoder_compute': 'Encoding text and images',
+            'encoder_oom': 'Releasing encoder weights after insufficient GPU memory',
+            'encoder_retry': 'Retrying text encoding with more GPU workspace',
+            'encoder_conditioning_pack': 'Preparing prompt data',
+            'keyframe_vae': 'Encoding reference media',
+            'media_vae': 'Encoding reference media',
+            'encoder_save': 'Saving prompt cache',
+        }
+        label = labels.get(event.get('stage'))
+        return dict(label=label, timing_phase='encoding') if label else None
     if name == 'sampling_plan':
         first, second = event.get('first', {}), event.get('second')
         if event.get('enabled') and second:
@@ -455,9 +482,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     save(run / 'comfy-request.json', state)
     started = time.monotonic()
     whole_progress = WholeVideoProgress()
+    from .comfy_progress import REPORTS
+    report_id = REPORTS.register(output)
     def send_progress(message):
         if progress:
-            progress(whole_progress.annotate(message))
+            progress(whole_progress.annotate(dict(message, report_id=report_id)))
     process = None
     tails = [EventTail(run / name) for name in ('generate.log', 'video.encoding.log', 'video.engine.log', 'video.lora.log')]
     def poll():

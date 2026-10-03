@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 import statistics
+import time
 
 from . import __version__
 from .diagnostics import Redactor, is_link, read_bounded
@@ -203,7 +204,7 @@ def write_encoder_retry(output, encoding, *, index):
     return write(output, _retry=dict(stage='encoding', index=index, encoding=encoding))
 
 
-def write(output, report=None, bridge=None, *, _retry=None):
+def write(output, report=None, bridge=None, *, _retry=None, live=False):
     """Bounded JSON/log reads only. Failure to write must not fail generation."""
     output = Path(output)
     notes = []
@@ -264,13 +265,24 @@ def write(output, report=None, bridge=None, *, _retry=None):
             redactor.replacements.append((str(Path.home()), '<HOME>'))
         except (OSError, RuntimeError):
             pass
-        prompt = output.with_suffix('.artifacts') / 'prompt.txt'
-        if prompt.is_file() and not is_link(prompt) and not is_link(prompt.parent):
-            raw, truncated = read_bounded(prompt, 64*1024)
-            if not truncated:
+        include_logs = True
+        # The bridge prompt exists before the worker creates its artifacts.
+        # Live exports during startup must redact it too.
+        for prompt in (output.parent / 'prompt.txt', output.with_suffix('.artifacts') / 'prompt.txt'):
+            if not prompt.exists():
+                continue
+            try:
+                if is_link(prompt) or is_link(prompt.parent):
+                    raise ValueError('Linked prompt omitted')
+                raw, truncated = read_bounded(prompt, 64*1024)
+                if truncated:
+                    raise ValueError('Prompt exceeds redaction limit')
                 text = raw.decode('utf-8', errors='replace').strip()
                 if text:
                     redactor.prompts.add(text)
+            except (OSError, ValueError):
+                include_logs = False
+                notes.append('Log text omitted: prompt could not be read safely for redaction')
         redactor.structured(request)  # Learn prompts before redacting repeated error text.
         redactor.structured(bridge)
         # Failed children never return their telemetry into request['resources'].
@@ -310,6 +322,8 @@ def write(output, report=None, bridge=None, *, _retry=None):
         if not request.get('encoding_resources'):
             request['encoding_resources'] = dict(ram=read_json('.encoding.memory.json'))
         summary = summarize(request, engine, encoding)
+        if live and bridge.get('status') in ('starting', 'running'):
+            summary['status'] = 'running'
         if video_retry or encoder_retry and _retry['index'] < 3:
             summary['status'] = 'retrying'
         payload = dict(schema_version=1, summary=summary,
@@ -327,16 +341,18 @@ def write(output, report=None, bridge=None, *, _retry=None):
             collection_notes=notes, log_tails={})
         # Scrub structured prompts before processing log tails that may repeat them.
         payload = redactor.structured(payload)
+        if live:
+            payload['snapshot'] = dict(collected_at=time.time(), running=summary['status'] == 'running')
         # The generic secret redactor matches "token_summary" as a token key.
         # Restore only its fixed numeric counts, never token IDs or text.
         from .diagnostic_resources import token_summary
         payload['encoding']['token_summary'] = token_summary(encoding.get('token_summary'))
         for suffix in ('.engine.log', '.encoding.log', '.lora.log'):
             path = (engine_output if suffix == '.engine.log' else output).with_suffix(suffix)
-            if path.is_file() and not is_link(path):
+            if include_logs and path.is_file() and not is_link(path):
                 raw, truncated = read_bounded(path, 8192)
                 payload['log_tails'][suffix] = redactor.text(raw.decode('utf-8', errors='replace'))
-        if bridge:
+        if bridge and include_logs:
             path = output.parent / 'generate.log'
             if path.is_file() and not is_link(path):
                 raw, _ = read_bounded(path, 8192)
@@ -354,7 +370,7 @@ def write(output, report=None, bridge=None, *, _retry=None):
                     return redactor.path(value)
                 return redactor.text(value)
             return value
-        suffix = '.debug.json'
+        suffix = '.live.debug.json' if live else '.debug.json'
         if _retry:
             suffix = ('.encoder-retry-' if encoder_retry else '.retry-') + str(_retry['index']) + '.debug.json'
         target = output.with_suffix(suffix)
