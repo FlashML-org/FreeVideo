@@ -277,26 +277,31 @@ def plan(args, *, local_progress=None):
         local = (local_reuse or {}).get('matches', {}).get(row['repo'] + '/' + row['file'])
         model_entries.append((row, 'found' if size_matches else 'verified' if local else 'download'))
         entry['needed_bytes'] += 0 if size_matches or local and local['method'] == 'hardlink' else row['bytes']
+        partial = path.with_suffix(path.suffix + '.partial')
+        if not size_matches and not local and partial.is_file() and partial.stat().st_size <= row['bytes']:
+            # Only the streaming strategy can reuse this contiguous prefix.
+            # Its completed content must still pass the pinned hash check.
+            entry['resume_bytes'] = entry.get('resume_bytes', 0) + partial.stat().st_size
     # Stream directly into final FP8 groups. The pinned model occupies ~45.3
     # GiB; allow 52 GiB including the largest group in progress. Never credit
     # future source deletion toward the space needed to complete conversion.
     dependencies = dependency_status(root, layout, hardware.system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     extra = (0 if reuse_cache or prepared else 52) + (5 if environments_ready else 30 if layout == 'unified' else 45) + 10
-    path = existing_parent(root)
-    entry = groups.setdefault(str(path), {'path': str(path), 'needed_bytes': 0,
-                                         'free_bytes': shutil.disk_usage(path).free})
-    entry['needed_bytes'] += extra * GiB
-    # Aggregate paths sharing a filesystem; never count one disk's free space twice.
-    disks = {}
-    for entry in groups.values():
-        key = str(os.stat(entry['path']).st_dev)
-        merged = disks.setdefault(key, dict(paths=[], needed_bytes=0, free_bytes=entry['free_bytes']))
-        merged['paths'].append(entry['path'])
-        merged['needed_bytes'] += entry['needed_bytes']
-    for disk in disks.values():
-        if disk['needed_bytes'] > disk['free_bytes']:
-            errors.append('Insufficient disk space for retained models, environments and caches: ' + ', '.join(disk['paths']))
+    frontend = None
+    if getattr(args, 'frontend_root', None):
+        frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
+                        separate=args.frontend_separate, download=args.frontend_download)
+    from .install_disk import budget as disk_budget
+    reviewed = (json.loads(Path(args.approved_plan).read_text(encoding='utf-8'))
+                if getattr(args, 'approved_plan', None) else saved)
+    disk_plan = disk_budget(groups, root, extra,
+        eligible=bool(windows_target and layout == 'unified' and (reuse_cache or prepared)
+                      and getattr(args, 'model_downloader', 'auto') != 'xet'),
+        environments_ready=environments_ready, frontend=frontend,
+        keep_extreme=reviewed.get('disk_mode') == 'extreme')
+    extra = disk_plan['environment_cache_safety_gib']
+    errors.extend(disk_plan['errors'])
     if reuse_cache and not cache_compatible(reuse_cache, hardware.capability):
         errors.append('--cache must contain a prepared FP8 cache compatible with this GPU scale format.')
     from .download_settings import read as download_preferences
@@ -317,10 +322,13 @@ def plan(args, *, local_progress=None):
     from .model_transfer import policy as transfer_policy
     build = build_parallelism(resources['ram_budget_bytes'], snapshot.get('cpu_threads') or 1) if resources and not windows_target else None
     transfers = transfer_policy(resources['ram_budget_bytes'], build['estimated_peak_bytes'] if build else 0) if resources else None
+    if disk_plan['mode'] == 'extreme':
+        transfers = dict(transfers or {}, file_workers=1, overlap_build=False, mode='streaming-space-saver')
     from .model_status import inventory as model_inventory
     return {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': None,
             'installation_resources': resources,
             'storage': storage,
+            'disk_mode': disk_plan['mode'], 'disk_policy': disk_plan, 'frontend': frontend,
             'storage_preparation': ('Download verified slim FP8 weights and fixed AdaLN tables; no original transformer or local conversion'
                                     if prepared else 'Stream CPU merge directly to FP8 groups; no complete BF16 intermediate cache'),
             'storage_cleanup': ('After cache verification and GPU probes, remove only unchanged conversion-only weights downloaded/copied into this installation; borrowed originals and outputs are retained'
@@ -351,7 +359,7 @@ def plan(args, *, local_progress=None):
             'wheel_cache': str(Path(getattr(args, 'wheel_cache', None) or saved.get('wheel_cache') or root / 'wheels').expanduser().resolve()),
             'rebuild_sage': getattr(args, 'rebuild_sage', False),
             'model_download_bytes': sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0),
-            'existing_model_bytes_size_matched': present, 'disks': list(disks.values()),
+            'existing_model_bytes_size_matched': present, 'disks': disk_plan['disks'],
             'additional_environment_cache_safety_gib': extra,
             'preparation_ram_estimate_gib': ('Bounded hash/header verification; no transformer loaded or converted' if prepared else
                                            '4–8 GiB working set plus reclaimable source file cache; measured by setup'),
@@ -386,6 +394,8 @@ def display(value, ui=None, *, verbose=False):
             rows.append((label, value[key]))
     rows.append(('Model download', '~%.1f GiB; Python / GPU packages are additional' % (value['model_download_bytes']/GiB)
                  if value['model_download_bytes'] else 'No new model files expected · verify existing files'))
+    if value.get('disk_mode') == 'extreme':
+        rows.append(('Disk mode', 'Automatic space saver · sequential downloads · temporary package cache removed before models'))
     if value.get('local_models'):
         local = value['local_models']
         rows.append(('Reuse models', '%.1f GiB verified · %.1f GiB copied locally · source files kept' %
@@ -505,7 +515,7 @@ def confirmed(args, value, ask=input, ui=None):
         if not args.yes or not args.accept_model_license:
             raise ValueError('--approved-plan requires explicit plan/license acceptance.')
         reviewed = json.loads(Path(reviewed_path).read_text(encoding='utf-8'))
-        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'model_source')
+        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'model_source', 'disk_mode', 'frontend')
         changed = any(reviewed.get(key) != value.get(key) for key in keys)
         changed |= reviewed.get('inventory', {}).get('selected_gpu', {}).get('uuid') != value['inventory']['selected_gpu']['uuid']
         changed |= value['model_download_bytes'] > reviewed.get('model_download_bytes', -1)
@@ -579,6 +589,8 @@ def setup_task(label):
             key = key[len(prefix):]
             break
     tasks = {
+        'release-package-cache': ('Release installation cache', 'Installed components and models are kept'),
+        'space-saving-comfy': ('Prepare ComfyUI', 'Finish the environment before downloading models'),
         'python': ('Install Python', 'Download and prepare the private Python runtime'),
         'python-bootstrap-reuse': ('Use existing Python', 'Check the Python already prepared by the launcher'),
         'venv': ('Create Python environment', 'Prepare an isolated environment for FreeVideo'),
@@ -664,6 +676,7 @@ class Installer:
         # The former complete configuration is retained in machine.before.json.
         save(previous, dict(saved, root=str(self.root), ready=False, setup_run=str(self.run_dir),
             storage=value.get('storage', 'compact'),
+            disk_mode=value.get('disk_mode', 'normal'),
             pending_environment_layout=self.layout, model_root=value['model_dir'],
             encoder_model_root=value.get('encoder_dir', saved.get('encoder_model_root')),
             wheel_cache=value.get('wheel_cache', saved.get('wheel_cache')),
@@ -690,6 +703,9 @@ class Installer:
         self.env.update(FREEVIDEO_NETWORK_PLAN=str(self.run_dir / 'plan.json'),
                         FREEVIDEO_NETWORK_EVENTS=str(self.run_dir / 'network.jsonl'))
         self.env = network.proxy_environment(self.env)
+        if value.get('disk_mode') == 'extreme':
+            from .install_disk import environment
+            self.env = environment(self.root, self.env)
         self.network = dict(value.get('network', {}), events_path=str(self.run_dir / 'network.jsonl'), quiet=True)
         self.state = {'status': 'running', 'steps': [], 'plan': value}
         self.state_lock = threading.Lock()
@@ -709,6 +725,14 @@ class Installer:
             try:
                 with (self.run_dir / 'ram.jsonl').open('w', buffering=1, encoding='utf-8') as stream:
                     while not self.monitor_stop.is_set():
+                        if self.plan.get('disk_mode') == 'extreme':
+                            from .install_disk import check_floor
+                            try:
+                                check_floor([p for disk in self.plan['disks'] for p in disk['paths']])
+                            except RuntimeError as error:
+                                self.state['resource_guard'] = str(error)
+                                self.cancel.set()
+                                break
                         try:
                             row = memory.sample(os.getpid())
                         except OSError as error:
@@ -949,7 +973,28 @@ class Installer:
         overlap = (self.plan.get('model_transfer') or {}).get('overlap_build', True)
         task('sage', lambda: self.install_sage(uv, python), ('runtime',) if overlap else ('runtime', 'models'),
              ('environment:' + name,))
+        if self.plan.get('disk_mode') == 'extreme':
+            # Finish all environments before models occupy most of the disk.
+            # In particular retain the uv cache until ComfyUI has reused it.
+            tasks['sage']['after'] = ('runtime',)
+            prerequisites = tuple(key for key in tasks if key != 'models')
+            frontend = self.plan.get('frontend') or {}
+            if frontend.get('separate'):
+                task('frontend', lambda: self.command('space-saving-comfy',
+                    [python, '-m', 'freevideo_engine.comfy_host', '--root', self.root,
+                     '--comfy', frontend['root'], '--setup-plan', self.run_dir / 'plan.json']), prerequisites)
+                prerequisites = ('frontend',)
+            task('package-cache', lambda: self.release_package_cache(uv), prerequisites)
+            tasks['models']['after'] = ('package-cache',)
         return tasks, pythons, comfy
+
+    def release_package_cache(self, uv):
+        cache = self.root / 'downloads' / 'uv-cache'
+        if cache.is_symlink() or not cache.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError('The installation cache points outside this FreeVideo folder; '
+                             'space-saving cleanup stopped without removing it.')
+        # Use uv's lock-aware cleanup; never unlink its internal files ourselves.
+        return self.command('release-package-cache', [uv, 'cache', 'clean', '--cache-dir', cache])
 
     def clone(self, name, url, commit, sparse=None):
         return network.clone(self.root / 'vendor' / name, url, commit, sparse=sparse, run=self.command,
@@ -1134,14 +1179,16 @@ class Installer:
         from .install_schedule import run
         tasks, pythons, comfy = self.component_tasks(uv)
         total = len(tasks) + 4  # Bootstrap, preparation, checks and final readiness.
+        phase = 'Install with space saver' if self.plan.get('disk_mode') == 'extreme' else 'Install components in parallel'
         def scheduling(name, status, completed, count):
             with self.state_lock:
                 self.state.setdefault('schedule', {})[name] = dict(status=status, after=tasks[name]['after'],
                     exclusive_writers=tasks[name]['writes'], epoch=time.time())
                 save(self.run_dir / 'status.json', self.state)
-            self.ui.phase('Install components in parallel', 1 + completed, total)
-        self.ui.phase('Install components in parallel', 1, total)
-        results = run(tasks, self.cancel, progress=scheduling)
+            self.ui.phase(phase, 1 + completed, total)
+        self.ui.phase(phase, 1, total)
+        results = run(tasks, self.cancel, progress=scheduling,
+                      workers=1 if self.plan.get('disk_mode') == 'extreme' else 3)
         sage_manifest = results['sage']
         python, encoder_python = self.pythons['engine'], self.pythons['encoder']
         prepared = self.run_dir / 'prepared.json'
@@ -1178,6 +1225,7 @@ class Installer:
         self.ui.phase('Finish setup', total - 1, total)
         configuration = {'schema_version': 1, 'root': str(self.root), 'source': str(SOURCE),
             'storage': self.plan.get('storage', 'compact'),
+            'disk_mode': self.plan.get('disk_mode', 'normal'),
             'environment_layout': self.layout,
             'system': self.system, 'engine_version': __version__,
             'git': self.env.get('FREEVIDEO_GIT') or shutil.which('git', path=self.env['PATH']),
@@ -1224,6 +1272,9 @@ def main(argv=None):
     cache_options.add_argument('--cache', type=Path, help='Verify and reuse an existing FP8 cache')
     cache_options.add_argument('--rebuild-cache', action='store_true', help='Recreate FP8 from pinned source weights, downloading missing sources; preserve failed caches')
     parser.add_argument('--storage', choices=('compact', 'retain'), help='Default compact: stream FP8 and remove installer-owned conversion sources after verification; retain keeps sources for re-quantization')
+    parser.add_argument('--frontend-root', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--frontend-separate', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--frontend-download', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--verify', choices=('auto', 'full'), default='auto', help='auto reuses unchanged pinned receipts; full rereads every required tensor')
     parser.add_argument('--wheel-cache', type=Path, help='Reusable local Sage2 wheel cache, keyed by architecture and ABI')
     parser.add_argument('--rebuild-sage', action='store_true', help='Measure a fresh source build, retaining previous build artifacts')

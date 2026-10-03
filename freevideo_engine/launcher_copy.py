@@ -30,6 +30,8 @@ ZH = dict([
     ('Check build tools', '检查编译工具'), ('Build SageAttention 2', '准备 GPU 加速'),
     ('Install SageAttention 2', '安装 GPU 加速组件'), ('Prepare dependencies', '准备运行组件'),
     ('Install components in parallel', '安装运行组件'),
+    ('Install with space saver', '极限省空间安装'),
+    ('Release installation cache', '释放安装缓存'),
     ('Install acceleration and download models', '安装加速组件和下载模型'),
     ('Verify installation on your GPU', '检查 GPU 加速'), ('Finish setup', '完成安装'),
     ('Setup complete', '安装完成'), ('Setup interrupted', '安装已暂停'), ('Setup failed', '安装未完成'),

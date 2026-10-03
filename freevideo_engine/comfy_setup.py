@@ -223,6 +223,13 @@ class Setup:
         manifest = self.logs / ('libraries-' + uuid.uuid4().hex + '.json')
         save(manifest, dict(version=1, roots=libraries))
         arguments = ['setup', '--reuse-models-manifest', str(manifest)]
+        frontend = value.get('frontend')
+        if frontend:
+            arguments += ['--frontend-root', str(Path(frontend['root']).expanduser().resolve())]
+            if frontend.get('separate'):
+                arguments.append('--frontend-separate')
+            if frontend.get('download'):
+                arguments.append('--frontend-download')
         if value.get('copy'):
             arguments.append('--copy-existing-models')
         self.selection = dict(root=str(root), arguments=arguments)

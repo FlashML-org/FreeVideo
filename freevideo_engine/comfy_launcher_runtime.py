@@ -33,6 +33,13 @@ TEMPLATE = 'FreeVideo-All-in-One.json'
 
 def disk_review(plan, engine, comfy, *, separate, new_comfy):
     """Add frontend costs to the right volume, including cross-drive installs."""
+    frontend = plan.get('frontend')
+    if frontend and frontend['root'] == str(Path(comfy).resolve()) and frontend['separate'] == separate:
+        from .install_disk import existing, errors
+        disks = [dict(disk, paths=list(disk['paths']),
+                      free_bytes=shutil.disk_usage(existing(disk['paths'][0])).free)
+                 for disk in plan.get('disks', [])]
+        return 0, disks, errors(disks)  # Already included before automatic mode selection.
     def existing(path):
         path = Path(path)
         while not path.exists() and path != path.parent:
@@ -465,13 +472,15 @@ class Controller:
             if not isinstance(extra, list) or any(not isinstance(p, str) for p in extra):
                 raise ValueError('Model folders must be a list of directory paths')
             extra = extra + ([values['models']] if values.get('models') else [])
-            self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False))
+            self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
+                frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh)))
             row = self._wait_setup()
             self.state = dict(self.state, plan=row['plan'])
         extra_disk, disks, disk_errors = disk_review(self.state.get('plan', {}), engine, descriptor['root'],
             separate=descriptor['separate'], new_comfy=fresh and not Path(descriptor['root']).exists())
         errors = list(self.state.get('plan', {}).get('errors', []))
-        self.state = dict(self.state, status='review', extra_disk_bytes=extra_disk, disks=disks, errors=errors + disk_errors)
+        self.state = dict(self.state, status='review', extra_disk_bytes=extra_disk, disks=disks,
+                          errors=list(dict.fromkeys(errors + disk_errors)))
 
     def _install(self, accepted):
         if not accepted or not self.selection:

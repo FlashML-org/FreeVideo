@@ -465,6 +465,8 @@ class Session:
         source = preferences['source']
         plan = row.get('plan', {})
         estimate = []
+        if plan.get('disk_mode') == 'extreme':
+            estimate.append(self.t('Space saver (automatic)', '极限省空间（自动启用）'))
         gpu = plan.get('inventory', {}).get('hardware', {}).get('gpu_name')
         if gpu:
             estimate.append(gpu)

@@ -595,6 +595,8 @@ class Launcher:
         plan = row.get('plan', {})
         hardware = plan.get('inventory', {}).get('hardware', {})
         summary = []
+        if plan.get('disk_mode') == 'extreme':
+            summary.append(self.t('Space saver (automatic)', '极限省空间（自动启用）'))
         if hardware.get('gpu_name'):
             summary.append(hardware['gpu_name'])
         if 'model_download_bytes' in plan:

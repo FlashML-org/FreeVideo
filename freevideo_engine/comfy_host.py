@@ -26,6 +26,24 @@ def prepare(root, comfy, run=None, download=False):
         return _prepare(root, comfy, machine, run, download)
 
 
+def prepare_for_setup(root, comfy, plan_path):
+    """Finish the frontend before models, without marking the engine ready."""
+    root, comfy, plan_path = Path(root).resolve(), Path(comfy).resolve(), Path(plan_path).resolve()
+    setup = json.loads(plan_path.read_text(encoding='utf-8'))
+    frontend = setup.get('frontend') or {}
+    if (setup.get('disk_mode') != 'extreme' or Path(setup['root']).resolve() != root
+            or not frontend.get('separate') or Path(frontend['root']).resolve() != comfy):
+        raise ValueError('Frontend does not match the space-saving installation plan')
+    from .system import venv_python
+    python = venv_python(root / 'envs' / 'unified', setup['inventory']['hardware']['system'])
+    if Path(sys.executable).resolve() != python.resolve():
+        raise ValueError('Run frontend preparation with the installed engine Python')
+    machine = dict(python=str(python), setup_run=str(plan_path.parent), disk_mode='extreme',
+                   git=os.environ.get('FREEVIDEO_GIT'))
+    with runtime_lock(root / 'launcher' / 'host-setup.lock', inherit=False):
+        return _prepare(root, comfy, machine, None, frontend.get('download', False))
+
+
 def _prepare(root, comfy, machine, run, download):
     source = Path(__file__).resolve().parents[1]
     env = isolated_environment(root, source)
@@ -33,6 +51,9 @@ def _prepare(root, comfy, machine, run, download):
         env['FREEVIDEO_GIT'] = machine['git']
         env['PATH'] = str(Path(machine['git']).parent) + os.pathsep + env.get('PATH', '')
     env.update(UV_LINK_MODE='hardlink', UV_CACHE_DIR=str(root / 'downloads' / 'uv-cache'), PYTHONUNBUFFERED='1')
+    if machine.get('disk_mode') == 'extreme':
+        from .install_disk import environment
+        env = environment(root, env)
     directory = root / 'launcher' / 'host-runs' / (time.strftime('%Y%m%dT%H%M%S') + '-' + str(time.time_ns()))
     directory.mkdir(parents=True, exist_ok=False)
     try:
@@ -74,6 +95,9 @@ def _prepare(root, comfy, machine, run, download):
                         stdout=output.stdout, stderr=subprocess.STDOUT, supervise=True, start_new_session=True)
                     output.spawned()
                     while child.poll() is None:
+                        if machine.get('disk_mode') == 'extreme':
+                            from .install_disk import check_floor
+                            check_floor((root, comfy))
                         if output.error is not None:
                             raise RuntimeError('Could not retain ComfyUI package output') from output.error
                         try:
@@ -158,8 +182,12 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--comfy', type=Path, required=True)
     parser.add_argument('--download-comfy', action='store_true', help='Download the pinned ComfyUI application into a new folder')
+    parser.add_argument('--setup-plan', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    prepare(args.root, args.comfy, download=args.download_comfy)
+    if args.setup_plan:
+        prepare_for_setup(args.root, args.comfy, args.setup_plan)
+    else:
+        prepare(args.root, args.comfy, download=args.download_comfy)
 
 
 if __name__ == '__main__':

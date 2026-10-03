@@ -586,6 +586,7 @@ def download(row, path, plan, progress_callback, headers_for, *, transfer_comple
     if row['bytes'] >= max(MIN_SDK_BYTES, 64 * MiB) and mount_type(path) in ('tmpfs', 'ramfs'):
         raise ValueError('Model directory is on a RAM-backed filesystem. Choose a disk directory with --models /path/on/disk (and --encoder-models for the encoder). Existing files retained.')
     selected = plan.get('model_transfer') or policy(16 * GiB)
+    space_saver = plan.get('disk_mode') == 'extreme'
     # A transport-complete notification is intentionally separate from the
     # function's return: the latter means the pinned hash has been checked.
     # Keep the notification once per file even when a source/route retry is
@@ -605,6 +606,9 @@ def download(row, path, plan, progress_callback, headers_for, *, transfer_comple
     from .download_settings import current, SwitchRequested
     active=current(plan.get('network') or {})
     def resource_check():
+        if space_saver:
+            from .install_disk import check_floor
+            check_floor((path.parent,))
         selected=current(plan.get('network') or {})
         if selected.get('switch_id') != active.get('switch_id'):
             raise SwitchRequested(selected)
@@ -613,7 +617,7 @@ def download(row, path, plan, progress_callback, headers_for, *, transfer_comple
         cache.check()
     networking = dict(plan.get('network', {}), resource_check=resource_check)
     retained_manual=retained_payload(stage_directory('manual',row,path),row)
-    if active.get('source') not in (None,'auto') or retained_manual:
+    if not space_saver and (active.get('source') not in (None,'auto') or retained_manual):
         candidates=network.model_urls(networking,row)
         # On a rerun, honor the user's last explicit switch rather than the
         # normal affinity ordering intended for automatic recovery.
@@ -645,6 +649,10 @@ def download(row, path, plan, progress_callback, headers_for, *, transfer_comple
                     if selected not in [name for name,_ in candidates]:
                         raise RuntimeError('The selected source has no compatible file for '+row['file']+'. Current download stopped; all fragments retained.')
                     networking.update(manual_source_switch=True,manual_source=selected)
+                    if space_saver:
+                        # curl resumes the same contiguous prefix across sources.
+                        # Do not assemble SDK ranges or allocate a second copy.
+                        continue
                     # run_sdk/curl have joined their workers before this point.
                     # Reuse known byte ranges, including disjoint MS parts.
                     from .transfer_handoff import migrate
@@ -668,6 +676,11 @@ def _download(row, path, plan, progress_callback, headers_for, *, transfer_compl
     networking = dict(plan.get('network', {}), allow_model_restart=plan.get('allow_model_restart', False))
     candidates = network.model_urls(networking, row)
     family = network.model_family(row)
+    if plan.get('disk_mode') == 'extreme':
+        network.download(candidates, path, row.get('sha256') or row['git_blob'], progress_callback,
+            network=dict(networking, allow_model_restart=False), size=row['bytes'], headers_for=headers_for,
+            algorithm='sha256' if row.get('sha256') else 'sha1', git_blob=not row.get('sha256'), category=family)
+        return
     require_xet = plan.get('model_downloader') == 'xet' and row['bytes'] >= MIN_SDK_BYTES
     if require_xet:
         candidates = network.model_urls(dict(networking, mode='official'), row)

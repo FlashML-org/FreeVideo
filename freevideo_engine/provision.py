@@ -85,6 +85,10 @@ def models(plan):
         local = (plan.get('local_models') or {}).get('matches', {}).get(local_key(row))
         entry = (row, path, hf_directory, local)
         (local_files if path.exists() or path.is_symlink() or local else missing).append(entry)
+    space_saver = plan.get('disk_mode') == 'extreme'
+    if space_saver:
+        from .install_disk import check_models
+        check_models(local_files + missing)
     stopped = threading.Event()
     lock = threading.RLock()
     failures = []
@@ -93,6 +97,9 @@ def models(plan):
     def check():
         if stopped.is_set():
             raise CancelledError('Parallel model preparation stopped; all files retained')
+        if space_saver:
+            from .install_disk import check_floor
+            check_floor((root, model_dir, encoder_dir))
 
     def emit(event, **details):
         with lock:
@@ -140,6 +147,7 @@ def models(plan):
                     raise ValueError('Existing model failed pinned integrity check; preserved without overwrite: ' + str(path))
                 elif local:
                     def local_progress(value):
+                        check()
                         progress(value.get('done_bytes', 0), value.get('total_bytes', row['bytes']))
                     method = import_file(row, path, local, callback=local_progress)
                     complete(row, path, dict(file_identity(path, row), method='verified_local_' + method),
@@ -165,6 +173,8 @@ def models(plan):
         networking['resource_check'] = resource_check
         download_plan = dict(plan, network=networking)
         requested_workers = (plan.get('model_transfer') or {}).get('file_workers', 1)
+        if space_saver:
+            requested_workers = 1
         try:
             workers = max(1, min(len(missing), int(requested_workers)))
         except (TypeError, ValueError):
@@ -172,6 +182,8 @@ def models(plan):
         def download_one(entry, transfer_ready=None):
             row, path, hf_directory, _ = entry
             check()
+            if space_saver:
+                check_models(local_files + missing)
             # A user may copy a file in while setup is active. Do not claim
             # ownership of, replace, or download over that newly present file.
             if path.exists() or path.is_symlink():
@@ -288,7 +300,9 @@ def models(plan):
     # downloader. Same-file SDK concurrency and its live RAM guard remain
     # unchanged; file_workers only overlaps separate files.
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix='model-verification') as pool:
-        verification = pool.submit(verify_local) if local_files else None
+        if space_saver:
+            verify_local()  # Local copies must also finish before downloads start.
+        verification = pool.submit(verify_local) if local_files and not space_saver else None
         try:
             download_missing()
             if verification is not None:
