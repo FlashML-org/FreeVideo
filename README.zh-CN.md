@@ -11,13 +11,15 @@
 
 <p align="center"><a href="README.md">English</a> · 中文</p>
 
-FreeVideo 让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
+FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## 简介
 
-FreeVideo 是在消费级显卡上运行 MiniMax H3 的本地推理引擎。它基于 OpenVDN 的 8 步模型 [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3)，将显存、内存与磁盘作为统一的分级存储进行调度，并根据显卡架构与可用资源规划权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件的形式提供：Windows 启动器用于安装和启动 ComfyUI，Linux 上也可以通过命令行使用。主要特性包括：
+FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [OpenVDN](https://github.com/OpenVDN) 的 8 步模型 [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) 和 [Video DeltaNet](https://openvdn.github.io/) 的混合注意力。
+
+它统一调度显存、内存与磁盘，并根据硬件条件调整权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件形式提供，配备 Windows 启动器，也支持 Linux 命令行。主要特性包括：
 
 - **硬件自适应**：针对不同显卡架构选择 FP8 计算路径（原生 FP8，或 FP8 存储配合 BF16 计算），并自动探测可用的注意力内核，无需手动配置。
 - **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，最低只需 8GB 显存和 16GB 内存。
@@ -101,7 +103,11 @@ FreeVideo 基于 VDN-H3。如在研究中使用 FreeVideo，请引用 [Video Del
 
 ## 致谢
 
-FreeVideo 基于 [MiniMax H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) 和 [VDN-H3](https://github.com/OpenVDN/vdn-minimax-h3) 构建，并使用了以下项目：
+感谢 [OpenVDN](https://github.com/OpenVDN) 开源 [Video DeltaNet / VDN-H3](https://github.com/OpenVDN/vdn-minimax-h3) 的模型权重、训练代码与推理实现。
+
+感谢 Impossible Research 提供计算资源。
+
+同时感谢 [MiniMax H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) 提供基础模型，以及以下项目：
 [ComfyUI](https://github.com/Comfy-Org/ComfyUI)、
 [Diffusers](https://github.com/huggingface/diffusers)、
 [SageAttention](https://github.com/thu-ml/SageAttention)、

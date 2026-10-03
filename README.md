@@ -11,13 +11,15 @@
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
 
-Make videos on the computer you already own. FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, and adapts its acceleration path to your&nbsp;hardware.
+Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## About
 
-FreeVideo is a local inference engine for running MiniMax H3 on consumer GPUs. Built on OpenVDN's 8-step [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) model, it schedules VRAM, system memory and disk as a single memory hierarchy, and plans weight placement, compute precision and attention kernels according to the GPU architecture and available resources. FreeVideo is delivered as a ComfyUI plugin: the Windows launcher installs and starts ComfyUI, and on Linux FreeVideo can also be used from the command line. Its core features include:
+FreeVideo is a local inference engine for MiniMax H3 on consumer GPUs, built on [OpenVDN](https://github.com/OpenVDN)'s 8-step [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) model with [Video DeltaNet](https://openvdn.github.io/)'s hybrid attention.
+
+It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with a Windows launcher for setup and command-line support on Linux. Its core features include:
 
 - **Hardware-adaptive execution**: Chooses the FP8 compute path for each GPU architecture, either native FP8 or FP8 storage with BF16 compute, and automatically probes the available attention kernels.
 - **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
@@ -101,7 +103,11 @@ Special thanks to [**AIwood爱屋研究室**](https://space.bilibili.com/5039340
 
 ## Acknowledgment
 
-FreeVideo is built on [MiniMax H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) and [VDN-H3](https://github.com/OpenVDN/vdn-minimax-h3), and uses the following projects:
+We thank [OpenVDN](https://github.com/OpenVDN) for [Video DeltaNet / VDN-H3](https://github.com/OpenVDN/vdn-minimax-h3) and its open-source model weights, training code and inference implementation.
+
+We thank Impossible Research for providing computation resources.
+
+We also thank [MiniMax H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) for the base model and the following projects:
 [ComfyUI](https://github.com/Comfy-Org/ComfyUI),
 [Diffusers](https://github.com/huggingface/diffusers),
 [SageAttention](https://github.com/thu-ml/SageAttention),
