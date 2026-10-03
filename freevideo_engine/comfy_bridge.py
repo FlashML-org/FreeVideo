@@ -408,6 +408,11 @@ def progress_message(event):
     return None
 
 
+def engine_environment(root, source, environ=None):
+    from .triton_compat import environment
+    return environment(root, isolated_environment(root, source, environ))
+
+
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None):
@@ -416,7 +421,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     canvas = validate_request(prompt, width, height, seconds, seed)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
-    environment = isolated_environment(root, source, environ)
+    environment = engine_environment(root, source, environ)
     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
                        PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
     for key in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'):

@@ -135,7 +135,7 @@ class FreeVideoGenerate(io.ComfyNode):
             try:
                 if OWNER.process is not None:
                     root, machine = comfy_bridge.installation()
-                    environment = comfy_bridge.isolated_environment(root, comfy_bridge.source_root())
+                    environment = comfy_bridge.engine_environment(root, comfy_bridge.source_root())
                     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(comfy_bridge.source_root()))
                     OWNER.warm_encoder(output, machine['python'], environment, busy=busy, notify=warmed)
                 else:
