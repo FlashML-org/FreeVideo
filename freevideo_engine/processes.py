@@ -1,5 +1,4 @@
 """Worker creation, inherited leases and bounded cleanup on Linux and Windows."""
-import json
 import os
 from pathlib import Path
 import signal
@@ -11,18 +10,8 @@ from contextlib import contextmanager
 from .system import windows
 
 HANDLE_ENV = 'FREEVIDEO_RUNTIME_LOCK_HANDLE'
-COMMAND_ENV = 'FREEVIDEO_WINDOWS_CHILD_COMMAND'
+CREATE_SUSPENDED = 0x4
 _spawn_lock = threading.Lock()
-
-
-def windows_child_command(command):
-    """Data for the frozen Job gate; never ask PowerShell to reparse argv."""
-    if isinstance(command, (str, bytes)) or not command:
-        raise ValueError('Windows workers require a nonempty argument list')
-    values = list(map(str, command))
-    if not values[0] or any('\0' in value for value in values):
-        raise ValueError('Windows worker arguments cannot contain NUL or an empty executable')
-    return json.dumps(dict(executable=values[0], arguments=subprocess.list2cmdline(values[1:])), ensure_ascii=True)
 
 
 def inherited_fd():
@@ -56,28 +45,30 @@ class WindowsPopen(subprocess.Popen):
     def __init__(self, command, *, pass_fds=(), env=None, **kwargs):
         import ctypes
         import msvcrt
-        from .win32 import Job, HANDLE, checked, kernel32
+        from .win32 import Job, HANDLE, checked, kernel32, resume_suspended
         lib = kernel32()
         self.job = Job()
         handles = []
         environment = dict(os.environ if env is None else env)
-        # A worker waits for assignment before it is allowed to spawn anything.
-        # This closes the launch/kill race without suspended-thread internals.
+        # A worker must belong to the Job before it can spawn anything; this
+        # closes the launch/kill race. The frozen GUI starts the worker itself
+        # suspended, assigns it and resumes it. It used to start a hidden
+        # PowerShell gate with -ExecutionPolicy Bypass, the pattern behind a
+        # Defender Trojan:Script/Wacatac.B!ml verdict on the unsigned EXE.
+        # Managed Python keeps its Python gate, which waits for assignment.
+        frozen = getattr(sys, 'frozen', False)
         try:
-            gate = checked(lib.CreateEventW(None, True, False, None))
-            handles.append(gate)
-            if getattr(sys, 'frozen', False):
+            if frozen:
                 if pass_fds:
                     raise ValueError('The desktop launcher delegates runtime leases to managed Python')
-                environment[COMMAND_ENV] = windows_child_command(command)
-                host = [str(Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-                        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                        str(Path(__file__).with_name('windows_process_host.ps1')), str(gate)]
+                host, flags = list(command), subprocess.CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED
             else:
-                environment.pop(COMMAND_ENV, None)
-                host = module_command('freevideo_engine.process_host', gate, *command)
+                gate = checked(lib.CreateEventW(None, True, False, None))
+                handles.append(gate)
+                host, flags = module_command('freevideo_engine.process_host', gate, *command), subprocess.CREATE_NEW_PROCESS_GROUP
             with _spawn_lock:
-                checked(lib.SetHandleInformation(gate, 1, 1))
+                if not frozen:
+                    checked(lib.SetHandleInformation(gate, 1, 1))
                 if len(pass_fds) > 1:
                     raise ValueError('Only the runtime lease may be inherited by a Windows worker')
                 for fd in pass_fds:
@@ -99,9 +90,12 @@ class WindowsPopen(subprocess.Popen):
                 kwargs.pop('start_new_session', None)
                 kwargs.pop('close_fds', None)
                 super().__init__(host, env=environment, startupinfo=info, close_fds=True,
-                                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, **kwargs)
+                                 creationflags=flags, **kwargs)
                 self.job.assign(self._handle)
-                checked(lib.SetEvent(gate))
+                if frozen:
+                    resume_suspended(self.pid)
+                else:
+                    checked(lib.SetEvent(gate))
         except BaseException:
             if getattr(self, '_child_created', False):
                 super().kill()

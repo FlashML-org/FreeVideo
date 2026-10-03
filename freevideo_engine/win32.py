@@ -18,6 +18,10 @@ def kernel32():
         'CreateToolhelp32Snapshot': (HANDLE, [DWORD, DWORD]),
         'Process32FirstW': (BOOL, [HANDLE, C.c_void_p]),
         'Process32NextW': (BOOL, [HANDLE, C.c_void_p]),
+        'Thread32First': (BOOL, [HANDLE, C.c_void_p]),
+        'Thread32Next': (BOOL, [HANDLE, C.c_void_p]),
+        'OpenThread': (HANDLE, [DWORD, BOOL, DWORD]),
+        'ResumeThread': (DWORD, [HANDLE]),
         'GetProcessIoCounters': (BOOL, [HANDLE, C.c_void_p]),
         'GetProcessTimes': (BOOL, [HANDLE, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]),
         'GlobalMemoryStatusEx': (BOOL, [C.c_void_p]),
@@ -142,6 +146,39 @@ class ProcessEntry(C.Structure):
     _fields_ = [('dwSize', DWORD), ('cntUsage', DWORD), ('pid', DWORD), ('heap', SIZE_T),
                 ('module', DWORD), ('threads', DWORD), ('parent', DWORD),
                 ('priority', C.c_int32), ('flags', DWORD), ('exe', C.c_wchar * 260)]
+
+
+class ThreadEntry(C.Structure):
+    _fields_ = [('dwSize', DWORD), ('cntUsage', DWORD), ('tid', DWORD), ('pid', DWORD),
+                ('base_priority', C.c_long), ('delta_priority', C.c_long), ('flags', DWORD)]
+
+
+def resume_suspended(pid):
+    """Resume the one initial thread of a process created with CREATE_SUSPENDED."""
+    lib = kernel32()
+    snapshot = lib.CreateToolhelp32Snapshot(4, 0)  # TH32CS_SNAPTHREAD
+    if snapshot == C.c_void_p(-1).value:
+        raise C.WinError(C.get_last_error())
+    threads = []
+    try:
+        entry = ThreadEntry()
+        entry.dwSize = C.sizeof(entry)
+        more = lib.Thread32First(snapshot, C.byref(entry))
+        while more:
+            if entry.pid == pid:
+                threads.append(entry.tid)
+            more = lib.Thread32Next(snapshot, C.byref(entry))
+    finally:
+        lib.CloseHandle(snapshot)
+    # A process that has not run yet has exactly its initial thread.
+    if len(threads) != 1:
+        raise OSError('Expected one suspended thread in process %d, found %d' % (pid, len(threads)))
+    thread = checked(lib.OpenThread(0x0002, False, threads[0]))  # THREAD_SUSPEND_RESUME
+    try:
+        if lib.ResumeThread(thread) == 0xFFFFFFFF:
+            raise C.WinError(C.get_last_error())
+    finally:
+        lib.CloseHandle(thread)
 
 
 class ProcessCounters(C.Structure):
