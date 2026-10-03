@@ -149,7 +149,7 @@ class Engine:
         streamed_source = None
         from .system import windows
         incremental_pinning = stream_weights and bool(pin_host_gb) and windows()
-        prepared_pins = dict(logical=0, reserved=0, seconds=0.)
+        prepared_pins = dict(logical=0, reserved=0, seconds=0., views=0)
         streamed_refiner_count = (len(model.token_refiner.refiner_blocks)
                                   if stream_weights and offload_refiner and not cache_refined_text else 0)
         if stream_weights and not adaln_cache:
@@ -179,6 +179,7 @@ class Engine:
                 # refinement requests; pinned groups keep their own storage.
                 self.stream_refiner_count = streamed_refiner_count
         def prepare_streamed(block, index):
+            logical = 0
             if incremental_pinning:
                 tick = time.perf_counter()
                 logical, reserved = prepare_streamed_layer(block, streamed_source, index,
@@ -190,6 +191,9 @@ class Engine:
                 prepared_pins['seconds'] += time.perf_counter() - tick
             else:
                 unload_streamed_layer(block, streamed_source, index)
+            if not logical:
+                # Its bytes are still in the file cache; later pins would evict them.
+                prepared_pins['views'] += int(streamed_source.adopt(index))
         precision = manifest.get('precision', 'bf16')
         actual_fp8_gemm = None
         if precision == 'fp8':
@@ -407,6 +411,7 @@ class Engine:
                                'host_view_reserve_bytes': self.host_view_reserve_bytes,
                                'weight_cache_pin_order': pin_order,
                                'host_pinning_during_load': incremental_pinning,
+                               'host_views_adopted_during_load': prepared_pins['views'],
                                'host_preload_seconds': self.host_preload_seconds,
                                'remaining_load_seconds': self.load_seconds - adaln_prepare_seconds - pin_seconds - self.host_preload_seconds,
                                'scope': 'Host wall time within model load; AdaLN includes table reads or computation and writes.'}

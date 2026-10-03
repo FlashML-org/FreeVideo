@@ -371,16 +371,24 @@ class SafetensorLayers:
                     or offset < 0 or count < 0 or offset + count > plane.numel()
                     or size != count * plane.element_size()):
                 raise ValueError('Invalid streamed destination: ' + key)
-            reads.setdefault(self.keys[key], []).append((start, size, dtype, offset))
+            reads.setdefault(self.keys[key], []).append((start, size, dtype, offset, name))
         for path in reads:
             self.check(path)
         entry = self.host_views.get(index) if self.host_views is not None else None
+        if entry is not None and any(name not in entry[0] or entry[0][name].numel() != size
+                                     for entries in reads.values() for _, size, _, _, name in entries):
+            # Views are kept by tensor name. One that cannot serve this layout
+            # is dropped rather than copied to a guessed plane offset.
+            self._release(index)
+            entry = None
         if entry is not None:
             views, _, size = entry
             # torch copies release the GIL, so the inference thread keeps launching.
             try:
-                for source, dtype, begin, length in views:
-                    planes[dtype].detach().view(torch.uint8)[begin:begin + length].copy_(source)
+                for entries in reads.values():
+                    for _, length, dtype, offset, name in entries:
+                        begin = offset * planes[dtype].element_size()
+                        planes[dtype].detach().view(torch.uint8)[begin:begin + length].copy_(views[name])
             finally:
                 for path in reads:
                     self.check(path)
@@ -400,7 +408,7 @@ class SafetensorLayers:
                     observed = _file_identity(os.fstat(stream.fileno()))
                     if observed != self.handle_files[path]:
                         raise CheckpointChangedError(path, 'handle', self.handle_files[path], observed)
-                    for start, size, dtype, offset in sorted(entries, key=lambda row: row[0]):
+                    for start, size, dtype, offset, _ in sorted(entries, key=lambda row: row[0]):
                         stream.seek(start)
                         begin = offset * planes[dtype].element_size()
                         target = buffers[dtype][begin:begin + size]
@@ -413,19 +421,43 @@ class SafetensorLayers:
             if self.host_views is not None:
                 size = sum(row[1] for entries in reads.values() for row in entries)
                 if host_view_fits(size, self.host_view_reserve):
-                    self._adopt(index, reads, planes, size)
+                    self._adopt(index, reads, size)
         finally:
             for path in reads:
                 self.check(path)
         return True
 
-    def _adopt(self, index, reads, planes, size):
+    def adopt(self, index):
+        """Keep a layer that loading just read as views, so its first pass reads no disk.
+
+        Pinned groups admitted after it consume the RAM that cached these
+        pages: a 768p request after a 20 s one read its 16 GiB of unpinned
+        layers again during the first step. Admission and shedding are the
+        same as for a layer adopted after its first direct read.
+        """
+        if self.host_views is None or index in self.host_views:
+            return False
+        prefix = self.prefixes[index]
+        reads = {}
+        for key, path in self.keys.items():
+            if key.startswith(prefix):
+                start, size, _, _ = self.byte_ranges[key]
+                reads.setdefault(path, []).append((start, size, None, None, key[len(prefix):]))
+        size = sum(row[1] for entries in reads.values() for row in entries)
+        if not reads or not host_view_fits(size, self.host_view_reserve):
+            return False
+        for path in reads:
+            self.check(path)
+        self._adopt(index, reads, size)
+        return index in self.host_views
+
+    def _adopt(self, index, reads, size):
         """Keep the layer just read resident as read-only views of its checkpoint."""
         import mmap
         import os
         import warnings
         import torch
-        views, mappings = [], []
+        views, mappings = {}, []
         for path, entries in reads.items():
             with path.open('rb', buffering=0) as stream:
                 observed = _file_identity(os.fstat(stream.fileno()))
@@ -443,12 +475,12 @@ class SafetensorLayers:
                 # Read-only checkpoint bytes; these tensors are only ever copy sources.
                 warnings.simplefilter('ignore', UserWarning)
                 data = torch.frombuffer(mapping, dtype=torch.uint8)
-            for start, length, dtype, offset in entries:
-                views.append((data[start:start + length], dtype, offset * planes[dtype].element_size(), length))
+            for start, length, _, _, name in entries:
+                views[name] = data[start:start + length]
         # The direct read just left these pages in the file cache. Touch every
         # page now, so they join this process's working set before the next
         # streamed reads recycle the standby list.
-        for source, *_ in views:
+        for source in views.values():
             source[::mmap.PAGESIZE].sum()
         self.host_views[index] = (views, mappings, size)
         self.host_view_bytes += size

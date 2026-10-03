@@ -2,6 +2,7 @@
 import ctypes as C
 from functools import lru_cache
 import os
+import time
 
 DWORD, BOOL, HANDLE, SIZE_T = C.c_uint32, C.c_int32, C.c_void_p, C.c_size_t
 QWORD = C.c_uint64
@@ -354,6 +355,10 @@ class ProcessMemory:
         self.minimum_effective = None
         self.complete = self.io_complete = True
         self.io = {}
+        self.io_baseline = {}
+        # Process creation times are FILETIMEs. A process created before this
+        # observation (a resident worker) already counts earlier requests.
+        self.started_tick = int((time.time() + 11644473600) * 10**7)
         self.errors = []
         self.excluded = []
 
@@ -392,7 +397,11 @@ class ProcessMemory:
                 rss += row['rss_bytes']
                 private += row['private_commit_bytes']
                 resident += row['private_working_set_bytes']
-                self.io[(pid, row['start_tick'])] = (row['read_bytes'], row['write_bytes'])
+                key = (pid, row['start_tick'])
+                if key not in self.io_baseline:
+                    self.io_baseline[key] = ((row['read_bytes'], row['write_bytes'])
+                                             if row['start_tick'] < self.started_tick else (0, 0))
+                self.io[key] = (row['read_bytes'], row['write_bytes'])
                 self.io_complete &= row['io_complete']
             except InaccessibleProcess as error:
                 names = process_names() if names is None else names
@@ -487,10 +496,10 @@ class ProcessMemory:
                 'system_min_commit_available_bytes': self.minimum_commit,
                 'effective_min_available_bytes': self.minimum_effective,
                 'ram_observation_samples': self.samples,
-                'process_tree_disk_read_bytes': sum(v[0] for v in self.io.values()),
-                'process_tree_disk_write_bytes': sum(v[1] for v in self.io.values()),
-                'process_tree_io_complete': self.io_complete, 'process_tree_io_version': 3,
-                'process_tree_io_scope': 'Windows per-process transfer counters, retained by PID/creation time; includes cached I/O, not physical disk traffic.',
+                'process_tree_disk_read_bytes': sum(max(0, v[0] - self.io_baseline[k][0]) for k, v in self.io.items()),
+                'process_tree_disk_write_bytes': sum(max(0, v[1] - self.io_baseline[k][1]) for k, v in self.io.items()),
+                'process_tree_io_complete': self.io_complete, 'process_tree_io_version': 4,
+                'process_tree_io_scope': 'Windows per-process transfer counters, retained by PID/creation time and counted from this observation: a process created earlier (a resident worker) contributes only transfers after its first sample. Includes cached I/O, not physical disk traffic.',
                 'ram_observation_scope': 'RAM guard is the summed private working set (ProcessVmCounters): resident private bytes, excluding mapped files and nonresident commit. PSS unavailable; this is not PSS and does not apportion shared pages. Working set and private commit are retained for diagnosis only and must not be compared against a RAM budget: the working set counts resident mapped file pages, which grow with free RAM, and WDDM charges GPU allocations to PrivateUsage without residency while per-PID VRAM attribution is unavailable. Effective availability adds back this tree own resident non-private pages, which are clean mapped weight pages the kernel can drop, because GlobalMemoryStatusEx counts only free and standby pages unlike Linux MemAvailable; it stays bounded by commit headroom and total RAM and never credits system-wide cache. Pagefile not added to physical RAM.'}
 
 

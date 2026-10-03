@@ -74,7 +74,7 @@ def main():
                 if diagnostics is not None:
                     diagnostics.finish(False)
                 traceback.print_exc()
-                from .adaptive import classify_failure
+                from .adaptive import classify_failure, cuda_runtime_error
                 failure = classify_failure(error)
                 if request.get('metrics'):
                     from .monitoring import save
@@ -96,7 +96,12 @@ def main():
                             retained.update(failure_resources(sys.modules['torch'], query_cuda=failure['kind'] != 'cuda_error'))
                         metrics['gpu'] = retained['gpu']
                     save(path, metrics)
-                if failure['kind'] == 'cuda_error':
+                # Any CUDA runtime error except an allocation failure can leave
+                # this context unusable, not only the known sticky ones. After
+                # 1080p failed with "CUDA error: invalid argument" on an H2D
+                # copy, the next request's text encoder in this same process
+                # failed with the same error. A fresh worker costs a reload.
+                if failure['kind'] == 'cuda_error' or cuda_runtime_error(error):
                     log.flush()
                     import os
                     os._exit(74)

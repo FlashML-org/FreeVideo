@@ -23,6 +23,19 @@ class WorkerExit(RuntimeError):
                          (code, log, self.log.read_text(encoding='utf-8', errors='replace')[-4000:]))
 
 
+def cuda_runtime_error(error):
+    """A CUDA runtime error other than an allocation failure anywhere in the
+    exception chain, whether or not it is a known sticky error."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        text = str(error).lower()
+        if 'cuda error' in text and 'out of memory' not in text:
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 def classify_failure(error, metrics=None):
     """Only positively identified resource failures are retriable.
 

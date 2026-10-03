@@ -912,7 +912,15 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     ram_wants = max(0, 50 - max(0, int(host_room // block_bytes)))
     if not small:
         resident = min(resident, max(RESIDENT_TARGET, ram_wants))
-    streamed_weights = (50 - resident) * block_bytes + host_activation + 2 * GiB > retention_budget
+    # Windows reads non-streamed offloaded blocks into private memory (pread;
+    # a section view would be charged to commit in full). The RAM guard counts
+    # it, it cannot be reclaimed, and pins planned after that load-all pass find
+    # no room: after a 20 s request, 27.98 GiB RTX 5060 Ti, the next 768p plan
+    # crossed this threshold and sampled with 21.2 GiB private, nothing pinned
+    # and 2.5 GiB available. Streaming pins a bounded subset block by block and
+    # keeps read-only views of the rest, which avoid rereads while RAM allows.
+    streamed_weights = ((hardware.system == 'Windows' and resident < 50)
+                        or (50 - resident) * block_bytes + host_activation + 2 * GiB > retention_budget)
     if streamed_weights:
         # When the remaining weights exceed RAM, a bounded retained subset
         # prevents rereading those bytes every step. This addresses disk I/O,
@@ -1013,7 +1021,10 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     if residual_offload:
         notes.append('The original small path exceeds the live VRAM budget: stage residuals in one reusable CPU buffer, preserving kernel shapes, dtype and every requested row. Host weight caching leaves an additional %.2f GiB for this buffer. Extra transfers cost time; this is a capacity route, not a claimed speedup.' % (residual_host / GiB))
     if streamed_weights:
-        notes.append('Live RAM cannot retain all offloaded mappings: keep at most %.3f GB pinned, reopen only remaining layers per transfer; no arithmetic or attention change.' % pin)
+        if hardware.system == 'Windows':
+            notes.append('Windows streams offloaded layers: keep at most %.3f GB pinned and read-only views of the rest while RAM allows, reopening a layer only after its view is shed; no arithmetic or attention change.' % pin)
+        else:
+            notes.append('Live RAM cannot retain all offloaded mappings: keep at most %.3f GB pinned, reopen only remaining layers per transfer; no arithmetic or attention change.' % pin)
         notes.append('Host weight cache keeps %.2f GiB for this path\'s working memory, inside the separate OS growth reserve; the runtime rechecks available RAM.' % (host_headroom / GiB))
     if hardware.architecture == 'ampere':
         notes.append('Ampere keeps FP8 weight storage and uses bounded BF16 compute; no native FP8 tensor-core claim.')
