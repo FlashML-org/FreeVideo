@@ -85,6 +85,8 @@ class WindowAttention:
         if 'sage2' in (self.global_backend, self.window_backend):
             if not importlib.metadata.version('sageattention').startswith('2.'):
                 raise ImportError('The sage2 route requires SageAttention 2.x; the tested version is 2.2.0.')
+            from .triton_compat import activate
+            activate()
             from sageattention import sageattn
             self.attention = sageattn
             if self.window_varlen and self.window_backend == 'sage2':

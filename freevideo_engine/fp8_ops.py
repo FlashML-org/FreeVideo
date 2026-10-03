@@ -5,6 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .triton_compat import activate
+activate()
+
 from src.models.ops import fp8_linear as official
 
 

@@ -12,6 +12,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .triton_compat import activate
+activate()
+
 from .kernel_capabilities import fp8_implementation
 
 ACCUMULATOR_BYTES = 32 * 1024 * 1024

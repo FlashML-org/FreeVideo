@@ -8,6 +8,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .triton_compat import activate
+activate()
+
 
 @triton.jit
 def _decode_e4m3(bits):

@@ -10,7 +10,7 @@ from .paths import data_root
 
 PACKAGES = ('torch', 'triton', 'triton-windows', 'diffusers', 'sageattention', 'flash-attn', 'flash-attn-4')
 COMPUTE_FILES = ('attention.py', 'probe.py', 'fp8_gemm.py', 'fp8_ops.py', 'weight_only.py',
-                 'kernel_capabilities.py', 'doctor.py', 'fa4_guard.py', 'runtime.py',
+                 'kernel_capabilities.py', 'doctor.py', 'fa4_guard.py', 'triton_compat.py', 'runtime.py',
                  'head_chunk.py', 'blocks.py', 'packing.py', 'dependencies.json')
 
 
