@@ -9,6 +9,7 @@ import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
+import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -139,9 +140,20 @@ export function openStudio(node) {
     const section = (label, parent = controls) => { const wrap = el('section', null, 'fv-section'); wrap.append(el('div', label, 'fv-label')); parent.append(wrap); return wrap; };
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };
-    const prompt = el('textarea'); prompt.value = value(node, 'text') || ''; prompt.placeholder = t('Describe the scene, movement, dialogue and sound…', '描述画面、动作、对白和声音…'); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
+    syncReferencePrompt(node, t);
+    const prompt = el('textarea'); prompt.value = value(node, 'text') || ''; prompt.placeholder = t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
     prompt.disabled = linked(node, 'text'); prompt.oninput = () => set(node, 'text', prompt.value);
-    section(t('Describe your scene', '描述画面')).append(prompt, promptGuide());
+    const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
+    const references = attachReferencePicker(prompt, {items: () => referenceItems(node), t, view, host: dialog,
+        addMedia: () => { mediaDetails.open = true; mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
+    const mention = button('@', () => references.open(), 'fv-reference-trigger');
+    mention.title = t('Reference media (@)', '引用素材（@）'); mention.setAttribute('aria-label', mention.title);
+    mention.disabled = prompt.disabled; mention.onpointerdown = e => e.preventDefault(); promptEditor.append(mention);
+    cleanup.push(() => references.dispose());
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== value(node, 'text')) prompt.value = value(node, 'text') || ''; references.refresh(); } };
+    window.addEventListener('freevideo-reference-prompt', promptChanged);
+    cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
+    section(t('Describe your scene', '描述画面')).append(promptEditor, promptGuide());
     const canvas = section(t('Frame & duration', '画幅与时长'));
     const shapes = el('div', null, 'fv-shapes'); canvas.append(shapes);
     const dimensionsLinked = linked(node, 'width') || linked(node, 'height');

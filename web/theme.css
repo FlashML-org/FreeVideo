@@ -1,7 +1,7 @@
 /* One token table for the web views, mirroring freevideo_engine/branding.py so
    a control looks the same in the launcher and in ComfyUI. Scope the tokens to
    our own views; never change ComfyUI's theme. */
-:where(.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog){
+:where(.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker){
   /* Surfaces, from the backdrop up to a hovered control; mirrors branding.py. */
   --fv-bg:#111720;--fv-canvas:#161e29;--fv-card:#1a222e;--fv-raised:#212a37;--fv-hover:#2a3341;
   --fv-border:#2a3443;--fv-sheen:#35404e;

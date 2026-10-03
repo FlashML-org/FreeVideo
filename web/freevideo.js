@@ -6,6 +6,7 @@ import { createGenerationProgress } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';
+import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -183,6 +184,19 @@ function mediaPanel(node, mount = null) {
 }
 
 function resultPanel(node) {
+    const input = node.widgets?.find(w => w.name === 'text')?.inputEl;
+    if (input?.tagName === 'TEXTAREA') {
+        const picker = attachReferencePicker(input, {items: () => referenceItems(node), t: text, view: viewURL});
+        const changed = e => {
+            if (String(e.detail) !== String(node.id)) return;
+            const value = node.widgets.find(w => w.name === 'text').value;
+            if (input.value !== value) input.value = value;
+            picker.refresh();
+        };
+        window.addEventListener('freevideo-reference-prompt', changed);
+        const removed = node.onRemoved;
+        node.onRemoved = function (...args) { picker.dispose(); window.removeEventListener('freevideo-reference-prompt', changed); return removed?.apply(this, args); };
+    }
     node.addDOMWidget('freevideo_prompt_guide', 'freevideo_prompt_guide', promptGuide(),
         {serialize: false, getMinHeight: () => 58, getMaxHeight: () => 76});
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "result";
@@ -215,7 +229,7 @@ function resultPanel(node) {
     const panelHeight = () => (hasLoRA() ? 240 : 140) + (node.freevideoFailure ? 280 : 0) + (node.freevideoProgress ? 190 : 0);
     node.addDOMWidget("freevideo_result", "freevideo_result", panel, {serialize: false, getMinHeight: panelHeight, getMaxHeight: panelHeight});
     const connected = node.onConnectionsChange, configured = node.onConfigure;
-    node.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); warn(); return result; };
+    node.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); warn(); queueMicrotask(syncPrompts); return result; };
     node.onConfigure = function (...args) { const result = configured?.apply(this, args); warn(); return result; };
     warn();
     node.freevideoShowPrewarm = function (value) {
@@ -259,6 +273,13 @@ function resultPanel(node) {
     };
 }
 
+let configuringGraph = false;
+function syncPrompts(reset = false) {
+    if (configuringGraph && reset !== true) return;
+    for (const node of app.graph?._nodes || []) if (node.type === 'FreeVideoGenerate') syncReferencePrompt(node, text, reset === true);
+}
+window.addEventListener('freevideo-media', () => syncPrompts());
+
 const progressConnection = createProgressConnection(api, message => {
     const node = app.graph?.getNodeById(message.node);
     if (!node?.freevideoShowProgress) return false;
@@ -270,8 +291,14 @@ const progressConnection = createProgressConnection(api, message => {
 
 app.registerExtension({
     name: "FreeVideo.UnifiedMedia",
+    beforeConfigureGraph() { configuringGraph = true; },
     async setup() { progressConnection.start(); installNavigation(openStudio); await notifyCompatibility(); },
     async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData.name === 'FreeVideoReference') {
+            const connected = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); queueMicrotask(syncPrompts); return result; };
+            return;
+        }
         if (!["FreeVideoMedia", "FreeVideoGenerate", "FreeVideoLoRAStack"].includes(nodeData.name)) return;
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -304,6 +331,8 @@ app.registerExtension({
         };
     },
     afterConfigureGraph() {
+        syncPrompts(true);
+        configuringGraph = false;
         progressConnection.reset();
         progressConnection.refresh();
         refreshNavigation();

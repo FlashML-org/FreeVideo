@@ -1,0 +1,12 @@
+.fv-prompt-editor{position:relative}.fv-studio .fv-prompt-editor textarea{padding-bottom:40px}
+.fv-studio .fv-reference-trigger{position:absolute;right:9px;bottom:9px;min-height:27px;width:30px;padding:0;font-size:17px;border:0;background:var(--fv-raised);color:var(--fv-muted)}
+.fv-reference-picker{box-sizing:border-box;position:fixed;inset:auto;margin:0;padding:6px;border:1px solid var(--fv-border,#3a414c);border-radius:14px;background:var(--fv-card,#1a202a);color:var(--fv-ink,#eee);box-shadow:0 14px 42px #0006;font:13px/1.4 var(--fv-font,system-ui);z-index:10000;max-height:280px;overflow:hidden;animation:fv-reference-appear .12s ease-out}
+.fv-reference-picker[hidden]{display:none!important}.fv-reference-options{max-height:266px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.fv-reference-option{display:flex;align-items:center;gap:10px;min-height:59px;padding:7px;border-radius:9px;cursor:pointer}
+.fv-reference-option[aria-selected=true]{background:var(--fv-selected,#2d3949)}
+.fv-reference-thumb{display:grid;place-items:center;width:40px;height:40px;flex:none;object-fit:cover;border-radius:7px;background:var(--fv-raised,#252e39);font-size:21px;color:var(--fv-muted,#a9b3c4)}
+.fv-reference-option>span:not(.fv-reference-thumb){flex:1;min-width:0}.fv-reference-option strong,.fv-reference-option small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-reference-option strong{font-size:13px;font-weight:550}.fv-reference-option small{font-size:11px;color:var(--fv-muted,#a9b3c4);margin-top:3px}.fv-reference-option code{font:11px var(--fv-font,system-ui);color:var(--fv-muted,#a9b3c4);white-space:nowrap}
+.fv-reference-empty{padding:18px 12px;color:var(--fv-muted,#a9b3c4)}.fv-reference-picker button{margin:0 12px 10px;padding:5px 10px;border:1px solid var(--fv-border,#3a414c);border-radius:8px;background:var(--fv-raised,#252e39);color:inherit;cursor:pointer;font:inherit}
+@keyframes fv-reference-appear{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.fv-reference-picker{animation:none}}
