@@ -255,6 +255,23 @@ def reduced_pinning(profile, failure, phase, previous_ram_retries):
                'Retain host caches with a smaller pin budget; a second RAM failure uses the bounded streaming fallback.')
 
 
+def nonlocal_exhausted(failure):
+    """A CUDA out-of-memory raised while the WDDM non-local budget, not VRAM, was full.
+
+    Page-locked host memory counts against that budget. A 20 s request failed
+    with non-local usage at 13.14 of 13.24 GiB, 10.68 GiB of VRAM free and no
+    caching-allocator OOM; the failed allocation itself is not in the usage.
+    """
+    gpu = failure.get('gpu') if isinstance(failure.get('gpu'), dict) else {}
+    values = [gpu.get(key) for key in ('nonlocal_budget_bytes', 'nonlocal_usage_bytes',
+                                       'local_budget_bytes', 'local_usage_bytes')]
+    if not all(type(value) is int and value >= 0 for value in values) or not values[0]:
+        return False
+    budget, usage, local_budget, local_usage = values
+    return (usage >= budget - 2**30 and local_usage <= local_budget - 2 * 2**30
+            and not gpu.get('allocator_ooms'))
+
+
 def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries=0, previous_gpu_retries=0,
                    sampling_complete=False):
     """A bounded neutral fallback; never change request, backend or chunking.
@@ -279,13 +296,23 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
         if options.get(name) != new:
             changes[section+'.'+name] = {'from': options.get(name), 'to': new}
             options[name] = new
+    host_pins = failure['kind'] == 'gpu_oom' and nonlocal_exhausted(failure)
     if failure['kind'] == 'gpu_oom':
-        if recompute_recovery:
+        if host_pins and phase in ('load', 'sample') and (engine.get('pin_host_gb', 0.) > 0 or engine.get('pin_host_weights')):
+            # Page-locked memory ran out, not VRAM: return pinned weights and
+            # keep every GPU setting. Halve once, then pin nothing.
+            change('engine', 'pin_host_gb', 0. if previous_gpu_retries else round(engine.get('pin_host_gb', 0.) / 2, 3))
+            for name in ('pin_host_weights', 'preload_host'):
+                if engine.get(name):
+                    change('engine', name, False)
+        elif recompute_recovery:
             # Keep the up/down GEMM row shapes, FP8 global scale and requested
             # output. Only regenerate identical FF tiles instead of stashing
             # the full intermediate matrix which actually failed to allocate.
             change('engine', 'fp8_ff_recompute', True)
         elif phase == 'decode' or resume_finalization:
+            if host_pins:
+                change('decoder', 'pin_weights', False)
             change('decoder', 'offload', True)
             change('decoder', 'prefetch', False)
             change('decoder', 'stream_output', True)
@@ -382,8 +409,9 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                               'chunk changes require local complete-request equivalence.', 'changes': {}}
     if 'policy' in value:
         value['policy'].update(engine=dict(engine), decoder=dict(decoder))
+    cause = 'page-locked memory exhausted the WDDM non-local budget' if host_pins else failure['kind']
     return value, dict(reason='Fresh worker after %s; preserve geometry, steps, seed, precision, '
-                             'attention and chunk arithmetic.' % failure['kind'], changes=changes,
+                             'attention and chunk arithmetic.' % cause, changes=changes,
                        numerical_class='same-shape-ff-recompute' if recompute_recovery else 'placement-only',
                        measurement=failure, ram_recovery=ram_recovery)
 

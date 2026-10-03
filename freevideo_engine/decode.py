@@ -15,7 +15,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                    preload=False, pin_weights=False, artifacts_dir=None, phase_callback=None,
                    stream_output=False, stream_weights=False, resident_blocks=0, model_cache=None,
                    linear_compute_cache=False):
-    from diffusers import AutoencoderKLMiniMaxH3, AutoencoderKLMiniMaxH3Audio
+    from diffusers import AutoencoderKLMiniMaxH3
     from diffusers.utils.export_utils import encode_video
     from src.inference.render import PIXEL_MEAN, PIXEL_STD, FPS
 
@@ -46,61 +46,28 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         vae = model_cache.take('video_vae', vae_key)
     vae_cache_hit = vae is not None
     if vae is None:
-        if linear_compute_cache:
-            from .vae_weights import load_video_decoder
-            layers = AutoencoderKLMiniMaxH3.load_config(
-                str(Path(base)/'vae'), local_files_only=True)['decoder_num_layers']
-            count = resident_blocks if offload else layers
-            if stream_weights:
-                from .streamed_weights import SafetensorLayers
-                weight_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
-                    [f'decoder.transformer_blocks.{index}.' for index in range(count, layers)],
-                    intermediate_dtype=torch.float32)
-            vae, compute_cache_metrics = load_video_decoder(base, resident_blocks=count,
-                                                           weight_source=weight_source)
-        else:
-            # Diffusers' default safetensors loader uses mmap.  Clean mappings
-            # are reclaimable on Linux, but Windows charges the section view
-            # against system commit until every tensor/view is gone.  Decode
-            # happens after sampling has already consumed most of the budget,
-            # so make this one-shot VAE load bounded on Windows as well.
-            from .system import windows
-            options = {'disable_mmap': True} if windows() else {}
-            try:
-                vae = AutoencoderKLMiniMaxH3.from_pretrained(
-                    str(base), subfolder='vae', local_files_only=True, **options)
-            except TypeError as error:
-                if options and 'disable_mmap' in str(error):
-                    raise RuntimeError(
-                        'The Windows runtime needs a Diffusers build with disable_mmap support; rerun setup.') from error
-                raise
+        # Decode runs after sampling has consumed most of the RAM budget.
+        # from_pretrained would hold the whole 9.7 GiB VAE on the CPU (Windows:
+        # whole 4.71 GiB shard reads); read only decoder tensors, one at a time,
+        # straight to their device. Without the Linear cache all stay FP32.
+        from .vae_weights import load_video_decoder
+        layers = AutoencoderKLMiniMaxH3.load_config(
+            str(Path(base)/'vae'), local_files_only=True)['decoder_num_layers']
+        count = resident_blocks if offload else layers
+        if stream_weights:
+            from .streamed_weights import SafetensorLayers
+            weight_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
+                [f'decoder.transformer_blocks.{index}.' for index in range(count, layers)],
+                intermediate_dtype=torch.float32 if linear_compute_cache else None)
+        vae, compute_cache_metrics = load_video_decoder(base, resident_blocks=count, weight_source=weight_source,
+                                                       linear_fp16=linear_compute_cache)
     vae.eval().requires_grad_(False)
     if type(resident_blocks) is not int or not 0 <= resident_blocks <= len(vae.decoder.transformer_blocks):
         raise ValueError('VAE resident block count is outside this decoder')
     vae.encoder = None
     vae.quant_conv = None
-    if stream_weights and weight_source is None:
-        from .streamed_weights import SafetensorLayers
-        weight_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
-            [f'decoder.transformer_blocks.{index}.' for index in range(resident_blocks, len(vae.decoder.transformer_blocks))])
-    # Generation only uses the decoder; release unused encoder mappings.
     vae.post_quant_conv.to('cuda')
     if offload:
-        if resident_blocks and not linear_compute_cache:
-            from .streamed_weights import SafetensorLayers
-            from .offload import cpu_weights
-            # Read through short-lived mappings. Reading from the loader's
-            # shared shard mapping would keep already-uploaded pages resident
-            # on the host while unrelated offloaded tensors still refer to it.
-            resident_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
-                [f'decoder.transformer_blocks.{index}.' for index in range(resident_blocks)])
-            for index, block in enumerate(list(vae.decoder.transformer_blocks)[:resident_blocks]):
-                layout = [(value, name, value.dtype, 0, value.numel(), value.shape)
-                          for name, value in cpu_weights(block)]
-                with resident_source.layer(index, layout) as weights:
-                    for parameter, name, *_ in layout:
-                        parameter.data = weights[name].to('cuda')
-            del resident_source, layout, weights, parameter, block
         for name, child in vae.decoder.named_children():
             if name != 'transformer_blocks':
                 child.to('cuda')
@@ -214,16 +181,8 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             model_cache.make_room('audio_vae', 1*2**30, model=audio_vae, ram_need=256*2**20)
         audio_cache_hit = audio_vae is not None
         if audio_vae is None:
-            from .system import windows
-            options = {'disable_mmap': True} if windows() else {}
-            try:
-                audio_vae = AutoencoderKLMiniMaxH3Audio.from_pretrained(
-                    str(base), subfolder='audio_vae', local_files_only=True, **options).to('cuda')
-            except TypeError as error:
-                if options and 'disable_mmap' in str(error):
-                    raise RuntimeError(
-                        'The Windows runtime needs a Diffusers build with disable_mmap support; rerun setup.') from error
-                raise
+            from .vae_weights import load_audio_vae
+            audio_vae, _ = load_audio_vae(base)
         if model_cache is not None:
             model_cache.put('audio_vae', audio_key, audio_vae)
         audio_vae.eval().requires_grad_(False)

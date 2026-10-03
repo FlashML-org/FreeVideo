@@ -157,21 +157,16 @@ def encode_latents(normalized, value, base, canvas, *, resident=None):
     import gc
     import numpy as np
     import torch
-    from diffusers import AutoencoderKLMiniMaxH3, AutoencoderKLMiniMaxH3Audio
     from diffusers.modular_pipelines.minimax_h3.encoders import encode_vae_condition
+    from .vae_weights import load_audio_vae, load_video_encoder
     from src.inference.render import PIXEL_MEAN, PIXEL_STD
     refs = [{'kind': row['kind']} for row in normalized]
     if any(row.get('pixels') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding image/video references'}), flush=True)
-        vae = AutoencoderKLMiniMaxH3.from_pretrained(base, subfolder='vae')
-        # Conditioning never decodes. Drop unused decoder weights before CUDA
-        # placement; the independent output decoder is loaded after sampling.
-        vae.decoder = None
-        vae.post_quant_conv = None
-        if resident is not None:
-            resident.input_vae_room(vae, canvas)
-        vae.to('cuda')
-        vae.eval().requires_grad_(False)
+        # Conditioning never decodes: the 9.0 GiB decoder in the shared shards
+        # is not read. The independent output decoder is loaded after sampling.
+        vae, _ = load_video_encoder(base, before_upload=None if resident is None else
+                                    lambda model: resident.input_vae_room(model, canvas))
         for row, ref in zip(normalized, refs):
             if row.get('pixels'):
                 mapped = np.load(row['pixels'], mmap_mode='r', allow_pickle=False)
@@ -189,11 +184,8 @@ def encode_latents(normalized, value, base, canvas, *, resident=None):
         torch.cuda.empty_cache()
     if any(row.get('audio') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
-        vae = AutoencoderKLMiniMaxH3Audio.from_pretrained(base, subfolder='audio_vae')
-        if resident is not None:
-            resident.input_vae_room(vae, canvas, audio=True)
-        vae.to('cuda')
-        vae.eval().requires_grad_(False)
+        vae, _ = load_audio_vae(base, before_upload=None if resident is None else
+                                lambda model: resident.input_vae_room(model, canvas, audio=True))
         mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
         std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
         if vae.config.sampling_rate != 32000:
