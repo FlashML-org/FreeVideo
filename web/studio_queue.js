@@ -16,7 +16,8 @@ export function seededPrompt(snapshot, nodeId, seedIndex, seed) {
     return prompt;
 }
 
-export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 2000, onResult = () => {}} = {}) {
+export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 2000, onResult = () => {},
+    formatError = error => error} = {}) {
     nodeId = String(nodeId);
     let running = null, pending = [], submitting = false, loop = null, timer = null;
     let refreshing = null, refreshAgain = false, lastError = null, disposed = false;
@@ -57,8 +58,15 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         }
         session.lastSeed = seed;
         const prompt = seededPrompt(session.snapshot, nodeId, session.seedIndex, seed);
-        const reply = await api.queuePrompt(0, prompt);
-        if (!reply?.prompt_id) throw new Error('submit_failed');
+        let reply;
+        try {
+            reply = await api.queuePrompt(0, prompt);
+            if (!reply?.prompt_id) throw new Error('submit_failed');
+        } catch (error) {
+            // Format while the submitted snapshot is still available. The
+            // editor may already contain different text by the time it fails.
+            throw formatError(error, prompt);
+        }
         remember(reply.prompt_id);
         if (session.repeat) {
             session.waiting = reply.prompt_id;

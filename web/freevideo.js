@@ -198,11 +198,13 @@ function resultPanel(node) {
     node.onRemoved = function (...args) { progress.dispose(); return removed?.apply(this, args); };
     const failure = createErrorPanel(text);
     node.freevideoShowFailure = detail => {
+        const context = {stage: 'execution', node, graph: app.graph, progress: node.freevideoProgress};
         node.freevideoStopProgress();
-        node.freevideoFailure = errorText(detail); failure.show(node.freevideoFailure);
+        node.freevideoFailureReport = failure.show(detail, true, context);
+        node.freevideoFailure = errorText(node.freevideoFailureReport);
         panel.append(failure.element); node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
     };
-    node.freevideoClearFailure = () => { node.freevideoFailure = ''; failure.clear(); };
+    node.freevideoClearFailure = () => { node.freevideoFailure = ''; node.freevideoFailureReport = null; failure.clear(); };
     const warning = el('div', '', 'fv-note');
     const hasLoRA = () => node.inputs?.some(input => input.name === 'loras' && input.link != null);
     const warn = () => {
@@ -323,7 +325,22 @@ api.addEventListener('freevideo_prewarm', event => {
 });
 
 api.addEventListener('execution_error', event => {
-    app.graph?.getNodeById(event.detail?.node_id)?.freevideoShowFailure?.(event.detail);
+    // An upstream loader/media node can stop FreeVideo before its own node is
+    // entered. Retain that error even while the creative workspace is closed.
+    for (const node of app.graph?._nodes || []) {
+        if (!node.freevideoShowFailure) continue;
+        const pending = [node], seen = new Set();
+        while (pending.length) {
+            const current = pending.pop();
+            if (!current || seen.has(String(current.id))) continue;
+            seen.add(String(current.id));
+            for (const input of current.inputs || []) {
+                const link = input.link != null ? node.graph?.links[input.link] : null;
+                if (link) pending.push(node.graph?.getNodeById(link.origin_id));
+            }
+        }
+        if (seen.has(String(event.detail?.node_id))) node.freevideoShowFailure(event.detail);
+    }
 });
 api.addEventListener('executing', event => {
     const id = typeof event.detail === 'object' ? event.detail?.node : event.detail;

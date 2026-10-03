@@ -1,4 +1,4 @@
-import { createErrorPanel, errorText } from './error_panel.js';
+import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
@@ -257,7 +257,7 @@ export function openStudio(node) {
     const prewarm = el('div', node.freevideoPrewarm || '', 'fv-prewarm');
     output.append(status, stats, budget, links, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
-    if (node.freevideoFailure) failure.show(node.freevideoFailure, false);
+    if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
     function showResult(r) {
         if (!r?.video || disposed) return; result = r;
@@ -279,6 +279,7 @@ export function openStudio(node) {
     let busy = false, queued = false, cancelling = false, activePrompt = null, capturing = false;
     let runMode = 'single', queueState;
     if (!studioQueues.has(node)) studioQueues.set(node, createStudioQueue(api, node.id, {
+        formatError: (error, snapshot) => createErrorReport(error, {stage: 'submission', snapshot, node, graph: app.graph}),
         // Direct snapshot submission still feeds the same graph result panel.
         onResult: output => {
             if (app.graph?.getNodeById(node.id) !== node) { node.freevideoLastResult = output.freevideo_summary[0]; return; }
@@ -337,7 +338,21 @@ export function openStudio(node) {
         linked_seed: t('Use the seed in this panel for batch or loop generation.', '批量和循环生成需使用面板内的种子，请先断开种子输入的连接。'),
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
     }[error?.message] || error?.message || String(error));
-    function showQueueError(error) { status.dataset.error = 'true'; status.textContent = queueError(error); }
+    let lastQueueError = null;
+    function showQueueError(error) {
+        status.dataset.error = 'true';
+        // Polling and loop shutdown must not replace the original exception
+        // with a generic "loop stopped" notice or reopen a dismissed dialog.
+        if (['loop_stopped', 'queue_unavailable'].includes(error?.message)
+            && node.freevideoFailureReport && node.freevideoFailureReport.stage !== 'queue') return;
+        status.textContent = error?.schema === 'freevideo.error-report'
+            ? t('Submission failed. See the details below.', '提交失败，具体原因见下方。') : queueError(error);
+        const identity = error?.schema === 'freevideo.error-report' ? error : error?.message || error;
+        if (lastQueueError === identity) return;
+        lastQueueError = identity;
+        const report = failure.show(error, error?.schema === 'freevideo.error-report', {stage: 'queue', node, graph: app.graph});
+        node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
+    }
     function updateRunButton() {
         const submitting = capturing || queueState?.submitting;
         generate.disabled = submitting || (runMode === 'loop' && queueState?.looping);
@@ -409,6 +424,7 @@ export function openStudio(node) {
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         try {
+            lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
@@ -428,7 +444,7 @@ export function openStudio(node) {
                 set(node, 'seed', next); seed.value = next;
             }
             if (!queueController.state().error) status.textContent = '';
-        } catch (error) { showQueueError(error); }
+        } catch (error) { showQueueError(createErrorReport(error, {stage: 'submission', node, graph: app.graph})); }
         finally {
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
@@ -485,7 +501,7 @@ export function openStudio(node) {
     cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); });
     const listen = (type, handler) => { api.addEventListener(type, handler); cleanup.push(() => api.removeEventListener(type, handler)); };
     listen('status', () => { syncQueue().catch(() => {}); });
-    listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { failure.clear(); node.freevideoFailure = ''; busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });
+    listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });
     const progressChanged = e => {
         if (String(e.detail.node) !== String(node.id)) return;
         if (['failed', 'cancelled'].includes(e.detail.phase) || e.detail.result) {
@@ -511,14 +527,14 @@ export function openStudio(node) {
         }
         if (!seen.has(String(e.detail?.node_id))) return;
         busy = cancelling = false; updateRunButton(); hideProgress(); status.dataset.error = 'true';
-        node.freevideoFailure = errorText(e.detail);
-        failure.show(node.freevideoFailure);
+        node.freevideoFailureReport = failure.show(e.detail, true, {stage: 'execution', node, graph: app.graph, progress: node.freevideoProgress});
+        node.freevideoFailure = errorText(node.freevideoFailureReport);
         status.textContent = t('Generation stopped. See the explanation below.', '生成已停止，原因和处理建议见下方。');
     });
     listen('execution_interrupted', e => {
         if (activePrompt ? e.detail?.prompt_id !== activePrompt : String(e.detail?.node_id) !== String(node.id)) return;
         busy = cancelling = false; activePrompt = null; updateRunButton(); hideProgress();
-        failure.clear(); node.freevideoFailure = ''; status.dataset.error = 'false'; status.textContent = t('Cancelled', '已取消');
+        failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; status.dataset.error = 'false'; status.textContent = t('Cancelled', '已取消');
     });
     const escape = e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate.click(); } }; dialog.addEventListener('keydown', escape);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
