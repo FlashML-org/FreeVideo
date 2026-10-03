@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "version": "0.9.0",
+  "windows": {
+    "filename": "uv-0.9.0-py3-none-win_amd64.whl",
+    "bytes": 21387424,
+    "sha256": "ee5969cef61e8eef251ee14e573fa22b42bbe90a2d194b6de6d794baee176a9b",
+    "executable": "uv-0.9.0.data/scripts/uv.exe",
+    "executable_bytes": 60162048,
+    "sources": {
+      "official": "https://files.pythonhosted.org/packages/60/cd/98242bb85c92a06156ebfead3c3c9126e8dbb7872808b11a76428b9aaf4a/uv-0.9.0-py3-none-win_amd64.whl",
+      "tuna": "https://pypi.tuna.tsinghua.edu.cn/packages/60/cd/98242bb85c92a06156ebfead3c3c9126e8dbb7872808b11a76428b9aaf4a/uv-0.9.0-py3-none-win_amd64.whl"
+    },
+    "legacy_bytes": 20742706,
+    "legacy_sha256": "4bad2c47dafb52ad774072fb7a260e5c9f3dbf73441658db1128eb2aec5818eb"
+  }
+}

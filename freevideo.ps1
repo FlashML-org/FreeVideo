@@ -78,10 +78,6 @@ try {
         try {
             $versions = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'freevideo_engine\bootstrap_versions.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             $uvSpec = $versions.windows.uv
-            $archive = Join-Path $bootstrapRoot 'uv.zip'
-            $partial = "$archive.partial"
-            $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-            if (-not $curl) { throw 'curl.exe is missing. Repair the Windows curl installation, or install Python 3.9+ and rerun.' }
             $officialOnly = $freevideoArguments -contains '--network=official'
             for ($i = 0; $i -lt $freevideoArguments.Count - 1; $i++) {
                 if ($freevideoArguments[$i] -eq '--network' -and $freevideoArguments[$i + 1] -eq 'official') { $officialOnly = $true }
@@ -91,34 +87,10 @@ try {
             $proxyRoutes = @('inherited')
             if ($env:FREEVIDEO_PROXY_MODE -eq 'direct') { $proxyRoutes = @('direct') }
             elseif ($env:FREEVIDEO_PROXY_MODE -ne 'proxy' -and ($env:HTTP_PROXY -or $env:HTTPS_PROXY -or $env:ALL_PROXY)) { $proxyRoutes += 'direct' }
-            $valid = (Test-Path -LiteralPath $archive) -and ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -eq $uvSpec.sha256)
-            if (-not $valid -and (Test-Path -LiteralPath $archive)) {
-                Move-Item -LiteralPath $archive -Destination "$archive.rejected-$([DateTime]::UtcNow.Ticks)"
-            }
-            foreach ($route in $routes) {
-              foreach ($proxyRoute in $proxyRoutes) {
-                if ($valid) { break }
-                $url = $uvSpec.url.Replace('https://github.com', $route)
-                Write-Progress -Activity 'FreeVideo bootstrap' -Status 'Download and verify package manager'
-                $curlArgs = @('--disable', '--fail', '--location', '--silent', '--show-error',
-                              '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5',
-                              '--max-time', '120', '--retry', '1', '--speed-limit', '1024', '--speed-time', '20',
-                              '--output', $partial, $url)
-                $curlExit = Invoke-FreeVideoBootstrapCommand -Executable $curl.Source -Arguments $curlArgs `
-                    -LogPath $bootstrapLog -Label "Download package manager ($proxyRoute connection)" -Direct:($proxyRoute -eq 'direct')
-                if ($curlExit -eq 0 -and (Test-Path -LiteralPath $partial) -and
-                    (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -eq $uvSpec.sha256) {
-                    Move-Item -LiteralPath $partial -Destination $archive
-                    $valid = $true
-                } elseif (Test-Path -LiteralPath $partial) {
-                    Move-Item -LiteralPath $partial -Destination "$partial.retained-$([DateTime]::UtcNow.Ticks)"
-                }
-              }
-            }
-            if (-not $valid) { throw "Package manager download failed integrity/network checks. Retry the same command; see $bootstrapLog" }
-            $toolsDirectory = Join-Path $bootstrapRoot ('uv-' + $uvSpec.version)
-            Expand-Archive -LiteralPath $archive -DestinationPath $toolsDirectory -Force
-            $uv = Join-Path $toolsDirectory $uvSpec.executable
+            $uvCatalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'freevideo_engine\uv_downloads.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $uv = Get-FreeVideoUv -Spec $uvSpec -Catalog $uvCatalog -BootstrapRoot $bootstrapRoot `
+                -EngineRoot $freevideoRoot -LogPath $bootstrapLog -GithubSources $routes `
+                -ProxyRoutes $proxyRoutes -OfficialOnly:$officialOnly
             $env:UV_PYTHON_INSTALL_DIR = Join-Path $bootstrapRoot 'python'
             $env:UV_HTTP_TIMEOUT = '20'
             $env:UV_HTTP_RETRIES = '1'

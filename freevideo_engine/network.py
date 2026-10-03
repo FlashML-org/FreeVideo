@@ -4,6 +4,7 @@ Only curl and Python stdlib are needed before setup. Proxy and direct routes are
 compared without changing user settings. Reports never include proxy credentials.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import deque
 import hashlib
 import html
 import json
@@ -649,8 +650,13 @@ def pause_download(network, name, path, retained, reason, *, details=None):
         (Path(path).name, reason, explanation))
 
 
+class DownloadError(RuntimeError):
+    """Every permitted source failed; an alternate artifact may be tried."""
+
+
 def download(candidates, path, expected, progress=None, *, network=None, env=None, size=None,
-             algorithm='sha256', git_blob=False, headers_for=None, stall_seconds=None, category='download'):
+             algorithm='sha256', git_blob=False, headers_for=None, stall_seconds=None, category='download',
+             low_speed_limit=1024, max_seconds=None, cycles=2):
     """Resume across ranked sources; hash before accepting, retain rejected bytes."""
     network = network or {}
     path = Path(path)
@@ -691,7 +697,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
             pass
     # Try the next ranked candidate promptly. The final candidate gets bounded
     # retries; every mirror must honor the retained prefix, with no silent reset.
-    for cycle in range(2):
+    for cycle in range(cycles):
         for candidate_index, (name, url, route) in enumerate(candidates):
             for restart in range(3 if model else 2):
                 offset = partial.stat().st_size if partial.exists() else 0
@@ -711,7 +717,9 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                 attempt_env = route_environment(network, category, name, env, route)
                 command = curl_command(timeout, attempt_env) + ['--output', str(partial), '--write-out', '%{http_code}']
                 if not model:
-                    command += ['--speed-limit', '1024', '--speed-time', str(stall_seconds)]
+                    command += ['--speed-limit', str(low_speed_limit), '--speed-time', str(stall_seconds)]
+                if max_seconds is not None:
+                    command += ['--max-time', str(max_seconds)]
                 if url.startswith('https://'):
                     command += ['--proto-redir', '=https']
                 if size:
@@ -730,6 +738,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                 oversized = None
                 stalled = False
                 last_body, previous_done = started, offset
+                recent = deque([(started, offset)])
                 try:
                     process.stdin.write(curl_config(url, headers_for(name) if headers_for else ()))
                     process.stdin.close()
@@ -740,7 +749,8 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                         if done > previous_done:
                             previous_done, last_body = done, time.monotonic()
                             remember_source()
-                        if model and time.monotonic()-last_body > stall_seconds:
+                        now = time.monotonic()
+                        if now-last_body > stall_seconds:
                             stalled = True
                             break
                         if size is not None and done > size:
@@ -750,7 +760,10 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                             oversized = done
                             break
                         if progress:
-                            progress(done, size or 0, max(0, done - offset) / max(.001, time.monotonic() - started))
+                            recent.append((now, done))
+                            while len(recent) > 2 and recent[1][0] < now - 5:
+                                recent.popleft()
+                            progress(done, size or 0, max(0, done - recent[0][1]) / max(.001, now - recent[0][0]))
                         try:
                             process.wait(timeout=.25)
                         except subprocess.TimeoutExpired:
@@ -803,10 +816,10 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                 alternatives = route_order(network, category, name, env)
                 if alternatives.index(route) + 1 < len(alternatives):
                     event(network, category=category, source=name, route=alternatives[alternatives.index(route)+1],
-                          file=path.name, action='route-retry', reason='curl-' + str(process.returncode), resume_bytes=current_size)
+                          file=path.name, action='route-retry', reason='no-progress' if stalled else 'curl-' + str(process.returncode), resume_bytes=current_size)
                 else:
                     source_health(network, category, name, False)
-                    event(network, category=category, source=name, route=route, file=path.name, action='fallback', reason='curl-' + str(process.returncode), http_status=status)
+                    event(network, category=category, source=name, route=route, file=path.name, action='fallback', reason='no-progress' if stalled else 'curl-' + str(process.returncode), http_status=status)
                 break
         if model and partial.exists() and partial.stat().st_size:
             if not network.get('allow_model_restart'):
@@ -814,7 +827,7 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
             event(network, category=category, source=name, file=path.name, action='restart-approved',
                   retained_bytes=partial.stat().st_size, reason='resume-unavailable')
             retain_partial(partial, 'restart-approved')
-    raise RuntimeError('Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name)
+    raise DownloadError('Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name)
 
 
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):

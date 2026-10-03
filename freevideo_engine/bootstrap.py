@@ -812,21 +812,39 @@ class Installer:
         self.monitor_thread = threading.Thread(target=sample, name='setup-memory', daemon=True)
         self.monitor_thread.start()
 
-    def fetch(self, url, path, sha):
+    def fetch(self, url, path, sha, *, size=None, candidates=None, category=None,
+              low_speed_limit=1024, max_seconds=None, cycles=2):
         key = 'download-' + path.name
         title = ('Prepare download tools' if path.name.startswith('uv') else
                  'Download GPU acceleration' if path.suffix == '.whl' else
                  'Prepare Git' if 'git' in path.name.lower() else 'Download CUDA build tools')
-        self.ui.begin(key, title, detail=path.name if self.ui.verbose else 'Download and verify required files')
+        self.ui.begin(key, title, detail=path.name if self.ui.verbose or candidates is not None else 'Download and verify required files')
+        transfer = {}
+        def source_detail():
+            names = {'pypi': {'official': 'PyPI', 'tuna': 'Tsinghua mirror'},
+                     'github': {'official': 'GitHub', 'ghfast': 'GitHub mirror'}}
+            source = names.get(category, {}).get(transfer.get('source'), transfer.get('source', ''))
+            return ' · Source: ' + source if source else ''
         def progress(done, total, speed):
             if self.cancel.is_set():
                 raise RuntimeError('Installation cancelled; partial download retained.')
+            rate_text = ('%.1f KiB/s' % (speed/1024) if speed < 2**20 else '%.1f MiB/s' % (speed/2**20))
             self.ui.update(key, done=done, total=total, rate=speed, unit='bytes', scope=path.name,
-                detail=('%.1f MiB / %.1f MiB' % (done/2**20, total/2**20) if total else '%.1f MiB downloaded' % (done/2**20)) + ' · %.1f MiB/s' % (speed/2**20))
+                detail=(path.name + ' · ' if candidates is not None else '') +
+                    ('%.1f MiB / %.1f MiB' % (done/2**20, total/2**20) if total else '%.1f MiB downloaded' % (done/2**20)) +
+                    ' · ' + rate_text + source_detail())
         try:
-            feedback = lambda row: self.ui.update(key, detail='Source: %s · %s%s' %
-                (row['source'], row['action'], ' · ' + row['reason'] if row.get('reason') else ''))
-            download(url, path, sha, progress, networking=dict(self.network, event_callback=feedback), env=self.env)
+            def feedback(row):
+                transfer.update(row)
+                self.ui.update(key, detail=path.name + source_detail() + ' · ' + row['action'] +
+                               (' · ' + row['reason'] if row.get('reason') else ''))
+            networking = dict(self.network, event_callback=feedback)
+            if candidates is None:
+                download(url, path, sha, progress, networking=networking, env=self.env)
+            else:
+                network.download(candidates, path, sha, progress, network=networking, env=self.env,
+                                 size=size, category=category or 'download',
+                                 low_speed_limit=low_speed_limit, max_seconds=max_seconds, cycles=cycles)
         except BaseException:
             self.ui.end(key, success=False)
             raise
@@ -1162,21 +1180,24 @@ class Installer:
         return toolkit
 
     def execute(self):
-        self.ui.phase('Prepare Python', 0, 8)
+        self.ui.phase('Prepare download tools', 0, 8)
         uv_spec = self.versions['uv']
-        archive = self.root / 'downloads' / ('uv-windows.zip' if self.system == 'Windows' else 'uv.tar.gz')
-        from .system import bootstrap_root
-        previous = bootstrap_root(self.root) / ('uv.zip' if self.system == 'Windows' else 'uv-' + uv_spec['version'] + '.tar.gz')
-        if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
-            archive.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(previous, archive)
-            except OSError:
-                shutil.copyfile(previous, archive)
-        self.fetch(uv_spec['url'], archive, uv_spec['sha256'])
-        unpack(archive, self.root / 'tools')
-        uv = (self.root / 'tools' / uv_spec['executable'] if self.system == 'Windows' else
-              self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv')
+        if self.system == 'Windows':
+            from .uv_bootstrap import prepare_windows
+            uv = prepare_windows(self.root, uv_spec, self.network, self.env, self.fetch)
+        else:
+            archive = self.root / 'downloads' / 'uv.tar.gz'
+            from .system import bootstrap_root
+            previous = bootstrap_root(self.root) / ('uv-' + uv_spec['version'] + '.tar.gz')
+            if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    os.link(previous, archive)
+                except OSError:
+                    shutil.copyfile(previous, archive)
+            self.fetch(uv_spec['url'], archive, uv_spec['sha256'])
+            unpack(archive, self.root / 'tools')
+            uv = self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
         self.env['FREEVIDEO_UV'] = str(uv)
         from .install_schedule import run
         tasks, pythons, comfy = self.component_tasks(uv)

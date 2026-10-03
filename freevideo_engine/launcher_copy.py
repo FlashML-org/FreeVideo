@@ -12,6 +12,10 @@ SOURCES = {
 
 ZH = dict([
     ('Prepare Python', '准备 Python'), ('Install Python', '安装 Python'),
+    ('Prepare download tools', '准备下载工具'), ('Tsinghua mirror', '清华镜像'),
+    ('GitHub mirror', 'GitHub 镜像'), ('attempt', '正在连接'),
+    ('fallback', '正在切换下载源'), ('route-retry', '正在切换连接'),
+    ('verifying', '正在校验'), ('no-progress', '下载无进展'),
     ('Use existing Python', '复用 Python'), ('Create Python environment', '创建运行环境'),
     ('Install PyTorch + CUDA', '安装 GPU 运行环境'),
     ('Install engine dependencies', '安装生成组件'), ('Install encoder support', '安装编码组件'),
