@@ -215,18 +215,63 @@ def processes():
         lib.CloseHandle(snapshot)
 
 
+class InaccessibleProcess(PermissionError):
+    """OpenProcess refused even PROCESS_QUERY_LIMITED_INFORMATION for this PID."""
+
+
+def process_names():
+    """Executable names by PID for diagnostics; empty when a snapshot is unavailable."""
+    try:
+        lib = kernel32()
+        snapshot = lib.CreateToolhelp32Snapshot(2, 0)
+        if snapshot == C.c_void_p(-1).value:
+            return {}
+        try:
+            entry = ProcessEntry()
+            entry.dwSize = C.sizeof(entry)
+            names, more = {}, lib.Process32FirstW(snapshot, C.byref(entry))
+            for _ in range(1 << 16):
+                if not more:
+                    break
+                names[entry.pid] = entry.exe
+                more = lib.Process32NextW(snapshot, C.byref(entry))
+            return names
+        finally:
+            lib.CloseHandle(snapshot)
+    except (OSError, AttributeError, ValueError):
+        return {}
+
+
 def process_memory(pid, *, parent_start_tick=None):
     """Read counters; a tree query also returns identity for old/exited children."""
     lib = kernel32()
     # Current Windows supports these queries without PROCESS_VM_READ. Keep a
     # synchronized handle so exit during a query is checked on this same process,
     # not on a potentially recycled PID.
-    handle = lib.OpenProcess(0x1000 | 0x100000, False, pid)
+    handle, synchronized = lib.OpenProcess(0x1000 | 0x100000, False, pid), True
     if not handle:
-        if C.get_last_error() == 87:  # PID exited between enumeration and OpenProcess.
+        error = C.get_last_error()
+        if error == 87:  # PID exited between enumeration and OpenProcess.
             return None
-        raise C.WinError(C.get_last_error())
+        if error != 5:
+            raise C.WinError(error)
+        # Another account's process can grant PROCESS_QUERY_LIMITED_INFORMATION
+        # but not SYNCHRONIZE; read it with that right and judge exit by its code.
+        handle, synchronized = lib.OpenProcess(0x1000, False, pid), False
+        if not handle:
+            error = C.get_last_error()
+            if error == 87:
+                return None
+            if error == 5:
+                raise InaccessibleProcess(5, 'Access is denied.', None, 5)
+            raise C.WinError(error)
     started = None
+    def signaled():
+        if synchronized:
+            return lib.WaitForSingleObject(handle, 0) == 0
+        code = DWORD()
+        # An exit code equal to STILL_ACTIVE reads as running, never as exited.
+        return bool(lib.GetExitCodeProcess(handle, C.byref(code))) and code.value != 259
     def exited_row():
         return {'start_tick': started, 'exited': True} if parent_start_tick is not None and started is not None else None
     try:
@@ -238,7 +283,7 @@ def process_memory(pid, *, parent_start_tick=None):
         # for memory counters (which may be inaccessible for system processes).
         if parent_start_tick is not None and started < parent_start_tick:
             return {'start_tick': started, 'excluded': 'predates-parent'}
-        if lib.WaitForSingleObject(handle, 0) == 0:
+        if signaled():
             return exited_row()
         memory, io = ProcessCounters(), IoCounters()
         memory.cb = C.sizeof(memory)
@@ -252,7 +297,7 @@ def process_memory(pid, *, parent_start_tick=None):
                 'read_bytes': io.read_bytes if io_ok else 0, 'write_bytes': io.write_bytes if io_ok else 0,
                 'io_complete': bool(io_ok), 'start_tick': started}
     except OSError:
-        if lib.WaitForSingleObject(handle, 0) == 0:
+        if signaled():
             return exited_row()
         raise
     finally:
@@ -283,6 +328,7 @@ class ProcessMemory:
         pending, visited = [(root_pid, None)], set()
         rss = private = resident = count = 0
         incomplete, errors, excluded = [], [], []
+        names = None
         # Parents first: each edge must agree with the processes' creation times.
         for pid, parent_started in pending:
             if pid in visited:
@@ -311,12 +357,34 @@ class ProcessMemory:
                 resident += row['private_working_set_bytes']
                 self.io[(pid, row['start_tick'])] = (row['read_bytes'], row['write_bytes'])
                 self.io_complete &= row['io_complete']
+            except InaccessibleProcess as error:
+                names = process_names() if names is None else names
+                if parent_started is None:
+                    # The request's own worker must stay measurable.
+                    incomplete.append(pid)
+                    errors.append(dict(pid=pid, parent_pid=parents.get(pid), exe=names.get(pid),
+                        error=str(error), winerror=5, exited=None))
+                else:
+                    # FreeVideo starts its helpers under the same account, so it
+                    # can always open them. A descendant refused even limited
+                    # query was started by Windows in another context (a crash
+                    # reporter, for one); its pages are not this request's
+                    # working set, and the system availability floor still
+                    # applies. One such child used to abort a generation.
+                    excluded.append(dict(pid=pid, parent_pid=parents.get(pid), exe=names.get(pid),
+                        start_tick=None, parent_start_tick=parent_started, reason='inaccessible'))
+                    pending.extend((child, parent_started) for child in children.get(pid, []))
+                    continue
             except OSError as error:
                 exited = process_exited(pid)
                 if exited is not True:
+                    names = process_names() if names is None else names
                     incomplete.append(pid)
-                    errors.append(dict(pid=pid, parent_pid=parents.get(pid),
-                        error=str(error), winerror=getattr(error, 'winerror', None), exited=exited))
+                    error_row = dict(pid=pid, parent_pid=parents.get(pid),
+                        error=str(error), winerror=getattr(error, 'winerror', None), exited=exited)
+                    if names.get(pid):
+                        error_row['exe'] = names[pid]
+                    errors.append(error_row)
             pending.extend((child, started) for child in children.get(pid, []))
         self.errors.extend(errors[:max(0, 16-len(self.errors))])
         self.excluded.extend(excluded[:max(0, 16-len(self.excluded))])
