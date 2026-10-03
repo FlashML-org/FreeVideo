@@ -5,6 +5,7 @@ import { openSetup } from './setup.js';
 import { wordmark } from './branding.js';
 import { createGenerationProgress } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
+import { createUpdateNotice } from './updates.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
@@ -137,6 +138,8 @@ export function openStudio(node) {
     header.append(brand, navigation, tools);
     const body = el('div', null, 'fv-body'), controls = el('div', null, 'fv-controls'), output = el('div', null, 'fv-preview-column');
     dialog.append(header, body); body.append(controls, output);
+    const updateNotice = createUpdateNotice(cn);
+    output.append(updateNotice.element); cleanup.push(updateNotice.dispose);
     const section = (label, parent = controls) => { const wrap = el('section', null, 'fv-section'); wrap.append(el('div', label, 'fv-label')); parent.append(wrap); return wrap; };
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };

@@ -19,7 +19,7 @@ class Element {
 
 test('main browser entry registers both views and preserves node hooks', async () => {
     const extensions = [], opened = [], installed = [], events = new EventTarget();
-    let refreshed = 0, compatibilityChecks = 0;
+    let refreshed = 0, compatibilityChecks = 0, updateChecks = 0;
     const app = {
         registerExtension(extension) { extensions.push(extension); },
         graph: {extra: {freevideo_studio: true}, _nodes: [], getNodeById() {}},
@@ -35,6 +35,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         createGenerationProgress: () => ({element: new Element('progress'), report: new Element('report'), updateReport() {}, update() {}, hide() {}, dispose() {}}),
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
+        startUpdateChecks: () => { updateChecks++; },
         installNavigation: callback => installed.push(callback),
         refreshNavigation: () => refreshed++, preferredView: () => null,
         attachReferencePicker() {}, referenceItems: () => [], syncReferencePrompt() {},
@@ -58,6 +59,7 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace("import { createGenerationProgress } from './generation_progress.js';", 'const {createGenerationProgress} = globalThis.__freevideoEntryTest;')
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
+            .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest;');
         await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
@@ -66,6 +68,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         await extension.setup();
         assert.equal(installed.length, 1, 'the Create / Nodes navigation must be installed');
         assert.equal(compatibilityChecks, 1);
+        assert.equal(updateChecks, 1);
 
         class GenerateNode {
             constructor() {

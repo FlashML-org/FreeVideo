@@ -5,6 +5,7 @@ import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
 import { createGenerationProgress } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
+import { startUpdateChecks } from './updates.js';
 import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 
@@ -300,7 +301,7 @@ const progressConnection = createProgressConnection(api, message => {
 app.registerExtension({
     name: "FreeVideo.UnifiedMedia",
     beforeConfigureGraph() { configuringGraph = true; },
-    async setup() { progressConnection.start(); installNavigation(openStudio); await notifyCompatibility(); },
+    async setup() { progressConnection.start(); installNavigation(openStudio); startUpdateChecks(); await notifyCompatibility(); },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === 'FreeVideoReference') {
             const connected = nodeType.prototype.onConnectionsChange;

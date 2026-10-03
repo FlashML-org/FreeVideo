@@ -1,6 +1,7 @@
 import { app } from '../../scripts/app.js';
 import { openSetup } from './setup.js';
 import { wordmark } from './branding.js';
+import { createUpdateNotice } from './updates.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -88,5 +89,6 @@ export function installNavigation(openStudio) {
         };
         guide.append(text, dismiss); toolbar.append(guide);
     }
+    toolbar.append(createUpdateNotice(cn).element);
     document.body.append(toolbar); refreshNavigation();
 }

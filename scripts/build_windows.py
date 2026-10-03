@@ -35,6 +35,7 @@ def stamp_source(staged, identity):
     version = identity['version']
     stamp = staged / 'freevideo_engine/build-version.txt'
     stamp.write_text(version, encoding='utf-8')
+    (stamp.parent / 'build-identity.json').write_text(json.dumps(identity), encoding='utf-8')
     project = staged / 'pyproject.toml'
     project.write_text(re.sub(r'^version = "[^"]+"', 'version = "' + version + '"',
                               project.read_text(encoding='utf-8'), count=1, flags=re.M), encoding='utf-8')
@@ -122,6 +123,7 @@ def main():
         '--paths', str(ROOT), '--add-data', str(staged) + os.pathsep + 'engine-source',
         '--add-data', str(build_file) + os.pathsep + '.',
         '--add-data', str(stamp) + os.pathsep + 'freevideo_engine',
+        '--add-data', str(stamp.parent / 'build-identity.json') + os.pathsep + 'freevideo_engine',
         '--add-data', str(notices) + os.pathsep + 'freevideo_engine/launcher/licenses/bundled',
         *bundle_data_args(ROOT),
         '--hidden-import', 'psutil',

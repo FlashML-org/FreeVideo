@@ -120,8 +120,8 @@ def _json(url, token, *, binary=False, limit=2**20):
         return json.loads(b''.join(_bytes(response, limit)))
 
 
-def check(current, token=''):
-    build_identity(current)
+def latest_release(token=''):
+    """Read and validate the published build without downloading an executable."""
     release = _json(API + '/releases/tags/' + CHANNEL, token)
     if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != CHANNEL:
         raise ValueError('No published Windows update is available')
@@ -132,6 +132,12 @@ def check(current, token=''):
     candidate = manifest(_json(API + '/releases/assets/' + str(metadata['id']), token, binary=True, limit=65536))
     if candidate['asset']['id'] != executable.get('id') or candidate['asset']['bytes'] != executable.get('size'):
         raise ValueError('A new release is being published; check again shortly')
+    return candidate
+
+
+def check(current, token=''):
+    build_identity(current)
+    candidate = latest_release(token)
     return candidate if newer(candidate, current) else None
 
 

@@ -1,0 +1,6 @@
+.fv-update-notice{box-sizing:border-box;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-card);color:var(--fv-ink);font:12px/1.5 var(--fv-font);animation:fv-panel-enter .25s ease}
+.fv-update-notice[hidden]{display:none!important}.fv-update-notice>span{flex:1;min-width:160px;overflow-wrap:anywhere}
+.fv-update-notice a,.fv-update-notice button,.fv-studio .fv-update-notice a,.fv-studio .fv-update-notice button{min-height:30px;padding:4px 8px;border:0;border-radius:6px;font:inherit;background:transparent;white-space:nowrap;cursor:pointer;text-decoration:none;color:var(--fv-accent)}
+.fv-update-notice button,.fv-studio .fv-update-notice button{color:var(--fv-muted)}.fv-update-notice a:hover,.fv-update-notice button:hover{background:var(--fv-hover)}
+.fv-update-notice :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}.fv-view-navigation>.fv-update-notice{margin-top:8px;max-width:560px}
+@media(prefers-reduced-motion:reduce){.fv-update-notice{animation:none}}
