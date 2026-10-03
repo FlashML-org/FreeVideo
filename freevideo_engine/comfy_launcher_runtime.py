@@ -58,9 +58,8 @@ def disk_review(plan, engine, comfy, *, separate, new_comfy):
         disk['free_bytes'] = shutil.disk_usage(parent).free
         disk['needed_bytes'] += amount
         extra += amount
-    errors = ['Insufficient disk space for ComfyUI and the engine: ' + ', '.join(d['paths'])
-              for d in disks.values() if d['needed_bytes'] > d['free_bytes']]
-    return extra, list(disks.values()), errors
+    from .install_disk import errors
+    return extra, list(disks.values()), errors(disks.values())
 
 
 def layout(path):
