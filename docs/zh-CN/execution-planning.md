@@ -63,4 +63,4 @@ Windows，1344 × 768、10 秒、二次采样：
 | GeForce RTX 5090 | 32GB + 64GB | 122 秒 |
 | GeForce RTX 5060 Ti | 16GB + 32GB | 486 秒 |
 | GeForce RTX 4060 Ti | 16GB + 32GB | 558 秒 |
-| GeForce RTX 4060 Ti | 8GB + 64GB | 603 秒 |
+| GeForce RTX 4060 Ti（社区实测，[#22](https://github.com/FlashML-org/FreeVideo/issues/22)） | 8GB + 64GB | 603 秒 |
