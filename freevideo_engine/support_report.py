@@ -88,6 +88,22 @@ def summarize(report, engine, encoding):
         hints.append(dict(kind='configuration', message='CPU attention/residual staging is active. Check live VRAM and '
             'policy decisions before attributing slow sampling to GPU compute.',
             message_zh='已启用 attention 输出或残差的 CPU 暂存；需结合当时剩余显存及策略理由判断采样变慢原因。'))
+    passes = engine.get('sampling_passes')
+    for index, row in enumerate(passes if isinstance(passes, list) else [], 1):
+        # Staging is a capacity route. Several GiB of the budget left unused
+        # means the plan was more conservative than the request needed, as in
+        # issue #30: 13.5 of 30.3 GiB on a 32 GB card.
+        staged = mapping(mapping(row).get('compute_configuration'))
+        admission = mapping(mapping(row).get('pass_cache_admission'))
+        budget, peak = number(admission.get('gpu_budget_bytes')), number(admission.get('measured_peak_reserved_bytes'))
+        if (staged.get('attention_cpu_outputs') or staged.get('residual_offload')) and budget and peak \
+                and budget - peak >= 4 * 2**30:
+            hints.append(dict(kind='needs_investigation',
+                message='Sampling pass %d staged in host memory while its peak used %.1f of a %.1f GiB VRAM budget. '
+                        'The plan may be more conservative than this request needs; please report it with this file.'
+                        % (index, peak / 2**30, budget / 2**30),
+                message_zh='第 %d 遍采样启用了内存暂存，但峰值只用了 %.1f／%.1f GiB 显存预算，策略可能过于保守，请附上本文件反馈。'
+                           % (index, peak / 2**30, budget / 2**30)))
     reserved = number(engine.get('torch_peak_reserved_bytes'))
     capacity = number(hardware.get('vram_total'))
     if hardware.get('system') == 'Windows' and reserved and capacity and reserved > capacity:

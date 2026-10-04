@@ -614,6 +614,19 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # 10.00 GiB budget for a group measuring 10.53.
         while head > 4 and activation_bytes(head, effective_tokens) > gpu_budget:
             head //= 2
+        # The GPU-output workspace below adds the wider group's surcharge to
+        # its head-8 estimate, and a miss there moves attention outputs and
+        # residuals to host memory. Narrow the group first; the second
+        # transfer slot is given up below before anything is staged. A 32 GB
+        # RTX 4080 SUPER at 1344x768x736 fit sixteen heads by 0.10 GiB, missed
+        # their workspace by 4.77 and staged both, holding 14.5 of its 32 GB at
+        # 360-595 s/step; eight heads needed 25.07 of its 30.40 GiB budget.
+        # Without this, 26 to 30 s at 1344x768 staged and 31 to 38 s did not.
+        if not small and not ampere:
+            while head > 8 and (windows_gpu_output_workspace(effective_tokens, prefetch=False)
+                                + activation_bytes(head, effective_tokens)
+                                - activation_bytes(8, effective_tokens)) > gpu_budget:
+                head //= 2
     else:
         # The widest group the request can afford at its own token count.
         # A fixed budget threshold cannot express this: 41472 tokens take
@@ -835,6 +848,11 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             if host_need > ram_budget >= (50 - without_slot) * block_bytes + int(2.5 * GiB):
                 prefetch = False
                 windows_workspace -= BLOCK_BYTES
+        # The second transfer slot is worth about 2.5%; host attention outputs
+        # and a host residual cost 15% to 2x. Give up the slot first.
+        if prefetch and windows_workspace > gpu_budget >= windows_workspace - BLOCK_BYTES:
+            prefetch = False
+            windows_workspace -= BLOCK_BYTES
         resident = min(resident, max(0, int((gpu_budget - windows_workspace) / block_bytes)))
         # Do not enable FF recomputation merely to retain all host mappings.
         # Native 5060 Ti measurements show that doing so makes the same layer
