@@ -847,7 +847,9 @@ ApplicationWindow {
         id: updateDialog; visible: !s.busy && (s.update.remind || manualUpdate)
         objectName: "updateDialog"
         width: Math.min(540,win.width-40); closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onClosed: { manualUpdate = false; backend.dismissUpdate() }
+        // State changes also close it (an update started from the banner or a
+        // page, or a task began); only a user dismissal counts as "Later".
+        onClosed: { if (!s.busy && (s.update.remind || manualUpdate)) backend.dismissUpdate(); manualUpdate = false }
         height: Math.min(updateContents.implicitHeight + padding*2, win.height-48)
         contentItem: ScrollView {
             id: updateScroll; clip: true; contentWidth: availableWidth

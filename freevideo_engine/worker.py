@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import threading
 import time
 
 import torch
@@ -24,6 +25,32 @@ def main():
         generate(request)
 
 
+def prefetch_compiler_keys():
+    """Hash the installed torch and Triton sources while models load.
+
+    The first torch.compile in a process hashes every installed torch source
+    file into its cache key; on Windows with real-time scanning that took
+    7-8 s of the first sampling step. torch caches the value per process and
+    can compute it ahead; the keys themselves are unchanged."""
+    def work():
+        try:
+            from torch._inductor import codecache
+        except Exception:
+            return
+        for key in (getattr(codecache, 'torch_key', None), getattr(codecache, 'triton_key', None)):
+            try:
+                prefetch = getattr(key, 'prefetch', None)
+                if callable(prefetch):
+                    prefetch()
+                elif callable(key):
+                    key()
+            except Exception:
+                pass  # The first compile computes it as before.
+    thread = threading.Thread(target=work, name='freevideo-compiler-keys', daemon=True)
+    thread.start()
+    return thread
+
+
 def device_memory_report(budget_bytes, allocator_limit_bytes=None, *, reserve_bytes=0, capacity_trial=False):
     from .gpu_budget import configure
     return configure(torch, budget_bytes, allocator_limit_bytes, reserve_bytes=reserve_bytes,
@@ -33,6 +60,7 @@ def device_memory_report(budget_bytes, allocator_limit_bytes=None, *, reserve_by
 def generate(request, resident=None):
     torch.set_num_threads(8)
     started = time.perf_counter()
+    prefetch_compiler_keys()
     engine = None
     live_budget = None
     decode_read_ahead = None

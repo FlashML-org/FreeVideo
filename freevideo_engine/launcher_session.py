@@ -535,7 +535,7 @@ class Session:
         elif self.update_intent == 'launcher' and updater and not updater.busy:
             if row.get('status') == 'ready':
                 self._restart_when_idle()
-            else:
+            elif row.get('status') != 'downloading':
                 self.update_intent, self.update_waiting = None, False
         elif self.update_intent == 'engine':
             self._update_engine_when_idle()
