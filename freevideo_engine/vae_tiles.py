@@ -13,11 +13,30 @@ Prologue/epilogue adapted from diffusers' MiniMaxH3VideoViTDecoder3d, pinned at
 VDN 30b6b380c2482f3519469350810c2955d8847fd9. Spatial tile geometry, per-tile
 GEMM shapes, temporal chunking and stitching remain those of the original VAE.
 """
+import os
 import types
 from contextlib import nullcontext
 import torch
 
 from .offload import LayerOffloader
+
+
+def compile_blocks(decoder):
+    """Compile the decoder block once; all blocks share the graph, their weights are inputs.
+
+    Decoding 1344x768x243 on Windows with an RTX 5060 Ti took 114.9 s eager. Compiled, it
+    took 100.6 s in a fresh process that loaded the graph from the disk cache, and 105.4 s
+    in one that compiled it first. On an RTX PRO 6000 it took 18.1 s and 14.6 s. The
+    rounding of fused RMSNorm, rotary and residual work moves 0.7% of output values by
+    one or two 8-bit levels. FREEVIDEO_VAE_COMPILE=0 keeps the eager blocks.
+    """
+    if os.environ.get('FREEVIDEO_VAE_COMPILE', '1').lower() in ('0', 'off', 'false'):
+        return False
+    for block in decoder.transformer_blocks:
+        if not getattr(block, 'freevideo_compiled', False):
+            block.forward = torch.compile(block.forward, dynamic=False)
+            block.freevideo_compiled = True
+    return True
 
 
 class TileDecoder:

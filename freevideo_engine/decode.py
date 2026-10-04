@@ -7,7 +7,7 @@ import time
 import torch
 
 from .offload import LayerOffloader, pin_layer_weights
-from .vae_tiles import TileDecoder
+from .vae_tiles import TileDecoder, compile_blocks
 
 
 @torch.no_grad()
@@ -110,6 +110,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                     pass
         del buffer
         preload_seconds = time.perf_counter() - read_started
+    compiled_blocks = compile_blocks(vae.decoder)
     mean = torch.tensor(vae.config.latents_mean, device='cuda').view(1, -1, 1, 1, 1)
     std = torch.tensor(vae.config.latents_std, device='cuda').view(1, -1, 1, 1, 1)
     torch.cuda.synchronize()
@@ -229,6 +230,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             'decoded_artifact_save_seconds': artifact_seconds,
             'streamed_video_output': stream_output, 'streamed_vae_weights': stream_weights,
             'vae_resident_blocks': resident_blocks,
+            'vae_compiled_blocks': compiled_blocks,
             'video_postprocess_seconds': streamed_timings.get('video_postprocess_seconds'),
             'vae_pinned_weight_bytes': pinned_bytes,
             'decode_save_seconds': time.perf_counter() - started,
