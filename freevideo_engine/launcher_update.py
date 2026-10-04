@@ -237,6 +237,47 @@ def forward_approved(current, root):
         return False  # A missing/corrupt cached update leaves the original app usable.
 
 
+def handoff(candidate, root, source, *, pages=False):
+    """Record which explicit action restarted into a newer launcher, and
+    whether FreeVideo pages may be waiting to reconnect."""
+    save(Path(root) / 'updates' / 'handoff.json',
+         dict(revision=manifest(candidate)['revision'], source=source, pages=bool(pages), at=time.time()))
+
+
+def resumed_update(current, root, *, seconds=600):
+    """Return the explicit update that just started this build, at most once.
+
+    The approved receipt must name this exact build and be recent. Launchers
+    without a handoff record (older releases) still count as an update. The
+    original shortcut later forwards here again, so a marker prevents a second
+    automatic engine update for the same build.
+    """
+    updates = Path(root) / 'updates'
+    try:
+        receipt = updates / 'active.json'
+        value = json.loads(receipt.read_text(encoding='utf-8'))
+        candidate = manifest(value.get('candidate'))
+        age = time.time() - receipt.stat().st_mtime
+        marker = updates / 'resumed.json'
+        if marker.is_file() and json.loads(marker.read_text(encoding='utf-8')).get('revision') == current['revision']:
+            return None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if (value.get('approved') is not True or candidate['revision'] != current['revision']
+            or candidate['built_at'] != current['built_at'] or not -60 <= age <= seconds):
+        return None
+    result = dict(source='launcher', pages=False)
+    try:
+        record = json.loads((updates / 'handoff.json').read_text(encoding='utf-8'))
+        if record.get('revision') == current['revision'] and -60 <= time.time() - record.get('at', 0) <= seconds:
+            source = record.get('source') if record.get('source') in ('launcher', 'browser') else 'launcher'
+            result = dict(source=source, pages=record.get('pages') is True or source == 'browser')
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    save(updates / 'resumed.json', dict(revision=current['revision'], at=time.time()))
+    return result
+
+
 class UpdateClient:
     def __init__(self, current, root, token=None):
         # Python 3.9 on Windows can leave a nonexistent relative path relative
@@ -261,7 +302,8 @@ class UpdateClient:
     def busy(self):
         return self.thread is not None and self.thread.is_alive()
 
-    def run(self, operation, candidate=None):
+    def run(self, operation, candidate=None, *, background=False):
+        """A background check keeps the shown state and ignores offline failures."""
         if self.busy:
             return
         if operation not in ('check', 'download'):
@@ -269,7 +311,9 @@ class UpdateClient:
         if operation == 'download' and self.current.get('packaging') == 'onedir':
             raise ValueError('Download and extract the updated folder ZIP from the release page')
         self.cancelled.clear()
-        self.state = dict(status='checking' if operation == 'check' else 'downloading', candidate=candidate)
+        quiet = background and operation == 'check'
+        if not quiet:
+            self.state = dict(status='checking' if operation == 'check' else 'downloading', candidate=candidate)
         def work():
             try:
                 if operation == 'check':
@@ -284,6 +328,8 @@ class UpdateClient:
                     download(candidate, self.root, self.token, progress=progress, cancel=self.cancelled)
                     self.state = dict(status='ready', candidate=candidate)
             except Exception as error:
+                if quiet:
+                    return  # The next periodic check retries without a reminder.
                 message = Redactor([(self.token, '<REDACTED>')] if self.token else []).text(str(error))
                 if isinstance(error, urllib.error.HTTPError) and error.code in (401, 403, 404):
                     message = 'GitHub update access unavailable. A private repository needs a GitHub token with read access; also check API rate limits.'

@@ -1,4 +1,5 @@
 """Widget-independent state for the Qt launcher; uses the existing installer."""
+import json
 import locale
 import os
 from pathlib import Path
@@ -16,8 +17,28 @@ from .model_status import FAMILIES, NAMES
 from .setup_progress import progress_text
 from .terminal_ui import clean, duration
 
+# Background launcher release checks while the window stays open.
+CHECK_SECONDS = 30 * 60
+# "Later" hides one reminder for this long; a newer release reminds at once.
+SNOOZE_SECONDS = 4 * 3600
+QUEUE_POLL_SECONDS = 3
+
 
 class Session:
+    # Update flow defaults; __init__ starts each launcher session from these.
+    update_snoozed = {}
+    update_intent = None
+    update_source = 'launcher'
+    update_waiting = update_restarting = False
+    engine_updating = engine_autoinstall = reload_expected = resume_pages = False
+    browser_wait = queue_state = queue_thread = bridge = None
+    clients_polled = queue_polled = resume_until = resume_polled = bridge_polled = 0.
+    bridge_pending = False
+    bridge_written = (0., None)
+    update_checked = 0.
+    page = 'comfy'
+    selected = installed_versions = None
+
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
         self.importer = Importer()
@@ -57,7 +78,10 @@ class Session:
         self.closing = False
         self.smoke = smoke
         self.reported_setup = None
-        self.update_snoozed = False
+        # An explicit update continues from tick() through update_intent:
+        # 'check', 'launcher' or 'engine'. Other defaults are class attributes.
+        self.update_snoozed = {}
+        self.installed_versions = {}
         if self.controller.restore(dict(saved, engine=self.form['engine'])):
             self.remember(self.controller.selection, persist=False)
             self.page = 'launcher'
@@ -71,6 +95,20 @@ class Session:
                 self.updater = UpdateClient(identity, launcher_root())
         if self.updater and not self.updater.busy:
             self.updater.run('check')
+        self.update_checked = time.monotonic()
+        if self.updater and not smoke:
+            # A restart from an explicit update finishes by updating the engine.
+            # Check now so the engine reminder does not flash first, and keep
+            # checking briefly in case the previous launcher writes late.
+            self.resume_until = time.monotonic() + 20
+            self._check_resumed(time.monotonic())
+        if controller is None and not smoke:
+            from .launcher_bridge import create
+            try:
+                self.bridge = create(launcher_root())
+                self.controller.update_bridge = self.bridge
+            except OSError:
+                self.bridge = None
         if self.form['environment_method'] == 'manual' and self.form['offline_runtime'] and not controller:
             root = Path(self.form['offline_runtime'])
             if (root / 'portable.json').is_file():
@@ -178,6 +216,7 @@ class Session:
             if getattr(self.controller, 'fixed_environment', False) is True:
                 self.controller.close()
                 self.controller = Controller(self.source)
+                self.controller.update_bridge = self.bridge
             self.page = 'comfy'; return
         if name == 'launcher' and self.selected:
             if not self.controller.restore({'installation': self.selected}):
@@ -185,11 +224,9 @@ class Session:
             self.page = 'launcher'
             return
         if name == 'update-engine' and self.selected:
-            self.persist()
-            self.controller.run('inspect', dict(self.form, token=self.token))
-            self.page = 'progress'
-            self.model_groups = []
-            self.started = time.monotonic()
+            self.update_intent, self.update_source = 'engine', 'launcher'
+            self.queue_state = None
+            self._update_engine_when_idle()
             return
         if name == 'back':
             self.page = 'comfy' if self.page == 'models' else 'models'
@@ -332,40 +369,274 @@ class Session:
 
         threading.Thread(target=work, name='freevideo-export-report', daemon=True).start()
 
+    def engine_update_pending(self):
+        """This launcher carries a newer engine than the installed one.
+
+        An older launcher opened later would otherwise offer a downgrade."""
+        if not (self.selected and self.controller.state.get('engine_update_available')):
+            return False
+        bundled = self.source_stamp(self.source)[1]
+        installed = self.source_stamp(self.selected.get('source'))[1]
+        return not (bundled and installed and installed > bundled)
+
+    def update_key(self):
+        """The current reminder: a newer launcher first, then the bundled engine."""
+        row = self.updater.state if self.updater else {}
+        if row.get('candidate') and row.get('status') in ('available', 'downloading', 'ready', 'error', 'cancelled'):
+            return 'launcher:' + str(row['candidate'].get('revision', ''))
+        if self.engine_update_pending():
+            return 'engine:' + __version__
+        return ''
+
     def dismiss_update(self):
-        self.update_snoozed = True
+        key = self.update_key()
+        if key:
+            self.update_snoozed = dict(self.update_snoozed, **{key: time.monotonic() + SNOOZE_SECONDS})
+        self.update_intent = None
+        self.update_waiting = False
         if self.updater and self.updater.state['status'] == 'downloading':
             self.updater.cancelled.set()
+
+    def _unsnooze(self):
+        key = self.update_key()
+        self.update_snoozed = {k: v for k, v in self.update_snoozed.items() if k != key}
 
     def check_update(self, token=''):
         if self.updater and not self.updater.busy:
             if token.strip():
                 self.updater.token = token.strip()
+            self.update_checked = time.monotonic()
             self.updater.run('check')
 
-    def update(self, token=''):
-        if not self.updater or self.updater.busy or self.controller.busy or self.importer.busy:
+    def update(self, token='', source='launcher'):
+        """One explicit update: the newest launcher if one is known, otherwise
+        the engine bundled with this launcher. Downloading, waiting for running
+        ComfyUI jobs and restarting continue from tick()."""
+        if self.controller.busy or self.importer.busy or self.closing:
+            if source == 'browser':
+                self.bridge_pending = True
             return
-        from .launcher_update import launch_download, RELEASE_PAGE, DownloadedLauncherUnavailable
-        from .windows_ux import open_browser
-        row = self.updater.state
-        if row['status'] == 'ready':
-            self.persist()
-            try:
-                launch_download(row['candidate'], self.updater.root, token=self.updater.token)
-            except DownloadedLauncherUnavailable:
-                self.error = ''
-                self.updater.run('download', row['candidate'])
-                return
-            self.closing = True
-        elif row.get('candidate'):
-            if self.updater.current.get('packaging') == 'onedir':
-                open_browser(RELEASE_PAGE)
-            else:
-                self.updater.run('download', row['candidate'])
-        else:
+        if self.updater and token.strip():
             self.updater.token = token.strip()
+        self.update_source = source
+        self.queue_state = None
+        row = self.updater.state if self.updater else {}
+        if self.updater and row.get('candidate') and row.get('status') != 'checking':
+            if self.updater.current.get('packaging') == 'onedir':
+                from .launcher_update import RELEASE_PAGE
+                from .windows_ux import open_browser
+                self.update_intent = None
+                open_browser(RELEASE_PAGE)
+                return
+            self._unsnooze()
+            self.update_intent = 'launcher'
+            if row['status'] == 'ready':
+                self._restart_when_idle()
+            elif not self.updater.busy:
+                self.updater.run('download', row['candidate'])
+        elif self.engine_update_pending():
+            self._unsnooze()
+            self.update_intent = 'engine'
+            self._update_engine_when_idle()
+        elif self.updater and not self.updater.busy:
+            self.update_intent = 'check'
+            self.update_checked = time.monotonic()
             self.updater.run('check')
+
+    def _queue_busy(self):
+        """True or False once known for a server this launcher owns, None before."""
+        owns = getattr(self.controller, 'owns_server', None)
+        if not callable(owns) or owns() is not True:
+            return False
+        now = time.monotonic()
+        if (self.queue_thread is None or not self.queue_thread.is_alive()) and (
+                self.queue_state is None or now - self.queue_polled >= QUEUE_POLL_SECONDS):
+            from .comfy_launcher_runtime import queue_busy
+            url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
+            self.queue_polled = now
+            def poll():
+                # Off the UI thread: a stalled server must not freeze the window.
+                self.queue_state = queue_busy(url)
+            self.queue_thread = threading.Thread(target=poll, name='freevideo-queue', daemon=True)
+            self.queue_thread.start()
+        return self.queue_state
+
+    def _restart_when_idle(self):
+        row = self.updater.state
+        if row.get('status') != 'ready' or self.update_restarting:
+            return
+        busy = self._queue_busy()
+        self.update_waiting = bool(busy)
+        if busy is not False:
+            return
+        from .launcher_update import DownloadedLauncherUnavailable, handoff, launch_download
+        self.persist()
+        try:
+            handoff(row['candidate'], self.updater.root, self.update_source,
+                    pages=self.controller.state.get('status') == 'open')
+            launch_download(row['candidate'], self.updater.root, token=self.updater.token)
+        except DownloadedLauncherUnavailable:
+            self.error = ''
+            self.updater.run('download', row['candidate'])
+            return
+        except Exception:
+            self.update_intent = None
+            raise
+        self.update_restarting = True
+        self._write_bridge_status(force=True)
+        self.closing = True
+
+    def _update_engine_when_idle(self):
+        if self.controller.busy or self.importer.busy:
+            return
+        busy = self._queue_busy()
+        self.update_waiting = bool(busy)
+        if busy is not False:
+            return
+        self.update_intent = None
+        self.engine_updating = self.engine_autoinstall = True
+        # Open pages reload themselves after the restart; without any, open
+        # the browser as soon as ComfyUI is ready.
+        self.reload_expected = (self.update_source == 'browser' or self.resume_pages
+                                or self.controller.state.get('status') == 'open')
+        self.browser_attempted = False
+        self.browser_wait = None
+        self.persist()
+        self.controller.run('inspect', dict(self.form, token=self.token))
+        self.page = 'progress'
+        self.model_groups = []
+        self.started = time.monotonic()
+
+    def _tick_updates(self):
+        now = time.monotonic()
+        updater = self.updater
+        if (updater and self.update_intent is None and not updater.busy and now - self.update_checked >= CHECK_SECONDS
+                and updater.state.get('status') in ('idle', 'current', 'available', 'error', 'cancelled')):
+            self.update_checked = now
+            updater.run('check', background=True)
+        if self.resume_until:
+            self._check_resumed(now)
+        if self.bridge and now - self.bridge_polled >= 1:
+            self.bridge_polled = now
+            from .launcher_bridge import take_request
+            request = take_request(self.bridge)
+            if request and request['action'] == 'cancel':
+                self.bridge_pending = False
+                if self.update_intent:
+                    self.dismiss_update()
+            elif request or (self.bridge_pending and not self.controller.busy):
+                self.bridge_pending = False
+                self.update(source='browser')
+        row = updater.state if updater else {}
+        if self.update_intent == 'check' and updater and not updater.busy:
+            self.update_intent = None
+            if row.get('candidate') or self.engine_update_pending():
+                self.update(source=self.update_source)
+        elif self.update_intent == 'launcher' and updater and not updater.busy:
+            if row.get('status') == 'ready':
+                self._restart_when_idle()
+            else:
+                self.update_intent, self.update_waiting = None, False
+        elif self.update_intent == 'engine':
+            self._update_engine_when_idle()
+        self._write_bridge_status()
+
+    def _check_resumed(self, now):
+        if now >= self.resume_until or self.update_intent:
+            self.resume_until = 0.
+        elif self.engine_update_pending() and now - self.resume_polled >= 1:
+            self.resume_polled = now
+            from .launcher_update import resumed_update
+            resumed = resumed_update(self.updater.current, self.updater.root)
+            if resumed:
+                self.resume_until = 0.
+                self.update_intent, self.update_source = 'engine', resumed['source']
+                self.resume_pages = resumed.get('pages', False)
+
+    def _clients_connected(self):
+        """A FreeVideo page reconnected to the restarted server."""
+        now = time.monotonic()
+        if now - self.clients_polled < 1:
+            return False
+        self.clients_polled = now
+        from .comfy_launcher_runtime import get_json
+        try:
+            return get_json(self.controller.state['url'].split('/?')[0] + '/freevideo/updates', timeout=1).get('clients', 0) > 0
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+
+    def update_phase(self):
+        row = self.updater.state if self.updater else {}
+        if self.update_restarting:
+            return 'restarting'
+        if self.engine_updating:
+            return 'engine'
+        if self.update_waiting:
+            return 'waiting'
+        if row.get('status') == 'downloading':
+            return 'downloading'
+        if self.update_intent and row.get('status') == 'checking':
+            return 'checking'
+        if self.selected and self.page == 'progress' and self.controller.state.get('status') == 'review':
+            return 'review'
+        return ''
+
+    def source_stamp(self, source):
+        """(version, built_at) of an engine source; a source checkout has neither."""
+        if not source:
+            return '', 0
+        if self.installed_versions is None:
+            self.installed_versions = {}
+        if str(source) not in self.installed_versions:
+            package = Path(source) / 'freevideo_engine'
+            try:
+                identity = json.loads((package / 'build-identity.json').read_text(encoding='utf-8'))
+                stamp = str(identity['version']), int(identity['built_at'])
+            except (OSError, ValueError, KeyError, TypeError):
+                try:
+                    stamp = (package / 'build-version.txt').read_text(encoding='utf-8').strip(), 0
+                except OSError:
+                    stamp = Path(source).name.split('-')[0], 0
+            self.installed_versions[str(source)] = stamp
+        return self.installed_versions[str(source)]
+
+    def installed_version(self):
+        return self.source_stamp((self.selected or {}).get('source'))[0]
+
+    def update_view(self):
+        row = dict(self.updater.state) if self.updater else dict(status='development')
+        # Only display fields from the update manifest, never access tokens.
+        view = {k: row[k] for k in ('status', 'error', 'progress', 'candidate') if k in row}
+        key = self.update_key()
+        view.update(engine=self.engine_update_pending(), current=__version__,
+                    installed=self.installed_version(), phase=self.update_phase(), key=key,
+                    manual=bool(self.updater and self.updater.current.get('packaging') == 'onedir'))
+        due = ((view.get('candidate') and row['status'] in ('available', 'ready', 'error'))
+               or (view['engine'] and self.page == 'launcher'))
+        view['remind'] = bool(key and due and self.update_snoozed.get(key, 0) <= time.monotonic()
+                              and not self.update_intent and not view['phase'])
+        return view
+
+    def _write_bridge_status(self, force=False):
+        if not self.bridge:
+            return
+        view = self.update_view()
+        candidate = view.get('candidate') or {}
+        value = dict(version=__version__, phase=view['phase'], status=view.get('status'),
+                     progress=view.get('progress'), manual=view['manual'],
+                     candidate=dict(version=candidate['version']) if candidate.get('version') else None,
+                     engine=dict(pending=view['engine'], version=__version__, installed=view['installed']),
+                     error=str(view.get('error') or '')[:500])
+        now = time.monotonic()
+        last, previous = self.bridge_written
+        if not force and value == previous and now - last < 5:
+            return
+        from .launcher_bridge import write_status
+        try:
+            write_status(self.bridge, value)
+            self.bridge_written = (now, value)
+        except OSError:
+            pass
 
     def close(self):
         self.importer.cancelled.set()
@@ -378,6 +649,8 @@ class Session:
             if self.updater:
                 self.updater.cancelled.set()
             self.controller.close()
+            from .launcher_bridge import remove
+            remove(self.bridge)
             self._closed = True
 
     def tick(self):
@@ -403,6 +676,16 @@ class Session:
 
         row = self.controller.state
         busy = self.controller.busy
+        if self.engine_autoinstall and not busy and row.get('action') == 'inspect' and row.get('status') != 'running':
+            self.engine_autoinstall = False
+            selection = row.get('selection') or {}
+            if (row.get('status') == 'review' and selection.get('ready') and not row.get('errors')
+                    and (row.get('host') or {}).get('ready')):
+                # Nothing new to download or approve: deploy, then restart ComfyUI.
+                self.controller.run('install', True)
+                row, busy = self.controller.state, self.controller.busy
+        if self.engine_updating and not busy and not self.engine_autoinstall:
+            self.engine_updating = False
         groups = row.get('task', {}).get('model_groups') or row.get('model_groups') or row.get('plan', {}).get('model_groups')
         if groups:
             self.model_groups = groups
@@ -428,12 +711,22 @@ class Session:
                         'request': {'exception': row.get('exception', []), 'phase': self.controller.section or 'installation'},
                         'log_tails': {'installation': row.get('error', '')}})
         if not busy and not self.closing and row.get('status') == 'open' and not self.browser_attempted:
-            self.open_browser()
+            # After an update, open pages reload themselves; open a new tab
+            # only if none of them returns.
+            if self.reload_expected and self.browser_wait is None:
+                self.browser_wait = time.monotonic() + 10
+            if self.reload_expected and self._clients_connected():
+                self.browser_attempted = True
+                self.reload_expected = False
+            elif not self.reload_expected or time.monotonic() >= self.browser_wait:
+                self.reload_expected = False
+                self.open_browser()
         sources = self.controller.terminal_sources()
         if sources:
             selected = next((p for _, p in sources if p == self.log_source), sources[-1][1])
             self.tail.select(selected)
             self.tail.read(final=not self.controller.terminal_running(selected))
+        self._tick_updates()
 
     def snapshot(self):
         from .failure_details import launcher_failure, redacted_launcher_error
@@ -484,7 +777,7 @@ class Session:
             estimate.append(self.t('Download ', '需下载 ')+'%.1f GiB' % (plan['model_download_bytes']/2**30))
         if row.get('disks'):
             estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+'%.1f GiB' % (sum(d.get('needed_bytes', 0) for d in row['disks'])/2**30))
-        update = dict(self.updater.state) if self.updater else dict(status='development')
+        update = self.update_view()
         probe = self.probe.snapshot()
         speeds = []
         for group, entries in probe.get('sources', {}).items():
@@ -497,10 +790,6 @@ class Session:
                 route = self.t('direct', '直连') if entry.get('route') == 'direct' else self.t('current connection', '当前连接')
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
-        # Only display fields from the update manifest, never access tokens.
-        update = {k: update[k] for k in ('status', 'error', 'progress', 'candidate') if k in update}
-        update['remind'] = bool(update.get('candidate') and not self.update_snoozed
-                                and update['status'] in ('available', 'ready', 'error'))
         return dict(version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy,
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']), models=len(self.form['offline_models'])),

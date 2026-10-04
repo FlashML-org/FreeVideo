@@ -36,11 +36,36 @@ ApplicationWindow {
     function number(n) { return typeof n === "number" && isFinite(n) }
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
     function bytes(n) { return n >= 1073741824 ? (n/1073741824).toFixed(1)+" GiB" : (n/1048576).toFixed(1)+" MiB" }
+    readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
+    // An engine update needs no download; offer it as the way to launch.
+    readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent
+    function percent(row) { return row && row.total ? Math.floor(100 * row.done / row.total) + "%" : "" }
+    function updateHeadline() {
+        var phase = s.update.phase
+        if (phase === "downloading") return t("Downloading update ", "正在下载更新 ") + percent(s.update.progress)
+        if (phase === "waiting") return t("Updating after the current video finishes", "当前视频生成完成后自动更新")
+        if (phase === "restarting") return t("Restarting FreeVideo…", "正在重启 FreeVideo…")
+        if (phase === "engine") return t("Updating the engine…", "正在更新引擎…")
+        if (phase === "checking") return t("Checking for updates…", "正在检查更新…")
+        if (s.update.candidate) return t("FreeVideo ", "FreeVideo ") + s.update.candidate.version + t(" is available", " 可以更新")
+        return t("New engine ", "新版引擎 ") + s.update.current + t(" is ready", " 已就绪")
+    }
+    function updateExplanation() {
+        var phase = s.update.phase
+        if (phase === "downloading") return t("FreeVideo restarts when the download finishes. Models and settings are kept.", "下载完成后自动重启，模型和设置都会保留。")
+        if (phase === "waiting") return t("Running videos are not interrupted. FreeVideo restarts on its own afterwards.", "不会中断正在生成的视频，完成后自动重启更新。")
+        if (phase === "restarting" || phase === "engine") return t("ComfyUI restarts once; open FreeVideo pages refresh automatically.", "ComfyUI 会重启一次，已打开的 FreeVideo 页面会自动刷新。")
+        if (phase === "checking") return ""
+        if (s.update.status === "error" && s.update.error) return s.update.error
+        if (s.update.candidate) return t("Current version ", "当前版本 ") + s.update.current + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
+        return t("Installed engine ", "已安装引擎 ") + (s.update.installed || "—") + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
+    }
     function primaryText() {
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
         if (s.page === "models") return t("Check & continue", "检查并继续")
+        if (updateFirst) return t("Update & launch", "更新并启动")
         if (s.page === "launcher") return s.status === "open" ? t("Open FreeVideo", "打开 FreeVideo") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Launch FreeVideo", "启动 FreeVideo")
         return s.status === "review" ? t("Install & launch", "安装并启动") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Check & resume", "检查并继续")
     }
@@ -507,6 +532,28 @@ ApplicationWindow {
                     objectName: "launcherPage"
                     visible: s.page === "launcher"; Layout.fillWidth: true; spacing: 16
                     FCard {
+                        objectName: "updateBanner"
+                        visible: updateOffered || (!!s.update.phase && s.update.phase !== "review")
+                        reveal: true; Layout.fillWidth: true; padding: 18; spacing: 10
+                        color: theme.accentSubtle; border.color: theme.accentDim
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 14
+                            FIcon { kind: "download"; ink: theme.accent; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                FText { objectName: "updateHeadline"; text: updateHeadline(); font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                FText { visible: text !== ""; text: updateExplanation(); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                            }
+                            FButton { objectName: "cancelUpdateButton"; visible: s.update.phase === "waiting"; flat: true; text: t("Cancel update", "取消更新"); onClicked: { manualUpdate = false; backend.dismissUpdate() } }
+                            FButton {
+                                objectName: "engineUpdateButton"; primary: true; visible: !s.update.phase; enabled: !s.busy
+                                text: s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : t("Update now", "立即更新")
+                                onClicked: { manualUpdate = !!s.update.candidate; backend.update("") }
+                            }
+                        }
+                        FMeter { visible: s.update.phase === "downloading"; Layout.fillWidth: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done / s.update.progress.total : -1; active: visible }
+                    }
+                    FCard {
                         Layout.fillWidth: true; padding: 26; spacing: 18
                         RowLayout {
                             spacing: 20; Layout.fillWidth: true
@@ -530,11 +577,6 @@ ApplicationWindow {
                             }
                         }
                         FMeter { visible: s.busy; Layout.fillWidth: true; fraction: win.fraction(s.overall); active: s.busy }
-                        RowLayout {
-                            visible: s.engine_update_available; Layout.fillWidth: true; spacing: 12
-                            FText { text: t("Engine update available", "引擎有可用更新"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
-                            FButton { objectName: "engineUpdateButton"; text: t("Update", "更新"); flat: true; enabled: !s.busy; onClicked: backend.action("update-engine", false) }
-                        }
                         RowLayout {
                             visible: s.status === "open"; Layout.fillWidth: true; spacing: 8
                             FButton { text: t("Copy address", "复制地址"); onClicked: backend.copy(s.url) }
@@ -572,12 +614,13 @@ ApplicationWindow {
                 FButton { objectName: "backButton"; text: t("Back", "上一步"); flat: true; visible: s.page === "models" || s.page === "progress"; enabled: !s.busy; onClicked: backend.action("back", false) }
                 Item { Layout.fillWidth: true }
                 FButton { visible: s.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
+                FButton { objectName: "launchInstalledButton"; visible: updateFirst; flat: true; text: t("Launch current version", "启动当前版本"); onClicked: backend.action("primary", accepted) }
                 FButton {
                     objectName: "primaryButton"; primary: true; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
                     text: s.busy ? t("Working…", "正在处理…") : primaryText()
                     enabled: !s.busy && !(s.page === "launcher" && s.needs_consent && !accepted)
                              && !(s.page === "progress" && s.status === "review" && (!accepted || !!s.error))
-                    onClicked: { if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
+                    onClicked: { if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } if (updateFirst) { backend.update(""); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
                 }
             }
         }
@@ -811,16 +854,16 @@ ApplicationWindow {
             ColumnLayout {
             id: updateContents; width: updateScroll.availableWidth
             spacing: 14
-            FText { text: s.update.candidate ? t("Update available", "有可用更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
-            FText { text: s.update.candidate ? t("A new version is available. Updating keeps your models and settings.", "发现新版本，更新会保留模型和设置。") : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Couldn't check for updates. Try again below.", "暂时无法检查更新，请重试。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
+            FText { text: s.update.candidate ? t("Update available", "有可用更新") : s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
+            FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启即可完成更新，模型和设置都会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + s.update.candidate.version + t(" is available (current ", " 已发布（当前 ") + s.update.current + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + s.update.current + t(" (installed ", "（已安装 ") + (s.update.installed || "—") + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Couldn't check for updates. Try again below.", "暂时无法检查更新，请重试。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
             FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
             FField { id: githubToken; visible: !!s.update.error; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: t("GitHub token · optional", "GitHub Token · 可选") }
             RowLayout {
                 Layout.fillWidth: true; Layout.topMargin: 8
-                FButton { objectName: "updateLaterButton"; text: s.update.candidate ? t("Later", "稍后更新") : t("Close", "关闭"); flat: true; onClicked: { manualUpdate = false; backend.dismissUpdate() } }
+                FButton { objectName: "updateLaterButton"; text: s.update.candidate || s.update.engine ? t("Later", "稍后更新") : t("Close", "关闭"); flat: true; onClicked: { manualUpdate = false; backend.dismissUpdate() } }
                 Item { Layout.fillWidth: true }
-                FButton { objectName: "updateNowButton"; text: s.update.status === "ready" ? t("Restart & update", "重启并更新") : s.update.candidate ? t("Update now", "立即更新") : t("Check again", "重新检查"); primary: true; enabled: ["checking","downloading"].indexOf(s.update.status) < 0; onClicked: { manualUpdate = true; backend.update(githubToken.text) } }
+                FButton { objectName: "updateNowButton"; text: s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : s.update.candidate || s.update.engine ? t("Update now", "立即更新") : t("Check again", "重新检查"); primary: true; enabled: ["checking","downloading"].indexOf(s.update.status) < 0 && s.update.phase !== "waiting"; onClicked: { manualUpdate = !!s.update.candidate || !s.update.engine; backend.update(githubToken.text) } }
             }
             }
         }

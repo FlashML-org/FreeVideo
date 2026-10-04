@@ -91,6 +91,10 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
+        (r'ComfyUI is still running a job', 'busy',
+         ('A video is still generating', '还有视频正在生成'),
+         ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
+          '更新已装好。等当前任务完成后点“重新连接”，ComfyUI 会重启并使用新版。')),
         (r'Installation paused: Windows commit headroom', 'memory-commit',
          ('Windows memory headroom is low', 'Windows 内存提交余量不足'),
          ('Close memory-heavy applications, then retry. Downloaded files are retained.',

@@ -58,6 +58,7 @@ def create_ui(session, *, show=True):
         changed = Signal()
         def __init__(self):
             super().__init__(engine)
+            self.alerted = None
             self.value = session.snapshot()
             self.timer = QTimer(self)
             self.timer.setInterval(250)
@@ -83,6 +84,14 @@ def create_ui(session, *, show=True):
                 if value != self.value:
                     self.value = value
                     self.changed.emit()
+                update = value.get('update') or {}
+                if update.get('remind') and update.get('key') != self.alerted and engine.rootObjects():
+                    # Flash the taskbar button once per new reminder when the
+                    # launcher sits behind the browser.
+                    self.alerted = update['key']
+                    window = engine.rootObjects()[0]
+                    if not window.isActive():
+                        window.alert(0)
                 if session.closing:
                     self.timer.stop()
                     app.quit()

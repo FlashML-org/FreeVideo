@@ -195,6 +195,15 @@ def server_info(url):
     return dict(status='offline')
 
 
+def queue_busy(url):
+    """Whether ComfyUI is running or holding jobs. An unreadable queue counts as idle."""
+    try:
+        value = get_json(url + '/queue', timeout=3)
+        return bool(value.get('queue_running') or value.get('queue_pending'))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def matches_server(info, root, engine, source):
     return (info.get('status') == 'freevideo'
             and all(info.get(k) and Path(info[k]).resolve() == Path(p).resolve()
@@ -285,6 +294,18 @@ class Controller:
         self.server_log = None
         self.sections = []
         self.section = None
+        # Set by the Qt session: lets the server it starts hand browser update
+        # requests back to this launcher.
+        self.update_bridge = None
+
+    def owns_server(self):
+        return self.server is not None and self.server.poll() is None
+
+    def stop_owned_server(self):
+        with self._server_lock:
+            if self.server is not None:
+                processes.stop(self.server, grace=5)
+                self.server = None
 
     def terminal_sources(self):
         sources = []
@@ -560,15 +581,30 @@ class Controller:
             self.state = dict(self.state, status='open', url=url + '/?freevideo=launch')
             return
         if info['status'] != 'offline':
-            self.state = dict(self.state, status='restart-required', url=url,
-                error='ComfyUI is already running. Restart it once to load the installed FreeVideo nodes, then click Connect. Existing jobs are left running.')
-            return
+            if not self.owns_server():
+                self.state = dict(self.state, status='restart-required', url=url,
+                    error='ComfyUI is already running. Restart it once to load the installed FreeVideo nodes, then click Connect. Existing jobs are left running.')
+                return
+            if queue_busy(url):
+                self.state = dict(self.state, status='restart-required', url=url,
+                    error='ComfyUI is still running a job. Click Connect after it finishes to restart with the update; the job is left running.')
+                return
+            # Our own idle server still runs the previous source: restart it.
+            self.stage('open', label='Restart ComfyUI')
+            self.stop_owned_server()
         parsed = urlsplit(url)
-        with socket.socket(socket.AF_INET6 if parsed.hostname == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
-            try:
-                check.bind((parsed.hostname, parsed.port or 80))
-            except OSError as error:
-                raise ValueError('This port is in use by another application. Set a different local ComfyUI address.') from error
+        deadline = time.monotonic() + 10
+        while True:
+            with socket.socket(socket.AF_INET6 if parsed.hostname == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
+                try:
+                    check.bind((parsed.hostname, parsed.port or 80))
+                    break
+                except OSError as error:
+                    # A server this launcher just stopped can hold the port briefly.
+                    if info['status'] != 'offline' and time.monotonic() < deadline:
+                        self.cancelled.wait(.5)
+                        continue
+                    raise ValueError('This port is in use by another application. Set a different local ComfyUI address.') from error
         if not selected.get('python') or not Path(selected['python']).is_file():
             raise ValueError('ComfyUI Python is missing. Inspect again to prepare a separate environment.')
         directory = Path(selected['engine']) / 'launcher' / 'comfy-runs' / (time.strftime('%Y%m%dT%H%M%S') + '-' + secrets.token_hex(4))
@@ -582,6 +618,10 @@ class Controller:
         env['PYTHONDONTWRITEBYTECODE'] = '1'
         env.update(PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
         env['FREEVIDEO_COMFY_LOG'] = str(self.server_log)
+        from .launcher_bridge import ENV as BRIDGE
+        env.pop(BRIDGE, None)
+        if self.update_bridge:
+            env[BRIDGE] = str(self.update_bridge)
         command = [selected['python'], '-u', '-B', str(Path(selected['root']) / 'main.py'), '--listen', parsed.hostname,
                    '--port', str(parsed.port or 80), '--disable-auto-launch']
         managed = managed_frontend(selected)
