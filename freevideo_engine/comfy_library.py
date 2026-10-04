@@ -112,6 +112,17 @@ def thumbnail(output_directory, identity):
     return data
 
 
+def video_download(output_directory, identity):
+    """Name a saved download without renaming the engine's retained artifacts."""
+    path = _video(output_directory, identity)
+    _report(path)
+    info = path.stat()
+    if not info.st_size:
+        raise ValueError('Video is empty')
+    stamp = datetime.fromtimestamp(info.st_mtime, timezone.utc).strftime('%Y%m%d_%H%M%S')
+    return path, 'FreeVideo_%s_%s.mp4' % (stamp, identity.split('/')[-1][:12])
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -142,3 +153,13 @@ def register():
                 raise web.HTTPNotFound(text='Thumbnail unavailable') from None
         return web.Response(body=data, content_type='image/jpeg',
                             headers={'Cache-Control': 'private, max-age=86400'})
+
+    @server.routes.get('/freevideo/library/download')
+    async def download(request):
+        try:
+            path, name = await asyncio.to_thread(video_download, folder_paths.get_output_directory(), request.query.get('id'))
+        except (OSError, ValueError, TypeError):
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        return web.FileResponse(path, headers={'Content-Type': 'video/mp4',
+            'Content-Disposition': 'attachment; filename="%s"' % name,
+            'Cache-Control': 'private, no-store'})

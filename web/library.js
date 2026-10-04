@@ -1,5 +1,6 @@
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
+import { outputDownloadURL } from './output_download.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -39,8 +40,11 @@ export function openLibrary(t) {
     const frame = el('div', null, 'fv-library-frame');
     const caption = el('div', null, 'fv-library-caption');
     const date = el('strong'), geometry = el('span'); caption.append(date, geometry);
+    const stats = el('div', null, 'fv-stats'); stats.hidden = true;
+    stats.setAttribute('aria-label', t('Generation statistics', '生成统计'));
+    const budget = el('div', '', 'fv-budget');
     const links = el('div', null, 'fv-result-links');
-    detail.append(all, frame, caption, links);
+    detail.append(all, frame, caption, stats, budget, links);
     body.append(collection, detail); dialog.append(header, body);
     let disposed = false, loading = false, next = null, selected = null, player = null, arrivals = [];
     const rows = new Map(), cards = new Map();
@@ -78,10 +82,27 @@ export function openLibrary(t) {
             links.replaceChildren();
             for (const [label, file, cls] of [[t('Download video', '下载视频'), row.video, 'fv-primary'], [t('View report', '查看报告'), row.report, 'fv-quiet']]) {
                 if (!file) continue;
-                const a = el('a', label, cls); a.href = view(file); a.download = file.split('/').pop(); links.append(a);
+                const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === row.video ? '' : file.split('/').pop(); links.append(a);
             }
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
         }
+        // These are the saved generation's measurements, including when the
+        // same MP4 has since been reused. Never substitute the active request.
+        const measured = value => Number.isFinite(value) && value >= 0;
+        const number = (value, scale, unit) => measured(value) ? `${(value / scale).toFixed(1)} ${unit}` : '—';
+        stats.replaceChildren();
+        for (const [label, value, scale, unit] of [
+            [t('Sampling', '采样耗时'), row.sample_seconds, 1, 's'],
+            [t('Request total', '请求总计'), row.request_seconds, 1, 's'],
+            [t('VRAM peak', '显存峰值'), row.vram_peak_bytes, 2 ** 30, 'GiB'],
+            [t('RAM peak', '内存峰值'), row.ram_peak_bytes, 2 ** 30, 'GiB'],
+        ]) {
+            const item = el('div', null, 'fv-stat');
+            item.append(el('strong', number(value, scale, unit)), el('span', label)); stats.append(item);
+        }
+        stats.hidden = ![row.sample_seconds, row.request_seconds, row.vram_peak_bytes, row.ram_peak_bytes].some(measured);
+        budget.textContent = measured(row.gpu_budget_bytes)
+            ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
         if (reveal) dialog.dataset.detail = 'true';
     }
     const thumbnails = new IntersectionObserver(entries => {
@@ -122,16 +143,17 @@ export function openLibrary(t) {
             message.textContent = rows.size ? '' : t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
             if (!rows.has(selected)) {
                 releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
+                stats.hidden = true; stats.replaceChildren(); budget.textContent = '';
                 if (!narrow.matches && rows.size) select(rows.values().next().value, false);
                 else dialog.dataset.detail = 'false';
-            }
+            } else select(rows.get(selected), false);
         } catch (error) { if (!disposed && error.name !== 'AbortError') message.textContent = error.message; }
         finally { if (!disposed) { loading = false; refresh.disabled = more.disabled = false; } }
     }
     const completed = event => {
         const row = event.detail?.value;
         if (!row?.video || disposed) return;
-        const saved = {...row, created_at: row.created_at || new Date().toISOString()};
+        const saved = {...row, created_at: row.created_at || rows.get(row.video)?.created_at || new Date().toISOString()};
         if (loading) arrivals.push(saved);
         append(saved, true);
         message.textContent = '';

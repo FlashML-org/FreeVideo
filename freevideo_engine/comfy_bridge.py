@@ -34,12 +34,15 @@ def progress_history_forecast(root, machine, canvas):
     """
     import platform
     import sqlite3
+    from contextlib import closing
     from statistics import median
     path = Path(root) / 'resource-history.sqlite3'
     if not machine.get('gpu_uuid') or not path.is_file():
         return {}
     try:
-        with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=.1) as db:
+        # SQLite's transaction context commits/rolls back but does not close.
+        # Close this read-only handle immediately, including on query failure.
+        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=.1)) as db:
             rows = db.execute("SELECT identity_json,geometry_json,observation_json FROM attempts "
                               "WHERE state='success' AND observation_json IS NOT NULL "
                               "ORDER BY started DESC LIMIT 64").fetchall()
@@ -445,9 +448,11 @@ def engine_environment(root, source, environ=None):
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
-             base_steps=8, refine_steps=2):
+             force_regenerate=False, base_steps=8, refine_steps=2):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
+    if type(force_regenerate) is not bool:
+        raise ValueError('Force regeneration must be a boolean')
     from .two_pass import validate_steps
     validate_steps(base_steps, refine_steps, two_pass)
     canvas = validate_request(prompt, width, height, seconds, seed)
@@ -488,6 +493,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         if progress:
             progress(whole_progress.annotate(dict(message, report_id=report_id)))
     process = None
+    from .result_cache import ResultCache, request_key, inspect_bounded
+    cache = ResultCache(output_directory)
+    cache_key = None
     tails = [EventTail(run / name) for name in ('generate.log', 'video.encoding.log', 'video.engine.log', 'video.lora.log')]
     def poll():
         if interrupted:
@@ -518,12 +526,36 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .media_request import task_for
         from .two_pass import plan
         planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
+        identify = lambda check: request_key(prompt, seed, canvas, planned, extra, machine,
+                                             resources, source, environment, inspection=check)
+        state['result_cache'] = dict(enabled=False, hit=False, forced=force_regenerate)
+        reused = None
+        if not force_regenerate:
+            send_progress({'label': 'Checking saved video', 'timing_phase': 'encoding'})
+            def inspect_saved(check):
+                key = identify(check)
+                return key, check.measure('output', lambda: cache.lookup(key, inspection=check))
+            inspected, timing = inspect_bounded(inspect_saved, interrupted=interrupted)
+            state['result_cache']['inspection'] = timing
+            if inspected:
+                cache_key, reused = inspected
+                state['result_cache']['enabled'] = cache_key is not None
+        save(run / 'comfy-request.json', state)
+        if interrupted:
+            interrupted()
+        if reused is not None:
+            state.update(status='reused', reused_output=str(reused))
+            state['result_cache']['hit'] = True
+            send_progress({'label': 'Reused previous result', 'phase': 'complete',
+                           'result_cache_hit': True})
+            return reused
         whole_progress.sampling_plan = planned
         whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
         send_progress({'label': 'Preparing %.3f s video + audio · %d × %d' %
                        (canvas['seconds'], width, height)})
         if release_models:
             release_models()
+        state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
         if (source/'freevideo_engine'/'resident_worker.py').is_file():
             from .resident_process import OWNER, ENV
             if environment.get('FREEVIDEO_KEEP_MODELS', 'auto').lower() in ('0', 'off', 'false'):
@@ -563,6 +595,15 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             raise RuntimeError('FreeVideo did not complete the requested video.\n' + generation_failure(run))
         state.update(status='complete', request_seconds=report.get('request_seconds'),
                      engine_report=str(output.with_suffix('.engine.json')))
+        # Do not index a result against inputs/models that changed while it ran.
+        # The resident session address is transport state, not compute config.
+        if cache_key is not None:
+            def store_result(check):
+                if identify(check) != cache_key:
+                    return False
+                return check.measure('output', lambda: cache.remember(cache_key, output, inspection=check))
+            stored, timing = inspect_bounded(store_result, interrupted=interrupted)
+            state['result_cache'].update(stored=stored is True, store_inspection=timing)
         send_progress({'label': 'Video + audio saved', 'phase': 'complete', 'done': completed_steps, 'total': completed_steps})
         return output
     except BaseException as error:

@@ -27,7 +27,7 @@
 .fv-generation-times>span[hidden],.fv-generation-silence[hidden]{display:none!important}
 .fv-generation-compact .fv-generation-detail,.fv-generation-compact:not([data-phase=encoding]) .fv-generation-silence,.fv-generation-compact .fv-generation-note:not(.fv-generation-retry){display:none}
 .fv-generation-compact .fv-generation-retry{font-size:12px;margin-top:14px}
-.fv-report-download{align-self:flex-end;margin-top:8px;font-size:12px}
+.fv-report-download{display:block;align-self:center;width:fit-content;max-width:100%;margin:8px auto 0;font-size:12px}
 .fv-report-download[hidden]{display:none!important}
 @keyframes fv-generation-sweep{0%{left:-20%;width:20%}50%{left:33%;width:34%}100%{left:100%;width:20%}}
 @media(prefers-reduced-motion:reduce){.fv-generation-fill,.fv-generation-fill::before,.fv-generation-fill::after{transition:none!important;animation:none!important}.fv-generation-fill::after{opacity:0}.fv-generation-progress[data-counted=false] .fv-generation-fill{opacity:.5}}

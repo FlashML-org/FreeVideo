@@ -91,6 +91,14 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
+        (r'Installation paused: Windows commit headroom', 'memory-commit',
+         ('Windows memory headroom is low', 'Windows 内存提交余量不足'),
+         ('Close memory-heavy applications, then retry. Downloaded files are retained.',
+          '关闭占用内存较多的程序后重试，已下载文件会保留。')),
+        (r'Installation paused: system RAM is nearly exhausted', 'memory-system',
+         ('Available system RAM is low', '系统可用内存不足'),
+         ('Close memory-heavy applications, then retry. Downloaded files are retained.',
+          '关闭占用内存较多的程序后重试，已下载文件会保留。')),
         (r'Installation RAM monitoring failed|Cannot read process-tree memory', 'memory-monitor',
          ('Memory usage could not be read', '暂时无法读取进程内存'),
          ('Download progress is saved. Check and continue to retry; copy the details if it happens again.',

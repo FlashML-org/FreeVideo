@@ -324,6 +324,8 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         summary = summarize(request, engine, encoding)
         if live and bridge.get('status') in ('starting', 'running'):
             summary['status'] = 'running'
+        if bridge.get('status') == 'reused':
+            summary['status'] = 'reused'
         if video_retry or encoder_retry and _retry['index'] < 3:
             summary['status'] = 'retrying'
         payload = dict(schema_version=1, summary=summary,
@@ -339,6 +341,25 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                               'Cached encoder receipts do not describe this request’s peak.'),
             bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'encoder_prewarm') if k in bridge},
             collection_notes=notes, log_tails={})
+        if isinstance(bridge.get('result_cache'), dict):
+            payload['bridge']['result_cache'] = {key: bridge['result_cache'][key]
+                for key in ('enabled', 'hit', 'forced', 'stored')
+                if type(bridge['result_cache'].get(key)) is bool}
+            # Fixed counters and stage names only; never paths or cache keys.
+            for key in ('inspection', 'store_inspection'):
+                check = mapping(bridge['result_cache'].get(key))
+                if not check:
+                    continue
+                shown = {k: check[k] for k in ('seconds', 'files', 'bytes_read', 'reused_hashes')
+                         if type(check.get(k)) in (int, float) and math.isfinite(check[k]) and check[k] >= 0}
+                if check.get('status') in ('complete', 'timeout', 'busy', 'unavailable'):
+                    shown['status'] = check['status']
+                if check.get('phase') in ('starting', 'code', 'models', 'settings', 'packages', 'inputs', 'output'):
+                    shown['phase'] = check['phase']
+                shown['phase_seconds'] = {k: v for k, v in mapping(check.get('phase_seconds')).items()
+                    if k in ('code', 'models', 'settings', 'packages', 'inputs', 'output')
+                    and type(v) in (int, float) and math.isfinite(v) and v >= 0}
+                payload['bridge']['result_cache'][key] = shown
         # Scrub structured prompts before processing log tails that may repeat them.
         payload = redactor.structured(payload)
         if live:

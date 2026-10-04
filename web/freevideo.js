@@ -8,6 +8,8 @@ import { notifyCompatibility } from './compatibility.js';
 import { startUpdateChecks } from './updates.js';
 import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
+import { outputDownloadURL } from './output_download.js';
+import { regenerateResult } from './studio_queue.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -20,6 +22,7 @@ style.textContent = `
 .fv-panel *{box-sizing:border-box}.fv-toolbar,.fv-row,.fv-links{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .fv-panel .fv-links{justify-content:center}.fv-panel[data-freevideo=result]>.fv-note{text-align:center}
 .fv-panel .fv-toolbar{padding:4px 0 8px}.fv-panel .fv-stats{text-align:center}.fv-panel .fv-stat{padding:10px 3px;border-radius:var(--fv-r-md,12px);background:var(--fv-raised)}
+.fv-panel .fv-stats[hidden]{display:none}
 .fv-panel .fv-connected{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:10px 0}.fv-panel .fv-connection{border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);padding:5px 9px;background:var(--fv-selected);color:var(--fv-accent);font-size:var(--fv-micro,12px)}
 .fv-panel :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
 .fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
@@ -202,12 +205,18 @@ function resultPanel(node) {
         {serialize: false, getMinHeight: () => 58, getMaxHeight: () => 76});
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "result";
     const progress = createGenerationProgress(text, undefined, {api}); panel.append(progress.element, progress.report);
+    let showingResult = false;
     node.freevideoReportProgress = message => {
         progress.updateReport(message);
         if (message.new_request) node.freevideoReportId = null;
         if (message.report_id) node.freevideoReportId = message.report_id;
     };
     node.freevideoShowProgress = message => {
+        if (showingResult) {
+            panel.replaceChildren(progress.element, progress.report);
+            panel.title = ''; node.freevideoPrewarm = '';
+            showingResult = false; warn();
+        }
         const retry = message.reset ? undefined : message.retry || node.freevideoProgress?.retry;
         node.freevideoProgress = {...message, retry, received_at: message.received_at ?? Date.now()}; progress.update(node.freevideoProgress);
         if (panel.firstElementChild !== progress.element) panel.prepend(progress.element);
@@ -237,7 +246,14 @@ function resultPanel(node) {
     node.addDOMWidget("freevideo_result", "freevideo_result", panel, {serialize: false, getMinHeight: panelHeight, getMaxHeight: panelHeight});
     const connected = node.onConnectionsChange, configured = node.onConfigure;
     node.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); warn(); queueMicrotask(syncPrompts); return result; };
-    node.onConfigure = function (...args) { const result = configured?.apply(this, args); warn(); return result; };
+    node.onConfigure = function (...args) {
+        const result = configured?.apply(this, args);
+        // The earlier private test put a force checkbox at this position,
+        // before the public version added sampling-step widgets.
+        const base = this.widgets?.find(w => w.name === 'base_steps');
+        if (base && typeof base.value === 'boolean') base.value = 8;
+        warn(); return result;
+    };
     warn();
     node.freevideoShowPrewarm = function (value) {
         let note = panel.querySelector('.fv-prewarm');
@@ -254,24 +270,42 @@ function resultPanel(node) {
     };
     node.freevideoShowResult = function (message) {
         const value = message?.freevideo_summary?.[0]; if (!value) return;
+        showingResult = true;
         node.freevideoReportId = null; progress.report.hidden = true;
         node.freevideoStopProgress();
         node.freevideoClearFailure();
         node.freevideoLastResult = value;
         window.dispatchEvent(new CustomEvent('freevideo-result', {detail: {node: node.id, value}}));
         panel.replaceChildren(); const stats = el("div", undefined, "fv-stats");
+        stats.hidden = !!value.result_cache_hit;
         const number = (value, scale, unit) => Number.isFinite(value) && value >= 0 ? `${(value / scale).toFixed(1)} ${unit}` : "—";
         for (const [label, shown] of [[text("Sampling", "采样"), number(value.sample_seconds, 1, "s")], [text("Request total", "请求总计"), number(value.request_seconds, 1, "s")], [text("VRAM peak", "显存峰值"), number(value.vram_peak_bytes, 2 ** 30, "GiB")], [text("RAM peak", "内存峰值"), number(value.ram_peak_bytes, 2 ** 30, "GiB")]]) {
             const stat = el("div", undefined, "fv-stat"); stat.append(el("strong", shown), el("span", label)); stats.append(stat);
         }
         const links = el("div", undefined, "fv-links");
         for (const [label, file] of [[text("Download video", "下载视频"), value.video], [text("Report", "报告"), value.report]]) {
-            const link = el("a", label); link.href = viewURL(file, "output"); link.download = file.split("/").pop(); links.append(link);
+            if (!file) continue;
+            const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : file.split("/").pop(); links.append(link);
         }
-        links.append(el("span", value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
+        links.append(el("span", value.result_cache_hit ? text("Reused previous result", "已复用上次结果") : value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
+        if (value.result_cache_hit) {
+            const again = el('button', text('Regenerate', '重新生成')); again.type = 'button';
+            again.onclick = async () => {
+                again.disabled = true;
+                try { await node.freevideoRegenerateResult(value); again.textContent = text('Queued', '已加入队列'); }
+                catch (error) { again.disabled = false; node.freevideoShowFailure({exception_message: error.message}); }
+            };
+            links.append(again);
+        }
         panel.append(stats, links);
         warn();
         panel.title = text("VRAM: engine allocator peak. RAM: measured request processes, ", "显存为引擎分配器峰值，内存为请求进程实测，") + (value.ram_metric || "unknown");
+    };
+    node.freevideoRegenerateResult = async value => {
+        if (node.freevideoRegenerating) return;
+        node.freevideoRegenerating = true;
+        try { return await regenerateResult(api, node.id, value, () => app.graphToPrompt()); }
+        finally { node.freevideoRegenerating = false; }
     };
     const executed = node.onExecuted;
     node.onExecuted = function (message) {
@@ -325,6 +359,11 @@ app.registerExtension({
                 this.setSize([460, 240]);
             }
             else {
+                const force = this.widgets?.find(w => w.name === 'force_regenerate');
+                if (force) {
+                    force.type = 'hidden'; force.computeSize = () => [0, -4]; force.draw = () => {};
+                    force.value = false; force.serializeValue = () => false;
+                }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
                     quality.label = text('Two-pass sampling', '二次采样');
@@ -365,6 +404,13 @@ app.registerExtension({
     },
 });
 
+api.addEventListener('executed', event => {
+    const {node: nodeId, prompt_id, output} = event.detail || {};
+    const node = app.graph?.getNodeById(nodeId);
+    if (prompt_id && node?.freevideoShowResult && output?.freevideo_summary?.[0]) {
+        node.freevideoShowResult({...output, freevideo_summary: [{...output.freevideo_summary[0], request_id: prompt_id}]});
+    }
+});
 api.addEventListener('freevideo_prewarm', event => {
     const value = event.detail;
     if (value) app.graph?.getNodeById(value.node)?.freevideoShowPrewarm?.(value);

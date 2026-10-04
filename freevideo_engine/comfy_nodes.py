@@ -45,6 +45,8 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Default: 8. Changing sampling steps may reduce generation quality.'),
                 io.Int.Input('refine_steps', display_name='Second-pass steps', default=2, min=1, max=31, optional=True,
                     tooltip='Default: 2. Must be fewer than first-pass steps. Changing sampling steps may reduce generation quality.'),
+                io.Boolean.Input('force_regenerate', display_name='Force regeneration', default=False, optional=True,
+                    tooltip='Generate again even when an identical completed video is saved locally.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.extra_pnginfo],
@@ -64,13 +66,14 @@ class FreeVideoGenerate(io.ComfyNode):
 
     @classmethod
     def fingerprint_inputs(cls, **kwargs):
-        # Queueing a fixed seed is a new measured request. Disk conditioning and
-        # engine input caches are still reused; Comfy does not return an old MP4.
+        # Always inspect current input/model content and output integrity in the
+        # bridge. Comfy's graph cache cannot detect a deleted or changed MP4.
         return float('nan')
 
     @classmethod
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
-                references=None, loras=None, conditioning=None, media=None, two_pass=True, base_steps=8, refine_steps=2):
+                references=None, loras=None, conditioning=None, media=None, two_pass=True,
+                force_regenerate=False, base_steps=8, refine_steps=2):
         from .two_pass import validate_steps
         validate_steps(base_steps, refine_steps, two_pass)
         from .comfy_media import export
@@ -80,14 +83,16 @@ class FreeVideoGenerate(io.ComfyNode):
         from server import PromptServer
         from .comfy_progress import publish
         from .encoder_prewarm import IDLE
-        cpu_prewarm = IDLE.stop()
         from .resident_process import OWNER
-        gpu_prewarm = OWNER.stop_prewarm()
+        prewarm = {}
+        result_reused = [False]
         node_id = cls.hidden.unique_id
         bar = ProgressBar(base_steps + (refine_steps if two_pass else 0), node_id=node_id)
         last_message = [None]
         last_count = [None]
         def progress(message):
+            if message.get('result_cache_hit'):
+                result_reused[0] = True
             label = message['label']
             count = (message.get('done'), message.get('total'))
             if message.get('done') is not None and count != last_count[0]:
@@ -101,6 +106,9 @@ class FreeVideoGenerate(io.ComfyNode):
                     server.send_progress_text(label + (' · ' + detail if detail else ''), node_id)
                 last_message[0] = dict(message)
         def release():
+            cpu_prewarm = IDLE.stop()
+            gpu_prewarm = OWNER.stop_prewarm()
+            prewarm.update(gpu_prewarm or cpu_prewarm or {})
             from .comfy_residency import keep_engine_cache
             with keep_engine_cache():
                 memory.unload_all_models()
@@ -111,8 +119,8 @@ class FreeVideoGenerate(io.ComfyNode):
         try:
             output = comfy_bridge.generate(text, width, height, seconds, seed, output_root,
                 metadata=metadata.get('workflow', metadata), progress=progress, two_pass=two_pass,
+                encoder_prewarm=prewarm, force_regenerate=force_regenerate,
                 base_steps=base_steps, refine_steps=refine_steps,
-                encoder_prewarm=gpu_prewarm or cpu_prewarm,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,
                     references=references, loras=loras, conditioning=conditioning, assets=media))
@@ -122,18 +130,19 @@ class FreeVideoGenerate(io.ComfyNode):
             from .comfy_assets import output_summary, saved_video
             preview = ui.PreviewVideo([saved_video(output, output_root)]).as_dict()
             preview['freevideo_summary'] = [output_summary(json.loads(report), relative)]
+            preview['freevideo_summary'][0]['result_cache_hit'] = result_reused[0]
         except BaseException as error:
             cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in ('InterruptProcessingException', 'CancelledError')
             phase = 'cancelled' if cancelled else 'failed'
             publish(PromptServer.instance, node_id, {'label': 'Generation cancelled' if cancelled else 'Generation stopped',
                     'phase': phase, 'overall': {'status': phase}})
             raise
-        publish(PromptServer.instance, node_id, {'label': 'Video saved', 'phase': 'complete',
+        publish(PromptServer.instance, node_id, {'label': 'Reused previous result' if result_reused[0] else 'Video saved', 'phase': 'complete',
                 'overall': {'status': 'complete', 'fraction': 1.}, 'result': preview['freevideo_summary'][0]})
         measured = json.loads(report)
         encoder_path = measured.get('encoding', {}).get('encoder')
         from .resident_process import OWNER
-        if encoder_path:
+        if encoder_path and not result_reused[0]:
             server = PromptServer.instance
             client = server.client_id if server is not None else None
             def busy():

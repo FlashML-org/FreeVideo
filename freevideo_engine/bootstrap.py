@@ -66,7 +66,7 @@ def setup_memory_status(row, verbose=False):
     if row.get('private_commit_bytes') is not None:
         # Commit includes nonresident reservations; displaying it as RAM hid
         # the cause of Windows file-mapping failures while physical RAM was free.
-        return ('RAM %.1f GiB · Commit %.1f GiB · Free RAM %.1f / commit %.1f GiB' %
+        return ('RAM %.1f GiB · Commit %.1f GiB · Free RAM %.1f GiB · Free Commit %.1f GiB' %
                 (row['rss_bytes']/GiB, row['private_commit_bytes']/GiB,
                  row['system_physical_available_bytes']/GiB, row['system_commit_available_bytes']/GiB))
     result = ('RAM %s %.2f GiB · system available %.2f GiB' %
@@ -76,6 +76,47 @@ def setup_memory_status(row, verbose=False):
     if (row.get('cgroup_memory') or {}).get('limit_bytes') is not None:
         result += ' within container limit'
     return result
+
+
+def setup_memory_pressure(row, budget, system):
+    """Keep Windows planning headroom separate from an exhaustion stop.
+
+    The budget already excludes the OS reserve. Model SDKs additionally
+    switch to bounded streaming below 2 GiB; stopping the whole installer at
+    that same threshold prevented the low-memory path from continuing.
+    Linux retains its existing container/cache floor.
+    """
+    reserve = (2 if system == 'Windows' else 1) * GiB
+    floor = min(256 * 2**20, int(budget * .05)) if system == 'Windows' else reserve
+    available = row.get('effective_available_bytes', row['system_available_bytes'])
+    commit = row.get('system_commit_available_bytes')
+    used = memory_sample(row)
+    reasons = []
+    if commit is not None and commit <= floor:
+        reasons.append('commit_headroom')
+    elif available <= floor:
+        reasons.append('system_headroom')
+    if used is not None and used > budget:
+        reasons.append('process_budget')
+    return dict(reasons=reasons, working_bytes=used, budget_bytes=budget,
+                guard_metric=row.get('guard_metric', 'process working memory'),
+                available_bytes=available, physical_available_bytes=row.get('system_physical_available_bytes'),
+                commit_available_bytes=commit, emergency_floor_bytes=floor,
+                planning_reserve_bytes=reserve)
+
+
+def setup_memory_failure(pressure):
+    reason = pressure['reasons'][0]
+    if reason == 'commit_headroom':
+        detail = 'Installation paused: Windows commit headroom is nearly exhausted (%.2f GiB available; %.2f GiB minimum).' % (
+            pressure['commit_available_bytes'] / GiB, pressure['emergency_floor_bytes'] / GiB)
+    elif reason == 'system_headroom':
+        detail = 'Installation paused: system RAM is nearly exhausted (%.2f GiB available; %.2f GiB minimum).' % (
+            pressure['available_bytes'] / GiB, pressure['emergency_floor_bytes'] / GiB)
+    else:
+        detail = 'Installation crossed its RAM budget (%.2f GiB used; %.2f GiB budget; %s).' % (
+            pressure['working_bytes'] / GiB, pressure['budget_bytes'] / GiB, pressure['guard_metric'])
+    return detail + ' Downloaded files are retained.'
 
 
 def dependency_status(root, layout='unified', system=None):
@@ -774,22 +815,22 @@ class Installer:
                             row = dict(row, monitor_status='recovered' if unreadable else 'complete',
                                        consecutive_unreadable=0)
                             unreadable = 0
+                        pressure = setup_memory_pressure(row, self.resources['ram_budget_bytes'], self.system)
+                        row['installation_guard'] = pressure
                         stream.write(json.dumps(dict(row, elapsed_seconds=time.monotonic()-self.started, epoch_seconds=time.time())) + '\n')
-                        available = row.get('effective_available_bytes', row['system_available_bytes'])
+                        available = pressure['available_bytes']
                         self.ui.resource = setup_memory_status(row, self.ui.verbose)
-                        floor = (2 if self.system == 'Windows' else 1) * GiB
                         # Windows helpers can exit/change while their tree is
                         # sampled. Allow two resamples, while checking the live
-                        # system floor on every attempt. A complete over-budget
-                        # reading and persistent failures still stop the work.
-                        if available < floor or (used is not None and used > self.resources['ram_budget_bytes']):
-                            self.state['resource_guard'] = 'Installation crossed its RAM budget or the %d GiB emergency system floor.' % (floor / GiB)
-                            if row.get('private_commit_bytes') is not None:
-                                self.state['resource_guard'] += (' ' + setup_memory_status(row) +
-                                    ' · Process budget %.1f GiB (working set; commit is diagnostic).' %
-                                    (self.resources['ram_budget_bytes']/GiB))
+                        # exhaustion floor on every attempt. The larger planning
+                        # reserve is not a reason to kill a bounded download.
+                        if pressure['reasons']:
+                            self.state['installation_guard'] = pressure
+                            self.state['resource_guard'] = setup_memory_failure(pressure)
                             self.cancel.set()
                             break
+                        if available < pressure['planning_reserve_bytes']:
+                            self.state['memory_headroom_warning'] = pressure
                         if (used is None and (self.system != 'Windows' or unreadable >= 3)
                                 and row.get('monitor_status') != 'degraded'):
                             details = json.dumps(dict(

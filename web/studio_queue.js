@@ -1,6 +1,31 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
 const clone = value => structuredClone(value);
+
+// Repeat the completed request, not an editor draft changed while it was running.
+// Comfy's local history owns the prompt/media graph; no new server endpoint.
+export async function regenerateResult(api, nodeId, result, currentPrompt) {
+    nodeId = String(nodeId);
+    const path = result.request_id ? '/history/' + encodeURIComponent(result.request_id) : '/history?max_items=64';
+    let rows = [];
+    try {
+        const response = await api.fetchApi(path);
+        if (response.ok) rows = Object.values(await response.json());
+    } catch { /* Cleared/unavailable history is an ordinary new generation. */ }
+    rows.sort((a, b) => (b.prompt?.[0] || 0) - (a.prompt?.[0] || 0));
+    const saved = rows.find(row => row.outputs?.[nodeId]?.freevideo_summary?.[0]?.video === result.video
+        && row.outputs[nodeId].freevideo_summary[0].result_cache_hit === true
+        && row.status?.status_str === 'success' && row.status?.completed
+        && row.prompt?.[2]?.[nodeId]?.class_type === 'FreeVideoGenerate');
+    const snapshot = saved
+        ? {output: clone(saved.prompt[2]), workflow: clone(saved.prompt[3]?.extra_pnginfo?.workflow || {})}
+        : clone(await currentPrompt());
+    snapshot.output[nodeId].inputs.force_regenerate = true;
+    const reply = await api.queuePrompt(0, snapshot);
+    if (!reply?.prompt_id) throw new Error('submit_failed');
+    api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
+    return reply.prompt_id;
+}
 export function randomSeed() {
     const bytes = crypto.getRandomValues(new Uint32Array(2));
     return (bytes[0] & 0x1fffff) * 0x100000000 + bytes[1];
@@ -26,7 +51,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     function remember(id) { owned.add(id); if (owned.size > 128) { const old = owned.values().next().value; owned.delete(old); delivered.delete(old); } }
     function result(id, output) {
         if (!owned.has(id) || delivered.has(id) || !output?.freevideo_summary?.[0]) return;
-        delivered.add(id); onResult(output);
+        delivered.add(id); onResult(output, id);
     }
     const state = () => ({running, pending, submitting, looping: Boolean(loop?.active),
         loopCompleted: loop?.completed || 0, error: lastError});

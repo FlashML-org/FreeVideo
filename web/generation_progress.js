@@ -14,6 +14,7 @@ function encodingLabel(label, t) {
         'Starting text encoder': ['Starting text encoder', '启动文本编码器'],
         'Preparing text encoder GPU': ['Preparing GPU', '准备显卡'],
         'Checking text encoder cache': ['Checking prompt cache', '检查提示词缓存'],
+        'Checking saved video': ['Checking saved video', '检查已保存的视频'],
         'Loading text encoder': ['Loading text encoder', '加载文本编码器'],
         'Reading text encoder weights': ['Reading text encoder weights', '读取文本编码器权重'],
         'Preparing text encoder model': ['Preparing text encoder', '准备文本编码器'],

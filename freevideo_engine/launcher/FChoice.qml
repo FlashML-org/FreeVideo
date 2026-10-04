@@ -21,7 +21,7 @@ Button {
             Behavior on border.width { NumberAnimation { duration: 120 } }
         }
         ColumnLayout {
-            Layout.fillWidth: true; spacing: 4
+            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; spacing: 4
             FText { text: control.text; font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true }
             FText { text: control.detail; font.pixelSize: theme.micro; color: theme.muted; Layout.fillWidth: true }
         }

@@ -1,4 +1,5 @@
 """Desktop orchestration and durable source deployment; independent of widgets."""
+import errno
 import hashlib
 import json
 import os
@@ -123,21 +124,40 @@ def materialize_source(bundle=None, destination=None):
     identity = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()[:16]
     parent = Path(destination or launcher_root() / 'source')
     target = parent / (__version__ + '-' + identity)
-    if target.is_dir() and all((target / p).is_file() and hashlib.sha256((target / p).read_bytes()).hexdigest() == digest
-                              for p, digest in rows.items()):
+
+    def complete(path):
+        try:
+            return path.is_dir() and all((path / p).is_file() and
+                hashlib.sha256((path / p).read_bytes()).hexdigest() == digest for p, digest in rows.items())
+        except OSError:
+            return False
+
+    if complete(target):
         return target
     parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(tempfile.mkdtemp(prefix='source-', dir=parent))
-    for relative in rows:
-        output = stage / relative
-        output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(bundle / relative, output)
-    save(stage / 'launcher-source.json', {'version': __version__, 'sha256': rows})
-    # A changed source or concurrent launcher is retained, never overwritten.
-    if target.exists():
-        target = target.with_name(target.name + '-' + uuid.uuid4().hex[:8])
-    stage.rename(target)
-    return target
+    with tempfile.TemporaryDirectory(prefix='source-', dir=parent) as temporary:
+        stage = Path(temporary)
+        for relative in rows:
+            output = stage / relative
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(bundle / relative, output)
+        save(stage / 'launcher-source.json', {'version': __version__, 'sha256': rows})
+        while True:
+            if target.exists():
+                if complete(target):
+                    return target
+                # Retain edits and incomplete deployments without overwriting them.
+                target = parent / (__version__ + '-' + identity + '-' + uuid.uuid4().hex[:8])
+                continue
+            try:
+                stage.rename(target)
+                return target
+            except OSError as error:
+                # Another launcher can publish between exists() and rename().
+                # Windows reports ERROR_ALREADY_EXISTS; POSIX uses ENOTEMPTY.
+                if error.errno not in (errno.EEXIST, errno.ENOTEMPTY) and getattr(error, 'winerror', None) != 183:
+                    raise
+                # Recheck the winner's contents, then reuse or choose a new name.
 
 
 def preflight_json(output):

@@ -22,8 +22,11 @@ ApplicationWindow {
     property bool compact: width < 1000
     property bool shortWindow: height < 700
     property bool otherModelLinksOpen: false
-    readonly property bool offlineSelected: s.form.model_method === "manual"
-    readonly property bool needsPackages: s.page === "models" && offlineSelected && !s.offline.runtime && s.offline.models === 0 && s.form.model_dirs.length === 0
+    readonly property bool manualEnvironment: s.form.new_comfy && s.form.environment_method === "manual"
+    readonly property bool usingRuntime: manualEnvironment && s.offline.runtime
+    readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
+    readonly property bool offlineSelected: usingRuntime || s.form.model_method === "manual"
+    readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && (usingRuntime || s.form.model_dirs.length === 0)
     readonly property int step: s.page === "comfy" ? 0 : s.page === "models" ? 1 : 2
     property string previousPage: ""
     property bool errorDetailsOpen: false
@@ -34,6 +37,7 @@ ApplicationWindow {
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
     function bytes(n) { return n >= 1073741824 ? (n/1073741824).toFixed(1)+" GiB" : (n/1048576).toFixed(1)+" MiB" }
     function primaryText() {
+        if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
         if (s.page === "models") return t("Check & continue", "检查并继续")
@@ -243,7 +247,7 @@ ApplicationWindow {
                         FChoice {
                             objectName: "newComfyMethod"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
                             text: t("Install ComfyUI", "帮我安装 ComfyUI")
-                            detail: t("Everything needed to get started.", "自动准备所需环境。")
+                            detail: t("Prepare ComfyUI and its environment.", "准备 ComfyUI 和运行环境。")
                             checked: s.form.new_comfy; enabled: !s.busy
                             onClicked: backend.edit("new_comfy", true)
                         }
@@ -257,6 +261,18 @@ ApplicationWindow {
                     }
                     FCard {
                         Layout.fillWidth: true; padding: shortWindow ? 16 : 22; spacing: 10
+                        RowLayout {
+                            objectName: "environmentMethods"; visible: s.form.new_comfy; Layout.fillWidth: true; spacing: 12
+                            FText { text: t("Install method", "安装方式"); font.weight: Font.DemiBold; Layout.fillWidth: true }
+                            FSegmented {
+                                objectName: "environmentMethod"; Layout.preferredWidth: Math.min(340, parent.width * .72)
+                                current: s.form.environment_method; enabled: !s.busy
+                                options: [{value: "auto", label: t("Automatic", "自动安装")}, {value: "manual", label: t("Third-party download", "第三方下载")}]
+                                onPicked: function(value) { backend.edit("environment_method", value) }
+                                Accessible.name: t("Install method", "安装方式")
+                            }
+                        }
+                        FDivider { visible: s.form.new_comfy; Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
                         FText { text: s.form.new_comfy ? t("Install location", "安装位置") : t("ComfyUI folder", "ComfyUI 目录"); font.weight: Font.DemiBold }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 8
@@ -265,13 +281,46 @@ ApplicationWindow {
                         }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
+                    FCard {
+                        objectName: "runtimeImportCard"; visible: manualEnvironment; Layout.fillWidth: true; padding: shortWindow ? 16 : 20; spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            FText { text: t("Import environment package", "导入运行环境包"); font.weight: Font.DemiBold; Layout.fillWidth: true }
+                            FButton { objectName: "clearRuntime"; visible: usingRuntime; text: t("Use automatic download", "改用自动下载"); flat: true; enabled: !s.busy; onClicked: backend.clearRuntime() }
+                        }
+                        FText { objectName: "runtimeHelp"; Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro
+                            text: usingRuntime ? t("Environment ready. Import the model packages in the next step.", "运行环境已就绪，下一步导入模型包。") : t("Download the Environment ZIP from Quark, then import it here. Model packages come next.", "从夸克下载「运行环境」ZIP，在这里导入。模型包放在下一步。") }
+                        Rectangle {
+                            Layout.fillWidth: true; implicitHeight: runtimeContents.implicitHeight + 24; radius: theme.radiusSm
+                            color: runtimeDrop.containsDrag ? theme.accentSubtle : theme.bg; border.color: runtimeDrop.containsDrag ? theme.accent : theme.sheen
+                            DropArea { id: runtimeDrop; objectName: "runtimeDrop"; anchors.fill: parent; enabled: !s.busy
+                                onDropped: function(drop) { if (drop.hasUrls) { backend.importPackages(drop.urls); drop.acceptProposedAction() } }
+                            }
+                            ColumnLayout {
+                                id: runtimeContents; anchors.centerIn: parent; width: parent.width - 24; spacing: 8
+                                FText { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: usingRuntime ? theme.success : theme.muted; font.pixelSize: theme.micro
+                                    text: usingRuntime ? t("✓ Environment imported", "✓ 运行环境已导入") : t("Drop the Environment ZIP here — no extraction needed", "将「运行环境」ZIP 拖到这里，无需解压") }
+                                Flow {
+                                    Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: parent.width; spacing: 8
+                                    FButton { objectName: "importRuntime"; text: usingRuntime ? t("Replace package…", "更换环境包…") : t("Choose environment ZIP…", "选择运行环境包…"); enabled: !s.busy; implicitHeight: theme.heightSm; onClicked: backend.browseRuntimePackage() }
+                                    Repeater {
+                                        model: cloudLinks
+                                        delegate: FButton { required property var modelData; required property int index; objectName: "runtimeShare-" + index; text: t("Quark download ↗", "夸克网盘下载 ↗"); flat: true; implicitHeight: theme.heightSm; onClicked: backend.link(modelData.url) }
+                                    }
+                                }
+                            }
+                        }
+                        FMeter { visible: ["running", "preparing"].indexOf(s.offline.status) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
+                        FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FText { visible: s.offline.models > 0; text: t("Model packages also saved for the next step: ", "同时导入的模型包将在下一步使用：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                    }
                 }
 
                 ColumnLayout {
                     objectName: "modelsPage"
                     visible: s.page === "models"; Layout.fillWidth: true; spacing: 16
                     FCard {
-                        objectName: "modelLibraries"; Layout.fillWidth: true; padding: 20; spacing: 10
+                        objectName: "modelLibraries"; visible: !usingRuntime; Layout.fillWidth: true; padding: 20; spacing: 10
                         RowLayout {
                             Layout.fillWidth: true; spacing: 12
                             ColumnLayout {
@@ -295,9 +344,14 @@ ApplicationWindow {
                             }
                         }
                     }
-                    FText { text: t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
                     RowLayout {
-                        Layout.fillWidth: true; spacing: 12
+                        visible: usingRuntime; Layout.fillWidth: true
+                        FText { objectName: "runtimeReadyOnModels"; text: t("✓ Environment ready · add your model packages", "✓ 运行环境已就绪 · 继续导入模型包"); color: theme.success; Layout.fillWidth: true }
+                        FButton { text: t("Change", "更改"); flat: true; enabled: !s.busy; onClicked: backend.action("back", false) }
+                    }
+                    FText { visible: !usingRuntime; text: t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
+                    RowLayout {
+                        visible: !usingRuntime; Layout.fillWidth: true; spacing: 12
                         FChoice {
                             objectName: "automaticMethod"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
                             text: t("Automatic download", "自动下载")
@@ -335,7 +389,7 @@ ApplicationWindow {
                                     model: cloudLinks
                                     delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download from Quark ↗", "打开夸克网盘 ↗"); onClicked: backend.link(modelData.url) }
                                 }
-                                FText { text: t("Get Common models and the pack for your GPU (RTX 30/40 or RTX 50).", "下载「公用模型」和对应显卡包（30/40 系或 50 系）。") + (s.form.new_comfy ? "\n" + t("For a new installation, also get the Environment package.", "全新安装还需「运行环境」包。") : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                                FText { text: t("Get Common models and the pack for your GPU (RTX 30/40 or RTX 50).", "下载「公用模型」和对应显卡包（30/40 系或 50 系）。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 FButton { objectName: "otherModelLinks"; text: t("Alternative download sources", "其他下载渠道") + (otherModelLinksOpen ? "  −" : "  +"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 0; font.pixelSize: theme.micro + 1; onClicked: otherModelLinksOpen = !otherModelLinksOpen }
                                 FText { visible: otherModelLinksOpen; text: t("The same models are also available from Hugging Face or ModelScope.", "同一套模型，也可从 Hugging Face 或魔搭下载。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 Flow {
@@ -364,8 +418,8 @@ ApplicationWindow {
                                     ColumnLayout {
                                         id: dropContents; anchors.centerIn: parent; width: parent.width - 28; spacing: 10
                                         FIcon { kind: "download"; ink: packageDrop.containsDrag ? theme.accent : theme.muted; Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
-                                        FText { text: t("Drop ZIPs here — no extraction needed", "将 ZIP 拖到这里，无需解压"); Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; font.pixelSize: theme.micro; color: theme.muted }
-                                        FButton { objectName: "importPackages"; text: t("Choose packages…", "选择离线包…"); enabled: !s.busy; Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: parent.width; implicitHeight: theme.height; onClicked: backend.browsePackages() }
+                                        FText { text: t("Drop model ZIPs here — no extraction needed", "将模型 ZIP 拖到这里，无需解压"); Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; font.pixelSize: theme.micro; color: theme.muted }
+                                        FButton { objectName: "importPackages"; text: t("Choose model packages…", "选择模型包…"); enabled: !s.busy; Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: parent.width; implicitHeight: theme.height; onClicked: backend.browsePackages() }
                                     }
                                 }
                             }
@@ -373,7 +427,7 @@ ApplicationWindow {
                         FMeter { visible: ["running", "preparing"].indexOf(s.offline.status) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
                         FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
-                    FText { visible: s.offline.runtime || s.offline.models > 0; text: "✓  " + (s.offline.runtime ? t("Environment imported", "环境包已导入") + " · " : "") + t("Model packages: ", "已导入模型包：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                    FText { visible: s.offline.models > 0; text: "✓  " + t("Model packages: ", "已导入模型包：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
 
                 FCard {
@@ -515,14 +569,15 @@ ApplicationWindow {
             Rectangle { height: 1; width: parent.width; color: theme.border }
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 10
-                FButton { text: t("Back", "上一步"); flat: true; visible: s.page === "models" || s.page === "progress"; enabled: !s.busy; onClicked: backend.action("back", false) }
+                FButton { objectName: "backButton"; text: t("Back", "上一步"); flat: true; visible: s.page === "models" || s.page === "progress"; enabled: !s.busy; onClicked: backend.action("back", false) }
                 Item { Layout.fillWidth: true }
                 FButton { visible: s.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
                 FButton {
                     objectName: "primaryButton"; primary: true; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
                     text: s.busy ? t("Working…", "正在处理…") : primaryText()
-                    enabled: !s.busy && !(s.needs_consent && !accepted) && !(s.status === "review" && (!accepted || !!s.error))
-                    onClicked: { if (needsPackages) { backend.browsePackages(); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
+                    enabled: !s.busy && !(s.page === "launcher" && s.needs_consent && !accepted)
+                             && !(s.page === "progress" && s.status === "review" && (!accepted || !!s.error))
+                    onClicked: { if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
                 }
             }
         }

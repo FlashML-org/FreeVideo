@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
+import {outputDownloadURL} from '../web/output_download.js';
+import {regenerateResult} from '../web/studio_queue.js';
 
 class Element {
     constructor(tag) {
@@ -27,7 +29,7 @@ test('main browser entry registers both views and preserves node hooks', async (
     const api = Object.assign(events, {apiURL: value => value});
     const document = {head: new Element('head'), createElement: tag => new Element(tag)};
     const dependencies = {
-        app, api,
+        app, api, outputDownloadURL, regenerateResult,
         createErrorPanel: () => ({element: new Element('error'), show() {}, clear() {}}),
         errorText: value => String(value),
         openStudio: node => opened.push(node),
@@ -61,6 +63,8 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
             .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt} = globalThis.__freevideoEntryTest;')
+            .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
+            .replace("import { regenerateResult } from './studio_queue.js';", 'const {regenerateResult} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest;');
         await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');
@@ -73,7 +77,8 @@ test('main browser entry registers both views and preserves node hooks', async (
         class GenerateNode {
             constructor() {
                 this.id = 7; this.type = 'FreeVideoGenerate';
-                this.widgets = [];
+                this.widgets = [{name: 'base_steps', value: 12}, {name: 'refine_steps', value: 3},
+                    {name: 'force_regenerate', value: true}];
                 this.inputs = []; this.size = [400, 300]; this.dom = []; this.buttons = [];
                 this.graph = app.graph;
             }
@@ -94,10 +99,40 @@ test('main browser entry registers both views and preserves node hooks', async (
         assert.equal(node.buttons[0].name, 'Open creative workspace');
         assert.equal(node.onConfigure(), 'configured');
         assert.equal(node.configured, 1, 'the original ComfyUI node hook must run exactly once');
+        assert.equal(node.widgets[0].value, 12, 'Keep sampling values from public workflows');
+        assert.equal(node.widgets[2].serializeValue(), false);
+        assert.deepEqual(node.widgets[2].computeSize(), [0, -4]);
+        node.widgets[0].value = false; node.onConfigure();
+        assert.equal(node.widgets[0].value, 8, 'Migrate the previous private force-checkbox slot');
         node.buttons[0].callback();
         extension.afterConfigureGraph();
         assert.deepEqual(opened, [node, node]);
         assert.ok(refreshed >= 2);
+        const video = 'FreeVideo/2026-10-03/' + '1'.repeat(32) + '/video.mp4';
+        node.freevideoShowResult({freevideo_summary: [{video, report: video.replace('.mp4', '.debug.json')}]});
+        const links = node.dom.find(row => row.name === 'freevideo_result').element.children[1].children;
+        assert.equal(links[0].href, '/freevideo/library/download?' + new URLSearchParams({id: '2026-10-03/'+'1'.repeat(32)}));
+        assert.equal(links[0].download, '', 'Use the server filename instead of video.mp4');
+        assert.match(links[1].href, /^\/view\?/);
+        node.freevideoShowResult({freevideo_summary: [{video, result_cache_hit: true, sample_seconds: 99}]});
+        const reused = node.dom.find(row => row.name === 'freevideo_result').element;
+        assert.equal(reused.children[0].hidden, true, 'Do not show the old sampling time as current work');
+        assert.ok(reused.children[1].children.some(e => e.textContent === 'Reused previous result'));
+        const again = reused.children[1].children.at(-1);
+        assert.equal(again.textContent, 'Regenerate');
+        let submitted;
+        api.fetchApi = async () => ({ok: true, json: async () => ({})});
+        app.graphToPrompt = async () => ({output: {'7': {class_type: 'FreeVideoGenerate', inputs: {text: 'current draft', seed: 42}}}});
+        api.queuePrompt = async (_, prompt) => { submitted = prompt; return {prompt_id: 'new'}; };
+        await again.onclick();
+        assert.equal(submitted.output['7'].inputs.force_regenerate, true);
+        assert.equal(submitted.output['7'].inputs.text, 'current draft');
+        assert.equal(again.textContent, 'Queued');
+        node.freevideoShowProgress({label: 'Preparing video', new_request: true, reset: true});
+        assert.ok(!reused.children.some(e => ['fv-stats', 'fv-links'].includes(e.className)),
+            'The new video must not display the previous result statistics or downloads');
+        node.freevideoShowResult({freevideo_summary: [{video, sample_seconds: 5}]});
+        assert.equal(reused.children[0].hidden, false, 'Show statistics again only for a completed result');
 
         class MediaNode extends GenerateNode {
             constructor() {

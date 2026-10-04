@@ -28,9 +28,11 @@ class Session:
         saved = self.store.read()
         home = Path(os.environ.get('USERPROFILE') or os.environ.get('HOME') or launcher_root().parent)
         self.form = dict(comfy='', destination=str(home / 'FreeVideo'), engine='', python='',
-                         url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto',
+                         url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
                          separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[])
         self.form.update({k: v for k, v in saved.items() if k in self.form})
+        if 'environment_method' not in saved and self.form['offline_runtime']:
+            self.form['environment_method'] = 'manual'
         if self.form['model_method'] == 'reuse':
             self.form['model_method'] = 'manual' if self.form['offline_runtime'] else 'auto'
         self.form['engine'] = os.environ.get('FREEVIDEO_HOME') or self.form['engine']
@@ -69,7 +71,7 @@ class Session:
                 self.updater = UpdateClient(identity, launcher_root())
         if self.updater and not self.updater.busy:
             self.updater.run('check')
-        if self.form['offline_runtime'] and not controller:
+        if self.form['environment_method'] == 'manual' and self.form['offline_runtime'] and not controller:
             root = Path(self.form['offline_runtime'])
             if (root / 'portable.json').is_file():
                 self.activate_offline(root)
@@ -110,6 +112,8 @@ class Session:
             return
         if key in ('separate', 'repair', 'new_comfy'):
             value = bool(value)
+        if key == 'environment_method' and value not in ('auto', 'manual'):
+            raise ValueError('Unknown environment installation method')
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
         if self.form[key] == value:
@@ -134,6 +138,8 @@ class Session:
     def clear_runtime(self):
         # Detach it from this plan; imported files remain available for reuse.
         self.edit('offline_runtime', '')
+        self.edit('environment_method', 'auto')
+        self.edit('model_method', 'auto')
 
 
     def import_packages(self, paths):
@@ -141,7 +147,6 @@ class Session:
             return
         if not paths:
             return
-        self.edit('model_method', 'manual')
         destination = (Path(self.form['destination']).expanduser().resolve() if self.form['new_comfy']
                        else self.engine_root().parent)
         self.importer.start(paths, destination)
@@ -196,11 +201,14 @@ class Session:
         if name not in ('primary', 'launch'):
             return
         state = self.controller.state.get('status')
-        if (self.page == 'models' and self.form['new_comfy'] and self.form['offline_runtime']
-                and self.form['model_method'] == 'manual'):
+        if (self.page == 'models' and self.form['new_comfy']
+                and self.form['environment_method'] == 'manual' and self.form['offline_runtime']):
             self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
             return
         if self.page == 'comfy':
+            if self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime']:
+                raise ValueError(self.t('Import the Environment ZIP, or choose Automatic installation.',
+                                       '请导入运行环境包，或选择「自动安装」。'))
             new_layout(self.form['destination']) if self.form['new_comfy'] else layout(self.form['comfy'])
             self.persist(); self.page = 'models'; return
         self.browser_attempted = False
@@ -378,13 +386,15 @@ class Session:
             self.imported_batch = imported
             for package in imported.get('packages', []):
                 if package['kind'] == 'runtime':
-                    self.form['offline_runtime'] = package['root']
+                    self.edit('offline_runtime', package['root'])
+                    self.edit('environment_method', 'manual')
                 else:
                     roots = self.form['offline_models']
                     if package['root'] not in roots:
                         self.form['offline_models'] = roots + [package['root']]
                         self.add_folder(str(Path(package['root']) / 'models'))
             if imported.get('packages'):
+                self.edit('model_method', 'manual')
                 self.persist()
             if imported['status'] == 'error':
                 self.error = imported['error']

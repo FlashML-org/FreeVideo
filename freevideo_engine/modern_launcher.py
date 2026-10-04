@@ -122,6 +122,15 @@ def create_ui(session, *, show=True):
         def clearRuntime(self):
             self.invoke(session.clear_runtime)
 
+        @Slot()
+        def browseRuntimePackage(self):
+            if session.controller.busy or session.importer.busy:
+                return
+            paths, _ = QFileDialog.getOpenFileNames(None, session.t('Choose environment ZIP', '选择运行环境包'),
+                                                    '', 'FreeVideo (*.zip)')
+            if paths:
+                self.invoke(session.import_packages, paths)
+
         @Slot('QVariantList')
         def importPackages(self, urls):
             paths = []

@@ -18,6 +18,8 @@ def sanitize(value):
             result[key] = value[key]
     if value.get('model_method') in ('auto', 'manual', 'reuse'):
         result['model_method'] = value['model_method']
+    if value.get('environment_method') in ('auto', 'manual'):
+        result['environment_method'] = value['environment_method']
     folders = value.get('model_dirs')
     if isinstance(folders, list) and all(isinstance(p, str) for p in folders):
         result['model_dirs'] = list(dict.fromkeys(folders))

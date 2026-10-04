@@ -11,6 +11,7 @@ import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
+import { outputDownloadURL } from './output_download.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -180,12 +181,13 @@ export function openStudio(node) {
     const fields = el('div', null, 'fv-fields'); fields.append(field(t('Total pixels', '总像素'), mp), field(t('Duration · seconds', '时长 · 秒'), seconds)); canvas.append(fields);
     const canvasNote = el('div', null, 'fv-canvas-note'), dimensions = el('span'), duration = el('span'); canvasNote.append(dimensions, duration); canvas.append(canvasNote);
     const twoPass = el('input'); twoPass.type = 'checkbox'; twoPass.checked = value(node, 'two_pass') !== false;
+    twoPass.setAttribute('role', 'switch');
     twoPass.disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
     twoPass.onchange = () => { set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
     const twoPassLabel = el('label', null, 'fv-two-pass');
     twoPassLabel.title = t('Generate the scene, then refine it at the target resolution.', '先生成画面，再以目标分辨率精修。');
     twoPass.title = twoPassLabel.title;
-    twoPassLabel.append(twoPass, el('span', t('Two-pass sampling', '二次采样')));
+    twoPassLabel.append(el('span', t('Two-pass sampling', '二次采样')), twoPass);
     canvas.append(twoPassLabel);
     const mediaNode = upstream(node, 'media');
     const [mediaDetails, mediaMount] = expand(t('Media', '素材'));
@@ -295,6 +297,11 @@ export function openStudio(node) {
     const previewObserver = new ResizeObserver(fitPreview);
     previewObserver.observe(previewSpace); cleanup.push(() => previewObserver.disconnect());
     function showProgress(message) {
+        reuseRow.hidden = true;
+        stats.hidden = true;
+        budget.textContent = '';
+        links.replaceChildren();
+        prewarm.textContent = '';
         clearTimeout(revealTimer); revealTimer = null; delete stage.dataset.revealing;
         if (progress.element.hidden) stage.querySelector('video')?.pause();
         progress.update(message);
@@ -305,7 +312,16 @@ export function openStudio(node) {
     const metrics = [];
     for (const label of [t('Sampling', '采样耗时'), t('Request total', '请求总计'), t('VRAM peak', '显存峰值'), t('RAM peak', '内存峰值')]) { const box = el('div', null, 'fv-stat'), n = el('strong', '—'); box.append(n, el('span', label)); stats.append(box); metrics.push(n); }
     const prewarm = el('div', node.freevideoPrewarm || '', 'fv-prewarm');
-    output.append(status, stats, budget, links, progress.report, prewarm);
+    const reuseRow = el('div', null, 'fv-reuse-result'); reuseRow.hidden = true;
+    const reuseNotice = el('span', t('Reused previous result', '已复用上次结果'));
+    const regenerate = button(t('Regenerate', '重新生成'), async () => {
+        const saved = result;
+        regenerate.disabled = true;
+        try { await node.freevideoRegenerateResult(saved); regenerate.textContent = t('Queued', '已加入队列'); await syncQueue(); }
+        catch (error) { regenerate.disabled = false; status.dataset.error = 'true'; status.textContent = error.message; }
+    }, 'fv-quiet');
+    reuseRow.append(reuseNotice, regenerate);
+    output.append(status, reuseRow, stats, budget, links, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
@@ -314,11 +330,13 @@ export function openStudio(node) {
         progress.report.hidden = !node.freevideoReportId;
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
-        stats.hidden = false;
+        stats.hidden = !!r.result_cache_hit;
+        reuseRow.hidden = !r.result_cache_hit;
+        regenerate.disabled = false; regenerate.textContent = t('Regenerate', '重新生成');
         const shown = [number(r.sample_seconds), number(r.request_seconds), number(r.vram_peak_bytes, 2 ** 30, 'GiB'), number(r.ram_peak_bytes, 2 ** 30, 'GiB')]; metrics.forEach((e, i) => e.textContent = shown[i]);
-        budget.textContent = Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
+        budget.textContent = !r.result_cache_hit && Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
         links.replaceChildren();
-        for (const [label, file, cls] of [[t('Download video', '下载视频'), r.video, 'fv-primary'], [t('Report', '查看报告'), r.report, 'fv-quiet']]) { if (!file) continue; const a = el('a', label, cls); a.href = view(file, 'output'); a.download = file.split('/').pop(); links.append(a); }
+        for (const [label, file, cls] of [[t('Download video', '下载视频'), r.video, 'fv-primary'], [t('Report', '查看报告'), r.report, 'fv-quiet']]) { if (!file) continue; const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === r.video ? '' : file.split('/').pop(); links.append(a); }
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
         if (!progress.element.hidden) {
             progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});
@@ -332,10 +350,11 @@ export function openStudio(node) {
     if (!studioQueues.has(node)) studioQueues.set(node, createStudioQueue(api, node.id, {
         formatError: (error, snapshot) => createErrorReport(error, {stage: 'submission', snapshot, node, graph: app.graph}),
         // Direct snapshot submission still feeds the same graph result panel.
-        onResult: output => {
+        onResult: (output, requestId) => {
+            output = {...output, freevideo_summary: [{...output.freevideo_summary[0], request_id: requestId}]};
             if (app.graph?.getNodeById(node.id) !== node) { node.freevideoLastResult = output.freevideo_summary[0]; return; }
             app.nodeOutputs = {...app.nodeOutputs, [node.id]: output};
-            if (node.freevideoLastResult?.video !== output.freevideo_summary[0].video) node.freevideoShowResult?.(output);
+            if (node.freevideoLastResult?.request_id !== requestId) node.freevideoShowResult?.(output);
         },
     }));
     const queueController = studioQueues.get(node);
@@ -591,7 +610,9 @@ export function openStudio(node) {
     const escape = e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate.click(); } }; dialog.addEventListener('keydown', escape);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
-    document.body.append(dialog); dialog.showModal(); viewChanged('studio', node); updateCanvas(); if (result) showResult(result);
+    document.body.append(dialog); dialog.showModal(); viewChanged('studio', node); updateCanvas();
+    if (node.freevideoProgress) showProgress(node.freevideoProgress);
+    else if (result) showResult(result);
     // Do not change any saved width/height simply by opening a workflow.
     syncQueue().then(async () => {
         if (disposed) return;
