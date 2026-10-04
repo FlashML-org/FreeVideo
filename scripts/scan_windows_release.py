@@ -5,6 +5,7 @@ archives, and retain detected files for investigation. A missing scanner, failed
 update, timeout or changed artifact is an error, never a clean scan.
 Explicit launch verification also enables real-time/cloud protection on the
 disposable runner and checks Internet-zone downloads with Attachment Services.
+Scripts get the AMSI verdict PowerShell would receive before running them.
 """
 import argparse
 import hashlib
@@ -129,6 +130,41 @@ ConvertTo-Json -InputObject $rows -Depth 4 -Compress
 """)
 
 
+AMSI_BLOCKED = 16384  # AMSI_RESULT_BLOCKED_BY_ADMIN_START; detections are 32768 and above
+
+
+def amsi_verdicts(paths):
+    """Scan each script's text the way PowerShell does before running it; returns {path: AMSI_RESULT}."""
+    for path in paths:
+        if "'" in str(path):
+            raise ValueError('Script path must not contain a quote: ' + str(path))
+    listing = ', '.join("'%s'" % Path(path).resolve() for path in paths)
+    return powershell("""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class Amsi {
+    [DllImport("amsi.dll", CharSet = CharSet.Unicode)] public static extern int AmsiInitialize(string appName, out IntPtr context);
+    [DllImport("amsi.dll", CharSet = CharSet.Unicode)] public static extern int AmsiScanString(IntPtr context, string content, string name, IntPtr session, out int result);
+    [DllImport("amsi.dll")] public static extern void AmsiUninitialize(IntPtr context);
+}
+'@
+[IntPtr]$context = 0
+if ([Amsi]::AmsiInitialize('FreeVideo release validation', [ref]$context) -ne 0) { throw 'AmsiInitialize failed' }
+$rows = [ordered]@{}
+foreach ($path in @(%s)) {
+    $verdict = 0
+    $status = [Amsi]::AmsiScanString($context, [IO.File]::ReadAllText($path), $path, [IntPtr]::Zero, [ref]$verdict)
+    if ($status -ne 0) { throw "AmsiScanString failed for $path (HRESULT 0x$($status.ToString('x8')))" }
+    $rows[$path] = $verdict
+}
+[Amsi]::AmsiUninitialize($context)
+ConvertTo-Json -InputObject $rows -Compress
+""" % listing)
+
+
 def mark_download(path):
     # Preserve the Internet-zone evidence a browser supplies. Never unblock it.
     url = 'https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/'
@@ -251,10 +287,10 @@ def verify_launches(onefile, folder_zip, program, report, logs, *, blocked_layou
     require_realtime(report['defender_after_launch'])
 
 
-def scan(files, report_path, *, launches=None):
+def scan(files, report_path, *, launches=None, scripts=()):
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report = dict(schema=1, status='error', started_at=time.time(), files=[],
+    report = dict(schema=1, status='error', started_at=time.time(), files=[], scripts=[],
                   scope='Microsoft Defender custom file/archive scan; not a SmartScreen or malware-free certification')
     try:
         if platform.system() != 'Windows':
@@ -285,8 +321,10 @@ def scan(files, report_path, *, launches=None):
         if (not info.get('signatures') or type(info.get('signature_age_days')) is not int
                 or not 0 <= info['signature_age_days'] <= 2 or not info.get('service_enabled')):
             raise RuntimeError('Defender service or current signatures are unavailable; scan inconclusive')
-        if launches:
+        if launches or scripts:
+            # Defender answers AMSI from its real-time engine; with protection off every script reads as clean.
             require_realtime(info)
+        if launches:
             report['maps_exit_code'] = command([program, '-ValidateMapsConnection'], report_path.parent/'defender-maps.log')
             if report['maps_exit_code'] != 0:
                 raise RuntimeError('Defender cloud connection unavailable; release validation is inconclusive')
@@ -297,10 +335,14 @@ def scan(files, report_path, *, launches=None):
             row['exit_code'] = command([program, '-Scan', '-ScanType', '3', '-File', path, '-DisableRemediation'], log)
             unchanged = path.is_file() and path.stat().st_size == row['bytes'] and digest(path) == row['sha256']
             row['status'] = 'clean' if row['exit_code'] == 0 and unchanged else 'blocked'
-        blocked = [row for row in report['files'] if row['status'] != 'clean']
+        if scripts:
+            for path, verdict in amsi_verdicts(scripts).items():
+                report['scripts'].append(dict(path=path, amsi_result=verdict,
+                                              status='clean' if verdict < AMSI_BLOCKED else 'blocked'))
+        blocked = [row for row in report['files'] + report['scripts'] if row['status'] != 'clean']
         if launches:
             blocked_layouts = {'onefile' if Path(row['path']) == Path(launches[0]).resolve() else 'folder'
-                               for row in blocked}
+                               for row in report['files'] if row['status'] != 'clean'}
             verify_launches(*map(Path, launches), program, report, report_path.parent, blocked_layouts=blocked_layouts)
             report['detections'] = threat_history()
             previous = {row['id'] for row in report['detections_before']}
@@ -339,11 +381,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--file', type=Path, action='append', required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--script', type=Path, action='append', default=[],
+                        help='PowerShell script to check with AMSI; may be repeated')
     parser.add_argument('--verify-launches', nargs=2, type=Path, metavar=('EXE', 'FOLDER_ZIP'),
                         help='Enable real-time/cloud Defender on this test machine and open Internet-zone copies')
     args = parser.parse_args()
-    result = scan(args.file, args.report, launches=args.verify_launches)
-    print('Defender scan completed for %d release files. Report: %s' % (len(result['files']), args.report))
+    result = scan(args.file, args.report, launches=args.verify_launches, scripts=args.script)
+    print('Defender scan completed for %d release files and %d scripts. Report: %s'
+          % (len(result['files']), len(result['scripts']), args.report))
 
 
 if __name__ == '__main__':

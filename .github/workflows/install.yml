@@ -52,6 +52,9 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      id-token: write
+    # Pull requests and forks build unsigned. Every other run uses the release environment, whose deployment rules and reviewers decide who can mint the OIDC token Azure trusts for signing.
+    environment: ${{ github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo' && 'release' || '' }}
     concurrency:
       group: windows-launcher-release-${{ github.ref }}
       cancel-in-progress: false
@@ -82,24 +85,64 @@ jobs:
           # The old package is evidence, not the replacement candidate. The
           # new final bytes must pass the mandatory protection gate below.
           exit 0
+      - name: Azure login (OIDC)
+        if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # The GitHub OIDC assertion behind the login expires after 5 minutes (azure-cli#29063). A signing token fetched now is cached by az for the whole job.
+      - name: Fetch the signing token
+        if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo'
+        run: |
+          az account get-access-token --scope https://codesigning.azure.net/.default --output none
+          if ($LASTEXITCODE -ne 0) { throw 'Could not get a codesigning.azure.net token' }
+      # The launcher runs these scripts from its unpacked tree, where the executable's signature does not cover them. Sign the checkout's copies before the build bundles them.
+      - name: Sign bundled PowerShell scripts
+        if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: flashmlsigning
+          certificate-profile-name: freetoken-public
+          files: |
+            ${{ github.workspace }}/freevideo.ps1
+            ${{ github.workspace }}/setup.ps1
+            ${{ github.workspace }}/test.ps1
+            ${{ github.workspace }}/freevideo_engine/windows_bootstrap.ps1
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
       - name: Build Windows launcher
         run: |
           python scripts/build_windows.py --onefolder --out build/windows-folder
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/build_windows.py --out build/windows-exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item build/windows-folder/dist/FreeVideo-Windows-folder.zip build/windows-exe/dist/
-      - name: Sign Windows launchers when a certificate is configured
+      - name: Sign Windows launchers
+        if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: flashmlsigning
+          certificate-profile-name: freetoken-public
+          files: |
+            ${{ github.workspace }}/build/windows-exe/dist/FreeVideo.exe
+            ${{ github.workspace }}/build/windows-folder/dist/FreeVideo/FreeVideo.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      # Check the copies that ship: the folder layout exposes every bundled script on disk, and the one-file launcher is built from the same inputs.
+      - name: Verify signatures and rebuild the folder ZIP around the signed launcher
+        if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo'
         shell: pwsh
-        env:
-          WINDOWS_CODESIGN_PFX_B64: ${{ secrets.WINDOWS_CODESIGN_PFX_B64 }}
-          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-          WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_CODESIGN_TIMESTAMP_URL }}
         run: |
-          ./scripts/sign_windows_release.ps1 `
-            -OneFile build/windows-exe/dist/FreeVideo.exe `
-            -FolderZip build/windows-exe/dist/FreeVideo-Windows-folder.zip `
-            -FolderExecutable build/windows-folder/dist/FreeVideo/FreeVideo.exe
+          $scripts = @(Get-ChildItem build/windows-folder/dist -Recurse -Filter *.ps1 | ForEach-Object FullName)
+          "bundled scripts: $($scripts.Count)"
+          ./scripts/verify_windows_release.ps1 -FolderDist build/windows-folder/dist -Signed ($scripts + 'build/windows-exe/dist/FreeVideo.exe' + 'build/windows-folder/dist/FreeVideo/FreeVideo.exe')
+      - name: Collect the folder launcher
+        run: Copy-Item build/windows-folder/dist/FreeVideo-Windows-folder.zip build/windows-exe/dist/
       - name: Hash final Windows launchers
         shell: pwsh
         run: |
@@ -110,7 +153,8 @@ jobs:
         timeout-minutes: 20
         shell: pwsh
         run: |
-          python scripts/scan_windows_release.py --file build/windows-exe/dist/FreeVideo.exe --file build/windows-folder/dist/FreeVideo/FreeVideo.exe --file build/windows-exe/dist/FreeVideo-Windows-folder.zip --verify-launches build/windows-exe/dist/FreeVideo.exe build/windows-exe/dist/FreeVideo-Windows-folder.zip --report antivirus/report.json
+          $scripts = @(Get-ChildItem build/windows-folder/dist -Recurse -Filter *.ps1 | ForEach-Object { '--script', $_.FullName })
+          python scripts/scan_windows_release.py --file build/windows-exe/dist/FreeVideo.exe --file build/windows-folder/dist/FreeVideo/FreeVideo.exe --file build/windows-exe/dist/FreeVideo-Windows-folder.zip @scripts --verify-launches build/windows-exe/dist/FreeVideo.exe build/windows-exe/dist/FreeVideo-Windows-folder.zip --report antivirus/report.json
           $scanExit = $LASTEXITCODE
           if (Test-Path antivirus/report.json) { Get-Content antivirus/report.json -Raw }
           exit $scanExit
