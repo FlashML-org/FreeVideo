@@ -23,7 +23,7 @@ def combine(first, second, upscale, sampling_plan):
                   step_seconds=list(first['step_seconds']) + list(second['step_seconds']),
                   sample_seconds=first['sample_seconds'] + upscale['stage_seconds'] + second['sample_seconds'])
     for key in ('torch_peak_allocated_bytes', 'torch_peak_reserved_bytes'):
-        result[key] = max(first[key], second[key], upscale.get(key, 0))
+        result[key] = max(first.get(key, 0), second[key], upscale.get(key, 0))
     for key in ('attention_backend_calls', 'fp8_kernel_calls'):
         rows = [value[key] for value in (first, second) if value.get(key) is not None]
         result[key] = ({name: sum(row.get(name, 0) for row in rows)

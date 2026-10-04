@@ -14,6 +14,11 @@ ENGINE_PLACEMENT = frozenset(('resident_blocks', 'pin_host_gb', 'pin_host_weight
     'preload_host', 'stream_weights', 'prefetch', 'offload_refiner', 'adaln_disk_cache'))
 DECODER_PLACEMENT = frozenset(('offload', 'prefetch', 'preload', 'pin_weights',
     'stream_output', 'stream_weights', 'resident_blocks'))
+# Compute partitions change floating-point reduction order, not what a pass
+# computes. An OOM retry shrinks them for the second pass, so a retained first
+# pass stays valid across them.
+COMPUTE_PARTITION = frozenset(('head_chunk', 'window_batch', 'ff_chunk', 'projection_chunk', 'head_parallelism',
+    'attention_cpu_outputs', 'grouped_attention_outputs', 'fp8_ff_recompute', 'residual_offload', 'query_chunk'))
 SAMPLE_FIELDS = ('config', 'sample_seconds', 'step_seconds', 'finite_latents', 'geometry',
     'conditioning_info', 'conditioning_shape', 'offload', 'residual_offload_steps',
     'attention_backend_calls', 'head_execution', 'text_refinement', 'sampling_memory',
@@ -157,3 +162,89 @@ def retain_latents(source, artifacts):
     except OSError:
         with source.open('rb') as incoming, destination.open('xb') as outgoing:
             shutil.copyfileobj(incoming, outgoing, length=1024 * 1024)
+
+
+def refine_provenance(request):
+    """Identity of a completed first pass: the sampling identity without compute partitions or decoding."""
+    result = sampling_provenance(request)
+    if result.get('version') != 2:
+        raise ValueError('A retained first pass requires a two-pass sampling plan')
+    result['engine_math'] = {key: value for key, value in result['engine_math'].items() if key not in COMPUTE_PARTITION}
+    result.pop('decoder_math', None)
+    return dict(result, scope='first-pass')
+
+
+def save_refine_input(value, artifacts, torch):
+    """Retain the upscaled, cropped first pass atomically before the second pass."""
+    artifacts = Path(artifacts)
+    artifacts.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix='refine-input.', suffix='.tmp', dir=artifacts, delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        torch.save(value, temporary)
+        temporary.replace(artifacts / 'refine-input.pt')
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def refine_checkpoint_complete(metrics):
+    """A failed attempt retained its full first pass, latent upscale and crop."""
+    if (not isinstance(metrics, dict) or metrics.get('success') is not False
+            or metrics.get('refine_checkpoint_complete') is not True
+            or not isinstance(metrics.get('refine_provenance'), dict)):
+        return False
+    plan, passes = metrics.get('sampling_plan'), metrics.get('sampling_passes')
+    if not isinstance(plan, dict) or not plan.get('enabled') or not isinstance(passes, list) or not passes:
+        return False
+    first, lifted = passes[0], metrics.get('latent_upscale')
+    if not isinstance(first, dict) or not isinstance(lifted, dict):
+        return False
+    steps = first.get('step_seconds')
+    seconds = [first.get('sample_seconds'), lifted.get('stage_seconds')]
+    return (isinstance(steps, list) and len(steps) == plan.get('base_steps')
+            and all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in steps)
+            and all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in seconds))
+
+
+def load_refine_input(request, torch):
+    """Load a verified retained first pass on the CPU; the caller moves it to the GPU."""
+    resume = request['resume_refine']
+    if not isinstance(resume, dict) or any(not isinstance(resume.get(key), str) or not resume[key]
+                                           for key in ('input', 'metrics', 'request')):
+        raise ValueError('Invalid first-pass retry source')
+    paths = {key: Path(resume[key]).resolve() for key in ('input', 'metrics', 'request')}
+    if len({path.parent for path in paths.values()}) != 1 or len(set(paths.values())) != 3:
+        raise ValueError('First-pass retry artifacts must belong to one retained attempt')
+    prior = json.loads(paths['request'].read_text(encoding='utf-8'))
+    previous = json.loads(paths['metrics'].read_text(encoding='utf-8'))
+    if not isinstance(prior, dict) or not refine_checkpoint_complete(previous):
+        raise ValueError('First-pass retry requires a complete retained first pass')
+    provenance = refine_provenance(request)
+    if provenance != refine_provenance(prior) or provenance != previous['refine_provenance']:
+        raise ValueError('Retained first pass does not match this request and its current inputs')
+    canvas = request['geometry']
+    value = torch.load(str(paths['input']), map_location='cpu', weights_only=True)
+    if (not isinstance(value, dict) or type(value.get('seed')) is not int or value['seed'] != request['seed']
+            or value.get('geometry') != canvas or value.get('refine_provenance') != provenance):
+        raise ValueError('Retained first-pass provenance differs from its receipt')
+    width, height, frames, fps = (canvas[key] for key in ('width', 'height', 'frames', 'fps'))
+    if (any(type(n) is not int or n <= 0 for n in (width, height, frames, fps))
+            or width % 32 or height % 32 or frames % 17 != 5 or fps != 24):
+        raise ValueError('Invalid retained H3 first-pass geometry')
+    # The second pass refines at the requested canvas: same layouts as the
+    # final latents (video C=24, stride 16; stereo audio C=32 at 40/s).
+    shapes = {'video': (1, 24, (frames - 5) // 17 * 5 + 2, height // 16, width // 16),
+              'audio': (2, 32, round(frames / fps * 40))}
+    for key, shape in shapes.items():
+        tensor = value.get(key)
+        if (not isinstance(tensor, torch.Tensor) or tensor.device.type != 'cpu'
+                or tuple(tensor.shape) != shape or not tensor.is_floating_point()
+                or not bool(torch.isfinite(tensor).all())):
+            raise ValueError('Retained first-pass %s latents are malformed or non-finite' % key)
+    first = copy.deepcopy(previous['sampling_passes'][0])
+    lifted = copy.deepcopy(previous['latent_upscale'])
+    receipt = dict(first_pass_reused=True, refine_provenance=provenance,
+                   first_pass_source_attempt=previous.get('refine_source_attempt', prior.get('resource_attempt')),
+                   first_pass_scope='Reused the retained first pass, latent upscale and crop; their times and '
+                                    'peaks belong to the source attempt.')
+    return value['video'], value['audio'], first, lifted, receipt

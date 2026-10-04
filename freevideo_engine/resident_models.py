@@ -103,6 +103,11 @@ def release_encoder(clip, manager):
                 return _native(device_to=None, unpatch_weights=unpatch_weights)
             target.unpatch_model = discard
         manager.unload_all_models()
+        # Unloading leaves the native streaming buffers allocated; see
+        # encoder_memory.release_cast_buffers. The caller empties the cache.
+        reset = getattr(manager, 'reset_cast_buffers', None)
+        if callable(reset):
+            reset()
     finally:
         for target, existed, original in reversed(saved):
             if existed:

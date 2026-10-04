@@ -127,6 +127,27 @@ def token_counts(tokens):
     return dict(sequences=len(lengths), max_sequence_tokens=max(lengths, default=0), total_tokens=sum(lengths))
 
 
+def release_cast_buffers(manager, torch):
+    """Free the streaming buffers the native library keeps after an encode.
+
+    Without dynamic VRAM, which this worker disables, ComfyUI copies every
+    weight it did not load through one cached buffer per offload stream, sized
+    to the largest weight so far. Unloading models never frees them, and in
+    this mode ComfyUI itself never does: its executor resets them only for
+    dynamic VRAM. The resident worker runs the transformer next in the same
+    process. On a 6 GiB RTX 3060 Laptop, with no encoder weights loaded, they
+    held 0.80 GiB allocated and 1.68 GiB reserved, and evicting the encoder
+    released nothing. The next encode allocates them again.
+    """
+    reset = getattr(manager, 'reset_cast_buffers', None)
+    if not callable(reset):
+        return None
+    allocated, reserved = torch.cuda.memory_allocated(), torch.cuda.memory_reserved()
+    reset()  # The native reset also empties the CUDA cache.
+    return dict(released_allocated_bytes=max(0, allocated - torch.cuda.memory_allocated()),
+                released_reserved_bytes=max(0, reserved - torch.cuda.memory_reserved()))
+
+
 def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3):
     from .adaptive import classify_failure
     original_reserve = manager.EXTRA_RESERVED_VRAM

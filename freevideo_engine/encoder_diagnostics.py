@@ -27,7 +27,7 @@ def cached_metrics(value):
     value['cache_source_timings'] = timings
     value.update({key: 0. for key in timings})
     value['cache_source_metrics'] = {key: value.pop(key) for key in ('timing', 'runtime',
-        'load_stages', 'gpu', 'checkpoint', 'encoder_attempts', 'token_summary',
+        'load_stages', 'gpu', 'checkpoint', 'encoder_attempts', 'token_summary', 'cast_buffers',
         'resident_encoder_cache_hit', 'resident_encoder_gpu_ready_at_start') if key in value}
     value.pop('phase', None)
     return value

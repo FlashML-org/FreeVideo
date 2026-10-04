@@ -206,16 +206,38 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 type(commit) is int and commit >= 0 and
                 commit < mapped + 2 * 2**30)
             encoder_idle = state and any(m.get('role') == 'encoder' for m in state.get('models', []))
+            # The plan counted the idle encoder's memory as reclaimable. If it
+            # still streams every transformer block from disk with nothing
+            # retained, actually reclaim it: a 16 GiB RTX 3060 Laptop kept the
+            # encoder's 4.5 GiB while each step reread 21.6 GB of weights with
+            # no room left for host read-ahead. Machines that retain weights
+            # keep the encoder for the next prompt.
+            from .policy import BLOCK_BYTES
+            engine = profile['engine']
+            before, after = getattr(raw, 'ram_available', None), getattr(hardware, 'ram_available', None)
+            credited = after - before if type(before) is int and type(after) is int else 0
+            retention_starved = (engine.get('stream_weights') is True and credited >= 2 * 2**30
+                                 and engine.get('pin_host_gb', 0.) * 1e9 < BLOCK_BYTES)
+            # The plan also counted the idle worker's GPU memory as free, but
+            # only a process exit is sure to return memory the model bank does
+            # not own. On a 6 GiB RTX 3060 Laptop the lowvram encoder's
+            # streaming buffers held 0.80 GiB allocated (1.68 GiB reserved),
+            # evicting the encoder released nothing, and the transformer,
+            # planned with zero resident blocks, ran out of memory in its second
+            # pass. The worker now frees those buffers after encoding; this
+            # covers anything else it still holds.
+            idle_gpu = state.get('reclaimable_gpu_bytes') if state else None
+            gpu_starved = (type(idle_gpu) is int and idle_gpu >= 256 * 2**20
+                           and engine.get('resident_blocks', 0) == 0)
+            working_set_short = type(used) is int and used >= 0 and used + 2*2**30 > row['budget_bytes']['ram']
             reclaim = (stage == 'after-encoding' and not attempt and encoder_idle and environment.get(ENV)
-                       and ((type(used) is int and used >= 0
-                             and used + 2*2**30 > row['budget_bytes']['ram'])
-                            or mapped_commit_pressure))
+                       and (working_set_short or mapped_commit_pressure or retention_starved or gpu_starved))
             if not reclaim:
                 return hardware, state, profile
-            reason = ('Idle encoder working set leaves insufficient model-loading room'
-                      if type(used) is int and used >= 0
-                      and used + 2*2**30 > row['budget_bytes']['ram']
-                      else 'Idle encoder mapping leaves insufficient Windows Commit headroom')
+            reason = ('Idle encoder working set leaves insufficient model-loading room' if working_set_short
+                      else 'Idle encoder mapping leaves insufficient Windows Commit headroom' if mapped_commit_pressure
+                      else 'Idle encoder GPU memory leaves the transformer no spare VRAM' if gpu_starved
+                      else 'Idle encoder memory leaves the transformer rereading every weight from disk')
             row.update(status='reclaim-before-load', reason=reason,
                        mapped_bytes=mapped if type(mapped) is int else None,
                        commit_available_bytes=commit if type(commit) is int else None)
@@ -547,6 +569,11 @@ def _run(args):
                                            text_tokens=tokens)
                 report['history_placement'] = decision
                 report['profile'] = profile
+                from .adaptive import recovered_compute
+                profile, report['recovered_compute'] = recovered_compute(profile, history, resource_identity, canvas)
+                report['profile'] = profile
+                if report['recovered_compute']['applied']:
+                    print(json.dumps(dict(event='recovered_compute', **report['recovered_compute'])), flush=True)
             from .compatibility import Store as CompatibilityStore, apply as apply_compatibility
             compatibility_state = CompatibilityStore(history.path.parent).status(resource_identity, persist=True)
             profile, report['compatibility'] = apply_compatibility(profile, compatibility_state)
@@ -593,7 +620,7 @@ def _run(args):
                 report['benchmark_limit'] = {'pytorch_allocator_bytes': request['allocator_limit_bytes'],
                     'scope': 'PyTorch CUDA allocator only; other CUDA allocations and whole-device usage are measured separately.'}
             request_path = temporary / 'video.json'
-            resume_decode = None
+            resume_decode = resume_refine = None
             # Keep explicit dependency overlays while keeping the snapshotted engine first.
             engine_env = dict(env, PYTHONPATH=os.pathsep.join((str(repo), str(vdn_root()),
                                                               env.get('PYTHONPATH', ''))))
@@ -627,6 +654,10 @@ def _run(args):
                     request['resume_decode'] = dict(resume_decode)
                 else:
                     request.pop('resume_decode', None)
+                if resume_decode is None and resume_refine is not None:
+                    request['resume_refine'] = dict(resume_refine)
+                else:
+                    request.pop('resume_refine', None)
                 save(request_path, request)
                 print(json.dumps({'event': 'decode_resume' if resume_decode else 'video_start', 'resource_attempt': attempt,
                                   'engine': selected['engine'], 'decoder': selected['decoder']}), flush=True)
@@ -656,13 +687,13 @@ def _run(args):
                     raise
                 return json.loads(destination.with_suffix('.engine.json').read_text(encoding='utf-8')), telemetry
             def archive(index, row):
-                nonlocal resume_decode
+                nonlocal resume_decode, resume_refine
                 retained = artifacts / 'attempts' / ('%02d-%s' % (index + 1, row['id']))
                 retained.mkdir(parents=True, exist_ok=False)
                 paths = [destination] + [destination.with_suffix('.engine.' + ext)
                          for ext in ('json','log','memory.json','gpu.json','gpu.csv')]
                 paths.append(destination.with_suffix('.sampling-memory.json'))
-                paths += [artifacts/name for name in ('latents.pt','rgb.npy','audio.npy','audio.wav','video.json')]
+                paths += [artifacts/name for name in ('latents.pt','refine-input.pt','rgb.npy','audio.npy','audio.wav','video.json')]
                 for path in paths:
                     if path.exists():
                         path.rename(retained / path.name)
@@ -688,11 +719,27 @@ def _run(args):
                                 metrics=str(sample_metrics), request=str(retained / 'video.json'))
                     except (OSError, ValueError, TypeError):
                         pass  # Older/incomplete artifacts retain full-request recovery.
+                # A second-pass failure keeps its completed first pass. Later
+                # retries reuse the first retained one; the worker validates
+                # its provenance and tensors again before loading it.
+                if resume_decode is None and resume_refine is None:
+                    try:
+                        sample_metrics = retained / destination.with_suffix('.engine.json').name
+                        sampled = json.loads(sample_metrics.read_text(encoding='utf-8'))
+                        from .decode_resume import refine_checkpoint_complete
+                        source = retained / 'refine-input.pt'
+                        if (refine_checkpoint_complete(sampled) and source.is_file() and source.stat().st_size > 0
+                                and (retained / 'video.json').is_file()):
+                            resume_refine = dict(input=str(source), metrics=str(sample_metrics),
+                                                 request=str(retained / 'video.json'))
+                    except (OSError, ValueError, TypeError):
+                        pass
                 return str(retained)
             def retry(index, row, selected, decision):
                 retry_state = dict(attempt=index + 2, max_attempts=getattr(args, 'resource_retries', 2) + 1,
                                    failed_phase=row.get('phase'), kind=row['failure']['kind'],
-                                   reuse_sampling=resume_decode is not None)
+                                   reuse_sampling=resume_decode is not None,
+                                   reuse_first_pass=resume_decode is None and resume_refine is not None)
                 row['recovery'] = dict(decision, next_profile=selected, **retry_state)
                 persist()
                 print(json.dumps(dict(event='resource_retry', retained=row['retained'], retry=retry_state)), flush=True)

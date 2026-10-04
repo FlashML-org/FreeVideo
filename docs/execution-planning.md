@@ -34,7 +34,7 @@ VRAM budget: free VRAM minus a reserve of 2.5% of free VRAM, clamped to 0.5–1 
 - Budgets are re-measured before every request.
 - Completed requests store their timings and memory peaks in `resource-history.sqlite3`. The history drives the forecast shown before each request and `./freevideo predict`, and replaces the placement when an alternative is predicted to be at least 2% faster.
 - If the minimum working set does not fit, the request is rejected before the transformer loads, and the shortfall is reported.
-- An out-of-memory failure is retried in a fresh process with a lighter placement, up to two times (`--resource-retries`).
+- An out-of-memory failure is retried in a fresh process, up to two times (`--resource-retries`). The retry first lightens the placement. When nothing is left to move, it shrinks the compute partitions: head group, feed-forward and projection chunks, then attention outputs staged in host memory. This can change the floating-point reduction order. A failure in the second pass of two-pass sampling reuses the completed first pass, and the next identical request on the same machine starts with the partitions that completed.
 - `./freevideo optimize` searches compute settings for the machine and applies them only after a complete validation run.
 
 ## Inspection

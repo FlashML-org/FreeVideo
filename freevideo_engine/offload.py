@@ -167,9 +167,17 @@ class Slot:
     compute_done: object = None
 
 
+# Live RAM that must stay free beside the one prepared block host read-ahead
+# holds. It used to borrow the 8 GiB weight-cache allowance, which no 16 GiB
+# machine reaches while sampling: a 16 GiB RTX 3060 Laptop reread all 21.6 GB
+# of weights every step (about 80 s) with reads and compute never overlapping.
+# The runtime check in _queue_host stops read-ahead again under live pressure.
+HOST_PREFETCH_HEADROOM = 3 * 2**30
+
+
 def _host_prefetch_fits(extra_bytes):
     """Speculative staging must fit both live physical RAM and Windows commit."""
-    from .system import system_memory, HOST_WEIGHT_HEADROOM
+    from .system import system_memory
     try:
         memory = system_memory()
         available = memory.get('physical_available_bytes')
@@ -178,7 +186,7 @@ def _host_prefetch_fits(extra_bytes):
         commit = memory.get('commit_available_bytes')
         if commit is not None:
             available = min(available, commit)
-        return available >= HOST_WEIGHT_HEADROOM + extra_bytes
+        return available >= HOST_PREFETCH_HEADROOM + extra_bytes
     except (OSError, ValueError, TypeError, KeyError):
         return False
 

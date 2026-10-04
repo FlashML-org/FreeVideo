@@ -345,7 +345,8 @@ def _encode(args, request, resident, trace):
         # Finish async forward work at the existing conditioning boundary, so
         # it is not attributed to packing/saving on the host.
         torch.cuda.synchronize()
-        from .encoder_memory import snapshot
+        from .encoder_memory import release_cast_buffers, snapshot
+        loading['cast_buffers'] = release_cast_buffers(memory, torch)
         phase('encoder_conditioning_pack', gpu=snapshot(torch, clip, memory))
     finally:
         del clip.load_model

@@ -285,13 +285,109 @@ def nonlocal_exhausted(failure):
             and not gpu.get('allocator_ooms'))
 
 
+# Compute partitions a sampling OOM may shrink once placement is exhausted.
+# Smaller slices change floating-point reduction order, never the requested
+# video: geometry, frames, steps, seed, precision and attention backend stay.
+# A 6 GiB RTX 3060 Laptop (2026.10.4.15209) completed the 288x480 first pass of
+# a 544x960 two-pass request, then the 544x960 second pass ran out of memory
+# in the VDN linear branch with zero resident blocks; with no smaller
+# placement left the whole 13-minute request failed. Those branch states scale
+# with frames x heads x head_dim^2, not with tokens, so a smaller canvas does
+# not shrink them, while a smaller head group does.
+COMPUTE_RECOVERY = (
+    # Keep attention outputs on the GPU first: host outputs cost 19-36% of
+    # sampling time in the small band. FF and projection slices take the
+    # small-card values.
+    dict(head_chunk=2, ff_chunk=512, projection_chunk=512, window_batch=1, head_parallelism=1),
+    # The smallest bounded path: one head at a time, attention outputs in
+    # grouped host buffers and the residual stream staged in host memory.
+    dict(head_chunk=1, ff_chunk=512, projection_chunk=512, window_batch=1, head_parallelism=1,
+         attention_cpu_outputs=True, grouped_attention_outputs=True, residual_offload=True),
+)
+COMPUTE_RECOVERY_KEYS = ('head_chunk', 'ff_chunk', 'projection_chunk', 'window_batch', 'head_parallelism',
+                         'attention_cpu_outputs', 'grouped_attention_outputs', 'residual_offload')
+# Absent options run with these values; a chunk of 0 is unchunked, the widest.
+COMPUTE_DEFAULTS = dict(window_batch=1, head_parallelism=1)
+
+
+def compute_recovery(engine):
+    """The next smaller compute partition for the bounded inference path, or None.
+
+    Integers only shrink and flags only switch on, so recovery never widens a
+    partition that already failed.
+    """
+    if engine.get('inference_kernels') is not True or type(engine.get('head_chunk')) is not int or engine['head_chunk'] <= 0:
+        return None
+    for rung in COMPUTE_RECOVERY:
+        updates = {}
+        for name, target in rung.items():
+            current = engine.get(name, COMPUTE_DEFAULTS.get(name))
+            if type(target) is bool:
+                if current is not True:
+                    updates[name] = True
+            elif type(current) is not int or current <= 0 or current > target:
+                updates[name] = target
+        if updates:
+            return updates
+    return None
+
+
+def recovered_compute(profile, history, identity, canvas):
+    """Start with the compute partitions this machine needed for the same request.
+
+    Only a verified complete request counts whose attempt was a
+    compute-partition recovery, with the identical software identity and
+    geometry, so a request that failed once does not fail first every time.
+    The partitions only shrink, and only while the budget is not more than
+    0.5 GB above the recovered one; every other plan stays exactly as chosen.
+    """
+    decision = dict(applied=False)
+    engine = profile.get('engine') or {}
+    if history is None or identity is None or canvas is None or compute_recovery(engine) is None:
+        return profile, decision
+    try:
+        rows = history.observations(identity=identity, geometry=attempt_geometry(canvas, engine),
+                                    limit=16, include_details=True)
+    except Exception:
+        return profile, decision  # Unreadable history is the same as none.
+    for row in reversed(rows):
+        evidence = ((row.get('details') or {}).get('decision_evidence') or {})
+        config = row.get('config') or {}
+        observed = config.get('engine') or {}
+        budget = config.get('gpu_budget_gb')
+        if (evidence.get('numerical_class') != 'compute-partition' or type(budget) not in (int, float)
+                or profile.get('gpu_budget_gb', 0) > budget + .5):
+            continue
+        updates = {}
+        for name in COMPUTE_RECOVERY_KEYS:
+            value, current = observed.get(name), engine.get(name, COMPUTE_DEFAULTS.get(name))
+            if type(value) is bool:
+                if value and current is not True:
+                    updates[name] = True
+            elif type(value) is int and value > 0 and (type(current) is not int or current <= 0 or value < current):
+                updates[name] = value
+        if not updates:
+            return profile, decision
+        value = copy.deepcopy(profile)
+        value['engine'].update(updates)
+        if isinstance(value.get('policy'), dict):
+            value['policy']['engine'] = dict(value['engine'])
+        return value, dict(applied=True, source_attempt=row.get('id'), changes=updates,
+                           numerical_class='compute-partition',
+                           reason='A complete request with this geometry needed these partitions on this machine.')
+    return profile, decision
+
+
 def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries=0, previous_gpu_retries=0,
                    sampling_complete=False):
-    """A bounded neutral fallback; never change request, backend or chunking.
+    """Bounded recovery after a resource failure; never change the request.
 
     Free activation space in one useful step instead of spending many full
-    requests lowering residency two blocks at a time. This is recovery only;
-    success does not declare the fallback faster than the initial candidate.
+    requests lowering residency two blocks at a time. Placement comes first.
+    When a sampling OOM leaves no smaller placement, shrink compute partitions
+    (``COMPUTE_RECOVERY``): a slightly different rounding is better than no
+    video. This is recovery only; success does not declare the fallback faster
+    than the initial candidate.
     """
     value = copy.deepcopy(profile)
     engine, decoder = value['engine'], value['decoder']
@@ -310,6 +406,7 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
             changes[section+'.'+name] = {'from': options.get(name), 'to': new}
             options[name] = new
     host_pins = failure['kind'] == 'gpu_oom' and nonlocal_exhausted(failure)
+    compute = None
     if failure['kind'] == 'gpu_oom':
         if host_pins and phase in ('load', 'sample') and (engine.get('pin_host_gb', 0.) > 0 or engine.get('pin_host_weights')):
             # Page-locked memory ran out, not VRAM: return pinned weights and
@@ -367,6 +464,10 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                         and engine.get('attention_cpu_outputs') and engine.get('grouped_attention_outputs')
                         and engine.get('window_batch', 1) == 1):
                     change('engine', 'residual_offload', True)
+                if not changes and phase == 'sample':
+                    compute = compute_recovery(engine)
+                    for name, new in (compute or {}).items():
+                        change('engine', name, new)
                 # Offloading more GPU weights must not turn the next attempt
                 # into a whole-model RAM allocation on a 16 GiB machine.
                 from .system import weight_cache_headroom, residual_host_headroom
@@ -418,11 +519,15 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                            changes={}, numerical_class='placement-only', measurement=failure,
                            ram_recovery=ram_recovery)
     if not changes:
-        return None, {'reason': 'No further numerical-neutral placement recovery is available; '
-                              'chunk changes require local complete-request equivalence.', 'changes': {}}
+        return None, {'reason': 'No further placement or compute-partition recovery is available.', 'changes': {}}
     if 'policy' in value:
         value['policy'].update(engine=dict(engine), decoder=dict(decoder))
     cause = 'page-locked memory exhausted the WDDM non-local budget' if host_pins else failure['kind']
+    if compute:
+        return value, dict(reason='Fresh worker after %s with no smaller placement left; use smaller compute '
+                                  'partitions. Geometry, steps, seed, precision and attention are preserved; '
+                                  'floating-point reduction order may differ.' % cause, changes=changes,
+                           numerical_class='compute-partition', measurement=failure, ram_recovery=ram_recovery)
     return value, dict(reason='Fresh worker after %s; preserve geometry, steps, seed, precision, '
                              'attention and chunk arithmetic.' % cause, changes=changes,
                        numerical_class='same-shape-ff-recompute' if recompute_recovery else 'placement-only',
