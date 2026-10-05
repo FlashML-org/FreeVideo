@@ -376,6 +376,7 @@ class Policy:
     capacity_trial: bool = False
     lora_max_block_bytes: int = 0
     lora_root_bytes: int = 0
+    adaln_extra_bytes: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -429,6 +430,26 @@ def decoder_workspace(canvas=None):
     return int(3.25 * GiB * max(1., area))
 
 
+def adaln_extra_bytes(canvas=None):
+    """Resident modulation constants beyond the measured eight-step schedule.
+
+    All fifty layers keep every schedule row on the GPU, even with streamed
+    weights. Each timestep has three modality rows of six 5376-channel BF16
+    vectors. Video and audio each add a timestep; image/keyframe conditioning
+    and reference audio each add one more. The common first row cancels when
+    subtracting the same task's eight-step table. This is tensor storage, not
+    an activation estimate or a reason to change the requested step count.
+    """
+    from .media_request import TASKS
+    canvas = canvas or {}
+    steps, task = canvas.get('steps', 8), canvas.get('task', 't2va')
+    if type(steps) is not int or not 1 <= steps <= 32 or task not in TASKS:
+        raise ValueError('Resource policy requires a supported sampling schedule')
+    times_per_step = (2 + int(task in ('i2va', 'l2va', 'fl2va', 'ref2va', 'ref2va_av'))
+                      + int(task in ('ref2va_audio', 'ref2va_av')))
+    return max(0, steps - 8) * times_per_step * 50 * 3 * 6 * 5376 * 2
+
+
 def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
            gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
            demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation',
@@ -447,6 +468,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # retained-host blocks below use the enlarged per-block storage as well.
     lora_workspace = (128 * 2**20 + 2 * lora_max_block_bytes + lora_root_bytes
                       if lora_max_block_bytes or lora_root_bytes else 0)
+    table_workspace = adaln_extra_bytes(canvas) if stage == 'generation' else 0
+    placement_workspace = lora_workspace + table_workspace
     if canvas is not None:
         checked = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
         if any(canvas.get(k) != checked[k] for k in ('width', 'height', 'frames', 'video_tokens')):
@@ -469,7 +492,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     gpu_budget, ram_budget = budget['gpu_budget_bytes'], budget['ram_budget_bytes']
     desktop = hardware.system == 'Windows'
     request_gpu_budget = gpu_budget
-    gpu_budget -= lora_workspace
+    gpu_budget -= placement_workspace
     # What this machine has actually held, for the weight cache only.
     #
     # Retaining weights is worth a 20 GB disk read per step, and only while
@@ -530,14 +553,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     if not desktop and gpu_reserve_gib is None and free_gpu < 10 * GiB and gpu_budget < residual_need:
         reserve_gpu = MIN_GPU_RESERVE_GIB
         request_gpu_budget = free_gpu - int(reserve_gpu * GiB)
-        gpu_budget = request_gpu_budget - lora_workspace
+        gpu_budget = request_gpu_budget - placement_workspace
     # The encoding phase already has a measured host floor. Do not discard a
     # preloaded encoder because the later video stage needs a larger minimum;
     # automatic_profile replans generation after conditioning has been saved.
     ram_minimum = ENCODER_HOST_BYTES if stage == 'encoding' else 4*GiB
     if gpu_budget < gpu_minimum or ram_budget < ram_minimum:
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
-                                  gpu_minimum_bytes=gpu_minimum, ram_minimum_bytes=ram_minimum,
+                                  gpu_minimum_bytes=gpu_minimum + placement_workspace, ram_minimum_bytes=ram_minimum,
                                   canvas=canvas)
     if ram_budget < ENCODER_HOST_BYTES:
         # Say so here rather than let a request spend a minute loading a
@@ -546,7 +569,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # this is what the note below offers.
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
                                   reserve_gpu, reserve_ram, canvas=canvas,
-                                  gpu_minimum_bytes=gpu_minimum, ram_minimum_bytes=ENCODER_HOST_BYTES,
+                                  gpu_minimum_bytes=gpu_minimum + placement_workspace, ram_minimum_bytes=ENCODER_HOST_BYTES,
                                   ram_requirement='text_encoder_host')
     # A foreground generation may try the existing bounded path below a
     # measured estimate after reclaiming owned idle caches. This does not add
@@ -666,7 +689,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             selected = next(((heads, need + small_adjustment) for heads, need in available
                              if gpu_budget >= need + small_adjustment), None)
         if (selected is None and not desktop
-                and free_gpu >= SMALL_NO_WEIGHTS_PEAK + small_adjustment):
+                and free_gpu - placement_workspace >= SMALL_NO_WEIGHTS_PEAK + small_adjustment):
             # Hold no weights at all rather than move the residual stream to
             # the host. The card can take the whole activation path; what it
             # cannot take is that path plus a resident block. On an 8 GiB card
@@ -702,7 +725,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             no_weights = True
         if (selected is None and not desktop
                 and reserve_gpu == original_reserve_gpu
-                and free_gpu >= SMALL_HOST_OUTPUT_PEAK + small_adjustment
+                and free_gpu - placement_workspace >= SMALL_HOST_OUTPUT_PEAK + small_adjustment
                 and gpu_budget < SMALL_HOST_OUTPUT_PEAK + GPU_ATTENTION_OUTPUT_BYTES):
             # The same no-weights path one card size down, where the budget
             # cannot also cover the attention outputs, so they stay in host
@@ -773,7 +796,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             # A plain ValueError bypasses the controller's one idle-cache
             # release/remeasurement and loses the actual request shortfall.
             raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
-                                      reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor,
+                                      reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor + placement_workspace,
                                       gpu_requirement='estimated_working_set', canvas=canvas)
         head, reserve = selected
         # The host attention-output buffer was tied to this band with no
@@ -870,7 +893,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             # FF already tiles its activations, so that flag saves nothing.
             if gpu_budget < residual_floor and not capacity_trial:
                 raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
-                    reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor,
+                    reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor + placement_workspace,
                     gpu_requirement='estimated_working_set', canvas=canvas)
             head = 4
             cpu_outputs = residual_offload = True
@@ -1059,6 +1082,11 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     if lora_workspace:
         notes.append('Online LoRA reserves %d bytes per block plus %d bytes for transfer slots and bounded workspace.'
                      % (lora_max_block_bytes, lora_workspace))
+    if table_workspace:
+        notes.append('The %d-step %s schedule retains %d additional bytes of GPU modulation constants '
+                     'beyond the eight-step table. Weight placement pays for them in both passes; '
+                     'the decoder and system reserve keep the original request budget.' %
+                     (canvas['steps'], canvas.get('task', 't2va'), table_workspace))
     gpu_budget = request_gpu_budget
     decoder_offload = gpu_budget < 20 * GiB
     if reference_rows:
@@ -1110,4 +1138,4 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                                linear_compute_cache=decoder_linear_cache),
                   'Architecture-specific candidate; validate this exact policy on the target GPU.', notes,
                   capacity_trial=capacity_trial, lora_max_block_bytes=lora_max_block_bytes,
-                  lora_root_bytes=lora_root_bytes)
+                  lora_root_bytes=lora_root_bytes, adaln_extra_bytes=table_workspace)

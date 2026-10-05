@@ -153,6 +153,66 @@ def validate_catalog(manifest, count):
     return result
 
 
+def optional_table(expected, manifest):
+    """Select only exact, published constants; LoRA/clock changes cannot match."""
+    catalog = json.loads(Path(__file__).with_name('prepared_models.json').read_text(encoding='utf-8'))
+    optional = catalog.get('optional_adaln', {})
+    table = next((t for t in optional.get('tables', []) if t['identity'] == expected), None)
+    if table is None:
+        return None
+    if (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', optional.get('repo', ''))
+            or not re.fullmatch('[0-9a-f]{40}', optional.get('revision', ''))):
+        raise ValueError('Optional sampling preset has no pinned source')
+    validate_catalog(dict(manifest, adaln_tables=[table]), len(projection_groups(manifest)))
+    prefix = optional['prefix']
+    asset_path(Path('.'), prefix)
+    return dict(table, download=dict(repo=optional['repo'], revision=optional['revision'], prefix=prefix))
+
+
+def download_table(root, table, index):
+    """Fetch a missing small table, preserving partials and user network choices.
+
+    A network failure must propagate, not fall back to downloading 26 GB of
+    projection weights. Valid locally computed tables are handled by TableCache
+    before reaching this function.
+    """
+    from . import network
+    from .paths import data_root
+    from .monitoring import save
+    from .provision import model_headers
+    row = next(r for r in table['files'] if r['index'] == index)
+    path = asset_path(root, '%02d.safetensors' % index)
+    remaining = sum(r['bytes'] for r in table['files'] if
+                    not asset_path(root, '%02d.safetensors' % r['index']).is_file())
+    if shutil.disk_usage(root).free < remaining + 64 * 1024**2:
+        raise ValueError('Not enough disk space to prepare this sampling preset. Existing files retained.')
+    plan = network.installed_plan()
+    machine = data_root() / 'machine.json'
+    if not plan and machine.is_file():
+        installed = json.loads(machine.read_text(encoding='utf-8'))
+        plan = installed.get('network', {}) or {}
+        if not plan and installed.get('setup_run'):
+            setup = Path(installed['setup_run']) / 'plan.json'
+            if setup.is_file():
+                plan = json.loads(setup.read_text(encoding='utf-8')).get('network', {}) or {}
+    plan.setdefault('download_settings_path', str(data_root() / 'download-settings.json'))
+    plan.setdefault('sources', {}).setdefault('models', [{'id': 'official'}, {'id': 'hf-mirror'}])
+    remote = table['download']
+    source = dict(repo=remote['repo'], revision=remote['revision'], file=remote['prefix']+'/'+row['file'])
+    total = sum(r['bytes'] for r in table['files'])
+    before = sum(r['bytes'] for r in table['files'] if r['index'] < index)
+    def progress(done, size, speed, **kwargs):
+        print(json.dumps(dict(event='sampling_preset_download', steps=len(table['identity']['timesteps']),
+            done_bytes=before+done, total_bytes=total, bytes_per_second=speed)), flush=True)
+    progress(0, row['bytes'], 0.)
+    network.download(network.model_urls(plan, source), path, row['sha256'], progress,
+        network=plan, size=row['bytes'], category='models', headers_for=model_headers, keep_partial=True)
+    check_table(path, row, table['identity'])
+    save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
+    progress(row['bytes'], row['bytes'], 0.)
+    return row
+
+
 def restore_projections(cache, manifest):
     """Opt-in by requesting an unsupported schedule or an AdaLN-changing LoRA.
 

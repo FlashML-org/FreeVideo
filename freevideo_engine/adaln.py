@@ -58,6 +58,10 @@ class TableCache:
         self.device = device
         self.asset = next((table for table in (manifest or {}).get('adaln_tables', [])
                            if table['identity'] == self.identity), None)
+        self.optional_asset = None
+        self.optional_loaded = set()
+        self.optional_downloaded = set()
+        self.optional_download_bytes = 0
         self.root = Path(root) / assets.directory(self.identity)
         self.producer = None
         if self.asset is not None:
@@ -107,6 +111,8 @@ class TableCache:
                 raise ValueError('AdaLN table cache identity mismatch')
         else:
             save(marker, self.identity)
+        if manifest is not None:
+            self.optional_asset = assets.optional_table(self.identity, manifest)
 
     def load(self, index, steps):
         from . import adaln_assets as assets
@@ -119,10 +125,19 @@ class TableCache:
             if row is None:
                 raise ValueError('Incomplete AdaLN model asset')
         elif not path.is_file() or not marker.is_file():
-            return None
+            if self.optional_asset is None:
+                return None
+            row = assets.download_table(self.root, self.optional_asset, index)
+            self.optional_downloaded.add(index)
+            self.optional_download_bytes += row['bytes']
         else:
             row = json.loads(marker.read_text(encoding='utf-8'))
         assets.check_table(path, row, self.identity)
+        if self.optional_asset is not None:
+            published = next(r for r in self.optional_asset['files'] if r['index'] == index)
+            if row['sha256'] == published['sha256']:
+                self.optional_loaded.add(index)
+                self.producer = self.optional_asset.get('producer')
         # These are small immutable constants; their producer's GPU/runtime is
         # deliberately irrelevant. Validate before transferring to this device.
         state = load_file(path, device=self.device)

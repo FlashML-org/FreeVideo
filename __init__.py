@@ -15,5 +15,7 @@ async def comfy_entrypoint():
     update_routes()
     from .freevideo_engine.comfy_library import register as library_routes
     library_routes()
+    from .freevideo_engine.comfy_share import register as share_routes
+    share_routes()
     from .freevideo_engine.comfy_nodes import FreeVideoExtension
     return FreeVideoExtension()

@@ -1,22 +1,22 @@
 {
   "schema": 1,
-  "product_version": "0.1.0",
+  "product_version": "0.1.1",
   "en": {
-    "summary": "FreeVideo now runs on Apple silicon Macs, and every update tells you what changed.",
+    "summary": "Choose your sampling effort and share finished videos.",
     "changes": [
-      "Mac preview: FreeVideo runs on Apple silicon Macs with macOS 14 or later.",
-      "A short product version is now shown in the launcher and creative workspace. The build number remains available in version details.",
-      "Update reminders include release notes in your selected language: English or Simplified Chinese.",
-      "Open Version & release notes at any time, including after updating or while offline, to read the notes included with your installed version."
+      "Five sampling effort levels, with time estimates from matching local generations.",
+      "Optional preset files download only when needed. Higher-step generation accounts for their GPU memory.",
+      "Save a sharing image or a separate sharing video with timing, GPU and memory details. Your original video stays unchanged.",
+      "Includes the latest Apple silicon Mac preview and bilingual release notes."
     ]
   },
   "zh": {
-    "summary": "FreeVideo 推出 Apple 芯片 Mac 预览版，每次更新都会说明改了什么。",
+    "summary": "选择采样档位，分享生成作品。",
     "changes": [
-      "Mac 预览版：支持 macOS 14 及以上的 Apple 芯片 Mac。",
-      "启动器和创作面板显示简短产品版本，构建号可在版本详情中查看。",
-      "更新提醒附带更新说明，跟随界面语言显示中文或英文。",
-      "随时打开「版本与更新说明」，更新后或离线时也能查看当前版本自带的说明。"
+      "新增五档采样滑块，根据本机相近记录预估耗时。",
+      "按需下载档位缓存，并为高步数增加的显存占用留出空间。",
+      "可保存包含耗时、显卡和内存信息的分享图或分享视频，原视频保持不变。",
+      "包含最新 Apple 芯片 Mac 预览版及中英文更新说明。"
     ]
   }
 }

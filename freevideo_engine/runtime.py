@@ -417,7 +417,12 @@ class Engine:
         fa4_module = sys.modules.get('flash_attn.cute.flash_fwd')
         fa4_path = Path(fa4_module.__file__).resolve() if fa4_module is not None else None
         self.config = {'device_backend': self.device_backend.capabilities.name, 'task': task, 'attention': attention, 'prefetch': prefetch, 'adaln_cache': adaln_cache,
-                       'adaln_mode': 'portable-model-asset' if table_cache is not None and table_cache.asset else 'local-precompute' if adaln_cache else 'original-projections',
+                       'adaln_mode': ('portable-model-asset' if table_cache is not None and table_cache.asset else
+                                      'optional-model-asset' if table_cache is not None and table_cache.optional_loaded else
+                                      'local-precompute' if adaln_cache else 'original-projections'),
+                       'adaln_optional_blocks': len(table_cache.optional_loaded) if table_cache is not None else 0,
+                       'adaln_downloaded_files': len(table_cache.optional_downloaded) if table_cache is not None else 0,
+                       'adaln_downloaded_bytes': table_cache.optional_download_bytes if table_cache is not None else 0,
                        'adaln_table_identity': table_cache.identity if table_cache is not None else None,
                        'adaln_table_producer': table_cache.producer if table_cache is not None else None,
                        'fa4_dependency': ({'file': str(fa4_path), 'sha256': hashlib.sha256(fa4_path.read_bytes()).hexdigest()}
