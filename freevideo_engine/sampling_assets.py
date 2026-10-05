@@ -54,6 +54,17 @@ def usable_with(cache):
     return any(table['identity']['weights'] == weights for table in tables())
 
 
+def installed(machine):
+    """Every quality level is on disk, or none applies to these weights."""
+    if not usable_with(machine['cache']):
+        return True
+    folders = (cache_root(machine['model_root']), Path(machine['cache']))
+    def present(row):
+        return any((folder / row['sampling_file']).is_file()
+                   and (folder / row['sampling_file']).stat().st_size == row['bytes'] for folder in folders)
+    return all(present(row) for row in files())
+
+
 def install_files(everything):
     """Setup always installs the refinement tables; the option adds every level."""
     return files(None if everything else [t for t in tables() if required(t)])

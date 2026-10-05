@@ -492,11 +492,13 @@ class Controller:
         self.setup.runner.token = validate(values.get('token', ''))
         url = local_url(values.get('url', ''))
         ready = False
-        if not values.get('repair') and not values.get('sampling_caches'):
+        if not values.get('repair'):
             try:
-                installation(source, {'FREEVIDEO_HOME': str(engine)})
-                ready = True
-            except (OSError, ValueError):
+                _, machine = installation(source, {'FREEVIDEO_HOME': str(engine)})
+                # With every quality level requested, set up again only while some are missing.
+                from .sampling_assets import installed as sampling_installed
+                ready = not values.get('sampling_caches') or sampling_installed(machine)
+            except (OSError, ValueError, KeyError):
                 pass
         self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready)
         self.state = dict(self.state, selection=dict(self.selection), host=host)
