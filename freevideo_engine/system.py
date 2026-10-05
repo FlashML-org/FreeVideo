@@ -10,6 +10,33 @@ def windows():
     return os.name == 'nt'
 
 
+def curl_executable(env=None):
+    """Find the same executable for setup checks and download subprocesses."""
+    env = os.environ if env is None else env
+    found = shutil.which('curl.exe' if windows() else 'curl', path=env.get('PATH', os.defpath))
+    if found:
+        return str(Path(found).absolute())
+    if windows():
+        root = Path(env.get('SystemRoot') or env.get('WINDIR')
+                    or os.environ.get('SystemRoot') or r'C:\Windows')
+        # Sysnative reaches the native system directory from a 32-bit host;
+        # it is absent for our native x64 launcher, which uses System32.
+        for directory in ('Sysnative', 'System32'):
+            candidate = root / directory / 'curl.exe'
+            if candidate.is_file():
+                return str(candidate.absolute())
+    return None
+
+
+def missing_curl_message():
+    if windows():
+        return ('Windows curl.exe was not found in PATH or the Windows system directory. '
+                'Restore curl.exe or add its folder to PATH, then reopen FreeVideo.')
+    if platform.system() == 'Darwin':
+        return 'macOS curl was not found. Check /usr/bin/curl and reopen FreeVideo with curl available in PATH.'
+    return 'Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.'
+
+
 def source_root():
     """Find the checkout/ZIP by package location, never by the caller's cwd.
 

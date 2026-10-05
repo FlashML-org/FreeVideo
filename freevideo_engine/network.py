@@ -20,6 +20,7 @@ import threading
 import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
+from .system import curl_executable, missing_curl_message
 
 
 SOURCES = {
@@ -120,9 +121,10 @@ def curl_config(url, headers=()):
 
 
 def curl_command(timeout, env=None):
-    if not shutil.which('curl'):
-        raise RuntimeError('Network setup needs curl (Ubuntu/Debian: sudo apt install curl).')
-    command = ['curl', '--config', '-', '--silent', '--show-error', '--no-location-trusted', '--location',
+    executable = curl_executable(env)
+    if executable is None:
+        raise RuntimeError(missing_curl_message())
+    command = [executable, '--config', '-', '--silent', '--show-error', '--no-location-trusted', '--location',
             '--max-redirs', '5', '--fail', '--proto', '=https,http', '--proto-redir', '=https,http',
             '--connect-timeout', str(timeout), '--user-agent', 'FreeVideo-Setup/1']
     if (env or {}).get('FREEVIDEO_PROXY_ROUTE') == 'direct':

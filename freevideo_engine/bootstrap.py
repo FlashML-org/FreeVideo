@@ -29,7 +29,7 @@ from .locking import runtime_lock, LOCK_ENV
 from .environments import ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, bootstrap_versions
 from . import network
 from . import processes
-from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample
+from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
 
 PACKAGE = Path(__file__).resolve().parent
 SOURCE = PACKAGE.parent
@@ -261,8 +261,8 @@ def plan(args, *, local_progress=None):
         for name in () if windows_target else ('git', 'compiler'):
             if not snapshot.get(name):
                 errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
-        if not args.hardware_json and not shutil.which('curl'):
-            errors.append('Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.')
+        if not args.hardware_json and curl_executable() is None:
+            errors.append(missing_curl_message())
         resources = None
         try:
             resources = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib)

@@ -91,6 +91,10 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
+        (r'Windows curl\.exe was not found', 'download-tool',
+         ('The download tool is unavailable', '下载工具不可用'),
+         ('Restore Windows curl.exe or add its folder to PATH, then reopen FreeVideo.',
+          '请恢复 Windows 的 curl.exe，或将其所在目录加入 PATH，然后重新打开 FreeVideo。')),
         (r'ComfyUI is still running a job', 'busy',
          ('A video is still generating', '还有视频正在生成'),
          ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
