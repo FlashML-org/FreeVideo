@@ -190,8 +190,6 @@ def first_pass_policy(profile, canvas, sampling_plan):
     for name in ('reference_video_tokens', 'reference_audio_tokens'):
         if name in canvas:
             first[name] = canvas[name]
-    first['steps'] = sampling_plan['base_steps']
-    first['task'] = profile['engine'].get('task', 't2va')
     backend = profile['engine']['attention']
     selected = choose(hardware, attention=backend, available_backends=set(backend.split('/')),
                       gpu_reserve_gib=gpu_reserve / GiB, ram_reserve_gib=ram_reserve / GiB,

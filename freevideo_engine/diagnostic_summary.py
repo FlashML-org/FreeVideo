@@ -65,8 +65,7 @@ def summary_report(report):
     if isinstance(shape, (list, tuple)) and len(shape) == 2 and all(type(x) is int and x > 0 for x in shape):
         result['geometry']['text_tokens'] = shape[0]
     for k in ('resident_blocks','pin_host_gb','head_chunk','window_batch','head_parallelism','ff_chunk','projection_chunk',
-              'query_chunk','fp8_linears','resident_weight_bytes','pinned_model_bytes','pinned_host_allocated_bytes','steps',
-              'adaln_optional_blocks','adaln_downloaded_files','adaln_downloaded_bytes'):
+              'query_chunk','fp8_linears','resident_weight_bytes','pinned_model_bytes','pinned_host_allocated_bytes','steps'):
         if _number(config.get(k)) is not None:
             result['config'][k] = config[k]
     for k in ('prefetch','stream_weights','attention_cpu_outputs','grouped_attention_outputs','residual_offload','fp8_ff_recompute',
@@ -74,7 +73,7 @@ def summary_report(report):
         if type(config.get(k)) is bool:
             result['config'][k] = config[k]
     for k, allowed in (('task', ('t2va','fl2va','ref2va')), ('linear_compute',('native-fp8','bf16-weight-only')),
-                       ('adaln_mode', ('portable-model-asset','optional-model-asset','local-precompute','original-projections'))):
+                       ('adaln_mode', ('portable-model-asset','local-precompute','original-projections'))):
         if config.get(k) in allowed:
             result['config'][k] = config[k]
     for k, allowed in (('fp8_gemm', ('torch','scaled-mm-epilogue','triton')),

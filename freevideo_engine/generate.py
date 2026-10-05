@@ -149,10 +149,7 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             from .adaptive import demonstrated_local_ram
             options = {key: getattr(args, key) for key in
                 ('vram_gib', 'ram_gib', 'attention', 'gpu_reserve_gib', 'ram_reserve_gib')}
-            planning_canvas = dict(canvas)
-            if getattr(args, 'task', None):
-                planning_canvas['task'] = args.task
-            options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=planning_canvas,
+            options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))
             if getattr(args, '_lora_max_block_bytes', 0):
                 options['lora_max_block_bytes'] = args._lora_max_block_bytes

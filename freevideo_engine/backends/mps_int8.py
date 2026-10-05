@@ -462,3 +462,4 @@ def install(model, *, stats=None, storage=None, int8_linears=None):
             stats['modules'] += 1
     return dict(implementation='mps-int8-tensorops-v1', storage=storage or 'quantize-on-load',
                 modules=stats['modules'])
+
