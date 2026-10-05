@@ -101,48 +101,54 @@ def whats_new(raw):
     return rows
 
 
+def downloads(base):
+    return ['| | |', '|---|---|',
+            '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%sFreeVideo.exe) |' % base,
+            '| **macOS** 14+ · Apple silicon | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % base, '']
+
+
+def checksums(builds):
+    return ['<details><summary>sha256</summary>', '', '```',
+            *('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS), '```', '</details>', '']
+
+
 def stable_body(builds, tag):
-    download = PAGE + '/releases/download/' + tag + '/'
-    windows, mac = (builds[c]['raw']['version'] for c in PLATFORMS)
-    rows = ['# FreeVideo ' + tag, '', 'Windows build / 构建号 ' + escape(windows) + ' · Mac ' + escape(mac), '']
+    rows = [LOGO]
     rows += whats_new(builds[CHANNEL]['raw'])
-    rows += [LOGO, '## Download / 下载', '',
-             '| | |', '|---|---|',
-             '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%sFreeVideo.exe) |' % download,
-             '| **macOS** 14+ · Apple silicon (preview / 预览版) | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % download,
+    rows += ['## Download / 下载', ''] + downloads(PAGE + '/releases/download/' + tag + '/')
+    rows += ['**Windows:** run FreeVideo.exe, choose an existing ComfyUI folder or install a new one, then click '
+             '**Install & launch**. Offline packages are on [Quark](https://pan.quark.cn/s/c51235b84618).',
              '',
-             '**Windows:** run FreeVideo.exe, select an existing ComfyUI folder or install a new one, then click **Install & launch**. '
-             'Offline packages are on [Quark](https://pan.quark.cn/s/c51235b84618).',
-             '',
-             '**Mac:** open the DMG and drag FreeVideo.app into Applications. The preview is not notarized yet, so check the file '
-             'against SHA256SUMS.txt and follow the [first-open steps](%s/blob/main/docs/Mac.md#first-open).' % PAGE,
+             '**macOS:** open the DMG and drag FreeVideo.app into Applications. If macOS asks you to confirm the first '
+             'launch, see the [first-open steps](%s/blob/main/docs/Mac.md#first-open).' % PAGE,
              '',
              '**Windows：** 运行 FreeVideo.exe，选择已有的 ComfyUI 或安装新的 ComfyUI，点击 **安装并启动**。'
              '离线包见[夸克网盘](https://pan.quark.cn/s/c51235b84618)。',
              '',
-             '**Mac：** 打开 DMG，将 FreeVideo.app 拖入「应用程序」。预览版暂未进行 Apple 公证，请先用 SHA256SUMS.txt 核对文件，'
-             '再按[首次打开步骤](%s/blob/main/docs/Mac.zh-CN.md#首次打开)操作。' % PAGE,
-             '', COMMUNITY, '']
+             '**macOS：** 打开 DMG，将 FreeVideo.app 拖入「应用程序」。首次打开如需确认，请参考'
+             '[首次打开步骤](%s/blob/main/docs/Mac.zh-CN.md#首次打开)。' % PAGE,
+             '']
+    rows += checksums(builds)
+    rows += [COMMUNITY, '']
     return '\n'.join(rows)
 
 
 def nightly_body(builds, sha):
     built = time.strftime('%Y-%m-%d %H:%M', time.gmtime(max(b['identity']['built_at'] for b in builds.values())))
     size = {c: '%.1f MB' % (builds[c]['path'].stat().st_size / 1e6) for c in PLATFORMS}
-    sums = '\n'.join('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS)
-    return '\n'.join([
-        '## FreeVideo nightly (rolling)', '',
-        'Automated build of `main`, replaced after every merge. Launchers never update to it: they follow the latest '
-        '[vX.Y.Z release](%s/releases/latest). The Windows launcher here is not code-signed and the Mac app is not notarized.' % PAGE,
-        '',
-        '自动构建 `main` 的最新提交，每次合并都会替换。启动器不会自动更新到这里，只跟随最新的 [vX.Y.Z 正式版](%s/releases/latest)。'
-        '这里的 Windows 启动器未签名，Mac 应用未公证。' % PAGE,
-        '',
-        '| commit | built (UTC) | version | Windows | Mac |', '|---|---|---|---|---|',
-        '| [`%s`](%s/commit/%s) | %s | %s | %s | %s |' % (sha[:9], PAGE, sha, built,
-                                                       escape('v' + builds[CHANNEL]['identity']['product_version']),
-                                                       size[CHANNEL], size[MAC_CHANNEL]),
-        '', '<details><summary>sha256</summary>', '', '```', sums, '```', '</details>', ''])
+    rows = ['## FreeVideo nightly (rolling)', '',
+            'Automated build of `main`, refreshed after every merge. For everyday use, download the '
+            '[latest release](%s/releases/latest).' % PAGE,
+            '',
+            '基于 `main` 的自动构建，每次合并后更新。日常使用请下载[最新正式版](%s/releases/latest)。' % PAGE,
+            '']
+    rows += downloads(PAGE + '/releases/download/' + NIGHTLY_TAG + '/')
+    rows += ['| commit | built (UTC) | version | Windows | macOS |', '|---|---|---|---|---|',
+             '| [`%s`](%s/commit/%s) | %s | %s | %s | %s |' % (sha[:9], PAGE, sha, built,
+                                                            escape('v' + builds[CHANNEL]['identity']['product_version']),
+                                                            size[CHANNEL], size[MAC_CHANNEL]), '']
+    rows += checksums(builds)
+    return '\n'.join(rows)
 
 
 class Releases:
@@ -216,9 +222,8 @@ def publish_stable(releases, builds, sha, folder):
         build = builds[channel]
         name = 'Windows' if channel == CHANNEL else 'Mac'
         legacy = write(folder, 'legacy-%s.md' % channel,
-                       'This page serves update checks for launchers older than %s. Download FreeVideo from the '
-                       '[latest release](%s/releases/latest).\n\n此页面仅供旧版启动器检查更新，请从'
-                       '[最新正式版](%s/releases/latest)下载。\n' % (tag, PAGE, PAGE))
+                       'The latest FreeVideo is on the [latest release](%s/releases/latest) page.\n\n'
+                       '最新版本请前往[最新正式版](%s/releases/latest)下载。\n' % (PAGE, PAGE))
         legacy_sums = write(folder, 'SHA256SUMS-%s.txt' % channel, '%s  %s\n' % (build['sha256'], build['path'].name))
         releases.point_tag(channel, sha)
         if releases.find(channel) is None:
