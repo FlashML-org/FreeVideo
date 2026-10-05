@@ -22,7 +22,7 @@ def read(path):
     path = Path(path).resolve()
     if path.stat().st_size > 1024 * 1024:
         raise ValueError('Media request JSON exceeds 1 MiB')
-    value = json.loads(path.read_text(encoding='utf-8'))
+    value = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(value, dict) or value.get('version') != 1:
         raise ValueError('Expected a version 1 FreeVideo media request')
     if set(value) - {'version', 'first', 'last', 'references', 'loras', 'conditioning_info'}:
