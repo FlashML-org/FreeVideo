@@ -142,7 +142,8 @@ def register():
             canvas = geometry(int(request.query['width']), int(request.query['height']),
                               seconds=float(request.query['seconds']))
             _, machine = installation()
-            rows = await asyncio.to_thread(local_records, folder_paths.get_output_directory(), machine.get('gpu_uuid'))
+            device = machine.get('device_identity') if machine.get('device_backend') == 'mps' else machine.get('gpu_uuid')
+            rows = await asyncio.to_thread(local_records, folder_paths.get_output_directory(), device)
             task = request.query.get('task', 't2va')
             adapters = request.query.get('adapters') == '1'
             result = {name: {str(steps): estimate(rows, canvas, base_steps=steps, two_pass=enabled,

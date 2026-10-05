@@ -51,7 +51,8 @@ class Session:
         home = Path(os.environ.get('USERPROFILE') or os.environ.get('HOME') or launcher_root().parent)
         self.form = dict(comfy='', destination=str(home / 'FreeVideo'), engine='', python='',
                          url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
-                         separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[], sampling_caches=False)
+                         separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[],
+                         sampling_caches=not saved.get('installation'))
         self.form.update({k: v for k, v in saved.items() if k in self.form})
         if 'environment_method' not in saved and self.form['offline_runtime']:
             self.form['environment_method'] = 'manual'

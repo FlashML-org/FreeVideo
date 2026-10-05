@@ -313,10 +313,11 @@ def plan(args, *, local_progress=None):
         errors.append('No verified native-compatible prepared model is available. Source conversion is not supported on Mac.')
     files = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), reuse_cache or prepared)
     files += prepared_model.files(prepared)
-    sampling_caches = bool(getattr(args, 'sampling_caches', False))
-    if sampling_caches:
-        from .sampling_assets import files as sampling_files
-        files += sampling_files()
+    sampling_caches = bool(getattr(args, 'sampling_caches', True))
+    if prepared or reuse_cache:
+        # Published tables match these weights; source conversions compute their own.
+        from .sampling_assets import install_files
+        files += install_files(sampling_caches)
     local_reuse = None
     local_folder = getattr(args, 'reuse_models', None)
     local_manifest = getattr(args, 'reuse_models_manifest', None)
@@ -1419,7 +1420,8 @@ def main(argv=None):
     parser.add_argument('--environment', choices=('unified', 'dual'),
                         help='New installs default to unified; updates retain their saved layout. Existing environments are kept when switching.')
     parser.add_argument('--models', type=Path, help='Reuse/download official model files in this directory')
-    parser.add_argument('--sampling-caches', action='store_true', help='Install all four quality levels and reference-mode sampling caches in advance')
+    parser.add_argument('--sampling-caches', action=argparse.BooleanOptionalAction, default=True,
+                        help='Install every quality level in advance (default). The default 8 + 3 refinement tables are always installed.')
     parser.add_argument('--model-source', choices=('prepared', 'source'), default='prepared',
                         help='Default: download a pinned slim model matching the GPU format. source: explicitly download original weights and convert locally')
     parser.add_argument('--encoder-models', type=Path, help='Directory containing text_encoders/')

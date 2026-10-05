@@ -1,22 +1,24 @@
 {
   "schema": 1,
-  "product_version": "0.1.3",
+  "product_version": "0.2.0",
   "en": {
-    "summary": "Four quality levels, improved two-pass sampling, and sharing exports.",
+    "summary": "Four quality levels, a new two-pass refinement and sharing exports.",
     "changes": [
-      "Choose Light, Medium, High or Max with the quality slider. Light enables two-pass acceleration by default; higher levels use 12, 16 or 20 steps.",
-      "Two-pass sampling now uses 8 initial steps and an independent 3-step refinement schedule.",
-      "Optionally install all quality caches during setup, or download only missing caches before your first run. Download time is kept separate from generation time.",
-      "Export a sharing image or video with generation statistics."
+      "Choose Light, Medium, High or Max with the quality slider. Light uses two-pass acceleration; the higher levels sample 12, 16 or 20 steps.",
+      "Two-pass generation now refines with three independent steps after the first 8.",
+      "Setup installs every quality level by default. Existing installations download only what a generation needs, before it starts; download time is not counted as generation time.",
+      "Export a sharing image or video with generation statistics. The original video stays unchanged.",
+      "The launcher shows the FreeVideo wordmark."
     ]
   },
   "zh": {
-    "summary": "四档质量滑块，更新二次采样与分享导出。",
+    "summary": "四档质量、全新二次采样与分享导出。",
     "changes": [
-      "质量滑块提供四档。最低档默认开启二次采样加速，其余三档使用 12、16、20 步单采。",
-      "默认使用一采 8 步与独立时间表二采 3 步。",
-      "安装时可选下载全部档位缓存，也可首次运行前补装所需缓存；下载不计入生成耗时。",
-      "导出带生成统计的分享图片或视频。"
+      "质量滑块提供轻量、标准、精细、极致四档。轻量使用二次采样加速，其余三档采样 12、16、20 步。",
+      "二次采样改为一采 8 步后，独立二采 3 步。",
+      "安装时默认下载全部质量档位。已安装的版本只在生成前补装当次需要的文件，下载时间不计入生成耗时。",
+      "可导出带生成统计的分享图片或视频，原视频保持不变。",
+      "启动器左上角显示 FreeVideo 字标。"
     ]
   }
 }

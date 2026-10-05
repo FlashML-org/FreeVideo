@@ -246,12 +246,21 @@ function resultPanel(node) {
     node.addDOMWidget("freevideo_result", "freevideo_result", panel, {serialize: false, getMinHeight: panelHeight, getMaxHeight: panelHeight});
     const connected = node.onConnectionsChange, configured = node.onConfigure;
     node.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); warn(); queueMicrotask(syncPrompts); return result; };
+    // Nodes made from now on carry the 8 + 3 default; a later choice of 8 + 2 is kept.
+    node.properties ??= {};
+    node.properties.freevideo_refine_v3 = true;
     node.onConfigure = function (...args) {
         const result = configured?.apply(this, args);
         // The earlier private test put a force checkbox at this position,
         // before the public version added sampling-step widgets.
         const base = this.widgets?.find(w => w.name === 'base_steps');
         if (base && typeof base.value === 'boolean') base.value = 8;
+        // Workflows saved with the earlier 8 + 2 default move to the 8 + 3 default once.
+        if (!args[0]?.properties?.freevideo_refine_v3) {
+            const refine = this.widgets?.find(w => w.name === 'refine_steps');
+            const pass = this.widgets?.find(w => w.name === 'two_pass');
+            if (refine?.value === 2 && base?.value === 8 && pass?.value !== false) refine.value = 3;
+        }
         warn(); return result;
     };
     warn();

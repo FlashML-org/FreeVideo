@@ -187,21 +187,24 @@ export function openStudio(node) {
     const twoPass = el('input'); twoPass.type = 'checkbox'; twoPass.checked = value(node, 'two_pass') !== false;
     twoPass.setAttribute('role', 'switch');
     twoPass.disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
-    twoPass.onchange = () => { set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
+    // Two-pass switched off only because first-pass steps left 8; returning to 8 restores it.
+    let autoSinglePass = false;
+    twoPass.onchange = () => { autoSinglePass = false; set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
     const twoPassLabel = el('label', null, 'fv-two-pass');
     twoPassLabel.title = t('Generate at a lower resolution, then upscale and finish sampling at the target size to save time.', '先以低分辨率生成，再放大到目标分辨率完成采样，缩短生成时间。');
     twoPass.title = twoPassLabel.title;
     const twoPassStatus = el('small', '', 'fv-two-pass-status');
     twoPassLabel.append(el('span', t('Two-pass acceleration', '二次采样加速')), twoPassStatus, twoPass);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null;
-    const effort = createSamplingEffort(t, {onChange: (base, refine) => {
-        baseSteps.value = base;
-        refineSteps.value = refine;
-        twoPass.checked = base === 8;
-        set(node, 'two_pass', twoPass.checked);
-        set(node, 'refine_steps', refine);
+    const effort = createSamplingEffort(t, {onChange: tier => {
+        baseSteps.value = tier.steps;
+        refineSteps.value = 3;
+        twoPass.checked = tier.twoPass;
+        autoSinglePass = false;
+        set(node, 'two_pass', tier.twoPass);
+        set(node, 'refine_steps', 3);
         syncSamplingSteps();
-    }, onPreview: steps => showEffortEstimate(steps)});
+    }, onPreview: tier => tier ? showEffortEstimate(tier.steps, tier.twoPass) : showEffortEstimate()});
     const samplingSettings = el('div', null, 'fv-sampling-settings');
     samplingSettings.append(effort.element, twoPassLabel);
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
@@ -243,15 +246,23 @@ export function openStudio(node) {
         input.onchange = () => input.reportValidity();
         samplingFields.append(field(label, input));
     }
+    // Apply the two-pass rule to committed, valid values only, never while typing.
+    baseSteps.onchange = () => {
+        if (!baseSteps.reportValidity()) return;
+        if (!linked(node, 'two_pass') && widget(node, 'two_pass')) {
+            const eight = Number(baseSteps.value) === 8;
+            if (!eight && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; }
+            else if (eight && autoSinglePass) { twoPass.checked = true; set(node, 'two_pass', true); autoSinglePass = false; }
+        }
+        syncSamplingSteps();
+    };
     function syncSamplingSteps() {
         const baseLinked = linked(node, 'base_steps');
-        const unavailable = Number(baseSteps.value) !== 8;
-        if (unavailable && !linked(node, 'two_pass')) {
-            twoPass.checked = false;
-            if (value(node, 'two_pass') !== false) set(node, 'two_pass', false);
-        }
+        // Two-pass is offered at 8 first-pass steps. A saved workflow that already
+        // uses it with other steps is shown as custom and left unchanged.
+        const unavailable = Number(baseSteps.value) !== 8 && !twoPass.checked;
         twoPass.disabled = unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
-        twoPassStatus.textContent = unavailable ? t('Coming soon', '待开发中') : '';
+        twoPassStatus.textContent = unavailable ? t('Coming soon', '即将推出') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps');
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
@@ -260,7 +271,7 @@ export function openStudio(node) {
         refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) !== 3 && Number(refineSteps.value) >= Number(baseSteps.value)
             ? t('Other second-pass counts must be fewer than first-pass steps.', '其他二采步数需小于一采步数。') : '');
         refineSteps.title = twoPass.checked ? t('Three steps use the independent refinement schedule.', '3 步使用独立二采时间表。')
-            : t('Enable two-pass sampling to use this setting.', '开启二次采样后生效。');
+            : t('Turn on two-pass acceleration to use this setting.', '开启二次采样加速后生效。');
         for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
             if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
                 set(node, name, Number(input.value));
@@ -272,10 +283,11 @@ export function openStudio(node) {
     }
     syncSamplingSteps();
     advanced.append(samplingFields, samplingWarning);
-    function showEffortEstimate(steps = Number(baseSteps.value)) {
-        const mode = steps === 8 && (Number(baseSteps.value) !== 8 || twoPass.checked) ? 'two_pass' : 'single';
+    function showEffortEstimate(steps = Number(baseSteps.value), twoPassPlan = twoPass.checked) {
+        const mode = twoPassPlan ? 'two_pass' : 'single';
         const estimate = effortEstimate[mode]?.[steps];
-        if (estimate?.status !== 'estimated' || (mode === 'two_pass' && Number(refineSteps.value) !== 3)) {
+        // A previewed level always refines three steps; the current plan may not.
+        if (estimate?.status !== 'estimated' || (mode === 'two_pass' && !arguments.length && Number(refineSteps.value) !== 3)) {
             effort.setEstimate('', t('Estimates appear after a matching generation on this computer.', '本机有相近生成记录后显示预计耗时。'));
             return;
         }

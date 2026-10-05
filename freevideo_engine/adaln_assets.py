@@ -171,11 +171,12 @@ def optional_table(expected, manifest):
     return dict(table, download=dict(repo=optional['repo'], revision=optional['revision'], prefix=prefix))
 
 
-def _download_plan():
+def _download_plan(root=None):
     from . import network
     from .paths import data_root
+    root = Path(root) if root is not None else data_root()
     plan = network.installed_plan()
-    machine = data_root() / 'machine.json'
+    machine = root / 'machine.json'
     if not plan and machine.is_file():
         installed = json.loads(machine.read_text(encoding='utf-8'))
         plan = installed.get('network', {}) or {}
@@ -183,7 +184,7 @@ def _download_plan():
             setup = Path(installed['setup_run']) / 'plan.json'
             if setup.is_file():
                 plan = json.loads(setup.read_text(encoding='utf-8')).get('network', {}) or {}
-    plan.setdefault('download_settings_path', str(data_root() / 'download-settings.json'))
+    plan.setdefault('download_settings_path', str(root / 'download-settings.json'))
     plan.setdefault('sources', {}).setdefault('models', [{'id': 'official'}, {'id': 'hf-mirror'}])
     return plan
 

@@ -39,7 +39,7 @@ export async function openSetup() {
     copyLabel.append(copy, node('span', t("Create independent copies (uses extra disk space)", "创建独立副本（额外占用磁盘）"))); inputs.append(copyLabel);
     inputs.append(note(t('Models are reused by default.', '默认直接复用已有模型。')));
     const samplingLabel = node('label'); samplingLabel.className = 'fv-check';
-    const samplingCaches = node('input'); samplingCaches.type = 'checkbox';
+    const samplingCaches = node('input'); samplingCaches.type = 'checkbox'; samplingCaches.checked = true;
     const samplingText = node('span', t('Prepare all quality levels (optional)', '提前下载全部质量档位（可选）'));
     samplingLabel.append(samplingCaches, samplingText); inputs.append(samplingLabel);
     const downloads = node('section');

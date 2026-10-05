@@ -1,4 +1,5 @@
-"""Optional sampling constants: install together or prepare before generation.
+"""Sampling constants: the refinement tables every installation needs, plus the
+optional quality levels, installed together or prepared before generation.
 
 Uses the installer's catalogs, measurements, connection preferences and verified
 resumable transfers. No model import, GPU work or prompt text is needed here.
@@ -7,6 +8,9 @@ import json
 from functools import lru_cache
 from pathlib import Path
 import time
+
+COMMUNITY_PREFIX = 'community-sigma3-'
+WORKERS = 6
 
 
 def tables():
@@ -24,6 +28,11 @@ def tables():
     return result
 
 
+def required(table):
+    """The default 8 + 3 refinement must work offline after setup."""
+    return table['download']['prefix'].startswith(COMMUNITY_PREFIX)
+
+
 def files(selected=None):
     result = []
     for table in tables() if selected is None else selected:
@@ -34,20 +43,56 @@ def files(selected=None):
     return result
 
 
+def install_files(everything):
+    """Setup always installs the refinement tables; the option adds every level."""
+    return files(None if everything else [t for t in tables() if required(t)])
+
+
 @lru_cache(maxsize=1)
 def total_bytes():
-    return sum(row['bytes'] for row in files())
+    """Extra bytes the "prepare all quality levels" option adds to setup."""
+    return sum(row['bytes'] for table in tables() if not required(table) for row in table['files'])
 
 
 def cache_root(model_root):
     return Path(model_root) / 'sampling-cache'
 
 
+def engine_task(media, base=None):
+    """The task the engine selects after encoding these references.
+
+    A reference video counts as audio when it has an audio stream, exactly as
+    the encoder decides; tables therefore match before the request starts.
+    """
+    from .media_request import task_for
+    task = task_for(media)
+    if task != 'ref2va' or media.get('conditioning_info'):
+        return task
+    visual = audio = False
+    for ref in media.get('references', []):
+        visual |= ref['kind'] in ('image', 'video')
+        audio |= ref['kind'] == 'audio'
+        if ref['kind'] == 'video' and not audio:
+            path = Path(ref['path'])
+            if base is not None and not path.is_absolute():
+                path = Path(base) / path
+            try:
+                import av
+                with av.open(str(path)) as container:
+                    audio = bool(container.streams.audio)
+            except Exception:  # Unreadable media fail in the encoder with details.
+                pass
+    return 'ref2va_av' if visual and audio else 'ref2va_audio' if audio else 'ref2va'
+
+
 def prepare(root, machine, sampling, task, *, progress, interrupted=None, environ=None):
     """Fetch only this request's missing tables before starting its timer."""
+    from concurrent.futures import ThreadPoolExecutor
+    import shutil
+    import threading
     from . import adaln_assets as assets, network, provision
-    from .download_settings import read
     from .monitoring import save
+    from .refine_schedule import COMMUNITY
     cache = Path(machine['cache'])
     if not (cache / 'manifest.json').is_file():
         return dict(seconds=0., downloaded_bytes=0)  # Generation reports an invalid installation.
@@ -55,9 +100,8 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     weights = assets.weight_identity(manifest)
     kind = 'i2va' if task in ('i2va', 'l2va', 'fl2va', 'ref2va') else task
     def needed(table):
-        independent = table['download']['prefix'].startswith('community-sigma3-')
         count = len(table['identity']['timesteps'])
-        return (count == 3 and sampling.get('refine_schedule') == 'community-sigma3-v1' if independent
+        return (count == 3 and sampling.get('refine_schedule') == COMMUNITY if required(table)
                 else count == sampling['base_steps'])
     selected = [t for t in tables() if t.get('task') == kind
                 and needed(t) and t['identity']['weights'] == weights]
@@ -65,68 +109,90 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     shared = cache_root(machine['model_root'])
     ledger = root / 'verified-models.json'
     stamps = json.loads(ledger.read_text(encoding='utf-8')) if ledger.is_file() else {}
-    missing = []
+    stop = threading.Event()
     def check():
+        if stop.is_set():
+            raise RuntimeError('Sampling cache download stopped')
         if interrupted:
             interrupted()
+    missing, recorded = [], len(stamps)
     for table in selected:
         for row in table['files']:
             check()
-            # Keep valid locally computed constants and prior on-demand files.
+            # The engine verifies a cache's own receipt and content before use.
             local = assets.asset_path(cache, row['file'])
-            marker = local.with_suffix('.json')
-            if local.is_file() and marker.is_file():
-                prior = json.loads(marker.read_text(encoding='utf-8'))
-                assets.check_table(local, prior, table['identity'])
+            if local.is_file() and local.with_suffix('.json').is_file():
                 continue
             path = assets.asset_path(shared, row['file'])
             if provision.verified(path, row, stamps):
-                save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
+                if not path.with_suffix('.json').is_file():
+                    save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
                 continue
             if path.exists():
-                raise ValueError('Sampling cache failed verification; existing file retained: ' + str(path))
+                # A damaged or superseded copy must not block every request.
+                network.retain_partial(path, 'rejected')
+                if path.with_suffix('.json').exists():
+                    network.retain_partial(path.with_suffix('.json'), 'rejected')
             missing.append((table, row, path))
+    if len(stamps) != recorded:
+        save(ledger, stamps)
     if not missing:
         return dict(seconds=0., downloaded_bytes=0)
     started = time.monotonic()
     total = sum(row['bytes'] for _, row, _ in missing)
-    def emit(done, speed=0., stage='download'):
+    shared.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(shared).free
+    if free < total + 256 * 2**20:
+        raise ValueError('Not enough disk space for sampling caches: %.0f MiB needed, %.0f MiB free in %s. '
+                         'Free space and retry.' % ((total + 256 * 2**20) / 2**20, free / 2**20, shared))
+    lock = threading.Lock()
+    done, speeds, shown = [0] * len(missing), [0.] * len(missing), [0.]
+    def emit(stage='download', force=False):
         check()
-        progress(dict(phase='dependencies', stage=stage, label='Installing sampling cache',
-            done=done, total=total, unit='bytes', bytes_per_second=speed,
-            overall=dict(status='preparing', estimated=False, fraction=done/total, elapsed_seconds=0.)))
-    emit(0, stage='probe')
-    package = Path(__file__).parent
-    preferences = read(root / 'download-settings.json')
-    measured = preferences.get('probe', {})
-    if (time.time()-measured.get('measured_at', 0) < 86400
-            and measured.get('proxy_mode', 'auto') == preferences['proxy_mode']):
-        networking = dict(sources=measured['sources'], proxy_mode=preferences['proxy_mode'])
-    else:
-        from .environments import bootstrap_versions
-        networking = network.plan(json.loads((package/'dependencies.json').read_text(encoding='utf-8')),
-            bootstrap_versions(json.loads((package/'bootstrap_versions.json').read_text(encoding='utf-8'))),
-            model_only=True, measure_speed=True, proxy_mode=preferences['proxy_mode'], env=environ,
-            progress=lambda _: emit(0, stage='probe'))
-    networking['download_settings_path'] = str(root / 'download-settings.json')
-    networking['resource_check'] = check
+        with lock:
+            now = time.monotonic()
+            if not force and now - shown[0] < .25:
+                return
+            shown[0] = now
+            current = sum(done)
+            progress(dict(phase='dependencies', stage=stage, label='Installing sampling cache',
+                done=current, total=total, unit='bytes', bytes_per_second=sum(speeds),
+                overall=dict(status='preparing', estimated=False, fraction=current/total, elapsed_seconds=0.)))
+    # Sources ranked at setup, with the current download settings and fallback;
+    # no new speed test before every request.
+    networking = assets._download_plan(root)
+    networking.update(quiet=True, resource_check=check)
     from .prepared_model import token
     secret = token(environ)
     headers = lambda source: ['Authorization: Bearer '+secret] if secret and source == 'official' else []
-    done = 0
-    for table, row, path in missing:
-        check()
+    def fetch(index, table, row, path):
         path.parent.mkdir(parents=True, exist_ok=True)
         remote = table['download']
         spec = dict(repo=remote['repo'], revision=remote['revision'], file=remote['prefix']+'/'+row['file'])
-        network.download(network.model_urls(networking, spec, environ), path, row['sha256'],
-            lambda current, size, speed, **_: emit(done+current, speed), network=networking,
-            size=row['bytes'], category='models', headers_for=headers, keep_partial=True,
-            stall_seconds=30, slow_seconds=15, low_speed_limit=64*1024)
-        assets.check_table(path, row, table['identity'])
+        def moved(current, size, speed, **_):
+            done[index], speeds[index] = current, speed or 0.
+            emit()
+        network.download(network.model_urls(networking, spec, environ), path, row['sha256'], moved,
+            network=networking, size=row['bytes'], category=network.model_family(spec), headers_for=headers,
+            keep_partial=True, stall_seconds=30, slow_seconds=15, low_speed_limit=64*1024)
+        # network.download already verified the SHA-256.
+        assets.check_table(path, row, table['identity'], verify_hash=False)
         save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
-        stamps[str(path)] = provision.file_identity(path, row)
-        save(ledger, stamps)
-        done += row['bytes']
-        emit(done)
-    return dict(seconds=time.monotonic()-started, downloaded_bytes=done)
+        with lock:
+            done[index], speeds[index] = row['bytes'], 0.
+            stamps[str(path)] = provision.file_identity(path, row)
+            save(ledger, stamps)
+        emit(force=True)
+    emit(force=True)
+    # Each table is fifty small files; several transfers hide per-file latency.
+    with ThreadPoolExecutor(max_workers=min(WORKERS, len(missing)), thread_name_prefix='sampling-cache') as pool:
+        futures = [pool.submit(fetch, index, *item) for index, item in enumerate(missing)]
+        try:
+            for future in futures:
+                future.result()
+        except BaseException:
+            stop.set()
+            for future in futures:
+                future.cancel()
+            raise
+    return dict(seconds=time.monotonic()-started, downloaded_bytes=total)

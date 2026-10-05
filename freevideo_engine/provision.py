@@ -70,9 +70,9 @@ def models(plan):
     prepared = plan.get('prepared_model')
     files = list(required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), plan.get('reuse_cache') or prepared))
     files += prepared_model.files(prepared)
-    if plan.get('sampling_caches'):
-        from .sampling_assets import files as sampling_files
-        files += sampling_files()
+    if prepared or plan.get('reuse_cache'):
+        from .sampling_assets import install_files
+        files += install_files(bool(plan.get('sampling_caches')))
     mode = plan.get('verification', 'auto')
     from .local_models import key as local_key, import_file
     local_files, missing = [], []
