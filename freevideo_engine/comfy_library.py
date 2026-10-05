@@ -133,6 +133,27 @@ def register():
     server._freevideo_library = True
     thumbnails = asyncio.Semaphore(1)
 
+    @server.routes.get('/freevideo/sampling-estimate')
+    async def sampling_estimate(request):
+        from .comfy_bridge import installation
+        from .effort_forecast import estimate, local_records
+        from .geometry import geometry
+        try:
+            canvas = geometry(int(request.query['width']), int(request.query['height']),
+                              seconds=float(request.query['seconds']))
+            _, machine = installation()
+            rows = await asyncio.to_thread(local_records, folder_paths.get_output_directory(), machine.get('gpu_uuid'))
+            task = request.query.get('task', 't2va')
+            adapters = request.query.get('adapters') == '1'
+            result = {name: {str(steps): estimate(rows, canvas, base_steps=steps, two_pass=enabled,
+                                                 task=task, adapters=adapters)
+                              for steps in ((8,) if enabled else (8, 12, 16, 20))}
+                      for name, enabled in (('single', False), ('two_pass', True))}
+            return web.json_response(result, headers={'Cache-Control': 'no-store'})
+        except (OSError, ValueError, TypeError, KeyError):
+            # Estimation is advisory; installation and generation remain usable.
+            return web.json_response({}, headers={'Cache-Control': 'no-store'})
+
     @server.routes.get('/freevideo/library')
     async def library(request):
         try:

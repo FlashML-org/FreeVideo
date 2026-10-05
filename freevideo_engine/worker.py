@@ -330,6 +330,7 @@ def generate(request, resident=None):
                     restart_seed = (request['seed'] + sampling_plan['restart_seed_offset']) % (1 << 64)
                     latents, audio, second = engine.sample(request['conditioning'], restart_seed,
                         **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=sampling_plan['refine_steps'],
+                        refine_schedule=sampling_plan.get('refine_schedule'),
                         final_step_callback=None if decoder_cached else decode_read_ahead.start,
                         step_callback=memory_diagnostics.complete, sampling_complete_callback=refined_complete,
                         progress_offset=sampling_plan['base_steps'], progress_total=sampling_plan['total_steps'],

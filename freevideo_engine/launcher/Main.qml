@@ -463,6 +463,16 @@ ApplicationWindow {
                         FMeter { visible: ["running", "preparing"].indexOf(s.offline.status) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
                         FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
+                    FCard {
+                        visible: !usingRuntime; Layout.fillWidth: true; padding: 16
+                        FSwitch {
+                            objectName: "samplingCaches"; Layout.fillWidth: true
+                            text: t("Prepare all quality levels", "提前下载全部质量档位")
+                            detail: t("Optional sampling caches · ", "可选采样缓存 · ") + bytes(s.sampling_cache_bytes)
+                            checked: !!s.form.sampling_caches; enabled: !s.busy
+                            onToggled: backend.edit("sampling_caches", checked)
+                        }
+                    }
                     FText { visible: s.offline.models > 0; text: "✓  " + t("Model packages: ", "已导入模型包：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
 

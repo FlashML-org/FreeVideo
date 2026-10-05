@@ -417,7 +417,12 @@ class Engine:
         fa4_module = sys.modules.get('flash_attn.cute.flash_fwd')
         fa4_path = Path(fa4_module.__file__).resolve() if fa4_module is not None else None
         self.config = {'device_backend': self.device_backend.capabilities.name, 'task': task, 'attention': attention, 'prefetch': prefetch, 'adaln_cache': adaln_cache,
-                       'adaln_mode': 'portable-model-asset' if table_cache is not None and table_cache.asset else 'local-precompute' if adaln_cache else 'original-projections',
+                       'adaln_mode': ('portable-model-asset' if table_cache is not None and table_cache.asset else
+                                      'optional-model-asset' if table_cache is not None and table_cache.optional_loaded else
+                                      'local-precompute' if adaln_cache else 'original-projections'),
+                       'adaln_optional_blocks': len(table_cache.optional_loaded) if table_cache is not None else 0,
+                       'adaln_downloaded_files': len(table_cache.optional_downloaded) if table_cache is not None else 0,
+                       'adaln_downloaded_bytes': table_cache.optional_download_bytes if table_cache is not None else 0,
                        'adaln_table_identity': table_cache.identity if table_cache is not None else None,
                        'adaln_table_producer': table_cache.producer if table_cache is not None else None,
                        'fa4_dependency': ({'file': str(fa4_path), 'sha256': hashlib.sha256(fa4_path.read_bytes()).hexdigest()}
@@ -454,12 +459,16 @@ class Engine:
     @torch.no_grad()
     def sample(self, *args, compute_options=None, **kwargs):
         from .pass_configuration import configuration
-        with configuration(self, compute_options):
-            return self._sample(*args, **kwargs)
+        from .refine_schedule import modulation
+        with configuration(self, compute_options), modulation(self, kwargs.get('refine_schedule')) as prepared:
+            result = self._sample(*args, **kwargs)
+            if prepared is not None:
+                result[2]['refinement_schedule_preparation'] = prepared
+            return result
 
     @torch.no_grad()
     def _sample(self, conditioning, seed, frames=243, width=1344, height=768, *, final_step_callback=None,
-               step_callback=None, sampling_complete_callback=None, initial_latents=None, refine_steps=None,
+               step_callback=None, sampling_complete_callback=None, initial_latents=None, refine_steps=None, refine_schedule=None,
                allow_smaller_canvas=False, progress_offset=0, progress_total=None,
                pass_cache_budget_bytes=None, gpu_reserve_bytes=0, pass_resident_blocks=None,
                budget_refresh=None):
@@ -470,7 +479,8 @@ class Engine:
             raise ValueError('Refinement requires both initial latents and a tail step count')
         if refining:
             from .refine import generate_latents, validate_tail
-            validate_tail(self.steps, refine_steps)
+            if refine_schedule is None:
+                validate_tail(self.steps, refine_steps)
         active_steps = refine_steps if refining else self.steps
         canvas = geometry(width, height, frames=frames)
         if self.canvas is not None and any(canvas[key] != self.canvas[key] for key in ('width', 'height', 'frames')):
@@ -488,7 +498,7 @@ class Engine:
         generate_latents = sampler_for_canvas(generate_latents, width, height)
         if refining:
             from functools import partial
-            generate_latents = partial(generate_latents, initial_latents=initial_latents, refine_steps=refine_steps)
+            generate_latents = partial(generate_latents, initial_latents=initial_latents, refine_steps=refine_steps, refine_schedule=refine_schedule)
         if self.closed:
             raise RuntimeError('Engine is closed')
         from .sampling_progress import SamplingProgress
@@ -516,7 +526,7 @@ class Engine:
             if conditions:
                 canvas['reference_video_tokens'] = len(conditions[0]) * (width // 32) * (height // 32)
         if self.cursor is not None:
-            self.cursor.reset(self.steps - refine_steps if refining else 0)
+            self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else 0)
         # DecoderReadAhead is CPU/file-cache only, so start it while the last
         # two denoising steps are still running. Starting at the final step
         # left slow SSDs with too little overlap to hide a cold VAE load;
@@ -651,7 +661,8 @@ class Engine:
                            'torch_peak_reserved_bytes': self.device_backend.max_memory_reserved()}
                 if refining:
                     sampled['refinement'] = dict(base_steps=self.steps, steps=refine_steps,
-                        start_index=self.steps - refine_steps, restart_seed=seed,
+                        start_index=1 if refine_schedule else self.steps - refine_steps, restart_seed=seed,
+                        schedule=refine_schedule or 'original-tail',
                         audio_policy='first_pass_preserved_with_audio_clock_conditioning')
                 # The final latents must be durable before exiting the weight
                 # offloader: its cleanup can fail after all NFE have completed.

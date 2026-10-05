@@ -98,11 +98,11 @@ def main():
     generate.add_argument('--no-tuning', action='store_true', help='Bypass saved tuning and conditioning reuse for this request')
     generate.add_argument('--seed', type=int, default=2026090901)
     generate.add_argument('--two-pass', action=argparse.BooleanOptionalAction, default=True,
-                          help='Sample a smaller canvas, upscale latents and refine (default: on; 8 + 2 steps)')
+                          help='Sample a smaller canvas, upscale latents and refine (default: on; 8 + 3 steps)')
     generate.add_argument('--base-steps', type=int, choices=range(1, 33), metavar='1..32',
                           help='First-pass steps (default: 8, or explicit profile). Changes may reduce quality.')
-    generate.add_argument('--refine-steps', type=int, choices=range(1, 32), default=2, metavar='1..31',
-                          help='Second-pass tail steps; must be fewer than first-pass steps (default: 2). Changes may reduce quality.')
+    generate.add_argument('--refine-steps', type=int, choices=range(1, 32), default=3, metavar='1..31',
+                          help='Second-pass steps (default: 3, independent schedule). Other counts use the original tail.')
     generate.add_argument('--out', type=Path, required=True)
     generate.add_argument('--width', type=int, default=1344)
     generate.add_argument('--height', type=int, default=768)

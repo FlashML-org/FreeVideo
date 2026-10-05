@@ -12,6 +12,8 @@ import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { outputDownloadURL } from './output_download.js';
+import { createSamplingEffort } from './sampling_effort.js';
+import { shareButton } from './share.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -19,6 +21,7 @@ const cn = languageOverride === 'zh' || (languageOverride !== 'en'
     && String(navigator.language || '').toLowerCase().startsWith('zh'));
 const t = (en, zh) => cn ? zh : en;
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./studio.css', import.meta.url).href; document.head.append(css);
+const effortCss = document.createElement('link'); effortCss.rel = 'stylesheet'; effortCss.href = new URL('./sampling_effort.css', import.meta.url).href; document.head.append(effortCss);
 const el = (tag, label, cls) => { const e = document.createElement(tag); if (label != null) e.textContent = label; if (cls) e.className = cls; return e; };
 const button = (label, action, cls = '') => { const e = el('button', label, cls); e.type = 'button'; e.onclick = action; return e; };
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
@@ -186,10 +189,23 @@ export function openStudio(node) {
     twoPass.disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
     twoPass.onchange = () => { set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
     const twoPassLabel = el('label', null, 'fv-two-pass');
-    twoPassLabel.title = t('Generate the scene, then refine it at the target resolution.', '先生成画面，再以目标分辨率精修。');
+    twoPassLabel.title = t('Generate at a lower resolution, then upscale and finish sampling at the target size to save time.', '先以低分辨率生成，再放大到目标分辨率完成采样，缩短生成时间。');
     twoPass.title = twoPassLabel.title;
-    twoPassLabel.append(el('span', t('Two-pass sampling', '二次采样')), twoPass);
-    canvas.append(twoPassLabel);
+    const twoPassStatus = el('small', '', 'fv-two-pass-status');
+    twoPassLabel.append(el('span', t('Two-pass acceleration', '二次采样加速')), twoPassStatus, twoPass);
+    let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null;
+    const effort = createSamplingEffort(t, {onChange: (base, refine) => {
+        baseSteps.value = base;
+        refineSteps.value = refine;
+        twoPass.checked = base === 8;
+        set(node, 'two_pass', twoPass.checked);
+        set(node, 'refine_steps', refine);
+        syncSamplingSteps();
+    }, onPreview: steps => showEffortEstimate(steps)});
+    const samplingSettings = el('div', null, 'fv-sampling-settings');
+    samplingSettings.append(effort.element, twoPassLabel);
+    canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
+    cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
     const mediaNode = upstream(node, 'media');
     const [mediaDetails, mediaMount] = expand(t('Media', '素材'));
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false) || mediaNode.inputs?.some(input => ['first', 'last', 'reference', 'reference_audio'].includes(input.name) && input.link != null); }
@@ -213,12 +229,12 @@ export function openStudio(node) {
     advanced.append(custom);
     const samplingFields = el('div', null, 'fv-fields'); samplingFields.style.marginTop = '14px';
     const baseSteps = el('input'), refineSteps = el('input');
-    const samplingWarning = el('p', t('Changing sampling steps may reduce generation quality. Defaults: 8 + 2 steps.', '修改采样步数可能降低生成质量。默认一采 8 步、二采 2 步。'), 'fv-muted');
+    const samplingWarning = el('p', t('Changing sampling steps may reduce generation quality. Defaults: 8 + 3 steps.', '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步。'), 'fv-muted');
     samplingWarning.id = `fv-sampling-warning-${node.id}`;
     samplingWarning.style.color = 'var(--fv-warning)';
     for (const [input, name, label, fallback, maximum] of [
         [baseSteps, 'base_steps', t('First-pass steps', '一采步数'), 8, 32],
-        [refineSteps, 'refine_steps', t('Second-pass steps', '二采步数'), 2, 31],
+        [refineSteps, 'refine_steps', t('Second-pass steps', '二采步数'), 3, 31],
     ]) {
         input.type = 'number'; input.min = '1'; input.max = String(maximum); input.step = '1'; input.required = true;
         input.value = value(node, name) ?? fallback;
@@ -229,22 +245,78 @@ export function openStudio(node) {
     }
     function syncSamplingSteps() {
         const baseLinked = linked(node, 'base_steps');
+        const unavailable = Number(baseSteps.value) !== 8;
+        if (unavailable && !linked(node, 'two_pass')) {
+            twoPass.checked = false;
+            if (value(node, 'two_pass') !== false) set(node, 'two_pass', false);
+        }
+        twoPass.disabled = unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
+        twoPassStatus.textContent = unavailable ? t('Coming soon', '待开发中') : '';
+        twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps');
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
         baseSteps.min = twoPass.checked ? '2' : '1';
-        refineSteps.max = baseLinked ? '31' : String(Math.max(1, Math.min(31, Number(baseSteps.value || 8) - 1)));
-        refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) >= Number(baseSteps.value)
-            ? t('Second-pass steps must be fewer than first-pass steps.', '二采步数必须小于一采步数。') : '');
-        refineSteps.title = twoPass.checked ? t('Must be fewer than first-pass steps.', '必须小于一采步数。')
+        refineSteps.max = baseLinked ? '31' : String(Math.max(3, Math.min(31, Number(baseSteps.value || 8) - 1)));
+        refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) !== 3 && Number(refineSteps.value) >= Number(baseSteps.value)
+            ? t('Other second-pass counts must be fewer than first-pass steps.', '其他二采步数需小于一采步数。') : '');
+        refineSteps.title = twoPass.checked ? t('Three steps use the independent refinement schedule.', '3 步使用独立二采时间表。')
             : t('Enable two-pass sampling to use this setting.', '开启二次采样后生效。');
         for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
             if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
                 set(node, name, Number(input.value));
             }
         }
+        effort.update({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
+            twoPass: twoPass.checked, disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps')});
+        refreshEffortEstimate();
     }
     syncSamplingSteps();
     advanced.append(samplingFields, samplingWarning);
+    function showEffortEstimate(steps = Number(baseSteps.value)) {
+        const mode = steps === 8 && (Number(baseSteps.value) !== 8 || twoPass.checked) ? 'two_pass' : 'single';
+        const estimate = effortEstimate[mode]?.[steps];
+        if (estimate?.status !== 'estimated' || (mode === 'two_pass' && Number(refineSteps.value) !== 3)) {
+            effort.setEstimate('', t('Estimates appear after a matching generation on this computer.', '本机有相近生成记录后显示预计耗时。'));
+            return;
+        }
+        const minutes = estimate.high_seconds >= 90, scale = minutes ? 60 : 1;
+        const low = Math.max(1, Math.floor(estimate.low_seconds / scale));
+        const high = Math.max(low + 1, Math.ceil(estimate.high_seconds / scale));
+        const unit = minutes ? t('min', '分钟') : t('s', '秒');
+        const extra = estimate.includes_text_encoding ? '' : t(' + prompt', ' + 提示词准备');
+        effort.setEstimate(`${t('~', '约 ')}${low}–${high} ${unit}${extra}`,
+            t('Based on complete local runs. Includes loading and decoding; first use or other applications may take longer.',
+                '根据本机完整生成记录估算，包含加载与解码；首次准备或其他程序占用可能延长时间。'));
+    }
+    function refreshEffortEstimate(force = false) {
+        let task = 'external';
+        try {
+            if (!linked(node, 'conditioning')) {
+                const media = referenceItems(node), refs = media.filter(r => !r.role);
+                const audio = refs.some(r => r.kind === 'audio'), visual = refs.some(r => r.kind !== 'audio');
+                const first = media.some(r => r.role === 'first'), last = media.some(r => r.role === 'last');
+                task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
+                    : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
+            }
+        } catch {} // Unknown connected inputs must not reuse text-only timings.
+        let adapters = false;
+        try { adapters = JSON.parse(value(loraNode, 'adapters') || '[]').some(r => r.enabled !== false && Number(r.strength ?? 1) !== 0); } catch {}
+        if (loraNode && !widget(loraNode, 'adapters')) adapters = value(loraNode, 'lora') !== 'None';
+        const query = new URLSearchParams({width: value(node, 'width'), height: value(node, 'height'), seconds: value(node, 'seconds'), task, adapters: adapters ? '1' : '0'}).toString();
+        if (query === effortEstimateKey && !force) { showEffortEstimate(); return; }
+        clearTimeout(effortEstimateTimer);
+        effortEstimateKey = query; effortEstimate = {}; showEffortEstimate(); effortEstimateRequest?.abort();
+        effortEstimateTimer = setTimeout(async () => {
+            const controller = new AbortController(); effortEstimateRequest = controller;
+            try {
+                const reply = await api.fetchApi('/freevideo/sampling-estimate?' + query, {signal: controller.signal});
+                if (!reply.ok) return;
+                const estimate = await reply.json();
+                if (disposed || controller.signal.aborted || effortEstimateKey !== query) return;
+                effortEstimate = estimate; showEffortEstimate();
+            } catch {} // An unavailable estimate must not block the editor.
+        }, 220);
+    }
     const seedFields = el('div', null, 'fv-fields'); seedFields.style.marginTop = '14px';
     const seed = el('input'); seed.type = 'number'; seed.min = '0'; seed.max = String(2 ** 53 - 1); seed.step = '1'; seed.value = value(node, 'seed'); seed.disabled = linked(node, 'seed'); seed.setAttribute('aria-label', t('Seed', '种子'));
     seed.onchange = () => { if (seed.value && seed.reportValidity()) set(node, 'seed', Number(seed.value)); };
@@ -328,6 +400,7 @@ export function openStudio(node) {
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
     function showResult(r) {
         if (!r?.video || disposed) return; result = r;
+        refreshEffortEstimate(true);
         progress.updateReport({report_id: node.freevideoReportId});
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
@@ -343,6 +416,7 @@ export function openStudio(node) {
             : (Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '');
         links.replaceChildren();
         for (const [label, file, cls] of [[t('Download video', '下载视频'), r.video, 'fv-primary'], [t('Report', '查看报告'), r.report, 'fv-quiet']]) { if (!file) continue; const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === r.video ? '' : file.split('/').pop(); links.append(a); }
+        links.append(shareButton(r, t));
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
         if (!progress.element.hidden) {
             progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});
@@ -543,6 +617,7 @@ export function openStudio(node) {
         shapes.style.setProperty('--fv-shape-index', Math.max(0, shapeIndex));
         shapes.dataset.custom = String(shapeIndex < 0);
         if (!busy) previewSize(Number(width.value), Number(height.value));
+        refreshEffortEstimate();
     }
     function applySize() {
         if (dimensionsLinked) return;
@@ -568,7 +643,10 @@ export function openStudio(node) {
     }
     mp.onchange = () => { try { pixels = Number(mp.value); applySize(); } catch (error) { status.dataset.error = 'true'; status.textContent = error.message; } };
     seconds.onchange = () => { if (seconds.value && seconds.reportValidity()) { set(node, 'seconds', Number(seconds.value)); updateCanvas(); } };
-    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id) || selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; refreshEffortEstimate(); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(); };
+    window.addEventListener('freevideo-loras', lorasChanged);
+    cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
     const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { failure.clear(); showResult(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);

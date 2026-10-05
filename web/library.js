@@ -1,6 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
 import { outputDownloadURL } from './output_download.js';
+import { shareButton } from './share.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -84,6 +85,7 @@ export function openLibrary(t) {
                 if (!file) continue;
                 const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === row.video ? '' : file.split('/').pop(); links.append(a);
             }
+            links.append(shareButton(row, t));
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
         }
         // These are the saved generation's measurements, including when the

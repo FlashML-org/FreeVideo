@@ -27,7 +27,7 @@ def default_language():
 def sanitize(value):
     value = value if isinstance(value, dict) else {}
     result = {k: value[k] for k in TEXT if isinstance(value.get(k), str)}
-    for key in ('separate', 'new_comfy'):
+    for key in ('separate', 'new_comfy', 'sampling_caches'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
     if value.get('model_method') in ('auto', 'manual', 'reuse'):

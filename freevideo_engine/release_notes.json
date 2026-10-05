@@ -1,18 +1,22 @@
 {
   "schema": 1,
-  "product_version": "0.1.2",
+  "product_version": "0.1.3",
   "en": {
-    "summary": "Windows and Mac now share one release.",
+    "summary": "Four quality levels, improved two-pass sampling, and sharing exports.",
     "changes": [
-      "Mac: generation with audio or mixed references works again, matching the fix in Windows v0.1.1.",
-      "Windows and Mac downloads now sit together on one release page, and each new version appears there as the latest release."
+      "Choose Light, Medium, High or Max with the quality slider. Light enables two-pass acceleration by default; higher levels use 12, 16 or 20 steps.",
+      "Two-pass sampling now uses 8 initial steps and an independent 3-step refinement schedule.",
+      "Optionally install all quality caches during setup, or download only missing caches before your first run. Download time is kept separate from generation time.",
+      "Export a sharing image or video with generation statistics."
     ]
   },
   "zh": {
-    "summary": "Windows 与 Mac 统一发布。",
+    "summary": "四档质量滑块，更新二次采样与分享导出。",
     "changes": [
-      "Mac：修复音频及混合参考无法生成的问题（Windows 已在 v0.1.1 修复）。",
-      "Windows 与 Mac 安装包放在同一个正式版页面，每个新版本都会作为最新正式版发布。"
+      "质量滑块提供四档。最低档默认开启二次采样加速，其余三档使用 12、16、20 步单采。",
+      "默认使用一采 8 步与独立时间表二采 3 步。",
+      "安装时可选下载全部档位缓存，也可首次运行前补装所需缓存；下载不计入生成耗时。",
+      "导出带生成统计的分享图片或视频。"
     ]
   }
 }

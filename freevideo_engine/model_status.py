@@ -2,12 +2,15 @@
 import math
 import threading
 
-FAMILIES = ('video', 'text', 'decoder')
+FAMILIES = ('video', 'text', 'decoder', 'sampling')
 NAMES = {'video': ('Video model', '视频模型'), 'text': ('Text encoder', '文本编码器'),
-         'decoder': ('Video & audio decoder', '视频与音频解码器')}
+         'decoder': ('Video & audio decoder', '视频与音频解码器'),
+         'sampling': ('Sampling caches', '采样缓存')}
 
 
 def family(row):
+    if row.get('sampling_file'):
+        return 'sampling'
     if not row['repo'].startswith('OpenVDN/'):
         return 'text'
     parts = row['file'].replace('\\', '/').split('/')
