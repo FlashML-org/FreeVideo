@@ -67,9 +67,9 @@ class TableCache:
         self.shared = None
         if self.asset is None:
             # Published tables installed by setup or the request preflight.
-            from .paths import model_root
+            from .paths import installed_model_root
             from .sampling_assets import cache_root
-            self.shared = cache_root(model_root()) / assets.directory(self.identity)
+            self.shared = cache_root(installed_model_root()) / assets.directory(self.identity)
         if self.asset is not None:
             if self.asset['directory'] != self.root.name:
                 raise ValueError('AdaLN asset identity/path mismatch')
