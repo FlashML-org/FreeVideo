@@ -9,7 +9,6 @@ import { startUpdateChecks } from './updates.js';
 import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { outputDownloadURL } from './output_download.js';
-import { shareButton } from './share.js';
 import { regenerateResult } from './studio_queue.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -287,7 +286,6 @@ function resultPanel(node) {
             if (!file) continue;
             const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : file.split("/").pop(); links.append(link);
         }
-        links.append(shareButton(value, text));
         links.append(el("span", value.result_cache_hit ? text("Reused previous result", "已复用上次结果") : value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
         if (value.result_cache_hit) {
             const again = el('button', text('Regenerate', '重新生成')); again.type = 'button';
@@ -369,8 +367,8 @@ app.registerExtension({
                 }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
-                    quality.label = text('Two-pass acceleration', '二次采样加速');
-                    quality.tooltip = text('Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.', '通常更快：先以低分辨率生成，再放大到目标分辨率完成采样，缩短生成时间。');
+                    quality.label = text('Two-pass sampling', '二次采样');
+                    quality.tooltip = text('Generate the scene, then refine it at the target resolution.', '先生成画面，再以目标分辨率精修。');
                 }
                 for (const [name, en, zh] of [['base_steps', 'First-pass steps', '一采步数'], ['refine_steps', 'Second-pass steps', '二采步数']]) {
                     const steps = this.widgets?.find(w => w.name === name);
