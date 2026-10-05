@@ -1,0 +1,55 @@
+name: Build Mac launcher
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: freevideo-macos-build-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          architecture: arm64
+          cache: pip
+          cache-dependency-path: constraints/macos-launcher.txt
+      - name: Check installation and build the Apple Silicon launcher
+        run: |
+          python -c "import platform; assert platform.machine() == 'arm64'"
+          python scripts/check_installation.py
+          python -m pip install -r constraints/macos-launcher.txt
+          python scripts/build_macos.py --out build/macos --dmg
+      - name: Verify both archives and native startup
+        env:
+          FREEVIDEO_LAUNCHER_HOME: ${{ runner.temp }}/freevideo-launcher-state
+        run: |
+          python scripts/verify_macos_build.py --build build/macos --out build/macos-verification
+          build/macos/applications.noindex/FreeVideo.app/Contents/MacOS/FreeVideo --smoke-test "$RUNNER_TEMP/freevideo-smoke"
+          python -c "import json, os; from pathlib import Path; value=json.loads((Path(os.environ['RUNNER_TEMP'])/'freevideo-smoke/smoke.json').read_text()); assert value['success'] and not value['model_modules_imported']"
+      - name: Keep checked preview artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FreeVideo-Mac-arm64-${{ github.sha }}
+          path: |
+            build/macos/dist/*
+            build/macos/launcher-build.json
+            build/macos-verification/result.json
+            ${{ runner.temp }}/freevideo-smoke/smoke.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Keep failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FreeVideo-Mac-build-failure-${{ github.sha }}
+          path: |
+            build/macos/build-result.json
+            build/macos-verification/result.json
+            ${{ runner.temp }}/freevideo-smoke/smoke.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -111,6 +111,9 @@ def launcher_target(engine, source, portable_root=None):
 
 def create(engine, source, portable_root=None):
     if not windows():
+        if sys.platform == 'darwin':
+            from .macos_shortcut import create as create_mac
+            return create_mac(engine)
         return dict(status='not-applicable')
     engine = Path(engine)
     receipt = engine / 'launcher/desktop-shortcut.json'

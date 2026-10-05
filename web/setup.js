@@ -76,7 +76,8 @@ export async function openSetup() {
     compatibility.onclick = openCompatibility;
     advanced.append(compatibility);
     const resources = node('details');
-    resources.append(node('summary', t('Reserved VRAM', '预留显存')));
+    const reserveSummary = node('summary', t('Reserved VRAM', '预留显存'));
+    resources.append(reserveSummary);
     const reserveLabel = node('label', t('Reserved VRAM', '预留显存'));
     const reserveAuto = node('input'); reserveAuto.type = 'checkbox'; reserveAuto.checked = true;
     const autoLabel = node('label'); autoLabel.className = 'fv-check'; autoLabel.append(reserveAuto, node('span', t('Automatic optimization', '自动优化')));
@@ -84,7 +85,8 @@ export async function openSetup() {
     reserve.value = '1.0'; reserve.disabled = true; reserve.className = 'fv-number';
     reserveLabel.append(reserve, document.createTextNode('GiB'));
     const saveReserve = node('button', t('Save', '保存')), reserveStatus = note('');
-    resources.append(autoLabel, reserveLabel, note(t('Keep this much additional VRAM free. Applies to new requests; current usage is already accounted for.', '额外保留的空闲显存。对后续请求生效；其他程序当前的占用已单独计入。')), saveReserve, reserveStatus);
+    const reserveHelp = note(t('Keep this much additional VRAM free. Applies to new requests; current usage is already accounted for.', '额外保留的空闲显存。对后续请求生效；其他程序当前的占用已单独计入。'));
+    resources.append(autoLabel, reserveLabel, reserveHelp, saveReserve, reserveStatus);
     advanced.append(resources);
     reserveAuto.onchange = () => { reserve.disabled = reserveAuto.checked; };
     // Placement calibration. A measurement, not a setting: it changes nothing
@@ -135,10 +137,19 @@ export async function openSetup() {
         } : {});
         const result = await response.json(); if (!response.ok || result.error) throw new Error(result.error || response.statusText); return result;
     };
+    let reserveField = 'gpu_reserve_gib';
     const showResources = value => {
-        reserveAuto.checked = value?.gpu_reserve_gib == null;
+        const unified = value && Object.hasOwn(value, 'ram_reserve_gib');
+        reserveField = unified ? 'ram_reserve_gib' : 'gpu_reserve_gib';
+        reserveSummary.textContent = unified ? t('Reserved unified memory', '预留统一内存') : t('Reserved VRAM', '预留显存');
+        reserveLabel.firstChild.textContent = reserveSummary.textContent;
+        reserve.min = unified ? '1' : '0.2';
+        reserveAuto.checked = value?.[reserveField] == null;
         reserve.disabled = reserveAuto.checked;
-        if (!reserveAuto.checked) reserve.value = String(value.gpu_reserve_gib);
+        reserve.value = reserveAuto.checked ? (unified ? '2.0' : '1.0') : String(value[reserveField]);
+        reserveHelp.textContent = unified
+            ? t('CPU and GPU share unified memory. Keep this much additional RAM available for macOS and other applications. Applies to new requests.', 'CPU 与 GPU 共用统一内存。额外保留这些 RAM 供 macOS 和其他程序使用，对后续请求生效。')
+            : t('Keep this much additional VRAM free. Applies to new requests; current usage is already accounted for.', '额外保留的空闲显存。对后续请求生效；其他程序当前的占用已单独计入。');
     };
     calibrateButton.onclick = async () => {
         if (!calibrateRepeats.checkValidity()) { calibrateRepeats.reportValidity(); return; }
@@ -160,7 +171,7 @@ export async function openSetup() {
         if (!reserveAuto.checked && (!reserve.value || !reserve.checkValidity())) { reserve.reportValidity(); return; }
         saveReserve.disabled = true;
         try {
-            showResources(await request('resources', {gpu_reserve_gib: reserveAuto.checked ? null : Number(reserve.value)}));
+            showResources(await request('resources', {[reserveField]: reserveAuto.checked ? null : Number(reserve.value)}));
             reserveStatus.textContent = t('Saved · applies to the next request', '已保存 · 下次生成生效');
         } catch (error) { reserveStatus.textContent = error.message; }
         finally { saveReserve.disabled = false; }

@@ -1,6 +1,7 @@
 import { api } from '../../scripts/api.js';
 
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/windows-preview';
+const macReleasePage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview';
 const storageKey = 'freevideo.dismissed-update';
 const listeners = new Set();
 // Launcher phases during which the server may disappear and come back updated.
@@ -11,7 +12,9 @@ try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memor
 // The launcher passes its language in the first address, which ComfyUI later
 // rewrites; keep it when reloading into an updated engine.
 const languageHint = (() => { try { return new URLSearchParams(location.search).get('freevideo_lang'); } catch { return null; } })();
-const identity = candidate => candidate ? String(candidate.version || '') : '';
+const identity = candidate => candidate ? [candidate.version, candidate.revision, candidate.built_at].join(':') : '';
+const displayVersion = release => release?.product_version ? 'v' + release.product_version : release?.version || '—';
+const localizedNotes = (release, cn) => release?.release_notes?.[cn ? 'zh' : 'en'];
 const publish = () => { for (const render of listeners) render(); };
 const later = ms => { clearTimeout(timer); timer = setTimeout(checkUpdates, ms); };
 
@@ -90,6 +93,11 @@ export function createUpdateNotice(cn) {
     const element = document.createElement('aside'); element.className = 'fv-update-notice';
     element.hidden = true; element.setAttribute('role', 'status');
     const label = document.createElement('span');
+    const summary = document.createElement('small'); summary.className = 'fv-update-summary';
+    const details = document.createElement('button'); details.type = 'button';
+    details.textContent = t("What's new", '更新内容');
+    let closeNotes = () => {};
+    details.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
     const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'fv-update-apply';
     apply.textContent = t('Update now', '立即更新');
     apply.title = t('FreeVideo restarts once; running videos finish first.', 'FreeVideo 会重启一次，正在生成的视频会先完成。');
@@ -109,9 +117,14 @@ export function createUpdateNotice(cn) {
     const stop = document.createElement('button'); stop.type = 'button';
     stop.textContent = t('Cancel update', '取消更新');
     stop.onclick = () => { stop.disabled = true; void cancelUpdate().finally(() => { stop.disabled = false; }); };
-    element.append(label, apply, link, dismiss, stop);
+    element.append(label, details, apply, link, dismiss, stop, summary);
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
+        const mac = value?.channel === 'macos-preview';
+        link.href = mac ? macReleasePage : releasePage;
+        link.title = mac
+            ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
+            : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
         const progress = launcher?.progress, percent = progress?.total ? ' ' + Math.floor(100 * progress.done / progress.total) + '%' : '';
         const busy = updating && (working.has(phase) || offline);
         let text = '', actions = false;
@@ -127,13 +140,16 @@ export function createUpdateNotice(cn) {
             text = t('Open the FreeVideo launcher to update, or download the new version.', '请在 FreeVideo 启动器中更新，或下载新版。');
             actions = true;
         } else if (candidate && dismissed !== identity(candidate)) {
-            text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + candidate.version;
+            text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + displayVersion(candidate);
             if (launcher?.status === 'error' && launcher.error) text += ' · ' + t('last attempt failed', '上次更新未完成');
             actions = true;
         }
         element.hidden = !text;
         element.classList.toggle('fv-update-working', busy);
         label.textContent = text;
+        summary.textContent = actions ? localizedNotes(candidate, cn)?.summary || '' : '';
+        summary.hidden = !summary.textContent;
+        details.hidden = !actions;
         const direct = !!launcher && !launcher.manual && !failure;
         apply.hidden = !actions || !direct;
         link.hidden = !actions || direct;
@@ -141,5 +157,55 @@ export function createUpdateNotice(cn) {
         stop.hidden = !(busy && phase === 'waiting' && !offline);
     };
     listeners.add(render); render();
-    return {element, dispose: () => listeners.delete(render)};
+    return {element, dispose: () => { listeners.delete(render); closeNotes(); }};
+}
+
+function showReleaseNotes(cn) {
+    const t = (en, zh) => cn ? zh : en;
+    const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes';
+    const title = document.createElement('h2'); title.textContent = t('Version & release notes', '版本与更新说明');
+    dialog.setAttribute('aria-label', title.textContent);
+    const body = document.createElement('div'); body.className = 'fv-release-body';
+    const close = document.createElement('button'); close.type = 'button'; close.autofocus = true;
+    close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
+    dialog.append(title, body, close);
+    const render = () => {
+        body.replaceChildren();
+        for (const [label, release] of [[t('Available update', '可用更新'), value?.available],
+            [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null)]]) {
+            if (!release) continue;
+            const section = document.createElement('section'), heading = document.createElement('h3');
+            heading.textContent = label + ' · ' + displayVersion(release); section.append(heading);
+            const build = document.createElement('p'); build.className = 'fv-release-build';
+            build.textContent = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
+            section.append(build);
+            const notes = localizedNotes(release, cn), summary = document.createElement('p');
+            summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。'); section.append(summary);
+            const list = document.createElement('ul');
+            for (const item of notes?.changes || []) {
+                const row = document.createElement('li'); row.textContent = item; list.append(row);
+            }
+            section.append(list); body.append(section);
+        }
+        if (!body.childElementCount) body.textContent = t('Version information is not available yet.', '暂时无法获取版本信息。');
+    };
+    const dispose = () => { listeners.delete(render); dialog.remove(); };
+    dialog.addEventListener('close', dispose, {once: true});
+    // Keep Escape local to this sheet; the creative workspace stays open.
+    dialog.addEventListener('keydown', event => event.stopPropagation());
+    listeners.add(render); render(); document.body.append(dialog); dialog.showModal();
+    return () => { if (dialog.open) dialog.close(); dispose(); };
+}
+
+export function createVersionInfo(cn) {
+    const element = document.createElement('button'); element.type = 'button'; element.className = 'fv-version-info';
+    element.title = cn ? '版本与更新说明' : 'Version & release notes'; element.setAttribute('aria-label', element.title);
+    let closeNotes = () => {};
+    element.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
+    const render = () => {
+        const current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
+        element.textContent = current ? displayVersion(current) : cn ? '版本' : 'Version';
+    };
+    listeners.add(render); render();
+    return {element, dispose: () => { listeners.delete(render); closeNotes(); }};
 }

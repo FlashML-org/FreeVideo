@@ -11,6 +11,7 @@ recursive-include freevideo_engine/launcher/licenses *.txt
 recursive-include freevideo_engine/licenses *.txt
 recursive-include constraints *.txt
 include scripts/bootstrap_linux.sh scripts/build_windows.py scripts/windows_app.py scripts/check_installation.py
+include scripts/build_macos.py scripts/macos_app.py scripts/verify_macos_build.py
 include scripts/scan_windows_release.py
 include scripts/build_launcher_notices.py
 prune docs

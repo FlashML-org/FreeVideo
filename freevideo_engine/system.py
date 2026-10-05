@@ -55,6 +55,9 @@ def system_memory():
     if windows():
         from .win32 import memory_status
         return memory_status()
+    if sys.platform == 'darwin':
+        from .macos_memory import memory_status
+        return memory_status()
     values = {k: int(v.split()[0]) * 1024 for k, v in
               (line.split(':', 1) for line in Path('/proc/meminfo').read_text(encoding='utf-8').splitlines())
               if v.strip().endswith('kB')}

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "product_version": "0.1.0",
+  "en": {
+    "summary": "See your FreeVideo version and what changes before you update.",
+    "changes": [
+      "A short product version is now shown in the launcher and creative workspace. The build number remains available in version details.",
+      "Update reminders include release notes in your selected language: English or Simplified Chinese.",
+      "Open Version & release notes at any time, including after updating or while offline, to read the notes included with your installed version."
+    ]
+  },
+  "zh": {
+    "summary": "查看 FreeVideo 版本，更新前了解本次变化。",
+    "changes": [
+      "启动器和创作面板显示简短产品版本，构建号可在版本详情中查看。",
+      "更新提醒附带更新说明，跟随界面语言显示中文或英文。",
+      "随时打开「版本与更新说明」，更新后或离线时也能查看当前版本自带的说明。"
+    ]
+  }
+}

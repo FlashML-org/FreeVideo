@@ -54,6 +54,10 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             patch, AUDIO_CHANNELS, AUDIO_TAG, VIDEO_TAG,
         )
     )
+    if torch.device(device).type == 'mps':
+        # RoPE consumes FP32 coordinates; MPS cannot stage the layout's FP64
+        # storage first. Keep the existing CUDA transfer and arithmetic.
+        position_ids = position_ids.float()
     position_ids, token_tags = position_ids.to(device), token_tags.to(device)
     video_indices, audio_indices, text_indices = (
         video_indices.to(device), audio_indices.to(device), text_indices.to(device),
@@ -99,9 +103,15 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
     if audio_rows.shape[0] != audio_indices.numel():
         raise ValueError('Reference audio rows disagree with packed layout')
 
+    def synchronize():
+        if torch.device(device).type == 'cuda':
+            torch.cuda.synchronize(device)
+        elif torch.device(device).type == 'mps':
+            torch.mps.synchronize()
+
     if runtime is not None:
         runtime.barrier()
-        torch.cuda.synchronize(device)
+        synchronize()
 
     seq_len = position_ids.shape[0]
     for t, audio_t in zip(scheduler.timesteps, audio_scheduler.timesteps):
@@ -134,11 +144,11 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             audio_rows[num_audio_condition_rows:], return_dict=False)[0]
 
         if step_seconds is not None:
-            torch.cuda.synchronize(device)
+            synchronize()
             step_seconds.append(time.perf_counter() - step_started)
 
     if runtime is not None:
-        torch.cuda.synchronize(device)
+        synchronize()
         runtime.barrier()
 
     # Unpatchify (the AfterDenoise step's reshape) and unpack the channel-major audio rows.

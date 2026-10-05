@@ -11,7 +11,7 @@
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
 
-Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
+Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 on NVIDIA GPUs in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -19,14 +19,14 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 FreeVideo is a local inference engine for MiniMax H3 on consumer GPUs, built on [OpenVDN](https://github.com/OpenVDN)'s 8-step [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) model with [Video DeltaNet](https://openvdn.github.io/)'s hybrid attention.
 
-It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with a Windows launcher for setup and command-line support on Linux. Its core features include:
+It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with launchers for Windows and macOS (preview), and command-line support on Linux. Its core features include:
 
 - **Hardware-adaptive execution**: Chooses the FP8 compute path for each GPU architecture, either native FP8 or FP8 storage with BF16 compute, and automatically probes the available attention kernels.
-- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
+- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling NVIDIA GPU inference with as little as 8 GB of VRAM and 16 GB of RAM.
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
-- **One-click deployment**: The Windows launcher sets up ComfyUI, the runtime environment and the models, reuses existing models, and supports offline installation.
+- **One-click deployment**: The Windows and Mac launchers set up ComfyUI, the runtime environment and the models, and reuse existing model files. Windows also supports offline environment packages.
 
 ## Getting Started
 
@@ -41,6 +41,16 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 </div>
 
 **Offline installation:** Download the packages from [Quark](https://pan.quark.cn/s/c51235b84618) and drag the ZIP files into the launcher without extracting them. The common models and the model pack for your GPU (30/40 series or 50 series) are required; a new ComfyUI installation also requires the environment package.
+
+### macOS (Apple silicon preview)
+
+1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**. A [ZIP](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.zip) is also available.
+2. Open FreeVideo and choose a new or existing ComfyUI folder. Add existing model folders to reuse matching files; the installer prepares a native Mac environment.
+3. Click **Install & launch** to open the creative workspace in your browser.
+
+Apple silicon preview, tested on an M5 Mac with 24 GB of unified memory. The memory budget follows current system availability. The Windows environment ZIP is for Windows; Mac setup prepares its own environment.
+
+This preview has not been notarized by Apple. For a trusted FreeVideo download, follow **Open FreeVideo.txt** beside the app or Apple's [Open Anyway instructions](https://support.apple.com/102445). See the [Mac&nbsp;guide](docs/Mac.md) for generation times and memory.
 
 ### Existing ComfyUI
 

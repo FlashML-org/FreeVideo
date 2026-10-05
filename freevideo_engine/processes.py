@@ -1,4 +1,4 @@
-"""Worker creation, inherited leases and bounded cleanup on Linux and Windows."""
+"""Worker creation, inherited leases and platform-specific bounded cleanup."""
 import os
 from pathlib import Path
 import signal
@@ -127,6 +127,15 @@ class WindowsPopen(subprocess.Popen):
 def popen(command, *, pass_fds=(), supervise=False, **kwargs):
     if windows():
         return WindowsPopen(command, pass_fds=pass_fds, **kwargs)
+    if sys.platform == 'darwin':
+        import shutil
+        from .macos_process_host import command as watched
+        executable = str(command[0])
+        if os.sep in executable and not os.path.isabs(executable):
+            executable = str(Path(kwargs.get('cwd') or os.getcwd()) / executable)
+        if shutil.which(executable, path=(kwargs.get('env') or os.environ).get('PATH')) is None:
+            raise FileNotFoundError(2, 'Install executable not found', str(command[0]))
+        command = watched(command, pass_fds)
     if supervise and sys.platform == 'linux':
         import shutil
         executable = str(command[0])
@@ -142,6 +151,9 @@ def popen(command, *, pass_fds=(), supervise=False, **kwargs):
 def stop(process, grace=10):
     if hasattr(process, 'stop_request'):
         return process.stop_request(grace=grace)
+    if sys.platform == 'darwin':
+        from .macos_process_host import stop as stop_native
+        return stop_native(process, grace=grace)
     if process.poll() is not None:
         return
     try:

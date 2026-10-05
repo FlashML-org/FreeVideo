@@ -268,6 +268,8 @@ jobs:
 
           [Discord](https://discord.gg/MsA277cJzZ) · [QQ Group / QQ 群](https://freevideo-community.pages.dev/qq) · [WeChat Group / 微信群](https://freevideo-community.pages.dev/wechat)
           NOTES
+          python "$GITHUB_WORKSPACE/freevideo_engine/release_notes.py" --build launcher-build.json --out release-notes.md --prepend
+          release_title=$(python -c 'import json; print("FreeVideo v" + json.load(open("launcher-build.json"))["product_version"] + " for Windows")' | tr -d '\r')
           # A failed read is not evidence that a tag or release is missing.
           gh_json 'Read preview tags' api "repos/$GH_REPO/git/matching-refs/tags/$preview_tag" > tags.json
           tag_exists=$(python -c 'import json; print(int(any(r["ref"] == "refs/tags/windows-preview" for r in json.load(open("tags.json")))))' | tr -d '\r')
@@ -279,7 +281,7 @@ jobs:
             gh_retry 'Create preview tag' gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$preview_tag" -f sha="$GITHUB_SHA" > /dev/null
           fi
           if [ "$release_exists" = 0 ]; then
-            gh_retry 'Create draft release' gh release create "$preview_tag" --verify-tag --draft --prerelease --latest=false --title 'FreeVideo for Windows' --notes-file release-notes.md
+            gh_retry 'Create draft release' gh release create "$preview_tag" --verify-tag --draft --prerelease --latest=false --title "$release_title" --notes-file release-notes.md
           fi
           gh_retry 'Upload launcher' gh release upload "$preview_tag" FreeVideo.exe FreeVideo-Windows-folder.zip SHA256SUMS.txt --clobber
           # Publish metadata last, bound to the immutable executable asset ID.
@@ -300,7 +302,7 @@ jobs:
           Path('update.json').write_text(json.dumps(build, indent=2))
           PY
           gh_retry 'Upload update manifest' gh release upload "$preview_tag" update.json --clobber
-          gh_retry 'Publish release' gh release edit "$preview_tag" --draft=false --prerelease --latest=false --title 'FreeVideo for Windows' --notes-file release-notes.md
+          gh_retry 'Publish release' gh release edit "$preview_tag" --draft=false --prerelease --latest=false --title "$release_title" --notes-file release-notes.md
           # Previous development snapshots have been archived privately.
           # Remove their release/source-archive references only after replacement.
           python - <<'PY_CLEANUP'

@@ -2,12 +2,26 @@
 import json
 import os
 from pathlib import Path
+import sys
 import time
 
 from .monitoring import save
 
 TEXT = ('comfy', 'destination', 'engine', 'models', 'python', 'url', 'language', 'offline_runtime')
 SELECTION = ('root', 'engine', 'source', 'python', 'url')
+
+
+def default_language():
+    if sys.platform == 'darwin':
+        from .macos_preferences import preferred_language
+        try:
+            language = preferred_language()
+            if language:
+                return language
+        except (OSError, AttributeError, ValueError):
+            pass
+    import locale
+    return (locale.getlocale()[0] or '').lower()
 
 
 def sanitize(value):

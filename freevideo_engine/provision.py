@@ -323,14 +323,14 @@ def verify_cache(plan, cache):
     manifest = json.loads((cache / 'manifest.json').read_text(encoding='utf-8'))
     config = json.loads((Path(plan['model_dir']) / 'h3-base/transformer/config.json').read_text(encoding='utf-8'))
     count = config['num_layers']
-    from .adaln_assets import SLIM_FORMAT, validate_catalog, check_table, asset_path
-    slim = manifest.get('format') == SLIM_FORMAT
+    from .adaln_assets import SLIM_FORMATS, validate_catalog, check_table, asset_path
+    slim = manifest.get('format') in SLIM_FORMATS
     kinds = ('blocks',) if slim else ('blocks', 'adaln')
     expected = {'root'} | {kind + '/' + '%02d' % i for kind in kinds for i in range(count)}
     groups = manifest.get('groups', [])
-    if (manifest.get('precision') != 'fp8' or not manifest.get('linears')
+    if (manifest.get('precision') not in ('fp8', 'int8') or not manifest.get('linears')
             or len(groups) != len(expected) or {r.get('group') for r in groups} != expected):
-        raise ValueError('FP8 cache is not complete; original model files retained')
+        raise ValueError('Prepared cache is not complete; original model files retained')
     ledger = Path(plan['root']) / 'verified-cache.json'
     stamps = json.loads(ledger.read_text(encoding='utf-8')) if ledger.is_file() else {}
     for row in groups:
@@ -351,22 +351,26 @@ def verify_cache(plan, cache):
 def prepare(plan, out):
     root = Path(plan['root'])
     prepared = plan.get('prepared_model')
+    cache_format = dict(capability=plan.get('inventory', {}).get('hardware', {}).get('capability'),
+                        scale_granularity=plan.get('model_scale_granularity'))
     if prepared:
         from .prepared_model import verify_manifest
         verify_manifest(prepared)
         cache = Path(prepared['cache'])
         from .install_tuning import cache_compatible
-        if not cache_compatible(cache, plan['inventory']['hardware']['capability']):
+        if not cache_compatible(cache, **cache_format):
             raise ValueError('Downloaded prepared model differs from this GPU scale format')
     elif plan.get('reuse_cache'):
         cache = Path(plan['reuse_cache'])
         from .install_tuning import cache_compatible
         manifest = json.loads((cache / 'manifest.json').read_text(encoding='utf-8'))
-        if manifest.get('precision') != 'fp8':
-            raise ValueError('Reuse cache must contain FP8 storage.')
-        if not cache_compatible(cache, plan['inventory']['hardware']['capability']):
+        if manifest.get('precision') not in ('fp8', 'int8'):
+            raise ValueError('Reuse cache must contain FP8 or int8 storage.')
+        if not cache_compatible(cache, **cache_format):
             raise ValueError('FP8 scale format differs from this GPU. Omit --cache to prepare the correct one.')
     else:
+        if plan.get('device_backend') == 'mps':
+            raise ValueError('Mac setup requires verified prepared weights; select the prepared model source')
         from .paths import add_vdn
         add_vdn()
         import torch

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from freevideo_engine.desktop_runtime import check_launcher_dependencies, package_data_files, source_files
 from freevideo_engine.launcher_update import REPOSITORY, CHANNEL
+from freevideo_engine.release_notes import catalog, markdown
 from scripts.build_launcher_notices import collect as collect_notices
 
 
@@ -28,7 +29,7 @@ def build_info(root):
     # Numeric UTC date + HHMMSS is also a valid Python package version.
     version = '.'.join(str(int(part)) for part in time.strftime('%Y.%m.%d.%H%M%S', time.gmtime(built_at)).split('.'))
     return dict(schema=1, repository=REPOSITORY, channel=CHANNEL, revision=revision,
-                built_at=built_at, version=version)
+                built_at=built_at, version=version, **catalog(root / 'freevideo_engine'))
 
 
 def stamp_source(staged, identity):
@@ -78,7 +79,7 @@ VSVersionInfo(
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
 )
-''' % (version, version, identity['version'], identity['version'])
+''' % (version, version, identity['version'], identity.get('product_version', identity['version']))
     path = out / 'version-info.txt'
     path.write_text(text, encoding='utf-8')
     return path
@@ -135,6 +136,7 @@ def main():
     digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     (executable.parent / 'SHA256SUMS.txt').write_text(digest + '  FreeVideo.exe\n', encoding='utf-8')
     (executable.parent / 'launcher-build.json').write_text(json.dumps(identity, indent=2), encoding='utf-8')
+    (executable.parent / 'RELEASE_NOTES.md').write_text(markdown(identity), encoding='utf-8')
     shutil.copytree(notices, executable.parent / 'licenses')
     if args.onefolder:
         shutil.make_archive(str(out / 'dist/FreeVideo-Windows-folder'), 'zip',

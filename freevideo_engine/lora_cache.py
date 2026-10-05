@@ -178,7 +178,7 @@ def prepare(cache, adapters, output_root=None):
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
     if manifest.get('precision') != 'fp8':
         raise ValueError('LoRA variants require the prepared FP8 model')
-    from .adaln_assets import SLIM_FORMAT, restore_projections
+    from .adaln_assets import SLIM_FORMATS, restore_projections
     from .export_slim import embedding_hash, share
     changes_modulation = False
     changes_embedding = False
@@ -206,7 +206,7 @@ def prepare(cache, adapters, output_root=None):
             if (stamp != current or not reliable) and digest(path) != group['sha256']:
                 raise ValueError('Adapter cache changed: ' + str(path))
         return output, {'enabled': True, 'cache_hit': True, 'cache': str(output), 'identity': identity}
-    if manifest.get('format') == SLIM_FORMAT and (changes_modulation or changes_embedding):
+    if manifest.get('format') in SLIM_FORMATS and (changes_modulation or changes_embedding):
         # Ordinary attention/FF LoRAs keep the fixed tables. Only adapters that
         # actually change modulation need the optional original projection data.
         originals = restore_projections(cache, manifest)

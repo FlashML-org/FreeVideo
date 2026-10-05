@@ -24,18 +24,37 @@ CHANNEL = 'windows-preview'
 API = 'https://api.github.com/repos/' + REPOSITORY
 RELEASE_PAGE = 'https://github.com/' + REPOSITORY + '/releases/tag/' + CHANNEL
 MAX_EXE_BYTES = 512 * 2**20
+MAC_CHANNEL = 'macos-preview'
+
+
+def build_target(value):
+    """Legacy identities are Windows x64; never mix host update artifacts."""
+    return value.get('target', 'windows-x86_64')
+
+
+def release_page(current):
+    return 'https://github.com/' + REPOSITORY + '/releases/tag/' + build_identity(current)['channel']
 
 
 def build_identity(value):
     if (not isinstance(value, dict) or value.get('repository') != REPOSITORY
-            or value.get('channel') != CHANNEL or value.get('schema') != 1
+            or value.get('channel') not in (CHANNEL, MAC_CHANNEL) or value.get('schema') != 1
             or not re.fullmatch(r'[0-9a-f]{40,64}', str(value.get('revision', '')))
             or type(value.get('built_at')) is not int or value['built_at'] <= 0
             or not isinstance(value.get('version'), str) or len(value['version']) > 64):
         raise ValueError('Invalid launcher build identity')
+    if value['channel'] == MAC_CHANNEL:
+        if value.get('target') != 'macos-arm64' or value.get('packaging') != 'app':
+            raise ValueError('Invalid Mac launcher build identity')
+    elif build_target(value) != 'windows-x86_64':
+        raise ValueError('Launcher update channel does not match its target')
     result = {k: value[k] for k in ('schema', 'repository', 'channel', 'revision', 'built_at', 'version')}
     if value.get('packaging') == 'onedir':
         result['packaging'] = 'onedir'
+    if value['channel'] == MAC_CHANNEL:
+        result.update(target='macos-arm64', packaging='app')
+    from .release_notes import optional_fields
+    result.update(optional_fields(value))
     return result
 
 
@@ -60,7 +79,9 @@ def manifest(value):
 
 
 def newer(candidate, current):
-    return candidate['revision'] != current['revision'] and candidate['built_at'] > current['built_at']
+    return (build_target(candidate) == build_target(current)
+            and candidate['channel'] == current['channel']
+            and candidate['revision'] != current['revision'] and candidate['built_at'] > current['built_at'])
 
 
 def _trusted_url(url):
@@ -120,16 +141,21 @@ def _json(url, token, *, binary=False, limit=2**20):
         return json.loads(b''.join(_bytes(response, limit)))
 
 
-def latest_release(token=''):
+def latest_release(token='', *, channel=CHANNEL):
     """Read and validate the published build without downloading an executable."""
-    release = _json(API + '/releases/tags/' + CHANNEL, token)
-    if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != CHANNEL:
-        raise ValueError('No published Windows update is available')
+    if channel not in (CHANNEL, MAC_CHANNEL):
+        raise ValueError('Unknown launcher update channel')
+    release = _json(API + '/releases/tags/' + channel, token)
+    if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != channel:
+        raise ValueError('No published update is available for this platform')
     assets = {a.get('name'): a for a in release.get('assets', []) if isinstance(a, dict)}
-    metadata, executable = assets.get('update.json', {}), assets.get('FreeVideo.exe', {})
+    metadata, executable = assets.get('update.json', {}), assets.get(
+        'FreeVideo-Mac-arm64.zip' if channel == MAC_CHANNEL else 'FreeVideo.exe', {})
     if type(metadata.get('id')) is not int:
         raise ValueError('Update metadata is not published yet; check the release page')
     candidate = manifest(_json(API + '/releases/assets/' + str(metadata['id']), token, binary=True, limit=65536))
+    if candidate['channel'] != channel:
+        raise ValueError('Update metadata belongs to a different platform')
     if candidate['asset']['id'] != executable.get('id') or candidate['asset']['bytes'] != executable.get('size'):
         raise ValueError('A new release is being published; check again shortly')
     return candidate
@@ -137,7 +163,7 @@ def latest_release(token=''):
 
 def check(current, token=''):
     build_identity(current)
-    candidate = latest_release(token)
+    candidate = latest_release(token) if current['channel'] == CHANNEL else latest_release(token, channel=current['channel'])
     return candidate if newer(candidate, current) else None
 
 
@@ -158,7 +184,8 @@ def verified(path, asset):
 
 
 def executable_path(root, candidate):
-    return Path(root).absolute().resolve() / 'updates' / candidate['asset']['sha256'] / 'FreeVideo.exe'
+    filename = 'FreeVideo-Mac-arm64.zip' if build_target(candidate) == 'macos-arm64' else 'FreeVideo.exe'
+    return Path(root).absolute().resolve() / 'updates' / candidate['asset']['sha256'] / filename
 
 
 def download(candidate, root, token='', *, progress=None, cancel=None):
@@ -201,6 +228,8 @@ class DownloadedLauncherUnavailable(ValueError):
 
 def launch_download(candidate, root, *, token='', popen=None):
     candidate = manifest(candidate)
+    if build_target(candidate) == 'macos-arm64':
+        raise ValueError('Mac update activation is not available in this development build')
     path = executable_path(root, candidate)
     if not verified(path, candidate['asset']):
         raise DownloadedLauncherUnavailable('Downloaded launcher is missing or changed; download again')
@@ -220,7 +249,7 @@ def launch_download(candidate, root, *, token='', popen=None):
 
 def forward_approved(current, root):
     """Opening the original shortcut starts the last approved newer EXE."""
-    if current.get('packaging') == 'onedir':
+    if current.get('packaging') in ('onedir', 'app'):
         return False  # Keep the user's folder distribution; do not switch to onefile.
     try:
         receipt = json.loads((Path(root)/'updates/active.json').read_text(encoding='utf-8'))
@@ -308,8 +337,9 @@ class UpdateClient:
             return
         if operation not in ('check', 'download'):
             raise ValueError('Unknown update operation')
-        if operation == 'download' and self.current.get('packaging') == 'onedir':
-            raise ValueError('Download and extract the updated folder ZIP from the release page')
+        if operation == 'download' and self.current.get('packaging') in ('onedir', 'app'):
+            kind = 'application' if self.current.get('packaging') == 'app' else 'folder'
+            raise ValueError('Download and extract the updated %s ZIP from the release page' % kind)
         self.cancelled.clear()
         quiet = background and operation == 'check'
         if not quiet:

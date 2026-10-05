@@ -1,5 +1,6 @@
 """Observed process memory and dedicated cgroup limits; no GPU dependencies."""
 from pathlib import Path
+import sys
 from .system import windows
 
 
@@ -27,6 +28,10 @@ class ProcessMemory:
     """
 
     def __init__(self):
+        self.macos = None
+        if sys.platform == 'darwin':
+            from .macos_process_memory import ProcessMemory as MacMemory
+            self.macos = MacMemory()
         self.windows = None
         if windows():
             from .win32 import ProcessMemory as WindowsMemory
@@ -48,6 +53,8 @@ class ProcessMemory:
                 if value.strip().endswith('kB')}
 
     def sample(self, root_pid):
+        if self.macos is not None:
+            return self.macos.sample(root_pid)
         if self.windows is not None:
             return self.windows.sample(root_pid)
         parents = {}
@@ -155,6 +162,8 @@ class ProcessMemory:
                 'system_writeback_bytes': system.get('Writeback'), 'cgroup_memory': self.last_cgroup}
 
     def result(self):
+        if self.macos is not None:
+            return self.macos.result()
         if self.windows is not None:
             return self.windows.result()
         return {'process_tree_peak_rss_bytes': self.peak_rss,

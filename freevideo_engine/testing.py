@@ -232,10 +232,13 @@ def environment(machine):
                 PATH=(str(Path(machine['git']).parent) + os.pathsep if machine.get('git') else '') + os.environ.get('PATH', ''),
                 FREEVIDEO_MODEL_ROOT=machine['model_root'], FREEVIDEO_COMFY_ROOT=machine['comfy_root'],
                 FREEVIDEO_COMFY_PYTHON=machine['comfy_python'],
-                CUDA_VISIBLE_DEVICES=inherited('CUDA_VISIBLE_DEVICES', machine['gpu_uuid']),
                 PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8',
                 FREEVIDEO_LOCK_PATH=inherited('FREEVIDEO_LOCK_PATH', str(Path(machine['root']) / 'engine.lock')),
                 OMP_NUM_THREADS='8', MKL_NUM_THREADS='8')
+    if machine.get('device_backend') == 'mps':
+        from .macos_bootstrap import environment as native_environment
+        return native_environment(machine['root'], dict(env, OMP_NUM_THREADS='2', MKL_NUM_THREADS='2'))
+    env['CUDA_VISIBLE_DEVICES'] = inherited('CUDA_VISIBLE_DEVICES', machine['gpu_uuid'])
     from .triton_compat import environment as compiler_environment
     return compiler_environment(machine['root'], env)
 

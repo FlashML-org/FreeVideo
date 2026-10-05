@@ -22,6 +22,8 @@ from .system import install_root, windows
 def launcher_root():
     if os.environ.get('FREEVIDEO_LAUNCHER_HOME'):
         return Path(os.environ['FREEVIDEO_LAUNCHER_HOME'])
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library/Application Support/FreeVideo/launcher'
     home = os.environ.get('LOCALAPPDATA') or str(Path.home())
     return Path(home) / 'FreeVideo-launcher'
 
@@ -32,6 +34,9 @@ def source_files(root):
              'freevideo.ps1', 'setup.ps1', 'test.ps1', 'freevideo.cmd', 'setup.cmd', 'test.cmd',
              'scripts/bootstrap_linux.sh', 'scripts/windows_app.py', 'scripts/build_windows.py',
              'scripts/check_installation.py', 'scripts/build_launcher_notices.py']
+    # Older deployed Windows payloads may predate the optional Mac entry points.
+    files_optional = ('scripts/build_macos.py', 'scripts/macos_app.py')
+    names += [name for name in files_optional if (root / name).is_file()]
     files = [root / name for name in names]
     files += [p for folder in ('freevideo_engine', 'constraints', 'web', 'example_workflows')
               for p in (root / folder).rglob('*')

@@ -11,7 +11,7 @@
 
 <p align="center"><a href="README.md">English</a> · 中文</p>
 
-FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
+FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在消费级 NVIDIA 显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -19,14 +19,14 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [OpenVDN](https://github.com/OpenVDN) 的 8 步模型 [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) 和 [Video DeltaNet](https://openvdn.github.io/) 的混合注意力。
 
-它统一调度显存、内存与磁盘，并根据硬件条件调整权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件形式提供，配备 Windows 启动器，也支持 Linux 命令行。主要特性包括：
+它统一调度显存、内存与磁盘，并根据硬件条件调整权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件形式提供，配备 Windows 和 macOS（预览版）启动器，也支持 Linux 命令行。主要特性包括：
 
 - **硬件自适应**：针对不同显卡架构选择 FP8 计算路径（原生 FP8，或 FP8 存储配合 BF16 计算），并自动探测可用的注意力内核，无需手动配置。
-- **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，最低只需 8GB 显存和 16GB 内存。
+- **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，NVIDIA 显卡最低只需 8GB 显存和 16GB 内存。
 - **多模态输入**：支持文本、首帧、尾帧，以及图像、视频、音频参考输入。
 - **社区 LoRA**：支持在工作流中使用 MiniMax H3 社区 LoRA。[查看效果对比](docs/LoRA.zh-CN.md)。
 - **ComfyUI 集成**：在 ComfyUI 中提供专门的创作面板，支持二次采样和批量生成，并可浏览历史作品；需要更精细的控制时，可切换到节点视图，接入 LoRA 或自定义工作流。
-- **一键部署**：Windows 启动器自动完成 ComfyUI、运行环境与模型的部署，可复用已有模型，并支持离线安装。
+- **一键部署**：Windows 和 Mac 启动器自动完成 ComfyUI、运行环境与模型的部署，并复用已有模型；Windows 另支持离线运行环境包。
 
 ## 开始使用
 
@@ -41,6 +41,16 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 </div>
 
 **离线安装：** 从[夸克网盘](https://pan.quark.cn/s/c51235b84618)下载离线包，将 ZIP 文件直接拖入启动器，无需解压。需要「公用模型」包和对应显卡的模型包（30/40 系或 50 系）；全新安装 ComfyUI 时还需要「运行环境」包。
+
+### macOS（Apple 芯片预览版）
+
+1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。也可下载 [ZIP](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.zip)。
+2. 打开 FreeVideo，选择新建或已有的 ComfyUI 目录。可添加已有模型目录以复用匹配文件；安装器会准备 Mac 原生运行环境。
+3. 点击 **安装并启动**，在浏览器中进入创作面板。
+
+面向 Apple 芯片的预览版，已在 24GB 统一内存的 M5 Mac 上测试。内存预算跟随系统当前余量调整。Windows「运行环境」ZIP 用于 Windows，Mac 安装器会单独准备原生环境。
+
+预览版尚未通过 Apple 公证。确认来自可信的 FreeVideo 下载后，按应用旁的 **Open FreeVideo.txt** 或 [Apple 的“仍要打开”说明](https://support.apple.com/102445)操作。生成耗时与内存说明见 [Mac 说明](docs/Mac.zh-CN.md)。
 
 ### 已有 ComfyUI
 

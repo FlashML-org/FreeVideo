@@ -123,6 +123,9 @@ def dependency_status(root, layout='unified', system=None):
     """Inspect distribution metadata only: no tensor imports or downloads."""
     result = {}
     system = system or platform.system()
+    if system == 'Darwin':
+        from .macos_bootstrap import dependency_status as native_status
+        return native_status(root)
     packages = {
         'engine': ['torch', 'torchvision', 'triton', 'transformers', 'accelerate', 'peft', 'safetensors',
                    'huggingface-hub', 'omegaconf', 'pyyaml', 'einops', 'numpy', 'pillow', 'av',
@@ -225,34 +228,44 @@ def plan(args, *, local_progress=None):
     keep_limits = getattr(args, 'keep_resource_limits', False)
     vram_gib = args.vram_gib if args.vram_gib is not None else saved.get('vram_gib') if keep_limits else None
     ram_gib = args.ram_gib if args.ram_gib is not None else saved.get('ram_gib') if keep_limits else None
-    if not args.hardware_json and (platform.system() not in ('Linux', 'Windows') or platform.machine().lower() not in ('x86_64', 'amd64')):
-        raise RuntimeError('One-click setup supports Linux x86_64 and native Windows x64.')
-    snapshot = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else inventory(args.gpu)
-    hardware = Hardware.from_dict(snapshot['hardware'])
-    errors = []
-    if snapshot.get('machine', '').lower() not in ('x86_64', 'amd64') or hardware.system not in ('Linux', 'Windows'):
-        errors.append('This installer supports Linux x86_64 and native Windows x64.')
-    windows_target = hardware.system == 'Windows'
-    if windows_target and layout != 'unified':
-        errors.append('Native Windows uses the unified environment. Rerun with --environment unified.')
-        layout = 'unified'
-    if windows_target and getattr(args, 'rebuild_sage', False):
-        errors.append('Windows uses the pinned, verified Sage2 wheel; --rebuild-sage is a Linux source-build option.')
-    if int(snapshot['selected_gpu']['driver_version'].split('.')[0]) < 580:
-        errors.append('NVIDIA driver 580 or newer is required by the pinned CUDA 13 encoder; update the driver first.')
-    if hardware.capability not in ((8, 0), (8, 6), (8, 9), (9, 0), (12, 0)):
-        errors.append('The one-click profiles currently target SM80/86, SM89, SM90 and SM120.')
-    for name in () if windows_target else ('git', 'compiler'):
-        if not snapshot.get(name):
-            errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
-    if not args.hardware_json and not shutil.which('curl'):
-        errors.append('Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.')
-    resources = None
-    try:
-        resources = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib)
-        resources['ram_budget_bytes'] = max(0, resources['ram_budget_bytes'])
-    except ValueError as error:
-        errors.append(str(error))
+    fixture = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else None
+    mac_target = (fixture or {}).get('hardware', {}).get('system', platform.system()) == 'Darwin'
+    if mac_target:
+        from .macos_bootstrap import preflight
+        snapshot, resources, errors = preflight(args, fixture, ram_gib=ram_gib, vram_gib=vram_gib)
+        system, windows_target, layout = 'Darwin', False, 'unified'
+        cache_format = dict(capability=None, scale_granularity='int8_convrot')
+    else:
+        if not args.hardware_json and (platform.system() not in ('Linux', 'Windows') or platform.machine().lower() not in ('x86_64', 'amd64')):
+            raise RuntimeError('One-click setup supports Linux x86_64 and native Windows x64.')
+        snapshot = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else inventory(args.gpu)
+        hardware = Hardware.from_dict(snapshot['hardware'])
+        errors = []
+        if snapshot.get('machine', '').lower() not in ('x86_64', 'amd64') or hardware.system not in ('Linux', 'Windows'):
+            errors.append('This installer supports Linux x86_64 and native Windows x64.')
+        windows_target = hardware.system == 'Windows'
+        if windows_target and layout != 'unified':
+            errors.append('Native Windows uses the unified environment. Rerun with --environment unified.')
+            layout = 'unified'
+        if windows_target and getattr(args, 'rebuild_sage', False):
+            errors.append('Windows uses the pinned, verified Sage2 wheel; --rebuild-sage is a Linux source-build option.')
+        if int(snapshot['selected_gpu']['driver_version'].split('.')[0]) < 580:
+            errors.append('NVIDIA driver 580 or newer is required by the pinned CUDA 13 encoder; update the driver first.')
+        if hardware.capability not in ((8, 0), (8, 6), (8, 9), (9, 0), (12, 0)):
+            errors.append('The one-click profiles currently target SM80/86, SM89, SM90 and SM120.')
+        for name in () if windows_target else ('git', 'compiler'):
+            if not snapshot.get(name):
+                errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
+        if not args.hardware_json and not shutil.which('curl'):
+            errors.append('Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.')
+        resources = None
+        try:
+            resources = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib)
+            resources['ram_budget_bytes'] = max(0, resources['ram_budget_bytes'])
+        except ValueError as error:
+            errors.append(str(error))
+        system = hardware.system
+        cache_format = dict(capability=hardware.capability)
     model_dir = Path(args.models or saved.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
     encoder_dir = Path(args.encoder_models or saved.get('encoder_model_root') or prior.get('encoder_dir') or root / 'models' / 'encoder').expanduser().resolve()
     reuse_cache = args.cache.expanduser().resolve() if args.cache else None
@@ -263,18 +276,20 @@ def plan(args, *, local_progress=None):
             if cache_record.is_file():
                 record = json.loads(cache_record.read_text(encoding='utf-8'))
                 candidate = record.get('cache')
-                if record.get('model_revision') == revision and candidate and cache_compatible(candidate, hardware.capability):
+                if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
                     reuse_cache = Path(candidate)
                     break
     if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
         from .install_tuning import discover_prepared
-        reuse_cache = discover_prepared(getattr(args, 'reuse_models', None), hardware.capability)
+        reuse_cache = discover_prepared(getattr(args, 'reuse_models', None), **cache_format)
     from . import prepared_model
     prepared = None
     model_source = getattr(args, 'model_source', 'prepared')
     if reuse_cache is None and not getattr(args, 'rebuild_cache', False) and model_source == 'prepared':
-        prepared = prepared_model.select(hardware.capability, root)
+        prepared = prepared_model.select(root=root, **cache_format)
     prepared_dir = prepared['directory'] if prepared else None
+    if mac_target and reuse_cache is None and prepared is None:
+        errors.append('No verified native-compatible prepared model is available. Source conversion is not supported on Mac.')
     files = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), reuse_cache or prepared)
     files += prepared_model.files(prepared)
     local_reuse = None
@@ -326,7 +341,7 @@ def plan(args, *, local_progress=None):
     # Stream directly into final FP8 groups. The pinned model occupies ~45.3
     # GiB; allow 52 GiB including the largest group in progress. Never credit
     # future source deletion toward the space needed to complete conversion.
-    dependencies = dependency_status(root, layout, hardware.system)
+    dependencies = dependency_status(root, layout, system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     extra = (0 if reuse_cache or prepared else 52) + (5 if environments_ready else 30 if layout == 'unified' else 45) + 10
     frontend = None
@@ -343,11 +358,11 @@ def plan(args, *, local_progress=None):
         keep_extreme=reviewed.get('disk_mode') == 'extreme')
     extra = disk_plan['environment_cache_safety_gib']
     errors.extend(disk_plan['errors'])
-    if reuse_cache and not cache_compatible(reuse_cache, hardware.capability):
+    if reuse_cache and not cache_compatible(reuse_cache, **cache_format):
         errors.append('--cache must contain a prepared FP8 cache compatible with this GPU scale format.')
     from .download_settings import read as download_preferences
     networking = network.plan(json.loads((PACKAGE / 'dependencies.json').read_text(encoding='utf-8')),
-        bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), hardware.system), layout,
+        bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system), layout,
         mode=getattr(args, 'network', 'auto'), timeout=getattr(args, 'network_timeout', 5),
         offline=bool(args.hardware_json or errors),
         proxy_mode=download_preferences(root / 'download-settings.json')['proxy_mode'])
@@ -361,12 +376,12 @@ def plan(args, *, local_progress=None):
         if error:
             errors.append(error)
     from .model_transfer import policy as transfer_policy
-    build = build_parallelism(resources['ram_budget_bytes'], snapshot.get('cpu_threads') or 1) if resources and not windows_target else None
+    build = build_parallelism(resources['ram_budget_bytes'], snapshot.get('cpu_threads') or 1) if resources and not windows_target and not mac_target else None
     transfers = transfer_policy(resources['ram_budget_bytes'], build['estimated_peak_bytes'] if build else 0) if resources else None
     if disk_plan['mode'] == 'extreme':
         transfers = dict(transfers or {}, file_workers=1, overlap_build=False, mode='streaming-space-saver')
     from .model_status import inventory as model_inventory
-    return {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': None,
+    value = {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': None,
             'installation_resources': resources,
             'storage': storage,
             'disk_mode': disk_plan['mode'], 'disk_policy': disk_plan, 'frontend': frontend,
@@ -416,6 +431,11 @@ def plan(args, *, local_progress=None):
             'licenses': ['https://huggingface.co/OpenVDN/vdn-minimax-h3/blob/751739ee5b9e3ac802dca5d5111075fdaeb47885/LICENSE',
                          'https://huggingface.co/t8star/Vdn-Minimax-H3-Comfy',
                          'https://docs.nvidia.com/cuda/eula/index.html']}
+    if mac_target:
+        from .macos_bootstrap import describe_plan
+        describe_plan(value)
+    return value
+
 
 
 def display(value, ui=None, *, verbose=False):
@@ -424,10 +444,13 @@ def display(value, ui=None, *, verbose=False):
         return display_details(value, ui)
     h = value['inventory']['hardware']
     usable_ram = min(h['ram_total'], h.get('cgroup_ram_limit') or h['ram_total'])
-    rows = [('GPU', '%s · %.1f GiB / %.1f GiB free' % (h['gpu_name'], h['vram_total']/GiB, h['vram_free']/GiB)),
-            ('RAM', '%.1f GiB / %.1f GiB available%s' % (usable_ram/GiB, min(usable_ram, h['ram_available'])/GiB,
-                                                       ' · container limit' if usable_ram < h['ram_total'] else '')),
-            ('Install in', value['root']),
+    rows = ([('GPU', h['gpu_name'] + ' · MPS'),
+             ('Unified memory', '%.1f GiB / %.1f GiB available' % (h['ram_total']/GiB, h['ram_available']/GiB))]
+            if value.get('device_backend') == 'mps' else
+            [('GPU', '%s · %.1f GiB / %.1f GiB free' % (h['gpu_name'], h['vram_total']/GiB, h['vram_free']/GiB)),
+             ('RAM', '%.1f GiB / %.1f GiB available%s' % (usable_ram/GiB, min(usable_ram, h['ram_available'])/GiB,
+                                                       ' · container limit' if usable_ram < h['ram_total'] else ''))])
+    rows += [('Install in', value['root']),
             ('Environment', 'One shared Python environment · missing dependencies installed automatically'
              if value['environment_layout'] == 'unified' else 'Two separate Python environments · keeping your selected layout')]
     for key, default, label in (('model_dir', 'vdn', 'Model directory'), ('encoder_dir', 'encoder', 'Encoder directory')):
@@ -485,7 +508,8 @@ def display(value, ui=None, *, verbose=False):
                  + (' · compare proxy / direct' if networking.get('proxy_configured') or networking.get('git_proxy_configured') else '')))
     ui.panel('FreeVideo / ' + h['system'] + ' setup', rows)
     ui.write('Space and memory are estimates. Setup checks your GPU before marking it ready.\n')
-    ui.write('Model / toolkit licenses: MiniMax H3, H3 text encoder, NVIDIA CUDA.\n')
+    ui.write('Model licenses: MiniMax H3, H3 text encoder.\n' if value.get('device_backend') == 'mps' else
+             'Model / toolkit licenses: MiniMax H3, H3 text encoder, NVIDIA CUDA.\n')
     ui.write('Use --verbose for full details and license links, or enter d at confirmation.\n')
     for error in value['errors']:
         ui.write('BLOCKED: ' + str(error) + '\n')
@@ -494,9 +518,12 @@ def display(value, ui=None, *, verbose=False):
 def display_details(value, ui=None):
     ui = ui or TerminalUI('Setup')
     h = value['inventory']['hardware']
-    rows = [('GPU', '%s · SM %s' % (h['gpu_name'], '.'.join(map(str, h['capability'])))),
-            ('VRAM', '%.2f GiB total / %.2f GiB free' % (h['vram_total']/GiB, h['vram_free']/GiB)),
-            ('RAM', '%.2f GiB total / %.2f GiB available' % (h['ram_total']/GiB, h['ram_available']/GiB))]
+    rows = ([('GPU', h['gpu_name'] + ' · MPS'),
+             ('Unified memory', '%.2f GiB total / %.2f GiB available' % (h['ram_total']/GiB, h['ram_available']/GiB))]
+            if value.get('device_backend') == 'mps' else
+            [('GPU', '%s · SM %s' % (h['gpu_name'], '.'.join(map(str, h['capability'])))),
+             ('VRAM', '%.2f GiB total / %.2f GiB free' % (h['vram_total']/GiB, h['vram_free']/GiB)),
+             ('RAM', '%.2f GiB total / %.2f GiB available' % (h['ram_total']/GiB, h['ram_available']/GiB))])
     limits = [value.get(key) for key in ('vram_gib', 'ram_gib')]
     rows.append(('Resources', 'Automatic · current available VRAM/RAM' if all(v is None for v in limits)
                  else 'Capacity limits · VRAM %s / RAM %s' % tuple('auto' if v is None else '%g GiB' % v for v in limits)))
@@ -558,7 +585,11 @@ def confirmed(args, value, ask=input, ui=None):
         reviewed = json.loads(Path(reviewed_path).read_text(encoding='utf-8'))
         keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'model_source', 'disk_mode', 'frontend')
         changed = any(reviewed.get(key) != value.get(key) for key in keys)
-        changed |= reviewed.get('inventory', {}).get('selected_gpu', {}).get('uuid') != value['inventory']['selected_gpu']['uuid']
+        changed |= reviewed.get('device_backend') != value.get('device_backend')
+        if value.get('device_backend') == 'mps':
+            changed |= reviewed.get('inventory', {}).get('selected_device') != value['inventory']['selected_device']
+        else:
+            changed |= reviewed.get('inventory', {}).get('selected_gpu', {}).get('uuid') != value['inventory']['selected_gpu']['uuid']
         changed |= value['model_download_bytes'] > reviewed.get('model_download_bytes', -1)
         changed |= bool(reviewed.get('allow_model_restart')) != bool(value.get('allow_model_restart'))
         for key in ('root', 'roots', 'copy_mode', 'copy_bytes'):
@@ -730,18 +761,13 @@ class Installer:
             FREEVIDEO_COMFY_PYTHON=str(self.pythons['encoder']),
             FREEVIDEO_LOCK_PATH=lock_path,
             PATH=str(self.pythons['engine'].parent) + os.pathsep + os.environ.get('PATH', ''),
-            CUDA_VISIBLE_DEVICES=value['inventory']['selected_gpu']['uuid'],
             UV_CACHE_DIR=str(self.root / 'downloads' / 'uv-cache'),
             UV_PYTHON_INSTALL_DIR=str(self.root / 'python'), UV_LINK_MODE='hardlink',
             HF_HOME=str(self.root / 'downloads' / 'huggingface'), HF_HUB_DISABLE_TELEMETRY='1',
-            TRITON_CACHE_DIR=str(self.root / 'kernel-cache' / 'triton'),
-            CUDA_CACHE_PATH=str(self.root / 'kernel-cache' / 'cuda'),
-            TORCHINDUCTOR_CACHE_DIR=str(self.root / 'kernel-cache' / 'inductor'),
             HF_HUB_OFFLINE='0', TRANSFORMERS_OFFLINE='0',
             PIP_DISABLE_PIP_VERSION_CHECK='1',
             PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8', PYTHONPATH=str(SOURCE), OMP_NUM_THREADS='4', MKL_NUM_THREADS='4')
-        from .triton_compat import environment as compiler_environment
-        self.env = compiler_environment(self.root, self.env)
+        self.env = self.device_environment(self.env)
         self.env[LOCK_ENV] = str(self.runtime_fd)
         self.env.update(FREEVIDEO_NETWORK_PLAN=str(self.run_dir / 'plan.json'),
                         FREEVIDEO_NETWORK_EVENTS=str(self.run_dir / 'network.jsonl'))
@@ -759,6 +785,14 @@ class Installer:
         self.monitor_stop = threading.Event()
         self.monitor_thread = None
         self.started = time.monotonic()
+
+    def device_environment(self, env):
+        from .triton_compat import environment
+        return environment(self.root, dict(env,
+            CUDA_VISIBLE_DEVICES=self.plan['inventory']['selected_gpu']['uuid'],
+            TRITON_CACHE_DIR=str(self.root / 'kernel-cache' / 'triton'),
+            CUDA_CACHE_PATH=str(self.root / 'kernel-cache' / 'cuda'),
+            TORCHINDUCTOR_CACHE_DIR=str(self.root / 'kernel-cache' / 'inductor')))
 
     def start_monitor(self):
         from .ram import ProcessMemory
@@ -1238,8 +1272,35 @@ class Installer:
         save(receipt, spec)
         return toolkit
 
-    def execute(self):
-        self.ui.phase('Prepare download tools', 0, 8)
+    def device_configuration(self):
+        return {'gpu_uuid': self.plan['inventory']['selected_gpu']['uuid']}
+
+    def check_kernels(self, python, kernel_report):
+        # Kernel probes execute real CUDA work and take roughly a minute on a
+        # consumer GPU.  A completed receipt is reusable only when every
+        # input that can change the result still matches: GPU identity,
+        # driver, Torch/CUDA, installed attention packages, and the engine
+        # source hashes.  Keep the run-local copy so diagnostics retain the
+        # exact receipt used by this installation.
+        cached_kernel = self.root / 'kernel-capabilities.json'
+        hardware_data = self.plan.get('inventory', {}).get('hardware')
+        receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
+                   if isinstance(hardware_data, dict) else None)
+        if receipt is None:
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths', '--out', kernel_report])
+        else:
+            save(kernel_report, receipt)
+            self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')
+
+    def record_kernel_validation(self, results, kernel_report):
+        sage_manifest = results['sage']
+        sage_record = json.loads(sage_manifest.read_text(encoding='utf-8'))
+        kernels = json.loads(kernel_report.read_text(encoding='utf-8'))
+        sage_record['kernel_validation'] = ('Small Sage2 kernels passed on ' + self.plan['inventory']['selected_gpu']['uuid']
+            if 'sage2' in kernels['usable_attention_backends'] else 'Sage2 probe failed; see ' + str(kernel_report))
+        save(sage_manifest, sage_record)
+
+    def prepare_tools(self):
         uv_spec = self.versions['uv']
         if self.system == 'Windows':
             from .uv_bootstrap import prepare_windows
@@ -1257,6 +1318,11 @@ class Installer:
             self.fetch(uv_spec['url'], archive, uv_spec['sha256'])
             unpack(archive, self.root / 'tools')
             uv = self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
+        return uv
+
+    def execute(self):
+        self.ui.phase('Prepare download tools', 0, 8)
+        uv = self.prepare_tools()
         self.env['FREEVIDEO_UV'] = str(uv)
         from .install_schedule import run
         tasks, pythons, comfy = self.component_tasks(uv)
@@ -1271,7 +1337,6 @@ class Installer:
         self.ui.phase(phase, 1, total)
         results = run(tasks, self.cancel, progress=scheduling,
                       workers=1 if self.plan.get('disk_mode') == 'extreme' else 3)
-        sage_manifest = results['sage']
         python, encoder_python = self.pythons['engine'], self.pythons['encoder']
         prepared = self.run_dir / 'prepared.json'
         self.ui.phase('Optimize model storage', total - 3, total)
@@ -1282,28 +1347,10 @@ class Installer:
             self.command(name + '-dependency-check', [uv, 'pip', 'check', '--python', executable])
             self.command(name + '-freeze', [uv, 'pip', 'freeze', '--python', executable])
         kernel_report = self.run_dir / 'kernel-capabilities.json'
-        # Kernel probes execute real CUDA work and take roughly a minute on a
-        # consumer GPU.  A completed receipt is reusable only when every
-        # input that can change the result still matches: GPU identity,
-        # driver, Torch/CUDA, installed attention packages, and the engine
-        # source hashes.  Keep the run-local copy so diagnostics retain the
-        # exact receipt used by this installation.
-        cached_kernel = self.root / 'kernel-capabilities.json'
-        hardware_data = self.plan.get('inventory', {}).get('hardware')
-        receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
-                   if isinstance(hardware_data, dict) else None)
-        if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths', '--out', kernel_report])
-        else:
-            save(kernel_report, receipt)
-            self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')
+        self.check_kernels(python, kernel_report)
         self.command('storage', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
                                  '--cleanup', '--out', self.run_dir / 'storage.json'])
-        sage_record = json.loads(sage_manifest.read_text(encoding='utf-8'))
-        kernels = json.loads(kernel_report.read_text(encoding='utf-8'))
-        sage_record['kernel_validation'] = ('Small Sage2 kernels passed on ' + self.plan['inventory']['selected_gpu']['uuid']
-            if 'sage2' in kernels['usable_attention_backends'] else 'Sage2 probe failed; see ' + str(kernel_report))
-        save(sage_manifest, sage_record)
+        self.record_kernel_validation(results, kernel_report)
         self.ui.phase('Finish setup', total - 1, total)
         configuration = {'schema_version': 1, 'root': str(self.root), 'source': str(SOURCE),
             'storage': self.plan.get('storage', 'compact'),
@@ -1321,7 +1368,7 @@ class Installer:
             'cache': json.loads(prepared.read_text(encoding='utf-8'))['cache'],
             'encoder': self.spec['models']['encoder_file'].split('/')[-1],
             'model_paths': str(self.root / 'encoder-paths.yaml'),
-            'gpu_uuid': self.plan['inventory']['selected_gpu']['uuid'],
+            **self.device_configuration(),
             'vram_gib': self.plan.get('vram_gib'), 'ram_gib': self.plan.get('ram_gib'),
             'model_revision': self.spec['models']['vdn_revision'],
             'setup_run': str(self.run_dir), 'ready': True}
@@ -1414,7 +1461,10 @@ def main(argv=None):
         print('Cancelled. No engine or model installation was started.')
         return 0
     try:
-        installer = Installer(value, ui)
+        installer_class = Installer
+        if value.get('device_backend') == 'mps':
+            from .macos_setup import Installer as installer_class
+        installer = installer_class(value, ui)
     except BlockingIOError:
         print('Setup, testing or generation is using this installation/GPU lock. Retry after it finishes.', file=sys.stderr)
         from .locking import lock_holders
