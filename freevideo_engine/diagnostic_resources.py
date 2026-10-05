@@ -490,7 +490,7 @@ def sampling(value):
     from .compilation_diagnostics import sanitize
     value = mapping(value)
     result = dict(steps=[])
-    for row in sequence(value.get('steps'))[:10]:
+    for row in sequence(value.get('steps'))[:63]:
         row = mapping(row)
         item = numbers(row, ('step', 'seconds', 'allocated_bytes', 'reserved_bytes',
             'cumulative_peak_allocated_bytes', 'cumulative_peak_reserved_bytes',
@@ -527,7 +527,14 @@ def sampling_passes(value):
                 'requested_resident_blocks', 'workspace_peak_bytes', 'peak_cache_bytes')),
             kernels=kernel_receipt(row))
         item['config'].update({key: config[key] for key in ENGINE_KNOBS if type(config.get(key)) is bool})
-        item['step_seconds'] = [duration for duration in sequence(row.get('step_seconds'))[:8]
+        refinement = mapping(row.get('refinement'))
+        if refinement.get('schedule') in ('community-sigma3-v1', 'original-tail'):
+            item['refinement'] = dict(numbers(refinement, ('base_steps', 'steps', 'start_index')),
+                                      schedule=refinement['schedule'])
+        preparation = mapping(row.get('refinement_schedule_preparation'))
+        if preparation.get('schedule') == 'community-sigma3-v1':
+            item['schedule_cache'] = numbers(preparation, ('seconds', 'table_cache_hits'))
+        item['step_seconds'] = [duration for duration in sequence(row.get('step_seconds'))[:32]
                                 if type(duration) in (int, float) and math.isfinite(duration) and duration >= 0]
         result.append(item)
     return result

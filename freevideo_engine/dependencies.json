@@ -55,6 +55,16 @@
         "revision": "17738b37839b490c5ae95246d8cb41893e76d887",
         "hf_revision": "da37681f5a1f7015fdb63482142b865111b687d3",
         "probe_file": "int8-convrot/cache/blocks/00.safetensors"
+      },
+      "community_sigma3": {
+        "repo": "OpenVDN/vdn-minimax-h3-edge",
+        "hf_revision": "4bbe518a5b24aa596f1e262e5f1a08062790670b",
+        "revision": "bbb2b06aded5536f42294fe4f3449240f86a5fdd"
+      },
+      "sampling_levels": {
+        "repo": "OpenVDN/vdn-minimax-h3-edge",
+        "hf_revision": "0cd66b30a58021012def78b0340caf131e0df5c2",
+        "revision": "1bff010a4fd429be95455fb0dbb2a34037f1bccd"
       }
     },
     "latent_upscaler": {

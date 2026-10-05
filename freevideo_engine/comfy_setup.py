@@ -133,11 +133,13 @@ class Setup:
             ready = True
         except (OSError, ValueError) as error:
             detail = str(error)
+        from .sampling_assets import total_bytes
         return dict(root=str(root), ready=ready, detail=detail,
                     libraries=discover_libraries(self.folder_paths), token=self.token,
                     environment='Managed FreeVideo environment; ComfyUI packages are kept',
                     restart_required=False, downloads=self.downloads(download_root or root),
-                    resources=self.resource_settings())
+                    resources=self.resource_settings(),
+                    sampling_cache_bytes=total_bytes())
 
 
     def resource_settings(self, value=None):
@@ -237,6 +239,8 @@ class Setup:
                 arguments.append('--frontend-separate')
             if frontend.get('download'):
                 arguments.append('--frontend-download')
+        if value.get('sampling_caches') is True:
+            arguments.append('--sampling-caches')
         if value.get('copy'):
             arguments.append('--copy-existing-models')
         self.selection = dict(root=str(root), arguments=arguments)

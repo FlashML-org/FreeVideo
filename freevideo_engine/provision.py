@@ -70,6 +70,9 @@ def models(plan):
     prepared = plan.get('prepared_model')
     files = list(required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), plan.get('reuse_cache') or prepared))
     files += prepared_model.files(prepared)
+    if plan.get('sampling_caches'):
+        from .sampling_assets import files as sampling_files
+        files += sampling_files()
     mode = plan.get('verification', 'auto')
     from .local_models import key as local_key, import_file
     local_files, missing = [], []
@@ -117,6 +120,8 @@ def models(plan):
     def complete(row, path, stamp, operation, origin=None):
         with lock:
             stamps[str(path)] = stamp
+            if row.get('sampling_file'):
+                save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
             if origin:
                 record_download(root, path, row, origin=origin)
             save(ledger, stamps)

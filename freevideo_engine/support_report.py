@@ -366,7 +366,7 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                         encoding=request.get('encoding_resources') or dict(ram=read_json('.encoding.memory.json')),
                         scope='Keep working RAM, PSS/RSS, commit and whole-GPU/allocator observations separate. '
                               'Cached encoder receipts do not describe this request’s peak.'),
-            bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'encoder_prewarm') if k in bridge},
+            bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm') if k in bridge},
             collection_notes=notes, log_tails={})
         if isinstance(bridge.get('result_cache'), dict):
             payload['bridge']['result_cache'] = {key: bridge['result_cache'][key]

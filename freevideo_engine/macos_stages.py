@@ -265,7 +265,8 @@ def worker(value):
                         value['seed'] + (sampling['restart_seed_offset'] if refining else 0),
                         **sampling['second' if refining else 'first'], progress_total=sampling['total_steps'],
                         progress_offset=sampling['base_steps'] if refining else 0,
-                        **(dict(initial_latents=(initial['video'], initial['audio']), refine_steps=sampling['refine_steps'])
+                        **(dict(initial_latents=(initial['video'], initial['audio']), refine_steps=sampling['refine_steps'],
+                               refine_schedule=sampling.get('refine_schedule'))
                            if refining else {}))
                     if refining and not torch.equal(audio, initial['audio']):
                         raise ValueError('MPS refinement changed first-pass audio')

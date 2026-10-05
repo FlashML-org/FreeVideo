@@ -149,7 +149,10 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             from .adaptive import demonstrated_local_ram
             options = {key: getattr(args, key) for key in
                 ('vram_gib', 'ram_gib', 'attention', 'gpu_reserve_gib', 'ram_reserve_gib')}
-            options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=canvas,
+            planning_canvas = dict(canvas)
+            if getattr(args, 'task', None):
+                planning_canvas['task'] = args.task
+            options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=planning_canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))
             if getattr(args, '_lora_max_block_bytes', 0):
                 options['lora_max_block_bytes'] = args._lora_max_block_bytes
@@ -293,7 +296,7 @@ def _run(args):
                       frames=getattr(args, 'frames', None), seconds=getattr(args, 'seconds', None))
     from .two_pass import validate_steps
     requested_steps = getattr(args, 'base_steps', None)
-    refine_steps = getattr(args, 'refine_steps', 2)
+    refine_steps = getattr(args, 'refine_steps', 3)
     two_pass = getattr(args, 'two_pass', True)
     if requested_steps is not None:
         validate_steps(requested_steps, refine_steps, two_pass)

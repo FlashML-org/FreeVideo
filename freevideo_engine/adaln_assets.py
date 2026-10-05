@@ -156,10 +156,12 @@ def validate_catalog(manifest, count):
 def optional_table(expected, manifest):
     """Select only exact, published constants; LoRA/clock changes cannot match."""
     catalog = json.loads(Path(__file__).with_name('prepared_models.json').read_text(encoding='utf-8'))
-    optional = catalog.get('optional_adaln', {})
-    table = next((t for t in optional.get('tables', []) if t['identity'] == expected), None)
-    if table is None:
+    banks = [catalog.get('optional_adaln', {})] + catalog.get('optional_adaln_sets', [])
+    match = next(((bank, table) for bank in banks for table in bank.get('tables', [])
+                  if table['identity'] == expected), None)
+    if match is None:
         return None
+    optional, table = match
     if (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', optional.get('repo', ''))
             or not re.fullmatch('[0-9a-f]{40}', optional.get('revision', ''))):
         raise ValueError('Optional sampling preset has no pinned source')

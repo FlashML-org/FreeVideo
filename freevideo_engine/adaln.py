@@ -59,8 +59,17 @@ class TableCache:
         self.asset = next((table for table in (manifest or {}).get('adaln_tables', [])
                            if table['identity'] == self.identity), None)
         self.optional_asset = None
+        self.optional_loaded = set()
+        self.optional_downloaded = set()
+        self.optional_download_bytes = 0
         self.root = Path(root) / assets.directory(self.identity)
         self.producer = None
+        if self.asset is None:
+            from .paths import model_root
+            from .sampling_assets import cache_root
+            shared = cache_root(model_root()) / assets.directory(self.identity)
+            if shared.is_dir():
+                self.root = shared
         if self.asset is not None:
             if self.asset['directory'] != self.root.name:
                 raise ValueError('AdaLN asset identity/path mismatch')
@@ -125,9 +134,16 @@ class TableCache:
             if self.optional_asset is None:
                 return None
             row = assets.download_table(self.root, self.optional_asset, index)
+            self.optional_downloaded.add(index)
+            self.optional_download_bytes += row['bytes']
         else:
             row = json.loads(marker.read_text(encoding='utf-8'))
         assets.check_table(path, row, self.identity)
+        if self.optional_asset is not None:
+            published = next(r for r in self.optional_asset['files'] if r['index'] == index)
+            if row['sha256'] == published['sha256']:
+                self.optional_loaded.add(index)
+                self.producer = self.optional_asset.get('producer')
         # These are small immutable constants; their producer's GPU/runtime is
         # deliberately irrelevant. Validate before transferring to this device.
         state = load_file(path, device=self.device)
@@ -176,8 +192,12 @@ def schedule_timesteps(steps, video_shift=12., audio_shift=3., device='cuda', ta
     video, audio = MiniMaxH3Scheduler(shift=video_shift), MiniMaxH3Scheduler(shift=audio_shift)
     video.set_timesteps(steps, device=device)
     audio.set_timesteps(steps, device=device)
+    return modality_timesteps(video.timesteps, audio.timesteps, task)
+
+
+def modality_timesteps(video, audio, task):
     timesteps = []
-    for video_t, audio_t in zip(video.timesteps, audio.timesteps):
+    for video_t, audio_t in zip(video, audio):
         values = [video_t.float(), audio_t.float()]
         if task in ('i2va', 'l2va', 'fl2va', 'ref2va', 'ref2va_av'):
             from src.inference.render import KEYFRAME_NOISE_AUG

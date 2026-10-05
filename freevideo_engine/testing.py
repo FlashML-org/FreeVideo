@@ -398,12 +398,12 @@ def _main(argv=None):
     ui = TerminalUI('Engine test / ' + (args.suite if not args.cases else 'custom'), plain=args.plain, no_color=args.no_color)
     test_plan = {'cases': cases, 'geometry': [geometry(c.get('width', 1344), c.get('height', 768), frames=c.get('frames'), seconds=c.get('seconds')) for c in cases],
                  'estimated_artifact_bytes': disk_needed, 'disk_free_bytes': disk_free, 'output': str(destination),
-                 'artifacts': 'All retained', 'scope': 'Native text conditioning (validated reuse when enabled), complete default 8 + 2 video/audio generation.'}
+                 'artifacts': 'All retained', 'scope': 'Native text conditioning (validated reuse when enabled), complete default 8 + 3 video/audio generation.'}
     if args.json:
         print(json.dumps(test_plan, indent=2))
     else:
         ui.panel('FreeVideo / Engine test plan', [('GPU', machine['gpu_uuid']),
-            ('Cases', '%d · text encode → 8 + 2 denoising steps → video + audio → validation' % len(cases)),
+            ('Cases', '%d · text encode → 8 + 3 denoising steps → video + audio → validation' % len(cases)),
             ('Cache', 'Fresh request processes; persistent compatible inputs ' + ('bypassed' if args.no_tuning else 'reused automatically; no eviction')),
             ('Disk', '~%.2f GiB for retained artifacts · %.2f GiB free' % (disk_needed/GiB, disk_free/GiB)),
             ('Outputs', destination)] + [(c['id'], '%d×%d · %d frames · %.2fs' % (g['width'], g['height'], g['frames'], g['seconds']))

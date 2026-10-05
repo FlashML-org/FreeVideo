@@ -210,6 +210,10 @@ def prepared_precision(prepared):
 
 
 def model_target(row, model_dir, encoder_dir, prepared_dir=None):
+    if row.get('sampling_file'):
+        from .adaln_assets import asset_path
+        from .sampling_assets import cache_root
+        return asset_path(cache_root(model_dir), row['sampling_file'])
     if row.get('role') == 'latent_upscaler':
         return model_dir / 'latent_upscaler' / Path(row['file']).name
     if row.get('prepared'):
@@ -297,6 +301,10 @@ def plan(args, *, local_progress=None):
         errors.append('No verified native-compatible prepared model is available. Source conversion is not supported on Mac.')
     files = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), reuse_cache or prepared)
     files += prepared_model.files(prepared)
+    sampling_caches = bool(getattr(args, 'sampling_caches', False))
+    if sampling_caches:
+        from .sampling_assets import files as sampling_files
+        files += sampling_files()
     local_reuse = None
     local_folder = getattr(args, 'reuse_models', None)
     local_manifest = getattr(args, 'reuse_models_manifest', None)
@@ -408,7 +416,7 @@ def plan(args, *, local_progress=None):
             'dependencies': dependencies,
             'model_dir': str(model_dir), 'encoder_dir': str(encoder_dir),
             'reuse_cache': str(reuse_cache) if reuse_cache else None,
-            'prepared_model': prepared,
+            'prepared_model': prepared, 'sampling_caches': sampling_caches,
             'model_source': 'prepared' if prepared else 'existing' if reuse_cache else 'source',
             'model_source_reason': ('Pinned slim model, matching the existing GPU precision policy' if prepared else
                                     'Reuse existing compatible cache' if reuse_cache else
@@ -589,7 +597,7 @@ def confirmed(args, value, ask=input, ui=None):
         if not args.yes or not args.accept_model_license:
             raise ValueError('--approved-plan requires explicit plan/license acceptance.')
         reviewed = json.loads(Path(reviewed_path).read_text(encoding='utf-8'))
-        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'model_source', 'disk_mode', 'frontend')
+        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'model_source', 'disk_mode', 'frontend', 'sampling_caches')
         changed = any(reviewed.get(key) != value.get(key) for key in keys)
         changed |= reviewed.get('device_backend') != value.get('device_backend')
         if value.get('device_backend') == 'mps':
@@ -1396,6 +1404,7 @@ def main(argv=None):
     parser.add_argument('--environment', choices=('unified', 'dual'),
                         help='New installs default to unified; updates retain their saved layout. Existing environments are kept when switching.')
     parser.add_argument('--models', type=Path, help='Reuse/download official model files in this directory')
+    parser.add_argument('--sampling-caches', action='store_true', help='Install all four quality levels and reference-mode sampling caches in advance')
     parser.add_argument('--model-source', choices=('prepared', 'source'), default='prepared',
                         help='Default: download a pinned slim model matching the GPU format. source: explicitly download original weights and convert locally')
     parser.add_argument('--encoder-models', type=Path, help='Directory containing text_encoders/')

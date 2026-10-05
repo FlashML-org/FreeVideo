@@ -367,7 +367,7 @@ def progress_message(event):
         if event.get('enabled') and second:
             return dict(label='Two-pass · %d × %d → %d × %d · %d + %d steps' %
                         (first['width'], first['height'], second['width'], second['height'],
-                         event.get('base_steps', 8), event.get('refine_steps', 2)),
+                         event.get('base_steps', 8), event.get('refine_steps', 3)),
                         detail='Audio is preserved from the first pass', sampling_plan=event)
         return dict(label='Single-pass · %d steps' % event.get('base_steps', 8), detail=event.get('reason'), sampling_plan=event)
     if name == 'latent_upscaler_prepare':
@@ -461,7 +461,7 @@ def engine_environment(root, source, environ=None):
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
-             force_regenerate=False, base_steps=8, refine_steps=2):
+             force_regenerate=False, base_steps=8, refine_steps=3):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(force_regenerate) is not bool:
@@ -563,6 +563,24 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             send_progress({'label': 'Reused previous result', 'phase': 'complete',
                            'result_cache_hit': True})
             return reused
+        from .sampling_assets import prepare as prepare_sampling_assets
+        def asset_progress(message):
+            if progress:
+                progress(dict(message, report_id=report_id))
+        preparation_started = time.monotonic()
+        try:
+            preparation = prepare_sampling_assets(root, machine, planned, task_for(extra.get('media', {})),
+                progress=asset_progress, interrupted=interrupted, environ=environment)
+        except BaseException:
+            elapsed = time.monotonic() - preparation_started
+            state['sampling_cache_install'] = dict(status='failed', seconds=elapsed)
+            started += elapsed
+            raise
+        state['sampling_cache_install'] = preparation
+        if preparation['seconds']:
+            started += preparation['seconds']
+            whole_progress = WholeVideoProgress()
+            send_progress({'reset': True})
         whole_progress.sampling_plan = planned
         whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
         send_progress({'label': 'Preparing %.3f s video + audio · %d × %d' %
@@ -645,6 +663,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .resident_process import OWNER
         OWNER.active = False
         state['bridge_seconds'] = time.monotonic() - started
+        state['bridge_wall_seconds'] = state['bridge_seconds'] + state.get('sampling_cache_install', {}).get('seconds', 0.)
         save(run / 'comfy-request.json', state)
         from .support_report import write as write_debug
         write_debug(output, bridge=state)

@@ -1,4 +1,4 @@
-"""Generation planning with an 8 + 2 default, without importing Torch."""
+"""Generation planning with an 8 + 3 default, without importing Torch."""
 from math import gcd
 from pathlib import Path
 
@@ -11,18 +11,18 @@ UPSCALER = dict(
     role='latent_upscaler')
 
 
-def validate_steps(base_steps=8, refine_steps=2, enabled=True):
+def validate_steps(base_steps=8, refine_steps=3, enabled=True):
     if type(enabled) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(base_steps) is not int or not 1 <= base_steps <= 32:
         raise ValueError('First-pass steps must be an integer between 1 and 32')
     if type(refine_steps) is not int or not 1 <= refine_steps <= 31:
         raise ValueError('Second-pass steps must be an integer between 1 and 31')
-    if enabled and refine_steps >= base_steps:
+    if enabled and refine_steps != 3 and refine_steps >= base_steps:
         raise ValueError('Second-pass steps must be fewer than first-pass steps')
 
 
-def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=2):
+def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=3):
     """Align the smaller canvas, lift, center-crop, then refine at the target.
 
     Odd multiples of 32 need up to 32 extra pixels before the latent crop.
@@ -67,6 +67,11 @@ def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=2):
                   reason='%d steps on a smaller canvas, learned latent upscale, then the DMD schedule tail (%d steps).' % (base_steps, refine_steps))
     if default:
         result['reason'] = '8 steps on a smaller canvas, learned latent upscale, then the original DMD8 schedule tail (2 steps).'
+    if refine_steps == 3:
+        from .refine_schedule import COMMUNITY, VIDEO_SIGMAS
+        result.update(version=3, mode='vdn%d-lbh-community3' % base_steps,
+            refine_schedule=COMMUNITY, video_sigmas=list(VIDEO_SIGMAS),
+            reason='%d steps on a smaller canvas, learned latent upscale, then three independent refinement steps.' % base_steps)
     if not upscaling:
         result['reason'] = 'Small canvas: %d steps and %d refinement steps at the same target size, without upscaling.' % (base_steps, refine_steps)
     return result
@@ -92,8 +97,11 @@ def steps(sampling_plan=None):
     base, refine = sampling_plan.get('base_steps'), sampling_plan.get('refine_steps')
     validate_steps(base, refine if enabled else 2, enabled)
     expected = base + refine if enabled else base
-    if (type(sampling_plan.get('version')) is not int or sampling_plan['version'] not in (1, 2)
+    if (type(sampling_plan.get('version')) is not int or sampling_plan['version'] not in (1, 2, 3)
             or (sampling_plan['version'] == 1 and (base != 8 or refine != (2 if enabled else 0)))
+            or (sampling_plan['version'] == 3 and (not enabled or refine != 3
+                or sampling_plan.get('refine_schedule') != 'community-sigma3-v1'
+                or sampling_plan.get('video_sigmas') != [0.9035, 0.6316, 0.3158, 0.]))
             or (not enabled and (type(refine) is not int or refine != 0))
             or type(sampling_plan.get('total_steps')) is not int or sampling_plan['total_steps'] != expected):
         raise ValueError('Invalid sampling step plan')
@@ -190,6 +198,8 @@ def first_pass_policy(profile, canvas, sampling_plan):
     for name in ('reference_video_tokens', 'reference_audio_tokens'):
         if name in canvas:
             first[name] = canvas[name]
+    first['steps'] = sampling_plan['base_steps']
+    first['task'] = profile['engine'].get('task', 't2va')
     backend = profile['engine']['attention']
     selected = choose(hardware, attention=backend, available_backends=set(backend.split('/')),
                       gpu_reserve_gib=gpu_reserve / GiB, ram_reserve_gib=ram_reserve / GiB,
