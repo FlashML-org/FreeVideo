@@ -204,6 +204,11 @@ def existing_parent(path):
     return path
 
 
+def prepared_precision(prepared):
+    """Display name of a prepared model's weight format (Macs use the ConvRot int8 export)."""
+    return 'ConvRot int8' if (prepared or {}).get('scale_granularity') == 'int8_convrot' else 'FP8'
+
+
 def model_target(row, model_dir, encoder_dir, prepared_dir=None):
     if row.get('role') == 'latent_upscaler':
         return model_dir / 'latent_upscaler' / Path(row['file']).name
@@ -385,7 +390,8 @@ def plan(args, *, local_progress=None):
             'installation_resources': resources,
             'storage': storage,
             'disk_mode': disk_plan['mode'], 'disk_policy': disk_plan, 'frontend': frontend,
-            'storage_preparation': ('Download verified slim FP8 weights and fixed AdaLN tables; no original transformer or local conversion'
+            'storage_preparation': ('Download verified slim %s weights and fixed AdaLN tables; no original transformer or local conversion'
+                                    % prepared_precision(prepared)
                                     if prepared else 'Stream CPU merge directly to FP8 groups; no complete BF16 intermediate cache'),
             'storage_cleanup': ('After cache verification and GPU probes, remove only unchanged conversion-only weights downloaded/copied into this installation; borrowed originals and outputs are retained'
                                 if storage == 'compact' else 'Retain original conversion weights for future re-quantization'),
@@ -470,7 +476,7 @@ def display(value, ui=None, *, verbose=False):
         label = 'Peak disk space' if len(value['disks']) == 1 else 'Disk ' + disk['paths'][0]
         rows.append((label, '~%.1f GiB additional needed · %.1f GiB free' % (disk['needed_bytes']/GiB, disk['free_bytes']/GiB)))
     prepared = value.get('prepared_model')
-    rows.append(('Storage', 'Download slim FP8 model · no local conversion' if prepared else
+    rows.append(('Storage', 'Download slim %s model · no local conversion' % prepared_precision(prepared) if prepared else
                  'Reuse prepared FP8 cache' if value['reuse_cache'] else 'Prepare compact FP8 model'))
     if prepared:
         rows.append(('Prepared model', prepared['repo'] + ' · ' + prepared['scale_granularity'] +
@@ -480,7 +486,7 @@ def display(value, ui=None, *, verbose=False):
     rows.append(('Original weights', 'Not downloaded; fixed AdaLN tables included' if prepared else
                  'Remove verified conversion inputs downloaded/copied here; keep borrowed originals'
                  if value.get('storage', 'compact') == 'compact' else 'Keep original weights for future conversion'))
-    setup_ram = 'Bounded model verification; no FP8 conversion' if prepared else 'About 4–8 GiB for model preparation'
+    setup_ram = 'Bounded model verification; no local conversion' if prepared else 'About 4–8 GiB for model preparation'
     if value.get('build'):
         setup_ram += ' · up to ~%.1f GiB for compilation' % (value['build']['estimated_peak_bytes']/GiB)
     rows.append(('Setup RAM', setup_ram))

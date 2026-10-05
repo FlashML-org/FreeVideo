@@ -254,7 +254,9 @@ export async function openSetup() {
             [t("Hardlinked / copied", "硬链接／复制"), `${gib(local.linked_bytes || 0)} / ${gib(local.copy_bytes || 0)}`],
             [t("Additional disk estimate", "额外磁盘预估"), gib(value.disks?.reduce((sum, d) => sum + d.needed_bytes, 0))],
         ];
-        if (value.prepared_model) facts.push([t("Model", "模型"), `${value.prepared_model.repo} · ${t("slim FP8, no local conversion", "精简 FP8，无需本地转换")}`]);
+        if (value.prepared_model) facts.push([t("Model", "模型"), `${value.prepared_model.repo} · ${value.prepared_model.scale_granularity === "int8_convrot"
+            ? t("slim ConvRot int8, no local conversion", "精简 ConvRot int8，无需本地转换")
+            : t("slim FP8, no local conversion", "精简 FP8，无需本地转换")}`]);
         const list = node('dl'); list.className = 'fv-facts';
         for (const [key, shown] of facts) list.append(node('dt', key), node('dd', shown));
         plan.append(list);
