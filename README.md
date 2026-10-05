@@ -44,7 +44,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 
 ### macOS (Apple silicon preview)
 
-1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**. A [ZIP](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.zip) is also available.
+1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**.
 2. Open FreeVideo and choose a new or existing ComfyUI folder. Add existing model folders to reuse matching files; the installer prepares a native Mac environment.
 3. Click **Install & launch** to open the creative workspace in your browser.
 

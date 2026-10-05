@@ -150,7 +150,7 @@ def latest_release(token='', *, channel=CHANNEL):
         raise ValueError('No published update is available for this platform')
     assets = {a.get('name'): a for a in release.get('assets', []) if isinstance(a, dict)}
     metadata, executable = assets.get('update.json', {}), assets.get(
-        'FreeVideo-Mac-arm64.zip' if channel == MAC_CHANNEL else 'FreeVideo.exe', {})
+        'FreeVideo-Mac-arm64.dmg' if channel == MAC_CHANNEL else 'FreeVideo.exe', {})
     if type(metadata.get('id')) is not int:
         raise ValueError('Update metadata is not published yet; check the release page')
     candidate = manifest(_json(API + '/releases/assets/' + str(metadata['id']), token, binary=True, limit=65536))
@@ -184,7 +184,7 @@ def verified(path, asset):
 
 
 def executable_path(root, candidate):
-    filename = 'FreeVideo-Mac-arm64.zip' if build_target(candidate) == 'macos-arm64' else 'FreeVideo.exe'
+    filename = 'FreeVideo-Mac-arm64.dmg' if build_target(candidate) == 'macos-arm64' else 'FreeVideo.exe'
     return Path(root).absolute().resolve() / 'updates' / candidate['asset']['sha256'] / filename
 
 

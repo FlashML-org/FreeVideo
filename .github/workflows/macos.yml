@@ -23,7 +23,7 @@ jobs:
           python -c "import platform; assert platform.machine() == 'arm64'"
           python scripts/check_installation.py
           python -m pip install -r constraints/macos-launcher.txt
-          python scripts/build_macos.py --out build/macos --dmg
+          python scripts/build_macos.py --out build/macos
       - name: Verify both archives and native startup
         env:
           FREEVIDEO_LAUNCHER_HOME: ${{ runner.temp }}/freevideo-launcher-state

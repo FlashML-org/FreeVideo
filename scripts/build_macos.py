@@ -12,7 +12,6 @@ import platform
 import shutil
 import subprocess
 import sys
-import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -114,7 +113,6 @@ def make_icon(destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--dmg', action='store_true', help='Also create a drag-to-Applications disk image')
     args = parser.parse_args()
     if platform.system() != 'Darwin' or platform.machine() != 'arm64' or sys.version_info[:2] != (3, 12):
         parser.error('Build on native Apple Silicon with Python 3.12')
@@ -167,7 +165,7 @@ app = BUNDLE(coll, name='FreeVideo.app', icon={str(icon)!r},
 '''
     spec.write_text(text, encoding='utf-8')
     # Historical app bundles must not fill the user's application search with
-    # duplicate FreeVideo entries. Exported ZIP/DMG artifacts stay in dist.
+    # duplicate FreeVideo entries. The exported disk image stays in dist.
     application_dist = out / 'applications.noindex'
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm',
                     '--distpath', str(application_dist), '--workpath', str(out / 'build'), str(spec)],
@@ -177,33 +175,21 @@ app = BUNDLE(coll, name='FreeVideo.app', icon={str(icon)!r},
     (out / 'dist').mkdir(exist_ok=True)
     (out / 'dist/RELEASE_NOTES.md').write_text(markdown(build), encoding='utf-8')
     guide = write_open_guide(out / 'dist')
-    archive = out / 'dist/FreeVideo-Mac-arm64.zip'
-    # ditto preserves the app's framework symlinks and executable permissions.
-    subprocess.run(['/usr/bin/ditto', '-c', '-k', '--sequesterRsrc', '--keepParent',
-                    str(app), str(archive)], check=True)
-    # Keep the guide beside the app: it must be readable before Gatekeeper
-    # allows the app to run. App resources/signatures are unchanged.
-    with zipfile.ZipFile(archive, 'a', compression=zipfile.ZIP_DEFLATED) as bundle:
-        bundle.write(out / 'dist' / guide['name'], arcname=guide['name'])
-    sha = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (out / 'dist/SHA256SUMS.txt').write_text(sha + '  ' + archive.name + '\n', encoding='utf-8')
-    result = dict(app=str(app), archive=str(archive), bytes=archive.stat().st_size,
-                  sha256=sha, build=build, signing='ad-hoc', notarized=False,
-                  first_open_guide=guide,
+    # The disk image is the only download. Keep the guide beside the app: it
+    # must be readable before Gatekeeper allows the app to run.
+    image_root = out / 'dmg-root.noindex'
+    image_root.mkdir()
+    subprocess.run(['/usr/bin/ditto', str(app), str(image_root / app.name)], check=True)
+    (image_root / 'Applications').symlink_to('/Applications', target_is_directory=True)
+    shutil.copyfile(out / 'dist' / guide['name'], image_root / guide['name'])
+    dmg = out / 'dist/FreeVideo-Mac-arm64.dmg'
+    subprocess.run(['/usr/bin/hdiutil', 'create', '-volname', 'FreeVideo', '-srcfolder',
+                    str(image_root), '-format', 'UDZO', str(dmg)], check=True)
+    sha = hashlib.sha256(dmg.read_bytes()).hexdigest()
+    (out / 'dist/SHA256SUMS.txt').write_text(sha + '  ' + dmg.name + '\n', encoding='utf-8')
+    result = dict(app=str(app), dmg=str(dmg), dmg_bytes=dmg.stat().st_size, dmg_sha256=sha,
+                  build=build, signing='ad-hoc', notarized=False, first_open_guide=guide,
                   native_installation_validation='pending', native_generation_validation='pending')
-    if args.dmg:
-        image_root = out / 'dmg-root.noindex'
-        image_root.mkdir()
-        subprocess.run(['/usr/bin/ditto', str(app), str(image_root / app.name)], check=True)
-        (image_root / 'Applications').symlink_to('/Applications', target_is_directory=True)
-        shutil.copyfile(out / 'dist' / guide['name'], image_root / guide['name'])
-        dmg = out / 'dist/FreeVideo-Mac-arm64.dmg'
-        subprocess.run(['/usr/bin/hdiutil', 'create', '-volname', 'FreeVideo', '-srcfolder',
-                        str(image_root), '-format', 'UDZO', str(dmg)], check=True)
-        dmg_sha = hashlib.sha256(dmg.read_bytes()).hexdigest()
-        with (out / 'dist/SHA256SUMS.txt').open('a', encoding='utf-8') as stream:
-            stream.write(dmg_sha + '  ' + dmg.name + '\n')
-        result.update(dmg=str(dmg), dmg_bytes=dmg.stat().st_size, dmg_sha256=dmg_sha)
     (out / 'build-result.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(result))
 

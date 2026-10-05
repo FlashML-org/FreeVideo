@@ -1,16 +1,15 @@
-"""Verify a built Mac ZIP/DMG payload, signatures and extraction fidelity on macOS."""
+"""Verify a built Mac DMG payload, signatures and image fidelity on macOS."""
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import shutil
 import stat
 import sys
 import subprocess
 import time
 import traceback
-import zipfile
 
 
 
@@ -60,54 +59,23 @@ def verify(build_directory, report_directory):
     try:
         if shutil.disk_usage(report_directory).free < 2 * 2**30:
             raise OSError('Insufficient scratch disk for artifact verification')
-        for path_key, bytes_key, sha_key in (('archive','bytes','sha256'), ('dmg','dmg_bytes','dmg_sha256')):
-            path = Path(build[path_key])
-            if path.stat().st_size != build[bytes_key] or digest(path) != build[sha_key]:
-                raise ValueError('Artifact differs from build receipt: ' + path.name)
-        result['archive_hashes_passed'] = True
+        image = Path(build['dmg'])
+        if image.stat().st_size != build['dmg_bytes'] or digest(image) != build['dmg_sha256']:
+            raise ValueError('Artifact differs from build receipt: ' + image.name)
+        result['image_hash_passed'] = True
         guide = build.get('first_open_guide')
         guide_payload = None
         if guide is not None:
             if guide.get('name') != 'Open FreeVideo.txt':
                 raise ValueError('Unexpected first-open guide name')
-            guide_path = Path(build['archive']).parent / guide['name']
+            guide_path = image.parent / guide['name']
             if guide_path.is_symlink():
                 raise ValueError('First-open guide must be a regular file')
             guide_payload = guide_path.read_bytes()
             if (len(guide_payload) != guide['bytes'] or
                     hashlib.sha256(guide_payload).hexdigest() != guide['sha256']):
                 raise ValueError('First-open guide differs from build receipt')
-        with zipfile.ZipFile(build['archive']) as archive:
-            names = archive.namelist()
-            if len(set(names)) != len(names):
-                raise ValueError('Duplicate ZIP names')
-            for name in names:
-                parts = PurePosixPath(name)
-                if parts.is_absolute() or '..' in parts.parts or not parts.parts:
-                    raise ValueError('Unexpected ZIP entry')
-                if (parts.parts[0] not in ('FreeVideo.app','__MACOSX') and
-                        not (guide is not None and name == guide['name'])):
-                    raise ValueError('Unexpected ZIP root')
-            if guide is not None and archive.read(guide['name']) != guide_payload:
-                raise ValueError('ZIP first-open guide differs from build receipt')
-            if archive.testzip() is not None:
-                raise ValueError('ZIP CRC check failed')
-            result['zip_entries_checked'] = len(names)
-        unpack = report_directory / 'zip.noindex'
-        unpack.mkdir()
-        run(['/usr/bin/ditto', '-x', '-k', build['archive'], str(unpack)])
-        if guide is not None:
-            extracted_guide = unpack / guide['name']
-            if extracted_guide.is_symlink() or extracted_guide.read_bytes() != guide_payload:
-                raise ValueError('Extracted first-open guide differs from build receipt')
         original = snapshot(Path(build['app']))
-        zipped = snapshot(unpack / 'FreeVideo.app')
-        if zipped != original:
-            result['zip_differences'] = [k for k in sorted(set(zipped) | set(original))
-                                         if zipped.get(k) != original.get(k)]
-            raise ValueError('ZIP app differs from built app')
-        run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(unpack / 'FreeVideo.app')])
-        result['zip_app_exact'] = True
         run(['/usr/bin/hdiutil', 'verify', build['dmg']])
         run(['/usr/bin/hdiutil', 'attach', '-readonly', '-nobrowse', '-noautoopen',
              '-mountpoint', str(mount), build['dmg']])
@@ -150,7 +118,7 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     if sys.platform != 'darwin':
-        parser.error('Verify ZIP/DMG bundles on native macOS')
+        parser.error('Verify the disk image on native macOS')
     result = verify(args.build, args.out)
     raise SystemExit(not result['success'])
 

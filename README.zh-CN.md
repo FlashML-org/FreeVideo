@@ -44,7 +44,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 ### macOS（Apple 芯片预览版）
 
-1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。也可下载 [ZIP](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.zip)。
+1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。
 2. 打开 FreeVideo，选择新建或已有的 ComfyUI 目录。可添加已有模型目录以复用匹配文件；安装器会准备 Mac 原生运行环境。
 3. 点击 **安装并启动**，在浏览器中进入创作面板。
 
