@@ -68,6 +68,15 @@ CALIBRATION_PROMPT = ('A neon-lit alley after heavy rain. The camera drifts forw
 class SetupRunner(Runner):
     token = ''
 
+    def prepare(self, action, root, env, progress):
+        if os.name == 'nt' and action in ('plan', 'setup'):
+            from .curl_windows import ensure
+            executable = ensure(root, env, progress=progress, cancelled=self.cancelled.is_set)
+            env = dict(env, FREEVIDEO_CURL=executable)
+            # The PowerShell bootstrap also needs curl before Python exists.
+            env['PATH'] = str(Path(executable).parent) + os.pathsep + env.get('PATH', os.defpath)
+        return env
+
     def command(self, root, arguments):
         if os.name == 'nt':
             return super().command(root, arguments)

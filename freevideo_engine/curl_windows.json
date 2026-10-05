@@ -1,0 +1,73 @@
+{
+  "version": "8.22.0_3",
+  "url": "https://curl.se/windows/dl-8.22.0_3/curl-8.22.0_3-win64-mingw.zip",
+  "bytes": 8688824,
+  "sha256": "f38b0ac2e3a280fd414b607c874a21e6dd4d1ed0e2ae622afbf0020917446561",
+  "prefix": "curl-8.22.0_3-win64-mingw/",
+  "files": {
+    "COPYING.txt": {
+      "bytes": 1088,
+      "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681"
+    },
+    "bin/curl-ca-bundle.crt": {
+      "bytes": 188900,
+      "sha256": "1fdcf2a55c9806c4c1e8391cb283871ee3b209d68a2879ce4c0898d949de2545"
+    },
+    "bin/curl.exe": {
+      "bytes": 3881064,
+      "sha256": "39340e791e71ee3e712c734369c777cc258991c519e42e3f99a889b4d02d1adc"
+    },
+    "bin/libcurl-x64.dll": {
+      "bytes": 3646568,
+      "sha256": "57524379a27c2a0f5d520ef57d80f8ac4313d5e31a2208c8fc7682c68f50aaaf"
+    },
+    "dep/brotli/LICENSE.txt": {
+      "bytes": 1084,
+      "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+    },
+    "dep/certdata/LICENSE.url": {
+      "bytes": 73,
+      "sha256": "b9954f88a27e8457cefcebd076fa533d037711383f6b28ae489d063ef8c61f79"
+    },
+    "dep/libpsl/COPYING.txt": {
+      "bytes": 1126,
+      "sha256": "e7c9f0d8498d28a360a7e8293ea70fd7bd952955b636938322c13d60a03b5a45"
+    },
+    "dep/libressl/COPYING.txt": {
+      "bytes": 6492,
+      "sha256": "9853507b8821c3f277aa60bf554eade41441ef06b2df538d247183ad28789b7f"
+    },
+    "dep/libssh2/COPYING.txt": {
+      "bytes": 1959,
+      "sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe"
+    },
+    "dep/nghttp2/COPYING.txt": {
+      "bytes": 1156,
+      "sha256": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a"
+    },
+    "dep/nghttp3/COPYING.txt": {
+      "bytes": 1081,
+      "sha256": "58cc3fc8c6d6cb2485ab35eb5918e849b5bf1e56522974e106d7a39a88d61dcd"
+    },
+    "dep/ngtcp2/COPYING.txt": {
+      "bytes": 1080,
+      "sha256": "542dd526d2ea23565f0571cc68df6f05ed11248a90ff0f32de19d8ba589db513"
+    },
+    "dep/psl/LICENSE.txt": {
+      "bytes": 16727,
+      "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+    },
+    "dep/trurl/COPYING.txt": {
+      "bytes": 1088,
+      "sha256": "4b3e3c4d0d954c3693161dbcf1bab99803c79f7ce80319e11eb406e3a3d424cf"
+    },
+    "dep/zlibng/LICENSE.md": {
+      "bytes": 867,
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+    },
+    "dep/zstd/LICENSE.txt": {
+      "bytes": 1549,
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    }
+  }
+}

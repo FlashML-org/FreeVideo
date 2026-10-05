@@ -100,8 +100,18 @@ function Get-FreeVideoUv {
             }
         }
     }
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if (-not $curl) { throw 'curl.exe is missing. Repair Windows curl, or install Python 3.9+ and retry.' }
+    $curlPath = $env:FREEVIDEO_CURL
+    if (-not $curlPath -or -not (Test-Path -LiteralPath $curlPath -PathType Leaf)) {
+        $curlCommand = Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue
+        $curlPath = if ($curlCommand) { $curlCommand.Source } else { $null }
+    }
+    if (-not $curlPath) {
+        foreach ($directory in @('Sysnative', 'System32')) {
+            $candidate = Join-Path $env:SystemRoot ($directory + '\curl.exe')
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $curlPath = $candidate; break }
+        }
+    }
+    if (-not $curlPath) { throw '[CURL_NOT_FOUND] No Windows curl.exe found in PATH or the system directory. Open FreeVideo.exe and retry installation to repair the tool automatically.' }
     $common = @('--disable', '--fail', '--location', '--silent', '--show-error',
                 '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5')
     $candidates = @()
@@ -117,7 +127,7 @@ function Get-FreeVideoUv {
                 $watch = [Diagnostics.Stopwatch]::StartNew()
                 $probeArgs = $common + @('--range', '0-262143', '--max-filesize', '1048576',
                                         '--max-time', '5', '--output', $sample, $source.Value)
-                $code = Invoke-FreeVideoBootstrapCommand -Executable $curl.Source -Arguments $probeArgs `
+                $code = Invoke-FreeVideoBootstrapCommand -Executable $curlPath -Arguments $probeArgs `
                     -LogPath $LogPath -Label ("Probe uv: {0}, {1}" -f $source.Name, $route) -Direct:($route -eq 'direct')
                 $watch.Stop()
                 if ($code -eq 0 -and (Test-Path -LiteralPath $sample)) {
@@ -160,7 +170,7 @@ function Get-FreeVideoUv {
                 '--max-filesize', [string]($artifact.Bytes - $offset), '--output', $partial)
             if ($offset -gt 0) { $downloadArgs += @('--continue-at', [string]$offset) }
             $downloadArgs += $candidate.Url
-            $code = Invoke-FreeVideoBootstrapCommand -Executable $curl.Source -Arguments $downloadArgs `
+            $code = Invoke-FreeVideoBootstrapCommand -Executable $curlPath -Arguments $downloadArgs `
                 -LogPath $LogPath -Label ("Download uv: {0}, {1}" -f $candidate.Source, $candidate.Route) -Direct:($candidate.Route -eq 'direct')
             if (Test-FreeVideoUvArchive $partial $artifact.Hash $artifact.Bytes) {
                 Move-Item -LiteralPath $partial -Destination $archive

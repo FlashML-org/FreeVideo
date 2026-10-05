@@ -10,6 +10,25 @@ def windows():
     return os.name == 'nt'
 
 
+def curl_executable(env=None):
+    """Find the same executable for setup checks and download subprocesses."""
+    env = os.environ if env is None else env
+    if windows():
+        from .curl_windows import inspect
+        return inspect(env)['selected']
+    found = shutil.which('curl', path=env.get('PATH', os.defpath))
+    return str(Path(found).absolute()) if found else None
+
+
+def missing_curl_message(env=None):
+    if windows():
+        from .curl_windows import inspect, failure_message
+        return failure_message(inspect(env))
+    if platform.system() == 'Darwin':
+        return 'macOS curl was not found. Check /usr/bin/curl and reopen FreeVideo with curl available in PATH.'
+    return 'Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.'
+
+
 def source_root():
     """Find the checkout/ZIP by package location, never by the caller's cwd.
 

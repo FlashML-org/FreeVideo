@@ -236,6 +236,9 @@ class Runner:
     def environment(self, root):
         return dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
 
+    def prepare(self, action, root, env, progress):
+        return env
+
     def _run_awake(self, action, root, arguments):
         run = self.logs / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + uuid.uuid4().hex[:8])
         code, output, error = None, '', None
@@ -247,6 +250,17 @@ class Runner:
             self.events.put(('started', str(run)))
             env = self.environment(root)
             with (run / 'launcher.log').open('w', encoding='utf-8', buffering=1) as log:
+                def progress(message):
+                    nonlocal output
+                    line = json.dumps(message) + '\n'
+                    log.write(line)
+                    output = (output + line)[-2 * 1024 * 1024:]
+                    self.events.put(('log', line))
+                    if message.get('event') == 'freevideo_ui':
+                        self.events.put(('progress', message))
+                env = self.prepare(action, root, env, progress)
+                if self.cancelled.is_set():
+                    raise RuntimeError('Stopped; files retained')
                 with self.lock:
                     # External Python must not inherit the frozen GUI's DLL
                     # directory. Restore it immediately for subsequent Tk loads.

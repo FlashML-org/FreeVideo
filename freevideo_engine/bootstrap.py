@@ -29,7 +29,7 @@ from .locking import runtime_lock, LOCK_ENV
 from .environments import ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, bootstrap_versions
 from . import network
 from . import processes
-from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample
+from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
 
 PACKAGE = Path(__file__).resolve().parent
 SOURCE = PACKAGE.parent
@@ -276,8 +276,9 @@ def plan(args, *, local_progress=None):
         for name in () if windows_target else ('git', 'compiler'):
             if not snapshot.get(name):
                 errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
-        if not args.hardware_json and not shutil.which('curl'):
-            errors.append('Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.')
+        curl_env = dict(os.environ, FREEVIDEO_HOME=str(root))
+        if not args.hardware_json and curl_executable(curl_env) is None:
+            errors.append(missing_curl_message(curl_env))
         resources = None
         try:
             resources = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib)
@@ -389,6 +390,7 @@ def plan(args, *, local_progress=None):
         bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system), layout,
         mode=getattr(args, 'network', 'auto'), timeout=getattr(args, 'network_timeout', 5),
         offline=bool(args.hardware_json or errors),
+        env=dict(os.environ, FREEVIDEO_HOME=str(root)),
         proxy_mode=download_preferences(root / 'download-settings.json')['proxy_mode'])
     networking['download_settings_path'] = str(root / 'download-settings.json')
     prepared_missing = prepared and any(
@@ -1468,6 +1470,11 @@ def main(argv=None):
                     verbose=args.verbose, show_location=args.verbose)
     try:
         from .local_models import progress_output
+        if platform.system() == 'Windows' and not args.plan:
+            from .curl_windows import ensure
+            def curl_progress(message):
+                print(json.dumps(message), flush=True)
+            os.environ['FREEVIDEO_CURL'] = ensure(args.root, progress=curl_progress)
         value = plan(args, local_progress=progress_output if os.environ.get('FREEVIDEO_UI_EVENTS') == '1' or not args.json else None)
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
         print('Preflight failed: ' + str(error), file=sys.stderr)
