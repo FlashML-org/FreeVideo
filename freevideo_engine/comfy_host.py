@@ -139,14 +139,14 @@ def _prepare(root, comfy, machine, run, download):
     python = env_root / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     receipt = env_root / 'freevideo-host.json'
     if not (python.is_file() and receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')) == identity):
-        uv = root / 'tools' / ('uv.exe' if os.name == 'nt' else 'uv-x86_64-unknown-linux-gnu/uv')
+        uv = root / 'tools' / ('uv.exe' if os.name == 'nt' else 'uv' if sys.platform == 'darwin' else 'uv-x86_64-unknown-linux-gnu/uv')
         if not uv.is_file():
             raise ValueError('The engine download tool is missing. Run engine repair first.')
         if not python.is_file():
             execute([uv, 'venv', '--python', machine['python'], env_root], env, 'Create ComfyUI Python environment')
         # Match the already validated CUDA packages. Hardlinked uv cache
         # entries share their disk bytes without sharing a writable env.
-        pins = directory / 'cuda-constraints.txt'
+        pins = directory / ('native-constraints.txt' if sys.platform == 'darwin' else 'cuda-constraints.txt')
         rows = [name + '==' + importlib.metadata.version(name) for name in ('torch', 'torchvision', 'torchaudio')]
         pins.write_text('\n'.join(rows) + '\n', encoding='utf-8')
         torch_version = importlib.metadata.version('torch')
@@ -170,7 +170,7 @@ def _prepare(root, comfy, machine, run, download):
             prepared = install(uv, python, rows, cuda, root=root, networking=plan, env=env, ui=ui,
                 run=lambda args, environment: execute(args, environment, 'Prepare ComfyUI GPU packages'), check=check)
         if not prepared:
-            package_install('torch-' + cuda,
+            package_install('pypi' if sys.platform == 'darwin' else 'torch-' + cuda,
                 lambda environment, _: execute([uv, 'pip', 'install', '--python', python, *rows], environment, 'Prepare ComfyUI GPU packages'),
                 'Prepare ComfyUI GPU packages')
         ui.phase('Install ComfyUI packages', stage_offset + 2, stage_total)

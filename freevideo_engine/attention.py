@@ -1,15 +1,13 @@
 """Official decomposed attention or portable cuDNN/Sage window calls."""
 import types
-import importlib.metadata
 from collections import defaultdict
 
 import torch
-import torch.nn.functional as F
-from torch.nn.attention import SDPBackend, sdpa_kernel
 
+from .backends import get_backend
 from .paths import add_vdn
 add_vdn()
-from src.models.softmax_attention.decomposed import _plan, window_softmax_decomposed
+from src.models.softmax_attention.decomposed import _plan
 
 
 ALIASES = {'original': 'cudnn/fa4', 'dense': 'cudnn/cudnn',
@@ -18,22 +16,23 @@ ALIASES = {'original': 'cudnn/fa4', 'dense': 'cudnn/cudnn',
 BACKENDS = ('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4')
 
 
-def split_backend(backend):
+def split_backend(backend, allowed=BACKENDS):
     parts = ALIASES.get(backend, backend).split('/')
     if len(parts) == 1:
         parts *= 2
-    if len(parts) != 2 or any(p not in BACKENDS for p in parts):
-        raise ValueError('Attention must be a backend or global/window pair: ' + ', '.join(BACKENDS))
+    if len(parts) != 2 or any(p not in allowed for p in parts):
+        raise ValueError('Attention must be a backend or global/window pair: ' + ', '.join(allowed))
     return tuple(parts)
 
 
 class WindowAttention:
     def __init__(self, backend, query_chunk=0, window_batch=1, window_varlen=False,
-                 varlen_smooth_k=True):
+                 varlen_smooth_k=True, *, device_backend=None):
         if window_batch < 1:
             raise ValueError('Window batch must be positive')
         if window_varlen and query_chunk:
             raise ValueError('Packed varlen windows do not support a query-chunk override')
+        self.device_backend = device_backend if device_backend is not None else get_backend()
         self.backend = backend
         self.query_chunk = query_chunk
         self.window_batch = window_batch
@@ -47,55 +46,28 @@ class WindowAttention:
         self.batches = None
         self.calls = 0
         self.window_calls = 0
-        self.backend_calls = {part + '_' + name: 0 for part in ('global', 'window')
-                              for name in (*BACKENDS, 'fa2_varlen', 'fa4_varlen', 'sage2_varlen')}
+        names = ((*BACKENDS, 'fa2_varlen', 'fa4_varlen', 'sage2_varlen')
+                 if self.device_backend.capabilities.name == 'cuda'
+                 else self.device_backend.capabilities.attention_candidates)
+        self.backend_calls = {part + '_' + name: 0 for part in ('global', 'window') for name in names}
         self.select_backend(backend)
 
     def batched(self, q, k, v, scale, *, window=False):
         leg = self.window_backend if window else self.global_backend
         self.calls += 1
         self.backend_calls[('window_' if window else 'global_') + leg] += 1
-        if leg == 'sage2':
-            return self.attention(q, k, v, tensor_layout='NHD', is_causal=False, sm_scale=scale)
-        if leg == 'fa2':
-            from flash_attn.flash_attn_interface import flash_attn_func
-            return flash_attn_func(q, k, v, softmax_scale=scale, causal=False)
-        if leg == 'fa4':
-            from flash_attn.cute import flash_attn_func
-            result = flash_attn_func(q, k, v, softmax_scale=scale, causal=False)
-            return result[0] if isinstance(result, tuple) else result
-        backend = SDPBackend.CUDNN_ATTENTION if leg == 'cudnn' else SDPBackend.FLASH_ATTENTION
-        with sdpa_kernel(backend):
-            result = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2),
-                                                    v.transpose(1, 2), scale=scale)
-        return result.transpose(1, 2)
+        return self.kernels.batched(leg, q, k, v, scale)
 
     def dense(self, q, k, v, scale, *, window=False):
         return self.batched(q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0), scale, window=window)[0]
 
     def select_backend(self, backend):
-        self.global_backend, self.window_backend = split_backend(backend)
-        if 'fa4' in (self.global_backend, self.window_backend):
-            from .fa4_guard import check_selected
-            check_selected()
-        if self.window_backend in ('fa2', 'fa4') and self.query_chunk:
-            raise ValueError('Packed varlen windows do not support a query-chunk override')
-        if self.window_varlen and self.window_backend not in ('sage2', 'fa2', 'fa4'):
-            raise ValueError('Packed varlen windows require a sage2, fa2 or fa4 window backend')
-        if 'sage2' in (self.global_backend, self.window_backend):
-            if not importlib.metadata.version('sageattention').startswith('2.'):
-                raise ImportError('The sage2 route requires SageAttention 2.x; the tested version is 2.2.0.')
-            from .triton_compat import activate
-            activate()
-            from sageattention import sageattn
-            self.attention = sageattn
-            if self.window_varlen and self.window_backend == 'sage2':
-                from sageattention import sageattn_varlen
-                self.attention_varlen = sageattn_varlen
-        if 'fa2' in (self.global_backend, self.window_backend):
-            if not importlib.metadata.version('flash-attn').startswith('2.'):
-                raise ImportError('The fa2 route requires flash-attn 2.x.')
-            from flash_attn.flash_attn_interface import flash_attn_varlen_func
+        global_backend, window_backend = split_backend(backend,
+            allowed=self.device_backend.capabilities.attention_candidates)
+        kernels = self.device_backend.attention_kernels(global_backend, window_backend,
+            query_chunk=self.query_chunk, window_varlen=self.window_varlen)
+        self.global_backend, self.window_backend = global_backend, window_backend
+        self.kernels = kernels
         self.backend = backend
 
     def _window_batches(self, plan):
@@ -136,7 +108,7 @@ class WindowAttention:
             self.backend_calls['global_cudnn'] += bool(len(plan.dense_q))
             self.backend_calls['window_fa4_varlen'] += bool(plan.has_windows)
             self.window_calls += 1
-            return window_softmax_decomposed(q, k, v, layout, bounds, scale, anchor_frames)
+            return self.kernels.decomposed(q, k, v, layout, bounds, scale, anchor_frames)
         plan = self.prepare(layout, bounds, q.device, anchor_frames)
         out = torch.empty_like(q)
         if len(plan.dense_q):
@@ -145,25 +117,11 @@ class WindowAttention:
                 rows = plan.dense_q[start:start + chunk]
                 out[rows] = self.dense(q[rows], k, v, scale)
         if plan.has_windows:
-            if self.window_varlen and self.window_backend == 'sage2':
-                # Every window in one kernel: no Python loop, no per-window
-                # gather temporaries. Keys are smoothed across the packed batch.
-                out[plan.win_q] = self.attention_varlen(
-                    q[plan.win_q], k[plan.kv_gather], v[plan.kv_gather],
-                    cu_seqlens_q=plan.cu_q, cu_seqlens_k=plan.cu_k,
-                    max_seqlen_q=plan.max_q, max_seqlen_k=plan.max_k,
-                    sm_scale=scale, is_causal=False, smooth_k=self.varlen_smooth_k)
-                self.backend_calls['window_sage2_varlen'] += 1
-            elif self.window_backend in ('fa2', 'fa4'):
-                if self.window_backend == 'fa2':
-                    from flash_attn.flash_attn_interface import flash_attn_varlen_func
-                else:
-                    from flash_attn.cute import flash_attn_varlen_func
-                result = flash_attn_varlen_func(q[plan.win_q], k[plan.kv_gather], v[plan.kv_gather],
-                                               cu_seqlens_q=plan.cu_q, cu_seqlens_k=plan.cu_k,
-                                               max_seqlen_q=plan.max_q, max_seqlen_k=plan.max_k,
-                                               softmax_scale=scale, causal=False)
-                out[plan.win_q] = result[0] if isinstance(result, tuple) else result
+            if ((self.window_varlen and self.window_backend == 'sage2')
+                    or self.window_backend in ('fa2', 'fa4')):
+                out[plan.win_q] = self.kernels.varlen(
+                    self.window_backend, q[plan.win_q], k[plan.kv_gather], v[plan.kv_gather],
+                    plan, scale, smooth_k=self.varlen_smooth_k)
                 self.backend_calls['window_' + self.window_backend + '_varlen'] += 1
             elif self.window_batch > 1:
                 if self.batches is None:

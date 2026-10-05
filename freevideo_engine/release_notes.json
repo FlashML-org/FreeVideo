@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "product_version": "0.1.0",
+  "en": {
+    "summary": "FreeVideo now runs on Apple silicon Macs.",
+    "changes": [
+      "Mac preview: FreeVideo runs on Apple silicon Macs with macOS 14 or later.",
+      "A short product version is now shown in the launcher and creative workspace. The build number remains available in version details.",
+      "Update reminders include release notes in your selected language: English or Simplified Chinese.",
+      "Open Version & release notes at any time, including after updating or while offline, to read the notes included with your installed version."
+    ]
+  },
+  "zh": {
+    "summary": "FreeVideo 推出 Apple 芯片 Mac 预览版。",
+    "changes": [
+      "Mac 预览版：支持 macOS 14 及以上的 Apple 芯片 Mac。",
+      "启动器和创作面板显示简短产品版本，构建号可在版本详情中查看。",
+      "更新提醒附带更新说明，跟随界面语言显示中文或英文。",
+      "随时打开「版本与更新说明」，更新后或离线时也能查看当前版本自带的说明。"
+    ]
+  }
+}

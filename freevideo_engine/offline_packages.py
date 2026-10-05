@@ -44,6 +44,12 @@ def inventory(rows):
         raise ValueError('Offline package exceeds supported size')
 
 
+def check_runtime_platform():
+    import sys
+    if sys.platform == 'darwin':
+        raise ValueError('这是 Windows 运行环境包，不能用于 Mac。请导入模型包后继续安装，安装器会自动下载 Mac 运行环境。')
+
+
 def inspect_archive(path):
     """Read only bounded metadata; file contents are checked during import."""
     with zipfile.ZipFile(path) as archive:
@@ -58,11 +64,15 @@ def inspect_archive(path):
         raw = archive.read(info)
         value = json.loads(raw)
         if marker == 'runtime.json':
+            check_runtime_platform()
             if value.get('schema_version') != 2 or value.get('dependency_id') != dependency_id():
                 raise ValueError('运行环境包版本不匹配，请从下载页面获取配套的运行环境包。')
             value = dict(value, kind='runtime', variant=None)
         elif value.get('schema_version') != 1 or value.get('kind') != 'models' or value.get('variant') not in ('common', 'rowwise', 'per_tensor'):
             raise ValueError('Invalid model package')
+        import sys
+        if sys.platform == 'darwin' and value.get('variant') == 'per_tensor':
+            raise ValueError('Mac 请使用「30/40 系模型包」；「公用模型」包可以通用。此处无需导入 50 系模型包。')
         rows = value['files']
         if not isinstance(rows, list) or not rows:
             raise ValueError('Empty offline package')
@@ -138,6 +148,7 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
 def assemble(runtime, models, source):
     """Bind imported components to the current EXE's engine, without running it."""
     from .desktop_runtime import materialize_source
+    check_runtime_platform()
     runtime = Path(runtime)
     config = json.loads((runtime / 'runtime.json').read_text(encoding='utf-8'))
     if config.get('schema_version') != 2 or config.get('dependency_id') != dependency_id():

@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 import uuid
 
@@ -261,9 +262,12 @@ def installation(source=None, environ=None):
                          'in the FreeVideo folder, or set FREEVIDEO_HOME to your existing installation. '
                          'A prepared engine installation is required.') from error
     required = ('root', 'python', 'cache', 'base', 'checkpoint', 'comfy_python',
-                'comfy_root', 'vdn_root', 'model_paths', 'model_root', 'gpu_uuid', 'encoder')
+                'comfy_root', 'vdn_root', 'model_paths', 'model_root', 'encoder')
     if not isinstance(machine, dict) or not machine.get('ready') or any(not machine.get(k) for k in required):
         raise ValueError('FreeVideo setup is incomplete. Open FreeVideo Settings and click "Install / repair" to repair %s; existing files are reused.' % root)
+    identity = 'device_identity' if machine.get('device_backend') == 'mps' else 'gpu_uuid'
+    if not machine.get(identity):
+        raise ValueError('FreeVideo device configuration is missing. Open Settings and click "Install / repair".')
     if Path(machine['root']).expanduser().resolve() != root:
         raise ValueError('The FreeVideo installation was moved. Rerun setup in the selected folder.')
     if not Path(machine['python']).is_file():
@@ -447,7 +451,10 @@ def progress_message(event):
 
 
 def engine_environment(root, source, environ=None):
-    from .triton_compat import environment
+    if sys.platform == 'darwin':
+        from .macos_bootstrap import environment
+    else:
+        from .triton_compat import environment
     return environment(root, isolated_environment(root, source, environ))
 
 
@@ -472,7 +479,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     # No attention, placement or capacity override: managed CLI uses the
     # installation's explicit caps, otherwise its live automatic policy.
     from .resource_settings import read as read_resources
-    resources = read_resources(root)
+    resources = read_resources(root, backend=machine.get('device_backend', 'cuda'))
     run = Path(output_directory).resolve() / 'FreeVideo' / time.strftime('%Y-%m-%d', time.gmtime()) / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     output = run / 'video.mp4'
@@ -484,8 +491,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
                '--two-pass' if two_pass else '--no-two-pass',
                '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
-    if resources['gpu_reserve_gib'] is not None:
-        command += ['--gpu-reserve-gib', str(resources['gpu_reserve_gib'])]
+    for field, reserve in resources.items():
+        if reserve is not None:
+            command += ['--' + field.replace('_', '-'), str(reserve)]
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
     from .diagnostic_resources import encoder_prewarm as prewarm_summary
@@ -562,7 +570,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         if release_models:
             release_models()
         state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
-        if (source/'freevideo_engine'/'resident_worker.py').is_file():
+        if machine.get('device_backend') != 'mps' and (source/'freevideo_engine'/'resident_worker.py').is_file():
             from .resident_process import OWNER, ENV
             if environment.get('FREEVIDEO_KEEP_MODELS', 'auto').lower() in ('0', 'off', 'false'):
                 OWNER.close()

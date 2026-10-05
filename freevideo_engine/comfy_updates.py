@@ -9,6 +9,7 @@ import threading
 import time
 
 from . import launcher_update
+from .release_notes import installed_details, public_details
 
 
 def installed_build(package):
@@ -36,7 +37,7 @@ def launcher_view(status):
     """The parts of a launcher status a page may show; None without a launcher."""
     if not isinstance(status, dict):
         return None
-    view = {k: status.get(k) for k in ('version', 'phase', 'status', 'progress', 'candidate', 'engine', 'error', 'manual')}
+    view = {k: status.get(k) for k in ('version', 'phase', 'status', 'progress', 'candidate', 'engine', 'error', 'manual', 'channel')}
     view['phase'] = str(view['phase'] or '')
     return view
 
@@ -52,6 +53,8 @@ class UpdateStatus:
         self.bridge = bridge
         self.state = dict(status='idle' if current else 'source',
                           current_version=current['version'] if current else None,
+                          current_release=public_details(current) if current else installed_details(Path(__file__).parent),
+                          channel=(current or {}).get('channel', launcher_update.CHANNEL),
                           available=None)
         self.next_check = 0
         self.client_seen = -1e9
@@ -80,10 +83,12 @@ class UpdateStatus:
             # Pages that reload themselves after an update polled recently.
             state['clients'] = int(now - self.client_seen < 20)
         if launcher is not None:
+            if launcher.get('channel') in (launcher_update.CHANNEL, launcher_update.MAC_CHANNEL):
+                state['channel'] = launcher['channel']
             engine = launcher.get('engine') or {}
             candidate = launcher.get('candidate') if isinstance(launcher.get('candidate'), dict) else None
-            available = (dict(version=str(candidate.get('version'))) if candidate and candidate.get('version') else
-                         dict(version=str(engine.get('version'))) if engine.get('pending') and engine.get('version') else None)
+            available = (public_details(candidate) if candidate and candidate.get('version') else
+                         public_details(engine) if engine.get('pending') and engine.get('version') else None)
             if self.current or available:
                 state.update(status='available' if available else 'current', available=available)
             state['launcher'] = launcher
@@ -91,10 +96,15 @@ class UpdateStatus:
 
     def _check(self):
         try:
-            candidate = launcher_update.latest_release()
+            channel = self.current.get('channel', launcher_update.CHANNEL)
+            candidate = (launcher_update.latest_release() if channel == launcher_update.CHANNEL
+                         else launcher_update.latest_release(channel=channel))
+            if (candidate.get('channel', launcher_update.CHANNEL) != channel
+                    or launcher_update.build_target(candidate) != launcher_update.build_target(self.current)):
+                raise ValueError('Update belongs to a different platform')
             newer = (candidate['built_at'] > self.current['built_at']
                      and candidate['revision'] != self.current['revision'])
-            available = {key: candidate[key] for key in ('version', 'revision', 'built_at')} if newer else None
+            available = public_details(candidate) if newer else None
             with self.lock:
                 self.state.update(status='available' if available else 'current', available=available)
                 self.next_check = time.monotonic() + 15 * 60

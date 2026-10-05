@@ -4,7 +4,7 @@ import QtQuick.Controls.Basic
 // Modal sheet shared by every launcher dialog.
 Popup {
     anchors.centerIn: Overlay.overlay
-    modal: true; padding: 28
+    modal: true; focus: true; padding: 28
     background: Rectangle { radius: theme.radiusLg; color: theme.canvas; border.color: theme.sheen }
     Overlay.modal: Rectangle { color: theme.scrim }
     enter: Transition { ParallelAnimation {

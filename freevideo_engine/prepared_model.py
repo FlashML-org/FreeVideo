@@ -1,7 +1,8 @@
 """Pinned prebuilt model selection and access checks, without Torch or Hub SDKs.
 
 The catalog is shipped with the engine, never learned from an unverified remote
-manifest. Each architecture keeps its existing FP8 quantization granularity.
+manifest. Each CUDA architecture keeps its existing FP8 quantization granularity;
+Macs use the ConvRot int8 export (int8 products on Apple M5 and newer).
 """
 import json
 import os
@@ -38,9 +39,11 @@ def catalog():
     return value
 
 
-def select(capability, root):
+def select(capability, root, *, scale_granularity=None):
     value = catalog()
-    scale = 'per_tensor' if capability[0] >= 10 else 'rowwise'
+    scale = scale_granularity or ('per_tensor' if capability[0] >= 10 else 'rowwise')
+    if scale not in ('rowwise', 'per_tensor', 'int8_convrot'):
+        raise ValueError('Unknown prepared model scale format')
     variant = value['variants'].get(scale)
     if variant is None:
         return None  # Never change quantization to make an artifact fit a GPU.

@@ -263,7 +263,7 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             url = model_url({'repo': mirror['repo'], 'revision': mirror['hf_revision'],
                              'file': mirror['probe_file']}, name, env, spec=spec)
         elif family == 'github':
-            url = versions['uv']['url'].replace(SOURCES['github']['official'], base, 1)
+            url = versions.get('github_probe_url', versions['uv']['url']).replace(SOURCES['github']['official'], base, 1)
         elif family == 'git':
             endpoint = spec['vdn']['url'].replace(SOURCES['github']['official'], base, 1)
             kind = 'Git remote availability with effective Git configuration'
@@ -354,9 +354,9 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
     families = ['pypi', 'models', 'vdn-models', 'github', 'git', 'cuda']
     if spec['models'].get('edge_modelscope'):
         families.insert(3, 'edge-models')
-    if versions.get('target_system') == 'Windows':
+    if versions.get('target_system') in ('Windows', 'Darwin'):
         families.remove('cuda')
-    for name in environment_names(layout):
+    for name in (() if versions.get('target_system') == 'Darwin' else environment_names(layout)):
         role = ENVIRONMENTS[name]
         family = 'torch-' + role['cuda'] + '-' + role['torch'][0].split('==')[1]
         if family not in families:

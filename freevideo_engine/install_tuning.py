@@ -25,12 +25,19 @@ def required_models(rows, reuse_cache):
     return [r for r in rows if not conversion_source(r)]
 
 
-def cache_compatible(path, capability):
+def cache_compatible(path, capability=None, *, scale_granularity=None):
     try:
         value = json.loads((Path(path) / 'manifest.json').read_text(encoding='utf-8'))
-        if value.get('format') == 'freevideo-fp8-slim-v1':
+        if value.get('format') in ('freevideo-fp8-slim-v1', 'freevideo-int8-slim-v1'):
             from .adaln_assets import validate_catalog
             validate_catalog(value, sum(r['group'].startswith('blocks/') for r in value['groups']))
+        if scale_granularity == 'int8_convrot':
+            rotation = value.get('rotation') or {}
+            return (value.get('precision') == 'int8' and value.get('scale_granularity') == 'rowwise'
+                    and rotation.get('kind') == 'convrot' and rotation.get('group') == 256 and bool(value.get('groups')))
+        if scale_granularity is not None:
+            return (scale_granularity in ('rowwise', 'per_tensor') and value.get('precision') == 'fp8'
+                    and bool(value.get('groups')) and value.get('scale_granularity') == scale_granularity)
         native_format = 'per_tensor' if capability[0] >= 10 else 'rowwise'
         return (value.get('precision') == 'fp8' and bool(value.get('groups')) and
                 (tuple(capability) < (8, 9) or value.get('scale_granularity') == native_format))
@@ -38,14 +45,14 @@ def cache_compatible(path, capability):
         return False
 
 
-def discover_prepared(folder, capability):
+def discover_prepared(folder, capability=None, *, scale_granularity=None):
     """Recognize a downloaded engine bundle in the user's selected model folder."""
     if not folder:
         return None
     root = Path(folder).expanduser().resolve()
     candidates = [root, root / 'cache', root / 'vdn-h3-edge/cache', root / 'vdn-minimax-h3-edge/cache']
     for candidate in candidates:
-        if cache_compatible(candidate, capability):
+        if cache_compatible(candidate, capability, scale_granularity=scale_granularity):
             return candidate
     return None
 

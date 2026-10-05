@@ -596,6 +596,9 @@ class Controller:
         deadline = time.monotonic() + 10
         while True:
             with socket.socket(socket.AF_INET6 if parsed.hostname == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
+                if sys.platform == 'darwin':
+                    # Reopening our own server must tolerate TIME_WAIT on macOS.
+                    check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     check.bind((parsed.hostname, parsed.port or 80))
                     break

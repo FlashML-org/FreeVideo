@@ -67,6 +67,10 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             text_token_tags, latent_frames, LATENT_H, LATENT_W, audio_frames,
             patch, AUDIO_CHANNELS, AUDIO_TAG, VIDEO_TAG, keyframe_anchors=anchors)
     positions, tags, video_ids, audio_ids, text_ids, condition_rows, audio_condition_rows = layout
+    if torch.device(device).type == 'mps':
+        # RoPE evaluates coordinates in FP32. MPS cannot first stage the
+        # layout builder's FP64 storage on-device as CUDA does.
+        positions = positions.float()
     positions, tags, video_ids, audio_ids, text_ids = (
         value.to(device) for value in (positions, tags, video_ids, audio_ids, text_ids))
     frame_h, frame_w = LATENT_H // patch[1], LATENT_W // patch[2]
@@ -121,6 +125,8 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         if step_seconds is not None:
             if str(device).startswith('cuda'):
                 torch.cuda.synchronize(device)
+            elif torch.device(device).type == 'mps':
+                torch.mps.synchronize()
             step_seconds.append(time.perf_counter() - tick)
     rows = video_rows[condition_rows:].reshape(-1, latent_frames, frame_h, frame_w, channels, *patch)
     rows = rows.permute(0, 4, 1, 5, 2, 6, 3, 7)

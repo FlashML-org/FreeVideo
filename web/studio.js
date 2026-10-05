@@ -5,7 +5,7 @@ import { openSetup } from './setup.js';
 import { wordmark } from './branding.js';
 import { createGenerationProgress } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
-import { createUpdateNotice } from './updates.js';
+import { createUpdateNotice, createVersionInfo } from './updates.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
@@ -120,6 +120,7 @@ export function openStudio(node) {
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
+    const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(button(t('Settings', '设置'), openSetup, 'fv-quiet'));
     const navigation = viewSwitch('studio', () => {}, () => {
         closeDialog(dialog);
@@ -309,8 +310,8 @@ export function openStudio(node) {
     const status = el('div', '', 'fv-status'); status.setAttribute('role', 'status');
     const stats = el('div', null, 'fv-stats'), budget = el('div', '', 'fv-budget'), links = el('div', null, 'fv-result-links');
     stats.hidden = true;
-    const metrics = [];
-    for (const label of [t('Sampling', '采样耗时'), t('Request total', '请求总计'), t('VRAM peak', '显存峰值'), t('RAM peak', '内存峰值')]) { const box = el('div', null, 'fv-stat'), n = el('strong', '—'); box.append(n, el('span', label)); stats.append(box); metrics.push(n); }
+    const metrics = [], metricLabels = [];
+    for (const label of [t('Sampling', '采样耗时'), t('Request total', '请求总计'), t('VRAM peak', '显存峰值'), t('RAM peak', '内存峰值')]) { const box = el('div', null, 'fv-stat'), n = el('strong', '—'), caption = el('span', label); box.append(n, caption); stats.append(box); metrics.push(n); metricLabels.push(caption); }
     const prewarm = el('div', node.freevideoPrewarm || '', 'fv-prewarm');
     const reuseRow = el('div', null, 'fv-reuse-result'); reuseRow.hidden = true;
     const reuseNotice = el('span', t('Reused previous result', '已复用上次结果'));
@@ -327,14 +328,19 @@ export function openStudio(node) {
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
     function showResult(r) {
         if (!r?.video || disposed) return; result = r;
-        progress.report.hidden = !node.freevideoReportId;
+        progress.updateReport({report_id: node.freevideoReportId});
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
         stats.hidden = !!r.result_cache_hit;
         reuseRow.hidden = !r.result_cache_hit;
         regenerate.disabled = false; regenerate.textContent = t('Regenerate', '重新生成');
-        const shown = [number(r.sample_seconds), number(r.request_seconds), number(r.vram_peak_bytes, 2 ** 30, 'GiB'), number(r.ram_peak_bytes, 2 ** 30, 'GiB')]; metrics.forEach((e, i) => e.textContent = shown[i]);
-        budget.textContent = !r.result_cache_hit && Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
+        const unified = r.memory_model === 'unified';
+        metricLabels[2].textContent = unified ? t('Unified memory', '统一内存总量') : t('VRAM peak', '显存峰值');
+        metricLabels[3].textContent = unified ? t('Process RAM peak', '进程内存峰值') : t('RAM peak', '内存峰值');
+        const shown = [number(r.sample_seconds), number(r.request_seconds), number(unified ? r.unified_total_bytes : r.vram_peak_bytes, 2 ** 30, 'GiB'), number(r.ram_peak_bytes, 2 ** 30, 'GiB')]; metrics.forEach((e, i) => e.textContent = shown[i]);
+        budget.textContent = r.result_cache_hit ? '' : unified
+            ? (Number.isFinite(r.unified_reserve_bytes) ? `${t('Reserved unified memory', '预留统一内存')} ${number(r.unified_reserve_bytes, 2 ** 30, 'GiB')}` : '')
+            : (Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '');
         links.replaceChildren();
         for (const [label, file, cls] of [[t('Download video', '下载视频'), r.video, 'fv-primary'], [t('Report', '查看报告'), r.report, 'fv-quiet']]) { if (!file) continue; const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === r.video ? '' : file.split('/').pop(); links.append(a); }
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);

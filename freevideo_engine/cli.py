@@ -121,6 +121,9 @@ def main():
                                help='Measure the placement questions this machine can settle')
     calibrate.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):
+        from .macos_generate import dispatch
+        return dispatch(args)
     if args.command == 'plan':
         from .geometry import geometry
         canvas = geometry(args.width, args.height, frames=args.frames, seconds=args.seconds)

@@ -198,9 +198,19 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         if sampling_plan.get('upscaler_sha256'):
             from .two_pass import UPSCALER
             models['upscaler'] = file(Path(machine['model_root']) / 'latent_upscaler' / Path(UPSCALER['file']).name)
-        from .compatibility import Store
-        compatibility = phase('settings', lambda: Store(root).status({'gpu_uuid': machine['gpu_uuid'], 'system': platform.system()}))
-        settings = dict(resources=resources, compatibility=compatibility['level'])
+        native = machine.get('device_backend') == 'mps'
+        if native:
+            identity = machine.get('device_identity')
+            if not isinstance(identity, dict) or identity.get('backend') != 'mps' or not identity.get('name'):
+                raise ValueError('Native device identity is unavailable')
+            # Mac placement has its own unified-memory policy. NVIDIA's
+            # compatibility levels do not apply; machine below retains the
+            # actual Apple device identity, without a fabricated GPU UUID.
+            settings = dict(resources=resources, macos=platform.mac_ver()[0])
+        else:
+            from .compatibility import Store
+            compatibility = phase('settings', lambda: Store(root).status({'gpu_uuid': machine['gpu_uuid'], 'system': platform.system()}))
+            settings = dict(resources=resources, compatibility=compatibility['level'])
         tuning = root / 'tuning' / 'state.json'
         if tuning.exists():
             saved = json.loads(tuning.read_text(encoding='utf-8'))
@@ -237,8 +247,10 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
             inspection.phases['inputs'] = time.monotonic() - input_started
             inspection.check()
         ignored = {'FREEVIDEO_RESIDENT_SESSION', 'FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'}
-        compute_env = {k: v for k, v in environment.items() if k not in ignored
-                       and k.startswith(('FREEVIDEO_', 'CUDA_', 'NVIDIA_', 'PYTORCH_', 'TORCH_', 'TRITON_'))}
+        prefixes = ('FREEVIDEO_', 'CUDA_', 'NVIDIA_', 'PYTORCH_', 'TORCH_', 'TRITON_')
+        if native:
+            prefixes += ('MLX_', 'MTL_', 'METAL_')
+        compute_env = {k: v for k, v in environment.items() if k not in ignored and k.startswith(prefixes)}
         return _key(dict(schema=2, prompt=prompt, seed=seed, canvas=canvas, sampling_plan=sampling_plan,
                          media=media, conditioning=conditioning, machine=machine, settings=settings,
                          models=models, code=code, packages=packages, environment=compute_env))

@@ -156,6 +156,10 @@ export function failureAdvice(value, t) {
         return row('commit', ['Windows memory allocation limit reached', 'Windows 内存提交额度不足'],
             ['Windows cannot back another memory allocation, even if physical RAM is still available.', 'Windows 已没有足够的提交额度；这与物理 RAM 是否还有空闲是两回事。'],
             ['Close memory-heavy applications and retry. In Windows virtual memory settings, use a system-managed paging file on a drive with free space.', '关闭占用内存较多的程序后重试。在 Windows 虚拟内存设置中，使用系统管理的分页文件，并确保所在磁盘有空闲空间。']);
+    if (/MPS backend out of memory|MPS (?:generation|encoding|decoding) reached|No unified-memory allowance|Native generation needs at least .* unified memory/i.test(text))
+        return row('unified-memory', ['Unified memory is insufficient', '统一内存不足'],
+            ['Mac CPU and GPU share memory. This stage exceeded the MPS allocation limit or the system memory safety threshold.', 'Mac 的 CPU 与 GPU 共用内存。这一阶段触及了 MPS 分配上限或系统内存保护线。'],
+            ['Close memory-heavy applications and retry. Review any manual RAM limit or reserve; a lower resolution or shorter duration may also help. Export the report if it still fails.', '关闭占用内存较多的程序后重试，检查手动 RAM 限额和预留设置；也可降低分辨率或缩短时长。仍失败时请导出报告。']);
     if (/CUDA out of memory|torch\.OutOfMemoryError|cudaErrorMemoryAllocation/i.test(text))
         return row('vram', ['GPU memory allocation failed', '显存分配失败'],
             ['The GPU could not allocate the memory needed at this stage.', '这一阶段的显存申请没有成功。'],

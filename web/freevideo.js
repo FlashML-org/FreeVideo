@@ -207,9 +207,7 @@ function resultPanel(node) {
     const progress = createGenerationProgress(text, undefined, {api}); panel.append(progress.element, progress.report);
     let showingResult = false;
     node.freevideoReportProgress = message => {
-        progress.updateReport(message);
-        if (message.new_request) node.freevideoReportId = null;
-        if (message.report_id) node.freevideoReportId = message.report_id;
+        node.freevideoReportId = progress.updateReport(message);
     };
     node.freevideoShowProgress = message => {
         if (showingResult) {
@@ -217,6 +215,7 @@ function resultPanel(node) {
             panel.title = ''; node.freevideoPrewarm = '';
             showingResult = false; warn();
         }
+        node.freevideoReportProgress(message);
         const retry = message.reset ? undefined : message.retry || node.freevideoProgress?.retry;
         node.freevideoProgress = {...message, retry, received_at: message.received_at ?? Date.now()}; progress.update(node.freevideoProgress);
         if (panel.firstElementChild !== progress.element) panel.prepend(progress.element);
@@ -271,7 +270,6 @@ function resultPanel(node) {
     node.freevideoShowResult = function (message) {
         const value = message?.freevideo_summary?.[0]; if (!value) return;
         showingResult = true;
-        node.freevideoReportId = null; progress.report.hidden = true;
         node.freevideoStopProgress();
         node.freevideoClearFailure();
         node.freevideoLastResult = value;
@@ -279,7 +277,8 @@ function resultPanel(node) {
         panel.replaceChildren(); const stats = el("div", undefined, "fv-stats");
         stats.hidden = !!value.result_cache_hit;
         const number = (value, scale, unit) => Number.isFinite(value) && value >= 0 ? `${(value / scale).toFixed(1)} ${unit}` : "—";
-        for (const [label, shown] of [[text("Sampling", "采样"), number(value.sample_seconds, 1, "s")], [text("Request total", "请求总计"), number(value.request_seconds, 1, "s")], [text("VRAM peak", "显存峰值"), number(value.vram_peak_bytes, 2 ** 30, "GiB")], [text("RAM peak", "内存峰值"), number(value.ram_peak_bytes, 2 ** 30, "GiB")]]) {
+        const unified = value.memory_model === 'unified';
+        for (const [label, shown] of [[text("Sampling", "采样"), number(value.sample_seconds, 1, "s")], [text("Request total", "请求总计"), number(value.request_seconds, 1, "s")], [unified ? text("Unified memory", "统一内存总量") : text("VRAM peak", "显存峰值"), number(unified ? value.unified_total_bytes : value.vram_peak_bytes, 2 ** 30, "GiB")], [unified ? text("Process RAM peak", "进程内存峰值") : text("RAM peak", "内存峰值"), number(value.ram_peak_bytes, 2 ** 30, "GiB")]]) {
             const stat = el("div", undefined, "fv-stat"); stat.append(el("strong", shown), el("span", label)); stats.append(stat);
         }
         const links = el("div", undefined, "fv-links");
@@ -297,9 +296,11 @@ function resultPanel(node) {
             };
             links.append(again);
         }
-        panel.append(stats, links);
+        panel.append(stats, links, progress.report);
         warn();
-        panel.title = text("VRAM: engine allocator peak. RAM: measured request processes, ", "显存为引擎分配器峰值，内存为请求进程实测，") + (value.ram_metric || "unknown");
+        panel.title = (unified
+            ? text("Unified memory: device capacity. Process RAM is not total GPU memory, ", "统一内存为设备总量；进程内存不代表 GPU 内存总占用，")
+            : text("VRAM: engine allocator peak. RAM: measured request processes, ", "显存为引擎分配器峰值，内存为请求进程实测，")) + (value.ram_metric || "unknown");
     };
     node.freevideoRegenerateResult = async value => {
         if (node.freevideoRegenerating) return;

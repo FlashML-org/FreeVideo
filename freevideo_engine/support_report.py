@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 import statistics
+import sys
 import time
 
 from . import __version__
@@ -24,6 +25,16 @@ def code_identity():
     package = Path(__file__).parent
     names = ('generate.py', 'policy.py', 'runtime.py', 'attention.py', 'decode.py', 'worker.py',
              'encode_worker.py', 'encoder_checkpoint.py', 'system.py')
+    if sys.platform == 'darwin':
+        names = ('macos_generate.py', 'macos_stages.py', 'macos_runtime.py', 'macos_encoder.py', 'macos_decode.py',
+                 'macos_vdn.py', 'backends/mps.py', 'backends/mps_weights.py', 'backends/mps_fp8.py',
+                 'backends/mps_linear.py', 'backends/mps_attention.py', 'backends/mps_nvfp4.py',
+                 'backends/mps_delta.py', 'backends/mps_features.py', 'backends/mps_qk.py',
+                 'backends/mps_mlx_attention.py', 'backends/mps_vae_encode.py', 'backends/mps_modulation.py',
+                 'macos_compute.py', 'macos_decode_tiles.py',
+                 'macos_memory.py', 'macos_process_memory.py',
+                 'attention.py', 'refine.py', 'reference_sampler.py', 'adaln.py', 'latent_upscale.py',
+                 'media_encoding.py', 'media_conditioning.py', 'encoder_checkpoint.py', 'system.py')
     values = {}
     for name in names:
         try:

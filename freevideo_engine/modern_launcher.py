@@ -29,11 +29,24 @@ def theme():
         heightSm=32, height=36, heightLg=44, mono=b.MONO)
 
 
+def launcher_icon():
+    from PySide6.QtGui import QIcon
+    if sys.platform == 'darwin' and getattr(sys, 'frozen', False):
+        # Keep the padded native icon after Qt takes ownership of the Dock icon.
+        icon = QIcon(str(Path(sys.executable).parent.parent / 'Resources/FreeVideo.icns'))
+        if not icon.isNull():
+            return icon
+    icon = QIcon(str(Path(__file__).parent / 'assets/icon.ico'))
+    if icon.isNull():
+        icon = QIcon(str(Path(__file__).parent / 'assets/icon.png'))
+    return icon
+
+
 def create_ui(session, *, show=True):
     from .windows_ux import taskbar_identity
     taskbar_identity()
     from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, Qt
-    from PySide6.QtGui import QFont, QIcon
+    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication, QFileDialog
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
@@ -49,9 +62,7 @@ def create_ui(session, *, show=True):
     font.setFamilies(['Segoe UI', 'Microsoft YaHei UI', 'Noto Sans', 'Noto Sans CJK SC', 'sans-serif'])
     font.setPointSize(10)
     app.setFont(font)
-    icon = QIcon(str(Path(__file__).parent / 'assets/icon.ico'))
-    if icon.isNull():
-        icon = QIcon(str(Path(__file__).parent / 'assets/icon.png'))
+    icon = launcher_icon()
     app.setWindowIcon(icon)
 
     class Bridge(QObject):
@@ -252,6 +263,11 @@ def create_ui(session, *, show=True):
         raise RuntimeError('FreeVideo desktop layout could not be loaded')
     window = engine.rootObjects()[0]
     window.setIcon(icon)
+    if sys.platform == 'darwin':
+        # Native traffic lights and resizing, with content behind the titlebar.
+        # ApplicationWindow keeps controls inside the platform's safe area.
+        window.setFlag(Qt.ExpandedClientAreaHint, True)
+        window.setFlag(Qt.NoTitleBarBackgroundHint, True)
     available = app.primaryScreen().availableGeometry()
     width = min(1440, int(available.width() * .86))
     height = min(1020, int(available.height() * .88))
@@ -329,6 +345,23 @@ def smoke_test(app, engine, window, bridge, destination):
 
 
 def main(session=None):
+    if (getattr(sys, 'frozen', False) and sys.platform == 'darwin'
+            and sys.argv[1:2] == ['--macos-process-host']):
+        from .macos_process_host import main as supervise
+        raise SystemExit(supervise(sys.argv[2:]))
+    # A Mac app carries its own lightweight interpreter. Dispatch managed
+    # children before Qt and run from the durable deployed source, so a fresh
+    # Mac does not need a system Python or Homebrew merely to review setup.
+    if (getattr(sys, 'frozen', False) and sys.platform == 'darwin'
+            and len(sys.argv) >= 3 and sys.argv[1] == '--managed'):
+        source = Path(sys.argv[2])
+        if not (source / 'freevideo_engine/managed.py').is_file():
+            raise ValueError('The managed launcher source is missing')
+        sys.path.insert(0, str(source))
+        import freevideo_engine
+        freevideo_engine.__path__.insert(0, str(source / 'freevideo_engine'))
+        from .managed import main as managed
+        raise SystemExit(managed(sys.argv[3:]))
     # Linux process supervision reexecutes sys.executable. A frozen GUI must
     # dispatch this helper before creating another application window.
     if (getattr(sys, 'frozen', False) and sys.platform == 'linux'

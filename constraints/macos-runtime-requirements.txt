@@ -1,0 +1,20 @@
+# Native Torch and the shared H3 encoder libraries. No CUDA index or packages.
+torch
+torchvision
+torchaudio
+# Fused Metal attention for the sampling window leg (streams keys; PyTorch MPS SDPA materializes scores).
+mlx
+-r encoder-runtime.txt
+accelerate
+peft
+omegaconf
+modelscope-hub
+huggingface-hub
+hf-xet
+httpx[socks]
+requests[socks]
+importlib-metadata
+packaging
+wheel
+setuptools
+pip

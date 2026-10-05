@@ -76,9 +76,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release download windows-preview --repo FlashML-org/FreeVideo --pattern FreeVideo.exe --pattern FreeVideo-Windows-folder.zip --dir build/previous-release
+          gh release download windows-preview --repo FlashML-org/FreeVideo --pattern FreeVideo.exe --dir build/previous-release
           if ($LASTEXITCODE -ne 0) { throw 'Could not retrieve the previous release for comparison' }
-          python scripts/scan_windows_release.py --file build/previous-release/FreeVideo.exe --file build/previous-release/FreeVideo-Windows-folder.zip --verify-launches build/previous-release/FreeVideo.exe build/previous-release/FreeVideo-Windows-folder.zip --report antivirus/previous-release.json
+          python scripts/scan_windows_release.py --file build/previous-release/FreeVideo.exe --report antivirus/previous-release.json
           $baselineExit = $LASTEXITCODE
           if (Test-Path antivirus/previous-release.json) { Get-Content antivirus/previous-release.json -Raw }
           Write-Output "Previous-release diagnosis exit code: $baselineExit"
@@ -141,20 +141,19 @@ jobs:
           $scripts = @(Get-ChildItem build/windows-folder/dist -Recurse -Filter *.ps1 | ForEach-Object FullName)
           "bundled scripts: $($scripts.Count)"
           ./scripts/verify_windows_release.ps1 -FolderDist build/windows-folder/dist -Signed ($scripts + 'build/windows-exe/dist/FreeVideo.exe' + 'build/windows-folder/dist/FreeVideo/FreeVideo.exe')
-      - name: Collect the folder launcher
-        run: Copy-Item build/windows-folder/dist/FreeVideo-Windows-folder.zip build/windows-exe/dist/
       - name: Hash final Windows launchers
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; import hashlib; p=Path('build/windows-exe/dist'); (p/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.name+'\n' for f in (p/'FreeVideo.exe', p/'FreeVideo-Windows-folder.zip')))"
+          python -c "from pathlib import Path; import hashlib; p=Path('build/windows-exe/dist'); (p/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.name+'\n' for f in (p/'FreeVideo.exe',)))"
       # Keep the full report in the job log; a blocked or inconclusive scan
       # must stop publication instead of making a suspicious build public.
+      # The folder layout is only checked here, not published.
       - name: Open both packaged launchers and scan with real-time Defender
         timeout-minutes: 20
         shell: pwsh
         run: |
           $scripts = @(Get-ChildItem build/windows-folder/dist -Recurse -Filter *.ps1 | ForEach-Object { '--script', $_.FullName })
-          python scripts/scan_windows_release.py --file build/windows-exe/dist/FreeVideo.exe --file build/windows-folder/dist/FreeVideo/FreeVideo.exe --file build/windows-exe/dist/FreeVideo-Windows-folder.zip @scripts --verify-launches build/windows-exe/dist/FreeVideo.exe build/windows-exe/dist/FreeVideo-Windows-folder.zip --report antivirus/report.json
+          python scripts/scan_windows_release.py --file build/windows-exe/dist/FreeVideo.exe --file build/windows-folder/dist/FreeVideo/FreeVideo.exe --file build/windows-folder/dist/FreeVideo-Windows-folder.zip @scripts --verify-launches build/windows-exe/dist/FreeVideo.exe build/windows-folder/dist/FreeVideo-Windows-folder.zip --report antivirus/report.json
           $scanExit = $LASTEXITCODE
           if (Test-Path antivirus/report.json) { Get-Content antivirus/report.json -Raw }
           exit $scanExit
@@ -268,6 +267,8 @@ jobs:
 
           [Discord](https://discord.gg/MsA277cJzZ) · [QQ Group / QQ 群](https://freevideo-community.pages.dev/qq) · [WeChat Group / 微信群](https://freevideo-community.pages.dev/wechat)
           NOTES
+          python "$GITHUB_WORKSPACE/freevideo_engine/release_notes.py" --build launcher-build.json --out release-notes.md --prepend
+          release_title=$(python -c 'import json; print("FreeVideo v" + json.load(open("launcher-build.json"))["product_version"] + " for Windows")' | tr -d '\r')
           # A failed read is not evidence that a tag or release is missing.
           gh_json 'Read preview tags' api "repos/$GH_REPO/git/matching-refs/tags/$preview_tag" > tags.json
           tag_exists=$(python -c 'import json; print(int(any(r["ref"] == "refs/tags/windows-preview" for r in json.load(open("tags.json")))))' | tr -d '\r')
@@ -279,9 +280,9 @@ jobs:
             gh_retry 'Create preview tag' gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$preview_tag" -f sha="$GITHUB_SHA" > /dev/null
           fi
           if [ "$release_exists" = 0 ]; then
-            gh_retry 'Create draft release' gh release create "$preview_tag" --verify-tag --draft --prerelease --latest=false --title 'FreeVideo for Windows' --notes-file release-notes.md
+            gh_retry 'Create draft release' gh release create "$preview_tag" --verify-tag --draft --prerelease --latest=false --title "$release_title" --notes-file release-notes.md
           fi
-          gh_retry 'Upload launcher' gh release upload "$preview_tag" FreeVideo.exe FreeVideo-Windows-folder.zip SHA256SUMS.txt --clobber
+          gh_retry 'Upload launcher' gh release upload "$preview_tag" FreeVideo.exe SHA256SUMS.txt --clobber
           # Publish metadata last, bound to the immutable executable asset ID.
           # Readers reject a mismatched pair while a moving preview is updating.
           gh_json 'Locate release including drafts' release view "$preview_tag" --json databaseId > release-id.json
@@ -299,8 +300,14 @@ jobs:
                                 sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
           Path('update.json').write_text(json.dumps(build, indent=2))
           PY
+          # The folder ZIP is no longer published; remove the copy an earlier
+          # release left so the page lists only current files.
+          retired=$(python -c 'import json; print(int(any(a["name"] == "FreeVideo-Windows-folder.zip" for a in json.load(open("release.json"))["assets"])))' | tr -d '\r')
+          if [ "$retired" = 1 ]; then
+            gh_retry 'Remove retired folder ZIP' gh release delete-asset "$preview_tag" FreeVideo-Windows-folder.zip --yes
+          fi
           gh_retry 'Upload update manifest' gh release upload "$preview_tag" update.json --clobber
-          gh_retry 'Publish release' gh release edit "$preview_tag" --draft=false --prerelease --latest=false --title 'FreeVideo for Windows' --notes-file release-notes.md
+          gh_retry 'Publish release' gh release edit "$preview_tag" --draft=false --prerelease --latest=false --title "$release_title" --notes-file release-notes.md
           # Previous development snapshots have been archived privately.
           # Remove their release/source-archive references only after replacement.
           python - <<'PY_CLEANUP'
