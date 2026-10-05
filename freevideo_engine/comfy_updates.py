@@ -37,7 +37,7 @@ def launcher_view(status):
     """The parts of a launcher status a page may show; None without a launcher."""
     if not isinstance(status, dict):
         return None
-    view = {k: status.get(k) for k in ('version', 'phase', 'status', 'progress', 'candidate', 'engine', 'error', 'manual', 'channel')}
+    view = {k: status.get(k) for k in ('version', 'phase', 'status', 'progress', 'candidate', 'engine', 'error', 'manual', 'channel', 'track')}
     view['phase'] = str(view['phase'] or '')
     return view
 
@@ -55,6 +55,7 @@ class UpdateStatus:
                           current_version=current['version'] if current else None,
                           current_release=public_details(current) if current else installed_details(Path(__file__).parent),
                           channel=(current or {}).get('channel', launcher_update.CHANNEL),
+                          track=launcher_update.build_track(current or {}),
                           available=None)
         self.next_check = 0
         self.client_seen = -1e9
@@ -85,6 +86,8 @@ class UpdateStatus:
         if launcher is not None:
             if launcher.get('channel') in (launcher_update.CHANNEL, launcher_update.MAC_CHANNEL):
                 state['channel'] = launcher['channel']
+            if launcher.get('track') in launcher_update.TRACKS:
+                state['track'] = launcher['track']
             engine = launcher.get('engine') or {}
             candidate = launcher.get('candidate') if isinstance(launcher.get('candidate'), dict) else None
             available = (public_details(candidate) if candidate and candidate.get('version') else
@@ -97,10 +100,11 @@ class UpdateStatus:
     def _check(self):
         try:
             channel = self.current.get('channel', launcher_update.CHANNEL)
-            candidate = (launcher_update.latest_release() if channel == launcher_update.CHANNEL
-                         else launcher_update.latest_release(channel=channel))
+            track = launcher_update.build_track(self.current)
+            candidate = launcher_update.latest_release(channel=channel, track=track)
             if (candidate.get('channel', launcher_update.CHANNEL) != channel
-                    or launcher_update.build_target(candidate) != launcher_update.build_target(self.current)):
+                    or launcher_update.build_target(candidate) != launcher_update.build_target(self.current)
+                    or launcher_update.build_track(candidate) != track):
                 raise ValueError('Update belongs to a different platform')
             newer = (candidate['built_at'] > self.current['built_at']
                      and candidate['revision'] != self.current['revision'])

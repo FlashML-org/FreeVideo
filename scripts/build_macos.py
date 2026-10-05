@@ -31,7 +31,7 @@ OPEN_GUIDE = '''FreeVideo for Mac — 首次打开 / First open
 
 如果 macOS 提示无法验证开发者或无法检查恶意软件
 这是因为预览版暂未进行 Apple 公证。放行前请先确认安装包来自官方：
-1. 只从 https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview 下载。
+1. 只从 https://github.com/FlashML-org/FreeVideo/releases 下载。
 2. 在“终端”运行 shasum -a 256 ~/Downloads/FreeVideo-Mac-arm64.dmg，结果应与该页面 SHA256SUMS.txt 中的值一致。
 然后：
 3. 先尝试打开 FreeVideo，再关闭系统提示。
@@ -47,7 +47,7 @@ Install
 
 If macOS cannot verify the developer or check the app for malicious software
 This happens because the preview isn't notarized by Apple yet. Before approving it, make sure the file is the official one:
-1. Download it only from https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview.
+1. Download it only from https://github.com/FlashML-org/FreeVideo/releases.
 2. In Terminal, run shasum -a 256 ~/Downloads/FreeVideo-Mac-arm64.dmg. The result should match the value in SHA256SUMS.txt on that page.
 Then:
 3. Try opening FreeVideo, then dismiss the system alert.
