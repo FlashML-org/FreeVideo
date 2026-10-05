@@ -11,7 +11,7 @@
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
 
-Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 on NVIDIA GPUs in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
+Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -19,10 +19,10 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 FreeVideo is a local inference engine for MiniMax H3 on consumer GPUs, built on [OpenVDN](https://github.com/OpenVDN)'s 8-step [VDN-H3](https://huggingface.co/OpenVDN/vdn-minimax-h3) model with [Video DeltaNet](https://openvdn.github.io/)'s hybrid attention.
 
-It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with launchers for Windows and macOS (preview), and command-line support on Linux. Its core features include:
+It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with a Windows launcher for setup and command-line support on Linux. Its core features include:
 
 - **Hardware-adaptive execution**: Chooses the FP8 compute path for each GPU architecture, either native FP8 or FP8 storage with BF16 compute, and automatically probes the available attention kernels.
-- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling NVIDIA GPU inference with as little as 8 GB of VRAM and 16 GB of RAM.
+- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
