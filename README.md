@@ -26,7 +26,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
-- **One-click deployment**: The Windows and Mac launchers set up ComfyUI, the runtime environment and the models, and reuse existing model files. Windows also supports offline environment packages.
+- **One-click deployment**: The Windows and Mac launchers set up ComfyUI, the runtime environment and the models, reuse existing models, and support offline installation.
 
 ## Getting Started
 
@@ -45,12 +45,12 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 ### macOS (Apple silicon preview)
 
 1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**.
-2. Open FreeVideo and choose a new or existing ComfyUI folder. Add existing model folders to reuse matching files; the installer prepares a native Mac environment.
-3. Click **Install & launch** to open the creative workspace in your browser.
+2. Open FreeVideo, then select an existing ComfyUI folder or install a new one. Existing model folders can be added for reuse; the runtime environment and missing models are downloaded automatically.
+3. Click **Install & launch**. ComfyUI opens in the browser with the FreeVideo workspace.
 
-Apple silicon preview, tested on an M5 Mac with 24 GB of unified memory. The memory budget follows current system availability. The Windows environment ZIP is for Windows; Mac setup prepares its own environment.
+This preview has been tested on an M5 Mac with 24 GB of unified memory. See the [Mac&nbsp;guide](docs/Mac.md) for generation times and memory.
 
-This preview has not been notarized by Apple. For a trusted FreeVideo download, follow **Open FreeVideo.txt** beside the app or Apple's [Open Anyway instructions](https://support.apple.com/102445). See the [Mac&nbsp;guide](docs/Mac.md) for generation times and memory.
+If macOS says it can't verify the developer the first time you open FreeVideo, click **Open Anyway** in **System Settings → Privacy & Security**. See **Open FreeVideo.txt** beside the app or [Apple's instructions](https://support.apple.com/102445).
 
 ### Existing ComfyUI
 

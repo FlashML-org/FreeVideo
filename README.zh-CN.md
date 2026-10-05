@@ -26,7 +26,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 - **多模态输入**：支持文本、首帧、尾帧，以及图像、视频、音频参考输入。
 - **社区 LoRA**：支持在工作流中使用 MiniMax H3 社区 LoRA。[查看效果对比](docs/LoRA.zh-CN.md)。
 - **ComfyUI 集成**：在 ComfyUI 中提供专门的创作面板，支持二次采样和批量生成，并可浏览历史作品；需要更精细的控制时，可切换到节点视图，接入 LoRA 或自定义工作流。
-- **一键部署**：Windows 和 Mac 启动器自动完成 ComfyUI、运行环境与模型的部署，并复用已有模型；Windows 另支持离线运行环境包。
+- **一键部署**：Windows 和 Mac 启动器自动完成 ComfyUI、运行环境与模型的部署，可复用已有模型，并支持离线安装。
 
 ## 开始使用
 
@@ -45,12 +45,12 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 ### macOS（Apple 芯片预览版）
 
 1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。
-2. 打开 FreeVideo，选择新建或已有的 ComfyUI 目录。可添加已有模型目录以复用匹配文件；安装器会准备 Mac 原生运行环境。
-3. 点击 **安装并启动**，在浏览器中进入创作面板。
+2. 打开 FreeVideo，选择已有的 ComfyUI 目录或安装新的 ComfyUI。可添加已有的模型目录以复用文件，缺失的运行环境和模型会自动下载。
+3. 点击 **安装并启动**，浏览器中会打开带有 FreeVideo 创作面板的 ComfyUI。
 
-面向 Apple 芯片的预览版，已在 24GB 统一内存的 M5 Mac 上测试。内存预算跟随系统当前余量调整。Windows「运行环境」ZIP 用于 Windows，Mac 安装器会单独准备原生环境。
+预览版已在 24GB 统一内存的 M5 Mac 上测试，生成耗时与内存说明见 [Mac 说明](docs/Mac.zh-CN.md)。
 
-预览版尚未通过 Apple 公证。确认来自可信的 FreeVideo 下载后，按应用旁的 **Open FreeVideo.txt** 或 [Apple 的“仍要打开”说明](https://support.apple.com/102445)操作。生成耗时与内存说明见 [Mac 说明](docs/Mac.zh-CN.md)。
+首次打开时如果 macOS 提示无法验证开发者，在「系统设置 → 隐私与安全性」中点击「仍要打开」即可，详见应用旁的 **Open FreeVideo.txt** 或 [Apple 说明](https://support.apple.com/102445)。
 
 ### 已有 ComfyUI
 

@@ -30,7 +30,7 @@ OPEN_GUIDE = '''FreeVideo for Mac — 首次打开 / First open
 2. 从“应用程序”打开 FreeVideo，按安装器引导配置运行环境和模型。
 
 如果 macOS 提示无法验证开发者或无法检查恶意软件
-此预览版尚未通过 Apple 公证。仅在确认安装包来自 FreeVideo 官方发布渠道后：
+这是因为预览版暂未进行 Apple 公证。确认安装包来自 FreeVideo 官方发布渠道后：
 1. 先尝试打开 FreeVideo，再关闭系统提示。
 2. 打开“系统设置” → “隐私与安全”，向下找到 FreeVideo，点击“仍要打开”。
 3. 在确认窗口点击“打开”，按系统要求验证身份。
@@ -43,7 +43,7 @@ Install
 2. Open FreeVideo from Applications and follow the installer to set up the runtime and models.
 
 If macOS cannot verify the developer or check the app for malicious software
-This preview has not been notarized by Apple. Only if you trust the official FreeVideo download:
+This happens because the preview isn't notarized by Apple yet. If you downloaded FreeVideo from its official release:
 1. Try opening FreeVideo, then dismiss the system alert.
 2. Open System Settings → Privacy & Security, scroll to FreeVideo and click Open Anyway.
 3. Click Open in the confirmation and authenticate if asked.
