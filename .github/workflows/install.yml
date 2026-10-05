@@ -226,13 +226,16 @@ jobs:
           python scripts/verify_macos_build.py --build build/macos --out build/macos-verification
           build/macos/applications.noindex/FreeVideo.app/Contents/MacOS/FreeVideo --smoke-test "$RUNNER_TEMP/freevideo-smoke"
           python -c "import json, os; from pathlib import Path; value=json.loads((Path(os.environ['RUNNER_TEMP'])/'freevideo-smoke/smoke.json').read_text()); assert value['success'] and not value['model_modules_imported']"
+      # Artifacts keep paths below the files' common folder; stage both side by side.
+      - name: Stage the Mac launcher for publishing
+        run: |
+          mkdir -p build/macos-publish
+          cp build/macos/dist/FreeVideo-Mac-arm64.dmg build/macos/launcher-build.json build/macos-publish/
       - name: Keep the Mac launcher for publishing
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-launcher
-          path: |
-            build/macos/dist/FreeVideo-Mac-arm64.dmg
-            build/macos/launcher-build.json
+          path: build/macos-publish/
           if-no-files-found: error
           retention-days: 1
       - name: Keep failure diagnostics
