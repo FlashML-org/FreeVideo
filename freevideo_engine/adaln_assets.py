@@ -151,6 +151,80 @@ def validate_catalog(manifest, count):
     return result
 
 
+def optional_table(expected, manifest):
+    """Select only exact, published constants; LoRA/clock changes cannot match."""
+    catalog = json.loads(Path(__file__).with_name('prepared_models.json').read_text(encoding='utf-8'))
+    optional = catalog.get('optional_adaln', {})
+    table = next((t for t in optional.get('tables', []) if t['identity'] == expected), None)
+    if table is None:
+        return None
+    if (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', optional.get('repo', ''))
+            or not re.fullmatch('[0-9a-f]{40}', optional.get('revision', ''))):
+        raise ValueError('Optional sampling preset has no pinned source')
+    validate_catalog(dict(manifest, adaln_tables=[table]), len(projection_groups(manifest)))
+    prefix = optional['prefix']
+    asset_path(Path('.'), prefix)
+    return dict(table, download=dict(repo=optional['repo'], revision=optional['revision'], prefix=prefix))
+
+
+def _download_plan():
+    from . import network
+    from .paths import data_root
+    plan = network.installed_plan()
+    machine = data_root() / 'machine.json'
+    if not plan and machine.is_file():
+        installed = json.loads(machine.read_text(encoding='utf-8'))
+        plan = installed.get('network', {}) or {}
+        if not plan and installed.get('setup_run'):
+            setup = Path(installed['setup_run']) / 'plan.json'
+            if setup.is_file():
+                plan = json.loads(setup.read_text(encoding='utf-8')).get('network', {}) or {}
+    plan.setdefault('download_settings_path', str(data_root() / 'download-settings.json'))
+    plan.setdefault('sources', {}).setdefault('models', [{'id': 'official'}, {'id': 'hf-mirror'}])
+    return plan
+
+
+def download_table(root, table, index):
+    """Fetch a missing small table, preserving partials and user network choices.
+
+    A network failure must propagate, not fall back to downloading 26 GB of
+    projection weights. Valid locally computed tables are handled by TableCache
+    before reaching this function.
+    """
+    from . import network
+    from .monitoring import save
+    from .provision import model_headers
+    row = next(r for r in table['files'] if r['index'] == index)
+    path = asset_path(root, '%02d.safetensors' % index)
+    marker = path.with_suffix('.json')
+    if marker.is_file():
+        previous = json.loads(marker.read_text(encoding='utf-8'))
+        if any(previous.get(key) != row[key] for key in ('bytes', 'sha256')):
+            raise ValueError('Missing locally computed AdaLN table; original receipt retained: ' + str(path))
+    remaining = sum(r['bytes'] for r in table['files'] if
+                    not asset_path(root, '%02d.safetensors' % r['index']).is_file())
+    if shutil.disk_usage(root).free < remaining + 64 * 1024**2:
+        raise ValueError('Not enough disk space to prepare this sampling preset. Existing files retained.')
+    plan = _download_plan()
+    remote = table['download']
+    source = dict(repo=remote['repo'], revision=remote['revision'], file=remote['prefix']+'/'+row['file'])
+    total = sum(r['bytes'] for r in table['files'])
+    before = sum(r['bytes'] for r in table['files'] if r['index'] < index)
+    event = ('reference_assets_download' if table.get('task') in ('ref2va_audio', 'ref2va_av')
+             else 'sampling_preset_download')
+    def progress(done, size, speed, **kwargs):
+        print(json.dumps(dict(event=event, steps=len(table['identity']['timesteps']),
+            done_bytes=before+done, total_bytes=total, bytes_per_second=speed)), flush=True)
+    progress(0, row['bytes'], 0.)
+    network.download(network.model_urls(plan, source), path, row['sha256'], progress,
+        network=plan, size=row['bytes'], category='models', headers_for=model_headers, keep_partial=True,
+        stall_seconds=30, slow_seconds=15, low_speed_limit=64 * 1024)
+    check_table(path, row, table['identity'])
+    save(marker, dict(bytes=row['bytes'], sha256=row['sha256']))
+    progress(row['bytes'], row['bytes'], 0.)
+    return row
+
+
 def restore_projections(cache, manifest):
     """Opt-in by requesting an unsupported schedule or an AdaLN-changing LoRA.
 
@@ -184,15 +258,13 @@ def restore_projections(cache, manifest):
     print(json.dumps({'event': 'adaln_sources_required', 'bytes': needed,
                       'reason': 'Requested schedule or LoRA changes precomputed modulation',
                       'files': len(missing), 'revision': remote['revision']}), flush=True)
-    from huggingface_hub import get_token
-    token = get_token()
-    headers = ['Authorization: Bearer ' + token] if token else []
+    from .provision import model_headers
+    plan = _download_plan()
     prefix = remote.get('prefix', 'cache')
     asset_path(cache, prefix)  # Validate before constructing a remote URL.
     for row in missing:
-        url = 'https://huggingface.co/%s/resolve/%s/%s/%s' % (
-            remote['repo'], remote['revision'], prefix, row['file'])
-        network.download([('official', url)], asset_path(cache, row['file']), row['sha256'],
-                         size=row['bytes'], headers_for=lambda source: headers if source == 'official' else [],
-                         category='models')
+        source = dict(repo=remote['repo'], revision=remote['revision'], file=prefix+'/'+row['file'])
+        network.download(network.model_urls(plan, source), asset_path(cache, row['file']), row['sha256'],
+                         size=row['bytes'], headers_for=model_headers, network=plan, category='models',
+                         stall_seconds=30, slow_seconds=15, low_speed_limit=64 * 1024)
     return rows
