@@ -492,7 +492,7 @@ class Controller:
         self.setup.runner.token = validate(values.get('token', ''))
         url = local_url(values.get('url', ''))
         ready = False
-        if not values.get('repair'):
+        if not values.get('repair') and not values.get('sampling_caches'):
             try:
                 installation(source, {'FREEVIDEO_HOME': str(engine)})
                 ready = True
@@ -506,6 +506,7 @@ class Controller:
                 raise ValueError('Model folders must be a list of directory paths')
             extra = extra + ([values['models']] if values.get('models') else [])
             self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
+                sampling_caches=bool(values.get('sampling_caches')),
                 frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh)))
             row = self._wait_setup()
             self.state = dict(self.state, plan=row['plan'])

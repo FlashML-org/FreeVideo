@@ -38,6 +38,10 @@ export async function openSetup() {
     const copyLabel = node("label"); copyLabel.className = 'fv-check'; const copy = node("input"); copy.type = "checkbox";
     copyLabel.append(copy, node('span', t("Create independent copies (uses extra disk space)", "创建独立副本（额外占用磁盘）"))); inputs.append(copyLabel);
     inputs.append(note(t('Models are reused by default.', '默认直接复用已有模型。')));
+    const samplingLabel = node('label'); samplingLabel.className = 'fv-check';
+    const samplingCaches = node('input'); samplingCaches.type = 'checkbox';
+    const samplingText = node('span', t('Prepare all quality levels (optional)', '提前下载全部质量档位（可选）'));
+    samplingLabel.append(samplingCaches, samplingText); inputs.append(samplingLabel);
     const downloads = node('section');
     downloads.append(node('h3', t('Downloads', '下载')));
     const modeLabel = node('label', t('Connection', '连接模式'));
@@ -227,7 +231,7 @@ export async function openSetup() {
         catch(error) { probeButton.disabled=false; fail(error); }
     };
     const controls = () => {
-        for (const e of [root, extra, copy, inspect, use, hfToken, applyToken, clearToken]) e.disabled = busy;
+        for (const e of [root, extra, copy, samplingCaches, inspect, use, hfToken, applyToken, clearToken]) e.disabled = busy;
         cancel.disabled = !busy; install.disabled = busy || !planId || !accept.checked; accept.disabled = busy; inspect.classList.toggle("fv-primary", !planId); install.classList.toggle("fv-primary", Boolean(planId));
     };
     const invalidate = () => { planId = undefined; accept.checked = false; acceptLabel.hidden = true; controls(); };
@@ -241,7 +245,7 @@ export async function openSetup() {
     }
     applyToken.onclick = () => setToken(hfToken.value);
     clearToken.onclick = () => setToken('');
-    for (const e of [root, extra, copy]) e.oninput = invalidate;
+    for (const e of [root, extra, copy, samplingCaches]) e.oninput = invalidate;
     accept.onchange = controls;
     function showPlan(value) {
         plan.replaceChildren();
@@ -296,7 +300,7 @@ export async function openSetup() {
     }
     inspect.onclick = async () => {
         invalidate(); busy = true; controls();
-        try { render(await request("inspect", {root: root.value, extra_libraries: extra.value.split("\n").map(s => s.trim()).filter(Boolean), copy: copy.checked})); poll(); }
+        try { render(await request("inspect", {root: root.value, extra_libraries: extra.value.split("\n").map(s => s.trim()).filter(Boolean), copy: copy.checked, sampling_caches: samplingCaches.checked})); poll(); }
         catch (error) { busy = false; controls(); fail(error); }
     };
     install.onclick = async () => {
@@ -313,6 +317,8 @@ export async function openSetup() {
         const info = await request(); token = info.discovery.token; root.value = info.discovery.root;
         showDownloads(info.discovery.downloads);
         showResources(info.discovery.resources);
+        samplingText.textContent = t('Prepare all quality levels (optional)', '提前下载全部质量档位（可选）')
+            + (info.discovery.sampling_cache_bytes ? ' · ' + gib(info.discovery.sampling_cache_bytes) : '');
         paths.textContent = info.discovery.libraries.join("\n") || t("No model libraries found; add a folder above.", "没有发现模型目录，可在上方添加。");
         render(info.task);
         installation.open = !info.discovery.ready || busy;

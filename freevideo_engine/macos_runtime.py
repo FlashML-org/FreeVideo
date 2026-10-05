@@ -438,8 +438,16 @@ class Engine:
         finally:
             self.residency = None
 
-    def sample(self, conditioning, seed, *, width, height, frames, progress_offset=0, progress_total=None,
-               initial_latents=None, refine_steps=None):
+    def sample(self, *args, **kwargs):
+        from .refine_schedule import modulation
+        with modulation(self, kwargs.get('refine_schedule')) as prepared:
+            result = self._sample(*args, **kwargs)
+            if prepared is not None:
+                result[2]['refinement_schedule_preparation'] = prepared
+            return result
+
+    def _sample(self, conditioning, seed, *, width, height, frames, progress_offset=0, progress_total=None,
+               initial_latents=None, refine_steps=None, refine_schedule=None):
         import torch
         from .geometry import geometry, sampler_for_canvas
         from .sampling_progress import SamplingProgress
@@ -466,7 +474,8 @@ class Engine:
             raise ValueError('Refinement requires both initial latents and tail steps')
         if refining:
             from .refine import generate_latents, validate_tail
-            validate_tail(self.steps, refine_steps)
+            if refine_schedule is None:
+                validate_tail(self.steps, refine_steps)
         elif self.task.startswith('ref2va'):
             from .reference_sampler import generate_latents
         active_steps = refine_steps if refining else self.steps
@@ -493,7 +502,7 @@ class Engine:
                 canvas.update(conditioning_tokens(self.task, canvas, conditions))
                 self._plan_compute(canvas, prompt.shape[0])
                 previous_block_calls = self._block_metrics()
-                self.cursor.reset(self.steps - refine_steps if refining else 0)
+                self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else 0)
                 progress.start()
                 resident = getattr(self, 'resident_bytes', 0)
                 retention = (dict(resident_bytes=resident, working_reserve_bytes=self.reserve_bytes)
@@ -513,7 +522,7 @@ class Engine:
                     video, audio = sampler(self.model, prompt, tags, canvas['frames'], self.steps,
                                           seed, 'mps', step_seconds=durations,
                                           **(dict(conditions=conditions) if conditions else {}),
-                                          **(dict(initial_latents=initial_latents, refine_steps=refine_steps)
+                                          **(dict(initial_latents=initial_latents, refine_steps=refine_steps, refine_schedule=refine_schedule)
                                              if refining else {}))
                     self.backend.synchronize()
                     if not bool(video.isfinite().all()) or not bool(audio.isfinite().all()):
@@ -521,7 +530,8 @@ class Engine:
                     return video.cpu(), audio.cpu(), dict(device_backend='mps', canvas=canvas,
                         steps=active_steps, seed=seed, task=self.task, linear_compute=self.linear_compute,
                         refinement=(dict(base_steps=self.steps, steps=refine_steps,
-                            start_index=self.steps - refine_steps, restart_seed=seed) if refining else None),
+                            start_index=1 if refine_schedule else self.steps - refine_steps, restart_seed=seed,
+                            schedule=refine_schedule or 'original-tail') if refining else None),
                         weight_decoder=self.weight_decoder_name,
                         linear_attention=self.linear_policy,
                         hybrid_attention=self.hybrid_policy,
@@ -549,7 +559,7 @@ class Engine:
             self.residency = None
             self.backend.empty_cache()
 
-    def generate(self, conditioning, seed, *, width, height, frames, two_pass=True, refine_steps=2,
+    def generate(self, conditioning, seed, *, width, height, frames, two_pass=True, refine_steps=3,
                  upscaler_checkpoint=None, first_pass_saved=None, reuse_weights=False,
                  refinement_resident_bytes=None, phase_changed=None):
         """Optional cross-pass weight lifetime, isolated to this one request.
@@ -584,7 +594,7 @@ class Engine:
         metrics['shared_sampling_residency'] = self._shared_residency_final
         return video, audio, metrics
 
-    def _generate(self, conditioning, seed, *, width, height, frames, two_pass=True, refine_steps=2,
+    def _generate(self, conditioning, seed, *, width, height, frames, two_pass=True, refine_steps=3,
                   upscaler_checkpoint=None, first_pass_saved=None,
                   refinement_resident_bytes=None, phase_changed=None):
         """Use the shared canvas/schedule, including the original audio clock.
@@ -624,6 +634,7 @@ class Engine:
             phase_changed('refinement')
         result, sound, second = self.sample(conditioning, seed + sampling['restart_seed_offset'],
             **sampling['second'], initial_latents=(lifted, audio), refine_steps=refine_steps,
+            refine_schedule=sampling.get('refine_schedule'),
             progress_offset=self.steps, progress_total=sampling['total_steps'])
         if not torch.equal(sound, audio):
             raise ValueError('MPS refinement changed first-pass audio')

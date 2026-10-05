@@ -22,7 +22,7 @@ def validate_tail(base_steps, refine_steps):
 
 def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, num_steps,
                      seed, device, *, initial_latents, refine_steps, step_seconds=None,
-                     conditions=None, video_shift=12., audio_shift=3.):
+                     conditions=None, video_shift=12., audio_shift=3., refine_schedule=None):
     from diffusers import MiniMaxH3Scheduler
     from diffusers.modular_pipelines.minimax_h3.before_denoise import (
         MiniMaxH3PrepareLayoutStep, MiniMaxH3Ref2VAPrepareLayoutStep, patchify_video_latents)
@@ -34,7 +34,12 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
     from src.models.hybrid_transform import iter_hybrids, set_layout
     from src.inference.render import KEYFRAME_NOISE_AUG
 
-    validate_tail(num_steps, refine_steps)
+    if refine_schedule is not None:
+        from .refine_schedule import COMMUNITY
+        if refine_schedule != COMMUNITY or refine_steps != 3:
+            raise ValueError('Independent refinement requires the exact three-step schedule')
+    else:
+        validate_tail(num_steps, refine_steps)
     if not isinstance(initial_latents, (tuple, list)) or len(initial_latents) != 2:
         raise ValueError('Initial latents must contain normalized video and completed audio')
     video, audio = initial_latents
@@ -78,10 +83,15 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         set_layout(transformer, layout_from_indices(video_ids[condition_rows:], latent_frames, frame_h * frame_w,
             seq_len=positions.shape[0], frame_size=(frame_h, frame_w), text_indices=text_ids))
 
-    video_scheduler, audio_scheduler = MiniMaxH3Scheduler(shift=video_shift), MiniMaxH3Scheduler(shift=audio_shift)
-    video_scheduler.set_timesteps(num_steps, device=device)
-    audio_scheduler.set_timesteps(num_steps, device=device)
-    start = num_steps - refine_steps
+    if refine_schedule is not None:
+        from .refine_schedule import schedulers
+        video_scheduler, audio_scheduler = schedulers(device)
+        start = 1
+    else:
+        video_scheduler, audio_scheduler = MiniMaxH3Scheduler(shift=video_shift), MiniMaxH3Scheduler(shift=audio_shift)
+        video_scheduler.set_timesteps(num_steps, device=device)
+        audio_scheduler.set_timesteps(num_steps, device=device)
+        start = num_steps - refine_steps
     generator = torch.Generator(device).manual_seed(seed)
     # Match the pinned condition-first RNG order. Reference rows stay fixed
     # throughout the tail, even though the generated rows use a restart seed.

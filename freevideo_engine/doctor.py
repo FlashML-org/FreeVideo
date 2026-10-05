@@ -17,6 +17,7 @@ def doctor(*, probe=False, hardware=None, backends=None):
     backends = set(installed_backends() if backends is None else backends)
     paths = {'vdn': vdn_root(), 'base': base_path(), 'checkpoint': checkpoint_path(), 'comfy': comfy_root()}
     result = {'hardware': hardware.to_dict(), 'versions': versions,
+            'cuda_compatibility': hardware.cuda_compatibility(),
             'installed_attention_packages': sorted(backends),
             'paths': {k: {'path': str(p), 'exists': p.exists()} for k, p in paths.items()},
             'validation': 'Package and path discovery only. Run bench to check actual kernels and performance.'}

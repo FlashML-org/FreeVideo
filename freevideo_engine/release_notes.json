@@ -1,20 +1,22 @@
 {
   "schema": 1,
-  "product_version": "0.1.1",
+  "product_version": "0.1.3",
   "en": {
-    "summary": "Generation with audio or mixed references works again.",
+    "summary": "Four quality levels, improved two-pass sampling, and sharing exports.",
     "changes": [
-      "Image plus audio and other mixed-reference requests no longer fail while downloading reference resources; the default 8-step schedule uses small published tables instead of the original projection weights.",
-      "Reference resources follow your download source and connection settings, and resume after an interruption.",
-      "Reference-resource downloads show their progress."
+      "Choose Light, Medium, High or Max with the quality slider. Light enables two-pass acceleration by default; higher levels use 12, 16 or 20 steps.",
+      "Two-pass sampling now uses 8 initial steps and an independent 3-step refinement schedule.",
+      "Optionally install all quality caches during setup, or download only missing caches before your first run. Download time is kept separate from generation time.",
+      "Export a sharing image or video with generation statistics."
     ]
   },
   "zh": {
-    "summary": "修复音频及混合参考无法生成的问题。",
+    "summary": "四档质量滑块，更新二次采样与分享导出。",
     "changes": [
-      "修复图片加音频等混合参考在下载参考资源时失败的问题；默认 8 步改用已发布的小型调制表，不再下载原始投影权重。",
-      "参考资源按所选下载源和网络设置下载，中断后可继续。",
-      "下载参考资源时显示进度。"
+      "质量滑块提供四档。最低档默认开启二次采样加速，其余三档使用 12、16、20 步单采。",
+      "默认使用一采 8 步与独立时间表二采 3 步。",
+      "安装时可选下载全部档位缓存，也可首次运行前补装所需缓存；下载不计入生成耗时。",
+      "导出带生成统计的分享图片或视频。"
     ]
   }
 }

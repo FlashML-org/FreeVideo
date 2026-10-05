@@ -6,7 +6,7 @@
 </div>
 
 <p align="center">
-| <a href="https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe"><b>下载</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ 群</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>微信群</b></a> |
+| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Windows 下载</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>macOS 下载</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ 群</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>微信群</b></a> |
 </p>
 
 <p align="center"><a href="README.md">English</a> · 中文</p>
@@ -32,7 +32,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 ### Windows
 
-1. [下载 FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe) 并运行。
+1. [下载 FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe) 并运行。
 2. 选择已有的 ComfyUI 目录或安装新的 ComfyUI。可添加已有的模型目录以复用文件，缺失的模型会自动下载。
 3. 点击 **安装并启动**，浏览器中会打开带有 FreeVideo 创作面板的 ComfyUI。
 
@@ -44,7 +44,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 ### macOS（Apple 芯片预览版）
 
-1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。
+1. [下载 FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg)，打开后将 **FreeVideo.app** 拖入 **应用程序**。
 2. 打开 FreeVideo，选择已有的 ComfyUI 目录或安装新的 ComfyUI。可添加已有的模型目录以复用文件，缺失的运行环境和模型会自动下载。
 3. 点击 **安装并启动**，浏览器中会打开带有 FreeVideo 创作面板的 ComfyUI。
 

@@ -18,7 +18,7 @@ class ProgressState:
         # Only presentation fields. In particular, do not retain the prompt,
         # workflow, paths, device identity or full resource forecast here.
         keys = ('label', 'detail', 'phase', 'stage', 'timing_phase', 'done', 'total',
-                'unit', 'block', 'blocks', 'elapsed_seconds', 'step_elapsed_seconds',
+                'unit', 'bytes_per_second', 'block', 'blocks', 'elapsed_seconds', 'step_elapsed_seconds',
                 'estimated_step_seconds', 'remaining_seconds', 'display_fraction',
                 'estimated', 'uniform_remaining_steps', 'overall', 'retry', 'warning', 'kernel_cache_note',
                 'new_request', 'reset', 'result', 'report_id')

@@ -51,7 +51,7 @@ class Session:
         home = Path(os.environ.get('USERPROFILE') or os.environ.get('HOME') or launcher_root().parent)
         self.form = dict(comfy='', destination=str(home / 'FreeVideo'), engine='', python='',
                          url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
-                         separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[])
+                         separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[], sampling_caches=False)
         self.form.update({k: v for k, v in saved.items() if k in self.form})
         if 'environment_method' not in saved and self.form['offline_runtime']:
             self.form['environment_method'] = 'manual'
@@ -151,7 +151,7 @@ class Session:
             self.token = validate(str(value)); return
         if key not in self.form or self.controller.busy or self.importer.busy:
             return
-        if key in ('separate', 'repair', 'new_comfy'):
+        if key in ('separate', 'repair', 'new_comfy', 'sampling_caches'):
             value = bool(value)
         if key == 'environment_method' and value not in ('auto', 'manual'):
             raise ValueError('Unknown environment installation method')
@@ -623,6 +623,7 @@ class Session:
                     current_release=public_details(self.updater.current) if self.updater else self.release_details,
                     installed=self.installed_version(), phase=self.update_phase(), key=key,
                     channel=self.updater.current.get('channel') if self.updater else None,
+                    track=self.updater.current.get('track', 'stable') if self.updater else 'stable',
                     manual=bool(self.updater and self.updater.current.get('packaging') in ('onedir', 'app')))
         due = ((view.get('candidate') and row['status'] in ('available', 'ready', 'error'))
                or (view['engine'] and self.page == 'launcher'))
@@ -637,7 +638,7 @@ class Session:
         from .release_notes import public_details
         candidate = view.get('candidate') or {}
         value = dict(version=__version__, phase=view['phase'], status=view.get('status'),
-                     progress=view.get('progress'), manual=view['manual'], channel=view['channel'],
+                     progress=view.get('progress'), manual=view['manual'], channel=view['channel'], track=view['track'],
                      candidate=public_details(candidate) if candidate.get('version') else None,
                      engine=dict(view['current_release'], pending=view['engine'], installed=view['installed']),
                      error=str(view.get('error') or '')[:500])
@@ -764,6 +765,8 @@ class Session:
                   'verifying': ('Transfer complete · verifying (no re-download)', '传输完成 · 正在校验（不会重复下载）'),
                   'paused': ('Paused', '已暂停')}
         for name in FAMILIES:
+            if name == 'sampling' and name not in by_id and not self.form['sampling_caches']:
+                continue
             item = dict(by_id.get(name, {}))
             state = 'ready' if ready else item.get('state', 'waiting')
             if state == 'waiting' and item.get('download_bytes'):
@@ -804,7 +807,8 @@ class Session:
                 route = self.t('direct', '直连') if entry.get('route') == 'direct' else self.t('current connection', '当前连接')
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
-        return dict(version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
+        from .sampling_assets import total_bytes
+        return dict(sampling_cache_bytes=total_bytes(), version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy,
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),

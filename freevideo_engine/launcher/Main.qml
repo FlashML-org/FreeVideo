@@ -110,12 +110,12 @@ ApplicationWindow {
         Rectangle { width: 1; color: theme.border; anchors.right: parent.right; height: parent.height }
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 16; spacing: 4
-            // The app icon alone is the brand mark.
+            // The FreeVideo wordmark, as in the creative workspace header.
             Image {
-                objectName: "brandIcon"
-                source: "../assets/icon.png"; sourceSize.width: 96; sourceSize.height: 96
-                Layout.preferredWidth: 40; Layout.preferredHeight: 40
-                Layout.topMargin: 6; Layout.leftMargin: 6; Layout.bottomMargin: 24
+                objectName: "brandWordmark"
+                source: "../assets/wordmark.png"; fillMode: Image.PreserveAspectFit
+                Layout.preferredWidth: 150; Layout.preferredHeight: 25
+                Layout.topMargin: 14; Layout.leftMargin: 6; Layout.bottomMargin: 31
                 smooth: true; mipmap: true
                 Accessible.role: Accessible.Graphic; Accessible.name: "FreeVideo"
             }
@@ -462,6 +462,16 @@ ApplicationWindow {
                         }
                         FMeter { visible: ["running", "preparing"].indexOf(s.offline.status) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
                         FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                    }
+                    FCard {
+                        visible: !usingRuntime; Layout.fillWidth: true; padding: 16
+                        FSwitch {
+                            objectName: "samplingCaches"; Layout.fillWidth: true
+                            text: t("Prepare all quality levels", "提前下载全部质量档位")
+                            detail: t("Optional sampling caches · ", "可选采样缓存 · ") + bytes(s.sampling_cache_bytes)
+                            checked: !!s.form.sampling_caches; enabled: !s.busy
+                            onToggled: backend.edit("sampling_caches", checked)
+                        }
                     }
                     FText { visible: s.offline.models > 0; text: "✓  " + t("Model packages: ", "已导入模型包：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
