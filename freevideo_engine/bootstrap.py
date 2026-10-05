@@ -185,12 +185,21 @@ def inventory(gpu=None):
     if len(matches) != 1:
         raise ValueError('Select one physical GPU by nvidia-smi index or full UUID with --gpu. MIG is not supported.')
     selected = matches[0]
+    try:
+        capability = tuple(map(int, selected['compute_cap'].split('.')))
+        if len(capability) != 2:
+            capability = (0, 0)
+    except (TypeError, ValueError):
+        # Keep the raw driver result in inventory for the exported report.
+        # Unknown must not be presented as an unsupported old GPU architecture.
+        capability = (0, 0)
     ram = system_memory()
     limit, available = cgroup_capacity()
-    hardware = Hardware(selected['name'], tuple(map(int, selected['compute_cap'].split('.'))),
+    hardware = Hardware(selected['name'], capability,
         int(float(selected['memory.total']) * 2**20), int(float(selected['memory.free']) * 2**20),
         ram['total_bytes'], min(ram['available_bytes'], available) if available is not None else ram['available_bytes'],
-        platform.system(), cgroup_ram_limit=limit)
+        platform.system(), cgroup_ram_limit=limit, gpu_uuid=selected['uuid'],
+        driver_version=selected['driver_version'])
     return {'hardware': hardware.to_dict(), 'selected_gpu': selected, 'gpus': rows,
             'kernel': platform.release(), 'platform': platform.platform(), 'machine': platform.machine(),
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
@@ -256,8 +265,10 @@ def plan(args, *, local_progress=None):
             errors.append('Windows uses the pinned, verified Sage2 wheel; --rebuild-sage is a Linux source-build option.')
         if int(snapshot['selected_gpu']['driver_version'].split('.')[0]) < 580:
             errors.append('NVIDIA driver 580 or newer is required by the pinned CUDA 13 encoder; update the driver first.')
-        if hardware.capability not in ((8, 0), (8, 6), (8, 9), (9, 0), (12, 0)):
-            errors.append('The one-click profiles currently target SM80/86, SM89, SM90 and SM120.')
+        compatibility = hardware.cuda_compatibility()
+        if compatibility['error']:
+            errors.append(compatibility['error'])
+        snapshot['cuda_compatibility'] = compatibility
         for name in () if windows_target else ('git', 'compiler'):
             if not snapshot.get(name):
                 errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
@@ -440,6 +451,8 @@ def plan(args, *, local_progress=None):
     if mac_target:
         from .macos_bootstrap import describe_plan
         describe_plan(value)
+    else:
+        value['cuda_compatibility'] = compatibility
     return value
 
 

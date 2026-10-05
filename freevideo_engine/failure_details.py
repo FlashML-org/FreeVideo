@@ -91,6 +91,14 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
+        (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
+         ('This GPU lacks the required compute support', '这张显卡不满足当前计算要求'),
+         ('The detected GPU and compute capability are shown below. The CUDA runtime requires native BF16 computation (SM80 or newer). Use a compatible GPU; changing the driver does not change its hardware capability.',
+          '下方显示实际显卡和计算能力。当前 CUDA 引擎要求原生 BF16 计算（SM80 及以上）；需要使用兼容显卡，更新驱动无法改变显卡的硬件能力。')),
+        (r'CUDA_CAPABILITY_UNKNOWN', 'gpu-detection',
+         ('The GPU architecture could not be read', '未能读取显卡架构'),
+         ('Retry hardware detection. If it still fails, export the report; it includes the GPU identity and the raw driver query.',
+          '请重试硬件检测。仍失败时导出报告，其中包含显卡信息和驱动查询的原始结果。')),
         (r'ComfyUI is still running a job', 'busy',
          ('A video is still generating', '还有视频正在生成'),
          ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
