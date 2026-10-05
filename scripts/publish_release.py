@@ -113,9 +113,8 @@ def checksums(builds):
 
 
 def stable_body(builds, tag):
-    rows = [LOGO]
-    rows += whats_new(builds[CHANNEL]['raw'])
-    rows += ['## Download / 下载', ''] + downloads(PAGE + '/releases/download/' + tag + '/')
+    # Visitors come to download: the files come first, then what changed.
+    rows = [LOGO, '## Download / 下载', ''] + downloads(PAGE + '/releases/download/' + tag + '/')
     rows += ['**Windows:** run FreeVideo.exe, choose an existing ComfyUI folder or install a new one, then click '
              '**Install & launch**. Offline packages are on [Quark](https://pan.quark.cn/s/c51235b84618).',
              '',
@@ -128,6 +127,7 @@ def stable_body(builds, tag):
              '**macOS：** 打开 DMG，将 FreeVideo.app 拖入「应用程序」。首次打开如需确认，请参考'
              '[首次打开步骤](%s/blob/main/docs/Mac.zh-CN.md#首次打开)。' % PAGE,
              '']
+    rows += whats_new(builds[CHANNEL]['raw'])
     rows += checksums(builds)
     rows += [COMMUNITY, '']
     return '\n'.join(rows)
