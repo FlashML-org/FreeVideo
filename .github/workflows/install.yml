@@ -35,6 +35,7 @@ jobs:
           for file in web/*.js; do node --input-type=module --check < "$file"; done
           node scripts/test_freevideo_entry.mjs
           node scripts/test_prompt_guide.mjs
+          node scripts/test_progress_connection.mjs
       - name: Check CLI, ComfyUI entry and packaged resources
         run: |
           python scripts/check_installation.py
