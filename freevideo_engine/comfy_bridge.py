@@ -580,7 +580,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         if preparation['seconds']:
             started += preparation['seconds']
             whole_progress = WholeVideoProgress()
-            send_progress({'reset': True})
+            send_progress({'reset': True, 'label': 'Preparing video'})
         whole_progress.sampling_plan = planned
         whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
         send_progress({'label': 'Preparing %.3f s video + audio · %d × %d' %
