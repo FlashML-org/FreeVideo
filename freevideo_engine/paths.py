@@ -17,6 +17,22 @@ def model_root():
     return Path(os.environ.get('FREEVIDEO_MODEL_ROOT', data_root() / 'models')).expanduser()
 
 
+def installed_model_root():
+    """The model folder setup recorded (models/vdn), unless explicitly overridden.
+
+    Engine processes only receive FREEVIDEO_HOME, where model_root() means
+    models/. Files setup downloads, such as the latent upscaler and sampling
+    tables, live in the recorded folder.
+    """
+    if not os.environ.get('FREEVIDEO_MODEL_ROOT'):
+        import json
+        try:
+            return Path(json.loads((data_root() / 'machine.json').read_text(encoding='utf-8'))['model_root']).expanduser()
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return model_root()
+
+
 def add_vdn():
     root = vdn_root().resolve()
     if not (root / 'src/models/hybrid_attention.py').is_file():

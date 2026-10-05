@@ -560,7 +560,7 @@ def _run(args):
                 tokens = next((row['observation'].get('text_tokens', row.get('geometry', {}).get('text_tokens'))
                     for row in reversed(observations)
                     if row['observation'].get('conditioning_sha256') == condition_hash), None)
-            if state and args.attention == 'auto' and tokens is not None and sampling_plan['version'] == 1:
+            if state and args.attention == 'auto' and tokens is not None and sampling_plan['version'] in (1, 3):
                 profile, applied = tuning.apply_profile(state, profile, canvas, tokens)
                 report['profile'] = profile
                 report['tuning']['profile_id'] = applied

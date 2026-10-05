@@ -563,13 +563,14 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             send_progress({'label': 'Reused previous result', 'phase': 'complete',
                            'result_cache_hit': True})
             return reused
-        from .sampling_assets import prepare as prepare_sampling_assets
+        from .sampling_assets import engine_task, prepare as prepare_sampling_assets
         def asset_progress(message):
             if progress:
                 progress(dict(message, report_id=report_id))
         preparation_started = time.monotonic()
         try:
-            preparation = prepare_sampling_assets(root, machine, planned, task_for(extra.get('media', {})),
+            # Reference audio selects its own tables; match the encoder's choice.
+            preparation = prepare_sampling_assets(root, machine, planned, engine_task(extra.get('media', {}), run),
                 progress=asset_progress, interrupted=interrupted, environ=environment)
         except BaseException:
             elapsed = time.monotonic() - preparation_started

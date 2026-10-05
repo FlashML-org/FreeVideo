@@ -121,8 +121,11 @@ def same_strategy(left, right):
 
 
 def checkpoint_path():
-    from .paths import model_root
-    return model_root() / 'latent_upscaler' / Path(UPSCALER['file']).name
+    """Setup's copy; an older lazily downloaded copy under models/ stays in use."""
+    from .paths import installed_model_root, model_root
+    installed = installed_model_root() / 'latent_upscaler' / Path(UPSCALER['file']).name
+    earlier = model_root() / 'latent_upscaler' / installed.name
+    return earlier if earlier.is_file() and not installed.is_file() else installed
 
 
 def ensure_checkpoint():

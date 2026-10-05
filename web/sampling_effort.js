@@ -1,10 +1,18 @@
 // One editor control. The queued request remains an immutable graph snapshot.
+// Each level is a complete plan: Light is two-pass 8 + 3; the others sample once.
 export const SAMPLING_EFFORTS = Object.freeze([
-    {name: 'Light', steps: 8, color: '#90b9b2'},
-    {name: 'Medium', steps: 12, color: '#8aafd3'},
-    {name: 'High', steps: 16, color: '#a8a6d4'},
-    {name: 'Max', steps: 20, color: '#c4ae8d'},
+    {name: 'Light', zh: '轻量', steps: 8, twoPass: true, color: '#90b9b2'},
+    {name: 'Medium', zh: '标准', steps: 12, twoPass: false, color: '#8aafd3'},
+    {name: 'High', zh: '精细', steps: 16, twoPass: false, color: '#a8a6d4'},
+    {name: 'Max', zh: '极致', steps: 20, twoPass: false, color: '#c4ae8d'},
 ].map(Object.freeze));
+
+export const effortName = (t, tier) => t(tier.name, tier.zh);
+
+// The level a plan matches, or undefined for custom steps.
+export function effortFor(steps, twoPass, refine) {
+    return SAMPLING_EFFORTS.find(tier => tier.steps === steps && tier.twoPass === twoPass && (!twoPass || refine === 3));
+}
 
 export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; };
@@ -30,9 +38,9 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         fill.style.width = `${position / 3 * 100}%`;
         const index = Math.round(position), tier = SAMPLING_EFFORTS[index];
         element.style.setProperty('--fv-effort-color', tier.color);
-        selectedLabel.textContent = tier.name;
+        selectedLabel.textContent = effortName(t, tier);
         rail.setAttribute('aria-valuenow', String(index));
-        rail.setAttribute('aria-valuetext', `${tier.name}, ${tier.steps}${twoPass && tier.steps === 8 ? ' + 3' : ''} ${t('steps', '步')}`);
+        rail.setAttribute('aria-valuetext', `${effortName(t, tier)}, ${tier.steps}${tier.twoPass ? ' + 3' : ''} ${t('steps', '步')}`);
     }
     function position(event) {
         const box = rail.getBoundingClientRect();
@@ -40,23 +48,23 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     }
     function commit(index) {
         selected = index; custom.hidden = true; delete element.dataset.custom;
-        paint(index); onChange(SAMPLING_EFFORTS[index].steps, 3);
+        paint(index); onChange(SAMPLING_EFFORTS[index]);
     }
     function cancel() {
         const id = pointer; pointer = null; delete rail.dataset.dragging;
         if (id !== null && rail.hasPointerCapture(id)) rail.releasePointerCapture(id);
         update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, disabled});
-        onPreview(currentSteps);
+        onPreview(null);
     }
     rail.onpointerdown = event => {
         if (disabled || event.button !== 0 || pointer !== null) return;
         event.preventDefault(); rail.focus(); pointer = event.pointerId;
         rail.setPointerCapture(pointer); rail.dataset.dragging = 'true';
-        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)].steps);
+        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)]);
     };
     rail.onpointermove = event => {
         if (event.pointerId !== pointer) return;
-        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)].steps);
+        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)]);
     };
     rail.onpointerup = event => {
         if (event.pointerId !== pointer) return;
@@ -81,9 +89,10 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         if (pointer !== null) return;
         const exact = SAMPLING_EFFORTS.findIndex(v => v.steps === currentSteps);
         selected = exact < 0 ? SAMPLING_EFFORTS.reduce((best, v, i) => Math.abs(v.steps - currentSteps) < Math.abs(SAMPLING_EFFORTS[best].steps - currentSteps) ? i : best, 0) : exact;
-        const isCustom = exact < 0 || (twoPass && currentRefine !== 3);
+        const isCustom = !effortFor(currentSteps, twoPass, currentRefine);
         element.dataset.custom = String(isCustom); custom.hidden = !isCustom;
-        custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${t('steps', '步')}`;
+        const unit = currentSteps === 1 && !twoPass ? t('step', '步') : t('steps', '步');
+        custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`;
         paint(selected);
         if (isCustom) { rail.setAttribute('aria-valuetext', custom.textContent); selectedLabel.textContent=t('Custom','自定义'); }
         rail.title = disabled ? t('Controlled by connected nodes.', '由连接的节点控制。')

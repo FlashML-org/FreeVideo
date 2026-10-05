@@ -319,6 +319,8 @@ export async function openSetup() {
         showResources(info.discovery.resources);
         samplingText.textContent = t('Prepare all quality levels (optional)', '提前下载全部质量档位（可选）')
             + (info.discovery.sampling_cache_bytes ? ' · ' + gib(info.discovery.sampling_cache_bytes) : '');
+        // New installations prepare every quality level; a ready one adds them only when chosen.
+        samplingCaches.checked = !info.discovery.ready;
         paths.textContent = info.discovery.libraries.join("\n") || t("No model libraries found; add a folder above.", "没有发现模型目录，可在上方添加。");
         render(info.task);
         installation.open = !info.discovery.ready || busy;

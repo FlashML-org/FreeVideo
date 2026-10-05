@@ -1,6 +1,7 @@
 """Small Windows desktop helpers; no admin rights or persistent settings."""
 from contextlib import contextmanager
 import sys
+import threading
 from .system import windows
 
 
@@ -36,21 +37,38 @@ def hidden_console():
     return dict(startupinfo=info)
 
 
+_DLL_LOCK = threading.Lock()
+_DLL_USERS = 0
+_DLL_PREVIOUS = None
+
+
 @contextmanager
 def external_python():
-    """Keep PyInstaller's private DLL search directory out of external Python."""
-    previous = None
-    if windows() and getattr(sys, 'frozen', False):
-        import ctypes
-        buffer = ctypes.create_unicode_buffer(32768)
-        ctypes.windll.kernel32.GetDllDirectoryW(len(buffer), buffer)
-        previous = buffer.value
-        ctypes.windll.kernel32.SetDllDirectoryW(None)
+    """Keep PyInstaller's private DLL search directory out of external Python.
+
+    The directory is process-wide and parallel source probes start several curl
+    processes at once: clear it for the first user and restore it after the last,
+    so overlapping callers cannot leave the launcher without its DLL directory.
+    """
+    global _DLL_USERS, _DLL_PREVIOUS
+    if not (windows() and getattr(sys, 'frozen', False)):
+        yield
+        return
+    import ctypes
+    with _DLL_LOCK:
+        if not _DLL_USERS:
+            buffer = ctypes.create_unicode_buffer(32768)
+            ctypes.windll.kernel32.GetDllDirectoryW(len(buffer), buffer)
+            _DLL_PREVIOUS = buffer.value
+            ctypes.windll.kernel32.SetDllDirectoryW(None)
+        _DLL_USERS += 1
     try:
         yield
     finally:
-        if previous is not None:
-            ctypes.windll.kernel32.SetDllDirectoryW(previous)
+        with _DLL_LOCK:
+            _DLL_USERS -= 1
+            if not _DLL_USERS:
+                ctypes.windll.kernel32.SetDllDirectoryW(_DLL_PREVIOUS or None)
 
 
 @contextmanager

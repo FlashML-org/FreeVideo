@@ -64,12 +64,12 @@ class TableCache:
         self.optional_download_bytes = 0
         self.root = Path(root) / assets.directory(self.identity)
         self.producer = None
+        self.shared = None
         if self.asset is None:
-            from .paths import model_root
+            # Published tables installed by setup or the request preflight.
+            from .paths import installed_model_root
             from .sampling_assets import cache_root
-            shared = cache_root(model_root()) / assets.directory(self.identity)
-            if shared.is_dir():
-                self.root = shared
+            self.shared = cache_root(installed_model_root()) / assets.directory(self.identity)
         if self.asset is not None:
             if self.asset['directory'] != self.root.name:
                 raise ValueError('AdaLN asset identity/path mismatch')
@@ -126,6 +126,9 @@ class TableCache:
             raise ValueError('AdaLN cache schedule length mismatch')
         path = self.root / f'{index:02d}.safetensors'
         marker = path.with_suffix('.json')
+        if self.asset is None and not (path.is_file() and marker.is_file()) and self.shared is not None:
+            path = self.shared / path.name
+            marker = path.with_suffix('.json')
         if self.asset is not None:
             row = next((r for r in self.asset['files'] if r['index'] == index), None)
             if row is None:
@@ -133,7 +136,8 @@ class TableCache:
         elif not path.is_file() or not marker.is_file():
             if self.optional_asset is None:
                 return None
-            row = assets.download_table(self.root, self.optional_asset, index)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            row = assets.download_table(path.parent, self.optional_asset, index)
             self.optional_downloaded.add(index)
             self.optional_download_bytes += row['bytes']
         else:

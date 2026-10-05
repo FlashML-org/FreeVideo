@@ -1,6 +1,6 @@
 import {api} from '../../scripts/api.js';
 import {closeDialog} from './motion.js';
-import {SAMPLING_EFFORTS} from './sampling_effort.js';
+import {effortFor, effortName} from './sampling_effort.js';
 
 const css=document.createElement('link'); css.rel='stylesheet'; css.href=new URL('./share.css',import.meta.url).href; document.head.append(css);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -34,8 +34,9 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     fit(gpu,21,w-320);ctx.fillStyle='#a9b8ca';ctx.textAlign='right';ctx.fillText(gpu,w-pad,y+52);ctx.textAlign='left';
     ctx.fillStyle='#2a3746';ctx.fillRect(pad,y+82,w-pad*2,1);
     const p=record.sampling_plan||{},steps=p.base_steps,refine=p.enabled?p.refine_steps:0;
-    const tier=SAMPLING_EFFORTS.find(r=>r.steps===steps&&(!p.enabled||(steps===8&&[2,3].includes(refine))));
-    const tierName=tier?.name||(steps?t('Custom','自定义'):'—');
+    // Results made with the earlier 8 + 2 default count as Light.
+    const tier=effortFor(steps,!!p.enabled,p.enabled&&steps===8&&refine===2?3:refine);
+    const tierName=tier?effortName(t,tier):(steps?t('Custom','自定义'):'—');
     const unified=record.memory_model==='unified';
     const items=[
         [t('Generation time','生成耗时'),duration(record.request_seconds),t('Sampling ','采样 ')+duration(record.sample_seconds),'#edf3fc'],

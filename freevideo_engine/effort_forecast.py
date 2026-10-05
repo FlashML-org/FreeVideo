@@ -17,6 +17,15 @@ def positive(value):
     return type(value) in (float, int) and math.isfinite(value) and value > 0
 
 
+def same_device(hardware, device):
+    """NVIDIA GPUs match by UUID; Macs by chip and unified memory (no UUID)."""
+    if isinstance(device, dict):
+        return (device.get('backend') == 'mps' and hardware.get('device_backend') == 'mps'
+                and bool(device.get('name')) and hardware.get('gpu_name') == device['name']
+                and hardware.get('ram_total') == device.get('unified_ram_bytes'))
+    return bool(device) and hardware.get('gpu_uuid') == device
+
+
 def timing_record(report, gpu_uuid, system):
     if not isinstance(report, dict) or report.get('success') is not True:
         return None
@@ -25,7 +34,7 @@ def timing_record(report, gpu_uuid, system):
             or video.get('first_pass_reused') or video.get('phase') != 'complete'):
         return None
     hardware = report.get('profile', {}).get('policy', {}).get('hardware', {})
-    if not gpu_uuid or hardware.get('gpu_uuid') != gpu_uuid or hardware.get('system') != system:
+    if not same_device(hardware, gpu_uuid) or hardware.get('system') != system:
         return None
     shape = report.get('geometry', {})
     plan = report.get('sampling_plan') or shape.get('sampling_plan') or {}
@@ -119,7 +128,7 @@ def local_records(output_directory, gpu_uuid, *, system=None):
     """Bounded recent JSON reads, cached between slider changes; never open MP4s."""
     system = system or platform.system()
     root = Path(output_directory).resolve() / 'FreeVideo'
-    key = (str(root), gpu_uuid, system)
+    key = (str(root), json.dumps(gpu_uuid, sort_keys=True), system)
     now = time.monotonic()
     cached = _CACHE.get(key)
     if cached and now - cached[0] < 15:
