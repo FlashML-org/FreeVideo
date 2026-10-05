@@ -91,7 +91,8 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         selected = exact < 0 ? SAMPLING_EFFORTS.reduce((best, v, i) => Math.abs(v.steps - currentSteps) < Math.abs(SAMPLING_EFFORTS[best].steps - currentSteps) ? i : best, 0) : exact;
         const isCustom = !effortFor(currentSteps, twoPass, currentRefine);
         element.dataset.custom = String(isCustom); custom.hidden = !isCustom;
-        custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${t('steps', '步')}`;
+        const unit = currentSteps === 1 && !twoPass ? t('step', '步') : t('steps', '步');
+        custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`;
         paint(selected);
         if (isCustom) { rail.setAttribute('aria-valuetext', custom.textContent); selectedLabel.textContent=t('Custom','自定义'); }
         rail.title = disabled ? t('Controlled by connected nodes.', '由连接的节点控制。')

@@ -246,7 +246,7 @@ export function openStudio(node) {
         input.onchange = () => input.reportValidity();
         samplingFields.append(field(label, input));
     }
-    // Apply the two-pass rule to committed, valid values only, never while typing.
+    // Apply the two-pass rule to committed values, never while typing.
     baseSteps.onchange = () => {
         // Before validation: one step is valid only once two-pass is off.
         const steps = Number(baseSteps.value);
