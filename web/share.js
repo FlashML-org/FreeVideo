@@ -36,9 +36,12 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     const p=record.sampling_plan||{},steps=p.base_steps,refine=p.enabled?p.refine_steps:0;
     const tier=SAMPLING_EFFORTS.find(r=>r.steps===steps&&(!p.enabled||refine===2));
     const tierName=tier?.name||(steps?t('Custom','自定义'):'—');
+    const unified=record.memory_model==='unified';
     const items=[
         [t('Generation time','生成耗时'),duration(record.request_seconds),t('Sampling ','采样 ')+duration(record.sample_seconds),'#edf3fc'],
-        [t('Peak VRAM · PyTorch','显存峰值 · PyTorch'),memory(record.vram_peak_bytes),'RAM '+memory(record.ram_peak_bytes),'#edf3fc'],
+        [unified?t('Process RAM peak','进程内存峰值'):t('Peak VRAM · PyTorch','显存峰值 · PyTorch'),
+            memory(unified?record.ram_peak_bytes:record.vram_peak_bytes),
+            unified?t('Unified memory ','统一内存 ')+memory(record.unified_total_bytes):'RAM '+memory(record.ram_peak_bytes),'#edf3fc'],
         [t('Sampling effort','采样档位'),tierName,steps?`${steps}${refine?' + '+refine:''} ${t('steps','步')}`:'',tier?.color||'#b4bed0'],
     ];
     const col=(w-pad*2)/3;

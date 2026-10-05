@@ -24,10 +24,11 @@ def details(root, identity):
     report = _report(path)
     summary = output_summary(report, Path('FreeVideo')/identity/'video.mp4')
     hardware = report.get('profile', {}).get('policy', {}).get('hardware', {})
-    numeric = ('sample_seconds', 'request_seconds', 'vram_peak_bytes', 'ram_peak_bytes')
+    numeric = ('sample_seconds', 'request_seconds', 'vram_peak_bytes', 'ram_peak_bytes', 'unified_total_bytes')
     result = {key: summary[key] if type(summary.get(key)) in (int, float)
               and math.isfinite(summary[key]) and summary[key] >= 0 else None for key in numeric}
     result['gpu'] = str(hardware.get('gpu_name') or '')[:120]
+    result['memory_model'] = 'unified' if summary.get('memory_model') == 'unified' else 'dedicated'
     result['geometry'] = {k: v for k, v in (summary.get('geometry') or {}).items()
                           if k in ('width', 'height', 'frames', 'fps', 'seconds')
                           and type(v) in (float, int) and math.isfinite(v) and v > 0}
