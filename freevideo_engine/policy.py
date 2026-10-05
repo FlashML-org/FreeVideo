@@ -482,8 +482,9 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                 raise ValueError('Reference token counts must be nonnegative integers')
             reference_rows += count
     effective_tokens = canvas['video_tokens'] + reference_rows if canvas is not None else None
-    if hardware.capability < (8, 0):
-        raise ValueError('This engine targets Ampere and newer NVIDIA GPUs.')
+    compatibility = hardware.cuda_compatibility()
+    if compatibility['error']:
+        raise ValueError(compatibility['error'])
     budget = resource_budget(hardware, vram_gib=vram_gib, ram_gib=ram_gib,
                              gpu_reserve_gib=gpu_reserve_gib, ram_reserve_gib=ram_reserve_gib)
     gpu_total, ram_total = budget['gpu_capacity_bytes'], budget['ram_capacity_bytes']

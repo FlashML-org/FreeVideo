@@ -26,15 +26,56 @@ class Hardware:
 
     @property
     def architecture(self):
-        if self.capability in ((8, 0), (8, 6)):
+        if len(self.capability) != 2 or any(type(v) is not int for v in self.capability):
+            return 'other'
+        if (8, 0) <= self.capability < (8, 9):
             return 'ampere'
         if self.capability == (8, 9):
             return 'ada'
-        if self.capability == (9, 0):
+        if self.capability[0] == 9:
             return 'hopper'
+        if self.capability in ((10, 0), (10, 3)):
+            return 'blackwell-datacenter'
+        if self.capability == (11, 0):
+            return 'blackwell-tegra'
+        if self.capability == (12, 1):
+            return 'blackwell-unified'
         if self.capability[0] == 12:
             return 'blackwell-rtx'
         return 'other'
+
+    def cuda_compatibility(self):
+        """The engine's arithmetic floor, not a GPU model or performance allowlist.
+
+        Passing this check permits setup. The installed Torch, Triton and
+        attention kernels must still execute successfully on the selected GPU.
+        CPU architecture/platform and driver requirements are checked separately.
+        """
+        capability = self.capability
+        known = (len(capability) == 2 and all(type(v) is int for v in capability)
+                 and capability[0] > 0 and 0 <= capability[1] <= 9)
+        sm = '%d%d' % capability if known else 'unknown'
+        admitted = known and capability >= (8, 0)
+        status = ('probe-required' if admitted else
+                  'CUDA_ARCH_UNSUPPORTED' if known else 'CUDA_CAPABILITY_UNKNOWN')
+        detail = '%s (SM%s; compute capability %s; driver %s)' % (
+            self.gpu_name, sm, '.'.join(map(str, capability)) if known else 'unknown',
+            self.driver_version or 'unknown')
+        error = None
+        if not admitted:
+            if known:
+                error = ('[CUDA_ARCH_UNSUPPORTED] ' + detail + '. FreeVideo requires '
+                         'native BF16 GPU computation (compute capability 8.0 / SM80 or newer). '
+                         'This GPU is below that hardware requirement; a driver update cannot add it.')
+            else:
+                error = ('[CUDA_CAPABILITY_UNKNOWN] Could not determine the CUDA architecture of '
+                         + detail + '. GPU detection did not return a valid compute capability. '
+                         'Retry detection or export the report for the driver query result.')
+        return dict(status=status, admitted=admitted, gpu_name=self.gpu_name,
+                    capability=list(capability), minimum_capability=[8, 0],
+                    driver_version=self.driver_version, architecture=self.architecture,
+                    linear_compute=('bf16-weight-only' if capability < (8, 9) else 'native-fp8') if admitted else None,
+                    validation='Actual linear and attention kernel probes are required before readiness.', error=error)
 
     def to_dict(self):
         return dict(asdict(self), architecture=self.architecture)
