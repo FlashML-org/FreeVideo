@@ -14,7 +14,8 @@ FreeVideo runs MiniMax H3 locally on Apple silicon Macs with macOS 14 or later a
 
 - Computation runs on the GPU through Metal; attention in sampling and video decoding uses MLX's fused kernels.
 - Before each stage, attention head groups, chunk sizes and the number of resident transformer layers are set from the unified memory available at that moment.
-- The remaining layers stream from disk with read-ahead, and FP8 weights are decoded on the GPU.
+- Macs download ConvRot int8 weights. On Apple M5 and newer, the large projections run as int8 on the GPU's Metal 4 tensor units; earlier Macs decode them to BF16 on the GPU as each layer loads.
+- Layers that are not kept in memory stream from disk with read-ahead.
 - Text prompts, first-frame input and two-pass sampling are supported.
 
 ## Generation time
@@ -23,8 +24,8 @@ On an M5 with 24 GB of unified memory and about 14 GB available:
 
 | Resolution | Length | Time |
 | --- | --- | --- |
-| 1344 × 768 | 10 s | about 46 min |
-| 960 × 544 | 10 s | about 25 min |
+| 1344 × 768 | 10 s | about 42 min |
+| 960 × 544 | 10 s | about 22 min |
 | 512 × 512 | 1.6 s | about 3 min |
 
-Mac support is still being optimized; more unified memory and newer chips shorten generation further.
+These times use the M5's int8 tensor units. Macs before the M5 run the same weights in BF16 and take longer. Mac support is still being optimized; more unified memory and newer chips shorten generation further.
