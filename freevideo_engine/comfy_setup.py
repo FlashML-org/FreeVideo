@@ -248,7 +248,8 @@ class Setup:
                 arguments.append('--frontend-separate')
             if frontend.get('download'):
                 arguments.append('--frontend-download')
-        arguments.append('--no-sampling-caches' if value.get('sampling_caches') is False else '--sampling-caches')
+        if isinstance(value.get('sampling_caches'), bool):
+            arguments.append('--sampling-caches' if value['sampling_caches'] else '--no-sampling-caches')
         if value.get('copy'):
             arguments.append('--copy-existing-models')
         self.selection = dict(root=str(root), arguments=arguments)

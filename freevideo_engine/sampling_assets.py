@@ -43,6 +43,17 @@ def files(selected=None):
     return result
 
 
+def usable_with(cache):
+    """Published tables match prepared weights; a locally converted cache may not."""
+    from . import adaln_assets as assets
+    try:
+        manifest = json.loads((Path(cache) / 'manifest.json').read_text(encoding='utf-8'))
+        weights = assets.weight_identity(manifest)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return any(table['identity']['weights'] == weights for table in tables())
+
+
 def install_files(everything):
     """Setup always installs the refinement tables; the option adds every level."""
     return files(None if everything else [t for t in tables() if required(t)])
@@ -87,7 +98,7 @@ def engine_task(media, base=None):
 
 def prepare(root, machine, sampling, task, *, progress, interrupted=None, environ=None):
     """Fetch only this request's missing tables before starting its timer."""
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
     import shutil
     import threading
     from . import adaln_assets as assets, network, provision
@@ -187,12 +198,13 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     # Each table is fifty small files; several transfers hide per-file latency.
     with ThreadPoolExecutor(max_workers=min(WORKERS, len(missing)), thread_name_prefix='sampling-cache') as pool:
         futures = [pool.submit(fetch, index, *item) for index, item in enumerate(missing)]
-        try:
-            for future in futures:
-                future.result()
-        except BaseException:
+        # A cancel reaches one worker (ComfyUI clears its flag once raised): stop
+        # the rest at once instead of waiting for earlier transfers to finish.
+        done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+        failed = next((future for future in futures if future in done and future.exception()), None)
+        if failed is not None:
             stop.set()
             for future in futures:
                 future.cancel()
-            raise
+            raise failed.exception()
     return dict(seconds=time.monotonic()-started, downloaded_bytes=total)

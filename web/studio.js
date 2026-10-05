@@ -248,13 +248,15 @@ export function openStudio(node) {
     }
     // Apply the two-pass rule to committed, valid values only, never while typing.
     baseSteps.onchange = () => {
-        if (!baseSteps.reportValidity()) return;
-        if (!linked(node, 'two_pass') && widget(node, 'two_pass')) {
-            const eight = Number(baseSteps.value) === 8;
-            if (!eight && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; }
-            else if (eight && autoSinglePass) { twoPass.checked = true; set(node, 'two_pass', true); autoSinglePass = false; }
+        // Before validation: one step is valid only once two-pass is off.
+        const steps = Number(baseSteps.value);
+        if (baseSteps.value !== '' && Number.isInteger(steps) && steps >= 1 && steps <= 32
+                && !linked(node, 'two_pass') && widget(node, 'two_pass')) {
+            if (steps !== 8 && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; }
+            else if (steps === 8 && autoSinglePass) { twoPass.checked = true; set(node, 'two_pass', true); autoSinglePass = false; }
         }
         syncSamplingSteps();
+        baseSteps.reportValidity();
     };
     function syncSamplingSteps() {
         const baseLinked = linked(node, 'base_steps');
@@ -581,6 +583,9 @@ export function openStudio(node) {
     }
     async function submitDraft() {
         if (capturing || queueState?.submitting) return;
+        // Ctrl+Enter leaves focus in a field: commit its edit (change fires on blur) first.
+        const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
+        if (editing && editing !== generate) { editing.blur(); editing.focus({preventScroll: true}); }
         if ([...dialog.querySelectorAll('input:not(:disabled)')].some(e => !e.reportValidity())) return;
         if (!prompt.disabled && !prompt.value.trim()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
