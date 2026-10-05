@@ -7,8 +7,18 @@ FreeVideo runs MiniMax H3 locally on Apple silicon Macs with macOS 14 or later a
 ## Installation
 
 1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg) and drag FreeVideo into Applications.
-2. Open FreeVideo. If macOS blocks it, click **Open Anyway** in **System Settings → Privacy & Security**.
+2. Open FreeVideo. The preview needs your approval the first time; see [First open](#first-open).
 3. Choose an install location, optionally add existing model folders, and click **Install & launch**. The Mac environment and missing models are downloaded automatically.
+
+## First open
+
+The Mac preview isn't notarized by Apple yet, so macOS blocks it the first time and says it can't verify the developer. Before approving it, make sure the file is the official one:
+
+1. Download it only from the [FreeVideo releases page](https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview).
+2. In Terminal, run `shasum -a 256 ~/Downloads/FreeVideo-Mac-arm64.dmg`. The result should match the value in SHA256SUMS.txt on the release.
+3. Open FreeVideo and dismiss the alert. Then, in **System Settings → Privacy & Security**, find FreeVideo, click **Open Anyway** and confirm.
+
+This approves FreeVideo only. It doesn't turn off Gatekeeper or change your other security settings. If macOS says the file is damaged or contains malware, don't open it, and let us know. Once FreeVideo is notarized, this step goes away.
 
 ## Features
 

@@ -30,11 +30,14 @@ OPEN_GUIDE = '''FreeVideo for Mac — 首次打开 / First open
 2. 从“应用程序”打开 FreeVideo，按安装器引导配置运行环境和模型。
 
 如果 macOS 提示无法验证开发者或无法检查恶意软件
-这是因为预览版暂未进行 Apple 公证。确认安装包来自 FreeVideo 官方发布渠道后：
-1. 先尝试打开 FreeVideo，再关闭系统提示。
-2. 打开“系统设置” → “隐私与安全”，向下找到 FreeVideo，点击“仍要打开”。
-3. 在确认窗口点击“打开”，按系统要求验证身份。
-系统会记住此次允许；更新应用后可能需要重新确认。
+这是因为预览版暂未进行 Apple 公证。放行前请先确认安装包来自官方：
+1. 只从 https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview 下载。
+2. 在“终端”运行 shasum -a 256 ~/Downloads/FreeVideo-Mac-arm64.dmg，结果应与该页面 SHA256SUMS.txt 中的值一致。
+然后：
+3. 先尝试打开 FreeVideo，再关闭系统提示。
+4. 打开“系统设置” → “隐私与安全”，向下找到 FreeVideo，点击“仍要打开”。
+5. 在确认窗口点击“打开”，按系统要求验证身份。
+这只放行 FreeVideo，不会关闭 Gatekeeper 或改动其他安全设置。系统会记住此次允许；更新应用后可能需要重新确认。
 如果没有“仍要打开”，请向 FreeVideo 反馈完整提示；设备管理策略可能限制打开。
 如果提示应用已损坏或包含恶意软件，请停止打开并向 FreeVideo 反馈。
 
@@ -43,11 +46,14 @@ Install
 2. Open FreeVideo from Applications and follow the installer to set up the runtime and models.
 
 If macOS cannot verify the developer or check the app for malicious software
-This happens because the preview isn't notarized by Apple yet. If you downloaded FreeVideo from its official release:
-1. Try opening FreeVideo, then dismiss the system alert.
-2. Open System Settings → Privacy & Security, scroll to FreeVideo and click Open Anyway.
-3. Click Open in the confirmation and authenticate if asked.
-macOS remembers this approval; an app update may ask again.
+This happens because the preview isn't notarized by Apple yet. Before approving it, make sure the file is the official one:
+1. Download it only from https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview.
+2. In Terminal, run shasum -a 256 ~/Downloads/FreeVideo-Mac-arm64.dmg. The result should match the value in SHA256SUMS.txt on that page.
+Then:
+3. Try opening FreeVideo, then dismiss the system alert.
+4. Open System Settings → Privacy & Security, scroll to FreeVideo and click Open Anyway.
+5. Click Open in the confirmation and authenticate if asked.
+This approves FreeVideo only. It doesn't turn off Gatekeeper or change other security settings. macOS remembers this approval; an app update may ask again.
 If Open Anyway is unavailable, report the full alert to FreeVideo; device management may restrict opening.
 If the alert says the app is damaged or contains malware, stop and report it to FreeVideo.
 

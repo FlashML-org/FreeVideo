@@ -50,7 +50,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 
 This preview has been tested on an M5 Mac with 24 GB of unified memory. See the [Mac&nbsp;guide](docs/Mac.md) for generation times and memory.
 
-If macOS says it can't verify the developer the first time you open FreeVideo, click **Open Anyway** in **System Settings → Privacy & Security**. See **Open FreeVideo.txt** beside the app or [Apple's instructions](https://support.apple.com/102445).
+The Mac preview isn't notarized by Apple yet, so macOS blocks it the first time you open it. Download it only from the Releases page, then check the file and approve it as described in the [Mac guide](docs/Mac.md#first-open). This approves FreeVideo only; your other security settings stay as they are.
 
 ### Existing ComfyUI
 

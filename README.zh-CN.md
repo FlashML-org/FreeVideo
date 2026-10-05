@@ -50,7 +50,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 预览版已在 24GB 统一内存的 M5 Mac 上测试，生成耗时与内存说明见 [Mac 说明](docs/Mac.zh-CN.md)。
 
-首次打开时如果 macOS 提示无法验证开发者，在「系统设置 → 隐私与安全」中点击「仍要打开」即可，详见应用旁的 **Open FreeVideo.txt** 或 [Apple 说明](https://support.apple.com/102445)。
+Mac 预览版暂未进行 Apple 公证，首次打开时 macOS 会拦截。请只从 Release 页面下载，按 [Mac 说明](docs/Mac.zh-CN.md#首次打开)核对文件后再放行。这只对 FreeVideo 生效，不影响其他安全设置。
 
 ### 已有 ComfyUI
 
