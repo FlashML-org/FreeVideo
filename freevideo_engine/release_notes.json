@@ -1,22 +1,20 @@
 {
   "schema": 1,
-  "product_version": "0.1.0",
+  "product_version": "0.1.1",
   "en": {
-    "summary": "FreeVideo now runs on Apple silicon Macs.",
+    "summary": "Generation with audio or mixed references works again.",
     "changes": [
-      "Mac preview: FreeVideo runs on Apple silicon Macs with macOS 14 or later.",
-      "A short product version is now shown in the launcher and creative workspace. The build number remains available in version details.",
-      "Update reminders include release notes in your selected language: English or Simplified Chinese.",
-      "Open Version & release notes at any time, including after updating or while offline, to read the notes included with your installed version."
+      "Image plus audio and other mixed-reference requests no longer fail while downloading reference resources; the default 8-step schedule uses small published tables instead of the original projection weights.",
+      "Reference resources follow your download source and connection settings, and resume after an interruption.",
+      "Reference-resource downloads show their progress."
     ]
   },
   "zh": {
-    "summary": "FreeVideo 推出 Apple 芯片 Mac 预览版。",
+    "summary": "修复音频及混合参考无法生成的问题。",
     "changes": [
-      "Mac 预览版：支持 macOS 14 及以上的 Apple 芯片 Mac。",
-      "启动器和创作面板显示简短产品版本，构建号可在版本详情中查看。",
-      "更新提醒附带更新说明，跟随界面语言显示中文或英文。",
-      "随时打开「版本与更新说明」，更新后或离线时也能查看当前版本自带的说明。"
+      "修复图片加音频等混合参考在下载参考资源时失败的问题；默认 8 步改用已发布的小型调制表，不再下载原始投影权重。",
+      "参考资源按所选下载源和网络设置下载，中断后可继续。",
+      "下载参考资源时显示进度。"
     ]
   }
 }

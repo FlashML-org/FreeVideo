@@ -417,6 +417,12 @@ def progress_message(event):
     if name == 'prepared_blocks':
         return {'label': 'Loading cached video model · %s / 50 blocks' % event.get('blocks', '?'),
                 'timing_phase': 'load'}
+    if name in ('sampling_preset_download', 'reference_assets_download'):
+        reference = name == 'reference_assets_download'
+        return dict(label='Preparing reference media resources' if reference else 'Preparing sampling preset',
+                    timing_phase='load', phase='load', stage='reference_download' if reference else 'preset_download',
+                    done=event.get('done_bytes'), total=event.get('total_bytes'),
+                    bytes_per_second=event.get('bytes_per_second'), unit='bytes')
     if name == 'loaded':
         return {'label': 'Video model ready', 'timing_phase': 'load'}
     if name == 'decode_resume':
