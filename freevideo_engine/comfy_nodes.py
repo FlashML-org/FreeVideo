@@ -93,7 +93,7 @@ class FreeVideoGenerate(io.ComfyNode):
         def progress(message):
             if message.get('result_cache_hit'):
                 result_reused[0] = True
-            label = message['label']
+            label = message.get('label') or 'Generating video'
             count = (message.get('done'), message.get('total'))
             if message.get('done') is not None and count != last_count[0]:
                 bar.update_absolute(message['done'], message['total'])
