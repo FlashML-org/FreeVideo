@@ -6,7 +6,7 @@
 </div>
 
 <p align="center">
-| <a href="https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe"><b>Download</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ Group</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>WeChat Group</b></a> |
+| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Download for Windows</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>Download for macOS</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ Group</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>WeChat Group</b></a> |
 </p>
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
@@ -32,7 +32,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 
 ### Windows
 
-1. [Download FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/download/windows-preview/FreeVideo.exe) and run it.
+1. [Download FreeVideo.exe](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe) and run it.
 2. Select an existing ComfyUI folder or install a new one. Existing model folders can be added for reuse; missing models are downloaded automatically.
 3. Click **Install & launch**. ComfyUI opens in the browser with the FreeVideo workspace.
 
@@ -44,7 +44,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 
 ### macOS (Apple silicon preview)
 
-1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**.
+1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**.
 2. Open FreeVideo, then select an existing ComfyUI folder or install a new one. Existing model folders can be added for reuse; the runtime environment and missing models are downloaded automatically.
 3. Click **Install & launch**. ComfyUI opens in the browser with the FreeVideo workspace.
 
