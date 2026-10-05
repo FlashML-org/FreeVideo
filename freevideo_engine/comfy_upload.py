@@ -22,23 +22,36 @@ async def receive(reader, input_directory):
     folder.mkdir(parents=True, exist_ok=False)
     temporary = folder / (name + '.partial')
     destination = folder / name
-    size = 0
-    with temporary.open('xb') as output:
-        while True:
-            chunk = await part.read_chunk(size=CHUNK_BYTES)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_BYTES:
-                raise ValueError('Media file exceeds 2 GiB; trim the clip before uploading')
-            output.write(chunk)
-    if size == 0:
-        raise ValueError('Media file is empty')
-    if await reader.next() is not None:
-        raise ValueError('Upload one media file at a time')
-    from .file_ops import publish
-    publish(temporary, destination)
-    return {'file': destination.relative_to(base).as_posix(), 'bytes': size}
+    published = False
+    try:
+        size = 0
+        with temporary.open('xb') as output:
+            while True:
+                chunk = await part.read_chunk(size=CHUNK_BYTES)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_BYTES:
+                    raise ValueError('Media file exceeds 2 GiB; trim the clip before uploading')
+                output.write(chunk)
+        if size == 0:
+            raise ValueError('Media file is empty')
+        if await reader.next() is not None:
+            raise ValueError('Upload one media file at a time')
+        from .file_ops import publish
+        publish(temporary, destination)
+        published = True
+        return {'file': destination.relative_to(base).as_posix(), 'bytes': size}
+    finally:
+        if not published:
+            # This UUID folder belongs to this upload. Remove its partial,
+            # including on cancellation, but preserve any unrelated files.
+            try:
+                temporary.unlink(missing_ok=True)
+                folder.rmdir()
+            except OSError:
+                pass  # Cleanup must not replace the original stream error.
+
 
 
 def register():
