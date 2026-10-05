@@ -125,7 +125,8 @@ class MPSBackend(DeviceBackend):
                 for name in ('__init__.py', 'base.py', 'mps.py', 'mps_attention.py', 'mps_weights.py',
                              'mps_fp8.py', 'mps_nvfp4.py', 'mps_linear.py', 'mps_delta.py',
                              'mps_features.py', 'mps_qk.py', 'mps_mlx_attention.py', 'mps_vae.py',
-                             'mps_blocks.py', 'mps_grouped_qkv.py', 'mps_vae_encode.py', 'mps_modulation.py')},
+                             'mps_blocks.py', 'mps_grouped_qkv.py', 'mps_vae_encode.py', 'mps_modulation.py',
+                             'mps_int8.py')},
             runtime_source_sha256={name: hashlib.sha256((Path(__file__).parent.parent / name).read_bytes()).hexdigest()
                 for name in ('macos_runtime.py', 'macos_vdn.py', 'macos_decode.py', 'macos_encoder.py',
                              'macos_compute.py', 'macos_stages.py', 'macos_decode_tiles.py',

@@ -110,10 +110,14 @@ ApplicationWindow {
         Rectangle { width: 1; color: theme.border; anchors.right: parent.right; height: parent.height }
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 16; spacing: 4
-            RowLayout {
-                Layout.topMargin: 10; Layout.leftMargin: 6; Layout.bottomMargin: 28; spacing: 10
-                Image { source: "../assets/icon.png"; sourceSize.width: 64; sourceSize.height: 64; Layout.preferredWidth: 32; Layout.preferredHeight: 32; smooth: true }
-                FText { text: "FreeVideo"; font.pixelSize: theme.section; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
+            // The app icon alone is the brand mark.
+            Image {
+                objectName: "brandIcon"
+                source: "../assets/icon.png"; sourceSize.width: 96; sourceSize.height: 96
+                Layout.preferredWidth: 40; Layout.preferredHeight: 40
+                Layout.topMargin: 6; Layout.leftMargin: 6; Layout.bottomMargin: 24
+                smooth: true; mipmap: true
+                Accessible.role: Accessible.Graphic; Accessible.name: "FreeVideo"
             }
             FNav { objectName: "navLauncher"; glyph: "play"; text: t("Launch", "启动"); Layout.fillWidth: true; selected: s.page === "launcher"; enabled: s.selected && !s.busy; onClicked: backend.action("launcher", false) }
             FNav { objectName: "navSetup"; glyph: "download"; text: t("Installation", "安装"); Layout.fillWidth: true; selected: s.page !== "launcher"; enabled: !s.busy && !s.portable; onClicked: backend.action("setup", false) }
