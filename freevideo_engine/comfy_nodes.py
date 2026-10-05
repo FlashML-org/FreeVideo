@@ -39,8 +39,8 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Native H3 layer-50 conditioning including keyframe/reference metadata. '
                             'Replaces prompt/media encoding. Generic CLIP conditioning is incompatible.'),
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
-                io.Boolean.Input('two_pass', display_name='Two-pass sampling', default=True, optional=True,
-                    tooltip='Generate the scene, then refine it at the target resolution.'),
+                io.Boolean.Input('two_pass', display_name='Two-pass acceleration', default=True, optional=True,
+                    tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.'),
                 io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=32, optional=True,
                     tooltip='Default: 8. Changing sampling steps may reduce generation quality.'),
                 io.Int.Input('refine_steps', display_name='Second-pass steps', default=2, min=1, max=31, optional=True,

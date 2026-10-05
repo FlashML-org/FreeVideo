@@ -267,6 +267,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         const complete = message.phase === 'complete' || overall.status === 'complete';
         const hasCount = counted(message);
         label.textContent = complete ? t('Video saved', '视频已保存') : sampling ? t('Sampling', '采样')
+            : message.stage === 'preset_download' ? t('Preparing sampling preset', '正在准备采样档位')
             : message.phase === 'recovery' ? t('Retrying this video', '正在重试本次生成')
             : message.phase === 'sample_finalize' ? {
                 latent_validation: t('Checking completed sampling', '正在检查采样结果'),
@@ -280,7 +281,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             const phase = message.phase || message.timing_phase;
             label.textContent = sampling ? `${t('Sampling', '采样')} ${message.done} / ${message.total}`
                 : phase === 'encoding' ? encodingLabel(message.label, t)
-                : phase === 'load' ? t('Loading model', '加载模型')
+                : phase === 'load' ? message.stage === 'preset_download' ? t('Preparing sampling preset', '准备采样档位') : t('Loading model', '加载模型')
                 : phase === 'decode' ? message.label === 'Saving MP4 and audio' ? t('Saving video', '保存视频')
                     : message.label === 'Loading and decoding audio' ? t('Decoding audio', '解码音频')
                     : t('Decoding video', '解码视频')
@@ -297,7 +298,9 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                 : message.done > 0 ? t(`${message.done} steps complete`, `已完成 ${message.done} 步`)
                 : t('Starting the first step', '正在开始第一步');
         } else detail.textContent = message.detail || '';
-        if (hasCount) detail.textContent = `${message.done} / ${message.total}${detail.textContent ? ' · ' + detail.textContent : ''}`;
+        if (message.stage === 'preset_download' && valid(message.done) && valid(message.total)) {
+            detail.textContent = `${(message.done/2**20).toFixed(1)} / ${(message.total/2**20).toFixed(1)} MiB`;
+        } else if (hasCount) detail.textContent = `${message.done} / ${message.total}${detail.textContent ? ' · ' + detail.textContent : ''}`;
         detail.dataset.baseText = detail.textContent;
         note.hidden = !(sampling && message.done === 0);
         note.textContent = t('New kernels may compile on the first step. Disk caches speed up later runs.',
