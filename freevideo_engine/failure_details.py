@@ -91,10 +91,18 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
-        (r'Windows curl\.exe was not found', 'download-tool',
+        (r'CURL_REPAIR_(?:TIMEOUT|HTTP|TLS|DNS|FAILED|PROXY_UNSUPPORTED|PROXY_MISSING|REDIRECT|SIZE|INTEGRITY)', 'download-tool-network',
+         ('The download tool could not be prepared', '下载工具自动补齐失败'),
+         ('Check the connection mode in Downloads and retry. Export the report for the source, route and failure code.',
+          '请在“下载”中检查连接方式后重试。导出报告已包含来源、连接方式和失败码。')),
+        (r'CURL_START_DENIED|CURL_REPAIR_STORAGE', 'download-tool-access',
+         ('Windows blocked the download tool', '下载工具启动或保存被拒绝'),
+         ('Check folder permissions and Windows Security protection history, then retry. Export the report for the Windows error code.',
+          '请检查安装目录权限和 Windows 安全中心的保护历史记录后重试。导出报告包含 Windows 错误码。')),
+        (r'CURL_[A-Z_]+|Windows curl\.exe was not found', 'download-tool',
          ('The download tool is unavailable', '下载工具不可用'),
-         ('Restore Windows curl.exe or add its folder to PATH, then reopen FreeVideo.',
-          '请恢复 Windows 的 curl.exe，或将其所在目录加入 PATH，然后重新打开 FreeVideo。')),
+         ('Retry installation to repair the tool automatically. If it still fails, export the report for the complete tool diagnostics.',
+          '请重试安装，启动器会自动修复下载工具。仍失败时导出报告，其中包含完整工具诊断。')),
         (r'ComfyUI is still running a job', 'busy',
          ('A video is still generating', '还有视频正在生成'),
          ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',

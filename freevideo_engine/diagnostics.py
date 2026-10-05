@@ -297,6 +297,13 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
         if not is_link(bootstrap) and (bootstrap / 'bootstrap.log').is_file():
             add_path('bootstrap/bootstrap.log', bootstrap / 'bootstrap.log')
         if windows():
+            from .curl_windows import inspect as inspect_curl
+            add_path('bootstrap/curl-diagnostic.json', bootstrap / 'curl-diagnostic.json')
+            try:
+                curl_state = inspect_curl(dict(os.environ, FREEVIDEO_HOME=str(root)))
+            except (OSError, ValueError, RuntimeError) as error:
+                curl_state = dict(status='CURL_DIAGNOSTIC_FAILED', exception=type(error).__name__)
+            add('current/curl.json', json.dumps(curl_state).encode())
             from .desktop_runtime import launcher_root
             gui_runs = launcher_root() / 'runs'
             if gui_runs.is_dir() and not is_link(gui_runs):

@@ -15,12 +15,12 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from .windows_ux import hidden_console
+from .windows_ux import external_python, hidden_console
 import threading
 import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
-from .system import curl_executable, missing_curl_message
+from .system import curl_executable, missing_curl_message, windows
 
 
 SOURCES = {
@@ -123,13 +123,28 @@ def curl_config(url, headers=()):
 def curl_command(timeout, env=None):
     executable = curl_executable(env)
     if executable is None:
-        raise RuntimeError(missing_curl_message())
+        raise RuntimeError(missing_curl_message(env))
     command = [executable, '--config', '-', '--silent', '--show-error', '--no-location-trusted', '--location',
             '--max-redirs', '5', '--fail', '--proto', '=https,http', '--proto-redir', '=https,http',
             '--connect-timeout', str(timeout), '--user-agent', 'FreeVideo-Setup/1']
     if (env or {}).get('FREEVIDEO_PROXY_ROUTE') == 'direct':
         command += ['--proxy', '', '--noproxy', '*']
     return command
+
+
+def curl_process(command, **kwargs):
+    # Match discovery's environment: the frozen GUI's DLL directory can break
+    # otherwise healthy external curl binaries (including Git's copy).
+    try:
+        with external_python():
+            return subprocess.Popen(command, **kwargs, **hidden_console())
+    except OSError as error:
+        if not windows():
+            raise
+        code = 'CURL_START_DENIED' if isinstance(error, PermissionError) else 'CURL_START_FAILED'
+        raise RuntimeError('[%s] curl could not start; exception=%s, winerror=%s, errno=%s. '
+                           'Retry installation or export the report.' %
+                           (code, type(error).__name__, getattr(error, 'winerror', None), error.errno)) from error
 
 
 def sample(url, timeout=5, limit=SAMPLE_BYTES, *, ranged=True, env=None, headers=()):
@@ -141,8 +156,8 @@ def sample(url, timeout=5, limit=SAMPLE_BYTES, *, ranged=True, env=None, headers
         command += ['--range', '0-' + str(limit - 1)]
     config = curl_config(url, headers)
     started = time.monotonic()
-    process = subprocess.Popen(command, env=proxy_environment(env), stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **hidden_console())
+    process = curl_process(command, env=proxy_environment(env), stdin=subprocess.PIPE,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         process.stdin.write(config)
         process.stdin.close()
@@ -173,8 +188,8 @@ def speed_sample(url, timeout=5, limit=SPEED_SAMPLE_BYTES, duration=SPEED_SAMPLE
     if url.startswith('https://'):
         command += ['--proto-redir', '=https']
     started = time.monotonic()
-    process = subprocess.Popen(command, env=proxy_environment(env), stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **hidden_console())
+    process = curl_process(command, env=proxy_environment(env), stdin=subprocess.PIPE,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     timer = None
     stopped = []
 
@@ -748,8 +763,8 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
                     command += ['--max-filesize', str(max(size - offset, MIN_TRANSFER_LIMIT))]
                 if offset:
                     command += ['--continue-at', str(offset)]
-                process = subprocess.Popen(command, env=attempt_env, stdin=subprocess.PIPE,
-                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **hidden_console())
+                process = curl_process(command, env=attempt_env, stdin=subprocess.PIPE,
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 started = time.monotonic()
                 oversized = None
                 stalled = False

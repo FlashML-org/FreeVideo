@@ -13,25 +13,17 @@ def windows():
 def curl_executable(env=None):
     """Find the same executable for setup checks and download subprocesses."""
     env = os.environ if env is None else env
-    found = shutil.which('curl.exe' if windows() else 'curl', path=env.get('PATH', os.defpath))
-    if found:
-        return str(Path(found).absolute())
     if windows():
-        root = Path(env.get('SystemRoot') or env.get('WINDIR')
-                    or os.environ.get('SystemRoot') or r'C:\Windows')
-        # Sysnative reaches the native system directory from a 32-bit host;
-        # it is absent for our native x64 launcher, which uses System32.
-        for directory in ('Sysnative', 'System32'):
-            candidate = root / directory / 'curl.exe'
-            if candidate.is_file():
-                return str(candidate.absolute())
-    return None
+        from .curl_windows import inspect
+        return inspect(env)['selected']
+    found = shutil.which('curl', path=env.get('PATH', os.defpath))
+    return str(Path(found).absolute()) if found else None
 
 
-def missing_curl_message():
+def missing_curl_message(env=None):
     if windows():
-        return ('Windows curl.exe was not found in PATH or the Windows system directory. '
-                'Restore curl.exe or add its folder to PATH, then reopen FreeVideo.')
+        from .curl_windows import inspect, failure_message
+        return failure_message(inspect(env))
     if platform.system() == 'Darwin':
         return 'macOS curl was not found. Check /usr/bin/curl and reopen FreeVideo with curl available in PATH.'
     return 'Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.'
