@@ -20,11 +20,19 @@ from .diagnostics import Redactor
 from .monitoring import save
 
 REPOSITORY = 'FlashML-org/FreeVideo'
+# The channel names the platform; launchers from before combined releases read
+# these tags, which the release workflow keeps up to date for them.
 CHANNEL = 'windows-preview'
 API = 'https://api.github.com/repos/' + REPOSITORY
-RELEASE_PAGE = 'https://github.com/' + REPOSITORY + '/releases/tag/' + CHANNEL
+RELEASE_PAGE = 'https://github.com/' + REPOSITORY + '/releases/latest'
 MAX_EXE_BYTES = 512 * 2**20
 MAC_CHANNEL = 'macos-preview'
+# Stable builds follow the latest vX.Y.Z release; nightly builds follow the
+# rolling `nightly` prerelease. Both carry every platform in one release.
+TRACKS = ('stable', 'nightly')
+NIGHTLY_TAG = 'nightly'
+RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
+                  MAC_CHANNEL: ('FreeVideo-Mac-arm64.dmg', 'update-macos.json')}
 
 
 def build_target(value):
@@ -32,8 +40,14 @@ def build_target(value):
     return value.get('target', 'windows-x86_64')
 
 
+def build_track(value):
+    return value.get('track', 'stable')
+
+
 def release_page(current):
-    return 'https://github.com/' + REPOSITORY + '/releases/tag/' + build_identity(current)['channel']
+    if build_track(build_identity(current)) == 'nightly':
+        return 'https://github.com/' + REPOSITORY + '/releases/tag/' + NIGHTLY_TAG
+    return RELEASE_PAGE
 
 
 def build_identity(value):
@@ -48,7 +62,11 @@ def build_identity(value):
             raise ValueError('Invalid Mac launcher build identity')
     elif build_target(value) != 'windows-x86_64':
         raise ValueError('Launcher update channel does not match its target')
+    if build_track(value) not in TRACKS:
+        raise ValueError('Unknown launcher release track')
     result = {k: value[k] for k in ('schema', 'repository', 'channel', 'revision', 'built_at', 'version')}
+    if build_track(value) != 'stable':
+        result['track'] = build_track(value)
     if value.get('packaging') == 'onedir':
         result['packaging'] = 'onedir'
     if value['channel'] == MAC_CHANNEL:
@@ -80,7 +98,7 @@ def manifest(value):
 
 def newer(candidate, current):
     return (build_target(candidate) == build_target(current)
-            and candidate['channel'] == current['channel']
+            and candidate['channel'] == current['channel'] and build_track(candidate) == build_track(current)
             and candidate['revision'] != current['revision'] and candidate['built_at'] > current['built_at'])
 
 
@@ -141,29 +159,54 @@ def _json(url, token, *, binary=False, limit=2**20):
         return json.loads(b''.join(_bytes(response, limit)))
 
 
-def latest_release(token='', *, channel=CHANNEL):
-    """Read and validate the published build without downloading an executable."""
-    if channel not in (CHANNEL, MAC_CHANNEL):
-        raise ValueError('Unknown launcher update channel')
+def _release(token, channel, track):
+    """The release holding this platform's update, and its metadata asset name."""
+    executable, metadata = RELEASE_ASSETS[channel]
+    if track == 'nightly':
+        release = _json(API + '/releases/tags/' + NIGHTLY_TAG, token)
+        if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != NIGHTLY_TAG:
+            raise ValueError('No nightly build is published yet')
+        return release, executable, metadata
+    try:
+        release = _json(API + '/releases/latest', token)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        release = None
+    names = {a.get('name') for a in (release or {}).get('assets', []) if isinstance(a, dict)}
+    if isinstance(release, dict) and not release.get('draft') and not release.get('prerelease') and metadata in names:
+        return release, executable, metadata
+    # Until the first combined release, updates come from the platform tag.
     release = _json(API + '/releases/tags/' + channel, token)
     if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != channel:
         raise ValueError('No published update is available for this platform')
+    return release, executable, 'update.json'
+
+
+def latest_release(token='', *, channel=CHANNEL, track='stable'):
+    """Read and validate the published build without downloading an executable."""
+    if channel not in (CHANNEL, MAC_CHANNEL):
+        raise ValueError('Unknown launcher update channel')
+    if track not in TRACKS:
+        raise ValueError('Unknown launcher release track')
+    release, executable_name, metadata_name = _release(token, channel, track)
     assets = {a.get('name'): a for a in release.get('assets', []) if isinstance(a, dict)}
-    metadata, executable = assets.get('update.json', {}), assets.get(
-        'FreeVideo-Mac-arm64.dmg' if channel == MAC_CHANNEL else 'FreeVideo.exe', {})
+    metadata, executable = assets.get(metadata_name, {}), assets.get(executable_name, {})
     if type(metadata.get('id')) is not int:
         raise ValueError('Update metadata is not published yet; check the release page')
     candidate = manifest(_json(API + '/releases/assets/' + str(metadata['id']), token, binary=True, limit=65536))
     if candidate['channel'] != channel:
         raise ValueError('Update metadata belongs to a different platform')
+    if build_track(candidate) != track:
+        raise ValueError('Update metadata belongs to a different release track')
     if candidate['asset']['id'] != executable.get('id') or candidate['asset']['bytes'] != executable.get('size'):
         raise ValueError('A new release is being published; check again shortly')
     return candidate
 
 
 def check(current, token=''):
-    build_identity(current)
-    candidate = latest_release(token) if current['channel'] == CHANNEL else latest_release(token, channel=current['channel'])
+    current = build_identity(current)
+    candidate = latest_release(token, channel=current['channel'], track=build_track(current))
     return candidate if newer(candidate, current) else None
 
 

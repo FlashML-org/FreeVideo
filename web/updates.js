@@ -1,7 +1,8 @@
 import { api } from '../../scripts/api.js';
 
-const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/windows-preview';
-const macReleasePage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/macos-preview';
+// Every platform downloads from one release: the latest vX.Y.Z, or the rolling nightly.
+const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
+const nightlyPage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/nightly';
 const storageKey = 'freevideo.dismissed-update';
 const listeners = new Set();
 // Launcher phases during which the server may disappear and come back updated.
@@ -121,7 +122,7 @@ export function createUpdateNotice(cn) {
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
         const mac = value?.channel === 'macos-preview';
-        link.href = mac ? macReleasePage : releasePage;
+        link.href = value?.track === 'nightly' ? nightlyPage : releasePage;
         link.title = mac
             ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
             : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');

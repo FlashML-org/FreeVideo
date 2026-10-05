@@ -623,6 +623,7 @@ class Session:
                     current_release=public_details(self.updater.current) if self.updater else self.release_details,
                     installed=self.installed_version(), phase=self.update_phase(), key=key,
                     channel=self.updater.current.get('channel') if self.updater else None,
+                    track=self.updater.current.get('track', 'stable') if self.updater else 'stable',
                     manual=bool(self.updater and self.updater.current.get('packaging') in ('onedir', 'app')))
         due = ((view.get('candidate') and row['status'] in ('available', 'ready', 'error'))
                or (view['engine'] and self.page == 'launcher'))
@@ -637,7 +638,7 @@ class Session:
         from .release_notes import public_details
         candidate = view.get('candidate') or {}
         value = dict(version=__version__, phase=view['phase'], status=view.get('status'),
-                     progress=view.get('progress'), manual=view['manual'], channel=view['channel'],
+                     progress=view.get('progress'), manual=view['manual'], channel=view['channel'], track=view['track'],
                      candidate=public_details(candidate) if candidate.get('version') else None,
                      engine=dict(view['current_release'], pending=view['engine'], installed=view['installed']),
                      error=str(view.get('error') or '')[:500])
