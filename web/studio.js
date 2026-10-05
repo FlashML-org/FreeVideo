@@ -545,18 +545,26 @@ export function openStudio(node) {
         if (w < 256 || h < 256 || w > 4096 || h > 4096) throw new Error(t('This aspect ratio and pixel count exceed the supported dimensions. Use custom dimensions.', '该比例与像素数超出尺寸范围，请使用自定义宽高。'));
         set(node, 'width', w); set(node, 'height', h); node.properties.freevideo_aspect = selected; node.properties.freevideo_pixels = pixels; updateCanvas();
     }
+    let inputRatioGeneration = 0;
     async function inputRatio(required = false) {
+        const generation = ++inputRatioGeneration;
         const rows = mediaNode ? JSON.parse(value(mediaNode, 'assets') || '[]') : [];
         const active = rows.filter(r => r.enabled !== false);
         const source = active.find(r => r.role === 'first') || active.find(r => r.role === 'last') || active.find(r => /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(r.file));
         if (!source) { if (required) throw new Error(t('Add an image in Media to follow its aspect ratio.', '请先在素材中添加图片，再跟随输入比例。')); return; }
         const image = new Image(); image.src = view(source.file);
-        await image.decode();
-        if (disposed || !image.naturalWidth || !image.naturalHeight) return;
-        if (selected === 'input') { ratio = image.naturalWidth / image.naturalHeight; applySize(); }
+        try { await image.decode(); }
+        catch (error) {
+            if (generation !== inputRatioGeneration || disposed || selected !== 'input') return false;
+            throw error;
+        }
+        // Media can change while the browser decodes the previous image.
+        if (generation !== inputRatioGeneration || disposed || selected !== 'input' || !image.naturalWidth || !image.naturalHeight) return false;
+        ratio = image.naturalWidth / image.naturalHeight; applySize();
+        return true;
     }
     for (const [id, label, r] of [['16:9', t('Landscape', '横屏'), 16 / 9], ['9:16', t('Portrait', '竖屏'), 9 / 16], ['1:1', t('Square', '方形'), 1], ['input', t('Match image', '跟随图片'), null]]) {
-        const b = button('', async () => { const previous = selected; try { selected = id; pixels = Number(mp.value); if (id === 'input') await inputRatio(true); else { ratio = r; applySize(); } status.textContent = ''; status.dataset.error = 'false'; } catch (error) { selected = previous; updateCanvas(); status.dataset.error = 'true'; status.textContent = error.message; } }, 'fv-shape');
+        const b = button('', async () => { const previous = selected; try { selected = id; pixels = Number(mp.value); if (id === 'input') { if (await inputRatio(true) === false) return; } else { ratio = r; applySize(); } status.textContent = ''; status.dataset.error = 'false'; } catch (error) { selected = previous; updateCanvas(); status.dataset.error = 'true'; status.textContent = error.message; } }, 'fv-shape');
         b.dataset.ratio = id; b.setAttribute('aria-label', label); b.disabled = dimensionsLinked;
         b.append(el('span', null, 'fv-shape-icon'), el('span', label)); shapes.append(b);
     }
