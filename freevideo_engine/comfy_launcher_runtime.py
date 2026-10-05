@@ -74,7 +74,9 @@ def layout(path):
         for name in ('python_embeded', 'python_embedded', '.venv', 'venv', 'env', 'python'):
             directory = parent / name
             candidates.extend([directory / 'python.exe', directory / 'Scripts/python.exe', directory / 'bin/python'])
-    python = next((p.resolve() for p in candidates if p.is_file()), None)
+    # Keep a venv's executable path: resolving its symlink selects the base
+    # interpreter and loses the environment's installed ComfyUI dependencies.
+    python = next((p.absolute() for p in candidates if p.is_file()), None)
     return dict(root=str(root), python=str(python) if python else None,
                 portable=bool(python and python.parent.name in ('python_embeded', 'python_embedded')))
 
