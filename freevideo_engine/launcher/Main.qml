@@ -110,12 +110,12 @@ ApplicationWindow {
         Rectangle { width: 1; color: theme.border; anchors.right: parent.right; height: parent.height }
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 16; spacing: 4
-            // The app icon alone is the brand mark.
+            // The FreeVideo wordmark, as in the creative workspace header.
             Image {
-                objectName: "brandIcon"
-                source: "../assets/icon.png"; sourceSize.width: 96; sourceSize.height: 96
-                Layout.preferredWidth: 40; Layout.preferredHeight: 40
-                Layout.topMargin: 6; Layout.leftMargin: 6; Layout.bottomMargin: 24
+                objectName: "brandWordmark"
+                source: "../assets/wordmark.png"; fillMode: Image.PreserveAspectFit
+                Layout.preferredWidth: 150; Layout.preferredHeight: 25
+                Layout.topMargin: 14; Layout.leftMargin: 6; Layout.bottomMargin: 31
                 smooth: true; mipmap: true
                 Accessible.role: Accessible.Graphic; Accessible.name: "FreeVideo"
             }
