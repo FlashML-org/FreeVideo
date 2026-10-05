@@ -231,6 +231,48 @@ def models(plan):
             # final inode stamp without a second pass through large model files.
             complete(row, path, dict(file_identity(path, row), method='full_content_hash_resumable_download'),
                      'download', 'download')
+        def download_small(entries):
+            # Sampling tables are hundreds of small files: fetch them in parallel
+            # with the request preflight's verified resumable transfers, instead
+            # of one transfer process per file.
+            from concurrent.futures import FIRST_EXCEPTION, wait
+            def fetch(entry):
+                row, path, hf_directory, _ = entry
+                check()
+                if path.exists() or path.is_symlink():
+                    prior = {}
+                    if not verified(path, row, prior, mode=mode, hf_directory=hf_directory):
+                        raise ValueError('Model destination appeared with unexpected content: ' + str(path))
+                    complete(row, path, prior[str(path)], 'verify')
+                    return
+                emit('download_model', file=str(path), bytes=row['bytes'])
+                model_progress.update(row, phase='downloading')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                last = [0.]
+                def progress(done, size, speed, **_):
+                    check()
+                    if time.monotonic() - last[0] >= .5:
+                        model_progress.update(row, phase='downloading', done=done, rate=speed)
+                        last[0] = time.monotonic()
+                network.download(network.model_urls(networking, row), path, row['sha256'], progress,
+                                 network=dict(networking, quiet=True), size=row['bytes'],
+                                 category=network.model_family(row), headers_for=model_headers,
+                                 keep_partial=True, stall_seconds=30, slow_seconds=15, low_speed_limit=64 * 1024)
+                complete(row, path, dict(file_identity(path, row), method='full_content_hash_resumable_download'),
+                         'download', 'download')
+            with ThreadPoolExecutor(max_workers=min(6, len(entries)), thread_name_prefix='sampling-download') as small_pool:
+                started = [small_pool.submit(fetch, entry) for entry in entries]
+                done, _ = wait(started, return_when=FIRST_EXCEPTION)
+                failed = next((future for future in started if future in done and future.exception()), None)
+                if failed is not None:
+                    stopped.set()
+                    for future in started:
+                        future.cancel()
+                    raise failed.exception()
+        small = [entry for entry in missing if entry[0].get('sampling_file')]
+        large = [entry for entry in missing if not entry[0].get('sampling_file')]
+        if small:
+            download_small(small)
         # Explicitly preserve the old one-file behavior for plans without the
         # new policy field. When enabled, use a two-slot pipeline: one child
         # can finish its pinned hash while the next child transfers. The
@@ -238,14 +280,14 @@ def models(plan):
         # current body has ended, preventing multiple large network bodies
         # from being started at once.
         if workers == 1:
-            for entry in missing:
+            for entry in large:
                 download_one(entry)
             return
         # Do not turn this into an unbounded file pool: each transfer child
         # has its own native range buffers and process guard. Two slots are
         # enough to overlap network I/O with the previous file's final hash.
         condition = threading.Condition()
-        entries = iter(missing)
+        entries = iter(large)
         futures, state = set(), {'active': 0, 'finished': 0, 'error': None}
         pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='model-download')
 
@@ -284,14 +326,14 @@ def models(plan):
                 # Files without a transport callback (a copied-in file or a
                 # tiny fallback transfer) still advance the pipeline after
                 # they finish.
-                if error is None and state['active'] == 0 and state['finished'] < len(missing):
+                if error is None and state['active'] == 0 and state['finished'] < len(large):
                     submit_next()
                 condition.notify_all()
 
         try:
             submit_next()
             with condition:
-                while state['finished'] < len(missing) and state['error'] is None:
+                while state['finished'] < len(large) and state['error'] is None:
                     condition.wait(.2)
             if state['error'] is not None:
                 raise state['error']
