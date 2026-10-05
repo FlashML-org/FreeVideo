@@ -1,7 +1,36 @@
 """User-facing model download destinations, from the installation manifests."""
 import json
 from pathlib import Path
+import sys
 from urllib.parse import quote, urlsplit
+
+
+def runtime_packages_supported():
+    return sys.platform != 'darwin'
+
+
+def package_instructions(new_comfy, zh=False):
+    """Describe the payloads this host can actually import."""
+    if sys.platform == 'darwin':
+        return (
+            'Get Common models and the RTX 30/40 model pack; these model files also work on Mac. '
+            'The installer downloads the Mac environment automatically. Do not download the Windows Environment package.',
+            '下载「公用模型」和「30/40 系模型包」，其中的模型文件也适用于 Mac。'
+            'Mac 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
+    text = ('Get Common models and the pack for your GPU (RTX 30/40 or RTX 50).',
+            '下载「公用模型」和对应显卡包（30/40 系或 50 系）。')[bool(zh)]
+    if new_comfy:
+        text += '\n' + ('For a new installation, also get the Environment package.',
+                        '全新安装还需「运行环境」包。')[bool(zh)]
+    return text
+
+
+def video_instructions(zh=False):
+    if sys.platform == 'darwin':
+        return ('For Mac, choose the RTX 30/40 model files and keep their folder structure.',
+                'Mac 请选择 30/40 系模型文件，并保留下载的目录结构。')[bool(zh)]
+    return ('Choose your GPU variant on the model page and keep its folder structure.',
+            '按模型页说明选择显卡版本，保留下载的目录结构。')[bool(zh)]
 
 
 def links():

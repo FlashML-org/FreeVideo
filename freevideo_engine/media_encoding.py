@@ -6,6 +6,7 @@ in the generation process. Reference clips must be explicitly trimmed to 15 s.
 """
 import json
 import math
+from contextlib import nullcontext
 from pathlib import Path
 
 
@@ -153,52 +154,62 @@ def prepare(media, canvas, directory):
     return result, {'images': key_images} if key_images else {'minimax_ref_items': ref_items} if ref_items else {}
 
 
-def encode_latents(normalized, value, base, canvas, *, resident=None):
+def encode_latents(normalized, value, base, canvas, *, resident=None, device='cuda'):
     import gc
     import numpy as np
     import torch
     from diffusers.modular_pipelines.minimax_h3.encoders import encode_vae_condition
     from .vae_weights import load_audio_vae, load_video_encoder
     from src.inference.render import PIXEL_MEAN, PIXEL_STD
+    if torch.device(device).type not in ('cuda', 'mps'):
+        raise ValueError('Media encoding requires a CUDA or MPS device')
+    empty_cache = torch.mps.empty_cache if torch.device(device).type == 'mps' else torch.cuda.empty_cache
     refs = [{'kind': row['kind']} for row in normalized]
     if any(row.get('pixels') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding image/video references'}), flush=True)
         # Conditioning never decodes: the 9.0 GiB decoder in the shared shards
         # is not read. The independent output decoder is loaded after sampling.
         vae, _ = load_video_encoder(base, before_upload=None if resident is None else
-                                    lambda model: resident.input_vae_room(model, canvas))
-        for row, ref in zip(normalized, refs):
-            if row.get('pixels'):
-                mapped = np.load(row['pixels'], mmap_mode='r', allow_pickle=False)
-                if row['frames'] == 1:
-                    pixels = torch.from_numpy(np.array(mapped[:1])).to('cuda').permute(3, 0, 1, 2)[None]
-                    ref['latent'] = encode_vae_condition(vae, pixels, PIXEL_MEAN, PIXEL_STD, 42).cpu()
-                    del pixels
-                else:
-                    ref['latent'] = encode_visual(vae, mapped[:row['frames']])
-                del mapped
-                from .streamed_weights import release_file_pages
-                release_file_pages([Path(row['pixels'])])
+                                    lambda model: resident.input_vae_room(model, canvas), device=device)
+        lifetime = nullcontext()
+        if torch.device(device).type == 'mps':
+            from .backends.mps_vae_encode import bounded_encoder
+            lifetime = bounded_encoder(vae)
+        with lifetime as memory:
+            for row, ref in zip(normalized, refs):
+                if row.get('pixels'):
+                    mapped = np.load(row['pixels'], mmap_mode='r', allow_pickle=False)
+                    if row['frames'] == 1:
+                        pixels = torch.from_numpy(np.array(mapped[:1])).to(device).permute(3, 0, 1, 2)[None]
+                        ref['latent'] = encode_vae_condition(vae, pixels, PIXEL_MEAN, PIXEL_STD, 42).cpu()
+                        del pixels
+                    else:
+                        ref['latent'] = encode_visual(vae, mapped[:row['frames']], device=device)
+                    del mapped
+                    from .streamed_weights import release_file_pages
+                    release_file_pages([Path(row['pixels'])])
+        if memory is not None:
+            print(json.dumps(dict(event='media_encode_memory', video_encoder=memory)), flush=True)
         del vae
         gc.collect()
-        torch.cuda.empty_cache()
+        empty_cache()
     if any(row.get('audio') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
         vae, _ = load_audio_vae(base, before_upload=None if resident is None else
-                                lambda model: resident.input_vae_room(model, canvas, audio=True))
+                                lambda model: resident.input_vae_room(model, canvas, audio=True), device=device)
         mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
         std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
         if vae.config.sampling_rate != 32000:
             raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
         for row, ref in zip(normalized, refs):
             if row.get('audio'):
-                audio = torch.from_numpy(np.load(row['audio'], allow_pickle=False)).to('cuda')
+                audio = torch.from_numpy(np.load(row['audio'], allow_pickle=False)).to(device)
                 latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
                 ref['audio_latent'] = ((latent - mean) / std).reshape(-1, 32).contiguous()
                 del audio, latent
         del vae
         gc.collect()
-        torch.cuda.empty_cache()
+        empty_cache()
     if any(row.get('anchor') for row in normalized):
         value.update(keyframe_anchors=[row['anchor'] for row in normalized],
                      condition_latents=[row['latent'] for row in refs])

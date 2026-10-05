@@ -4,8 +4,9 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: win
-    title: "FreeVideo"
-    color: theme.bg
+    title: unifiedChrome ? "" : "FreeVideo"
+    readonly property bool unifiedChrome: Qt.platform.os === "osx"
+    color: unifiedChrome ? theme.canvas : theme.bg
     width: 1280; height: 860
     property var s: initialState
     Connections { target: backend; function onChanged() { win.s = backend.state } }
@@ -17,12 +18,13 @@ ApplicationWindow {
     property bool closePending: false
     property bool accepted: false
     property bool manualUpdate: false
+    property bool releaseNotesOpen: false
     property string previousStatus: ""
     property string previousReview: ""
     property bool compact: width < 1000
     property bool shortWindow: height < 700
     property bool otherModelLinksOpen: false
-    readonly property bool manualEnvironment: s.form.new_comfy && s.form.environment_method === "manual"
+    readonly property bool manualEnvironment: s.offline.runtime_supported !== false && s.form.new_comfy && s.form.environment_method === "manual"
     readonly property bool usingRuntime: manualEnvironment && s.offline.runtime
     readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
     readonly property bool offlineSelected: usingRuntime || s.form.model_method === "manual"
@@ -32,6 +34,10 @@ ApplicationWindow {
     property bool errorDetailsOpen: false
     property string previousError: ""
     function t(en, zh) { return s.zh ? zh : en }
+    function releaseVersion(value) { return value && value.product_version ? "v" + value.product_version : value && value.version || "—" }
+    function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
+    readonly property var currentRelease: s.update.current_release || {version: s.update.current}
+    readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
     function number(n) { return typeof n === "number" && isFinite(n) }
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
@@ -47,8 +53,8 @@ ApplicationWindow {
         if (phase === "restarting") return t("Restarting FreeVideo…", "正在重启 FreeVideo…")
         if (phase === "engine") return t("Updating the engine…", "正在更新引擎…")
         if (phase === "checking") return t("Checking for updates…", "正在检查更新…")
-        if (s.update.candidate) return t("FreeVideo ", "FreeVideo ") + s.update.candidate.version + t(" is available", " 可以更新")
-        return t("New engine ", "新版引擎 ") + s.update.current + t(" is ready", " 已就绪")
+        if (s.update.candidate) return t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available", " 可以更新")
+        return t("New engine ", "新版引擎 ") + releaseVersion(currentRelease) + t(" is ready", " 已就绪")
     }
     function updateExplanation() {
         var phase = s.update.phase
@@ -57,7 +63,7 @@ ApplicationWindow {
         if (phase === "restarting" || phase === "engine") return t("ComfyUI restarts once; open FreeVideo pages refresh automatically.", "ComfyUI 会重启一次，已打开的 FreeVideo 页面会自动刷新。")
         if (phase === "checking") return ""
         if (s.update.status === "error" && s.update.error) return s.update.error
-        if (s.update.candidate) return t("Current version ", "当前版本 ") + s.update.current + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
+        if (s.update.candidate) return t("Current version ", "当前版本 ") + releaseVersion(currentRelease) + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
         return t("Installed engine ", "已安装引擎 ") + (s.update.installed || "—") + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
     }
     function primaryText() {
@@ -97,16 +103,21 @@ ApplicationWindow {
 
     Rectangle {
         id: sidebar
+        objectName: "sidebar"
         width: win.compact ? 200 : 232
         anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.left: parent.left
-        color: theme.bg
+        color: win.color
         Rectangle { width: 1; color: theme.border; anchors.right: parent.right; height: parent.height }
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 16; spacing: 4
-            RowLayout {
-                Layout.topMargin: 10; Layout.leftMargin: 6; Layout.bottomMargin: 28; spacing: 10
-                Image { source: "../assets/icon.png"; sourceSize.width: 64; sourceSize.height: 64; Layout.preferredWidth: 32; Layout.preferredHeight: 32; smooth: true }
-                FText { text: "FreeVideo"; font.pixelSize: theme.section; font.weight: Font.DemiBold; font.letterSpacing: -0.4 }
+            // The app icon alone is the brand mark.
+            Image {
+                objectName: "brandIcon"
+                source: "../assets/icon.png"; sourceSize.width: 96; sourceSize.height: 96
+                Layout.preferredWidth: 40; Layout.preferredHeight: 40
+                Layout.topMargin: 6; Layout.leftMargin: 6; Layout.bottomMargin: 24
+                smooth: true; mipmap: true
+                Accessible.role: Accessible.Graphic; Accessible.name: "FreeVideo"
             }
             FNav { objectName: "navLauncher"; glyph: "play"; text: t("Launch", "启动"); Layout.fillWidth: true; selected: s.page === "launcher"; enabled: s.selected && !s.busy; onClicked: backend.action("launcher", false) }
             FNav { objectName: "navSetup"; glyph: "download"; text: t("Installation", "安装"); Layout.fillWidth: true; selected: s.page !== "launcher"; enabled: !s.busy && !s.portable; onClicked: backend.action("setup", false) }
@@ -129,7 +140,7 @@ ApplicationWindow {
             }
             FNav { glyph: "terminal"; text: t("Terminal", "终端"); Layout.fillWidth: true; selected: terminalOpen; onClicked: terminalOpen = !terminalOpen }
             FNav { objectName: "settingsButton"; glyph: "settings"; text: t("Settings", "设置"); Layout.fillWidth: true; onClicked: settingsOpen = true }
-            FText { text: s.version; color: theme.disabled; font.pixelSize: 11; Layout.leftMargin: 12; Layout.topMargin: 12 }
+            FButton { objectName: "versionInfoButton"; text: releaseVersion(currentRelease); flat: true; font.pixelSize: 11; Layout.topMargin: 12; Accessible.name: t("Version & release notes", "版本与更新说明"); onClicked: releaseNotesOpen = true }
         }
     }
 
@@ -287,7 +298,7 @@ ApplicationWindow {
                     FCard {
                         Layout.fillWidth: true; padding: shortWindow ? 16 : 22; spacing: 10
                         RowLayout {
-                            objectName: "environmentMethods"; visible: s.form.new_comfy; Layout.fillWidth: true; spacing: 12
+                            objectName: "environmentMethods"; visible: s.form.new_comfy && s.offline.runtime_supported !== false; Layout.fillWidth: true; spacing: 12
                             FText { text: t("Install method", "安装方式"); font.weight: Font.DemiBold; Layout.fillWidth: true }
                             FSegmented {
                                 objectName: "environmentMethod"; Layout.preferredWidth: Math.min(340, parent.width * .72)
@@ -297,7 +308,7 @@ ApplicationWindow {
                                 Accessible.name: t("Install method", "安装方式")
                             }
                         }
-                        FDivider { visible: s.form.new_comfy; Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
+                        FDivider { visible: s.form.new_comfy && s.offline.runtime_supported !== false; Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4 }
                         FText { text: s.form.new_comfy ? t("Install location", "安装位置") : t("ComfyUI folder", "ComfyUI 目录"); font.weight: Font.DemiBold }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 8
@@ -414,7 +425,7 @@ ApplicationWindow {
                                     model: cloudLinks
                                     delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download from Quark ↗", "打开夸克网盘 ↗"); onClicked: backend.link(modelData.url) }
                                 }
-                                FText { text: t("Get Common models and the pack for your GPU (RTX 30/40 or RTX 50).", "下载「公用模型」和对应显卡包（30/40 系或 50 系）。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                                FText { objectName: "offlinePackageGuide"; text: s.offline.guide; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 FButton { objectName: "otherModelLinks"; text: t("Alternative download sources", "其他下载渠道") + (otherModelLinksOpen ? "  −" : "  +"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 0; font.pixelSize: theme.micro + 1; onClicked: otherModelLinksOpen = !otherModelLinksOpen }
                                 FText { visible: otherModelLinksOpen; text: t("The same models are also available from Hugging Face or ModelScope.", "同一套模型，也可从 Hugging Face 或魔搭下载。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 Flow {
@@ -552,6 +563,8 @@ ApplicationWindow {
                             }
                         }
                         FMeter { visible: s.update.phase === "downloading"; Layout.fillWidth: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done / s.update.progress.total : -1; active: visible }
+                        FText { visible: !s.update.phase && !!text; text: releaseSummary(availableRelease); Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro }
+                        FButton { text: t("What's new", "更新内容"); flat: true; visible: !s.update.phase; implicitHeight: theme.heightSm; onClicked: releaseNotesOpen = true }
                     }
                     FCard {
                         Layout.fillWidth: true; padding: 26; spacing: 18
@@ -760,6 +773,7 @@ ApplicationWindow {
                                 }
                                 FButton { objectName: "checkUpdatesButton"; text: t("Check now", "检查更新"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: { manualUpdate = true; backend.checkUpdates("") } }
                             }
+                            FButton { text: t("Version & release notes", "版本与更新说明") + " · " + releaseVersion(currentRelease); flat: true; Layout.fillWidth: true; onClicked: releaseNotesOpen = true }
                         }
                         FGroup {
                             Layout.fillWidth: true; title: t("Compatibility", "兼容性")
@@ -828,7 +842,7 @@ ApplicationWindow {
             id: modelContents; width: modelScroll.availableWidth
             spacing: 12
             FText { text: t("Download models", "下载模型"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
-            FText { text: modelInfo === "video" ? t("Choose your GPU variant on the model page and keep its folder structure.", "按模型页说明选择显卡版本，保留下载的目录结构。") : modelInfo === "decoder" ? t("Download the vae and audio_vae folders.", "下载 vae 和 audio_vae 文件夹。") : t("Download the text encoder to your model folder.", "下载文本编码器，放入模型目录。"); color: theme.muted; Layout.fillWidth: true; Layout.bottomMargin: 4 }
+            FText { objectName: "videoModelGuide"; text: modelInfo === "video" ? s.video_model_guide : modelInfo === "decoder" ? t("Download the vae and audio_vae folders.", "下载 vae 和 audio_vae 文件夹。") : t("Download the text encoder to your model folder.", "下载文本编码器，放入模型目录。"); color: theme.muted; Layout.fillWidth: true; Layout.bottomMargin: 4 }
             Repeater { model: modelLinks[modelInfo]; delegate: FButton { required property var modelData; required property int index; objectName: "modelLink-" + index; text: t(modelData.label, modelData.label_zh) + " ↗"; Layout.fillWidth: true; onClicked: backend.link(modelData.url) } }
             Repeater { model: cloudLinks; delegate: FButton { required property var modelData; text: t("Quark · ", "夸克 · ") + modelData.label + " ↗"; Layout.fillWidth: true; onClicked: backend.link(modelData.url) } }
             FText { text: t("When your download finishes, import a FreeVideo ZIP or choose the folder containing your models.", "下载完成后，导入 FreeVideo ZIP 或选择存放模型的文件夹。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true; Layout.topMargin: 6 }
@@ -857,8 +871,10 @@ ApplicationWindow {
             id: updateContents; width: updateScroll.availableWidth
             spacing: 14
             FText { text: s.update.candidate ? t("Update available", "有可用更新") : s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
-            FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启即可完成更新，模型和设置都会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + s.update.candidate.version + t(" is available (current ", " 已发布（当前 ") + s.update.current + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + s.update.current + t(" (installed ", "（已安装 ") + (s.update.installed || "—") + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Couldn't check for updates. Try again below.", "暂时无法检查更新，请重试。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
+            FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启即可完成更新，模型和设置都会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + releaseVersion(currentRelease) + t(" (installed ", "（已安装 ") + (s.update.installed || "—") + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Couldn't check for updates. Try again below.", "暂时无法检查更新，请重试。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
+            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; zh: s.zh; heading: t("What's new", "更新内容") + " · " + releaseVersion(availableRelease) }
+            FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
             FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
             FField { id: githubToken; visible: !!s.update.error; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: t("GitHub token · optional", "GitHub Token · 可选") }
             RowLayout {
@@ -868,6 +884,28 @@ ApplicationWindow {
                 FButton { objectName: "updateNowButton"; text: s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : s.update.candidate || s.update.engine ? t("Update now", "立即更新") : t("Check again", "重新检查"); primary: true; enabled: ["checking","downloading"].indexOf(s.update.status) < 0 && s.update.phase !== "waiting"; onClicked: { manualUpdate = !!s.update.candidate || !s.update.engine; backend.update(githubToken.text) } }
             }
             }
+        }
+    }
+
+    FPopup {
+        objectName: "releaseNotesDialog"; visible: releaseNotesOpen; onClosed: releaseNotesOpen = false
+        width: Math.min(560, win.width - 40)
+        height: Math.min(releaseContents.implicitHeight + padding * 2 + 60, win.height - 48)
+        contentItem: ColumnLayout {
+            spacing: 14
+            ScrollView {
+                Layout.fillWidth: true; Layout.fillHeight: true
+                id: releaseScroll; clip: true; contentWidth: availableWidth
+                ColumnLayout {
+                    id: releaseContents; width: releaseScroll.availableWidth; spacing: 18
+                    FText { text: t("Version & release notes", "版本与更新说明"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; release: s.update.candidate; zh: s.zh; heading: t("Available update", "可用更新") + " · " + releaseVersion(s.update.candidate) }
+                    FDivider { visible: !!s.update.candidate }
+                    FReleaseNotes { objectName: "currentReleaseNotes"; Layout.fillWidth: true; release: currentRelease; zh: s.zh; heading: t("Current version", "当前版本") + " · " + releaseVersion(currentRelease) }
+                    FText { visible: !!s.update.installed; text: t("Installed engine build: ", "已安装引擎构建号：") + (s.update.installed || ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                }
+            }
+            FButton { objectName: "closeReleaseNotesButton"; text: t("Close", "关闭"); onClicked: releaseNotesOpen = false }
         }
     }
 

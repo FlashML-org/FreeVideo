@@ -71,6 +71,11 @@ class SetupRunner(Runner):
     def command(self, root, arguments):
         if os.name == 'nt':
             return super().command(root, arguments)
+        if sys.platform == 'darwin':
+            if getattr(sys, 'frozen', False):
+                return [sys.executable, '--managed', str(self.source), '--root', str(root), *arguments]
+            return [sys.executable, '-B', '-X', 'utf8', '-m', 'freevideo_engine.managed',
+                    '--root', str(root), *arguments]
         return ['/bin/bash', str(self.source / 'freevideo'), '--root', str(root), *arguments]
 
     def environment(self, root):
@@ -136,13 +141,15 @@ class Setup:
 
 
     def resource_settings(self, value=None):
-        from .resource_settings import read, write
+        from .resource_settings import read, write, setting
         root = installation_root(self.source)
+        backend = 'mps' if sys.platform == 'darwin' else 'cuda'
+        field, _, label = setting(backend)
         if value is None:
-            return read(root)
-        if 'gpu_reserve_gib' not in value:
-            raise ValueError('Specify automatic (null) or reserved VRAM in GiB')
-        return write(root, value['gpu_reserve_gib'])
+            return read(root, backend=backend)
+        if field not in value:
+            raise ValueError('Specify automatic (null) or ' + label + ' in GiB')
+        return write(root, value[field], backend=backend)
 
     def downloads(self, root=None):
         from .download_settings import read

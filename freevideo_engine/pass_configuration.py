@@ -35,9 +35,8 @@ def configuration(engine, selected):
                 grouped_outputs=values['grouped_attention_outputs'], parallelism=previous.get('head_parallelism', 1))
         if changed.intersection(('ff_chunk', 'fp8_ff_recompute')):
             if previous.get('precision') == 'fp8' and previous.get('linear_compute') == 'native-fp8':
-                from .fp8_ops import install_chunked_ff
                 for block in model.transformer_blocks:
-                    install_chunked_ff(block.ff, values['ff_chunk'], recompute=values['fp8_ff_recompute'])
+                    engine.device_backend.install_chunked_ff(block.ff, values['ff_chunk'], recompute=values['fp8_ff_recompute'])
             elif 'ff_chunk' in changed:
                 # Ampere keeps its existing weight-only arithmetic. Replace
                 # the outer row tiling without nesting the old tiling wrapper.

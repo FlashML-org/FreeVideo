@@ -26,7 +26,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
-- **One-click deployment**: The Windows launcher sets up ComfyUI, the runtime environment and the models, reuses existing models, and supports offline installation.
+- **One-click deployment**: The Windows and Mac launchers set up ComfyUI, the runtime environment and the models, reuse existing models, and support offline installation.
 
 ## Getting Started
 
@@ -41,6 +41,16 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
 </div>
 
 **Offline installation:** Download the packages from [Quark](https://pan.quark.cn/s/c51235b84618) and drag the ZIP files into the launcher without extracting them. The common models and the model pack for your GPU (30/40 series or 50 series) are required; a new ComfyUI installation also requires the environment package.
+
+### macOS (Apple silicon preview)
+
+1. [Download FreeVideo-Mac-arm64.dmg](https://github.com/FlashML-org/FreeVideo/releases/download/macos-preview/FreeVideo-Mac-arm64.dmg), open it and drag **FreeVideo.app** into **Applications**.
+2. Open FreeVideo, then select an existing ComfyUI folder or install a new one. Existing model folders can be added for reuse; the runtime environment and missing models are downloaded automatically.
+3. Click **Install & launch**. ComfyUI opens in the browser with the FreeVideo workspace.
+
+This preview has been tested on an M5 Mac with 24 GB of unified memory. See the [Mac&nbsp;guide](docs/Mac.md) for generation times and memory.
+
+The Mac preview isn't notarized by Apple yet, so macOS blocks it the first time you open it. Download it only from the Releases page, then check the file and approve it as described in the [Mac guide](docs/Mac.md#first-open). This approves FreeVideo only; your other security settings stay as they are.
 
 ### Existing ComfyUI
 

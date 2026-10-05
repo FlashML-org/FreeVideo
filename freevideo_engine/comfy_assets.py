@@ -144,7 +144,7 @@ def output_summary(report, relative_video):
     values = [v for v in values if isinstance(v, (int, float)) and v >= 0]
     gpu_values = [phase.get('torch_peak_reserved_bytes') for phase in (video, encoding)]
     gpu_values = [v for v in gpu_values if isinstance(v, (int, float)) and v >= 0]
-    return dict(sample_seconds=video.get('sample_seconds'), request_seconds=report.get('request_seconds'),
+    result = dict(sample_seconds=video.get('sample_seconds'), request_seconds=report.get('request_seconds'),
                 vram_peak_bytes=max(gpu_values) if gpu_values else None,
                 ram_peak_bytes=max(values) if values else None, ram_metric=metric,
                 conditioning_cache_hit=report.get('encoding', {}).get('cache_hit', False),
@@ -155,3 +155,13 @@ def output_summary(report, relative_video):
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
                     '.debug.json' if report.get('diagnostic_file') == relative_video.with_suffix('.debug.json').name
                     else '.request.json').as_posix())
+    if report.get('device_backend') == 'mps':
+        policy = report.get('profile', {}).get('policy', {})
+        hardware = report.get('runtime_hardware', {})
+        # RSS is a process observation, not total unified or Metal memory. MPS
+        # exposes current allocations but no allocator peak; never relabel it.
+        result.update(device_backend='mps', memory_model='unified',
+            unified_total_bytes=hardware.get('ram_total'),
+            unified_reserve_bytes=policy.get('reserve_bytes'),
+            vram_peak_bytes=None, gpu_budget_bytes=None, gpu_total_bytes=None)
+    return result

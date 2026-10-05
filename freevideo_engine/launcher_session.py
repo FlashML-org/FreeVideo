@@ -1,6 +1,5 @@
 """Widget-independent state for the Qt launcher; uses the existing installer."""
 import json
-import locale
 import os
 from pathlib import Path
 import threading
@@ -11,9 +10,10 @@ from . import __version__
 from .comfy_launcher_runtime import Controller, layout, local_url, new_layout
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
-from .launcher_settings import Store
+from .launcher_settings import Store, default_language
 from .launcher_terminal import Tail
 from .model_status import FAMILIES, NAMES
+from .model_guidance import package_instructions, video_instructions, runtime_packages_supported
 from .setup_progress import progress_text
 from .terminal_ui import clean, duration
 
@@ -38,6 +38,7 @@ class Session:
     update_checked = 0.
     page = 'comfy'
     selected = installed_versions = None
+    release_details = None
 
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
@@ -56,10 +57,12 @@ class Session:
             self.form['environment_method'] = 'manual'
         if self.form['model_method'] == 'reuse':
             self.form['model_method'] = 'manual' if self.form['offline_runtime'] else 'auto'
+        if not runtime_packages_supported():
+            self.form.update(environment_method='auto', offline_runtime='')
         self.form['engine'] = os.environ.get('FREEVIDEO_HOME') or self.form['engine']
         if saved.get('comfy') and 'new_comfy' not in saved:
             self.form['new_comfy'] = False
-        self.language = saved.get('language', (locale.getlocale()[0] or '').lower())
+        self.language = saved['language'] if 'language' in saved else default_language()
         self.selected = saved.get('installation')
         self.saved_setup = saved.get('setup', {})
         self.page = 'comfy'
@@ -152,6 +155,9 @@ class Session:
             value = bool(value)
         if key == 'environment_method' and value not in ('auto', 'manual'):
             raise ValueError('Unknown environment installation method')
+        if key == 'environment_method' and value == 'manual' and not runtime_packages_supported():
+            raise ValueError(self.t('The Mac environment is prepared automatically. Import model packages in the next step.',
+                                   'Mac 运行环境由安装器自动准备，请在下一步导入模型包。'))
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
         if self.form[key] == value:
@@ -192,6 +198,8 @@ class Session:
         self.error = ''
 
     def activate_offline(self, root):
+        from .offline_packages import check_runtime_platform
+        check_runtime_platform()
         from .portable_launcher import PortableController
         controller = PortableController(root)
         controller.restore({'url': self.form['url']})
@@ -422,11 +430,11 @@ class Session:
         self.queue_state = None
         row = self.updater.state if self.updater else {}
         if self.updater and row.get('candidate') and row.get('status') != 'checking':
-            if self.updater.current.get('packaging') == 'onedir':
-                from .launcher_update import RELEASE_PAGE
+            if self.updater.current.get('packaging') in ('onedir', 'app'):
+                from .launcher_update import release_page
                 from .windows_ux import open_browser
                 self.update_intent = None
-                open_browser(RELEASE_PAGE)
+                open_browser(release_page(self.updater.current))
                 return
             self._unsnooze()
             self.update_intent = 'launcher'
@@ -604,13 +612,18 @@ class Session:
         return self.source_stamp((self.selected or {}).get('source'))[0]
 
     def update_view(self):
+        from .release_notes import installed_details, public_details
+        if self.release_details is None:
+            self.release_details = installed_details(Path(__file__).parent, __version__)
         row = dict(self.updater.state) if self.updater else dict(status='development')
         # Only display fields from the update manifest, never access tokens.
         view = {k: row[k] for k in ('status', 'error', 'progress', 'candidate') if k in row}
         key = self.update_key()
         view.update(engine=self.engine_update_pending(), current=__version__,
+                    current_release=public_details(self.updater.current) if self.updater else self.release_details,
                     installed=self.installed_version(), phase=self.update_phase(), key=key,
-                    manual=bool(self.updater and self.updater.current.get('packaging') == 'onedir'))
+                    channel=self.updater.current.get('channel') if self.updater else None,
+                    manual=bool(self.updater and self.updater.current.get('packaging') in ('onedir', 'app')))
         due = ((view.get('candidate') and row['status'] in ('available', 'ready', 'error'))
                or (view['engine'] and self.page == 'launcher'))
         view['remind'] = bool(key and due and self.update_snoozed.get(key, 0) <= time.monotonic()
@@ -621,11 +634,12 @@ class Session:
         if not self.bridge:
             return
         view = self.update_view()
+        from .release_notes import public_details
         candidate = view.get('candidate') or {}
         value = dict(version=__version__, phase=view['phase'], status=view.get('status'),
-                     progress=view.get('progress'), manual=view['manual'],
-                     candidate=dict(version=candidate['version']) if candidate.get('version') else None,
-                     engine=dict(pending=view['engine'], version=__version__, installed=view['installed']),
+                     progress=view.get('progress'), manual=view['manual'], channel=view['channel'],
+                     candidate=public_details(candidate) if candidate.get('version') else None,
+                     engine=dict(view['current_release'], pending=view['engine'], installed=view['installed']),
                      error=str(view.get('error') or '')[:500])
         now = time.monotonic()
         last, previous = self.bridge_written
@@ -792,7 +806,10 @@ class Session:
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         return dict(version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy,
-            offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']), models=len(self.form['offline_models'])),
+            offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
+                runtime_supported=runtime_packages_supported(),
+                models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'], zh)),
+            video_model_guide=video_instructions(zh),
             selected=bool(self.selected), error=error, notice=self.notice, compatibility=self.compatibility,
             report=dict(self.report),
             models=models, overall=overall, progress=progress, detail=clean(progress.get('detail', '')),

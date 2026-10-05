@@ -30,7 +30,7 @@ def summary_report(report):
     hardware = summary.get('hardware') or {}
     config = summary.get('effective_engine_config') or {}
     result = dict(kind='generation', status=summary.get('status') if summary.get('status') in
-                  ('complete', 'retrying', 'running') else 'incomplete',
+                  ('complete', 'reused', 'retrying', 'running') else 'incomplete',
                   version=__version__, hardware={}, config={}, geometry={}, memory={}, stages=[], steps=[], errors=[])
     for k in ('gpu_name', 'system', 'architecture', 'driver_version', 'torch_version', 'cuda_version'):
         if _label(hardware.get(k)):
@@ -206,7 +206,7 @@ def summary_report(report):
         current = phase or diagnostic.mapping(report.get('encoding')).get('phase')
         if diagnostic.name(current):
             result['current_stage'] = current
-    elif result['status'] != 'complete' and diagnostic.name(phase):
+    elif result['status'] not in ('complete', 'reused') and diagnostic.name(phase):
         result['failure_stage'] = phase
     if result['attempts']:
         result['errors'] = [dict(attempt=row['index'], phase=row.get('phase', 'unknown'),

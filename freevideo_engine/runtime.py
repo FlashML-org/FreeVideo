@@ -12,7 +12,7 @@ import torch
 
 from .adaln import CachedModulation, TableCache, ScheduleCursor, schedule_embeddings, schedule_timesteps
 from .attention import WindowAttention
-from .offload import LayerOffloader, pin_layer_weights, unload_streamed_layer, prepare_streamed_layer
+from .backends import get_backend
 from .weights import skeleton
 from .paths import base_path, checkpoint_path
 from .torch_compat import empty_host_cache
@@ -56,7 +56,10 @@ class Engine:
                  window_batch=1, linear_compute='native-fp8', input_cache_dir=None,
                  fp8_gemm='auto', window_varlen=False, varlen_smooth_k=True,
                  task='t2va', stream_weights=False, canvas=None, head_parallelism=1,
-                 residual_offload=False):
+                 residual_offload=False, device_backend=None):
+        self.device_backend = device_backend if device_backend is not None else get_backend()
+        if self.device_backend.capabilities.name != 'cuda':
+            raise NotImplementedError('Engine model execution currently requires the CUDA backend')
         from .media_request import TASKS
         if task not in TASKS:
             raise ValueError('Unsupported Engine task: ' + str(task))
@@ -120,8 +123,8 @@ class Engine:
                 raise ValueError('Online LoRA requires bounded attention; select the automatic generation profile')
             ff_chunk = ff_chunk or 2048
         lora_paths = [self.cache / spec['file'] for spec in online_lora.get('blocks', {}).values()]
-        from .adaln_assets import SLIM_FORMAT, validate_catalog, restore_projections
-        portable_adaln = manifest.get('format') == SLIM_FORMAT
+        from .adaln_assets import SLIM_FORMATS, validate_catalog, restore_projections
+        portable_adaln = manifest.get('format') in SLIM_FORMATS
         if portable_adaln:
             # In the slim format these constants are model parameters, not a
             # disposable optimization cache. The effective mode is reported.
@@ -131,7 +134,7 @@ class Engine:
                 raise ValueError('Incomplete prepared weights')
         self.attention = WindowAttention(attention, query_chunk, window_batch,
                                          window_varlen=window_varlen,
-                                         varlen_smooth_k=varlen_smooth_k)
+                                         varlen_smooth_k=varlen_smooth_k, device_backend=self.device_backend)
         model = skeleton(self.base, Path(checkpoint))
         validate_catalog(manifest, len(model.transformer_blocks))
         # Locked buffers allocated after the weights must also fit the Windows
@@ -193,7 +196,7 @@ class Engine:
             logical = 0
             if incremental_pinning:
                 tick = time.perf_counter()
-                logical, reserved = prepare_streamed_layer(block, streamed_source, index,
+                logical, reserved = self.device_backend.prepare_streamed_layer(block, streamed_source, index,
                     pin_budget_bytes=max(0, int(pin_host_gb * 1e9) - prepared_pins['reserved']),
                     headroom_bytes=self.weight_cache_headroom_bytes,
                     nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
@@ -201,28 +204,14 @@ class Engine:
                 prepared_pins['reserved'] += reserved
                 prepared_pins['seconds'] += time.perf_counter() - tick
             else:
-                unload_streamed_layer(block, streamed_source, index)
+                self.device_backend.unload_streamed_layer(block, streamed_source, index)
             if not logical:
                 # Its bytes are still in the file cache; later pins would evict them.
                 prepared_pins['views'] += int(streamed_source.adopt(index))
         precision = manifest.get('precision', 'bf16')
-        actual_fp8_gemm = None
-        if precision == 'fp8':
-            from src.models.ops.fp8_linear import per_tensor_gemm
-            from .fp8 import install_cached_linears
-            expected = 'per_tensor' if per_tensor_gemm() else 'rowwise'
-            if linear_compute == 'native-fp8' and torch.cuda.get_device_capability() < (8, 9):
-                raise ValueError('Native FP8 GEMM requires Ada or newer; choose bf16-weight-only on Ampere')
-            if linear_compute == 'native-fp8' and manifest['scale_granularity'] != expected:
-                raise ValueError('FP8 cache scale granularity does not match this GPU; prepare a separate cache')
-            install_cached_linears(model, manifest['linears'], weight_only=linear_compute == 'bf16-weight-only')
-            if linear_compute == 'native-fp8':
-                from .fp8_gemm import install
-                actual_fp8_gemm = install(model, manifest['scale_granularity'], requested=fp8_gemm)
-        elif precision != 'bf16':
-            raise ValueError('Unknown prepared weight precision')
+        actual_fp8_gemm = self.device_backend.prepare_linears(model, manifest, linear_compute, fp8_gemm)
         root_weights = _load_safetensors(self.cache / 'root.safetensors')
-        root_weights = {name: value if offload_refiner and name.startswith('token_refiner.refiner_blocks.') else value.to('cuda')
+        root_weights = {name: value if offload_refiner and name.startswith('token_refiner.refiner_blocks.') else value.to(self.device_backend.device)
                         for name, value in root_weights.items()}
         result = model.load_state_dict(root_weights, strict=False, assign=True)
         if result.unexpected_keys or any(not key.startswith('transformer_blocks.') for key in result.missing_keys):
@@ -231,7 +220,7 @@ class Engine:
         if online_lora:
             from .lora_online import attach_block
             attach_block(model, 'root', self.cache, manifest, _load_safetensors,
-                         device='cpu' if offload_refiner else 'cuda')
+                         device='cpu' if offload_refiner else self.device_backend.device)
         if streamed_source is not None and streamed_refiner_count:
             # Refiner weights live in root.safetensors and otherwise remain a
             # second large CPU allocation until LayerOffloader is constructed.
@@ -239,7 +228,7 @@ class Engine:
             # blocks immediately after binding the root state.
             for index, block in enumerate(model.token_refiner.refiner_blocks):
                 prepare_streamed(block, index)
-        model.rope.to('cuda')
+        model.rope.to(self.device_backend.device)
         self.cursor = None
         self.schedule_hook = None
         embeddings = None
@@ -259,7 +248,7 @@ class Engine:
             table = table_cache.load(index, steps) if table_cache is not None else None
             cache_hit = table is not None
             if cache_hit:
-                block.adaln_proj = CachedModulation(table, self.cursor).to('cuda', non_blocking=True)
+                block.adaln_proj = CachedModulation(table, self.cursor).to(self.device_backend.device, non_blocking=True)
                 table_cache_hits += 1
                 del table
             else:
@@ -270,7 +259,7 @@ class Engine:
             if adaln_cache and not cache_hit:
                 if embeddings is None:
                     _, embeddings = schedule_embeddings(model, steps, task=task)
-                block.load_state_dict({name: value.to('cuda') for name, value in adaln.items()}, strict=False, assign=True)
+                block.load_state_dict({name: value.to(self.device_backend.device) for name, value in adaln.items()}, strict=False, assign=True)
                 table = [block.adaln_proj(embedding) for embedding in embeddings]
                 block.adaln_proj = CachedModulation(table, self.cursor)
                 if table_cache is not None:
@@ -303,7 +292,7 @@ class Engine:
                 from .offload import cpu_weights
                 self.resident_weight_bytes += sum(value.numel() * value.element_size() for _, value in cpu_weights(block))
                 upload_started = time.perf_counter()
-                block.to('cuda', non_blocking=True)
+                block.to(self.device_backend.device, non_blocking=True)
                 upload_submit_seconds += time.perf_counter() - upload_started
             elif streamed_source is not None:
                 # Keep only the bounded pinned subset or metadata. Immutable
@@ -340,8 +329,7 @@ class Engine:
                 if precision == 'fp8' and linear_compute == 'native-fp8':
                     if not inference_kernels:
                         raise ValueError('FP8 FF chunks require the official inference kernels')
-                    from .fp8_ops import install_chunked_ff
-                    install_chunked_ff(block.ff, ff_chunk, recompute=fp8_ff_recompute)
+                    self.device_backend.install_chunked_ff(block.ff, ff_chunk, recompute=fp8_ff_recompute)
                     continue
                 original = block.ff.forward
                 block.ff._freevideo_unchunked_forward = original
@@ -387,11 +375,11 @@ class Engine:
                     from .streamed_weights import interleaved_layer_order
                     pin_layers = [self.offload_layers[index] for index in interleaved_layer_order(len(self.offload_layers))]
                     pin_order = 'interleaved'
-                self.pinned_model_bytes = pin_layer_weights(pin_layers, max_bytes=int(pin_host_gb * 1e9) if pin_host_gb else None,
+                self.pinned_model_bytes = self.device_backend.pin_layer_weights(pin_layers, max_bytes=int(pin_host_gb * 1e9) if pin_host_gb else None,
                                                            headroom_bytes=host_headroom,
                                                            nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
                 pin_seconds = time.perf_counter() - pin_start
-            self.pinned_host_allocated_bytes = torch.cuda.memory.host_memory_stats()['allocated_bytes.current']
+            self.pinned_host_allocated_bytes = self.device_backend.host_memory_stats()['allocated_bytes.current']
             print(json.dumps({'event': 'host_weights_pinned', 'seconds': pin_seconds,
                               'logical_bytes': self.pinned_model_bytes,
                               'working_headroom_bytes': host_headroom,
@@ -410,8 +398,8 @@ class Engine:
             del buffer
             self.host_preload_seconds = time.perf_counter() - preload_start
             print(json.dumps({'event': 'host_weights_read', 'seconds': self.host_preload_seconds}), flush=True)
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
+        self.device_backend.synchronize()
+        self.device_backend.empty_cache()
         self.load_seconds = time.perf_counter() - started
         self.load_breakdown = {'adaln_prepare_seconds': adaln_prepare_seconds, 'pin_weights_seconds': pin_seconds,
                                'block_bind_seconds': block_bind_seconds,
@@ -428,7 +416,7 @@ class Engine:
                                'scope': 'Host wall time within model load; AdaLN includes table reads or computation and writes.'}
         fa4_module = sys.modules.get('flash_attn.cute.flash_fwd')
         fa4_path = Path(fa4_module.__file__).resolve() if fa4_module is not None else None
-        self.config = {'task': task, 'attention': attention, 'prefetch': prefetch, 'adaln_cache': adaln_cache,
+        self.config = {'device_backend': self.device_backend.capabilities.name, 'task': task, 'attention': attention, 'prefetch': prefetch, 'adaln_cache': adaln_cache,
                        'adaln_mode': 'portable-model-asset' if table_cache is not None and table_cache.asset else 'local-precompute' if adaln_cache else 'original-projections',
                        'adaln_table_identity': table_cache.identity if table_cache is not None else None,
                        'adaln_table_producer': table_cache.producer if table_cache is not None else None,
@@ -514,9 +502,9 @@ class Engine:
             if info['task'] != self.task:
                 raise ValueError('Reference modalities changed the precomputed schedule')
             conditions = value['references']
-            prompt, tags = value['prompt_embeds'].to('cuda', torch.bfloat16), value['text_token_tags']
+            prompt, tags = value['prompt_embeds'].to(self.device_backend.device, torch.bfloat16), value['text_token_tags']
         else:
-            prompt, tags, conditions = load_prompt(str(conditioning), 'cuda')
+            prompt, tags, conditions = load_prompt(str(conditioning), self.device_backend.device)
             from .keyframes import validate_conditioning
             source_canvas = self.canvas if allow_smaller_canvas and self.canvas is not None else canvas
             validate_conditioning(prompt, tags, conditions, self.task,
@@ -562,7 +550,7 @@ class Engine:
             def append(self, value):
                 super().append(value)
                 cached = offloader.cached_bytes() if budget_refresh is not None else 0
-                peak = torch.cuda.max_memory_reserved()
+                peak = owner.device_backend.max_memory_reserved()
                 if budget_refresh is not None:
                     # Cache tensors are idle here; no forward hook or transfer
                     # owns them. Drop optional residency before lowering a cap.
@@ -579,7 +567,7 @@ class Engine:
                         from .two_pass import pass_cache_allowance
                         from .system import system_memory
                         cached = offloader.cached_bytes()
-                        free, _ = torch.cuda.mem_get_info()
+                        free, _ = owner.device_backend.memory_info()
                         commit = system_memory().get('commit_available_bytes')
                         allowance = pass_cache_allowance(live_budget, base_peak, free + cached,
                             gpu_reserve_bytes, None if commit is None else commit + cached)
@@ -593,8 +581,8 @@ class Engine:
                         and owner.canvas is not None and canvas['video_tokens'] < owner.canvas['video_tokens']):
                     from .two_pass import pass_cache_allowance
                     from .system import system_memory
-                    free, _ = torch.cuda.mem_get_info()
-                    peak = torch.cuda.max_memory_reserved()
+                    free, _ = owner.device_backend.memory_info()
+                    peak = owner.device_backend.max_memory_reserved()
                     commit = system_memory().get('commit_available_bytes')
                     allowance = pass_cache_allowance(pass_cache_budget_bytes, peak, free, gpu_reserve_bytes, commit)
                     pass_cache.update(measured_peak_reserved_bytes=peak, live_free_bytes=free,
@@ -623,8 +611,8 @@ class Engine:
             gemm_before = execution_counts()
         parallel_before = {name: getattr(self.attention, name, 0)
                            for name in ('parallel_head_calls', 'parallel_head_warmups')}
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
+        self.device_backend.reset_peak_memory_stats()
+        self.device_backend.synchronize()
         started = time.perf_counter()
         refinement = None
         if self.cache_refined_text:
@@ -633,10 +621,10 @@ class Engine:
             trigger_prefetch()
         checkpoint_seconds = 0.
         try:
-            with progress.layers(self.transformer.transformer_blocks), LayerOffloader(
+            with progress.layers(self.transformer.transformer_blocks), self.device_backend.make_offloader(
                     self.offload_layers, prefetch=self.prefetch, weight_source=self.stream_weight_source) as offloader:
                 latents, audio = generate_latents(self.transformer, prompt, tags, frames,
-                                                self.steps, seed, 'cuda', step_seconds=step_seconds,
+                                                self.steps, seed, self.device_backend.device, step_seconds=step_seconds,
                                                 conditions=conditions)
                 stats = offloader.stats()
                 # StepTimes.append closes over the live offloader. Retaining
@@ -659,8 +647,8 @@ class Engine:
                                **{name: getattr(self.attention, name, 0) - count
                                   for name, count in parallel_before.items()}),
                            'text_refinement': refinement,
-                           'torch_peak_allocated_bytes': torch.cuda.max_memory_allocated(),
-                           'torch_peak_reserved_bytes': torch.cuda.max_memory_reserved()}
+                           'torch_peak_allocated_bytes': self.device_backend.max_memory_allocated(),
+                           'torch_peak_reserved_bytes': self.device_backend.max_memory_reserved()}
                 if refining:
                     sampled['refinement'] = dict(base_steps=self.steps, steps=refine_steps,
                         start_index=self.steps - refine_steps, restart_seed=seed,
@@ -673,11 +661,11 @@ class Engine:
                     checkpoint_seconds = time.perf_counter() - tick
         finally:
             self.transformer._freevideo_refined_text = None
-        torch.cuda.synchronize()
+        self.device_backend.synchronize()
         elapsed = time.perf_counter() - started - checkpoint_seconds
-        torch.cuda.empty_cache()
-        sampled.update(sample_seconds=elapsed, torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
-                       torch_peak_reserved_bytes=torch.cuda.max_memory_reserved())
+        self.device_backend.empty_cache()
+        sampled.update(sample_seconds=elapsed, torch_peak_allocated_bytes=self.device_backend.max_memory_allocated(),
+                       torch_peak_reserved_bytes=self.device_backend.max_memory_reserved())
         return latents, audio, sampled
 
     @torch.no_grad()
@@ -700,10 +688,7 @@ class Engine:
                 identity = dict(manifest=digest(self.cache / 'manifest.json'), weights=fingerprint(self.cache / 'root.safetensors'),
                     engine=digest(Path(__file__)), upstream=digest(implementation), torch=str(torch.__version__),
                     arithmetic={k: self.config[k] for k in ('attention', 'linear_compute', 'fp8_gemm', 'inference_kernels', 'head_chunk', 'projection_chunk')},
-                    cuda=torch.version.cuda, gpu=torch.cuda.get_device_name(),
-                    tf32=torch.backends.cuda.matmul.allow_tf32,
-                    bf16_reduced_reduction=torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction,
-                    deterministic=torch.are_deterministic_algorithms_enabled())
+                    **self.device_backend.arithmetic_identity())
                 cache = InputCache(identity, root=self.input_cache_dir, kind='refined-text')
                 cpu = prompt.detach().to('cpu').contiguous()
                 cache_key = str(cpu.dtype) + str(list(cpu.shape)) + hashlib.sha256(cpu.view(torch.uint8).numpy().tobytes()).hexdigest()
@@ -711,7 +696,7 @@ class Engine:
                 found = cache.lookup(cache_key)
                 if found:
                     path, entry = found
-                    text = torch.load(path, map_location='cuda', weights_only=True)
+                    text = torch.load(path, map_location=self.device_backend.device, weights_only=True)
                     expected_shape = [1, prompt.shape[-2], self.transformer.context_embedder.out_features]
                     if (isinstance(text, torch.Tensor) and list(text.shape) == expected_shape
                             and str(text.dtype) == entry['metrics'].get('dtype') and bool(torch.isfinite(text).all())):
@@ -739,12 +724,12 @@ class Engine:
         if prompt.ndim != 3 or prompt.shape[0] != 1:
             raise ValueError('Expected one text prompt for refinement')
         text = self.transformer.context_embedder(prompt.to(input_dtype(self.transformer.context_embedder)))
-        with LayerOffloader(refiner, prefetch=False,
+        with self.device_backend.make_offloader(refiner, prefetch=False,
                             weight_source=self.stream_weight_source if self.stream_refiner_count else None) as loader:
             text = self.transformer.token_refiner(text)
             stats = loader.stats()
         del loader
-        torch.cuda.synchronize()
+        self.device_backend.synchronize()
         if not self.stream_refiner_count:
             refiner.to('meta')
         self.refiner_released = True
@@ -761,7 +746,7 @@ class Engine:
             except (OSError, ValueError) as error:
                 note = str(error)
         gc.collect()
-        torch.cuda.empty_cache()
+        self.device_backend.empty_cache()
         empty_host_cache(torch)
         return {'seconds': time.perf_counter() - started, 'shape': list(text.shape),
                 'refiner_weights_released': True, 'offload': stats, 'cache_hit': False, 'cache_saved': saved, 'cache_note': note}
@@ -779,5 +764,5 @@ class Engine:
         self.attention = None
         self.closed = True
         gc.collect()
-        torch.cuda.empty_cache()
+        self.device_backend.empty_cache()
         empty_host_cache(torch)

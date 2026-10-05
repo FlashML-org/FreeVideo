@@ -52,9 +52,9 @@ def prefetch_compiler_keys():
 
 
 def device_memory_report(budget_bytes, allocator_limit_bytes=None, *, reserve_bytes=0, capacity_trial=False):
-    from .gpu_budget import configure
-    return configure(torch, budget_bytes, allocator_limit_bytes, reserve_bytes=reserve_bytes,
-                     capacity_trial=capacity_trial)
+    from .backends import get_backend
+    return get_backend(torch_module=torch).configure_budget(
+        budget_bytes, allocator_limit_bytes, reserve_bytes=reserve_bytes, capacity_trial=capacity_trial)
 
 
 def generate(request, resident=None):

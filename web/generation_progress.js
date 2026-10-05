@@ -93,7 +93,10 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             if (reportId !== message.report_id) { report.disabled = false; report.textContent = reportLabel(); }
             reportId = message.report_id; report.hidden = false;
         }
-        if (message.result) report.hidden = true; // The saved video's report link takes over.
+        // The saved video's request record is different from the redacted
+        // diagnostic download. Keep this token available after completion;
+        // only a new request clears it.
+        return reportId;
     }
     report.onclick = async () => {
         if (!reportId || report.disabled) return;

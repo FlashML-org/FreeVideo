@@ -65,7 +65,9 @@ def upscale(video, checkpoint, width, height, *, memory_saving=False):
                               strict=True,assign=True)
         del state
         model = model.eval().requires_grad_(False).to(device=video.device,dtype=torch.float16)
+        folded = install_folded_convolutions(model) if video.device.type == 'mps' else 0
         if video.is_cuda:torch.cuda.synchronize(video.device)
+        elif video.device.type == 'mps':torch.mps.synchronize()
         loaded = time.perf_counter()-tick
         tick = time.perf_counter()
         mean = video.new_tensor(LATENTS_MEAN, dtype=torch.float16).view(1,-1,1,1,1)
@@ -75,16 +77,66 @@ def upscale(video, checkpoint, width, height, *, memory_saving=False):
             target_size=(video.shape[2],target_h,target_w),enable_chunking=False)
         result = (result * std + mean).float()
         if video.is_cuda:torch.cuda.synchronize(video.device)
+        elif video.device.type == 'mps':torch.mps.synchronize()
         computed = time.perf_counter()-tick
         if not bool(torch.isfinite(result).all()):
             raise RuntimeError('Latent upscaler produced nonfinite values')
         return result, dict(load_seconds=loaded,compute_seconds=computed,scale=scale,
             checkpoint_sha256=digest,temporal_chunking=False,normalized_input=True,
-            buffer_reuse=memory_saving,checkpoint_transform='extra_per_channel_v1')
+            buffer_reuse=memory_saving,checkpoint_transform='extra_per_channel_v1',
+            folded_convolutions=folded)
     finally:
         del model
         gc.collect()
         if video.is_cuda:torch.cuda.empty_cache()
+        elif video.device.type == 'mps':torch.mps.empty_cache()
+
+FOLD_BYTES = 512 * 2**20
+
+
+def _folded_conv3d(module, x):
+    """A 3x3x3, padding-1 Conv3d as one conv2d over the temporal taps in channels.
+
+    Each output frame is the same single reduction over 3 x C x 3 x 3 inputs:
+    its previous, current and next frame (zeros past either end) side by side.
+    MPS ran the 3D form at about 0.9 TFLOPS on an M5; the 2D form uses its
+    matrix units. Frames are folded a bounded group at a time.
+    """
+    batch, channels, frames, height, width = x.shape
+    weight = module.weight.permute(0, 2, 1, 3, 4).reshape(module.out_channels, 3 * channels, 3, 3)
+    planes = x.transpose(1, 2)                                            # [B, T, C, H, W]
+    out = x.new_empty((batch, module.out_channels, frames, height, width))
+    group = max(1, FOLD_BYTES // max(1, 3 * channels * height * width * x.element_size()))
+    for start in range(0, frames, group):
+        end = min(frames, start + group)
+        parts = []
+        for shift in (-1, 0, 1):
+            lo, hi = start + shift, end + shift
+            part = planes[:, max(lo, 0):min(hi, frames)]
+            pad_before, pad_after = max(0, -lo), max(0, hi - frames)
+            if pad_before or pad_after:
+                zero = x.new_zeros((batch, 1, channels, height, width))
+                part = torch.cat([zero] * pad_before + [part] + [zero] * pad_after, dim=1)
+            parts.append(part)
+        stacked = torch.cat(parts, dim=2).reshape(batch * (end - start), 3 * channels, height, width)
+        result = F.conv2d(stacked, weight, module.bias, padding=1)
+        out[:, :, start:end] = result.view(batch, end - start, module.out_channels, height, width).transpose(1, 2)
+        del parts, stacked, result
+    return out
+
+
+def install_folded_convolutions(model):
+    """Route this model's 3x3x3 zero-padded convolutions through `_folded_conv3d`."""
+    import types
+    count = 0
+    for module in model.modules():
+        if (isinstance(module, nn.Conv3d) and module.kernel_size == (3, 3, 3) and module.stride == (1, 1, 1)
+                and module.padding == (1, 1, 1) and module.dilation == (1, 1, 1) and module.groups == 1
+                and module.padding_mode == 'zeros'):
+            module.forward = types.MethodType(_folded_conv3d, module)
+            count += 1
+    return count
+
 
 def normalization(channels):
     return nn.GroupNorm(32, channels)

@@ -49,6 +49,12 @@
         "revision": "5be1ff90c02c9b1c1ce7300d6a803931732e6ab0",
         "hf_revision": "ae041e5aec51f8516a3416bd86d579cb29c4c796",
         "probe_file": "rowwise/cache/blocks/00.safetensors"
+      },
+      "int8_convrot": {
+        "repo": "OpenVDN/vdn-minimax-h3-edge",
+        "revision": "17738b37839b490c5ae95246d8cb41893e76d887",
+        "hf_revision": "da37681f5a1f7015fdb63482142b865111b687d3",
+        "probe_file": "int8-convrot/cache/blocks/00.safetensors"
       }
     },
     "latent_upscaler": {

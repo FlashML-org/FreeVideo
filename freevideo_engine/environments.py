@@ -10,12 +10,20 @@ ENVIRONMENTS = {
 
 
 def constraints_file(name, system=None):
+    if (system or platform.system()) == 'Darwin':
+        if name != 'unified':
+            raise ValueError('Mac requires the native unified environment')
+        from .macos_bootstrap import constraints
+        return constraints()
     prefix = 'windows-' if (system or platform.system()) == 'Windows' else ''
     return Path(__file__).resolve().parent.parent / 'constraints' / (prefix + name + '.txt')
 
 
 def bootstrap_versions(value, system=None):
     result = dict(value, target_system=system or platform.system())
+    if result['target_system'] == 'Darwin':
+        from .macos_bootstrap import versions
+        return versions(value)
     if result['target_system'] == 'Windows':
         result['uv'] = result['windows']['uv']
     return result

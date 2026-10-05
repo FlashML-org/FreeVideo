@@ -15,6 +15,8 @@ import struct
 CONTRACT = 'minimax-h3-adaln-silu-linear-3x6-v1'
 FORMAT = 'freevideo-adaln-v2'
 SLIM_FORMAT = 'freevideo-fp8-slim-v1'
+# The int8 export keeps the slim layout and its AdaLN tables; only matrices differ.
+SLIM_FORMATS = (SLIM_FORMAT, 'freevideo-int8-slim-v1')
 
 
 def digest(value):
@@ -122,7 +124,7 @@ def check_table(path, row, expected, *, verify_hash=True):
 def validate_catalog(manifest, count):
     """Return every required asset row; no file I/O, Torch or device probing."""
     tables = manifest.get('adaln_tables', [])
-    slim = manifest.get('format') == SLIM_FORMAT
+    slim = manifest.get('format') in SLIM_FORMATS
     sources = projection_groups(manifest)
     for row in sources:
         if (row['file'] != row['group'] + '.safetensors' or
