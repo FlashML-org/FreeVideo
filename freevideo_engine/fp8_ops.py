@@ -84,6 +84,12 @@ def install_chunked_ff(module, chunk, recompute=False):
 
     Rowwise-scale devices can finish each row tile immediately. A change in GEMM
     row shape may still alter rounding, and is validated as a numerical ablation.
+
+    The stash is a list of the row tiles the kernels write, not one matrix.
+    Windows has no expandable segments: on an RTX 5060 Ti, the 2.62 GiB matrix
+    for a 960x544, 634-frame second pass failed to allocate while 3.64 GiB of
+    reserved memory sat unallocated in smaller pieces. The tiles hold the same
+    bytes and every kernel sees the same shapes, so the output is unchanged.
     """
     if chunk < 1:
         raise ValueError('FP8 FF chunk must be positive')
@@ -112,26 +118,29 @@ def install_chunked_ff(module, chunk, recompute=False):
                 output[section] = result
                 del h, quantized, result
             return output.reshape(shape)
-        try:
-            activation = None if recompute else torch.empty((len(rows), width), device=rows.device, dtype=rows.dtype)
-        except torch.cuda.OutOfMemoryError as error:
-            # Identify this allocation precisely so automatic recovery can use
-            # the existing same-shape, global-scale recompute path. Other CUDA
-            # errors and unrelated OOMs are not relabelled as stash failures.
-            error.freevideo_allocation = dict(fp8_ff_activation_stash_bytes=len(rows)*width*rows.element_size())
-            raise
         maxima = torch.empty(len(rows), device=rows.device, dtype=torch.float32)
-        for start in range(0, len(rows), chunk):
-            section = slice(start, min(start + chunk, len(rows)))
-            h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], x_scale)
-            tile = torch.empty((len(h), width), device=rows.device, dtype=rows.dtype) if recompute else activation[section]
-            official._swiglu_rowmax_kernel[(len(h),)](h, tile, maxima[section], width, BLOCK_K=2048, num_warps=16)
-            del h, tile
+        stash = []
+        try:
+            for start in range(0, len(rows), chunk):
+                section = slice(start, min(start + chunk, len(rows)))
+                h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], x_scale)
+                tile = torch.empty((len(h), width), device=rows.device, dtype=rows.dtype)
+                official._swiglu_rowmax_kernel[(len(h),)](h, tile, maxima[section], width, BLOCK_K=2048, num_warps=16)
+                if not recompute:
+                    stash.append(tile)
+                del h, tile
+        except torch.cuda.OutOfMemoryError as error:
+            # Recompute allocates the same per-tile buffers but retains none,
+            # so only a failure with stashed tiles is one it can avoid. Label
+            # exactly those for automatic recovery; leave other OOMs alone.
+            if stash:
+                error.freevideo_allocation = dict(fp8_ff_activation_stash_bytes=len(rows)*width*rows.element_size())
+            raise
         scale = (maxima.amax() / official._FP8_MAX).clamp_min(1e-12).reshape(1, 1)
         del maxima
         if not recompute:
             del x_fp8, x_scale
-        for start in range(0, len(rows), chunk):
+        for index, start in enumerate(range(0, len(rows), chunk)):
             section = slice(start, min(start + chunk, len(rows)))
             if recompute:
                 h = lora_quantized(self.net[0].proj, rows[section], x_fp8[section], x_scale)
@@ -140,7 +149,7 @@ def install_chunked_ff(module, chunk, recompute=False):
                 official._swiglu_rowmax_kernel[(len(h),)](h, tile, unused_maxima, width, BLOCK_K=2048, num_warps=16)
                 del h, unused_maxima
             else:
-                tile = activation[section]
+                tile, stash[index] = stash[index], None
             output[section] = lora_quantized(self.net[2], tile, *quantize_fixed_scale(tile, scale))
             del tile
         return output.reshape(shape)
