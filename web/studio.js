@@ -11,9 +11,8 @@ import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
-import { outputDownloadURL } from './output_download.js';
 import { createSamplingEffort } from './sampling_effort.js';
-import { shareButton } from './share.js';
+import { resultActions } from './result_actions.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -388,6 +387,7 @@ export function openStudio(node) {
         stats.hidden = true;
         budget.textContent = '';
         links.replaceChildren();
+        delete progress.report.dataset.covered;
         prewarm.textContent = '';
         clearTimeout(revealTimer); revealTimer = null; delete stage.dataset.revealing;
         if (progress.element.hidden) stage.querySelector('video')?.pause();
@@ -408,7 +408,7 @@ export function openStudio(node) {
         catch (error) { regenerate.disabled = false; status.dataset.error = 'true'; status.textContent = error.message; }
     }, 'fv-quiet');
     reuseRow.append(reuseNotice, regenerate);
-    output.append(status, reuseRow, stats, budget, links, progress.report, prewarm);
+    output.append(status, reuseRow, links, stats, budget, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
@@ -428,9 +428,9 @@ export function openStudio(node) {
         budget.textContent = r.result_cache_hit ? '' : unified
             ? (Number.isFinite(r.unified_reserve_bytes) ? `${t('Reserved unified memory', '预留统一内存')} ${number(r.unified_reserve_bytes, 2 ** 30, 'GiB')}` : '')
             : (Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '');
-        links.replaceChildren();
-        for (const [label, file, cls] of [[t('Download video', '下载视频'), r.video, 'fv-primary'], [t('Report', '查看报告'), r.report, 'fv-quiet']]) { if (!file) continue; const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === r.video ? '' : file.split('/').pop(); links.append(a); }
-        links.append(shareButton(r, t));
+        // One report entry: the diagnostic export joins the report menu once a result exists.
+        progress.report.dataset.covered = 'true';
+        links.replaceChildren(resultActions(r, t, {diagnostic: progress.hasReport() ? progress.downloadReport : null}));
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
         if (!progress.element.hidden) {
             progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});

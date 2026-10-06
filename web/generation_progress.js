@@ -98,18 +98,24 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         // only a new request clears it.
         return reportId;
     }
+    // Download the redacted diagnostic export; throws when it is unavailable.
+    async function downloadReport() {
+        const id = reportId;
+        if (!id) throw new Error('Report unavailable');
+        const path = `/freevideo/report/${id}`;
+        const response = await (api ? api.fetchApi(path) : fetch(path));
+        if (!response.ok) throw new Error('Report unavailable');
+        const blob = await response.blob(), url = URL.createObjectURL(blob);
+        const link = document.createElement('a'); link.href = url; link.download = 'video.debug.json';
+        document.body.append(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     report.onclick = async () => {
         if (!reportId || report.disabled) return;
         const id = reportId;
         report.disabled = true; report.textContent = t('Preparing report…', '正在整理报告…');
         try {
-            const path = `/freevideo/report/${id}`;
-            const response = await (api ? api.fetchApi(path) : fetch(path));
-            if (!response.ok) throw new Error('Report unavailable');
-            const blob = await response.blob(), url = URL.createObjectURL(blob);
-            const link = document.createElement('a'); link.href = url; link.download = 'video.debug.json';
-            document.body.append(link); link.click(); link.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            await downloadReport();
             if (id === reportId) report.textContent = reportLabel();
         } catch {
             if (id === reportId) report.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试');
@@ -323,5 +329,5 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         if (timer !== null) clearInterval(timer); timer = null; state = {}; overall = {}; shownFraction = null;
         stopCount(); countShown = null;
     }
-    return {element, report, updateReport, update, hide, dispose: hide};
+    return {element, report, updateReport, downloadReport, hasReport: () => reportId !== null, update, hide, dispose: hide};
 }

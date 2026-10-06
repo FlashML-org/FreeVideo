@@ -1,24 +1,22 @@
 {
   "schema": 1,
-  "product_version": "0.2.0",
+  "product_version": "0.2.1",
   "en": {
-    "summary": "Four quality levels, a new two-pass refinement and sharing exports.",
+    "summary": "A redesigned quality slider, result view and sharing card.",
     "changes": [
-      "Choose Light, Medium, High or Max with the quality slider. Light uses two-pass acceleration; the higher levels sample 12, 16 or 20 steps.",
-      "Two-pass generation now refines with three independent steps after the first 8.",
-      "Setup installs every quality level by default. Existing installations download only what a generation needs, before it starts; download time is not counted as generation time.",
-      "Export a sharing image or video with generation statistics. The original video stays unchanged.",
-      "The launcher shows the FreeVideo wordmark."
+      "The quality slider is larger and easier to drag, with clearer motion between levels.",
+      "A finished video now has one action bar: Download video, Share, and a Report menu that holds both the diagnostic report and the generation record.",
+      "Generation times and memory peaks sit together in one card, in Create and in Creations.",
+      "Sharing images and videos are simpler: generation time, GPU and quality level."
     ]
   },
   "zh": {
-    "summary": "四档质量、全新二次采样与分享导出。",
+    "summary": "质量滑块、生成结果区和分享卡片重新设计。",
     "changes": [
-      "质量滑块提供轻量、标准、精细、极致四档。轻量使用二次采样加速，其余三档采样 12、16、20 步。",
-      "二次采样改为一采 8 步后，独立二采 3 步。",
-      "安装时默认下载全部质量档位。已安装的版本只在生成前补装当次需要的文件，下载时间不计入生成耗时。",
-      "可导出带生成统计的分享图片或视频，原视频保持不变。",
-      "启动器左上角显示 FreeVideo 字标。"
+      "质量滑块更大、更好拖动，切换档位的动效更清晰。",
+      "视频生成后只有一排操作：下载视频、分享，以及一个报告菜单，诊断报告和生成记录都在里面。",
+      "耗时和显存、内存峰值合并为一张卡片，创作页和作品库一致。",
+      "分享图片和视频更简洁，只保留生成耗时、显卡和质量档位。"
     ]
   }
 }

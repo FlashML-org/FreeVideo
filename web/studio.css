@@ -76,8 +76,10 @@
 .fv-studio .fv-stage[data-short=true] .fv-generation-times{display:none}
 .fv-studio .fv-stage-media video{animation:fv-preview-appear .55s ease}
 @keyframes fv-preview-appear{from{opacity:0}to{opacity:1}}
-.fv-studio .fv-stats{animation:fv-panel-enter .35s ease;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center;margin:0}.fv-studio .fv-stat{padding:12px 4px;background:var(--fv-card);border-radius:var(--fv-r-md)}
-.fv-studio .fv-stat strong{font-size:var(--fv-strong);font-weight:var(--fv-semibold);display:block;color:var(--fv-ink);font-variant-numeric:tabular-nums}.fv-studio .fv-stat span{font-size:var(--fv-micro);color:var(--fv-muted)}
+/* One metrics card; the 1 px gaps draw the dividers in any column count. */
+.fv-studio .fv-stats{animation:fv-panel-enter .35s ease;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;text-align:center;margin:0;border:1px solid var(--fv-border);border-radius:14px;background:var(--fv-border);overflow:hidden}.fv-studio .fv-stat{padding:13px 6px 12px;background:var(--fv-card)}
+.fv-studio .fv-stat strong{font-size:var(--fv-strong);font-weight:var(--fv-semibold);display:block;color:var(--fv-ink);font-variant-numeric:tabular-nums;white-space:nowrap}.fv-studio .fv-stat span{display:block;margin-top:3px;font-size:var(--fv-micro);color:var(--fv-muted)}
+.fv-studio .fv-stats+.fv-budget{margin-top:-9px}
 .fv-studio .fv-result-links{animation:fv-panel-enter .35s ease;display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap}
 .fv-studio .fv-runbar{position:sticky;bottom:0;padding:16px 0 22px;background:linear-gradient(transparent,var(--fv-bg) 12%);z-index:2}
 .fv-studio .fv-runbar .fv-primary{width:100%;min-height:var(--fv-h-lg);font-size:14px}

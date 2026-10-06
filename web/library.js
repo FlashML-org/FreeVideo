@@ -1,7 +1,6 @@
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
-import { outputDownloadURL } from './output_download.js';
-import { shareButton } from './share.js';
+import { resultActions } from './result_actions.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -45,7 +44,7 @@ export function openLibrary(t) {
     stats.setAttribute('aria-label', t('Generation statistics', '生成统计'));
     const budget = el('div', '', 'fv-budget');
     const links = el('div', null, 'fv-result-links');
-    detail.append(all, frame, caption, stats, budget, links);
+    detail.append(all, frame, caption, links, stats, budget);
     body.append(collection, detail); dialog.append(header, body);
     let disposed = false, loading = false, next = null, selected = null, player = null, arrivals = [];
     const rows = new Map(), cards = new Map();
@@ -80,12 +79,7 @@ export function openLibrary(t) {
                 }
             }, {once: true});
             date.textContent = timestamp(row); geometry.textContent = dimensions(row);
-            links.replaceChildren();
-            for (const [label, file, cls] of [[t('Download video', '下载视频'), row.video, 'fv-primary'], [t('View report', '查看报告'), row.report, 'fv-quiet']]) {
-                if (!file) continue;
-                const a = el('a', label, cls); a.href = outputDownloadURL(api, file); a.download = file === row.video ? '' : file.split('/').pop(); links.append(a);
-            }
-            links.append(shareButton(row, t));
+            links.replaceChildren(resultActions(row, t));
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
         }
         // These are the saved generation's measurements, including when the
