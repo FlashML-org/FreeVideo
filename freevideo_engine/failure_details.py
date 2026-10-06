@@ -73,6 +73,13 @@ def launcher_failure(value, *, zh=False):
         return dict(title='', detail='', action='', kind='')
     text = str(value)
     summary = text.partition(STEP_OUTPUT)[0]
+    disk = re.search(r'Insufficient disk space: need ([\d.]+) GiB, available ([\d.]+) GiB, short ([\d.]+) GiB', summary, re.I)
+    if disk:
+        needed, available, short = disk.groups()
+        return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk',
+                    detail=('需要 %s GiB，可用 %s GiB。再释放 %s GiB 后点击“重新检查”。' % (needed, available, short)
+                            if zh else 'Need %s GiB; %s GiB available. Free another %s GiB, then click “Check again”.' % (needed, available, short)),
+                    action='重新检查' if zh else 'Check again')
     if text.startswith('ComfyUI could not start.'):
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
                     detail='ComfyUI 进程在启动时退出。' if zh else 'The ComfyUI process exited during startup.',
@@ -125,11 +132,11 @@ def launcher_failure(value, *, zh=False):
           '关闭占用内存较多的程序后重试，已下载文件会保留。')),
         (r'Installation RAM monitoring failed|Cannot read process-tree memory', 'memory-monitor',
          ('Memory usage could not be read', '暂时无法读取进程内存'),
-         ('Download progress is saved. Check and continue to retry; copy the details if it happens again.',
-          '下载进度已保留。点击“检查并继续”重试；若再次出现，请复制详情反馈。')),
-        (r'No space left on device|WinError 112|disk (?:is )?full', 'disk',
+         ('Download progress is saved. Retry installation; copy the details if it happens again.',
+          '下载进度已保留。点击“重试安装”；若再次出现，请复制详情反馈。')),
+        (r'No space left on device|WinError 112|disk (?:is )?full|Not enough disk space|Insufficient disk space', 'disk',
          ('Not enough disk space', '磁盘空间不足'),
-         ('Free up space on the installation drive, then continue.', '清理安装盘空间后，点击继续。')),
+         ('Free up space on the installation drive, then retry.', '清理安装盘空间后，点击重试。')),
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
          ('Download interrupted', '下载中断了'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
