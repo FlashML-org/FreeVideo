@@ -25,6 +25,7 @@ FILE_LIMIT = 512 * 1024
 TOTAL_LIMIT = 12 * 1024 * 1024
 FILE_COUNT = 256
 NAMES = {'report.json', 'report.csv', 'inventory.json', 'case.json', 'status.json',
+         'prompt-rewrite.json',
          'plan.json', 'machine.before.json', 'comparison.json', 'profile.json',
          'result.json', 'gpu.csv', 'ram.jsonl', 'network.jsonl', 'optimization.json', 'storage.json', 'kernel-capabilities.json'}
 SENSITIVE = re.compile(r'(?:^|[_-])(?:token|password|secret|credential|api[_-]?key)(?:$|[_-])', re.I)
@@ -254,6 +255,14 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
         kernels = root / 'kernel-capabilities.json'
         if kernels.is_file():
             add_path('installation/kernel-capabilities.json', kernels)
+        prompt_report = root / 'prompt-vlm-report.json'
+        if prompt_report.is_file():
+            add_path('installation/prompt-vlm-report.json', prompt_report)
+        prompt_runs = root / 'prompt-vlm-runs'
+        if prompt_runs.is_dir() and not is_link(prompt_runs):
+            for path in sorted(prompt_runs.glob('*/prompt-rewrite.json'), key=lambda p: p.stat().st_mtime, reverse=True):
+                if not is_link(path) and not is_link(path.parent):
+                    add_path('prompt-vlm/' + path.parent.name + '.json', path)
         if tuning_state.is_file():
             add_path('installation/tuning.json', tuning_state)
         download_ownership = root / '.freevideo/downloaded-models.json'

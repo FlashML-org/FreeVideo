@@ -368,6 +368,10 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                               'Cached encoder receipts do not describe this request’s peak.'),
             bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm') if k in bridge},
             collection_notes=notes, log_tails={})
+        rewrite = read_json('prompt-rewrite', output.parent / 'prompt-rewrite.json')
+        if rewrite.get('schema') == 'freevideo.prompt-vlm':
+            payload['prompt_rewrite'] = rewrite
+            payload['prompt_rewrite']['timing_scope'] = 'Before video generation; excluded from video request_seconds'
         if isinstance(bridge.get('result_cache'), dict):
             payload['bridge']['result_cache'] = {key: bridge['result_cache'][key]
                 for key in ('enabled', 'hit', 'forced', 'stored')

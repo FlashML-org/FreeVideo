@@ -52,8 +52,13 @@ function reportRedactor(detail, context) {
             if (Array.isArray(input) && input.length === 2 && Number.isInteger(input[1])) continue;
             remember(input);
         }
-    for (const node of list(context.graph?._nodes))
+    for (const node of list(context.graph?._nodes)) {
+        remember(node.properties?.freevideo_prompt_versions?.original);
+        remember(node.properties?.freevideo_prompt_versions?.rewritten);
         for (const widget of list(node.widgets)) remember(widget.value);
+    }
+    remember(context.node?.properties?.freevideo_prompt_versions?.original);
+    remember(context.node?.properties?.freevideo_prompt_versions?.rewritten);
     for (const widget of list(context.node?.widgets)) remember(widget.value);
     for (const node of Object.values(record(detail?.response?.node_errors ?? detail?.node_errors)))
         for (const reason of list(node?.errors)) remember(reason?.extra_info?.received_value);
