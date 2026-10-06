@@ -263,7 +263,6 @@ ApplicationWindow {
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
-                            FButton { objectName: "retryFailureButton"; visible: !!s.retry_kind; enabled: !s.busy; primary: true; text: retryText(); onClicked: backend.action("retry", false) }
                             FButton { objectName: "diskCleanupButton"; visible: s.failure.kind === "disk"; enabled: s.can_cleanup; text: t("Clean download cache", "清理下载缓存"); onClicked: { settingsTab = "general"; settingsOpen = true; backend.cleanupDownloads(false) } }
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                             FButton { objectName: "copyError"; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
@@ -797,23 +796,38 @@ ApplicationWindow {
                             FButton { text: t("Version & release notes", "版本与更新说明") + " · " + releaseVersion(currentRelease); flat: true; Layout.fillWidth: true; onClicked: releaseNotesOpen = true }
                         }
                         FGroup {
-                            Layout.fillWidth: true; title: t("Download cache", "下载缓存")
-                            FText { text: t("Remove cached installation packages. Models, environments and videos are kept.", "清理已缓存的安装文件，保留模型、运行环境和视频。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
-                            FText {
-                                objectName: "cleanupStatus"; Layout.fillWidth: true; color: theme.muted; visible: s.cleanup.status !== "idle"
-                                text: s.cleanup.status === "scanning" ? t("Checking…", "正在检查…") :
-                                    s.cleanup.status === "cleaning" ? t("Cleaning…", "正在清理…") :
-                                    s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("Can free about ", "预计可清理 ") + bytes(s.cleanup.bytes) : t("No unused download cache found.", "暂无可清理的下载缓存。")) :
-                                    s.cleanup.status === "complete" ? t("Freed ", "已释放 ") + bytes(s.cleanup.released_bytes || 0) + (s.cleanup.skipped ? t(". Some files changed; check again.", "。部分文件已变化，请重新检查。") : "") :
-                                    s.cleanup.status === "busy" ? t("Another task is using these files. Try again when it finishes.", "其他任务正在使用这些文件，完成后可重试。") :
-                                    t("Cleanup could not finish. Check again to retry.", "清理未完成，点击检查重试。")
+                            Layout.fillWidth: true; title: t("Storage", "存储")
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 12
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 2
+                                    FText { text: t("Download cache", "下载缓存"); Layout.fillWidth: true }
+                                    FText {
+                                        objectName: "cleanupStatus"; Layout.fillWidth: true; font.pixelSize: theme.micro
+                                        color: s.cleanup.status === "error" ? theme.danger : theme.muted
+                                        text: s.cleanup.status === "scanning" ? t("Checking…", "正在检查…") :
+                                            s.cleanup.status === "cleaning" ? t("Cleaning…", "正在清理…") :
+                                            s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("About ", "约 ") + bytes(s.cleanup.bytes) + t(" can be freed. Models, environments and videos are kept.", " 可清理，保留模型、运行环境和视频。") : t("Nothing to clean.", "暂无可清理的下载缓存。")) :
+                                            s.cleanup.status === "complete" ? t("Freed ", "已释放 ") + bytes(s.cleanup.released_bytes || 0) + (s.cleanup.skipped ? t(". Some files changed; check again.", "。部分文件已变化，请重新检查。") : t(".", "。")) :
+                                            s.cleanup.status === "busy" ? t("Another task is using these files. Try again when it finishes.", "其他任务正在使用这些文件，完成后可重试。") :
+                                            s.cleanup.status === "error" ? t("Cleanup could not finish. Check again to retry.", "清理未完成，可重新检查后再试。") :
+                                            t("Installation files kept for repairs. Models, environments and videos are never removed.", "安装时缓存的文件，清理时不会删除模型、运行环境和视频。")
+                                    }
+                                }
+                                FButton {
+                                    objectName: "scanCacheButton"; visible: !(s.cleanup.status === "ready" && s.cleanup.bytes > 0)
+                                    text: s.cleanup.status === "idle" ? t("Check", "检查") : t("Check again", "重新检查")
+                                    implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                    enabled: s.can_cleanup && ["scanning", "cleaning"].indexOf(s.cleanup.status) < 0
+                                    onClicked: backend.cleanupDownloads(false)
+                                }
+                                FButton {
+                                    objectName: "clearCacheButton"; visible: s.cleanup.status === "ready" && s.cleanup.bytes > 0
+                                    text: t("Clean…", "清理…"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                    enabled: s.can_cleanup; onClicked: cleanupConfirm = true
+                                }
                             }
                             FText { visible: !!s.cleanup.error; text: s.cleanup.error || ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true }
-                            Flow {
-                                Layout.fillWidth: true; spacing: 8
-                                FButton { objectName: "scanCacheButton"; text: t("Check cache", "检查缓存"); enabled: s.can_cleanup; onClicked: backend.cleanupDownloads(false) }
-                                FButton { objectName: "clearCacheButton"; visible: s.cleanup.status === "ready" && s.cleanup.bytes > 0; text: t("Clean…", "清理…"); enabled: s.can_cleanup; onClicked: cleanupConfirm = true }
-                            }
                         }
                         FGroup {
                             Layout.fillWidth: true; title: t("Compatibility", "兼容性")
@@ -908,8 +922,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             ScrollView {
-            Layout.fillWidth: true; Layout.fillHeight: true
-            id: updateScroll; clip: true; contentWidth: availableWidth
+            id: updateScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
             id: updateContents; width: updateScroll.availableWidth
             spacing: 14
@@ -956,7 +969,7 @@ ApplicationWindow {
     FDialog {
         objectName: "cleanupConfirmation"; visible: cleanupConfirm
         title: t("Clean download cache?", "清理下载缓存？")
-        text: t("Future repairs may need to download these installation files again.", "以后修复环境时，可能需要重新下载这些安装文件。")
+        text: t("About ", "将释放约 ") + bytes(s.cleanup.bytes || 0) + t(" will be freed. Future repairs may need to download these installation files again.", "。以后修复环境时，可能需要重新下载这些安装文件。")
         acceptText: t("Clean", "清理"); rejectText: t("Cancel", "取消")
         onAccepted: { cleanupConfirm = false; backend.cleanupDownloads(true) }
         onRejected: cleanupConfirm = false

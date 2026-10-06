@@ -77,7 +77,7 @@ def launcher_failure(value, *, zh=False):
     if disk:
         needed, available, short = disk.groups()
         return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk',
-                    detail=('需要 %s GiB，可用 %s GiB。再释放 %s GiB 后点击「重新检查」。' % (needed, available, short)
+                    detail=('需要 %s GiB，可用 %s GiB。再释放 %s GiB 后点击“重新检查”。' % (needed, available, short)
                             if zh else 'Need %s GiB; %s GiB available. Free another %s GiB, then click “Check again”.' % (needed, available, short)),
                     action='重新检查' if zh else 'Check again')
     if text.startswith('ComfyUI could not start.'):
