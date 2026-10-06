@@ -1,28 +1,37 @@
 .fv-sampling-settings{margin-top:18px;padding:14px 16px;border:1px solid var(--fv-border,#ffffff0f);border-radius:14px;background:var(--fv-card,#1e2024)}
-.fv-effort{--fv-effort-color:#90b9b2}
 .fv-studio .fv-sampling-settings .fv-two-pass{margin:10px 0 0;padding:0;border:0;border-radius:0;background:none;min-height:28px}
 .fv-studio .fv-sampling-settings .fv-two-pass>span{font-size:12px;font-weight:400;color:var(--fv-muted,#969a9f)}
 .fv-studio .fv-sampling-settings .fv-two-pass input{width:34px;height:20px;min-height:20px}
 .fv-studio .fv-sampling-settings .fv-two-pass input::before{width:14px;height:14px}
 .fv-studio .fv-sampling-settings .fv-two-pass input:checked::before{transform:translateX(14px)}
-.fv-effort-heading{display:flex;align-items:center;gap:8px;margin:0 0 6px;color:var(--fv-muted,#969a9f);font:12px/1.5 var(--fv-font,system-ui)}
-.fv-effort-value{font-weight:550;color:var(--fv-effort-color);transition:color .25s}
+.fv-effort{--fv-position:0;--fv-move:cubic-bezier(.25,1.15,.45,1);--fv-tone:var(--fv-accent,#6db8fa)}
+.fv-effort-heading{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;color:var(--fv-muted,#969a9f);font:12px/1.5 var(--fv-font,system-ui)}
 .fv-effort-estimate{margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;font-size:11px}
-.fv-effort-rail{position:relative;height:32px;cursor:ew-resize;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline:none;border-radius:8px}
-.fv-effort-track{position:absolute;left:10px;right:10px;top:14px;height:4px;border-radius:8px;background:color-mix(in srgb,var(--fv-ink,#eee) 12%,transparent);overflow:hidden}
-.fv-effort-fill{display:block;height:100%;border-radius:inherit;background:var(--fv-effort-color);transition:width .38s cubic-bezier(.22,1,.36,1),background .25s}
-.fv-effort-tick{position:absolute;top:14px;width:4px;height:4px;transform:translateX(-50%);border-radius:50%;background:var(--fv-muted,#888);opacity:.55;pointer-events:none}
-.fv-effort-pill{position:absolute;left:calc(10px + (100% - 20px) * var(--fv-position,0));top:6px;transform:translateX(-50%);width:20px;height:20px;border-radius:50%;box-sizing:border-box;background:#edf2f8;border:1px solid #fff8;box-shadow:0 1px 4px #0005,0 0 0 4px color-mix(in srgb,var(--fv-effort-color) 9%,transparent);transition:left .38s cubic-bezier(.22,1,.36,1),box-shadow .2s,opacity .18s;pointer-events:none}
-.fv-effort-rail:hover .fv-effort-pill,.fv-effort-rail[data-dragging=true] .fv-effort-pill{box-shadow:0 2px 6px #0005,0 0 0 6px color-mix(in srgb,var(--fv-effort-color) 14%,transparent)}
-.fv-effort-rail[data-dragging=true] .fv-effort-pill{transition:left 60ms linear,box-shadow .2s}
-.fv-effort-rail[data-dragging=true] .fv-effort-fill{transition:width 60ms linear,background .2s}
-.fv-effort-rail:focus-visible{outline:2px solid var(--fv-effort-color);outline-offset:3px}
-.fv-effort[data-custom=true] .fv-effort-pill{opacity:.45}
-.fv-effort-custom{display:block;margin-top:2px;color:var(--fv-muted,#888);font:11px/1.4 var(--fv-font,system-ui)}
+.fv-effort-rail{position:relative;cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline:none;border-radius:20px}
+/* A thick track in the interface's own accent; the knob travels inside it. */
+.fv-effort-track{position:relative;display:block;height:36px;border-radius:18px;background:color-mix(in srgb,var(--fv-ink,#eee) 7%,transparent);box-shadow:inset 0 1px 2px #0005}
+.fv-effort-fill{position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,color-mix(in srgb,var(--fv-tone) 55%,transparent),var(--fv-tone));clip-path:inset(0 calc((1 - var(--fv-position)) * (100% - 36px)) 0 0 round 18px);transition:clip-path .5s var(--fv-move)}
+.fv-effort-stop{position:absolute;top:50%;left:calc(18px + (100% - 36px) * var(--fv-stop));width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:color-mix(in srgb,var(--fv-ink,#eee) 26%,transparent);transition:background .3s;pointer-events:none}
+.fv-effort-stop[data-filled]{background:#ffffffb8}
+.fv-effort-knob{position:absolute;top:4px;left:calc(4px + (100% - 36px) * var(--fv-position));width:28px;height:28px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0006,0 0 0 .5px #0000001f;transition:left .5s var(--fv-move),box-shadow .25s,transform .25s ease;pointer-events:none}
+.fv-effort-rail:hover .fv-effort-knob{box-shadow:0 2px 6px #0006,0 0 0 5px color-mix(in srgb,var(--fv-tone) 20%,transparent)}
+.fv-effort-rail[data-dragging=true] .fv-effort-knob{transform:scale(1.08);transition:left 40ms linear,box-shadow .2s,transform .2s ease;box-shadow:0 3px 10px #0007,0 0 0 6px color-mix(in srgb,var(--fv-tone) 26%,transparent)}
+.fv-effort-rail[data-dragging=true] .fv-effort-fill{transition:clip-path 40ms linear}
+.fv-effort-knob.fv-effort-pop{animation:fv-effort-pop .36s ease}
+@keyframes fv-effort-pop{50%{transform:scale(1.1)}}
+.fv-studio .fv-effort .fv-effort-rail:focus-visible,.fv-effort .fv-effort-rail:focus-visible{outline:none}
+.fv-effort-rail[data-keyboard]:focus-visible .fv-effort-track{outline:1.5px solid color-mix(in srgb,var(--fv-tone) 70%,transparent);outline-offset:3px}
+.fv-effort-names{position:relative;height:20px;margin-top:8px}
+.fv-studio .fv-effort .fv-effort-name,.fv-effort .fv-effort-name{position:absolute;top:0;left:calc(18px + (100% - 36px) * var(--fv-stop));transform:translateX(-50%);min-height:0;margin:0;padding:0 5px;border:0;border-radius:5px;background:none;box-shadow:none;color:var(--fv-muted,#969a9f);font:500 12px/1.6 var(--fv-font,system-ui);white-space:nowrap;cursor:pointer;transition:color .2s}
+.fv-studio .fv-effort .fv-effort-name:hover,.fv-effort .fv-effort-name:hover{color:var(--fv-ink,#eee);background:none}
+.fv-studio .fv-effort .fv-effort-name[data-active],.fv-effort .fv-effort-name[data-active]{color:var(--fv-tone);font-weight:600}
+.fv-effort[data-custom=true] .fv-effort-knob{opacity:.5}
+.fv-effort[data-custom=true] .fv-effort-name[data-active]{color:var(--fv-muted,#969a9f);font-weight:500}
+.fv-effort-custom{display:block;margin-top:4px;color:var(--fv-muted,#888);font:11px/1.4 var(--fv-font,system-ui)}
 .fv-effort-custom[hidden]{display:none}
 .fv-effort[data-disabled=true]{opacity:.5}
-.fv-effort[data-disabled=true] .fv-effort-rail{cursor:default}
-@media(prefers-reduced-motion:reduce){.fv-effort *{transition:none!important}}
+.fv-effort[data-disabled=true] .fv-effort-rail,.fv-effort[data-disabled=true] .fv-effort-name{cursor:default}
+@media(prefers-reduced-motion:reduce){.fv-effort *{transition:none!important;animation:none!important}}
 
 .fv-two-pass-status{margin-left:auto;color:var(--fv-muted);font-size:11px;transition:opacity .2s}
 .fv-two-pass-unavailable input{opacity:.4;cursor:not-allowed}
