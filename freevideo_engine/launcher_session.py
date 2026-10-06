@@ -42,8 +42,11 @@ class Session:
 
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
+        from .installation_cleanup import Cleaner
+        self.cleaner = Cleaner()
         self.importer = Importer()
         self.imported_batch = None
+        self.import_retry = None
         self.source = Path(source or materialize_source())
         self.controller = controller or Controller(self.source)
         self.store = store or Store(launcher_root())
@@ -150,7 +153,7 @@ class Session:
                 raise ValueError(self.t('Pause installation before changing the token.', '请先暂停安装，再修改 Token。'))
             from .hf_auth import validate
             self.token = validate(str(value)); return
-        if key not in self.form or self.controller.busy or self.importer.busy:
+        if key not in self.form or self.controller.busy or self.importer.busy or self.cleaner.busy:
             return
         if key in ('separate', 'repair', 'new_comfy', 'sampling_caches'):
             value = bool(value)
@@ -164,6 +167,9 @@ class Session:
         if self.form[key] == value:
             return
         self.form[key] = value
+        self.import_retry = None
+        self.cleaner.plan = None
+        self.cleaner.state = dict(status='idle', bytes=0, error='')
         self.controller.selection = None
         self.controller.state = dict(status='idle')
         self.browser_attempted = False
@@ -188,13 +194,14 @@ class Session:
 
 
     def import_packages(self, paths):
-        if self.controller.busy or self.importer.busy:
+        if self.controller.busy or self.importer.busy or self.cleaner.busy:
             return
         if not paths:
             return
         destination = (Path(self.form['destination']).expanduser().resolve() if self.form['new_comfy']
                        else self.engine_root().parent)
         self.importer.start(paths, destination)
+        self.import_retry = ('import', list(paths), destination)
         self.imported_batch = None
         self.error = ''
 
@@ -212,6 +219,8 @@ class Session:
         self.persist()
 
     def action(self, name, accepted=False):
+        if self.cleaner.busy:
+            return
         if self.importer.busy:
             if name == 'stop':
                 self.importer.cancelled.set()
@@ -221,6 +230,25 @@ class Session:
                 self.controller.cancel()
             return
         self.error = ''
+        if name == 'retry':
+            kind = self.retry_kind()
+            if kind == 'import':
+                _, paths, destination = self.import_retry
+                self.importer.start(paths, destination)
+                self.imported_batch = None
+            elif kind == 'prepare':
+                self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
+                self.imported_batch = None
+            elif kind == 'launch':
+                self.action('launch', accepted)
+            elif kind in ('check', 'install'):
+                # Recompute the plan and live disk space; never install a stale
+                # failed review or discard completed/resumable downloads.
+                self.persist()
+                self.controller.run('inspect', dict(self.form, token=self.token))
+                self.page = 'progress'
+                self.started = time.monotonic()
+            return
         if name == 'setup':
             if getattr(self.controller, 'fixed_environment', False) is True:
                 self.controller.close()
@@ -249,6 +277,7 @@ class Session:
         state = self.controller.state.get('status')
         if (self.page == 'models' and self.form['new_comfy']
                 and self.form['environment_method'] == 'manual' and self.form['offline_runtime']):
+            self.import_retry = ('prepare',)
             self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
             return
         if self.page == 'comfy':
@@ -281,6 +310,25 @@ class Session:
             self.page = 'progress'
             self.model_groups = []
         self.started = time.monotonic()
+
+    def retry_kind(self):
+        if self.importer.state.get('status') == 'error' and self.import_retry:
+            return self.import_retry[0]
+        row = self.controller.state
+        if self.page == 'progress' and row.get('status') == 'review' and row.get('errors'):
+            return 'check'
+        if row.get('status') in ('failed', 'cancelled'):
+            if self.page == 'launcher':
+                return 'launch'
+            if self.page == 'progress':
+                return 'install'
+        return ''
+
+    def cleanup_downloads(self, remove=False):
+        if (self.controller.busy or self.importer.busy or self.closing
+                or self.update_intent or self.engine_updating or self.updater and self.updater.busy):
+            return
+        self.cleaner.start(self.engine_root(), remove=remove)
 
     def _browser_url(self, address):
         """Return the URL used by the browser, with the launcher locale hint."""
@@ -421,7 +469,7 @@ class Session:
         """One explicit update: the newest launcher if one is known, otherwise
         the engine bundled with this launcher. Downloading, waiting for running
         ComfyUI jobs and restarting continue from tick()."""
-        if self.controller.busy or self.importer.busy or self.closing:
+        if self.controller.busy or self.importer.busy or self.cleaner.busy or self.closing:
             if source == 'browser':
                 self.bridge_pending = True
             return
@@ -673,6 +721,7 @@ class Session:
         imported = self.importer.state
         if not self.importer.busy and imported is not self.imported_batch:
             self.imported_batch = imported
+            retry = self.import_retry
             for package in imported.get('packages', []):
                 if package['kind'] == 'runtime':
                     self.edit('offline_runtime', package['root'])
@@ -686,6 +735,7 @@ class Session:
                 self.edit('model_method', 'manual')
                 self.persist()
             if imported['status'] == 'error':
+                self.import_retry = retry
                 self.error = imported['error']
             elif imported['status'] == 'prepared':
                 self.activate_offline(imported['ready_root'])
@@ -810,12 +860,15 @@ class Session:
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
         return dict(sampling_cache_bytes=total_bytes(), version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
-            page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy,
+            page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy or self.cleaner.busy,
+            cleanup=dict(self.cleaner.state, busy=self.cleaner.busy),
+            can_cleanup=not (self.controller.busy or self.importer.busy or self.cleaner.busy or self.closing
+                or self.update_intent or self.engine_updating or self.updater and self.updater.busy),
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
                 models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'], zh)),
             video_model_guide=video_instructions(zh),
-            selected=bool(self.selected), error=error, notice=self.notice, compatibility=self.compatibility,
+            selected=bool(self.selected), error=error, retry_kind=self.retry_kind(), notice=self.notice, compatibility=self.compatibility,
             report=dict(self.report),
             models=models, overall=overall, progress=progress, detail=clean(progress.get('detail', '')),
             progress_text=progress_text(progress, self.language.startswith('zh')),
