@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 ## 更新动态
 
 - **2026-10-06** · **[作品展示](https://freevideo-community.pages.dev/#gallery)上线。** 观看 FreeVideo 生成的 20 秒视频，以及四档质量的并排对比。
-- **2026-10-06** · **[v0.2.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.2)：视频自带工作流。** 把 FreeVideo 生成的视频拖到 ComfyUI 画布上，即可还原提示词、种子和全部参数。
+- **2026-10-06** · **[v0.2.3](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.3)：视频自带工作流。** 把 FreeVideo 生成的视频拖到 ComfyUI 画布上，即可还原提示词、种子和全部参数，之前的视频也能补上。
 - **2026-10-05** · **[v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0)：四档质量。** 每次生成可选择轻量、标准、精细或极致，档位越高，生成质量越高，但耗时更长；生成结果可导出为带生成耗时和显卡信息的分享图片或视频。
 - **2026-10-05** · **[v0.1.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.1.2)：支持 Mac。** Apple 芯片 Mac 也能本地生成 MiniMax H3 视频（预览版）。
 - **2026-10-03** · **支持社区 LoRA。** 在工作流中直接使用 MiniMax H3 LoRA，参见[示例](docs/LoRA.zh-CN.md)。
