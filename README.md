@@ -19,12 +19,12 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## News
 
-- **2026-10-06** · [Gallery](https://freevideo-community.pages.dev/#gallery): Clips made with FreeVideo, and the four quality levels side by side, on our home page.
-- **2026-10-06** · [v0.2.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.2): Saved videos and sharing exports keep their ComfyUI workflow. Drag one onto the canvas to restore it.
-- **2026-10-05** · [v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0): Four quality levels (Light, Medium, High and Max), and sharing images and videos with generation statistics.
-- **2026-10-05** · [v0.1.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.1.2): The Mac app, as an Apple silicon preview, released together with Windows.
-- **2026-10-03** · Community LoRAs. See [examples](docs/LoRA.md).
-- **2026-10-02** · FreeVideo is open source.
+- **2026-10-06** · **[Gallery](https://freevideo-community.pages.dev/#gallery) is live.** Watch 20-second clips made with FreeVideo, and the four quality levels side by side.
+- **2026-10-06** · **[v0.2.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.2): videos carry their workflow.** Drop a FreeVideo video onto the ComfyUI canvas to restore its prompt, seed and settings.
+- **2026-10-05** · **[v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0): four quality levels.** Light for speed, Max for detail, and one-click sharing cards for your results.
+- **2026-10-05** · **[v0.1.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.1.2): FreeVideo on Mac.** Apple silicon Macs generate MiniMax H3 videos locally (preview).
+- **2026-10-03** · **Community LoRAs.** Use MiniMax H3 LoRAs right in your workflow. See [examples](docs/LoRA.md).
+- **2026-10-02** · **FreeVideo is open source.** MiniMax H3 on consumer GPUs with as little as 8 GB of VRAM.
 
 ## About
 
