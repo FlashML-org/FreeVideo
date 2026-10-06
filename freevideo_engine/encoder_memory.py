@@ -148,14 +148,37 @@ def release_cast_buffers(manager, torch):
                 released_reserved_bytes=max(0, reserved - torch.cuda.memory_reserved()))
 
 
-def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3):
+def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3, attempt=None):
+    """Encode, retrying out-of-memory and shared-memory spills with more room.
+
+    `attempt(index, failure)` returns the context each forward runs in; it plans
+    that attempt's mode and room from the previous failure ('gpu_oom' or
+    'shared_memory_spill', None at first).
+    """
+    from contextlib import nullcontext
     from .adaptive import classify_failure
+    from .encoder_workspace import SharedMemorySpill
     original_reserve = manager.EXTRA_RESERVED_VRAM
     attempts = []
+    previous = None
     try:
         for index in range(max_attempts):
             try:
-                return clip.encode_from_tokens_scheduled(tokens), attempts
+                with (attempt(index, previous) if attempt is not None else nullcontext()):
+                    return clip.encode_from_tokens_scheduled(tokens), attempts
+            except SharedMemorySpill as error:
+                # Windows does not fail past the dedicated budget; the guard stopped
+                # this forward before it ran from shared system memory.
+                failure = dict(kind='shared_memory_spill', exception=[dict(type='SharedMemorySpill', message=str(error))])
+                native_is_oom = None
+                failed = snapshot(torch, clip, manager, windows_memory=True)
+                failed.update(attempt=index + 1, kind=failure['kind'], used_bytes=error.used_bytes,
+                              spilled_bytes=error.spilled_bytes)
+                attempts.append(failed)
+                phase('encoder_spill', gpu=failed, encoder_attempts=list(attempts))
+                if index + 1 == max_attempts:
+                    raise
+                retry_error = error
             except Exception as error:
                 failure = classify_failure(error)
                 native_is_oom = getattr(manager, 'is_oom', None)
@@ -189,11 +212,12 @@ def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3)
                 tb = tb.tb_next
             try:
                 gc.collect()
-                native_oom = native_is_oom(retry_error) if callable(native_is_oom) else False
+                native_oom = (failure['kind'] == 'shared_memory_spill'
+                              or (native_is_oom(retry_error) if callable(native_is_oom) else False))
             except Exception as cleanup:
                 retry_error.cleanup_errors = [repr(cleanup)]
                 raise retry_error from cleanup
-            if failure['kind'] != 'gpu_oom' and not native_oom:
+            if failure['kind'] not in ('gpu_oom', 'shared_memory_spill') and not native_oom:
                 raise retry_error
             try:
                 manager.unload_all_models()
@@ -202,6 +226,7 @@ def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3)
                 retry_error.cleanup_errors = [repr(cleanup)]
                 raise retry_error from cleanup
             del retry_error
+            previous = failure['kind']
             manager.EXTRA_RESERVED_VRAM = original_reserve + (index + 1) * GiB
             phase('encoder_retry', gpu=snapshot(torch, clip, manager), encoder_attempts=list(attempts))
     finally:

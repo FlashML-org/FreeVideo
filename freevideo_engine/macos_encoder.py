@@ -221,7 +221,8 @@ def encode(prompt, output, *, root, budget_bytes=3 * 2**30, reserve_bytes=2 * 2*
                 info = encode_latents(normalized, value, base, canvas, device='mps')
                 backend.synchronize()
                 media_metrics.update(conditioning_info=info, media_vae_seconds=time.monotonic() - tick,
-                                     media_budget=media_policy)
+                                     media_budget=media_policy,
+                                     reference_trims=[row['trimmed'] for row in normalized if row.get('trimmed')])
             output.parent.mkdir(parents=True, exist_ok=True)
             temporary = output.with_suffix('.partial')
             print(json.dumps(dict(event='encoder_phase', stage='encoder_save')), flush=True)

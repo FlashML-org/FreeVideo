@@ -211,6 +211,8 @@ def _encode(args, request, resident, trace):
         task = task_for(request['media'])
         if task != 't2va':
             normalized, media_kwargs = prepare(request['media'], request['geometry'], Path(request['output']).parent / 'media')
+            # Saved with the conditioning, so a reused input cache still reports them.
+            loading['reference_trims'] = [row['trimmed'] for row in normalized if row.get('trimmed')]
     if keyframes is not None:
         if not isinstance(keyframes, dict) or set(keyframes) != {'first', 'last'}:
             raise ValueError('FL2VA encoding requires keyframes.first and keyframes.last')
@@ -281,6 +283,17 @@ def _encode(args, request, resident, trace):
     from .encoder_memory import token_counts
     loading['token_summary'] = token_counts(tokens)
     tokenize_seconds = time.perf_counter() - encode_started
+    from contextlib import contextmanager, nullcontext
+    from .encoder_workspace import (LOW_MEMORY_CHUNK, WHOLE_BLOCK_TOKENS, SharedMemorySpill, SpillGuard, Workspace, adapter_reader,
+                                    dedicated_room, input_size, make_room, plan)
+    size = loading['encoder_input'] = input_size(tokens)
+    workspace = Workspace.for_encoder(torch, path)
+    reader = adapter_reader()
+    guard = SpillGuard(torch, reader)
+    current = {}
+    # What this process may hold under FreeVideo's plan, beside the physical room.
+    budget_bytes = int(float(request['gpu_budget_gb']) * 1e9) if request.get('gpu_budget_gb') else None
+
     if resident is not None and encoder_cache_hit:
         resident.encoder_room(clip, tokens, estimated)
         loading['resident_admission'] = list(resident.decisions)
@@ -295,6 +308,10 @@ def _encode(args, request, resident, trace):
         phase('encoder_device_load', load_seconds=load_seconds)
         print(json.dumps({'event': 'encoder_device_reuse' if encoder_on_gpu(clip) else 'encoder_device_load_start'}), flush=True)
         tick = time.perf_counter()
+        import comfy.model_management as memory
+        if current.get('need') is not None:
+            # The native planner keeps 0.8 GiB beside the reserve; leave this attempt's room.
+            memory.EXTRA_RESERVED_VRAM = max(memory.EXTRA_RESERVED_VRAM, current['need'] - int(.8 * 2**30))
         result = native_load(*values, **kwargs)
         torch.cuda.synchronize()
         transfer_seconds[0] += time.perf_counter() - tick
@@ -328,19 +345,52 @@ def _encode(args, request, resident, trace):
         released = release_mapped_pages(checkpoint_paths)
         if released:
             print(json.dumps(dict(event='encoder_pages_released', **released)), flush=True)
+        if current.get('need') is not None:
+            # cudaMemGetInfo can promise room the WDDM budget does not have; check what is
+            # really free and move weights back to host memory until the forward fits.
+            room = make_room(clip.patcher, torch, current['need'], reader, budget_bytes)
+            loading.setdefault('encoder_workspace', []).append(dict(current['plan'], mode=current['mode'], **room))
+        guard.arm()
         from .encoder_memory import snapshot
-        import comfy.model_management as memory
         phase('encoder_compute', load_seconds=load_seconds, device_load_seconds=transfer_seconds[0],
               gpu=snapshot(torch, clip, memory))
         print(json.dumps({'event': 'encoder_compute_start'}), flush=True)
         return result
+    @contextmanager
+    def attempt(index, failure):
+        # Room is planned against what this device can give the encoder with none of its weights loaded.
+        capacity = dedicated_room(torch, reader, budget_bytes) + int(clip.patcher.loaded_size())
+        mode, need, details = plan(workspace, size, capacity, index, current.get('mode') if failure else None)
+        current.update(mode=mode, need=need, plan=details)
+        from .encoder_lowmem import low_memory
+        if mode == 'blocks':
+            phase('encoder_low_memory', **details)
+            context = low_memory(clip.cond_stage_model, LOW_MEMORY_CHUNK)
+        elif size['sequence'] >= WHOLE_BLOCK_TOKENS:
+            # One block: the whole sequence at once, without the native dense T x T mask.
+            context = low_memory(clip.cond_stage_model, 1 << 30)
+        else:
+            context = nullcontext()
+        from .encoder_precision import bf16_language_model
+        try:
+            # BF16, as the official pipeline runs this encoder (ComfyUI's base runs it in FP32).
+            with context, bf16_language_model(clip.cond_stage_model):
+                yield
+            workspace.learn(mode, size, guard.used(), spilled=guard.spill is not None)
+        except SharedMemorySpill as error:
+            workspace.learn(mode, size, error.used_bytes, spilled=True)
+            raise
+        finally:
+            guard.disarm()
+
     clip.load_model = timed_load
     try:
         from .encoder_memory import encode_with_recovery
         from .encoder_pinning import readonly_pinning
         import comfy.model_management as memory
         with readonly_pinning(torch, memory):
-            encoded, attempts = encode_with_recovery(clip, tokens, memory, torch, phase)
+            encoded, attempts = encode_with_recovery(clip, tokens, memory, torch, phase, max_attempts=4,
+                                                     attempt=attempt)
         loading['encoder_attempts'] = attempts
         # Finish async forward work at the existing conditioning boundary, so
         # it is not attributed to packing/saving on the host.
@@ -350,7 +400,10 @@ def _encode(args, request, resident, trace):
         phase('encoder_conditioning_pack', gpu=snapshot(torch, clip, memory))
     finally:
         del clip.load_model
-    del timed_load, native_load
+        guard.disarm()
+        if reader is not None:
+            reader.close()
+    del timed_load, native_load, attempt
     del tokens
     task = 'fl2va' if images is not None else task
     value = to_cache(encoded, prompt, task=task)

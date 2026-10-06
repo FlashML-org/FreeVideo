@@ -29,6 +29,8 @@ function encodingLabel(label, t) {
         'Encoding reference media': ['Encoding references', '编码参考素材'],
         'Releasing encoder weights after insufficient GPU memory': ['Adjusting encoder memory', '调整文本编码器显存'],
         'Retrying text encoding with more GPU workspace': ['Retrying prompt encoding', '重试提示词编码'],
+        'Leaving more GPU memory for text encoding': ['Making room for prompt encoding', '为提示词编码腾出显存'],
+        'Encoding long references in smaller blocks': ['Encoding long references in blocks', '分块编码较长的参考素材'],
         'Preparing prompt data': ['Preparing prompt data', '整理提示词编码结果'],
         'Saving prompt cache': ['Saving prompt cache', '保存提示词缓存'],
         'Reusing prompt cache': ['Reusing prompt cache', '复用提示词缓存'],
@@ -37,6 +39,20 @@ function encodingLabel(label, t) {
         'Retaining and checking input media': ['Preparing references', '准备参考素材'],
     };
     return t(...(labels[label] || ['Preparing prompt and references', '准备提示词与参考素材']));
+}
+
+// A reference clip longer than the video being generated is cut to the same
+// length, at most 15 s, as in the official pipeline. Say so; never cut silently.
+export function referenceTrimText(row, t) {
+    const kind = row?.kind === 'audio' ? t('Reference audio', '参考音频') : t('Reference video', '参考视频');
+    const name = Number.isInteger(row?.number) ? `${kind} ${row.number}` : kind;
+    const used = Number(row?.used_seconds).toFixed(1);
+    const rule = t('(references are cut to the generated length, up to 15 s)', '（参考素材只取与生成视频等长的部分，最长 15 秒）');
+    return valid(row?.seconds)
+        ? t(`${name} is ${Number(row.seconds).toFixed(1)} s: only its first ${used} s were used ${rule}`,
+            `${name} 时长 ${Number(row.seconds).toFixed(1)} 秒，已截取前 ${used} 秒${rule}`)
+        : t(`${name} is longer than this video: only its first ${used} s were used ${rule}`,
+            `${name} 比生成的视频长，已截取前 ${used} 秒${rule}`);
 }
 
 export function createGenerationProgress(t, now = () => Date.now(), {compact = false, api = null} = {}) {
@@ -54,7 +70,10 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const recovery = el('p', 'fv-generation-note fv-generation-retry'); recovery.hidden = true;
     recovery.setAttribute('role', 'status');
     const silence = el('div', 'fv-generation-silence'); silence.hidden = true;
-    element.append(heading, track, detail, times, silence, recovery, note);
+    const notice = el('p', 'fv-generation-note fv-generation-notice'); notice.hidden = true;
+    notice.setAttribute('role', 'status');
+    const trims = new Map();
+    element.append(heading, track, detail, times, silence, recovery, notice, note);
     let state = {}, overall = {}, started = 0, sampledAt = 0, overallAt = 0, timer = null;
     let shownFraction = null;
     // The visible percentage counts toward its value with the bar instead of
@@ -243,6 +262,12 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             state = {}; overall = {}; started = now(); overallAt = now(); shownFraction = null;
             stopCount(); countShown = null;
             recovery.hidden = true; recovery.textContent = '';
+            trims.clear(); notice.hidden = true; notice.textContent = '';
+        }
+        if (message.reference_trimmed && typeof message.reference_trimmed === 'object') {
+            const row = message.reference_trimmed;
+            trims.set(`${row.kind}:${row.number}`, referenceTrimText(row, t));
+            notice.textContent = [...trims.values()].join('\n'); notice.hidden = false;
         }
         if (!reset && message.retry && typeof message.retry === 'object') {
             const retry = message.retry;
@@ -326,8 +351,10 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     }
     function hide() {
         element.hidden = true; recovery.hidden = true; recovery.textContent = '';
+        trims.clear(); notice.hidden = true; notice.textContent = '';
         if (timer !== null) clearInterval(timer); timer = null; state = {}; overall = {}; shownFraction = null;
         stopCount(); countShown = null;
     }
-    return {element, report, updateReport, downloadReport, hasReport: () => reportId !== null, update, hide, dispose: hide};
+    return {element, report, updateReport, downloadReport, hasReport: () => reportId !== null, update, hide, dispose: hide,
+        noticeCount: () => trims.size};
 }

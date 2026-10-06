@@ -25,8 +25,9 @@
 .fv-generation-compact .fv-generation-track{height:4px;background:#ffffff14}
 .fv-generation-compact .fv-generation-times{justify-content:flex-end;margin-top:10px;font-size:12px}
 .fv-generation-times>span[hidden],.fv-generation-silence[hidden]{display:none!important}
-.fv-generation-compact .fv-generation-detail,.fv-generation-compact:not([data-phase=encoding]) .fv-generation-silence,.fv-generation-compact .fv-generation-note:not(.fv-generation-retry){display:none}
-.fv-generation-compact .fv-generation-retry{font-size:12px;margin-top:14px}
+.fv-generation-compact .fv-generation-detail,.fv-generation-compact:not([data-phase=encoding]) .fv-generation-silence,.fv-generation-compact .fv-generation-note:not(.fv-generation-retry):not(.fv-generation-notice){display:none}
+.fv-generation-compact .fv-generation-retry,.fv-generation-compact .fv-generation-notice{font-size:12px;margin-top:14px}
+.fv-generation-notice{white-space:pre-line;color:var(--fv-ink,inherit)}
 .fv-report-download{display:block;align-self:center;width:fit-content;max-width:100%;margin:8px auto 0;font-size:12px}
 .fv-report-download[hidden],.fv-report-download[data-covered]{display:none!important}
 @keyframes fv-generation-sweep{0%{left:-20%;width:20%}50%{left:33%;width:34%}100%{left:100%;width:20%}}

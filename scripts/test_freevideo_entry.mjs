@@ -34,7 +34,8 @@ test('main browser entry registers both views and preserves node hooks', async (
         errorText: value => String(value),
         openStudio: node => opened.push(node),
         loraPanel: () => () => {}, loraWarning: () => 'LoRA warning', promptGuide: () => new Element('guide'),
-        createGenerationProgress: () => ({element: new Element('progress'), report: new Element('report'), updateReport() {}, update() {}, hide() {}, dispose() {}}),
+        createGenerationProgress: () => ({element: new Element('progress'), report: new Element('report'), updateReport() {}, update() {}, hide() {}, dispose() {}, noticeCount: () => 0}),
+        referenceTrimText: row => `trimmed ${row.kind} ${row.number}`,
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
         startUpdateChecks: () => { updateChecks++; },
@@ -59,7 +60,7 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
             .replace('import { api } from "../../scripts/api.js";', 'const {api} = globalThis.__freevideoEntryTest;')
             .replace("import { openStudio, loraPanel, loraWarning, promptGuide } from \"./studio.js\";", 'const {openStudio,loraPanel,loraWarning,promptGuide} = globalThis.__freevideoEntryTest;')
-            .replace("import { createGenerationProgress } from './generation_progress.js';", 'const {createGenerationProgress} = globalThis.__freevideoEntryTest;')
+            .replace("import { createGenerationProgress, referenceTrimText } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText} = globalThis.__freevideoEntryTest;')
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
             .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
@@ -135,6 +136,10 @@ test('main browser entry registers both views and preserves node hooks', async (
             'The new video must not display the previous result statistics or downloads');
         node.freevideoShowResult({freevideo_summary: [{video, sample_seconds: 5}]});
         assert.equal(reused.children[0].hidden, false, 'Show statistics again only for a completed result');
+        node.freevideoShowResult({freevideo_summary: [{video, sample_seconds: 5,
+            reference_trims: [{kind: 'video', number: 1, seconds: 20.3, used_seconds: 5.17}]}]});
+        assert.deepEqual(reused.children.filter(e => e.className === 'fv-note fv-trim-note').map(e => e.textContent),
+            ['trimmed video 1'], 'Say which reference was shortened, never cut silently');
 
         class MediaNode extends GenerateNode {
             constructor() {
