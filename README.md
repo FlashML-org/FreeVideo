@@ -6,7 +6,7 @@
 </div>
 
 <p align="center">
-| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Download for Windows</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>Download for macOS</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ Group</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>WeChat Group</b></a> |
+| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Download for Windows</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>Download for macOS</b></a> | <a href="https://freevideo-community.pages.dev/#gallery"><b>Gallery</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ Group</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>WeChat Group</b></a> |
 </p>
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
@@ -14,6 +14,17 @@
 Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
+
+<p align="center"><a href="https://freevideo-community.pages.dev/#gallery">More clips and the four quality levels side by side in the gallery →</a></p>
+
+## News
+
+- **2026-10-06** · [Gallery](https://freevideo-community.pages.dev/#gallery): Clips made with FreeVideo, and the four quality levels side by side, on our home page.
+- **2026-10-06** · [v0.2.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.2): Saved videos and sharing exports keep their ComfyUI workflow. Drag one onto the canvas to restore it.
+- **2026-10-05** · [v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0): Four quality levels (Light, Medium, High and Max), and sharing images and videos with generation statistics.
+- **2026-10-05** · [v0.1.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.1.2): The Mac app, as an Apple silicon preview, released together with Windows.
+- **2026-10-03** · Community LoRAs. See [examples](docs/LoRA.md).
+- **2026-10-02** · FreeVideo is open source.
 
 ## About
 

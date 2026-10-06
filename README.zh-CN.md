@@ -6,7 +6,7 @@
 </div>
 
 <p align="center">
-| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Windows 下载</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>macOS 下载</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ 群</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>微信群</b></a> |
+| <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Windows 下载</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>macOS 下载</b></a> | <a href="https://freevideo-community.pages.dev/#gallery"><b>作品展示</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ 群</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>微信群</b></a> |
 </p>
 
 <p align="center"><a href="README.md">English</a> · 中文</p>
@@ -14,6 +14,17 @@
 FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
+
+<p align="center"><a href="https://freevideo-community.pages.dev/#gallery">在作品展示中查看更多视频和四档质量对比 →</a></p>
+
+## 更新动态
+
+- **2026-10-06** · [作品展示](https://freevideo-community.pages.dev/#gallery)：主页上线 FreeVideo 生成作品展示和四档质量对比。
+- **2026-10-06** · [v0.2.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.2)：生成的视频和分享导出会保存 ComfyUI 工作流，拖到画布上即可还原。
+- **2026-10-05** · [v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0)：新增轻量、标准、精细、极致四档质量，可导出带生成统计的分享图片和视频。
+- **2026-10-05** · [v0.1.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.1.2)：推出 Mac 版（Apple 芯片预览版），与 Windows 版合并发布。
+- **2026-10-03** · 支持社区 LoRA，参见[示例](docs/LoRA.zh-CN.md)。
+- **2026-10-02** · FreeVideo 开源发布。
 
 ## 简介
 
