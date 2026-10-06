@@ -2,6 +2,7 @@
 import asyncio
 import io
 import json
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,17 @@ def _report(path):
     if not isinstance(report, dict) or report.get('success') is not True:
         raise ValueError('Video is not complete')
     return report
+
+
+def _finite_numbers(value):
+    # Retained reports can contain non-standard JSON numbers. Keep the saved
+    # video browsable, treating unknown measurements as null rather than
+    # emitting NaN/Infinity that the browser cannot parse.
+    if isinstance(value, dict):
+        return {key: _finite_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_numbers(item) for item in value]
+    return None if isinstance(value, float) and not math.isfinite(value) else value
 
 
 def list_videos(output_directory, *, before=None, limit=24):
@@ -65,9 +77,11 @@ def list_videos(output_directory, *, before=None, limit=24):
             # an explicit allowlist, not an export of the retained report.
             summary['geometry'] = {k: v for k, v in summary['geometry'].items()
                                    if k in ('width', 'height', 'frames', 'fps', 'seconds')
-                                   and type(v) in (int, float)}
+                                   and type(v) in (int, float)
+                                   and (type(v) is int or math.isfinite(v))}
             if not (root / summary['report']).is_file():
                 summary['report'] = None
+            summary = _finite_numbers(summary)
             rows.append(dict(summary, id=key[1], bytes=info.st_size,
                              created_at=datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),
                              cursor=str(key[0]) + ':' + key[1]))
