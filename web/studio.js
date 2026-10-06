@@ -3,7 +3,7 @@ import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { wordmark } from './branding.js';
-import { createGenerationProgress } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
 import { createUpdateNotice, createVersionInfo } from './updates.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
@@ -408,7 +408,8 @@ export function openStudio(node) {
         catch (error) { regenerate.disabled = false; status.dataset.error = 'true'; status.textContent = error.message; }
     }, 'fv-quiet');
     reuseRow.append(reuseNotice, regenerate);
-    output.append(status, reuseRow, links, stats, budget, progress.report, prewarm);
+    const trimNote = el('div', '', 'fv-note fv-trim-note'); trimNote.hidden = true; trimNote.setAttribute('role', 'status');
+    output.append(status, reuseRow, trimNote, links, stats, budget, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
@@ -420,6 +421,8 @@ export function openStudio(node) {
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
         stats.hidden = !!r.result_cache_hit;
         reuseRow.hidden = !r.result_cache_hit;
+        const trims = Array.isArray(r.reference_trims) ? r.reference_trims : [];
+        trimNote.textContent = trims.map(row => referenceTrimText(row, t)).join('\n'); trimNote.hidden = !trims.length;
         regenerate.disabled = false; regenerate.textContent = t('Regenerate', '重新生成');
         const unified = r.memory_model === 'unified';
         metricLabels[2].textContent = unified ? t('Unified memory', '统一内存总量') : t('VRAM peak', '显存峰值');

@@ -355,6 +355,8 @@ def progress_message(event):
             'encoder_compute': 'Encoding text and images',
             'encoder_oom': 'Releasing encoder weights after insufficient GPU memory',
             'encoder_retry': 'Retrying text encoding with more GPU workspace',
+            'encoder_spill': 'Leaving more GPU memory for text encoding',
+            'encoder_low_memory': 'Encoding long references in smaller blocks',
             'encoder_conditioning_pack': 'Preparing prompt data',
             'keyframe_vae': 'Encoding reference media',
             'media_vae': 'Encoding reference media',
@@ -414,6 +416,9 @@ def progress_message(event):
                     elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}
+    if name == 'reference_trimmed':
+        return {'label': 'Preparing reference media', 'timing_phase': 'encoding',
+                'reference_trimmed': {key: event.get(key) for key in ('kind', 'number', 'seconds', 'used_seconds')}}
     if name == 'prepared_blocks':
         return {'label': 'Loading cached video model · %s / 50 blocks' % event.get('blocks', '?'),
                 'timing_phase': 'load'}

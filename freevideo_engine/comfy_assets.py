@@ -152,6 +152,7 @@ def output_summary(report, relative_video):
                 gpu_total_bytes=report.get('profile', {}).get('policy', {}).get('hardware', {}).get('vram_total'),
                 geometry=report.get('geometry', {}),
                 sampling_plan=report.get('sampling_plan'),
+                reference_trims=report.get('encoding', {}).get('reference_trims') or [],
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
                     '.debug.json' if report.get('diagnostic_file') == relative_video.with_suffix('.debug.json').name
                     else '.request.json').as_posix())

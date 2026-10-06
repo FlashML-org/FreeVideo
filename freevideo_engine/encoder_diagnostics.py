@@ -17,7 +17,7 @@ STAGES = ('worker_import', 'worker_cuda_setup', 'encoder_torch_import',
     'encoder_options', 'encoder_cuda_setup', 'encoder_path_config', 'encoder_native_import',
     'encoder_media_prepare', 'encoder_lookup', 'encoder_load', 'encoder_checkpoint_map',
     'encoder_construct', 'encoder_tokenize', 'encoder_device_load', 'encoder_page_release',
-    'encoder_compute', 'encoder_oom', 'encoder_retry', 'encoder_conditioning_pack',
+    'encoder_compute', 'encoder_oom', 'encoder_spill', 'encoder_retry', 'encoder_low_memory', 'encoder_conditioning_pack',
     'keyframe_vae', 'media_vae', 'encoder_save', 'encoder_idle_preload')
 
 

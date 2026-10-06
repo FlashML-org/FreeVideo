@@ -2,12 +2,31 @@
 
 Reference video pixels stay uint8 on disk; only the Qwen 2 fps sample and one
 VAE input are materialized. Neither ComfyUI nor a whole float RGB movie is kept
-in the generation process. Reference clips must be explicitly trimmed to 15 s.
+in the generation process. A reference clip contributes as much as the video
+being generated, at most 15 s, as the official MiniMax H3 pipeline and ComfyUI's
+native H3 node truncate references to the generated length. A shortened clip is
+reported, never cut silently.
 """
 import json
 import math
 from contextlib import nullcontext
 from pathlib import Path
+
+
+REFERENCE_FRAMES = 360  # 15 s at 24 fps, the longest H3 generation
+
+
+def reference_frames(canvas):
+    """Frames of a reference clip the generation uses: its own length, at most 15 s."""
+    frames = canvas.get('frames')
+    return min(REFERENCE_FRAMES, int(frames)) if frames else REFERENCE_FRAMES
+
+
+def clip_seconds(container, stream):
+    """A clip's length from its metadata, or None when the file does not say."""
+    if stream.duration and stream.time_base:
+        return float(stream.duration * stream.time_base)
+    return container.duration / 1e6 if container.duration else None
 
 
 def reference_size(width, height, canvas):
@@ -46,31 +65,39 @@ def encode_visual(vae, pixels, *, device='cuda'):
     return (latent - mean) / std
 
 
-def _audio(path, destination):
+def _audio(path, destination, seconds):
+    """The clip's first `seconds` at 32 kHz stereo, as the official pipeline truncates reference audio.
+
+    Returns the saved path (None without an audio stream), whether the clip ran
+    more than 50 ms longer, and its length from the file's metadata.
+    """
     import av
     import numpy as np
     chunks = []
+    limit, count = int(seconds * 32000), 0
     with av.open(str(path)) as container:
         if not container.streams.audio:
-            return None
+            return None, False, None
+        length = clip_seconds(container, container.streams.audio[0])
         resampler = av.AudioResampler(format='fltp', layout='stereo', rate=32000)
-        count = 0
         for frame in container.decode(audio=0):
             for item in resampler.resample(frame):
                 data = item.to_ndarray()
                 count += data.shape[1]
-                if count > 15 * 32000:
-                    raise ValueError('Reference audio exceeds 15 s; trim it explicitly before generation')
                 chunks.append(data)
-        for item in resampler.resample(None):
-            chunks.append(item.to_ndarray())
+            if count > limit + 1600:
+                break
+        else:
+            for item in resampler.resample(None):
+                count += item.samples
+                chunks.append(item.to_ndarray())
     if not chunks:
         raise ValueError('Reference audio is empty')
-    data = np.concatenate(chunks, axis=1)
-    if data.shape[1] > 15 * 32000 or not np.isfinite(data).all():
-        raise ValueError('Invalid reference audio length or samples')
+    data = np.concatenate(chunks, axis=1)[:, :limit]
+    if not np.isfinite(data).all():
+        raise ValueError('Invalid reference audio samples')
     np.save(destination, data, allow_pickle=False)
-    return str(destination)
+    return str(destination), count > limit + 1600, length
 
 
 def prepare(media, canvas, directory):
@@ -82,6 +109,8 @@ def prepare(media, canvas, directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     result, key_images, ref_items = [], [], []
+    limit = reference_frames(canvas)
+    numbers = {'image': 0, 'video': 0, 'audio': 0}
     for anchor in ('first', 'last'):
         if not media.get(anchor):
             continue
@@ -95,6 +124,8 @@ def prepare(media, canvas, directory):
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']
         ref = {'kind': kind}
+        numbers[kind] += 1
+        longer, length, used = False, None, limit / 24.
         target = directory / ('reference-%02d.npy' % index)
         if kind == 'image':
             with Image.open(path) as source:
@@ -110,9 +141,8 @@ def prepare(media, canvas, directory):
                     raise ValueError('Reference video has no video stream')
                 stream = container.streams.video[0]
                 width, height = reference_size(stream.width, stream.height, canvas)
-                if stream.duration and float(stream.duration * stream.time_base) > 15.05:
-                    raise ValueError('Reference video exceeds 15 s; trim it explicitly')
-                pixels = np.lib.format.open_memmap(target, mode='w+', dtype=np.uint8, shape=(360, height, width, 3))
+                length = clip_seconds(container, stream)
+                pixels = np.lib.format.open_memmap(target, mode='w+', dtype=np.uint8, shape=(limit, height, width, 3))
                 origin = None
                 count = 0
                 previous = None
@@ -122,11 +152,15 @@ def prepare(media, canvas, directory):
                     if origin is None:
                         origin = timestamp
                     timestamp -= origin
-                    if timestamp > 15.05:
-                        raise ValueError('Reference video exceeds 15 s; trim it explicitly')
+                    if count >= limit:
+                        # Only the generated length is used; a frame 50 ms past it means the clip was longer.
+                        if timestamp > limit / 24. + .05:
+                            longer = True
+                            break
+                        continue
                     image = frame.reformat(width=width, height=height, format='rgb24').to_ndarray()
                     # Explicit 24 fps reference normalization, independent of output geometry.
-                    while count / 24. <= timestamp + 1e-6 and count < 360:
+                    while count / 24. <= timestamp + 1e-6 and count < limit:
                         pixels[count] = image if previous is None or abs(count / 24. - timestamp) < .5 / fps else previous
                         count += 1
                     previous = image
@@ -136,7 +170,9 @@ def prepare(media, canvas, directory):
                     raise ValueError('Reference video needs at least 22 normalized frames for H3/Qwen temporal encoding')
                 pixels.flush()
                 ref.update(pixels=str(target), frames=count, normalized_fps=24)
-                soundtrack = _audio(path, directory / ('reference-%02d-audio.npy' % index))
+                used = count / 24.
+                soundtrack, longer_audio, _ = _audio(path, directory / ('reference-%02d-audio.npy' % index), limit / 24.)
+                longer = longer or longer_audio
                 if soundtrack:
                     ref['audio'] = soundtrack
                     ref_items.append({'type': 'audio'})
@@ -145,10 +181,15 @@ def prepare(media, canvas, directory):
                 ref_items.append({'type': 'video', 'data': sampled, 'timestamps': [i / 2. for i in range(len(selected))]})
                 del pixels
         else:
-            ref['audio'] = _audio(path, target)
+            ref['audio'], longer, length = _audio(path, target, limit / 24.)
             if ref['audio'] is None:
                 raise ValueError('Reference audio file has no audio stream')
             ref_items.append({'type': 'audio'})
+        if longer:
+            # Numbered per kind like the prompt's <Video 1> and <Audio 1> tags.
+            ref['trimmed'] = dict(kind=kind, number=numbers[kind], used_seconds=round(used, 2),
+                                  seconds=round(length, 2) if length and length > used else None)
+            print(json.dumps(dict(event='reference_trimmed', **ref['trimmed'])), flush=True)
         result.append(ref)
     (directory / 'normalization.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     return result, {'images': key_images} if key_images else {'minimax_ref_items': ref_items} if ref_items else {}

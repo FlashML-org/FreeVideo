@@ -469,6 +469,8 @@ def _run(args):
                     report['tuning']['conditioning_cache_hit'] = True
                     report['input_cache']['conditioning_hit'] = True
                     print(json.dumps({'event': 'conditioning_cache_hit'}), flush=True)
+                    for trimmed in cached.get('reference_trims') or []:
+                        print(json.dumps(dict(event='reference_trimmed', **trimmed)), flush=True)
                 else:
                     encoder_env = dict(env, PYTHONPATH=str(repo))
                     print(json.dumps({'event': 'encoding_start'}), flush=True)

@@ -23,6 +23,7 @@ SCHEMA = 1
 COMPUTE_FILES = ('activation_staging.py', 'residual.py', 'adaln.py', 'adaln_assets.py', 'attention.py', 'blocks.py',
                  'keyframes.py', 'media_request.py', 'media_conditioning.py', 'media_encoding.py', 'reference_sampler.py', 'lora_cache.py',
                  'conditioning.py', 'decode.py', 'decode_prefetch.py', 'resident_models.py', 'decode_stream.py', 'streamed_weights.py', 'encode_worker.py', 'idle_encoder.py', 'media_encoding.py', 'fp8.py', 'fp8_ops.py', 'fp8_gemm.py',
+                 'encoder_precision.py', 'encoder_lowmem.py',
                  'kernel_capabilities.py', 'gpu_budget.py', 'worker.py', 'resident_worker.py', 'failure_cleanup.py',
                  'geometry.py', 'head_chunk.py', 'offload.py', 'packing.py', 'runtime.py',
                  'two_pass.py', 'two_pass_metrics.py', 'refine.py', 'latent_upscale.py',

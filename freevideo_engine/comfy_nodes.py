@@ -219,7 +219,7 @@ class FreeVideoReference(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(node_id='FreeVideoReference', display_name='FreeVideo · Reference (experimental)',
             category='FreeVideo', is_experimental=True,
-            description='Append one image, video or audio reference in order. Clips must be trimmed to 15 s or less. '
+            description='Append one image, video or audio reference in order. A clip is cut to the generated length, at most 15 s, and the cut is reported. '
                         'Connect the stack to Generate. VDN reference quality is experimental.',
             inputs=[io.Image.Input('image', optional=True), io.Video.Input('video', optional=True),
                     io.Audio.Input('audio', optional=True), References.Input('previous', optional=True)],

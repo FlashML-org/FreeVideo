@@ -26,8 +26,6 @@ def _audio(value, path):
             or waveform.shape[1] not in (1, 2) or type(rate) is not int or not 8000 <= rate <= 192000
             or not bool(torch.isfinite(waveform).all())):
         raise ValueError('Expected a finite mono/stereo Comfy AUDIO input')
-    if waveform.shape[-1] > rate * 15:
-        raise ValueError('Trim reference audio to 15 s or less before generation')
     samples = waveform[0].detach().float().cpu().contiguous().numpy()
     layout = 'mono' if len(samples) == 1 else 'stereo'
     with av.open(str(path), 'w', format='wav') as container:
@@ -75,8 +73,7 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
                 path = path.with_suffix('.png')
                 _image(value, path)
             elif kind == 'video':
-                if value.get_duration() > 15.05:
-                    raise ValueError('Trim reference video to 15 s or less before generation')
+                # A clip longer than the generated video is shortened, and reported, by media encoding.
                 path = path.with_suffix('.mp4')
                 # Native save_to honors crops/trims and remuxes compatible file
                 # inputs without expanding all frames into host float tensors.

@@ -2,7 +2,7 @@ import { createErrorPanel, errorText } from './error_panel.js';
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
-import { createGenerationProgress } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { startUpdateChecks } from './updates.js';
@@ -79,7 +79,7 @@ function mediaPanel(node, mount = null) {
     const audioPicker = el('input'); audioPicker.type = 'file'; audioPicker.multiple = true;
     audioPicker.accept = 'audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac,.opus'; audioPicker.hidden = true;
     const addAudio = button(text('Reference audio', '参考音频'),
-        text('Add a voice, music or rhythm reference (up to 15 seconds)', '添加音色、音乐或节奏参考（最长 15 秒）'), () => audioPicker.click());
+        text('Add a voice, music or rhythm reference (its first 15 seconds at most are used)', '添加音色、音乐或节奏参考（最多使用前 15 秒）'), () => audioPicker.click());
     const audioHelp = el('div', '', 'fv-note'); audioHelp.hidden = true;
     const role = el("select"); role.setAttribute("aria-label", text("Use new images as", "新图片用途"));
     for (const [value, label] of [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]]) {
@@ -110,8 +110,8 @@ function mediaPanel(node, mount = null) {
         const audioRefs = active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'audio').length + Number(linked('reference_audio'));
         const refs = active.filter(row => row.role === "reference").length + Number(linked('reference')) + Number(linked('reference_audio'));
         audioHelp.hidden = !audioRefs;
-        audioHelp.textContent = text('Use <Audio 1>, <Audio 2>, … in your prompt to guide the generated voice, music or rhythm. Clips: up to 15 seconds. Set accompanying images to Reference.',
-            '在提示词中用 <Audio 1>、<Audio 2> 等标签引导生成的音色、音乐或节奏。片段最长 15 秒，搭配的图片请选择“参考”用途。');
+        audioHelp.textContent = text('Use <Audio 1>, <Audio 2>, … in your prompt to guide the generated voice, music or rhythm. A clip is cut to the generated length, up to 15 seconds. Set accompanying images to Reference.',
+            '在提示词中用 <Audio 1>、<Audio 2> 等标签引导生成的音色、音乐或节奏。片段只取与生成视频等长的部分，最长 15 秒；搭配的图片请选择“参考”用途。');
         connections.replaceChildren();
         for (const [name, label] of [['first', text('First frame', '首帧')], ['last', text('Last frame', '尾帧')], ['reference', text('Reference image', '参考图像')], ['reference_audio', text('Reference audio', '参考音频')]]) {
             if (!linked(name)) continue;
@@ -142,6 +142,16 @@ function mediaPanel(node, mount = null) {
             if (kind === "image") { preview.loading = "lazy"; preview.alt = label.textContent; }
             else { preview.controls = true; preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; } }
             card.append(preview);
+            if (kind !== "image") {
+                // References are cut to the generated length (at most 15 s); say so before the run.
+                const length = el("div", "", "fv-note"); length.hidden = true; card.append(length);
+                preview.onloadedmetadata = () => {
+                    if (!(preview.duration > 15.05) || !Number.isFinite(preview.duration)) return;
+                    length.textContent = text(`${preview.duration.toFixed(1)} s: cut to the generated length when used, at most the first 15 s`,
+                        `时长 ${preview.duration.toFixed(1)} 秒：生成时按视频时长截取前段，最多前 15 秒`);
+                    length.hidden = false;
+                };
+            }
             const controls = el("div", undefined, "fv-row");
             const move = delta => { const target = index + delta; if (target < 0 || target >= rows.length) return; [rows[index], rows[target]] = [rows[target], rows[index]]; update(rows); };
             controls.append(button("↑", text("Move earlier", "向前移动"), () => move(-1)), button("↓", text("Move later", "向后移动"), () => move(1)),
@@ -242,7 +252,8 @@ function resultPanel(node) {
         if (panel.lastElementChild !== warning) panel.append(warning);
     };
     panel.append(el("div", text("Video, audio and timings appear here after generation.", "生成后在这里查看视频、音频和耗时。"), "fv-note"));
-    const panelHeight = () => (hasLoRA() ? 240 : 140) + (node.freevideoFailure ? 280 : 0) + (node.freevideoProgress ? 190 : 0);
+    const panelHeight = () => (hasLoRA() ? 240 : 140) + (node.freevideoFailure ? 280 : 0) + (node.freevideoProgress ? 190 + 40 * progress.noticeCount() : 0)
+        + (showingResult ? 40 * (node.freevideoLastResult?.reference_trims?.length || 0) : 0);
     node.addDOMWidget("freevideo_result", "freevideo_result", panel, {serialize: false, getMinHeight: panelHeight, getMaxHeight: panelHeight});
     const connected = node.onConnectionsChange, configured = node.onConfigure;
     node.onConnectionsChange = function (...args) { const result = connected?.apply(this, args); warn(); queueMicrotask(syncPrompts); return result; };
@@ -308,6 +319,7 @@ function resultPanel(node) {
             links.append(again);
         }
         panel.append(stats, links, progress.report);
+        for (const row of value.reference_trims || []) panel.append(el("div", referenceTrimText(row, text), "fv-note fv-trim-note"));
         warn();
         panel.title = (unified
             ? text("Unified memory: device capacity. Process RAM is not total GPU memory, ", "统一内存为设备总量；进程内存不代表 GPU 内存总占用，")
