@@ -29,3 +29,8 @@
  .fv-library-detail{flex:1;display:none;gap:14px;padding:14px}.fv-library .fv-library-all{display:inline-flex;align-self:flex-start}
  .fv-library[data-detail=true] .fv-library-detail{display:flex}.fv-library[data-detail=true] .fv-library-collection{display:none}
 }
+.fv-library .fv-backfill{display:flex;flex-direction:column;gap:6px;margin:0 0 16px;padding:13px 14px;border:1px solid color-mix(in srgb,var(--fv-accent) 35%,transparent);border-radius:var(--fv-r-md);background:color-mix(in srgb,var(--fv-accent) 9%,var(--fv-card));align-items:center;text-align:center}
+.fv-library .fv-backfill strong{font-size:13px;font-weight:var(--fv-semibold)}
+.fv-library .fv-backfill p{margin:0;font-size:12px;line-height:1.6;color:var(--fv-muted)}
+.fv-library .fv-backfill-actions{display:flex;justify-content:center;gap:8px;margin-top:6px}
+.fv-library .fv-backfill-actions button{min-height:30px;padding:4px 12px;font-size:12px}
