@@ -238,31 +238,39 @@ def download(candidate, root, token='', *, progress=None, cancel=None):
     if verified(target, asset):
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Unique staging keeps a cancelled/failed transfer and concurrent downloads
-    # separate. The original launcher and models are never overwritten.
+    # Each attempt owns one stage. Failed stages cannot be resumed, so discard
+    # only ours; never touch another attempt, the original launcher or models.
     import tempfile
     import shutil
     if shutil.disk_usage(target.parent).free < asset['bytes'] + 16*2**20:
         raise OSError('Not enough disk space to download the launcher update')
     start, done = time.monotonic(), 0
-    with open_download(API + '/releases/assets/' + str(asset['id']), token, binary=True) as response:
-        with tempfile.NamedTemporaryFile(prefix='download-', suffix='.partial', dir=target.parent, delete=False) as stream:
-            stage = Path(stream.name)
-            digest = hashlib.sha256()
-            for block in _bytes(response, asset['bytes'], cancel, seconds=1800):
-                stream.write(block); digest.update(block); done += len(block)
-                if progress:
-                    elapsed = time.monotonic()-start
-                    speed = done/max(.001, elapsed)
-                    progress(dict(done=done, total=asset['bytes'], bytes_per_second=speed,
-                                  remaining_seconds=(asset['bytes']-done)/speed))
-            stream.flush(); os.fsync(stream.fileno())
-    if done != asset['bytes'] or digest.hexdigest() != asset['sha256']:
-        raise ValueError('Launcher update failed size/content verification; original EXE retained')
-    if cancel is not None and cancel.is_set():
-        raise InterruptedError('Update stopped before activation')
-    stage.replace(target)
-    return target
+    stage = None
+    try:
+        with open_download(API + '/releases/assets/' + str(asset['id']), token, binary=True) as response:
+            with tempfile.NamedTemporaryFile(prefix='download-', suffix='.partial', dir=target.parent, delete=False) as stream:
+                stage = Path(stream.name)
+                digest = hashlib.sha256()
+                for block in _bytes(response, asset['bytes'], cancel, seconds=1800):
+                    stream.write(block); digest.update(block); done += len(block)
+                    if progress:
+                        elapsed = time.monotonic()-start
+                        speed = done/max(.001, elapsed)
+                        progress(dict(done=done, total=asset['bytes'], bytes_per_second=speed,
+                                      remaining_seconds=(asset['bytes']-done)/speed))
+                stream.flush(); os.fsync(stream.fileno())
+        if done != asset['bytes'] or digest.hexdigest() != asset['sha256']:
+            raise ValueError('Launcher update failed size/content verification; original EXE retained')
+        if cancel is not None and cancel.is_set():
+            raise InterruptedError('Update stopped before activation')
+        stage.replace(target)
+        return target
+    finally:
+        if stage is not None:
+            try:
+                stage.unlink(missing_ok=True)
+            except OSError:
+                pass  # A cleanup failure must not mask the download error.
 
 
 class DownloadedLauncherUnavailable(ValueError):

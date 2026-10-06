@@ -16,6 +16,7 @@ ApplicationWindow {
     property string modelInfo: "video"
     property bool modelInfoOpen: false
     property bool closePending: false
+    property bool cleanupConfirm: false
     property bool accepted: false
     property bool manualUpdate: false
     property bool releaseNotesOpen: false
@@ -53,6 +54,7 @@ ApplicationWindow {
         if (phase === "restarting") return t("Restarting FreeVideo…", "正在重启 FreeVideo…")
         if (phase === "engine") return t("Updating the engine…", "正在更新引擎…")
         if (phase === "checking") return t("Checking for updates…", "正在检查更新…")
+        if (s.update.status === "error") return t("Update incomplete", "更新未完成")
         if (s.update.candidate) return t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available", " 可以更新")
         return t("New engine ", "新版引擎 ") + releaseVersion(currentRelease) + t(" is ready", " 已就绪")
     }
@@ -67,6 +69,7 @@ ApplicationWindow {
         return t("Installed engine ", "已安装引擎 ") + (s.update.installed || "—") + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
     }
     function primaryText() {
+        if (s.retry_kind) return retryText()
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
@@ -74,6 +77,12 @@ ApplicationWindow {
         if (updateFirst) return t("Update & launch", "更新并启动")
         if (s.page === "launcher") return s.status === "open" ? t("Open FreeVideo", "打开 FreeVideo") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Launch FreeVideo", "启动 FreeVideo")
         return s.status === "review" ? t("Install & launch", "安装并启动") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Check & resume", "检查并继续")
+    }
+    function retryText() {
+        if (s.retry_kind === "check") return t("Check again", "重新检查")
+        if (s.retry_kind === "launch") return t("Retry launch", "重试启动")
+        if (s.retry_kind === "import" || s.retry_kind === "prepare") return t("Retry import", "重试导入")
+        return t("Retry installation", "重试安装")
     }
     onSChanged: {
         if (s.page !== previousPage) {
@@ -97,7 +106,7 @@ ApplicationWindow {
     }
     onClosing: function(event) {
         event.accepted = false
-        if (s.busy) closePending = true
+        if (s.busy && !s.cleanup.busy) closePending = true
         else backend.close()
     }
 
@@ -254,6 +263,7 @@ ApplicationWindow {
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
+                            FButton { objectName: "diskCleanupButton"; visible: s.failure.kind === "disk"; enabled: s.can_cleanup; text: t("Clean download cache", "清理下载缓存"); onClicked: { settingsTab = "general"; settingsOpen = true; backend.cleanupDownloads(false) } }
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                             FButton { objectName: "copyError"; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
@@ -568,7 +578,7 @@ ApplicationWindow {
                             FButton { objectName: "cancelUpdateButton"; visible: s.update.phase === "waiting"; flat: true; text: t("Cancel update", "取消更新"); onClicked: { manualUpdate = false; backend.dismissUpdate() } }
                             FButton {
                                 objectName: "engineUpdateButton"; primary: true; visible: !s.update.phase; enabled: !s.busy
-                                text: s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : t("Update now", "立即更新")
+                                text: s.update.status === "error" ? t("Retry update", "重试更新") : s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : t("Update now", "立即更新")
                                 onClicked: { manualUpdate = !!s.update.candidate; backend.update("") }
                             }
                         }
@@ -636,14 +646,14 @@ ApplicationWindow {
                 anchors.fill: parent; anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 10
                 FButton { objectName: "backButton"; text: t("Back", "上一步"); flat: true; visible: s.page === "models" || s.page === "progress"; enabled: !s.busy; onClicked: backend.action("back", false) }
                 Item { Layout.fillWidth: true }
-                FButton { visible: s.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
+                FButton { visible: s.busy && !s.cleanup.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
                 FButton { objectName: "launchInstalledButton"; visible: updateFirst; flat: true; text: t("Launch current version", "启动当前版本"); onClicked: backend.action("primary", accepted) }
                 FButton {
                     objectName: "primaryButton"; primary: true; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
                     text: s.busy ? t("Working…", "正在处理…") : primaryText()
                     enabled: !s.busy && !(s.page === "launcher" && s.needs_consent && !accepted)
-                             && !(s.page === "progress" && s.status === "review" && (!accepted || !!s.error))
-                    onClicked: { if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } if (updateFirst) { backend.update(""); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
+                             && !(s.page === "progress" && s.status === "review" && !s.retry_kind && (!accepted || !!s.error))
+                    onClicked: { if (s.retry_kind) { backend.action("retry", accepted); return } if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } if (updateFirst) { backend.update(""); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted); if (s.busy && s.page === "launcher") terminalOpen = true }
                 }
             }
         }
@@ -786,6 +796,40 @@ ApplicationWindow {
                             FButton { text: t("Version & release notes", "版本与更新说明") + " · " + releaseVersion(currentRelease); flat: true; Layout.fillWidth: true; onClicked: releaseNotesOpen = true }
                         }
                         FGroup {
+                            Layout.fillWidth: true; title: t("Storage", "存储")
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 12
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 2
+                                    FText { text: t("Download cache", "下载缓存"); Layout.fillWidth: true }
+                                    FText {
+                                        objectName: "cleanupStatus"; Layout.fillWidth: true; font.pixelSize: theme.micro
+                                        color: s.cleanup.status === "error" ? theme.danger : theme.muted
+                                        text: s.cleanup.status === "scanning" ? t("Checking…", "正在检查…") :
+                                            s.cleanup.status === "cleaning" ? t("Cleaning…", "正在清理…") :
+                                            s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("About ", "约 ") + bytes(s.cleanup.bytes) + t(" can be freed. Models, environments and videos are kept.", " 可清理，保留模型、运行环境和视频。") : t("Nothing to clean.", "暂无可清理的下载缓存。")) :
+                                            s.cleanup.status === "complete" ? t("Freed ", "已释放 ") + bytes(s.cleanup.released_bytes || 0) + (s.cleanup.skipped ? t(". Some files changed; check again.", "。部分文件已变化，请重新检查。") : t(".", "。")) :
+                                            s.cleanup.status === "busy" ? t("Another task is using these files. Try again when it finishes.", "其他任务正在使用这些文件，完成后可重试。") :
+                                            s.cleanup.status === "error" ? t("Cleanup could not finish. Check again to retry.", "清理未完成，可重新检查后再试。") :
+                                            t("Installation files kept for repairs. Models, environments and videos are never removed.", "安装时缓存的文件，清理时不会删除模型、运行环境和视频。")
+                                    }
+                                }
+                                FButton {
+                                    objectName: "scanCacheButton"; visible: !(s.cleanup.status === "ready" && s.cleanup.bytes > 0)
+                                    text: s.cleanup.status === "idle" ? t("Check", "检查") : t("Check again", "重新检查")
+                                    implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                    enabled: s.can_cleanup && ["scanning", "cleaning"].indexOf(s.cleanup.status) < 0
+                                    onClicked: backend.cleanupDownloads(false)
+                                }
+                                FButton {
+                                    objectName: "clearCacheButton"; visible: s.cleanup.status === "ready" && s.cleanup.bytes > 0
+                                    text: t("Clean…", "清理…"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                    enabled: s.can_cleanup; onClicked: cleanupConfirm = true
+                                }
+                            }
+                            FText { visible: !!s.cleanup.error; text: s.cleanup.error || ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        }
+                        FGroup {
                             Layout.fillWidth: true; title: t("Compatibility", "兼容性")
                             RowLayout {
                                 Layout.fillWidth: true
@@ -874,9 +918,11 @@ ApplicationWindow {
         // State changes also close it (an update started from the banner or a
         // page, or a task began); only a user dismissal counts as "Later".
         onClosed: { if (!s.busy && (s.update.remind || manualUpdate)) backend.dismissUpdate(); manualUpdate = false }
-        height: Math.min(updateContents.implicitHeight + padding*2, win.height-48)
-        contentItem: ScrollView {
-            id: updateScroll; clip: true; contentWidth: availableWidth
+        height: Math.min(updateContents.implicitHeight + padding*2 + updateActions.implicitHeight + 14, win.height-48)
+        contentItem: ColumnLayout {
+            spacing: 14
+            ScrollView {
+            id: updateScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
             id: updateContents; width: updateScroll.availableWidth
             spacing: 14
@@ -887,12 +933,13 @@ ApplicationWindow {
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
             FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
             FField { id: githubToken; visible: !!s.update.error; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: t("GitHub token · optional", "GitHub Token · 可选") }
+            }
+            }
             RowLayout {
-                Layout.fillWidth: true; Layout.topMargin: 8
+                id: updateActions; Layout.fillWidth: true
                 FButton { objectName: "updateLaterButton"; text: s.update.candidate || s.update.engine ? t("Later", "稍后更新") : t("Close", "关闭"); flat: true; onClicked: { manualUpdate = false; backend.dismissUpdate() } }
                 Item { Layout.fillWidth: true }
-                FButton { objectName: "updateNowButton"; text: s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : s.update.candidate || s.update.engine ? t("Update now", "立即更新") : t("Check again", "重新检查"); primary: true; enabled: ["checking","downloading"].indexOf(s.update.status) < 0 && s.update.phase !== "waiting"; onClicked: { manualUpdate = !!s.update.candidate || !s.update.engine; backend.update(githubToken.text) } }
-            }
+                FButton { objectName: "updateNowButton"; text: s.update.status === "error" ? t("Retry update", "重试更新") : s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : s.update.candidate || s.update.engine ? t("Update now", "立即更新") : t("Check again", "重新检查"); primary: true; enabled: ["checking","downloading"].indexOf(s.update.status) < 0 && s.update.phase !== "waiting"; onClicked: { manualUpdate = !!s.update.candidate || !s.update.engine; backend.update(githubToken.text) } }
             }
         }
     }
@@ -919,6 +966,14 @@ ApplicationWindow {
         }
     }
 
+    FDialog {
+        objectName: "cleanupConfirmation"; visible: cleanupConfirm
+        title: t("Clean download cache?", "清理下载缓存？")
+        text: t("About ", "将释放约 ") + bytes(s.cleanup.bytes || 0) + t(" will be freed. Future repairs may need to download these installation files again.", "。以后修复环境时，可能需要重新下载这些安装文件。")
+        acceptText: t("Clean", "清理"); rejectText: t("Cancel", "取消")
+        onAccepted: { cleanupConfirm = false; backend.cleanupDownloads(true) }
+        onRejected: cleanupConfirm = false
+    }
     FDialog {
         visible: closePending
         title: t("Pause and close?", "暂停并退出？")

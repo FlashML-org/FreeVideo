@@ -1,22 +1,20 @@
 {
   "schema": 1,
-  "product_version": "0.2.4",
+  "product_version": "0.2.5",
   "en": {
-    "summary": "Prompts with reference images and videos encode faster and no longer stall.",
+    "summary": "Retry failed installations and updates, and free disk space from Settings.",
     "changes": [
-      "Prompt encoding runs in BF16, as the official MiniMax H3 pipeline does, instead of FP32: it is faster and needs less GPU memory, most noticeably with reference images and videos.",
-      "Encoding reserves GPU memory for the real length of the prompt and its references and checks what is actually free before it starts; very long references are encoded in smaller blocks. A request with a 15-second reference video and three images that stopped responding on a 16 GB card now encodes in under a minute.",
-      "If Windows starts moving encoding into shared GPU memory, which makes it many times slower, FreeVideo stops within seconds, leaves more room and retries by itself, and remembers how much room this computer needs.",
-      "Reference videos and audio are cut to the length of the video being generated, at most 15 seconds, as in the official MiniMax H3 pipeline, and FreeVideo now tells you when a clip was cut and how much was used. Clips longer than 15 seconds are no longer refused, and a short video with a long reference encodes and samples faster."
+      "After freeing disk space, check the installation plan again without reopening FreeVideo. Existing models and download progress are kept.",
+      "Clear installation download caches from Settings, with a space estimate before removal. Installed environments, models and videos are kept.",
+      "Update buttons stay visible with long release notes. Failed update downloads no longer leave temporary files behind."
     ]
   },
   "zh": {
-    "summary": "带参考图和参考视频的提示词编码更快，不再卡住。",
+    "summary": "安装和更新失败后可直接重试，设置中新增下载缓存清理。",
     "changes": [
-      "提示词编码改用 BF16 计算（与官方 MiniMax H3 一致），不再使用 FP32：速度更快、显存占用更少，带参考图和参考视频时最明显。",
-      "编码会按提示词和参考素材的实际长度预留显存，开始前确认真正可用的显存；参考素材很长时改为分块编码。此前在 16 GB 显卡上会卡住的“15 秒参考视频 + 3 张参考图”请求，现在一分钟内即可完成编码。",
-      "Windows 上如果编码开始用到共享显存（会慢很多倍），FreeVideo 会在几秒内停下、留出更多显存并自动重试，同时记住这台电脑需要预留多少。",
-      "参考视频和参考音频按本次生成的时长截取前段（最长 15 秒），与官方 MiniMax H3 管线一致；截取时界面会明确提示用了多长。超过 15 秒的素材不再报错，短视频配长参考时编码和采样也更快。"
+      "释放磁盘空间后可原地重新检查安装计划，无需重开软件；保留已有模型和下载进度。",
+      "设置中可查看下载缓存大小并清理，保留已安装的运行环境、模型和视频。",
+      "更新说明较长时，操作按钮仍固定可见；更新下载失败后自动回收本次临时文件。"
     ]
   }
 }
