@@ -42,6 +42,19 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     redo.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6M20 4v7h-7"/></svg>';
     const cancel = el('button', t('Cancel', '取消'), 'fv-quiet'); cancel.type = 'button';
     const status = el('div', null, 'fv-enhance-status'); status.setAttribute('role', 'status');
+    const statusText = el('span', null, 'fv-enhance-status-text');
+    const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');
+    meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
+    meter.append(fill); status.append(statusText, meter);
+    // One place sets what the status line says and how it looks.
+    function show(text, state = '', fraction = null) {
+        statusText.textContent = text || '';
+        status.dataset.state = text ? state : '';
+        meter.hidden = state !== 'progress';
+        meter.dataset.indeterminate = String(fraction === null);
+        if (fraction === null) { meter.removeAttribute('aria-valuenow'); fill.style.width = ''; }
+        else { const percent = Math.round(100 * Math.max(0, Math.min(1, fraction))); meter.setAttribute('aria-valuenow', String(percent)); fill.style.width = percent + '%'; }
+    }
     const install = el('div', null, 'fv-enhance-install'); install.hidden = true;
     const detail = el('p');
     const agree = el('button', t('Download and enable', '下载并启用'), 'fv-primary'); agree.type = 'button';
@@ -102,7 +115,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         cancelling = true; consent?.(false); consent = null; render();
         if (job) await post('cancel', {job});
     }
-    cancel.onclick = () => cancelJob().catch(error => { status.textContent = errorText(error); });
+    cancel.onclick = () => cancelJob().catch(error => { show(errorText(error), 'error'); });
     async function poll(action, body) {
         if (disposed || cancelling) throw new Error('cancelled');
         const started = await post(action, body); job = started.job;
@@ -119,10 +132,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 if (row.phase === 'failed') throw new Error(row.error || 'rewrite_failed');
                 if (row.phase === 'cancelled') throw new Error('cancelled');
                 if (disposed) throw new Error('cancelled');
-                status.textContent = row.phase === 'download'
-                    ? t(`Downloading · ${Math.round(100 * (row.done || 0) / (row.total || 1))}%`, `正在下载 · ${Math.round(100 * (row.done || 0) / (row.total || 1))}%`)
-                    : row.phase === 'rewriting' ? t('Enhancing prompt…', '正在改写提示词…')
-                    : t('Preparing enhancement…', '正在准备提示词增强…');
+                if (row.phase === 'download') {
+                    const fraction = (row.done || 0) / (row.total || 1), gib = value => (value / 2 ** 30).toFixed(1);
+                    show(t(`Downloading the model · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`, `正在下载模型 · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`), 'progress', fraction);
+                } else show(row.phase === 'rewriting' ? t('Enhancing the prompt…', '正在改写提示词…') : t('Preparing enhancement…', '正在准备提示词增强…'), 'progress');
                 await new Promise(resolve => setTimeout(resolve, 400));
             }
         } catch (error) {
@@ -142,11 +155,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             if (!reply.ok) throw new Error(info.error);
             token = info.token;
             if (!info.ready) {
-                detail.textContent = t(`Local model · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs 11 GiB free RAM. Your content stays local.`,
-                    `本地模型 · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 11 GiB 可用内存。内容仅在本机处理。`);
+                const model = String(info.model || 'Qwen/Qwen3-VL-4B-Instruct').split('/').pop().replace(/-Instruct$/, '');
+                detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs 11 GiB free RAM. Your prompt and images stay on this computer.`,
+                    `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 11 GiB 可用内存。提示词和图片只在本机处理。`);
                 install.hidden = false; render();
                 const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
-                consent = null; install.hidden = true;
+                consent = null; install.hidden = true; render();
                 if (!accepted || disposed || cancelling) {
                     versions.value.enabled = false;
                     versions.select('original'); apply();
@@ -157,10 +171,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             const result = await poll('rewrite', {text: original, ...scene});
             if (disposed || cancelling) throw new Error('cancelled');
             if (edits !== versions.value.edits || !versions.accept(key, context(), result.text)) throw new Error('stale');
-            apply(); status.textContent = '';
+            apply(); show('');
         };
         running = Promise.resolve().then(execute).catch(error => {
-            if (!disposed) status.textContent = errorText(error);
+            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : 'error');
             throw error;
         }).finally(() => { running = null; install.hidden = true; render(); });
         render();
@@ -172,7 +186,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         else { versions.value.useOriginal = false; save(); render(); enhance().catch(() => {}); }
     };
     redo.onclick = () => enhance().catch(() => {});
-    save(); render();
+    show(''); save(); render();
     return {element, async beforeGenerate() {
         if (running) {
             try { await running; }
@@ -180,7 +194,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         }
         if (!versions.value.enabled || versions.value.useOriginal) return;
         try { if (!versions.fresh(context())) await enhance(); }
-        catch (error) { status.textContent = errorText(error); return false; }
+        catch (error) { show(errorText(error), error?.message === 'cancelled' ? '' : 'error'); return false; }
     }, sync() { if (input.value !== versions.text()) changed(); }, dispose() {
         disposed = true; cancelJob().catch(() => {}); input.removeEventListener('input', changed);
     }};

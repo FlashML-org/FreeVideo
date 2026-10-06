@@ -14,7 +14,13 @@
 .fv-studio .fv-enhance-bar>.fv-enhance-redo{width:28px;flex:none;padding:0}
 .fv-studio .fv-enhance textarea{border:0;border-radius:0;background:transparent;box-shadow:none}
 .fv-enhance [hidden]{display:none!important}
-.fv-enhance-status:not(:empty){padding:9px 12px;line-height:1.6;border-top:1px solid #ffffff08;font-size:11px}
+.fv-enhance-status{display:none;padding:9px 12px 10px;line-height:1.6;border-top:1px solid #ffffff08;font-size:11px}
+.fv-enhance-status:is([data-state=progress],[data-state=error],[data-state=note]){display:block}
+.fv-enhance-status[data-state=error]{color:var(--fv-danger,#ff8a80);background:color-mix(in srgb,var(--fv-danger,#ff8a80) 7%,transparent)}
+.fv-enhance-meter{position:relative;height:3px;margin-top:7px;border-radius:2px;background:#ffffff12;overflow:hidden}
+.fv-enhance-meter>i{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .4s ease-out}
+.fv-enhance-meter[data-indeterminate=true]>i{width:32%;animation:fv-enhance-sweep 1.4s ease-in-out infinite}
+@keyframes fv-enhance-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
 .fv-enhance-install{background:#202a38;border-top:1px solid #ffffff12;padding:12px;line-height:1.7;font-size:11px;animation:fv-enhance-in .2s ease-out}
 .fv-enhance-install p{margin:0 0 10px}
 .fv-enhance-install-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
