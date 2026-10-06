@@ -466,7 +466,8 @@ def engine_environment(root, source, environ=None):
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
-             force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None):
+             force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
+             prompt_rewrite_report=None):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(force_regenerate) is not bool:
@@ -488,6 +489,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     run = Path(output_directory).resolve() / 'FreeVideo' / time.strftime('%Y-%m-%d', time.gmtime()) / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     output = run / 'video.mp4'
+    if prompt_rewrite_report:
+        from .prompt_vlm.receipt import attach
+        attach(root, prompt_rewrite_report, run)
     (run / 'prompt.txt').write_text(prompt, encoding='utf-8')
     if metadata is not None:
         save(run / 'workflow.json', metadata)

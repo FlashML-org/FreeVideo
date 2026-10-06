@@ -1,0 +1,26 @@
+.fv-enhance{color:var(--fv-muted,#aaaeb9);font-size:12px;border:1px solid var(--fv-border,#ffffff15);border-radius:12px;background:var(--fv-card,#1b2431);overflow:hidden;transition:border-color .2s}
+.fv-enhance:focus-within{border-color:color-mix(in srgb,var(--fv-accent,#6db8fa) 60%,transparent)}
+.fv-enhance-bar{display:flex;align-items:center;gap:6px;min-height:44px;padding:6px 10px;border-bottom:1px solid #ffffff08;white-space:nowrap}
+.fv-enhance-toggle{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;margin-right:auto;min-width:0}
+.fv-enhance-toggle span{overflow:hidden;text-overflow:ellipsis}
+.fv-studio .fv-enhance-toggle input{appearance:none;position:relative;flex:none;width:26px;height:16px;min-height:16px;padding:0;border:0;border-radius:12px;margin:0;background:#ffffff24;cursor:pointer;transition:background .2s}
+.fv-enhance-toggle input::before{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:50%;background:white;transition:transform .2s}
+.fv-enhance-toggle input:checked{background:var(--fv-accent,#6db8fa)}
+.fv-enhance-toggle input:checked::before{transform:translateX(10px)}
+.fv-enhance-tabs{display:flex;flex:none;gap:2px;padding:2px;background:#0002;border-radius:7px}
+.fv-studio .fv-enhance-tabs button{min-height:25px;background:transparent;border:0;color:inherit;padding:3px 7px;font-size:11px;font-weight:400;border-radius:5px;transition:color .18s,background .18s;cursor:pointer}
+.fv-studio .fv-enhance-tabs button[aria-pressed=true]{color:#eef4ff;background:#ffffff15}
+.fv-studio .fv-enhance-bar>.fv-quiet{padding:3px 6px;min-height:28px;font-size:11px}
+.fv-studio .fv-enhance-bar>.fv-enhance-redo{width:28px;flex:none;padding:0}
+.fv-studio .fv-enhance textarea{border:0;border-radius:0;background:transparent;box-shadow:none}
+.fv-enhance [hidden]{display:none!important}
+.fv-enhance-status:not(:empty){padding:9px 12px;line-height:1.6;border-top:1px solid #ffffff08;font-size:11px}
+.fv-enhance-install{background:#202a38;border-top:1px solid #ffffff12;padding:12px;line-height:1.7;font-size:11px;animation:fv-enhance-in .2s ease-out}
+.fv-enhance-install p{margin:0 0 10px}
+.fv-enhance-install-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.fv-studio .fv-enhance-install-actions :is(button,a){min-height:29px;font-size:11px;padding:5px 9px}
+.fv-studio .fv-enhance-install-actions a{margin-left:auto;background:none;border:0;color:var(--fv-muted,#99aabb);padding-inline:4px;text-decoration:underline;text-underline-offset:3px}
+.fv-studio a.fv-prompt-help{font-size:11px;font-weight:400;min-height:0;padding:0;border:0;background:none;color:var(--fv-muted)}
+.fv-enhance button:focus-visible,.fv-enhance input:focus-visible{outline:2px solid var(--fv-accent,#6db8fa);outline-offset:2px}
+@keyframes fv-enhance-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.fv-enhance *{transition:none;animation:none}}

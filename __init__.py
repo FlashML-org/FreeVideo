@@ -9,6 +9,8 @@ async def comfy_entrypoint():
     register()
     from .freevideo_engine.comfy_setup import register as setup_routes
     setup_routes()
+    from .freevideo_engine.prompt_vlm.service import register as prompt_routes
+    prompt_routes()
     from .freevideo_engine.comfy_launcher_api import register as launcher_routes
     launcher_routes()
     from .freevideo_engine.comfy_updates import register as update_routes

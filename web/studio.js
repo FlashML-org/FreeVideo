@@ -13,6 +13,7 @@ import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { createSamplingEffort } from './sampling_effort.js';
 import { resultActions } from './result_actions.js';
+import { createPromptEnhancer } from './prompt_enhance.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -21,6 +22,7 @@ const cn = languageOverride === 'zh' || (languageOverride !== 'en'
 const t = (en, zh) => cn ? zh : en;
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./studio.css', import.meta.url).href; document.head.append(css);
 const effortCss = document.createElement('link'); effortCss.rel = 'stylesheet'; effortCss.href = new URL('./sampling_effort.css', import.meta.url).href; document.head.append(effortCss);
+const enhanceCss = document.createElement('link'); enhanceCss.rel = 'stylesheet'; enhanceCss.href = new URL('./prompt_enhance.css', import.meta.url).href; document.head.append(enhanceCss);
 const el = (tag, label, cls) => { const e = document.createElement(tag); if (label != null) e.textContent = label; if (cls) e.className = cls; return e; };
 const button = (label, action, cls = '') => { const e = el('button', label, cls); e.type = 'button'; e.onclick = action; return e; };
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
@@ -157,10 +159,24 @@ export function openStudio(node) {
     mention.title = t('Reference media (@)', '引用素材（@）'); mention.setAttribute('aria-label', mention.title);
     mention.disabled = prompt.disabled; mention.onpointerdown = e => e.preventDefault(); promptEditor.append(mention);
     cleanup.push(() => references.dispose());
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== value(node, 'text')) prompt.value = value(node, 'text') || ''; references.refresh(); } };
+    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t,
+        onReport: row => { node.freevideoReportId = row.report_id; progress.updateReport(row); },
+        setText: text => set(node, 'text', text), context: () => {
+        const items = referenceItems(node);
+        if (linked(node, 'conditioning') || items.some(row => !row.file || row.kind !== 'image')) throw new Error('unsupported_media');
+        return {seconds: Number(value(node, 'seconds')), media: items.map(row => ({file: row.file, role: row.role || 'reference'}))};
+    }});
+    cleanup.push(() => enhancer.dispose());
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== value(node, 'text')) prompt.value = value(node, 'text') || ''; references.refresh(); enhancer.sync(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
-    section(t('Describe your scene', '描述画面')).append(promptEditor, promptGuide());
+    const promptSection = section(t('Describe your scene', '描述画面'));
+    const promptHelp = el('a', t('Guide ↗', '指南 ↗'), 'fv-prompt-help');
+    promptHelp.href = 'https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/SKILL.md';
+    promptHelp.target = '_blank'; promptHelp.rel = 'noopener noreferrer';
+    promptHelp.title = t('MiniMax H3 prompt guide', 'MiniMax H3 提示词指南');
+    promptSection.querySelector('.fv-label').append(promptHelp);
+    promptSection.append(enhancer.element);
     const canvas = section(t('Frame & duration', '画幅与时长'));
     const shapes = el('div', null, 'fv-shapes'); canvas.append(shapes);
     const dimensionsLinked = linked(node, 'width') || linked(node, 'height');
@@ -596,6 +612,8 @@ export function openStudio(node) {
         try {
             lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
+            if (await enhancer.beforeGenerate() === false) return;
+            if (disposed) return;
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = true;

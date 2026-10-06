@@ -114,6 +114,12 @@ class FreeVideoGenerate(io.ComfyNode):
                 memory.unload_all_models()
                 memory.soft_empty_cache()
         metadata = cls.hidden.extra_pnginfo or {}
+        workflow_nodes = (metadata.get('workflow') or {}).get('nodes', [])
+        properties = next((row.get('properties', {}) for row in workflow_nodes
+                           if str(row.get('id')) == str(node_id)), {})
+        versions = properties.get('freevideo_prompt_versions', {})
+        rewrite_report = dict(report_id=properties.get('freevideo_prompt_report'),
+                              selected=versions.get('selected') if versions.get('enabled') else 'original')
         try:
             from comfy.cli_args import args as comfy_args
             embed = not comfy_args.disable_metadata
@@ -125,6 +131,7 @@ class FreeVideoGenerate(io.ComfyNode):
         try:
             output = comfy_bridge.generate(text, width, height, seconds, seed, output_root,
                 metadata=metadata.get('workflow', metadata), progress=progress, two_pass=two_pass,
+                prompt_rewrite_report=rewrite_report,
                 encoder_prewarm=prewarm, force_regenerate=force_regenerate,
                 base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
