@@ -2,7 +2,8 @@
 
 The browser supplies a small, text-only presentation frame using its own fonts.
 Video composition uses CPU PyAV and copies the existing audio packets. No model,
-CUDA context, cloud service, prompt, or full report is involved.
+CUDA context, cloud service or full report is involved. The saved ComfyUI
+workflow travels with both exports, so dropping one on the canvas restores it.
 """
 import asyncio
 import base64
@@ -15,6 +16,23 @@ import threading
 import uuid
 
 from .comfy_library import _video, _report
+
+
+def saved_graph(path):
+    """The workflow and prompt a saved video carries, as ComfyUI stores them (JSON text)."""
+    import av
+    try:
+        with av.open(str(path)) as reader:
+            graph = {key: value for key, value in reader.metadata.items() if key in ('workflow', 'prompt') and value}
+    except Exception:
+        graph = {}
+    if 'workflow' not in graph:
+        # Videos saved before the workflow was embedded keep it next to them.
+        try:
+            graph['workflow'] = json.dumps(json.loads(path.with_name('workflow.json').read_text(encoding='utf-8')))
+        except (OSError, ValueError):
+            pass
+    return graph
 
 
 def details(root, identity):
@@ -43,6 +61,7 @@ def details(root, identity):
     result['sampling_plan'] = {k: v for k, v in plan.items() if k in ('enabled', 'base_steps', 'refine_steps')
                                and type(v) in (int, bool)}
     result['id'] = identity
+    result['graph'] = saved_graph(path)
     return result
 
 
@@ -88,7 +107,7 @@ def video_export(root, identity, data, stop):
     _report(path)
     info = path.stat()
     template, rect, key = layout(data)
-    key = hashlib.sha256(f'{key}:{info.st_size}:{info.st_mtime_ns}:v1'.encode()).hexdigest()[:20]
+    key = hashlib.sha256(f'{key}:{info.st_size}:{info.st_mtime_ns}:v2'.encode()).hexdigest()[:20]
     target = path.with_name('video.share-' + key + '.mp4')
     if target.is_symlink():
         raise ValueError('Invalid sharing destination')
@@ -98,7 +117,9 @@ def video_export(root, identity, data, stop):
     x, y, width, height = rect
     try:
         with av.open(str(path)) as reader, av.open(str(temporary), 'w', format='mp4',
-                                                   options={'movflags': '+faststart'}) as writer:
+                                                   options={'movflags': 'use_metadata_tags+faststart'}) as writer:
+            for name, value in saved_graph(path).items():
+                writer.metadata[name] = value
             source = reader.streams.video[0]; source.thread_count = 1
             if abs(width / height - source.width / source.height) > 2 / height:
                 raise ValueError('Sharing must preserve the original aspect ratio')

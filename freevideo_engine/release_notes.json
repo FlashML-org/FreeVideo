@@ -1,22 +1,18 @@
 {
   "schema": 1,
-  "product_version": "0.2.1",
+  "product_version": "0.2.2",
   "en": {
-    "summary": "A redesigned quality slider, result view and sharing card.",
+    "summary": "Saved videos and sharing exports keep their workflow.",
     "changes": [
-      "The quality slider is larger and easier to drag, with clearer motion between levels.",
-      "A finished video now has one action bar: Download video, Share, and a Report menu that holds both the diagnostic report and the generation record.",
-      "Generation times and memory peaks sit together in one card, in Create and in Creations.",
-      "Sharing images and videos are simpler: generation time, GPU and quality level."
+      "Saved videos, and the images and videos exported for sharing, now carry the ComfyUI workflow that made them. Drag one onto the canvas to restore the graph with its prompt, seed and settings, the same way as with ComfyUI's own outputs.",
+      "Videos open faster when streamed, because the index is stored at the start of the file."
     ]
   },
   "zh": {
-    "summary": "质量滑块、生成结果区和分享卡片重新设计。",
+    "summary": "生成的视频和分享导出会保存工作流。",
     "changes": [
-      "质量滑块更大、更好拖动，切换档位的动效更清晰。",
-      "视频生成后只有一排操作：下载视频、分享，以及一个报告菜单，诊断报告和生成记录都在里面。",
-      "耗时和显存、内存峰值合并为一张卡片，创作页和作品库一致。",
-      "分享图片和视频更简洁，只保留生成耗时、显卡和质量档位。"
+      "生成的视频，以及分享导出的图片和视频，都会保存产生它的 ComfyUI 工作流。拖到画布上即可还原当时的工作流、提示词、种子和各项参数，与 ComfyUI 自带的输出一致。",
+      "视频索引移到了文件开头，在线播放时加载更快。"
     ]
   }
 }

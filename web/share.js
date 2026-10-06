@@ -8,6 +8,20 @@ const button=(text,action,cls='fv-quiet')=>{const b=el('button',cls,text);b.type
 const identity=r=>/^FreeVideo\/(\d{4}-\d{2}-\d{2}\/[a-f0-9]{32})\/video\.mp4$/.exec(r?.video||'')?.[1];
 const image=src=>new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src;});
 const duration=n=>Number.isFinite(n)&&n>=0?`${n.toFixed(1)} s`:'—';
+// ComfyUI reads a PNG's graph from tEXt chunks named workflow and prompt; add them after IHDR.
+const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+const crc32=bytes=>{let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;};
+async function withGraph(blob,graph){
+    const entries=Object.entries(graph||{}).filter(([key,value])=>['workflow','prompt'].includes(key)&&typeof value==='string'&&value);
+    if(!entries.length)return blob;
+    const png=new Uint8Array(await blob.arrayBuffer()),end=8+12+new DataView(png.buffer).getUint32(8);
+    const chunks=entries.map(([key,text])=>{
+        const data=new TextEncoder().encode(key+'\0'+text),chunk=new Uint8Array(12+data.length),view=new DataView(chunk.buffer);
+        view.setUint32(0,data.length);chunk.set([116,69,88,116],4);chunk.set(data,8);view.setUint32(8+data.length,crc32(chunk.subarray(4,8+data.length)));
+        return chunk;
+    });
+    return new Blob([png.subarray(0,end),...chunks,png.subarray(end)],{type:'image/png'});
+}
 const tint=(hex,alpha)=>{const v=parseInt(hex.slice(1),16);return `rgba(${v>>16},${v>>8&255},${v&255},${alpha})`;};
 let opened;
 
@@ -119,7 +133,7 @@ export async function openShare(record,t){
     async function download(){
         if(!ready||busy)return;
         if(kind==='image'){
-            canvas.toBlob(blob=>{if(!blob||disposed)return;const url=URL.createObjectURL(blob);const a=el('a');a.href=url;a.download=`FreeVideo_share_${id.split('/')[1].slice(0,12)}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);},'image/png');return;
+            canvas.toBlob(async blob=>{if(!blob||disposed)return;blob=await withGraph(blob,metadata?.graph);const url=URL.createObjectURL(blob);const a=el('a');a.href=url;a.download=`FreeVideo_share_${id.split('/')[1].slice(0,12)}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);},'image/png');return;
         }
         busy=true;save.disabled=true;cancel.hidden=false;tabs.querySelectorAll('button').forEach(b=>b.disabled=true);
         message.textContent=t('Preparing sharing video…','正在导出分享视频…');dialog.dataset.busy='true';
