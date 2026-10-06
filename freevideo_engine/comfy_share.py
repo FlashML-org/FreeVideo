@@ -28,10 +28,10 @@ def saved_graph(path):
         graph = {}
     if 'workflow' not in graph:
         # Videos saved before the workflow was embedded keep it next to them.
-        try:
-            graph['workflow'] = json.dumps(json.loads(path.with_name('workflow.json').read_text(encoding='utf-8')))
-        except (OSError, ValueError):
-            pass
+        from .comfy_metadata import saved_workflow
+        workflow = saved_workflow(path.with_name('workflow.json'))
+        if workflow is not None:
+            graph['workflow'] = json.dumps(workflow)
     return graph
 
 

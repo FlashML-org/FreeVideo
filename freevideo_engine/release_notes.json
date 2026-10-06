@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "product_version": "0.2.2",
+  "product_version": "0.2.3",
   "en": {
-    "summary": "Saved videos and sharing exports keep their workflow.",
+    "summary": "Videos you made earlier get their workflow too.",
     "changes": [
-      "Saved videos, and the images and videos exported for sharing, now carry the ComfyUI workflow that made them. Drag one onto the canvas to restore the graph with its prompt, seed and settings, the same way as with ComfyUI's own outputs.",
-      "Videos open faster when streamed, because the index is stored at the start of the file."
+      "Videos made before v0.2.2 can get their ComfyUI workflow too, so they can be dragged onto the canvas as well. Creations offers it, and nothing changes until you confirm. Each original is kept next to its video as video.before-workflow.mp4 and can be deleted once you have checked the video.",
+      "A video is rewritten only when its saved workflow is complete and the new file matches the original exactly. Anything else is left as it is."
     ]
   },
   "zh": {
-    "summary": "生成的视频和分享导出会保存工作流。",
+    "summary": "之前生成的视频也会补上工作流。",
     "changes": [
-      "生成的视频，以及分享导出的图片和视频，都会保存产生它的 ComfyUI 工作流。拖到画布上即可还原当时的工作流、提示词、种子和各项参数，与 ComfyUI 自带的输出一致。",
-      "视频索引移到了文件开头，在线播放时加载更快。"
+      "v0.2.2 之前生成的视频也能补上 ComfyUI 工作流，补写后同样可以拖到画布上还原。\"作品\"中会给出提示，确认后才会补写。原视频保留在同一目录，文件名为 video.before-workflow.mp4，确认无误后可以自行删除。",
+      "只有在保存的工作流完整、且新文件与原视频完全一致时才会改写，其他情况保持原样。"
     ]
   }
 }

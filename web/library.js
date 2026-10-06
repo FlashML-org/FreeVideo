@@ -18,6 +18,42 @@ export async function latestVideo() {
     return (await response.json()).items?.[0] || null;
 }
 
+// Earlier videos can get their workflow embedded, but only after the user confirms it.
+async function workflowBackfill(collection, t) {
+    const status = async () => { try { const r = await api.fetchApi('/freevideo/workflow-backfill'); return r.ok ? r.json() : null; } catch { return null; } };
+    const post = action => api.fetchApi('/freevideo/workflow-backfill', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action})});
+    let value = await status();
+    if (!value || value.disabled || value.dismissed || (!value.count && value.state !== 'running')) return;
+    const box = el('div', null, 'fv-backfill'); box.setAttribute('role', 'status');
+    const heading = el('strong'), text = el('p'), actions = el('div', null, 'fv-backfill-actions');
+    box.append(heading, text, actions); collection.prepend(box);
+    const gb = bytes => (bytes / 2 ** 30).toFixed(bytes < 2 ** 30 ? 2 : 1);
+    async function follow() {
+        heading.textContent = t('Adding workflows…', '正在补写工作流…');
+        text.textContent = t('Each original video is kept next to it as video.before-workflow.mp4.', '每个原视频都会保留在同一目录，文件名为 video.before-workflow.mp4。');
+        actions.replaceChildren();
+        while ((value = await status()) && value.state === 'running') await new Promise(resolve => setTimeout(resolve, 1500));
+        const result = value?.result || {};
+        heading.textContent = result.embedded ? t(`Workflows added to ${result.embedded} videos`, `已为 ${result.embedded} 个视频补上工作流`) : t('No video was changed', '没有视频被改动');
+        text.textContent = result.embedded
+            ? t('Drag them onto the canvas to restore their workflow. The originals are kept next to them as video.before-workflow.mp4.', '把它们拖到画布上即可还原工作流。原视频保留在各自目录，文件名为 video.before-workflow.mp4。')
+            : t('Videos that could not be checked safely were left as they were.', '无法安全确认的视频都保持原样。');
+        if (result.failed) text.textContent += ' ' + t(`${result.failed} videos were left unchanged and will be offered again.`, `另有 ${result.failed} 个视频未改动，之后会再次提示。`);
+        actions.replaceChildren(button(t('Done', '好的'), () => box.remove(), 'fv-quiet'));
+    }
+    if (value.state === 'running') { follow(); return; }
+    heading.textContent = t('Add workflows to earlier videos', '为之前的视频补上工作流');
+    text.textContent = t(`${value.count} earlier videos can get the workflow they were made with, so dropping them on the canvas restores it. Nothing changes until you confirm, and each original is kept as a backup (about ${gb(value.bytes)} GB).`,
+        `有 ${value.count} 个之前生成的视频可以补上生成时的工作流，补写后拖到画布即可还原。确认前不会改动任何文件，每个原视频都会保留一份备份（约 ${gb(value.bytes)} GB）。`);
+    const run = button(t('Add workflows', '补写工作流'), async () => {
+        run.disabled = later.disabled = true;
+        try { if (!(await post('run')).ok) throw new Error(); follow(); }
+        catch { run.disabled = later.disabled = false; text.textContent = t('Could not start. Try again.', '没能开始，请重试。'); }
+    }, 'fv-primary');
+    const later = button(t('Don\'t ask again', '不再提示'), async () => { box.remove(); try { await post('dismiss'); } catch {} }, 'fv-quiet');
+    actions.append(run, later);
+}
+
 export function openLibrary(t) {
     if (opened?.open) { opened.focus(); return; }
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
@@ -33,6 +69,7 @@ export function openLibrary(t) {
     const message = el('p', '', 'fv-library-message'); message.setAttribute('role', 'status');
     const more = button(t('Show more', '加载更多'), () => load(true), 'fv-quiet'); more.hidden = true;
     collection.append(grid, message, more);
+    workflowBackfill(collection, t);
     const detail = el('section', null, 'fv-library-detail');
     const all = button(t('All creations', '全部作品'), () => {
         dialog.dataset.detail = 'false'; player?.pause(); cards.get(selected)?.focus({preventScroll: true});
