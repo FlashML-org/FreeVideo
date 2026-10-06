@@ -461,7 +461,7 @@ def engine_environment(root, source, environ=None):
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
-             force_regenerate=False, base_steps=8, refine_steps=3):
+             force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(force_regenerate) is not bool:
@@ -626,6 +626,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 or any(engine.get('geometry', {}).get(k) != canvas[k] for k in ('width', 'height', 'frames'))):
             from .failure_details import generation_failure
             raise RuntimeError('FreeVideo did not complete the requested video.\n' + generation_failure(run))
+        if comfy_metadata:
+            # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
+            # Written before the result cache records the file's size and hash.
+            from .comfy_metadata import embed_comfy_metadata
+            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
         state.update(status='complete', request_seconds=report.get('request_seconds'),
                      engine_report=str(output.with_suffix('.engine.json')))
         # Do not index a result against inputs/models that changed while it ran.

@@ -49,7 +49,7 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Generate again even when an identical completed video is saved locally.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
-            hidden=[io.Hidden.unique_id, io.Hidden.extra_pnginfo],
+            hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
             is_output_node=True, not_idempotent=True,
         )
 
@@ -114,13 +114,19 @@ class FreeVideoGenerate(io.ComfyNode):
                 memory.unload_all_models()
                 memory.soft_empty_cache()
         metadata = cls.hidden.extra_pnginfo or {}
+        try:
+            from comfy.cli_args import args as comfy_args
+            embed = not comfy_args.disable_metadata
+        except (ImportError, AttributeError):
+            embed = True
+        graph = dict(prompt=getattr(cls.hidden, 'prompt', None), workflow=metadata.get('workflow')) if embed else None
         output_root = Path(folder_paths.get_output_directory()).resolve()
         publish(PromptServer.instance, node_id, {'label': 'Preparing video', 'new_request': True})
         try:
             output = comfy_bridge.generate(text, width, height, seconds, seed, output_root,
                 metadata=metadata.get('workflow', metadata), progress=progress, two_pass=two_pass,
                 encoder_prewarm=prewarm, force_regenerate=force_regenerate,
-                base_steps=base_steps, refine_steps=refine_steps,
+                base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,
                     references=references, loras=loras, conditioning=conditioning, assets=media))
