@@ -73,12 +73,12 @@ def summary_report(report):
               'inference_kernels','window_varlen','varlen_smooth_k','reuse_block_outputs','preload_host','pin_host_weights','cache_refined_text'):
         if type(config.get(k)) is bool:
             result['config'][k] = config[k]
-    for k, allowed in (('task', ('t2va','fl2va','ref2va')), ('linear_compute',('native-fp8','bf16-weight-only')),
+    for k, allowed in (('task', ('t2va','fl2va','ref2va')), ('linear_compute',('native-fp8','bf16-weight-only','int8')),
                        ('adaln_mode', ('portable-model-asset','optional-model-asset','local-precompute','original-projections'))):
         if config.get(k) in allowed:
             result['config'][k] = config[k]
     for k, allowed in (('fp8_gemm', ('torch','scaled-mm-epilogue','triton')),
-                       ('fp8_scale_granularity', ('per_tensor','rowwise')), ('precision', ('fp8','bf16','fp16'))):
+                       ('fp8_scale_granularity', ('per_tensor','rowwise')), ('precision', ('fp8','int8','bf16','fp16'))):
         if config.get(k) in allowed:
             result['config'][k] = config[k]
     attention = config.get('attention', '')

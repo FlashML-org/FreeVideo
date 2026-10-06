@@ -25,7 +25,8 @@ def doctor(*, probe=False, hardware=None, backends=None):
         result['kernel_probes'] = []
         with runtime_lock() as descriptor:
             env = dict(os.environ, **{LOCK_ENV: str(descriptor)})
-            for backend in [*sorted(backends), 'linear']:
+            linear = ['linear'] + (['linear-int8'] if hardware.system in ('Windows', 'Linux') else [])
+            for backend in [*sorted(backends), *linear]:
                 command = [sys.executable, '-m', 'freevideo_engine.probe', backend]
                 try:
                     child = processes.run(command, capture_output=True, text=True, timeout=180,

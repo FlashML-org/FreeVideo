@@ -10,7 +10,7 @@ from .paths import data_root
 
 PACKAGES = ('torch', 'triton', 'triton-windows', 'diffusers', 'sageattention', 'flash-attn', 'flash-attn-4')
 COMPUTE_FILES = ('attention.py', 'backends/__init__.py', 'backends/base.py', 'backends/cuda.py',
-                 'backends/cuda_attention.py', 'probe.py', 'fp8_gemm.py', 'fp8_ops.py', 'weight_only.py',
+                 'backends/cuda_attention.py', 'probe.py', 'fp8_gemm.py', 'fp8_ops.py', 'int8_ops.py', 'weight_only.py',
                  'kernel_capabilities.py', 'doctor.py', 'fa4_guard.py', 'triton_compat.py', 'runtime.py',
                  'head_chunk.py', 'blocks.py', 'packing.py', 'dependencies.json')
 
@@ -47,10 +47,14 @@ def receipt_path():
     return data_root() / 'kernel-capabilities.json'
 
 
+LINEAR_PROBES = ('linear', 'linear-int8')
+
+
 def readiness(rows):
     passed = {row['backend'] for row in rows if row.get('status') == 'complete'}
-    attention = sorted(passed - {'linear'})
+    attention = sorted(passed - set(LINEAR_PROBES))
     return dict(ready='linear' in passed and bool(attention), usable_attention_backends=attention,
+                int8_ready='linear-int8' in passed,
                 failed_optional_backends=[row['backend'] for row in rows
                                           if row.get('status') != 'complete' and row['backend'] != 'linear'])
 
@@ -70,8 +74,9 @@ def available_backends(hardware, *, discovered=None, probe_missing=True):
         if receipt['identity'] != expected or set(receipt['installed_attention_packages']) != discovered:
             receipt = None
         elif (not isinstance(receipt.get('kernel_probes'), list)
-              or {row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)} != discovered | {'linear'}
-              or len(receipt['kernel_probes']) != len(discovered) + 1
+              or not discovered | {'linear'} <= {row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)}
+                 <= discovered | set(LINEAR_PROBES)
+              or len(receipt['kernel_probes']) != len({row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)})
               or any(not isinstance(row, dict) or row.get('status') not in ('complete', 'error')
                      for row in receipt['kernel_probes'])):
             receipt = None

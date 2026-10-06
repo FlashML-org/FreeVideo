@@ -271,8 +271,15 @@ RESIDUAL_ADMISSION_FLOOR = int(6.25 * GiB)
 MIN_GPU_RESERVE_GIB = .2
 
 
-def windows_gpu_output_workspace(video_tokens, *, prefetch=False):
+FF_STASH_WIDTH = 14336  # BF16 SwiGLU output channels kept for the per-tensor FP8 scale
+
+
+def windows_gpu_output_workspace(video_tokens, *, prefetch=False, ff_stash=True):
     """Starting workspace for head-8 GPU outputs with the full per-tensor FF stash.
+
+    Int8 projections scale each activation row on its own, so every FF row tile
+    finishes immediately and nothing is stashed; ff_stash=False removes that
+    term (1.94 GiB at 72576 tokens, linear in the token count).
 
     Two complete Windows 5060 Ti requests constrain this estimate: 896-square
     / 243 frames used 11.14 GiB reserved with zero resident blocks; 1344x768
@@ -283,7 +290,8 @@ def windows_gpu_output_workspace(video_tokens, *, prefetch=False):
     The OS growth reserve has already been subtracted from the budget.
     """
     tokens = 72576 if video_tokens is None else video_tokens
-    return int((6.5 + 6. * tokens / 72576) * GiB) + (BLOCK_BYTES if prefetch else 0)
+    workspace = int((6.5 + 6. * tokens / 72576) * GiB) + (BLOCK_BYTES if prefetch else 0)
+    return workspace if ff_stash else workspace - tokens * FF_STASH_WIDTH * 2
 
 
 class ResourceBudgetError(ValueError):
@@ -453,10 +461,14 @@ def adaln_extra_bytes(canvas=None):
 def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
            gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
            demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation',
-           lora_max_block_bytes=0, lora_root_bytes=0):
+           lora_max_block_bytes=0, lora_root_bytes=0, precision='fp8'):
+    """precision is the prepared cache's: int8 caches run int8 projections."""
     from .geometry import geometry
     if stage not in ('encoding', 'generation'):
         raise ValueError('Resource planning stage must be encoding or generation')
+    if precision not in ('fp8', 'int8'):
+        raise ValueError('Resource planning needs the FP8 or int8 prepared model')
+    int8 = precision == 'int8'
     if type(lora_max_block_bytes) is not int or lora_max_block_bytes < 0:
         raise ValueError('LoRA block bytes must be a nonnegative integer')
     if type(lora_root_bytes) is not int or lora_root_bytes < 0:
@@ -586,6 +598,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         legs *= 2
     if len(legs) != 2 or any(leg not in available for leg in legs):
         raise ValueError('Requested attention backend is unavailable or failed its kernel probe: ' + attention)
+    # Ampere's own plan exists for its bounded BF16 compute, which widens FP8
+    # weights per projection: one attention window, and residency taken from
+    # the activation table alone. Int8 projections run the same kernels on
+    # every architecture, so they take the common plan. On a 12 GiB card
+    # emulating Ampere the Ampere plan held four blocks and ran out of memory
+    # in attention quantization (9.61 GiB allocated against 9.85 allowed),
+    # where the common plan holds one and completes.
+    ampere = hardware.architecture == 'ampere' and not int8
     # Small cards trade extra transfers for lower activation storage. The
     # 12 GiB native-FP8 preset comes from the matched 12/32 capacity experiments.
     small = gpu_budget < 10 * GiB
@@ -593,15 +613,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # 10 GiB boundary. Keep its affordable head-4 path in that narrow band
     # until the larger path's actual workspace fits; entering that path only
     # to fall back to CPU residuals would waste the newly available memory.
-    if (desktop and hardware.architecture != 'ampere' and gpu_budget < 11 * GiB
-            and gpu_budget < windows_gpu_output_workspace(effective_tokens, prefetch=False)):
+    if (desktop and not ampere and gpu_budget < 11 * GiB
+            and gpu_budget < windows_gpu_output_workspace(effective_tokens, prefetch=False, ff_stash=not int8)):
         small = True
     # No gap between the small and twelve bands. A 0.25 GiB sliver used to fall
     # through both and take an unmeasured branch with three resident blocks,
     # which made residency drop as the budget grew: three blocks at 10.1 GiB
     # against one at 10.3 GiB.
     twelve = not small and gpu_budget < 14 * GiB
-    ampere = hardware.architecture == 'ampere'
     prefetch = prefetch_for_budget(gpu_budget, ram_budget=ram_budget,
                                    twelve=twelve, ampere=ampere,
                                    system=hardware.system, architecture=hardware.architecture)
@@ -647,7 +666,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # 360-595 s/step; eight heads needed 25.07 of its 30.40 GiB budget.
         # Without this, 26 to 30 s at 1344x768 staged and 31 to 38 s did not.
         if not small and not ampere:
-            while head > 8 and (windows_gpu_output_workspace(effective_tokens, prefetch=False)
+            while head > 8 and (windows_gpu_output_workspace(effective_tokens, prefetch=False, ff_stash=not int8)
                                 + activation_bytes(head, effective_tokens)
                                 - activation_bytes(8, effective_tokens)) > gpu_budget:
                 head //= 2
@@ -859,7 +878,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # FF stash. In addition, crediting a shorter geometry against its old
         # 345-frame anchor added five blocks to a request that already OOMed.
         # Budget the current execution path before host placement is planned.
-        windows_workspace = windows_gpu_output_workspace(effective_tokens, prefetch=prefetch)
+        windows_workspace = windows_gpu_output_workspace(effective_tokens, prefetch=prefetch, ff_stash=not int8)
         windows_workspace += max(0, activation_bytes(head, effective_tokens) - activation_bytes(8, effective_tokens))
         if (prefetch and gpu_budget < 14 * GiB
                 and hardware.architecture == 'blackwell-rtx'):
@@ -1013,7 +1032,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                   # matched the recomputing run to the byte across three probe
                   # steps (6.63, 7.37, 8.11 GiB) because those activations are
                   # freed within each block, while it cost 5% of sampling time.
-                  fp8_ff_recompute=(capacity_trial and hardware.capability[0] >= 10), cache_refined_text=True,
+                  fp8_ff_recompute=(capacity_trial and hardware.capability[0] >= 10 and not int8), cache_refined_text=True,
                   resident_blocks=resident, pin_host_gb=round(pin, 3),
                   stream_weights=streamed_weights,
                   # Larger looped batches are optimization candidates; full
@@ -1034,7 +1053,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                   # unchanged at 15.83 and 18.09 GiB. Dropping to two at a
                   # 12 GiB cap cost 0.2%, so one rule covers every band.
                   window_batch=1 if ampere else 4,
-                  linear_compute='bf16-weight-only' if ampere else 'native-fp8')
+                  linear_compute='int8' if int8 else 'bf16-weight-only' if ampere else 'native-fp8')
     notes = ['Request resolution, frame count, steps and attention backend are preserved.',
              'Budgets use current free VRAM and available physical/commit RAM, with growth headroom; OS usage is already excluded.',
              'Automatic execution uses matching GPU kernel probes; read-only plans may use package discovery. Small probes do not prove full-video capacity.',
@@ -1068,7 +1087,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         else:
             notes.append('Live RAM cannot retain all offloaded mappings: keep at most %.3f GB pinned, reopen only remaining layers per transfer; no arithmetic or attention change.' % pin)
         notes.append('Host weight cache keeps %.2f GiB for this path\'s working memory, inside the separate OS growth reserve; the runtime rechecks available RAM.' % (host_headroom / GiB))
-    if hardware.architecture == 'ampere':
+    if ampere:
         notes.append('Ampere keeps FP8 weight storage and uses bounded BF16 compute; no native FP8 tensor-core claim.')
     if desktop:
         notes.append('Windows keeps %.2f GiB beyond current GPU usage and %.2f GiB beyond current available RAM/commit; pagefile capacity is not added to RAM.' % (reserve_gpu, reserve_ram))

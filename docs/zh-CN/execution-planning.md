@@ -1,12 +1,12 @@
 # FreeVideo Adaptive Execution Planner
 
-FreeVideo Adaptive Execution Planner（自适应执行规划器）根据设备与主机的实时测量结果，为每个请求计算执行计划。执行计划在实测的显存与内存预算内确定：50 个 Transformer 块在显存、锁页内存与磁盘之间的驻留位置，传输调度，FP8 GEMM 路径，注意力后端与头分组，激活暂存，以及 VAE 解码器的放置。
+FreeVideo Adaptive Execution Planner（自适应执行规划器）根据设备与主机的实时测量结果，为每个请求计算执行计划。执行计划在实测的显存与内存预算内确定：50 个 Transformer 块在显存、锁页内存与磁盘之间的驻留位置，传输调度，int8 或 FP8 GEMM 路径，注意力后端与头分组，激活暂存，以及 VAE 解码器的放置。
 
 ## 输入
 
 | 输入 | 来源 | 决定 |
 | --- | --- | --- |
-| 架构与计算能力 | CUDA 设备属性 | FP8 GEMM 路径与内核集 |
+| 架构与计算能力 | CUDA 设备属性 | 权重格式、GEMM 路径与内核集 |
 | 空闲显存 | `torch.cuda.mem_get_info` | 显存预算 |
 | 可用内存 | 系统内存计数、cgroup v1/v2 上限、Windows 提交余量 | 内存预算 |
 | 注意力后端 | 设备上的内核探测 | 后端选择 |
@@ -23,7 +23,7 @@ FreeVideo Adaptive Execution Planner（自适应执行规划器）根据设备�
 | 传输调度 | 显存预算不低于 14 GiB 时使用两个传输槽（预取），Windows Blackwell 与 Ampere 的门槛更低；否则使用一个传输槽。 |
 | 注意力 | 按 SageAttention 2、PyTorch flash attention、cuDNN、FlashAttention 2、FlashAttention 4 的顺序选择第一个通过探测的后端。头分组：在 16、8、4 头中选择该请求 token 数下实测激活占用不超过显存预算的最宽分组。 |
 | 激活暂存 | 显存预算低于 10 GiB 且设备上的激活路径放不下时，把残差流和注意力输出暂存在主机缓冲区。 |
-| FP8 GEMM | Blackwell（SM120）逐张量缩放，Ada（SM89）与 Hopper（SM90）逐通道缩放，Ampere（SM80、SM86）以 FP8 存储权重、BF16 计算。 |
+| GEMM | GeForce Ada、Blackwell 与所有 Ampere 显卡使用 int8：激活按缓存的 ConvRot 旋转后逐行 int8 量化。其他显卡使用 FP8：Blackwell（SM120）逐张量缩放，Ada（SM89）与 Hopper（SM90）逐通道缩放。 |
 | 分块 | 前馈分块 2048，投影分块 1024，窗口批次 4（Ampere 为 1）。 |
 | 文本编码器 | 在独立进程中运行，Transformer 加载前退出。 |
 | VAE 解码器 | 显存预算低于 20 GiB 时，36 个块中 ⌊(显存预算 − 3.25 GiB) / 268.6 MB⌋ 个常驻，其余流式加载；按时间片段依次解码，分块与融合方式与原解码器相同。 |

@@ -508,7 +508,7 @@ class Controller:
                 raise ValueError('Model folders must be a list of directory paths')
             extra = extra + ([values['models']] if values.get('models') else [])
             self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
-                sampling_caches=bool(values.get('sampling_caches')),
+                sampling_caches=bool(values.get('sampling_caches')), prepared_format=values.get('prepared_format'),
                 frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh)))
             row = self._wait_setup()
             self.state = dict(self.state, plan=row['plan'])
@@ -530,6 +530,7 @@ class Controller:
             validate_target(selected['root'])
         if not selected['ready']:
             self.stage('engine', label='Prepare FreeVideo')
+            self._stop_server_for_setup(selected['url'])
             current = self.setup.status()
             self.setup.install(dict(plan_id=current.get('plan_id'), accept_licenses=True))
             self._wait_setup()
@@ -554,6 +555,18 @@ class Controller:
         self.selection = selected
         self.state = dict(self.state, selection=dict(selected), deployed=deployed)
         self._connect()
+
+    def _stop_server_for_setup(self, url):
+        """Setup reinstalls engine packages that our ComfyUI's resident worker
+        keeps loaded after a video (Windows refuses to replace SageAttention's
+        _fused.pyd), and a model switch must not leave the old model in that
+        worker. Stop our own idle server; connecting after setup starts it
+        again. A running job is never stopped."""
+        if not self.owns_server():
+            return
+        if queue_busy(url):
+            raise RuntimeError('ComfyUI is running a job. Try again after it finishes; the job is left running.')
+        self.stop_owned_server()
 
     def ensure_shortcut(self):
         from .desktop_shortcut import create_after_install

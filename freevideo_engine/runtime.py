@@ -79,7 +79,7 @@ class Engine:
             self.weight_cache_headroom_bytes += residual_host_headroom(self.canvas)
         base = base_path() if base is None else Path(base)
         checkpoint = checkpoint_path() if checkpoint is None else Path(checkpoint)
-        if linear_compute not in ('native-fp8', 'bf16-weight-only'):
+        if linear_compute not in ('native-fp8', 'bf16-weight-only', 'int8'):
             raise ValueError('Unknown linear compute policy')
         if min(query_chunk, ff_chunk, head_chunk, projection_chunk) < 0:
             raise ValueError('Chunk sizes cannot be negative; zero disables chunking')

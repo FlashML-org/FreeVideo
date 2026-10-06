@@ -40,7 +40,10 @@ def prepare(cache, adapters, output_root=None):
     manifest = json.loads((cache / 'manifest.json').read_text(encoding='utf-8'))
     if manifest.get('online_lora'):
         raise ValueError('Select the original model when changing the LoRA combination')
-    if manifest.get('precision') != 'fp8' or not _supported(adapters, manifest.get('linears', {})):
+    precision = manifest.get('precision')
+    # Low-rank branches run beside the base projection, so they need no change
+    # to FP8 or ConvRot int8 weights.
+    if precision not in ('fp8', 'int8') or not _supported(adapters, manifest.get('linears', {})):
         # Full-difference, bias and modulation patches retain the existing
         # exact preparation path. Never silently omit an unsupported patch.
         path, report = prepare_fused(cache, adapters, output_root)
@@ -48,7 +51,7 @@ def prepare(cache, adapters, output_root=None):
     identity = dict(source_manifest_sha256=digest(cache / 'manifest.json'),
         implementation_sha256=digest(__file__), index_sha256=digest(Path(__file__).with_name('lora_cache.py')),
         adapters=[{k: v for k, v in row.items() if k != 'path'} for row in adapters],
-        arithmetic='FP8 base plus independent BF16 low-rank branches')
+        arithmetic=('FP8' if precision == 'fp8' else 'ConvRot int8') + ' base plus independent BF16 low-rank branches')
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     output = Path(output_root or cache.parent) / ('vdn-online-lora-' + key[:24])
     marker = output / 'manifest.json'

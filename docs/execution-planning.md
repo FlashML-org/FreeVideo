@@ -1,12 +1,12 @@
 # FreeVideo Adaptive Execution Planner
 
-The FreeVideo Adaptive Execution Planner computes an execution plan for every request from live device and host measurements. The plan fixes the residency of the 50 transformer blocks across VRAM, pinned host memory and disk, the transfer schedule, the FP8 GEMM path, the attention backend and head grouping, activation staging and the VAE decoder placement, within the measured VRAM and host-memory budgets.
+The FreeVideo Adaptive Execution Planner computes an execution plan for every request from live device and host measurements. The plan fixes the residency of the 50 transformer blocks across VRAM, pinned host memory and disk, the transfer schedule, the int8 or FP8 GEMM path, the attention backend and head grouping, activation staging and the VAE decoder placement, within the measured VRAM and host-memory budgets.
 
 ## Inputs
 
 | Input | Source | Determines |
 | --- | --- | --- |
-| Architecture and compute capability | CUDA device properties | FP8 GEMM path and kernel set |
+| Architecture and compute capability | CUDA device properties | Weight format, GEMM path and kernel set |
 | Free VRAM | `torch.cuda.mem_get_info` | VRAM budget |
 | Available host memory | OS memory counters, cgroup v1/v2 limit, Windows commit headroom | Host-memory budget |
 | Attention backends | On-device kernel probes | Backend selection |
@@ -23,7 +23,7 @@ VRAM budget: free VRAM minus a reserve of 2.5% of free VRAM, clamped to 0.5–1 
 | Transfer schedule | Two transfer slots (prefetch) at a VRAM budget of 14 GiB or more, with lower thresholds on Windows Blackwell and Ampere; one slot otherwise. |
 | Attention | The first backend that passes its probe, in the order SageAttention 2, PyTorch flash attention, cuDNN, FlashAttention 2, FlashAttention 4. Head group: the widest of 16, 8 and 4 heads whose measured activation footprint at the request's token count fits the VRAM budget. |
 | Activation staging | Below a 10 GiB VRAM budget, the residual stream and attention outputs are staged in host buffers when the on-device activation path does not fit. |
-| FP8 GEMM | Per-tensor scales on Blackwell (SM120), per-channel scales on Ada (SM89) and Hopper (SM90), FP8 weights with BF16 compute on Ampere (SM80, SM86). |
+| GEMM | int8 on GeForce Ada and Blackwell and on every Ampere card: activations get the cache's ConvRot rotation and one int8 scale per row. Other cards use FP8: per-tensor scales on Blackwell (SM120), per-channel scales on Ada (SM89) and Hopper (SM90). |
 | Chunking | Feed-forward chunk 2048, projection chunk 1024, window batch 4 (1 on Ampere). |
 | Text encoder | Runs in a separate process that exits before the transformer is loaded. |
 | VAE decoder | Below a 20 GiB VRAM budget, ⌊(VRAM budget − 3.25 GiB) / 268.6 MB⌋ of its 36 blocks stay resident and the rest are streamed; temporal clips are decoded in sequence with the original tiles and blending. |

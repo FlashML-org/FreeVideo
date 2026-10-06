@@ -6,7 +6,7 @@ class CUDABackend(DeviceBackend):
     device = 'cuda'
     capabilities = BackendCapabilities(
         name='cuda', memory_model='dedicated',
-        linear_policies=('native-fp8', 'bf16-weight-only'),
+        linear_policies=('native-fp8', 'bf16-weight-only', 'int8'),
         attention_candidates=('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4'),
         pinned_host_weights=True, streamed_weights=True)
 
@@ -85,6 +85,11 @@ class CUDABackend(DeviceBackend):
             if linear_compute == 'native-fp8':
                 from ..fp8_gemm import install
                 actual_fp8_gemm = install(model, manifest['scale_granularity'], requested=fp8_gemm)
+        elif precision == 'int8':
+            if linear_compute != 'int8':
+                raise ValueError('Int8 weights on CUDA run with the int8 linear policy')
+            from ..int8_ops import install_cached_linears as install_int8_linears
+            install_int8_linears(model, manifest['linears'], manifest.get('rotation'))
         elif precision != 'bf16':
             raise ValueError('Unknown prepared weight precision')
         return actual_fp8_gemm

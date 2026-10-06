@@ -1,22 +1,22 @@
 {
   "schema": 1,
-  "product_version": "0.2.5",
+  "product_version": "0.3.0",
   "en": {
-    "summary": "Optional prompt enhancement, retries after failed installations and updates, and download cache cleanup.",
+    "summary": "A faster int8 model for GeForce and RTX 30-series cards with a one-click upgrade, and optional prompt enhancement.",
     "changes": [
-      "Optional FreeToken prompt enhancement in the creation panel: rewrite your prompt and reference images for MiniMax H3 with a local model, keep the original and the enhanced version, and choose which one to generate. It is off by default and asks before downloading the model (8.3 GiB); your prompt and images stay on this computer.",
-      "After freeing disk space, check the installation plan again without reopening FreeVideo. Existing models and download progress are kept.",
-      "Clear installation download caches from Settings, with a space estimate before removal. Installed environments, models and videos are kept.",
-      "Update buttons stay visible with long release notes. Failed update downloads no longer leave temporary files behind."
+      "GeForce RTX 40/50-series and RTX 30-series cards use a faster int8 model, closer to the original quality.",
+      "Optional prompt enhancement in the creation panel: a local model rewrites your prompt for MiniMax H3, and you choose the original or the enhanced version. It is off by default and asks before downloading its model (8.3 GiB).",
+      "Faster generation on 8 GB cards.",
+      "Failed installations and updates can be retried in place, and download caches can be cleaned from Settings."
     ]
   },
   "zh": {
-    "summary": "新增可选的提示词增强；安装和更新失败可直接重试，设置中可清理下载缓存。",
+    "summary": "GeForce 和 RTX 30 系显卡改用更快的 int8 模型，老用户一键升级；新增可选的提示词增强。",
     "changes": [
-      "创作面板新增可选的 FreeToken 提示词增强：用本地模型结合参考图，把提示词改写成适合 MiniMax H3 的写法；原文和改写版都会保留，生成时可任选其一。默认关闭，首次使用会先询问再下载模型（8.3 GiB），提示词和图片只在本机处理。",
-      "释放磁盘空间后可原地重新检查安装计划，无需重开软件；保留已有模型和下载进度。",
-      "设置中可查看下载缓存大小并清理，保留已安装的运行环境、模型和视频。",
-      "更新说明较长时，操作按钮仍固定可见；更新下载失败后自动回收本次临时文件。"
+      "GeForce RTX 40/50 系和 RTX 30 系显卡换用更快的 int8 模型，画质也更接近原版。",
+      "创作面板新增可选的提示词增强：用本地模型把提示词改写成适合 MiniMax H3 的写法，原文和改写版可任选其一生成。默认关闭，首次使用会先询问再下载模型（8.3 GiB）。",
+      "8 GB 显卡生成更快。",
+      "安装或更新失败可直接重试，设置中可以清理下载缓存。"
     ]
   }
 }

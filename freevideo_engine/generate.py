@@ -154,6 +154,10 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 planning_canvas['task'] = args.task
             options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=planning_canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))
+            cache = getattr(args, 'cache', None)
+            if cache is not None and (Path(cache) / 'manifest.json').is_file():
+                manifest = json.loads((Path(cache) / 'manifest.json').read_text(encoding='utf-8'))
+                options['precision'] = 'int8' if manifest.get('precision') == 'int8' else 'fp8'
             if getattr(args, '_lora_max_block_bytes', 0):
                 options['lora_max_block_bytes'] = args._lora_max_block_bytes
             if getattr(args, '_lora_root_bytes', 0):
@@ -348,8 +352,8 @@ def _run(args):
     if args.out.suffix.lower() != '.mp4':
         raise ValueError('--out must name an MP4 file')
     manifest = json.loads((args.cache / 'manifest.json').read_text(encoding='utf-8'))
-    if manifest.get('precision') != 'fp8':
-        raise ValueError('Select the prepared official FP8 cache')
+    if manifest.get('precision') not in ('fp8', 'int8', 'bf16'):  # BF16: the unquantized reference
+        raise ValueError('Select the prepared official FP8 or int8 cache')
     destination = args.out.resolve()
     if destination.exists():
         raise FileExistsError(destination)

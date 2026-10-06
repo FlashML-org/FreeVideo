@@ -124,6 +124,18 @@ def create_ui(session, *, show=True):
         def cleanupDownloads(self, remove=False):
             self.invoke(session.cleanup_downloads, remove)
 
+        @Slot()
+        def upgradeModel(self):
+            self.invoke(session.upgrade_model)
+
+        @Slot()
+        def cancelModelUpgrade(self):
+            self.invoke(session.cancel_model_upgrade)
+
+        @Slot()
+        def dismissModelUpgrade(self):
+            self.invoke(session.dismiss_model_upgrade)
+
         @Slot(str)
         def browse(self, key):
             if session.controller.busy:

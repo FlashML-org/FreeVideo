@@ -436,16 +436,50 @@ def prepare(plan, out):
     save(root / 'prepared-cache.json', record)
 
 
+def prefetch(plan, out):
+    """Fetch the prepared format an installation is about to switch to, beside the one in use.
+
+    Generation keeps running on the installed model: only the setup lease is
+    held (no concurrent setup run), machine.json and prepared-cache.json are
+    not touched, and nothing is removed. The setup run that switches afterwards
+    finds every file present and verified.
+    """
+    from .prepared_model import files as prepared_files
+    root = Path(plan['root']).expanduser().resolve()
+    prepared = plan.get('prepared_model')
+    if not prepared or plan.get('reuse_cache'):
+        raise ValueError('Prefetch needs a prepared model this installation does not use yet')
+    machine = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
+    if not machine.get('ready') or not machine.get('cache'):
+        raise ValueError('Prefetch runs beside a working installation; complete setup first')
+    if Path(machine['cache']).resolve() == Path(prepared['cache']).resolve():
+        raise ValueError('This prepared model is already in use')
+    with runtime_lock(root / 'setup.lock', inherit=False):
+        models(plan)
+    directory = Path(prepared['directory'])
+    rows = prepared_files(prepared)
+    present = [row for row in rows if (directory / row['file']).is_file()
+               and (directory / row['file']).stat().st_size == row['bytes']]
+    result = dict(schema_version=1, scale_granularity=prepared['scale_granularity'], revision=prepared['revision'],
+                  cache=prepared['cache'], files=len(rows), present=len(present),
+                  bytes=sum(row['bytes'] for row in rows), complete=len(present) == len(rows), finished=time.time())
+    save(out, result)
+    print(json.dumps(dict(event='prefetch_complete', **result)), flush=True)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--plan', required=True, type=Path)
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument('--prepare', action='store_true')
     operation.add_argument('--cleanup', action='store_true')
+    operation.add_argument('--prefetch', action='store_true',
+                           help='Download and verify another prepared format while the installed one stays in use')
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
-    if (args.prepare or args.cleanup) and args.out is None:
-        parser.error('--out is required for preparation and cleanup reports')
+    if (args.prepare or args.cleanup or args.prefetch) and args.out is None:
+        parser.error('--out is required for preparation, cleanup and prefetch reports')
     plan = json.loads(args.plan.read_text(encoding='utf-8'))
     if args.cleanup:
         record = json.loads((Path(plan['root']) / 'prepared-cache.json').read_text(encoding='utf-8'))
@@ -454,6 +488,8 @@ def main():
         print(json.dumps({'event': 'storage_compacted', **result}), flush=True)
     elif args.prepare:
         prepare(plan, args.out)
+    elif args.prefetch:
+        prefetch(plan, args.out)
     else:
         models(plan)
 

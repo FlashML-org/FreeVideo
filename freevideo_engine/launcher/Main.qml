@@ -17,6 +17,7 @@ ApplicationWindow {
     property bool modelInfoOpen: false
     property bool closePending: false
     property bool cleanupConfirm: false
+    property bool releaseConfirm: false
     property bool accepted: false
     property bool manualUpdate: false
     property bool releaseNotesOpen: false
@@ -47,6 +48,69 @@ ApplicationWindow {
     // An engine update needs no download; offer it as the way to launch.
     readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent
     function percent(row) { return row && row.total ? Math.floor(100 * row.done / row.total) + "%" : "" }
+    readonly property var upgrade: s.model_upgrade || ({})
+    readonly property bool upgradeShown: !upgrade.dismissed && ["available", "low-disk", "downloading", "downloaded", "switching", "releasing", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0
+    function upgradeHeadline() {
+        var u = upgrade
+        if (u.status === "available") return t("A faster model is available for your GPU", "你的显卡有更快的模型可用")
+        if (u.status === "low-disk") return t("Not enough disk space for the faster model", "磁盘空间不够，暂时无法升级到更快的模型")
+        if (u.status === "downloading") return t("Downloading the faster model", "正在下载更快的模型")
+        if (u.status === "downloaded" && u.waiting === "comfy") return t("Switching after ComfyUI is closed", "关闭 ComfyUI 后切换")
+        if (u.status === "downloaded" || (u.status === "switching" && !s.busy)) return t("Switching after the current video", "当前视频完成后切换")
+        if (u.status === "switching") return t("Switching to the faster model", "正在切换到更快的模型")
+        if (u.status === "releasing") return u.waiting ? t("Removing the old model after the current video", "当前视频完成后删除旧模型") : t("Removing the old model", "正在删除旧模型")
+        if (u.status === "releasable") return u.in_use === "int8_convrot" ? t("The old model is still on disk", "旧模型还占着磁盘空间")
+                                                                           : t("Some model files are not in use", "有没在使用的模型文件")
+        if (u.status === "complete" && u.in_use) return u.in_use === "int8_convrot" ? t("The old model was removed", "旧模型已删除")
+                                                                             : t("Unused model files were removed", "没在使用的模型文件已删除")
+        if (u.status === "complete") return t("Upgraded to the faster model", "已升级到更快的模型")
+        if (u.status === "failed") return u.step === "release" ? t("The old model was not removed", "旧模型没有删除") : t("The upgrade stopped", "升级未完成")
+        return ""
+    }
+    function upgradeBlocker(code) {
+        if (code === "prepared-folder-redirected") return t("The model folder is linked to another location, and FreeVideo never deletes through a link.", "模型文件夹被链接到了别的位置，FreeVideo 不会通过链接删除文件。")
+        if (code === "unexpected-active-variant") return t("FreeVideo is not using the int8 model, so the old model stays.", "当前使用的不是 int8 模型，旧模型保留。")
+        if (code === "active-variant-incomplete") return t("Some int8 files are missing, so the old model stays.", "int8 模型文件不完整，旧模型保留。")
+        return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
+    }
+    function upgradeExplanation() {
+        var u = upgrade
+        var lora = u.lora_variants && u.lora_variants.length
+        var speed = u.architecture === "ampere" ? t("about twice as fast on this GPU", "在这张显卡上预计快约 2 倍")
+                                                 : t("about 10–30% faster on this GPU", "在这张显卡上预计快约 10–30%")
+        if (u.status === "available")
+            return t("The int8 model is ", "int8 模型") + speed + t(" and closer to the original quality. It downloads ", "，画质也更接近原版。需要下载约 ") + bytes(u.download_bytes)
+                + (lora ? t("; your old model stays for the fused LoRAs that int8 cannot merge yet.", "；你有需要合并的 LoRA，int8 暂不支持，旧模型会保留，不释放空间。")
+                        : t(", then removes the old model and frees about ", "，完成后删除旧模型，释放约 ") + bytes(u.release_bytes) + t(".", "。"))
+                + t(" You can keep generating while it downloads.", "下载期间可以继续生成。")
+        if (u.status === "low-disk")
+            return t("It needs about ", "需要约 ") + bytes(u.required_bytes) + t(" free; ", " 可用空间，目前剩 ") + bytes(u.free_bytes)
+                + t(" is free. Clean the download cache in Settings → Storage or free some space, then reopen FreeVideo.", "。可以在 设置 → 存储 清理下载缓存，或者腾出空间后重新打开 FreeVideo。")
+        if (u.status === "downloading")
+            return u.progress && u.progress.unit === "bytes" && u.progress.total ? bytes(u.progress.done) + " / " + bytes(u.progress.total) + t(" · you can keep generating", " · 可以继续生成")
+                                                                                   : t("Checking the download…", "正在检查下载内容…")
+        if (u.status === "downloaded" && u.waiting === "comfy")
+            return t("This ComfyUI was not opened by the launcher, so FreeVideo cannot restart it. Close it and the switch starts on its own; until then the current model keeps working.",
+                     "这个 ComfyUI 不是启动器打开的，FreeVideo 没法重启它。关闭它后会自动开始切换，在此之前当前模型照常可用。")
+        if (u.status === "downloaded" || u.status === "switching")
+            return t("ComfyUI restarts once and generation pauses for about 2 minutes while FreeVideo switches; settings and videos are kept.", "切换约需 2 分钟，ComfyUI 会重启一次，期间暂停生成，设置和视频都会保留。")
+        if (u.status === "releasable" && u.in_use === "int8_convrot")
+            return t("FreeVideo now uses the int8 model. Removing the old model frees about ", "现在用的是 int8 模型，删除不再使用的旧模型可以释放约 ") + bytes(u.release_bytes)
+                + t("; only its own files are removed.", "，只删除旧模型自己的文件。")
+        if (u.status === "releasable")
+            return t("These model files are not in use, for example an int8 download this GPU could not run. Removing them frees about ", "这些模型文件没有在使用，比如这张显卡没能运行的 int8 下载。删除可以释放约 ") + bytes(u.release_bytes)
+                + t("; the model in use is not touched.", "，正在使用的模型不受影响。")
+        if (u.status === "releasing") return t("Only the old model's own files are removed.", "只删除旧模型自己的文件。")
+        if (u.status === "complete")
+            return (u.released_bytes ? t("Freed ", "已释放 ") + bytes(u.released_bytes) + t(".", "。") : "")
+                + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
+        if (u.status === "failed")
+            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : u.error ? u.error.split("\n")[0] + "\n" : "")
+                + (u.step === "release" ? t("The int8 model is in use; the old files stay on disk for now.", "int8 模型已在使用，旧模型文件暂时保留在磁盘上。")
+                   : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Retry on the setup page restores it; you can upgrade again afterwards.", "原来的模型文件都还在。在安装页面点「重试」即可恢复，之后可以再次升级。")
+                   : t("Your previous model is unchanged and still works.", "原来的模型没有变化，可以继续使用。"))
+        return ""
+    }
     function updateHeadline() {
         var phase = s.update.phase
         if (phase === "downloading") return t("Downloading update ", "正在下载更新 ") + percent(s.update.progress)
@@ -587,6 +651,38 @@ ApplicationWindow {
                         FButton { text: t("What's new", "更新内容"); flat: true; visible: !s.update.phase; implicitHeight: theme.heightSm; onClicked: releaseNotesOpen = true }
                     }
                     FCard {
+                        objectName: "modelUpgradeCard"
+                        visible: upgradeShown
+                        reveal: true; Layout.fillWidth: true; padding: 18; spacing: 10
+                        color: upgrade.status === "failed" || upgrade.status === "low-disk" ? theme.surface : theme.accentSubtle
+                        border.color: upgrade.status === "failed" || upgrade.status === "low-disk" ? theme.border : theme.accentDim
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 14
+                            FIcon { kind: upgrade.status === "releasable" ? "folder" : "download"; ink: upgrade.status === "failed" ? theme.muted : theme.accent; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                FText { objectName: "modelUpgradeHeadline"; text: upgradeHeadline(); font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                FText { objectName: "modelUpgradeText"; visible: text !== ""; text: upgradeExplanation(); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                            FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
+                                      text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
+                            FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
+                            FButton {
+                                objectName: "modelUpgradeButton"; primary: true
+                                visible: upgrade.status === "available" || upgrade.status === "releasable"
+                                         || (upgrade.status === "failed" && (upgrade.step === "download" || upgrade.step === "release" || (upgrade.step === "switch" && upgrade.kept)))
+                                enabled: !s.busy && !upgrade.busy
+                                text: upgrade.status === "failed" ? t("Try again", "重试") : upgrade.status === "releasable" ? t("Remove…", "删除…") : t("Download & upgrade", "下载并升级")
+                                onClicked: upgrade.status === "releasable" ? releaseConfirm = true : backend.upgradeModel()
+                            }
+                        }
+                        FMeter {
+                            // Waiting for the user to close ComfyUI is not progress.
+                            visible: ["downloading", "downloaded", "switching", "releasing"].indexOf(upgrade.status) >= 0 && upgrade.waiting !== "comfy"; Layout.fillWidth: true; active: visible
+                            fraction: upgrade.status === "downloading" && upgrade.progress && upgrade.progress.fraction !== null && upgrade.progress.fraction !== undefined ? upgrade.progress.fraction : -1
+                        }
+                    }
+                    FCard {
                         Layout.fillWidth: true; padding: 26; spacing: 18
                         RowLayout {
                             spacing: 20; Layout.fillWidth: true
@@ -828,6 +924,29 @@ ApplicationWindow {
                                 }
                             }
                             FText { visible: !!s.cleanup.error; text: s.cleanup.error || ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                            RowLayout {
+                                objectName: "modelStorageRow"
+                                visible: ["available", "low-disk", "downloading", "downloaded", "switching", "releasing", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0
+                                Layout.fillWidth: true; spacing: 12
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 2
+                                    FText { text: t("Video model", "视频模型"); Layout.fillWidth: true }
+                                    FText {
+                                        objectName: "modelStorageStatus"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted; wrapMode: Text.WordWrap
+                                        text: upgrade.status === "available" ? t("A faster int8 model is available: about ", "有更快的 int8 模型：下载约 ") + bytes(upgrade.download_bytes)
+                                                  + (upgrade.release_bytes ? t(" to download, about ", "，完成后删除旧模型，释放约 ") + bytes(upgrade.release_bytes) + t(" freed afterwards.", "。") : t(" to download.", "。"))
+                                            : upgrade.status === "releasable" ? (upgrade.in_use === "int8_convrot" ? t("The old model is no longer used; about ", "旧模型已不再使用，删除可释放约 ") : t("Model files not in use; about ", "有没在使用的模型文件，删除可释放约 ")) + bytes(upgrade.release_bytes) + t(" can be freed.", "。")
+                                            : upgradeHeadline()
+                                    }
+                                }
+                                FButton {
+                                    objectName: "modelStorageButton"; visible: upgrade.status === "available" || upgrade.status === "releasable"
+                                    text: upgrade.status === "releasable" ? t("Remove…", "删除…") : t("Upgrade", "升级")
+                                    implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                    enabled: !s.busy && !upgrade.busy
+                                    onClicked: upgrade.status === "releasable" ? releaseConfirm = true : backend.upgradeModel()
+                                }
+                            }
                         }
                         FGroup {
                             Layout.fillWidth: true; title: t("Compatibility", "兼容性")
@@ -973,6 +1092,17 @@ ApplicationWindow {
         acceptText: t("Clean", "清理"); rejectText: t("Cancel", "取消")
         onAccepted: { cleanupConfirm = false; backend.cleanupDownloads(true) }
         onRejected: cleanupConfirm = false
+    }
+    FDialog {
+        objectName: "releaseConfirmation"; visible: releaseConfirm
+        title: upgrade.in_use === "int8_convrot" ? t("Remove the old model?", "删除旧模型？") : t("Remove unused model files?", "删除没在使用的模型文件？")
+        text: (upgrade.in_use === "int8_convrot" ? t("The FP8 model files FreeVideo no longer uses are removed, about ", "将删除 FreeVideo 不再使用的 FP8 模型文件，释放约 ")
+                                                 : t("The model files FreeVideo does not use are removed, about ", "将删除 FreeVideo 没在使用的模型文件，释放约 ")) + bytes(upgrade.release_bytes || 0)
+              + (upgrade.in_use === "int8_convrot" ? t(". The int8 model, your videos and settings are not touched.", "。int8 模型、视频和设置都不受影响。")
+                                                   : t(". The model in use, your videos and settings are not touched.", "。正在使用的模型、视频和设置都不受影响。"))
+        acceptText: t("Remove", "删除"); rejectText: t("Cancel", "取消"); destructive: true
+        onAccepted: { releaseConfirm = false; backend.upgradeModel() }
+        onRejected: releaseConfirm = false
     }
     FDialog {
         visible: closePending

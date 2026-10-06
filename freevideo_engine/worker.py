@@ -112,8 +112,8 @@ def generate(request, resident=None):
                 resident.gpu_budget = min(resident.gpu_budget, limit)
         save(request['metrics'], metrics)
         manifest = json.loads((Path(request['cache']) / 'manifest.json').read_text(encoding='utf-8'))
-        if manifest.get('precision') != 'fp8':
-            raise ValueError('The Engine requires an official FP8 cache')
+        if manifest.get('precision') not in ('fp8', 'int8', 'bf16'):
+            raise ValueError('The Engine requires an official FP8 or int8 cache')
         options, decoder = request['engine_options'], request['decoder_options']
         resume = request.get('resume_decode') is not None
         if not resume and options.get('task', 't2va') != 't2va':
