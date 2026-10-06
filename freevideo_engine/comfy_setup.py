@@ -250,6 +250,8 @@ class Setup:
                 arguments.append('--frontend-download')
         if isinstance(value.get('sampling_caches'), bool):
             arguments.append('--sampling-caches' if value['sampling_caches'] else '--no-sampling-caches')
+        if value.get('prepared_format') in ('int8', 'fp8'):
+            arguments += ['--prepared-format', value['prepared_format']]
         if value.get('copy'):
             arguments.append('--copy-existing-models')
         self.selection = dict(root=str(root), arguments=arguments)

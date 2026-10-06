@@ -39,6 +39,23 @@ def catalog():
     return value
 
 
+def preferred_format(hardware):
+    """The prepared format a fresh installation should use on this GPU.
+
+    int8 where it is the faster arithmetic: GeForce Ada and Blackwell cards run
+    FP8 with FP32 accumulation at half rate but int8 at full rate, and Ampere
+    has no FP8 tensor cores at all. Workstation and datacenter Ada/Blackwell
+    cards run FP8 at full rate and keep it (int8 measured 5% slower on an RTX
+    PRO 6000). Returns None to keep the GPU's FP8 granularity.
+    """
+    architecture = hardware.architecture
+    if architecture == 'ampere':
+        return 'int8_convrot'
+    if architecture in ('ada', 'blackwell-rtx') and 'geforce' in (hardware.gpu_name or '').lower():
+        return 'int8_convrot'
+    return None
+
+
 def select(capability, root, *, scale_granularity=None):
     value = catalog()
     scale = scale_granularity or ('per_tensor' if capability[0] >= 10 else 'rowwise')

@@ -208,6 +208,7 @@ def first_pass_policy(profile, canvas, sampling_plan):
                       gpu_reserve_gib=gpu_reserve / GiB, ram_reserve_gib=ram_reserve / GiB,
                       lora_max_block_bytes=policy.get('lora_max_block_bytes', 0),
                       lora_root_bytes=policy.get('lora_root_bytes', 0),
+                      precision='int8' if profile['engine'].get('linear_compute') == 'int8' else 'fp8',
                       canvas=first, allow_capacity_trial=policy.get('capacity_trial', False)).legacy_profile()
     selected['engine']['steps'] = sampling_plan['base_steps']
     selected['policy']['engine']['steps'] = sampling_plan['base_steps']

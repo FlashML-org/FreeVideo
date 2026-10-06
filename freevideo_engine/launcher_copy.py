@@ -66,6 +66,7 @@ ZH = dict([
     ('Verify that the text encoding library loads', '检查文本编码器'),
     ('Download and verify the video model and text encoder', '下载并校验模型'),
     ('Prepare compact FP8 weights for your GPU', '准备适配显卡的模型'),
+    ('Prepare the model weights for your GPU', '准备适配显卡的模型'),
     ('Run small checks on your GPU', '检查 GPU 加速是否可用'),
     ('Verify prepared weights and apply your storage choice', '校验模型文件'),
     ('Verify dependency compatibility', '检查运行组件'),

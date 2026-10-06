@@ -43,6 +43,26 @@ def main():
             reference_x = x.float() if torch.cuda.get_device_capability() < (8, 9) else xq.float() * xs
             reference = reference_x @ (fp8.float() * scale.reshape(-1, 1)).t()
             tolerance = .01
+        elif backend == 'linear-int8':
+            from .int8_ops import GROUP, hadamard16, matmul, rotate_quantize
+            # The prepared int8 path on the user's GPU: ConvRot rotation and
+            # per-row quantization, then the int8 GEMM against the same rows
+            # dequantized in FP32. A tail row block is included; no model loads.
+            x = torch.randn(701, 2 * GROUP, device='cuda', dtype=torch.bfloat16)
+            weight = torch.randint(-127, 128, (1024, 2 * GROUP), device='cuda', dtype=torch.int8)
+            weight_scale = torch.rand(1024, device='cuda') / 64 + 1e-3
+            values, scales = rotate_quantize(x)
+            h16 = hadamard16(x.device)
+            rotated = (h16 @ x.float().reshape(len(x), -1, 16, 16) @ h16).reshape(len(x), -1)
+            dequantized = values.float() * scales[:, None]
+            rotation = ((dequantized - rotated).square().mean() / rotated.square().mean()).sqrt().item()
+            if not math.isfinite(rotation) or rotation > .03:
+                raise RuntimeError(f'Int8 rotation/quantization relative RMSE {rotation:.6f} exceeded 0.03')
+            value = matmul((values, scales), weight, weight_scale, out_dtype=torch.float32)
+            reference = dequantized @ (weight.float() * weight_scale[:, None]).t()
+            shapes = {'activation': list(x.shape), 'weight': list(weight.shape), 'rotation_relative_rmse': rotation}
+            policy = 'int8-convrot'
+            tolerance = 1e-4
         else:
             if backend == 'torch-flash' and not torch.backends.cuda.is_flash_attention_available():
                 raise RuntimeError('This PyTorch wheel was built without CUDA Flash Attention. '

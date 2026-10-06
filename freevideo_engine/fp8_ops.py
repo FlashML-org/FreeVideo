@@ -63,7 +63,8 @@ def project_with_scale(module, value, scale=None):
 
 def sliced_projection(module, value, channels, quantized=None):
     from .weight_only import WeightOnlyLinear
-    if isinstance(module, WeightOnlyLinear):
+    from .int8_ops import Int8Linear
+    if isinstance(module, (WeightOnlyLinear, Int8Linear)):
         return apply_lora(module, value, module.project(value, channels), channels)
     if not isinstance(module, official.Fp8Linear):
         result = torch.nn.functional.linear(value, module.weight[channels],

@@ -40,7 +40,8 @@ export async function checkUpdates() {
         }
         value = next; offline = false;
         const phase = next.launcher?.phase || '';
-        if (working.has(phase)) updating = true;
+        // Switching to a faster model also restarts ComfyUI once.
+        if (working.has(phase) || next.launcher?.model) updating = true;
         else if (updating && phase !== 'restarting') updating = false;
         publish();
         // The server returns immediately while its initial network check runs.
@@ -127,10 +128,15 @@ export function createUpdateNotice(cn) {
             ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
             : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
         const progress = launcher?.progress, percent = progress?.total ? ' ' + Math.floor(100 * progress.done / progress.total) + '%' : '';
-        const busy = updating && (working.has(phase) || offline);
+        // The last model state seen stays while ComfyUI is away.
+        const model = launcher?.model || '';
+        const busy = updating && (working.has(phase) || !!model || offline);
         let text = '', actions = false;
         if (busy) {
-            text = offline || phase === 'restarting' || phase === 'engine'
+            text = model === 'switching' || (model && offline)
+                ? t('Switching to the faster model… ComfyUI restarts once and this page reconnects by itself.', '正在切换到更快的模型…ComfyUI 会重启一次，页面会自动恢复。')
+                : model === 'waiting' ? t('The faster model is ready. FreeVideo switches after the current video; ComfyUI restarts once.', '更快的模型已下载好，当前视频生成完后自动切换，ComfyUI 会重启一次。')
+                : offline || phase === 'restarting' || phase === 'engine'
                 ? t('Restarting FreeVideo to finish the update… this page refreshes by itself.', '正在重启 FreeVideo 完成更新…页面会自动刷新。')
                 : phase === 'downloading' ? t('Downloading the update', '正在下载更新') + percent
                 : phase === 'waiting' ? t('The update installs as soon as the current video finishes.', '当前视频生成完成后会自动更新。')

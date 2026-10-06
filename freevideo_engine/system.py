@@ -96,7 +96,11 @@ HOST_WEIGHT_HEADROOM = 8 * 2**30
 
 
 def residual_host_headroom(canvas=None):
-    """Room for one pageable packed residual, separate from the weight cache."""
+    """Room for one packed residual, separate from the weight cache.
+
+    The staging buffer is locked on CUDA when the platform allows, and this
+    room is what keeps those pages out of the pinned weight budget.
+    """
     rows = (sum(canvas.get(key, 0) for key in
                 ('video_tokens', 'reference_video_tokens', 'reference_audio_tokens'))
             if canvas is not None else 72576)
