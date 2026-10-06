@@ -145,12 +145,12 @@ function mediaPanel(node, mount = null) {
             if (kind !== "image") {
                 // References are cut to the generated length (at most 15 s); say so before the run.
                 const length = el("div", "", "fv-note"); length.hidden = true; card.append(length);
-                preview.addEventListener("loadedmetadata", () => {
+                preview.onloadedmetadata = () => {
                     if (!(preview.duration > 15.05) || !Number.isFinite(preview.duration)) return;
                     length.textContent = text(`${preview.duration.toFixed(1)} s: cut to the generated length when used, at most the first 15 s`,
                         `时长 ${preview.duration.toFixed(1)} 秒：生成时按视频时长截取前段，最多前 15 秒`);
                     length.hidden = false;
-                }, {once: true});
+                };
             }
             const controls = el("div", undefined, "fv-row");
             const move = delta => { const target = index + delta; if (target < 0 || target >= rows.length) return; [rows[index], rows[target]] = [rows[target], rows[index]]; update(rows); };
