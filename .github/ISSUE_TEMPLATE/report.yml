@@ -13,8 +13,8 @@ body:
     id: report
     attributes:
       label: Diagnostic report / 诊断报告
-      description: Please drag video.debug.json here. In FreeVideo, select Diagnostic report under a finished video. / 请将 video.debug.json 拖到这里（在 FreeVideo 视频下方点击「诊断报告」即可获得）。
-      placeholder: Drop video.debug.json here / 将 video.debug.json 拖到这里
+      description: Please drag the downloaded report (FreeVideo-report-….json) here. In FreeVideo, select Diagnostic report under a finished video. / 请将下载的诊断报告（FreeVideo-report-….json）拖到这里（在 FreeVideo 视频下方点击「诊断报告」即可获得）。
+      placeholder: Drop FreeVideo-report-….json here / 将 FreeVideo-report-….json 拖到这里
     validations:
       required: true
   - type: input

@@ -905,6 +905,10 @@ class Session:
             if imported.get('packages'):
                 self.edit('model_method', 'manual')
                 self.persist()
+            if imported.get('runtime_skipped') and not any(p['kind'] == 'runtime' for p in imported.get('packages', [])):
+                # The runtime installs automatically; imported model packages still feed it.
+                self.edit('offline_runtime', '')
+                self.edit('environment_method', 'auto')
             if imported['status'] == 'error':
                 self.import_retry = retry
                 self.error = imported['error']

@@ -5,10 +5,17 @@ No heads, windows, text states or scan frames are dropped. Sliced GEMMs can
 change floating-point reduction order and must be reported as an ablation.
 """
 from contextlib import nullcontext
+import gc
 import types
 import torch
 import torch.nn.functional as F
 
+
+# Sequence lengths whose first attention call has run. That call compiles, and
+# the compile leaves each head group's frame, with its Q/K/V, in a reference
+# cycle: under Windows the next group then ran beside a dead group's Q/K/V.
+# The first call of each length collects after every group.
+COLLECTED_LENGTHS = set()
 
 # Rows per output-projection tile on the GPU tail. Int8 results do not depend on
 # the tiling; 1024-row tiles cost about 2% of a second-pass step in launches.
@@ -29,6 +36,17 @@ class RowPlanes:
         for offset, plane in ((0, self.lead), (self.split, self.rest)):
             for row in range(0, len(plane), size):
                 yield slice(offset + row, offset + min(row + size, len(plane))), plane[row:row + size]
+
+
+def project_rows(planes, out, project, size=TAIL_ROWS):
+    """Project RowPlanes into out in ascending row tiles.
+
+    out may share storage with planes.lead when the plane is at least as wide
+    as out: tile [a, b) then writes over the lead's rows below b * out / width,
+    which this tile or an earlier one has already read.
+    """
+    for rows, part in planes.blocks(size):
+        out[rows] = project(part)
 
 
 def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projection_chunk=1024, grouped_outputs=False,
@@ -208,9 +226,13 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                 for tensor in shared:
                     tensor.record_stream(stream)
         try:
+            fresh = not streams and len(x) not in COLLECTED_LENGTHS
             for index, start in enumerate(range(0, attn.num_heads, chunk)):
                 with torch.cuda.stream(streams[index % len(streams)]) if streams else nullcontext():
                     group(start)
+                if fresh:
+                    gc.collect()
+            COLLECTED_LENGTHS.add(len(x))
         finally:
             # Output projection, offload cleanup and the next block cannot
             # race unfinished groups, including after a recoverable OOM.
@@ -262,9 +284,17 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
             # written back into it.
             if isinstance(soft, RowPlanes):
                 taken.clear()  # x's int8 rows
-                out = x.new_empty((len(x), output_width))
-                for rows, part in soft.blocks(TAIL_ROWS):
-                    out[rows] = orig.to_out[1](orig.to_out[0](part))
+                # The softmax plane's leading rows occupy x's storage. Output rows
+                # [a, b) overwrite the bytes of softmax rows below b * out / width,
+                # all projected by this tile or an earlier one, so the output goes
+                # back into x instead of a new sequence buffer. Without expandable
+                # segments (Windows) that buffer was the allocation the freed
+                # attention temporaries could not hold: 1344x768x362 reserved
+                # 7.05 GiB for 5.74 allocated, 6.06 with the output in x.
+                inplace = (x.shape[1] == output_width and x.is_contiguous()
+                           and soft.lead.shape[1] >= output_width)
+                out = x if inplace else x.new_empty((len(x), output_width))
+                project_rows(soft, out, lambda part: orig.to_out[1](orig.to_out[0](part)))
             else:
                 owned = getattr(attn, '_freevideo_owns_input', False) and x.shape[1] == output_width and x.is_contiguous()
                 out = x if owned else x.new_empty((len(x), output_width))

@@ -135,7 +135,7 @@ def register():
                 raise web.HTTPServiceUnavailable(text='Report not ready; try again') from None
         return web.Response(body=data, content_type='application/json', headers={
             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-            'Content-Disposition': 'attachment; filename="video.debug.json"'})
+            'Content-Disposition': 'attachment; filename="FreeVideo-report-%s.json"' % time.strftime('%Y%m%d-%H%M%S')})
 
     @server.routes.get('/freevideo/progress')
     async def progress(request):

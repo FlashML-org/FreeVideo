@@ -16,4 +16,4 @@ body:
     id: report
     attributes:
       label: Error or local report (optional) / 错误详情或本地报告（选填）
-      description: Attach video.debug.json if available; it includes hardware and timing information. / 如有 video.debug.json，可拖入此处；其中已包含硬件和耗时信息。
+      description: Attach the diagnostic report (FreeVideo-report-….json, or video.debug.json in the output folder) if available; it includes hardware and timing information. / 如有诊断报告（FreeVideo-report-….json，或输出文件夹里的 video.debug.json），可拖入此处；其中已包含硬件和耗时信息。
