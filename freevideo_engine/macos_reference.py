@@ -40,8 +40,13 @@ def select(catalog, identity, count):
             or not isinstance(catalog.get('revision'), str)
             or not re.fullmatch('[0-9a-f]{40}', catalog['revision'])
             or type(count) is not int or not 1 <= count <= 100
-            or not isinstance(catalog.get('tables'), list)):
+            or not isinstance(catalog.get('tables'), list)
+            or not isinstance(catalog.get('prefix', 'reference-tables-v1'), str)
+            or not re.fullmatch(r'[a-z0-9][a-z0-9.-]{0,63}', catalog.get('prefix', 'reference-tables-v1'))):
         raise ValueError('Invalid pinned Mac reference catalog')
+    # The folder that holds the tables at the pinned revision; catalogs before
+    # 0.3.5 name none and use the original reference-tables-v1 folder.
+    prefix = catalog.get('prefix', 'reference-tables-v1')
     selected, seen = None, set()
     for table in catalog['tables']:
         try:
@@ -57,7 +62,7 @@ def select(catalog, identity, count):
             for row in table['files']:
                 index = row['index']
                 if (type(index) is not int or not 0 <= index < count or index in indices
-                        or row['file'] != f'reference-tables-v1/{directory}/{index:02d}.safetensors'
+                        or row['file'] != f'{prefix}/{directory}/{index:02d}.safetensors'
                         or type(row['bytes']) is not int or row['bytes'] <= 0
                         or not isinstance(row['sha256'], str)
                         or not re.fullmatch('[0-9a-f]{64}', row['sha256'])):
@@ -140,6 +145,7 @@ def ensure(cache, identity, count, *, catalog, networking=None, env=None):
         if not sidecar.exists():
             save(sidecar, _receipt(row))
     if not missing:
+        _retire_superseded(cache, catalog)
         return True
     env = os.environ if env is None else env
     networking = _network_plan(env) if networking is None else networking
@@ -163,4 +169,14 @@ def ensure(cache, identity, count, *, catalog, networking=None, env=None):
         assets.check_table(path, row, identity)
         if not sidecar.exists():
             save(sidecar, _receipt(row))
+    _retire_superseded(cache, catalog)
     return True
+
+
+def _retire_superseded(cache, catalog):
+    """Remove the reference tables 0.3.5 replaced once their replacements are here; never fail."""
+    from .superseded_tables import retire
+    try:
+        return retire([Path(cache)], catalog['tables'])
+    except Exception:  # Best effort; the request continues with the new tables.
+        return None

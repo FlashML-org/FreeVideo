@@ -1,18 +1,20 @@
 {
   "schema": 1,
-  "product_version": "0.3.4",
+  "product_version": "0.3.5",
   "en": {
-    "summary": "Diagnostic report saves the diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup.",
+    "summary": "Audio references now guide the voice and sound of the generated video much more closely.",
     "changes": [
-      "Diagnostic report saves the redacted diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup, and it helps other users too. The report has hardware details, settings and timings only, with no prompts, reference images or videos.",
-      "After a video finishes, a card under the buttons invites you to submit the report. Once closed, it does not come back, and it never covers the video."
+      "Audio references work as intended: a reference voice or soundtrack, including the sound of a reference video, now guides the generated audio. In our tests, the generated voice matched the reference voice far more closely.",
+      "Audio references use an updated sampling cache (0.3–0.7 GB per quality level). It downloads automatically the first time you use an audio reference, so there is nothing to do before then; the previous cache is removed afterwards.",
+      "Mono reference audio keeps its original volume."
     ]
   },
   "zh": {
-    "summary": "新增「诊断报告」按钮，一键保存诊断报告；欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化。",
+    "summary": "音频参考效果大幅改进，生成的声音会更贴近参考音频的音色。",
     "changes": [
-      "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
-      "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
+      "改进音频参考：参考音频（包括参考视频自带的声音）现在能正确引导生成的声音。我们的测试中，生成的人声与参考音色明显更接近。",
+      "使用音频参考需要更新采样缓存（每个质量档 0.3–0.7 GB），首次使用音频参考时会自动下载，不使用可以忽略；下载完成后会自动删除旧缓存。",
+      "单声道参考音频保持原有音量。"
     ]
   }
 }

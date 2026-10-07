@@ -65,6 +65,11 @@
         "repo": "OpenVDN/vdn-minimax-h3-edge",
         "hf_revision": "0cd66b30a58021012def78b0340caf131e0df5c2",
         "revision": "1bff010a4fd429be95455fb0dbb2a34037f1bccd"
+      },
+      "reference_audio": {
+        "repo": "OpenVDN/vdn-minimax-h3-edge",
+        "hf_revision": "b3a8dd8d4cf215b3a90bcc20b4362318f5f4f158",
+        "revision": "fe57b4d98c95f9c6798431ff4d37515fa1192d97"
       }
     },
     "latent_upscaler": {
