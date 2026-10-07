@@ -19,7 +19,8 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## 更新动态
 
-- **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0)：更快的 int8 模型和提示词增强。** GeForce RTX 40/50 系和 RTX 30 系显卡改用更快、画质更接近原版的 int8 模型，RTX 3090 生成 5 秒视频快约 2.3 倍；已安装的用户可一键升级。新增可选的本地提示词增强，把提示词改写成适合 MiniMax H3 的写法。
+- **2026-10-07** · **[v0.3.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.2)：先出预览。** 先看半分辨率预览，满意的再继续二采。
+- **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0)：更快的 int8 模型。** GeForce 和 RTX 30 系显卡改用 int8，RTX 3090 生成 5 秒视频快约 2.3 倍。
 - **2026-10-06** · **[作品展示](https://freevideo-community.pages.dev/#gallery)上线。** 观看 FreeVideo 生成的 20 秒视频，以及四档质量的并排对比。
 - **2026-10-06** · **[v0.2.3](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.3)：视频自带工作流。** 把 FreeVideo 生成的视频拖到 ComfyUI 画布上，即可还原提示词、种子和全部参数，之前的视频也能补上。
 - **2026-10-05** · **[v0.2.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.0)：四档质量。** 每次生成可选择轻量、标准、精细或极致，档位越高，生成质量越高，但耗时更长；生成结果可导出为带生成耗时和显卡信息的分享图片或视频。
