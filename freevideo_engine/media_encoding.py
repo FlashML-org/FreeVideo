@@ -68,6 +68,9 @@ def encode_visual(vae, pixels, *, device='cuda'):
 def _audio(path, destination, seconds):
     """The clip's first `seconds` at 32 kHz stereo, as the official pipeline truncates reference audio.
 
+    A mono clip has its channel repeated, as the official pipeline upmixes it;
+    a stereo resampler would place it in both channels at -3 dB.
+
     Returns the saved path (None without an audio stream), whether the clip ran
     more than 50 ms longer, and its length from the file's metadata.
     """
@@ -78,8 +81,10 @@ def _audio(path, destination, seconds):
     with av.open(str(path)) as container:
         if not container.streams.audio:
             return None, False, None
-        length = clip_seconds(container, container.streams.audio[0])
-        resampler = av.AudioResampler(format='fltp', layout='stereo', rate=32000)
+        stream = container.streams.audio[0]
+        length = clip_seconds(container, stream)
+        mono = len(stream.layout.channels) == 1
+        resampler = av.AudioResampler(format='fltp', layout='mono' if mono else 'stereo', rate=32000)
         for frame in container.decode(audio=0):
             for item in resampler.resample(frame):
                 data = item.to_ndarray()
@@ -94,6 +99,8 @@ def _audio(path, destination, seconds):
     if not chunks:
         raise ValueError('Reference audio is empty')
     data = np.concatenate(chunks, axis=1)[:, :limit]
+    if data.shape[0] == 1:
+        data = np.repeat(data, 2, axis=0)
     if not np.isfinite(data).all():
         raise ValueError('Invalid reference audio samples')
     np.save(destination, data, allow_pickle=False)

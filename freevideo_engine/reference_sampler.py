@@ -31,8 +31,9 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
                      conditions=None):
     """Preserve the pinned sampler's RNG order and generated-row updates.
 
-    Reference visual rows are held at max(video_t, .999), audio rows at 0.0,
-    as MiniMaxH3PrepareTimestepsStep executes (its prose once said 1.0).
+    Reference visual rows are held at max(video_t, .999) and reference audio
+    rows at 1.0 (clean), as MiniMaxH3PrepareTimestepsStep and ComfyUI's
+    native H3 model condition them.
     """
     num_frames = align_num_frames(num_frames, 17, 5)
     num_latent_frames = video_latent_num_frames(num_frames, 17, 5)
@@ -120,7 +121,7 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         if num_condition_rows:
             row_timesteps[video_indices[:num_condition_rows]] = max(float(t), KEYFRAME_NOISE_AUG)
         row_timesteps[audio_indices[num_audio_condition_rows:]] = float(audio_t)
-        row_timesteps[audio_indices[:num_audio_condition_rows]] = 0.0
+        row_timesteps[audio_indices[:num_audio_condition_rows]] = 1.0
         timestep, timestep_indices = torch.unique(row_timesteps, sorted=True, return_inverse=True)
         noise_pred, audio_noise_pred = transformer(
             hidden_states=video_rows[None],

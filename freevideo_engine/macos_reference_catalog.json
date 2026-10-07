@@ -1,53 +1,54 @@
 {
   "schema_version": 1,
   "repo": "OpenVDN/vdn-minimax-h3-edge",
-  "revision": "9a48a497c567ddcdad3dba9076f90dd58b7f2802",
+  "revision": "b3a8dd8d4cf215b3a90bcc20b4362318f5f4f158",
   "tables": [
     {
       "task": "ref2va_audio",
-      "directory": "adaln-tables-v2-16be2201bf77b8878581c987",
+      "directory": "adaln-tables-v2-30cf7adedb7ba9a00ff1669e",
       "identity": {
         "format": "freevideo-adaln-v2",
         "contract": "minimax-h3-adaln-silu-linear-3x6-v1",
         "weights": "e774c1a077535cc8f79bc6ad0d99450afbbfc197d241f14c0040c7338e324649",
         "timesteps": [
           [
-            0.0
+            0.0,
+            1.0
           ],
           [
-            0.0,
             0.011764705181121826,
-            0.045454561710357666
+            0.045454561710357666,
+            1.0
           ],
           [
-            0.0,
             0.027027010917663574,
-            0.10000002384185791
+            0.10000002384185791,
+            1.0
           ],
           [
-            0.0,
             0.0476190447807312,
-            0.1666666865348816
+            0.1666666865348816,
+            1.0
           ],
           [
-            0.0,
             0.07692307233810425,
-            0.25
+            0.25,
+            1.0
           ],
           [
-            0.0,
             0.12195122241973877,
-            0.3571428656578064
+            0.3571428656578064,
+            1.0
           ],
           [
-            0.0,
             0.19999998807907104,
-            0.5
+            0.5,
+            1.0
           ],
           [
-            0.0,
             0.3684210777282715,
-            0.699999988079071
+            0.699999988079071,
+            1.0
           ]
         ],
         "channels": 5376,
@@ -59,318 +60,318 @@
         "torch": "2.13.0+cu130",
         "cuda": "13.0",
         "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
-        "implementation": "4edeeb1866b581a67ff573fa8ce9d278886e856c2a40d5113917f54f76afcab7",
-        "original_implementation": "0f94a5583d5f3f16f9e2d10f0955eb2f55a92a0b6501f339d2b6445f38614841",
         "matmul_precision": "highest",
         "tf32": false,
-        "bf16_reduced_reduction": true
+        "bf16_reduced_reduction": true,
+        "builder_sha256": "ba90fd6c32a6791f8094ec1d7806e2639feb823eaae6d29bd076f2c8f7e51c2e",
+        "contract": "minimax-h3-adaln-silu-linear-3x6-v1"
       },
       "files": [
         {
+          "bytes": 4452432,
+          "sha256": "1a7d1b845682ada79a9f5440be876e1e627a3b3993cc6adb977a4d7e7be7841f",
           "index": 0,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/00.safetensors",
-          "bytes": 4258408,
-          "sha256": "cccc180d424055776a76cc10d02e8848fda8d9064dfb80c28c06c7b08d299392"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/00.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "a3a006ee615d90e866d55a816b776de3d34d5d994b73a251da25af843d5a4731",
           "index": 1,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/01.safetensors",
-          "bytes": 4258408,
-          "sha256": "dd558a9fe95c20b7880435d5d6ccc398df45db0c081276ed8de348af4af30469"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/01.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "b46526e7264766aea5e95d477f38f7bcb51326db41e79e0fd0efb7dfe76e6e56",
           "index": 2,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/02.safetensors",
-          "bytes": 4258408,
-          "sha256": "439ad6e470b545bba4d40ffcf04c261001d513f7e584da5de29146bf12c01035"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/02.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "41a49ac97b757f06e8fafa46971bd282bbf14c426030e74314bc5582d12c50fb",
           "index": 3,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/03.safetensors",
-          "bytes": 4258408,
-          "sha256": "86b64f972310f6fff1ab2f5a327d1ebf81b4456d4ddab2c50c37a5ca2641af79"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/03.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "abfd754f3b92cecb9646471cb4fc56b2ee8e6c3d777b7c14e5667e79df051a66",
           "index": 4,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/04.safetensors",
-          "bytes": 4258408,
-          "sha256": "22bcc533fcd5fe01d56c10f121b8d1dd9fb6628c1047b31872691e36ed085335"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/04.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "efcbd364ed763e41ea3c5170fef6f11c5c2001828645f748a12afd3835c5de15",
           "index": 5,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/05.safetensors",
-          "bytes": 4258408,
-          "sha256": "88616aeac3e313e04281d2bd5eda658778d5eadaf74f4ffbc5510f2f8433e1e6"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/05.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "4306987d404e8a2cf5ba416d9187f657591bb9ea7502e4cb56545eb072f6555a",
           "index": 6,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/06.safetensors",
-          "bytes": 4258408,
-          "sha256": "ff35f28766dfa4f7c40f5e47e20cc0c5b8c4d95191ee1115f679b9d6d00431d1"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/06.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "c25ee53c198fc39404013b98af1071a0c9c89f5b65d97545cf1c4c296cf6c02d",
           "index": 7,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/07.safetensors",
-          "bytes": 4258408,
-          "sha256": "214d1834441a301f2377fa28a127487853b7a471075cc3be7b11f7c2455b5ff4"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/07.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "37305e6aef80da350fe2ecb6b72f13668cd9d5f56110aae2dba3db6cb1e75521",
           "index": 8,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/08.safetensors",
-          "bytes": 4258408,
-          "sha256": "f2e9132e66cb0202240be586640a2bcf058eb3a18638434f3d70920274e82920"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/08.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "2dab56571b7e1fdfb860ed68745eff98c8493dde0b937ce34edb4f59181a3948",
           "index": 9,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/09.safetensors",
-          "bytes": 4258408,
-          "sha256": "76750e77bc3e05307e94a099910e9d41b7b925b7c02e8a7e132035a6f1dcc081"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/09.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "fc3ce3e7e892c69d22b3e84c1ce4120213d9b11be0fbe36a5e580b4b3e5318e5",
           "index": 10,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/10.safetensors",
-          "bytes": 4258408,
-          "sha256": "71b942a6da4b84f2d2b494447fb605440cb239b42a292ea5543d1e461225d69e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/10.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "820c7a3820de74bc681d61f4e6b14fc92d79e4260e2f5139baed81ce4f1b10cc",
           "index": 11,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/11.safetensors",
-          "bytes": 4258408,
-          "sha256": "f98b633ac8d867998e6dee898cf25c8e8088b6749bf9b02db85fb02ffda00050"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/11.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "111385f8231f472ed3553849d9eb2660d7c8fe3fa69448a2315d085fa82d9876",
           "index": 12,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/12.safetensors",
-          "bytes": 4258408,
-          "sha256": "61ca9419891b63f03d21b0c81e59a4d0005fae3f44fbe7ddb89daa1c4986a4e4"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/12.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "f58cb112215f88ce172e501493208a8f17cb1ecc5a84e60405f894db3e480bb8",
           "index": 13,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/13.safetensors",
-          "bytes": 4258408,
-          "sha256": "83075f0e886237f1e42ab962c53d7c8e8b426890b0d700bdfa80b9edad97be9f"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/13.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "137796491b87101fc3fbe798c452c3ad06a77e323272ff2f34bd7ab0781a2f6b",
           "index": 14,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/14.safetensors",
-          "bytes": 4258408,
-          "sha256": "05ac80c4ab39f8d85893d7bd14d32c40937e210f438d64f1c2057d2f47d5bf68"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/14.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "8dc9e8b03c398f33779b2baa5bfc5e98d1b80ce4e43f82a323660f5900007667",
           "index": 15,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/15.safetensors",
-          "bytes": 4258408,
-          "sha256": "609a12db85e0daca1b85e027d1f046e1aee9b843e33add985bb40c9b70aa4d2b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/15.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "65e82c162af52f5789ec9630fedb98d6d0ec629b79778086c617d07e197d026d",
           "index": 16,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/16.safetensors",
-          "bytes": 4258408,
-          "sha256": "9d27a5b48db27dcb27159b4c343ff6f7ae21957356b1ff2c426bff2b5a8a8eba"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/16.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "84c64097c06d93f5f307c922367b66303c226e3758e96fe4c4a0f2a49e3f4548",
           "index": 17,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/17.safetensors",
-          "bytes": 4258408,
-          "sha256": "927d228a38d88e2f0f66836c73282cb0e6a7e8d68b6b9a232152ccdd46cc97da"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/17.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "f79c6454f2f3aaf3b0952fad284c92d7e4a2ae71169f4fffa5d300adf5fe9c0e",
           "index": 18,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/18.safetensors",
-          "bytes": 4258408,
-          "sha256": "598496e0253ab9155465391dae7fb88ec8aa779e3acfa9ab6055069a2b794240"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/18.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "48a8612bf6d7a6651fb8a42d701002e220df5d416f8d70ebc6e4d98db0406db4",
           "index": 19,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/19.safetensors",
-          "bytes": 4258408,
-          "sha256": "bf777a15c52a0b0a6ea1c6491ca2af5a56cdff882f88fe95b210b18a6c3959fa"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/19.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "67cfb983034fe9c12384e2d0bc68efb53fc1f95b55196ac7217e97a956ef19b4",
           "index": 20,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/20.safetensors",
-          "bytes": 4258408,
-          "sha256": "74f6203aac9520554ffce220636ff1e1e4f71e2fa9e6c65e0a33b994f709bed6"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/20.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "548634297a197cded4c5d7434d5b92ac72278e9438feac067663bb3274ff6380",
           "index": 21,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/21.safetensors",
-          "bytes": 4258408,
-          "sha256": "cda5ddb097911efdcd860ea1c3c39c19f0e9fa19238f0b812a5e384a987cb582"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/21.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "f5e46597d6e715442bc0b9a5eb46f19218a084f7b164524b47a074f0f5702c38",
           "index": 22,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/22.safetensors",
-          "bytes": 4258408,
-          "sha256": "32db6c9ce9a423aaf01ee056d6de9a9006fda658b8d92b10543d6cec2412fcee"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/22.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "3254d4aa5ccb79b9c45108b5f637f0e762ff67ee03e45fd1867760da556ab8a6",
           "index": 23,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/23.safetensors",
-          "bytes": 4258408,
-          "sha256": "69775104c2bc6c9648f4caf45d82efa6195ae20f4918713b0cc78c7a67a9ec71"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/23.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "21249fa087463a525728ea2967c0e58028c48c40885ce3b5bed5893e334a80f5",
           "index": 24,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/24.safetensors",
-          "bytes": 4258408,
-          "sha256": "a1e7796a3f49b80db372285078671d815105c799b1044f85a284963479beee5b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/24.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "f6eb1d333d9539d317e1e4d1326b423bdb18bc8a9f4fb9be6b05071bb246fce1",
           "index": 25,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/25.safetensors",
-          "bytes": 4258408,
-          "sha256": "a29846533760c17cdcb1bba332ddc997c674188c5ce6bd50ff5a9fceba20664b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/25.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "d8fa719e5c3ad274d2706a9b99dc6f58f1010309e91a5ccc2f055c777a57fb2e",
           "index": 26,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/26.safetensors",
-          "bytes": 4258408,
-          "sha256": "18d8bbe5eff51f9743aaf6ac6b9d82e08e9398d3497809f3419f1daff6a65da1"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/26.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "633605f641b582e8a9e68dc9da058c3c1690214f1724212fb902cde9c62db4c1",
           "index": 27,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/27.safetensors",
-          "bytes": 4258408,
-          "sha256": "6eca99a48a01d07bbe50be72152df044381b2f12b78e94d89caf8d642d048c68"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/27.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "603572f66581b3282989f30f3bcbe8b877434219718d4f4ce85189812bd3ae1a",
           "index": 28,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/28.safetensors",
-          "bytes": 4258408,
-          "sha256": "133e26555c0730a18b4b2be622b8dbd1bf5048c7cc33e1e5589f04f3d1fdd840"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/28.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "301fe6ae8f1f9a4a4a1ba53cc61f28bbf596567fc38c4400f54e256a6e8e6d86",
           "index": 29,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/29.safetensors",
-          "bytes": 4258408,
-          "sha256": "d0844e3bd46654e1cb834b3bbddddca22fb0cea202d17d0c0c9e5cad5fa683a4"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/29.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "3caa6a52a5f3063740660008eef2da5b662368bd9b339d84e0616c208a99005b",
           "index": 30,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/30.safetensors",
-          "bytes": 4258408,
-          "sha256": "d95546607f1c7a9e7d827b74503936ef3f0fc00a65906088d0e7d399fe797bc4"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/30.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "ca887479e82592ba307505944d3e2c150f1f6ad66c2e68d20ebd5b7f25222554",
           "index": 31,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/31.safetensors",
-          "bytes": 4258408,
-          "sha256": "ad3aa1a67810fb9086ea964f39b2b80a223ae94abffffac4e3ccf4bc344eb6b4"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/31.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "a1d756cfd148cfa3ed5e3b87461521d2931cd3fe69e6b051958bec985b915575",
           "index": 32,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/32.safetensors",
-          "bytes": 4258408,
-          "sha256": "e23de9a6ae2e6a879b861a5d17cbb245009f838bf7e5c9ecd02e5f44bd42571e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/32.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "b128edff86194d00ad9e1a7229f6e7728cd616472ca6bf8fa8c63c181ee9f0da",
           "index": 33,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/33.safetensors",
-          "bytes": 4258408,
-          "sha256": "4775ff73c3e6dcf1e6d91a2f38ad35f64578a114bb24fc7284493067098c3e70"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/33.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "8427d50f5698739160acb308c034bc9556f323da765014d1b9ad7e50a3f584e5",
           "index": 34,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/34.safetensors",
-          "bytes": 4258408,
-          "sha256": "2c9eb5c9d8be12dec907566f643c5df420ec8d31d13033b88b9d1cf0c3321cf7"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/34.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "950b59947d92a4b2cfcceaa0b9443b0cf0b329ff0511ed31a5ceec45bc2bfdae",
           "index": 35,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/35.safetensors",
-          "bytes": 4258408,
-          "sha256": "65f8b4ff6808443c8d1ae225cb71ecfbe12181fa226bb591370ef4f34ec851e2"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/35.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "73fd711e8492c9297d8fa970b85c54aae04ddb3b251dd2674315a04246a16b01",
           "index": 36,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/36.safetensors",
-          "bytes": 4258408,
-          "sha256": "bade6315d533de39090da389c7d9172bdc9d9f41be66c23c307c98324247785e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/36.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "cd2d5f2399b9d533a7fd052226a8d09c125da2d364f2835ed05bf7054363bcdf",
           "index": 37,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/37.safetensors",
-          "bytes": 4258408,
-          "sha256": "c9af4bd53fef28e3bafa1d4feddfec2c0a4c47ba425f1d6c65b5d78c8ee86542"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/37.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "88b8708c54f988bf242bf70abfcd6ac2f5bc7e88e7bd5a553de5a160bc982ca2",
           "index": 38,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/38.safetensors",
-          "bytes": 4258408,
-          "sha256": "3cd45a1270b7bb7405d00db362354d79a5ed16200dcc2bd966182fe0fe929ec5"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/38.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "5cd856c98e424bee9f4e017337d7a2d81a36a5f45f90935f77c9fb276170aa48",
           "index": 39,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/39.safetensors",
-          "bytes": 4258408,
-          "sha256": "47a17d86e07c74fbfe760964d535b5d872e9099aa574e2b87ee17d93c76de8c2"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/39.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "1706c7f3b3f5d843d9fb1b69a8c249204eae5b1312d37d0f32f12403406ffb20",
           "index": 40,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/40.safetensors",
-          "bytes": 4258408,
-          "sha256": "75c8e3559499ab593b65354176970598a2247170ec2a1d95a4b6adc212517e58"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/40.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "a9c4d1b140e339840084781a2f7a5f76e75222e10165771f3a89e2535b84a75c",
           "index": 41,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/41.safetensors",
-          "bytes": 4258408,
-          "sha256": "595780583737400d99733d7491a183ce5ddaf88b75308d4c097651dee85eebe7"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/41.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "a36e705b5b6f904d6cfdb5b819dc9e9169a7b8f34c4536ae397e9b200ce07c99",
           "index": 42,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/42.safetensors",
-          "bytes": 4258408,
-          "sha256": "a74f72d96feebdcf5f9bf9e41c2f3a8295d22a5302cd644912df4e1546a00f75"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/42.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "ee0583acf420b9dfa257903b3878347dad9fc8cc797fa1701d87d68ee65ee3fe",
           "index": 43,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/43.safetensors",
-          "bytes": 4258408,
-          "sha256": "64d5dab35b981a6dbbf26dd1704b82b294d0edee53a77118f351e6685690b360"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/43.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "7c7b2e4c9b90fe6a577da94d24dfeda1e53b815a17780bf7f38c3f30f6d44563",
           "index": 44,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/44.safetensors",
-          "bytes": 4258408,
-          "sha256": "f2b4aa1d6e78127c3cfaa4881261fbd83150ac747d6b7b337b3e3d70df7efa0d"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/44.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "5cc4b3004b1b9302c286140cc4538942c1ad9744c260ad9efe711b84ebb5cb22",
           "index": 45,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/45.safetensors",
-          "bytes": 4258408,
-          "sha256": "31b7a9c96673d1b12f2afd396d559b61710d26cee969c8aa4bc1fb1a3d301c73"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/45.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "fba57b0d392fea462913a1972c7540732f6e9b581271d1cb4708507f9d7a4774",
           "index": 46,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/46.safetensors",
-          "bytes": 4258408,
-          "sha256": "64985a0e5bee8295acffcb68e8e3520be96eede0bdb363268f2e398108b4807a"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/46.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "de12ca31e2226c87a175682e999181a604b2b5d078a45b095852de57ee5459c1",
           "index": 47,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/47.safetensors",
-          "bytes": 4258408,
-          "sha256": "cd1dd7dc5999c4bc2d5a2efd726fd0f4f1eedfba54e68477db2006c743fac557"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/47.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "a304e707d013b6318ca9d9d6a27010f1b3dc1d9a77836048f2cf6a4fb462608c",
           "index": 48,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/48.safetensors",
-          "bytes": 4258408,
-          "sha256": "358127706e9b48591cb611c53489fe89142f7dcc6f57ecc6bc81ca0a8a346d16"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/48.safetensors"
         },
         {
+          "bytes": 4452432,
+          "sha256": "142100d2b2cee95c3367286f0384fae4f451680515d3a05a0bee47d07bcb03b5",
           "index": 49,
-          "file": "reference-tables-v1/adaln-tables-v2-16be2201bf77b8878581c987/49.safetensors",
-          "bytes": 4258408,
-          "sha256": "d77241c59809be587ee20f6b3911c315fe7f557174f7ea3d8118c2c514eb6d99"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-30cf7adedb7ba9a00ff1669e/49.safetensors"
         }
       ]
     },
     {
       "task": "ref2va_av",
-      "directory": "adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3",
+      "directory": "adaln-tables-v2-40a1f16eba0f5aebce69b8a5",
       "identity": {
         "format": "freevideo-adaln-v2",
         "contract": "minimax-h3-adaln-silu-linear-3x6-v1",
@@ -378,49 +379,50 @@
         "timesteps": [
           [
             0.0,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.011764705181121826,
             0.045454561710357666,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.027027010917663574,
             0.10000002384185791,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.0476190447807312,
             0.1666666865348816,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.07692307233810425,
             0.25,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.12195122241973877,
             0.3571428656578064,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.19999998807907104,
             0.5,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ],
           [
-            0.0,
             0.3684210777282715,
             0.699999988079071,
-            0.9990000128746033
+            0.9990000128746033,
+            1.0
           ]
         ],
         "channels": 5376,
@@ -432,314 +434,315 @@
         "torch": "2.13.0+cu130",
         "cuda": "13.0",
         "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
-        "implementation": "4edeeb1866b581a67ff573fa8ce9d278886e856c2a40d5113917f54f76afcab7",
-        "original_implementation": "0f94a5583d5f3f16f9e2d10f0955eb2f55a92a0b6501f339d2b6445f38614841",
         "matmul_precision": "highest",
         "tf32": false,
-        "bf16_reduced_reduction": true
+        "bf16_reduced_reduction": true,
+        "builder_sha256": "ba90fd6c32a6791f8094ec1d7806e2639feb823eaae6d29bd076f2c8f7e51c2e",
+        "contract": "minimax-h3-adaln-silu-linear-3x6-v1"
       },
       "files": [
         {
+          "bytes": 6000728,
+          "sha256": "3c2979aa38c2271ff5dfce617b1213a1a02de623a34e023d3451e0e13b927bba",
           "index": 0,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/00.safetensors",
-          "bytes": 5806704,
-          "sha256": "345d512cf0d8033bef2e27e2c81b27a7f9eb178209516d7b7208485599629aba"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/00.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "8f02fea1286911749f7c2c62378ca840373ad1af56ab5fdb566a5e492c6d2fee",
           "index": 1,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/01.safetensors",
-          "bytes": 5806704,
-          "sha256": "a28e0704e1218b3a854e670c3a7e5d044fa58245923bfe460bc3748b178ba618"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/01.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "39efa3d1250b7348d53a32e53fa5e6eabe6f2498fe1ad37aa7c9f7fe772c430e",
           "index": 2,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/02.safetensors",
-          "bytes": 5806704,
-          "sha256": "f97bff9427d75d8da3b7a40c4bcc05304f55ac071a959f264e5d629ac16ea23f"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/02.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "258f97c11d229d21a9a8fdf4ee107aa7a178e7e926b4116a4e011bdeac7dc22b",
           "index": 3,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/03.safetensors",
-          "bytes": 5806704,
-          "sha256": "0b07431ac3144fff2d3d1e7b189b6f926ce59bd003ed86213e8133f17b85e47d"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/03.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "9c96da8a932f1f3979ce171af5eb6085aeb5b6d78328836b9ddd953f2a21b523",
           "index": 4,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/04.safetensors",
-          "bytes": 5806704,
-          "sha256": "7603f4eeec2d719307ddd87851255154b55578384cdf55aa4a3a557e2d62c812"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/04.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "f49bfc4d97e74739c96d03a538262a208ec73d83ea76d2bedf9a692e10ab6f2b",
           "index": 5,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/05.safetensors",
-          "bytes": 5806704,
-          "sha256": "f36e21d90d958b9a1a61a5c6a6c8b95e0f150914cf31142252ca26cd7b35cd89"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/05.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "37c57d8620807e66626dac048eff211b9bbfb1b43d0dca72779fdb8bd04ebc5e",
           "index": 6,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/06.safetensors",
-          "bytes": 5806704,
-          "sha256": "349a2204d79ae69b9ed5e5a481538ccd74e74790c52158eebf7582d96f6ac121"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/06.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "2755af235f8396a7ce4427c38dcfbaa246d7a6bcb5b661e2b28c920b132fde58",
           "index": 7,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/07.safetensors",
-          "bytes": 5806704,
-          "sha256": "32948b0da293c8dc3d4d41562312f575197a4d7f6274184e792c0da0dbee206e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/07.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "667dfc81917c672d38d66c859ab5ce0664b7feb63659d872396ac873be41ee1e",
           "index": 8,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/08.safetensors",
-          "bytes": 5806704,
-          "sha256": "b2adeac517dc5f4a13d1820ec33ab352a39552194b01085c6df3c70f6bf415fd"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/08.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "94a261f80941ccb3bc9bf45bbf79292087428e4976e75dce1eb98ce14455665f",
           "index": 9,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/09.safetensors",
-          "bytes": 5806704,
-          "sha256": "d8bc35cdd8b51702fce6fee73efafce2a3c46adc74b5c8fdbf42a3c03d0bab5e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/09.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "584a118b1f3138110fb5f8c47f35703b5c5b405ef6bae60161a0b6bbdede4845",
           "index": 10,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/10.safetensors",
-          "bytes": 5806704,
-          "sha256": "8c448bf65255f6b1c5ff2b1622fab706b3d31872c8058912d432cba83b932d1a"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/10.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "bec8e2accd53b111e0a259c2f464b35767274dd0517ed6bc707fd38da464942e",
           "index": 11,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/11.safetensors",
-          "bytes": 5806704,
-          "sha256": "ad1b36e5489467333758e50b920b96f31e9e9e4d1ca0b99020793ba08e7cc59d"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/11.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "cec562df06932e841c690d98a5ec1132342f9417699bcc744a8142aec8d043e9",
           "index": 12,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/12.safetensors",
-          "bytes": 5806704,
-          "sha256": "c9caef11b096c8c46621dd26e29a8c71b38257d1404e22aa0f6cd000a4705a4a"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/12.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "b92afa0a8d6e47584ddb96f111562636cd3106d88c67622894b332f8ef569481",
           "index": 13,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/13.safetensors",
-          "bytes": 5806704,
-          "sha256": "3cedc27c23027dae018d2ca5c61fa2585b7e0a0145caff879527c00cdb1397fd"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/13.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "216bd81cf6037c3cd980ac40859b30861022018e10c1d5f7e3b0949a8d81a402",
           "index": 14,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/14.safetensors",
-          "bytes": 5806704,
-          "sha256": "335030daa768dbae467dc2ad7f78e060582ea01b37e6adc4fbfa7536d3ef77ef"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/14.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "a0814cbb8ae6b6004a36aee5826cb1dae306b0099fa6aae003185c675c8d3f2b",
           "index": 15,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/15.safetensors",
-          "bytes": 5806704,
-          "sha256": "8a43a69af39af4bb3c99dad4dcaab1e1df93adee58662798af2509991731facd"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/15.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "4482b3c65b0fc10fe7d31b4d23b148d5ca37e6c4931a5ecee59a6d8239a81b18",
           "index": 16,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/16.safetensors",
-          "bytes": 5806704,
-          "sha256": "d478a6074f513fdc2164571cd11d40f3b11d5b353db47cf8338bfa0cca40b70f"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/16.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "73c4efed9f144c4879e90197f1bf122672d5cc87b426d942b0392f29c576fbe5",
           "index": 17,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/17.safetensors",
-          "bytes": 5806704,
-          "sha256": "69dbe5ef7797540290a894933ff08fc0e0e8888e8be51dde96cf7a7212818383"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/17.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "72ff17d50ce0f35961f65964abd0f516b338a537b2a92a5da5c48ec4ec4324b1",
           "index": 18,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/18.safetensors",
-          "bytes": 5806704,
-          "sha256": "0a21e6df79eac6bd97e54a655e42faf787e74af82cefbae36e01a1f3517f71db"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/18.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "c6f2fd243509d00c5e368155d4d46ae53cf2a8b7b641d6b51492e2214d3455f2",
           "index": 19,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/19.safetensors",
-          "bytes": 5806704,
-          "sha256": "346c61205eb391ca7ed02126ed3425495190f59754890b54f2b4f5a4ab22141d"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/19.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "872ef54185f35491e9790d230222e0b4a40298bf683b97fc7d2ad8d0cf3823d5",
           "index": 20,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/20.safetensors",
-          "bytes": 5806704,
-          "sha256": "a9eb9d512919aa8560ee8008a172456d6f0f8d3c22905ca0e5181902dffed66c"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/20.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "ecec5c0e70a95a52f5ce7ec2898d01599e2fdb797ddc6aab469ea86401c55a16",
           "index": 21,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/21.safetensors",
-          "bytes": 5806704,
-          "sha256": "d9eddf54ace82cdd4dc3df1637d39efadfda57f853eee1bca141529ec5150bf3"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/21.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "d29d3a68f28876f513480b72763ea6158b806d6ed070e0061de97ebb26df812f",
           "index": 22,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/22.safetensors",
-          "bytes": 5806704,
-          "sha256": "b9c186566e3a6f37a84dd1f0dfee1de2e4cb205bab29609147586afbddd2215e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/22.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "565cb5af834fb79fdd8387e593fedc0d5e0cb1333fc6a4978db69e18d75c45df",
           "index": 23,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/23.safetensors",
-          "bytes": 5806704,
-          "sha256": "b3c0ea28bdddfff1dbade84bcecd0b5f388264e1973a616f57f274722e4070e8"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/23.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "240712b90c619ef5da2e3bf16ab20b217a189c77ad71290b884745b04548feed",
           "index": 24,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/24.safetensors",
-          "bytes": 5806704,
-          "sha256": "c9c855f333e8fb21cfd5fef4e079f8a56bf83f747e2d05128d56cd9b340fb428"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/24.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "c8e2b432185b0e22a00942748b934fe761b03a00d093bd285cdb394787c88ad5",
           "index": 25,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/25.safetensors",
-          "bytes": 5806704,
-          "sha256": "228c2d22918adad04aafd7efc5c4912a8a3558ecc1df5c4e740eb12fc949f47e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/25.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "312f9644a79a4cb01870571b51bc6e8f6e9f236140beb7b9358e86444d49a8b9",
           "index": 26,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/26.safetensors",
-          "bytes": 5806704,
-          "sha256": "1f1959f52f3ce8ed1339f48943d05946732c716e345a441bc89fde7e0fd00da3"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/26.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "4f0259c92e897513d4823d9fe8d4aa33016432a7443cff875785898027f24630",
           "index": 27,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/27.safetensors",
-          "bytes": 5806704,
-          "sha256": "d559a6b582b2928b902adf8157422e2d6d8b55deb960a9b503f3a82384cf3608"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/27.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "492b4ca0d946c13a4e2b87d2f4e3763156d3a38e175c9cb08f41684f3e7fcbd4",
           "index": 28,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/28.safetensors",
-          "bytes": 5806704,
-          "sha256": "ccb1453432875d63788b49a35b30ff67fde5a30f75d4a8ad887a31854f07547b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/28.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "8ab3040a5f5a8019285bfe51fc141ab44e136b6fa4af0890c246c3ca082bcebb",
           "index": 29,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/29.safetensors",
-          "bytes": 5806704,
-          "sha256": "0d61de964762b9b2f2b09e230e242f6b078865cd67534c6ad1e6218d30568d81"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/29.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "5ad9d55de8d43d3fecb071e0e6f351a581d6a7d0f723081cc16721b82755226b",
           "index": 30,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/30.safetensors",
-          "bytes": 5806704,
-          "sha256": "0adacb67cb8ec9bd3db5591f8db40614d93bf80a958a74075315ee1c1e11f4d3"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/30.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "776b0aa7f3c0e315ea367ad5be6289916d4fc9d6fa1516aa7e4947a2700af7f5",
           "index": 31,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/31.safetensors",
-          "bytes": 5806704,
-          "sha256": "f1b7dc2382f6ab71745fd4216c45d790114bd24f0ccf24d1c31ce2e9305e968e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/31.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "ae6c68973d3e55d32ce7c043c6a0c3a17e806ae38361dfef7ddbfd7b35b086cd",
           "index": 32,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/32.safetensors",
-          "bytes": 5806704,
-          "sha256": "bf8f88186763200df0c079bbc62a81c3bbadac410f2dff781870ce91a9330145"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/32.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "b290df1a697fd2a458276c709b704b30e4f38a5956d56f65d125bb56084244da",
           "index": 33,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/33.safetensors",
-          "bytes": 5806704,
-          "sha256": "d2f975ab2411b3fe08b7fee1a0f328d5c1c2fd75809b1e1085b2d622bbe3f0aa"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/33.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "272bc1dff7a74c41e527f443e872afee1e3d1435b48e4eb34329eadbfbb4a9fd",
           "index": 34,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/34.safetensors",
-          "bytes": 5806704,
-          "sha256": "f5ed40f8096993815a87c7f514ba996a8a8b3cdca8913b4b8e9df076428e85b6"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/34.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "6f5d435974749711d57aacb0560374d8a51c925279431be4ad938090080f4c38",
           "index": 35,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/35.safetensors",
-          "bytes": 5806704,
-          "sha256": "1a82102f6f55d8fa4b63f140bda6d11d1cd2688ee95e9e67cf95f61d795d144b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/35.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "8502bfb4d5cd76341e7ced1131348b210beddec08e887aa442281d249e8c74f9",
           "index": 36,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/36.safetensors",
-          "bytes": 5806704,
-          "sha256": "219fa46ccb943d3d1cf5bc671a0eccf2dc59c642f8745f3fbaae5f205b52ad61"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/36.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "bfa357273ec35308e4f7ce18019caf5263577199d19e69a29335de64002f905a",
           "index": 37,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/37.safetensors",
-          "bytes": 5806704,
-          "sha256": "c7e3025d7dc10e4ab23929469fdbae9e111029a3b1f9161588e52ea2f4c18ac9"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/37.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "a0ab06f1b16c4892bc7d33fec0709e231d2c82cb8d016c50a3e96d946639c3d3",
           "index": 38,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/38.safetensors",
-          "bytes": 5806704,
-          "sha256": "9d4d01c3395db6f8828033943e3f81b27680c1b5539981aefd15b07729b88d5b"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/38.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "20c061d97988ac18034afea8187435f2497e8acb08c614756ca4e495c5cfc838",
           "index": 39,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/39.safetensors",
-          "bytes": 5806704,
-          "sha256": "8afab294cefb48cb6beb288cb28f0d50f965f3258b0efda2951f9b66a6ce1a8f"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/39.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "7da44015dd2507ec231876cd825b67e553504bf107725573b21ad5c18a1ae7b6",
           "index": 40,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/40.safetensors",
-          "bytes": 5806704,
-          "sha256": "4ef8b3068d49a4b7260f5d4d847dc9662c11c52a4a7895984bafc5ef3da2a8ef"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/40.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "599c154d9bedae5e25c24342f2bc74bacaf526ca7d498c32ff09d7c87f3d82b2",
           "index": 41,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/41.safetensors",
-          "bytes": 5806704,
-          "sha256": "5314cc74aa87ec83a6bf2cb63589a6ca1af8e25a70aeb8460403207f3cb01687"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/41.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "53bd6f07030d19ee4925adce9ee7d29a0697e8949f67afd4279ba286715573e2",
           "index": 42,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/42.safetensors",
-          "bytes": 5806704,
-          "sha256": "aeb9a18693115a6ead1172628483c5dc77c00ebffe8d3be90cc494966e660b28"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/42.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "0d400d5c8f29a4760fc7eaefeeca80eb419722a7ec8f89b2c74bb23aeac01f46",
           "index": 43,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/43.safetensors",
-          "bytes": 5806704,
-          "sha256": "bc07fbc5bb77866fb291710f40dfb03a81ec16288c4b54d1ccb94687d95b453e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/43.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "f6b46bba373235c386b0d7c7af72f5a952347aab568a3ca6ac3d411cae2000e5",
           "index": 44,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/44.safetensors",
-          "bytes": 5806704,
-          "sha256": "2b964defdfd01ff5e479cad829f7c27fb2650e1060c3d8110cc0b9c9b6c71217"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/44.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "da173acf1e55035abdd79770a99b04a6df76eefab9c76d0d9a151e29d8f64009",
           "index": 45,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/45.safetensors",
-          "bytes": 5806704,
-          "sha256": "72525028f2fe0f86680d22d54ed069c7d8c9f7fa29f9514d46d9caaf76d0f47c"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/45.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "17ca3a9a25e03d0a02edff967b136fe457f80f1368e1a69eb94b2ba452e4449f",
           "index": 46,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/46.safetensors",
-          "bytes": 5806704,
-          "sha256": "0197107d52a4c43ae61c8218f3bb9dff0e7c34acb42bb5c3b01d34b0042e4760"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/46.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "5476cea7c5693174e15ed623406b222362acf3e25fcb0f54d4a0b3cf7cbeab77",
           "index": 47,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/47.safetensors",
-          "bytes": 5806704,
-          "sha256": "0ed2d43d1ad8e0cdf12672217d4810dbd1783523aa14fa092284241cb160483e"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/47.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "250de6b4139c1d4d2fe429d643f371a83c1115ab7052ddb2e741ed3566e107c3",
           "index": 48,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/48.safetensors",
-          "bytes": 5806704,
-          "sha256": "630ee3bde713069d6632077ae8a3142f11d66f09180a198d54ea06b6d6906b43"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/48.safetensors"
         },
         {
+          "bytes": 6000728,
+          "sha256": "b917ad15f865dc8159ec3dd3b35656f2ad0d0d51c2fd1223e32400718020bdea",
           "index": 49,
-          "file": "reference-tables-v1/adaln-tables-v2-3ae9ea71d2372fe1f6f4dcc3/49.safetensors",
-          "bytes": 5806704,
-          "sha256": "8268992788efdb3a0bb7be63def31059e94313a2f4ba958739c2add537b63ace"
+          "file": "sampling-presets-v1-audio-20261007/adaln-tables-v2-40a1f16eba0f5aebce69b8a5/49.safetensors"
         }
       ]
     }
-  ]
+  ],
+  "prefix": "sampling-presets-v1-audio-20261007"
 }

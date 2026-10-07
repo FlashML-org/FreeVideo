@@ -24,13 +24,28 @@ def tables():
             if count not in (3, 8, 12, 16, 20) or table['directory'] in seen:
                 continue
             seen.add(table['directory'])
-            result.append(dict(table, download={k: bank[k] for k in ('repo', 'revision', 'prefix')}))
+            result.append(dict(table, download={k: bank[k] for k in ('repo', 'revision', 'prefix')},
+                               on_demand=bool(bank.get('on_demand'))))
     return result
 
 
-def required(table):
-    """The default 8 + 3 refinement must work offline after setup."""
+def refinement(table):
+    """Tables of the independent three-step refinement clock."""
     return table['download']['prefix'].startswith(COMMUNITY_PREFIX)
+
+
+def required(table):
+    """The default 8 + 3 refinement must work offline after setup.
+
+    On-demand tables (reference audio) are never part of setup or of "every
+    quality level": the request that needs them fetches them before it starts.
+    """
+    return refinement(table) and not table.get('on_demand')
+
+
+def preset(table):
+    """Tables the "prepare all quality levels" option installs."""
+    return not table.get('on_demand')
 
 
 def files(selected=None):
@@ -62,18 +77,18 @@ def installed(machine):
     def present(row):
         return any((folder / row['sampling_file']).is_file()
                    and (folder / row['sampling_file']).stat().st_size == row['bytes'] for folder in folders)
-    return all(present(row) for row in files())
+    return all(present(row) for row in files([t for t in tables() if preset(t)]))
 
 
 def install_files(everything):
     """Setup always installs the refinement tables; the option adds every level."""
-    return files(None if everything else [t for t in tables() if required(t)])
+    return files([t for t in tables() if (preset(t) if everything else required(t))])
 
 
 @lru_cache(maxsize=1)
 def total_bytes():
     """Extra bytes the "prepare all quality levels" option adds to setup."""
-    return sum(row['bytes'] for table in tables() if not required(table) for row in table['files'])
+    return sum(row['bytes'] for table in tables() if preset(table) and not required(table) for row in table['files'])
 
 
 def cache_root(model_root):
@@ -107,6 +122,30 @@ def engine_task(media, base=None):
     return 'ref2va_av' if visual and audio else 'ref2va_audio' if audio else 'ref2va'
 
 
+def retire_superseded(machine):
+    """Remove reference-audio tables 0.3.5 replaced, once their replacements are on disk.
+
+    Never fails a request: what cannot be removed stays and is reported.
+    """
+    from .paths import model_root
+    from .superseded_tables import retire
+    shared = cache_root(machine['model_root'])
+    roots = [shared, Path(machine['cache'])]
+    # 0.2.0 engine processes fetched tables below FREEVIDEO_HOME/models as well.
+    legacy = cache_root(model_root())
+    if legacy != shared:
+        roots.append(legacy)
+    try:
+        result = retire(roots, tables())
+    except Exception as error:  # Cleanup is best effort; the request continues.
+        result = dict(removed=[], kept=[], removed_bytes=0, error=type(error).__name__)
+    if result['removed'] or result['kept'] or result.get('error'):
+        print(json.dumps(dict(event='superseded_tables', removed=len(result['removed']),
+                              removed_bytes=result['removed_bytes'], kept=result['kept'][:10],
+                              error=result.get('error'))), flush=True)
+    return result
+
+
 def prepare(root, machine, sampling, task, *, progress, interrupted=None, environ=None):
     """Fetch only this request's missing tables before starting its timer."""
     from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
@@ -123,7 +162,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     kind = 'i2va' if task in ('i2va', 'l2va', 'fl2va', 'ref2va') else task
     def needed(table):
         count = len(table['identity']['timesteps'])
-        return (count == 3 and sampling.get('refine_schedule') == COMMUNITY if required(table)
+        return (count == 3 and sampling.get('refine_schedule') == COMMUNITY if refinement(table)
                 else count == sampling['base_steps'])
     selected = [t for t in tables() if t.get('task') == kind
                 and needed(t) and t['identity']['weights'] == weights]
@@ -159,6 +198,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     if len(stamps) != recorded:
         save(ledger, stamps)
     if not missing:
+        retire_superseded(machine)
         return dict(seconds=0., downloaded_bytes=0)
     started = time.monotonic()
     total = sum(row['bytes'] for _, row, _ in missing)
@@ -218,4 +258,6 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
             for future in futures:
                 future.cancel()
             raise failed.exception()
-    return dict(seconds=time.monotonic()-started, downloaded_bytes=total)
+    seconds = time.monotonic() - started
+    retire_superseded(machine)
+    return dict(seconds=seconds, downloaded_bytes=total)

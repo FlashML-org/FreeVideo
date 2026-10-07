@@ -207,7 +207,8 @@ def modality_timesteps(video, audio, task):
             from src.inference.render import KEYFRAME_NOISE_AUG
             values.append(video_t.new_tensor(max(float(video_t), KEYFRAME_NOISE_AUG), dtype=torch.float32))
         if task in ('ref2va_audio', 'ref2va_av'):
-            values.append(video_t.new_tensor(0., dtype=torch.float32))
+            # Reference audio rows are clean latents: t = 1 in H3's x_t = t*x0 + (1-t)*noise.
+            values.append(video_t.new_tensor(1., dtype=torch.float32))
         timesteps.append(torch.unique(torch.stack(values), sorted=True))
     return timesteps
 

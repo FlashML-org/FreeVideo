@@ -124,7 +124,7 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         row_times = torch.full((positions.shape[0],), float(video_t), dtype=torch.float32, device=device)
         row_times[video_ids[:condition_rows]] = max(float(video_t), KEYFRAME_NOISE_AUG)
         row_times[audio_ids[audio_condition_rows:]] = float(audio_t)
-        row_times[audio_ids[:audio_condition_rows]] = 0.
+        row_times[audio_ids[:audio_condition_rows]] = 1.
         times, time_ids = torch.unique(row_times, sorted=True, return_inverse=True)
         prediction, _ = transformer(hidden_states=video_rows[None], audio_hidden_states=audio_rows[None],
             encoder_hidden_states=prompt_embeds[None], timestep=times, timestep_indices=time_ids,
