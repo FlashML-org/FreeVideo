@@ -17,8 +17,10 @@ def package_instructions(new_comfy, zh=False):
             'The installer downloads the Mac environment automatically. Do not download the Windows Environment package.',
             '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包，Mac 同样适用。'
             'Mac 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
-    text = ('Get the four model packs: video model, text encoder, video & audio decoder, and sampling caches.',
-            '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包。')[bool(zh)]
+    text = ('Get the four model packs: video model, text encoder, video & audio decoder, and sampling caches. '
+            'The reference audio pack is optional, for audio references.',
+            '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包；'
+            '「音频参考缓存」可选，用音频做参考时才需要。')[bool(zh)]
     if new_comfy:
         text += '\n' + ('For a new installation, also get the Environment package.',
                         '全新安装还需「运行环境」包。')[bool(zh)]

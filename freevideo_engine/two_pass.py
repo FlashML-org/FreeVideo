@@ -157,12 +157,26 @@ def upscale_workspace(canvas):
     return 2 * 2**30 + max(4 * 2**30, 6 * feature)
 
 
-def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=None):
+# Windows moves a process's memory to shared system memory once it exceeds the
+# local budget, which other applications change while a request runs. A cache
+# filled to the budget measured at admission can cross it when the budget dips,
+# and with the weights already in locked host pages the cached layers save only
+# a fraction of a second per step.
+WINDOWS_PASS_CACHE_MARGIN = 512 * 2**20
+
+
+def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=None, windows=None):
     """Spare capacity after one real step, bounded independently by live space.
 
-    Keep another 512 MiB beyond the existing OS reserve for pass-local growth.
+    Keep another 512 MiB beyond the existing OS reserve for pass-local growth,
+    and on Windows another WINDOWS_PASS_CACHE_MARGIN below the local budget.
     Windows GPU allocations can also consume commit; retain host workspace.
     """
+    if windows is None:
+        import os
+        windows = os.name == 'nt'
+    if windows:
+        budget -= WINDOWS_PASS_CACHE_MARGIN
     bounds = [budget - peak_reserved, free - reserve]
     if commit_available is not None:
         # Sampling workspace has already been exercised. This cache creates no

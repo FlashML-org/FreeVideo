@@ -12,6 +12,9 @@ from .monitoring import save
 from .portable import inside
 
 PREFIX = 'FreeVideo-Windows/'
+# Optional packs (reference-audio tables) carry sampling tables outside the
+# video pack's inventory; an installation uses them when they are imported.
+OPTIONAL_PREFIX = 'models/base/sampling-cache/'
 MAX_BYTES = 300 * 2**30
 # Model packs without their own inventory are "common": the shared pack of the
 # earlier FP8 delivery, or the text encoder, decoder and sampling cache packs
@@ -200,6 +203,24 @@ def assemble(runtime, models, source):
                 os.link(src, target)
             except OSError:
                 shutil.copyfile(src, target)
+    listed = {row['path'] for row in model['files']}
+    for root in models:
+        package = Path(root) / 'offline-package.json'
+        if not package.is_file():
+            continue
+        for row in json.loads(package.read_text(encoding='utf-8')).get('files', []):
+            if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX):
+                continue
+            src, target = inside(Path(root), row['path']), inside(runtime, row['path'])
+            if (target.exists() or not src.is_file() or src.stat().st_size != row['bytes']
+                    or hash_file(src) != row['sha256']):
+                continue  # The engine fetches a table it cannot find when a request needs it.
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(src, target)
+            except OSError:
+                shutil.copyfile(src, target)
+            listed.add(row['path'])
     code = materialize_source(source, runtime / 'engine/launcher/source')
     variant = model['variant']
     from .prepared_model import catalog

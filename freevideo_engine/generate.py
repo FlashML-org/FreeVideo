@@ -627,7 +627,7 @@ def _run(args):
                 from .adaptive import recovered_compute
                 profile, report['recovered_compute'] = recovered_compute(profile, history, resource_identity, canvas)
                 report['profile'] = profile
-                if report['recovered_compute']['applied']:
+                if report['recovered_compute']['applied'] or report['recovered_compute'].get('reprobe'):
                     print(json.dumps(dict(event='recovered_compute', **report['recovered_compute'])), flush=True)
             from .compatibility import Store as CompatibilityStore, apply as apply_compatibility
             compatibility_state = CompatibilityStore(history.path.parent).status(resource_identity, persist=True)
