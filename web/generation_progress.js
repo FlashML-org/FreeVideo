@@ -1,4 +1,5 @@
 // One whole-video estimate shared by Studio and node view; real stage counters remain separate.
+import { saveReport } from './report_issue.js';
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./generation_progress.css', import.meta.url).href;
 document.head.append(css);
@@ -134,18 +135,16 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         // only a new request clears it.
         return reportId;
     }
-    // Download the redacted diagnostic export; throws when it is unavailable.
-    async function downloadReport() {
+    // The redacted diagnostic export; throws when it is unavailable.
+    async function fetchReport() {
         const id = reportId;
         if (!id) throw new Error('Report unavailable');
         const path = `/freevideo/report/${id}`;
         const response = await (api ? api.fetchApi(path) : fetch(path));
         if (!response.ok) throw new Error('Report unavailable');
-        const blob = await response.blob(), url = URL.createObjectURL(blob);
-        const link = document.createElement('a'); link.href = url; link.download = 'video.debug.json';
-        document.body.append(link); link.click(); link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return response.blob();
     }
+    async function downloadReport() { saveReport(await fetchReport()); }
     report.onclick = async () => {
         if (!reportId || report.disabled) return;
         const id = reportId;
@@ -382,6 +381,6 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         if (timer !== null) clearInterval(timer); timer = null; state = {}; overall = {}; shownFraction = null;
         stopCount(); countShown = null;
     }
-    return {element, report, updateReport, downloadReport, hasReport: () => reportId !== null, update, hide, dispose: hide,
+    return {element, report, updateReport, fetchReport, downloadReport, hasReport: () => reportId !== null, update, hide, dispose: hide,
         noticeCount: () => trims.size};
 }

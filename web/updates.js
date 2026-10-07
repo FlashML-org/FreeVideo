@@ -15,6 +15,8 @@ try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memor
 const languageHint = (() => { try { return new URLSearchParams(location.search).get('freevideo_lang'); } catch { return null; } })();
 const identity = candidate => candidate ? [candidate.version, candidate.revision, candidate.built_at].join(':') : '';
 const displayVersion = release => release?.product_version ? 'v' + release.product_version : release?.version || '—';
+// The running release's product version ("0.3.4"), once the first check has answered.
+export const productVersion = () => value?.current_release?.product_version || null;
 const localizedNotes = (release, cn) => release?.release_notes?.[cn ? 'zh' : 'en'];
 const publish = () => { for (const render of listeners) render(); };
 const later = ms => { clearTimeout(timer); timer = setTimeout(checkUpdates, ms); };

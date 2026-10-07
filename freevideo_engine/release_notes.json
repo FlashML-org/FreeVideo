@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "product_version": "0.3.3",
+  "product_version": "0.3.4",
   "en": {
-    "summary": "Runs the int8 model on 6 GB graphics cards and imports the int8 offline packs.",
+    "summary": "Diagnostic report saves the diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup.",
     "changes": [
-      "Graphics cards with 6 GB of memory, such as a laptop RTX 3060, can now generate with the int8 model instead of being refused, and 8 to 12 GB cards can make longer videos. These runs use a low-memory mode, which is slower, and FreeVideo says so while generating. When a request still does not fit, the message names sizes and lengths that fit now.",
-      "The launcher imports the new int8 offline packs: video model, text encoder, video & audio decoder, and sampling caches."
+      "Diagnostic report saves the redacted diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup, and it helps other users too. The report has hardware details, settings and timings only, with no prompts, reference images or videos.",
+      "After a video finishes, a card under the buttons invites you to submit the report. Once closed, it does not come back, and it never covers the video."
     ]
   },
   "zh": {
-    "summary": "6 GB 显存的显卡可以用 int8 模型生成，并支持导入 int8 离线包。",
+    "summary": "新增「诊断报告」按钮，一键保存诊断报告；欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化。",
     "changes": [
-      "6 GB 显存的显卡（例如笔记本 RTX 3060）现在可以用 int8 模型生成，不再被拒绝；8 到 12 GB 的显卡也能生成更长的视频。这时会改用省显存方式，速度会慢一些，生成时会提示。如果仍然放不下，提示里会给出这台电脑现在能生成的尺寸和时长。",
-      "启动器支持导入新的 int8 离线包：视频模型、文本编码器、视频与音频解码器、采样缓存。"
+      "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
+      "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
     ]
   }
 }

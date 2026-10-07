@@ -1,0 +1,42 @@
+name: Diagnostic report / 诊断报告
+description: Submit a diagnostic report for hardware-specific optimization / 提交诊断报告，针对您的硬件配置进行专门优化
+title: "[Report] "
+labels: ["report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a diagnostic report. We'll use it to optimize FreeVideo specifically for your hardware configuration, and it helps other users too. The report contains hardware details, generation settings and timings only, with no prompts, reference images or videos.
+
+        感谢您提交诊断报告。我们会据此针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report / 诊断报告
+      description: Please drag video.debug.json here. In FreeVideo, select Diagnostic report under a finished video. / 请将 video.debug.json 拖到这里（在 FreeVideo 视频下方点击「诊断报告」即可获得）。
+      placeholder: Drop video.debug.json here / 将 video.debug.json 拖到这里
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FreeVideo version / FreeVideo 版本
+  - type: input
+    id: hardware
+    attributes:
+      label: Graphics card and memory / 显卡和内存
+      placeholder: RTX 4060 Ti 16 GB · 32 GB RAM · Windows
+  - type: input
+    id: request
+    attributes:
+      label: Video size and length / 视频尺寸和时长
+      placeholder: 1344×768 · 10 s
+  - type: input
+    id: timing
+    attributes:
+      label: Time taken / 用时
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else? (optional) / 其他补充（选填）
+      description: For example, too slow, ran out of memory, or the video looked wrong. / 例如速度太慢、显存不足或画面异常。
