@@ -333,9 +333,10 @@ class Controller:
             return
         def work():
             from .desktop_runtime import launcher_root
+            from .launcher_update import current_build
             from .version_cleanup import run
             try:
-                result = run(launcher_root=launcher_root(), launcher_source=self.source,
+                result = run(launcher_root=launcher_root(), launcher_source=self.source, launcher_build=current_build(),
                              running=[sys.executable] if getattr(sys, 'frozen', False) else [],
                              engine=selected['engine'], comfy_root=selected['root'],
                              engine_source=selected['source'], server_source=server_info(selected['url']).get('source'))

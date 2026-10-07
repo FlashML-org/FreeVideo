@@ -368,6 +368,12 @@ function syncPrompts(reset = false) {
 }
 window.addEventListener('freevideo-media', () => syncPrompts());
 
+// health.js names what failed; files loaded before it queue their reports.
+const health = item => (window.__freevideoHealth ||= []).push(item);
+function showStudio(node) {
+    try { openStudio(node); } catch (error) { console.error('FreeVideo workspace:', error); health({type: 'error', where: 'studio', error}); }
+}
+
 const progressConnection = createProgressConnection(api, message => {
     const node = app.graph?.getNodeById(message.node);
     if (!node?.freevideoShowProgress) return false;
@@ -382,8 +388,13 @@ app.registerExtension({
     name: "FreeVideo.UnifiedMedia",
     beforeConfigureGraph() { configuringGraph = true; },
     async setup() {
-        progressConnection.start(); installNavigation(openStudio); startUpdateChecks();
+        // One failing part must not take the others down; health.js shows what failed.
+        for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio)],
+            ['updates', startUpdateChecks]]) {
+            try { start(); } catch (error) { health({type: 'error', where, error}); }
+        }
         window.addEventListener('pagehide', () => savePromptDraft(api, true));
+        window.FreeVideoUI = {...window.FreeVideoUI, ready: true};
         await notifyCompatibility();
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -436,7 +447,7 @@ app.registerExtension({
                     prompt.inputEl?.addEventListener?.('input', () => rememberPromptDraft(api, node));
                 }
                 resultPanel(this);
-                this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => openStudio(this), {serialize: false});
+                this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => showStudio(this), {serialize: false});
                 const removed = this.onRemoved;
                 this.onRemoved = function (...args) { const value = removed?.apply(this, args); requestAnimationFrame(refreshNavigation); return value; };
                 requestAnimationFrame(refreshNavigation);
@@ -452,7 +463,7 @@ app.registerExtension({
         refreshNavigation();
         if (app.graph?.extra?.freevideo_studio && preferredView() !== 'nodes') {
             const node = app.graph._nodes.find(n => n.comfyClass === 'FreeVideoGenerate' || n.type === 'FreeVideoGenerate');
-            if (node) requestAnimationFrame(() => openStudio(node));
+            if (node) requestAnimationFrame(() => showStudio(node));
         }
     },
     onNodeOutputsUpdated(outputs) {

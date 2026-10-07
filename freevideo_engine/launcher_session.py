@@ -89,6 +89,11 @@ class Session:
         self.model_groups = []
         self.browser_attempted = False
         self.browser_error = ''
+        # What the opened page reported about loading FreeVideo (web/health.js).
+        from .page_check import PageCheck
+        self.page_check = PageCheck()
+        self.browser_opened = None
+        self.page_error = ''
         self.started = None
         self.closing = False
         self.smoke = smoke
@@ -486,6 +491,7 @@ class Session:
             if not open_browser(address):
                 raise OSError('The system did not accept the browser request')
             self.browser_error = ''
+            self.browser_opened = time.monotonic()
         except Exception as error:
             self.browser_error = self.t('ComfyUI is ready. Open the browser again or copy its address.\n',
                                         'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + str(error)
@@ -960,6 +966,7 @@ class Session:
             elif not self.reload_expected or time.monotonic() >= self.browser_wait:
                 self.reload_expected = False
                 self.open_browser()
+        self._tick_page_check(row)
         self._tick_model_upgrade(row, busy)
         sources = self.controller.terminal_sources()
         if sources:
@@ -967,6 +974,16 @@ class Session:
             self.tail.select(selected)
             self.tail.read(final=not self.controller.terminal_running(selected))
         self._tick_updates()
+
+    def _tick_page_check(self, row):
+        """Show a page that failed to load FreeVideo, or never reported, in the failure card."""
+        if row.get('status') != 'open' or self.closing or self.smoke:
+            self.page_check.reset()
+            self.browser_opened, self.page_error = None, ''
+            return
+        address = row['url'].split('/?')[0]
+        self.page_check.poll(address)
+        self.page_error = self.page_check.text(self.t, self.browser_opened, address)
 
     def old_versions_text(self):
         """What the background removal of earlier FreeVideo copies freed this session."""
@@ -985,7 +1002,7 @@ class Session:
         task = row.get('task', {})
         progress = progress_view(task.get('progress') or {}, zh)
         overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
-        errors = [self.error, self.browser_error, row.get('error', ''), *row.get('errors', [])]
+        errors = [self.error, self.browser_error, self.page_error, row.get('error', ''), *row.get('errors', [])]
         shortcut = row.get('shortcut') or {}
         if shortcut.get('status') == 'failed':
             errors.append(shortcut.get('error', ''))

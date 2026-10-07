@@ -8,8 +8,9 @@ ComfyUI, none of these is read again. Removal is limited to copies FreeVideo
 itself wrote:
 
 * updates/<sha256>/ in the launcher folder: the executable that digest names,
-  checked, and interrupted downloads; never the running or approved one, nor
-  one a shortcut, a pinned taskbar item or a Dock item starts;
+  checked, and interrupted downloads; never the running or approved one, a
+  newer one downloaded and waiting to start, nor one a shortcut, a pinned
+  taskbar item or a Dock item starts;
 * source/<version>-<hash>/ in the launcher and installation folders: unmodified
   copies (each file as recorded in launcher-source.json, plus the installation
   binding, compiled bytecode, that version's setup logs and its editable-install
@@ -375,20 +376,38 @@ def shortcut_targets():
     return {path for path in map(resolved, found) if path}
 
 
-def approved_digests(launcher_root):
-    """The approved update and a downloaded one waiting to start."""
+def superseded(candidate, current):
+    """Whether the running launcher is this build or a newer one of the same kind."""
+    if current is None:
+        return False
+    from .launcher_update import manifest, newer
+    try:
+        candidate = manifest(candidate)
+        return candidate['revision'] == current['revision'] or newer(current, candidate)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
+def approved_digests(launcher_root, current=None):
+    """The approved update, and a found one the running launcher would still offer."""
     keep = set()
     updates = Path(launcher_root) / 'updates'
     for name, read in (('active.json', lambda value: value['candidate']), ('available.json', lambda value: value)):
         try:
-            keep.add(str(read(json.loads((updates / name).read_text(encoding='utf-8')))['asset']['sha256']))
+            found = read(json.loads((updates / name).read_text(encoding='utf-8')))
+            digest = str(found['asset']['sha256'])
         except (OSError, ValueError, TypeError, KeyError):
-            pass
+            continue
+        # A reminder of an update older than the running launcher is ignored by
+        # the launcher too; only an unknown or newer one keeps its download.
+        if name == 'available.json' and superseded(found, current):
+            continue
+        keep.add(digest)
     return keep
 
 
-def run(*, launcher_root=None, launcher_source=None, running=(), engine=None, comfy_root=None,
-        engine_source=None, server_source=None, receipt=True):
+def run(*, launcher_root=None, launcher_source=None, launcher_build=None, running=(), engine=None,
+        comfy_root=None, engine_source=None, server_source=None, receipt=True):
     """Remove what the current launcher and installation no longer use; report what was freed."""
     from .locking import runtime_lock
     result = dict(released_bytes=0, removed=[], kept=[])
@@ -408,7 +427,7 @@ def run(*, launcher_root=None, launcher_source=None, running=(), engine=None, co
         result['kept'].append(dict(kind='launcher-copies', reason='shortcuts unreadable'))
     if launcher_root:
         launcher_root = Path(launcher_root).absolute()
-        keep = approved_digests(launcher_root) | {path.parent.name[:64] for path in [*running, *(linked or ())]}
+        keep = approved_digests(launcher_root, launcher_build) | {path.parent.name[:64] for path in [*running, *(linked or ())]}
         for path in downloads(launcher_root / 'updates', launcher_root, keep) if linked is not None else ():
             drop(path, launcher_root, 'launcher-update')
         result['released_bytes'] += finish_retired(launcher_root / 'updates', launcher_root, DIGEST)
