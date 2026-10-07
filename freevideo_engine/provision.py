@@ -354,11 +354,14 @@ def models(plan):
             download_missing()
             if verification is not None:
                 verification.result()
-        except BaseException:
+        except BaseException as error:
             stopped.set()
             model_progress.update(phase='paused')
-            if failures:
-                raise failures[0]
+            # The first worker to fail stops the other, which then raises a
+            # cancellation. Report the failure that stopped preparation.
+            cause = next((f for f in failures if not isinstance(f, CancelledError)), None)
+            if cause is not None and isinstance(error, CancelledError):
+                raise cause
             raise
     # JSON is valid YAML and safely represents spaces and punctuation in paths.
     save(root / 'encoder-paths.yaml', {'freevideo': {'base_path': str(encoder_dir), 'text_encoders': 'text_encoders/'}})

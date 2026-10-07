@@ -58,6 +58,7 @@
 .fv-setup a{color:var(--fv-accent);text-underline-offset:3px}
 .fv-setup .fv-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px}
 .fv-setup .fv-actions.fv-end{justify-content:flex-end}
+.fv-setup .fv-setup-why{margin:8px 0 0;font-size:12.5px;line-height:1.5;text-align:center;text-wrap:balance}
 
 /* Text, plans and measurements. */
 .fv-setup p{margin:8px 0}

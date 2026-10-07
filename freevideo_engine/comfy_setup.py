@@ -245,7 +245,9 @@ class Setup:
         self.logs.mkdir(parents=True, exist_ok=True)
         manifest = self.logs / ('libraries-' + uuid.uuid4().hex + '.json')
         save(manifest, dict(version=1, roots=libraries))
-        arguments = ['setup', '--reuse-models-manifest', str(manifest)]
+        # A download that cannot resume (for example a Xet partial) starts again
+        # instead of pausing every retry; the old partial is set aside.
+        arguments = ['setup', '--reuse-models-manifest', str(manifest), '--allow-model-restart']
         frontend = value.get('frontend')
         if frontend:
             arguments += ['--frontend-root', str(Path(frontend['root']).expanduser().resolve())]

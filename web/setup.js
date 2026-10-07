@@ -129,11 +129,14 @@ export async function openSetup() {
     const install = node("button", t("Install / repair", "安装／修复")); install.disabled = true;
     const cancel = node("button", t("Stop setup", "停止安装")); cancel.disabled = true;
     actions.append(inspect, use, install, cancel); installation.append(actions);
+    // Why Install / repair is unavailable, so it never looks like a broken button.
+    const blocked = note(""); blocked.classList.add("fv-setup-why"); blocked.setAttribute("aria-live", "polite"); blocked.hidden = true;
+    installation.append(blocked);
     dialog.append(heading, installation, downloads, advanced);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
-    let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId;
+    let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, planErrors = false, planStale = false, ready = false;
     const fail = error => { installation.open = true; state.textContent = error.message; state.className = "fv-failure"; state.scrollIntoView({block:'nearest'}); };
     const request = async (action, value) => {
         const response = await api.fetchApi("/freevideo/setup" + (action ? "/" + action : root.value ? '?root='+encodeURIComponent(root.value) : ""), action ? {
@@ -233,19 +236,28 @@ export async function openSetup() {
     const controls = () => {
         for (const e of [root, extra, copy, samplingCaches, inspect, use, hfToken, applyToken, clearToken]) e.disabled = busy;
         cancel.disabled = !busy; install.disabled = busy || !planId || !accept.checked; accept.disabled = busy; inspect.classList.toggle("fv-primary", !planId); install.classList.toggle("fv-primary", Boolean(planId));
+        const why = busy || (ready && !planId) ? "" : planStale ? t("Settings changed. Click Detect & review again to update the plan.", "设置已更改，请重新点击「检测并预览」更新安装计划。")
+            : planErrors ? t("The plan has problems shown in red above. Please resolve them, then click Detect & review again.", "安装计划中有标红的问题，请解决后重新点击「检测并预览」。")
+            : !planId ? t("Click Detect & review first. Install / repair becomes available once the plan is ready.", "请先点击「检测并预览」，生成安装计划后即可安装。")
+            : !accept.checked ? t("Tick the agreement above to enable Install / repair.", "勾选上方的同意选项后，即可点击「安装／修复」。") : "";
+        blocked.textContent = why; blocked.hidden = !why;
     };
-    const invalidate = () => { planId = undefined; accept.checked = false; acceptLabel.hidden = true; controls(); };
+    // A changed setting makes a shown plan outdated: clear it rather than leave it beside a disabled button.
+    const invalidate = (stale = false) => {
+        if (stale && lastPlanId && !busy) { planStale = true; planErrors = false; plan.replaceChildren(); if (!state.classList.contains("fv-failure")) state.textContent = ""; }
+        planId = undefined; accept.checked = false; acceptLabel.hidden = true; controls();
+    };
     async function setToken(value) {
         applyToken.disabled = clearToken.disabled = true;
         try {
             await request('network-token', {hf_token:value}); hfToken.value = '';
-            invalidate(); await poll();
+            invalidate(true); await poll();
         } catch(error) { fail(error); }
         finally { controls(); }
     }
     applyToken.onclick = () => setToken(hfToken.value);
     clearToken.onclick = () => setToken('');
-    for (const e of [root, extra, copy, samplingCaches]) e.oninput = invalidate;
+    for (const e of [root, extra, copy, samplingCaches]) e.oninput = () => invalidate(true);
     accept.onchange = controls;
     function showPlan(value) {
         plan.replaceChildren();
@@ -269,16 +281,18 @@ export async function openSetup() {
         if (value.errors?.length) { const e = node("p", value.errors.join("\n")); e.className = "fv-failure"; plan.append(e); }
     }
     function render(task) {
-        busy = Boolean(task.busy);
+        busy = Boolean(task.busy); ready = Boolean(task.ready) || ready && task.status !== 'failed';
         inputs.hidden = busy; plan.hidden = busy;
         if (task.plan_id && task.plan_id !== lastPlanId) {
-            lastPlanId = task.plan_id; planId = task.plan?.errors?.length ? undefined : task.plan_id;
+            lastPlanId = task.plan_id; planErrors = Boolean(task.plan?.errors?.length); planStale = false;
+            planId = planErrors ? undefined : task.plan_id;
             accept.checked = false; acceptLabel.hidden = !planId; showPlan(task.plan);
+            if (planErrors) plan.querySelector('.fv-failure')?.scrollIntoView({block: 'nearest'});
         }
         acceptLabel.hidden = busy || !planId;
         const p = task.progress || {};
         state.className = task.status === "failed" ? "fv-failure" : task.ready ? "fv-ready" : "";
-        state.textContent = task.error || (task.ready ? t("Ready. Generate with your existing workflow.", "准备就绪，可使用现有工作流生成。") : busy ? p.label || t("Checking configuration and local models…", "正在检查配置和本地模型…") : task.status === "complete" && task.action === "plan" ? t("Review the plan, then install.", "请确认计划后安装。") : task.status === "cancelled" ? t("Stopped. Files retained for resuming.", "已停止，文件保留，可继续安装。") : "");
+        state.textContent = task.error || (task.ready ? t("Ready. Generate with your existing workflow.", "准备就绪，可使用现有工作流生成。") : busy ? p.label || t("Checking configuration and local models…", "正在检查配置和本地模型…") : task.status === "complete" && task.action === "plan" ? (planId ? t("Review the plan, then install.", "请确认计划后安装。") : "") : task.status === "cancelled" ? t("Stopped. Files retained for resuming.", "已停止，文件保留，可继续安装。") : "");
         const phases = task.phase_progress || {}, valid = Number.isFinite(p.total) && p.total > 0 && Number.isFinite(p.done) && p.done >= 0 && p.done <= p.total;
         overall.hidden = !busy;
         overallBar.max = phases.total > 0 ? phases.total : 1; overallBar.value = phases.done || 0;
@@ -308,7 +322,7 @@ export async function openSetup() {
         catch (error) { fail(error); }
     };
     use.onclick = async () => {
-        try { const result = await request("use", {root: root.value}); state.textContent = result.ready ? t("Existing engine connected. Ready to generate.", "已连接现有引擎，可以生成。") : result.detail; state.className = "fv-ready"; invalidate(); }
+        try { const result = await request("use", {root: root.value}); ready = Boolean(result.ready); state.textContent = result.ready ? t("Existing engine connected. Ready to generate.", "已连接现有引擎，可以生成。") : result.detail; state.className = "fv-ready"; invalidate(); }
         catch (error) { fail(error); }
     };
     cancel.onclick = async () => { try { render(await request("cancel")); poll(); } catch (error) { fail(error); } };
@@ -322,6 +336,7 @@ export async function openSetup() {
         // New installations prepare every quality level; a ready one adds them only when chosen.
         samplingCaches.checked = !info.discovery.ready;
         paths.textContent = info.discovery.libraries.join("\n") || t("No model libraries found; add a folder above.", "没有发现模型目录，可在上方添加。");
+        ready = Boolean(info.discovery.ready);
         render(info.task);
         installation.open = !info.discovery.ready || busy;
         if (info.discovery.ready && !busy) state.textContent = t("Ready to generate.", "已就绪，可以开始生成。");
