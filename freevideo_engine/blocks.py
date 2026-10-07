@@ -56,5 +56,6 @@ def install_bounded_blocks(model, residual_offload=False):
         forward = residual_forward(pre, post)
     for block in model.transformer_blocks:
         block.forward = types.MethodType(forward, block)
-        # Both forwards drop the normalized FF input right after the call.
+        # Both forwards drop the normalized attention and FF inputs right after the call.
         block.ff._freevideo_owns_input = True
+        block.attn._freevideo_owns_input = True

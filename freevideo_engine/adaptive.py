@@ -294,14 +294,19 @@ def nonlocal_exhausted(failure):
 # placement left the whole 13-minute request failed. Those branch states scale
 # with frames x heads x head_dim^2, not with tokens, so a smaller canvas does
 # not shrink them, while a smaller head group does.
+#
+# Only the head group moves the peak. Measured on int8 1344x768x243 second
+# passes (0.3.3 code, host outputs): 4 -> 2 heads took the peak from 2.83 to
+# 2.64 GiB, while window_batch 1, ff_chunk 512 and projection_chunk 512 each
+# left it at 2.83 GiB; a smaller window batch also changes the arithmetic.
+# Recovery therefore halves the head group and keeps every other partition.
 COMPUTE_RECOVERY = (
     # Keep attention outputs on the GPU first: host outputs cost 19-36% of
-    # sampling time in the small band. FF and projection slices take the
-    # small-card values.
-    dict(head_chunk=2, ff_chunk=512, projection_chunk=512, window_batch=1, head_parallelism=1),
+    # sampling time in the small band.
+    dict(head_chunk='half', head_parallelism=1),
     # The smallest bounded path: one head at a time, attention outputs in
     # grouped host buffers and the residual stream staged in host memory.
-    dict(head_chunk=1, ff_chunk=512, projection_chunk=512, window_batch=1, head_parallelism=1,
+    dict(head_chunk=1, head_parallelism=1,
          attention_cpu_outputs=True, grouped_attention_outputs=True, residual_offload=True),
 )
 COMPUTE_RECOVERY_KEYS = ('head_chunk', 'ff_chunk', 'projection_chunk', 'window_batch', 'head_parallelism',
@@ -322,6 +327,9 @@ def compute_recovery(engine):
         updates = {}
         for name, target in rung.items():
             current = engine.get(name, COMPUTE_DEFAULTS.get(name))
+            if target == 'half':
+                # Once: a group of 2 or fewer heads goes on to the bounded rung.
+                target = current // 2 if type(current) is int and current >= 4 else current
             if type(target) is bool:
                 if current is not True:
                     updates[name] = True
@@ -332,6 +340,12 @@ def compute_recovery(engine):
     return None
 
 
+# A recovered request that peaked at most this share of its GPU budget had room
+# for the partitions that failed: the failure was transient (other applications,
+# fragmentation), so the next identical request tries the planned partitions.
+REPROBE_PEAK_SHARE = .85
+
+
 def recovered_compute(profile, history, identity, canvas):
     """Start with the compute partitions this machine needed for the same request.
 
@@ -340,6 +354,9 @@ def recovered_compute(profile, history, identity, canvas):
     geometry, so a request that failed once does not fail first every time.
     The partitions only shrink, and only while the budget is not more than
     0.5 GB above the recovered one; every other plan stays exactly as chosen.
+    A recovery whose measured peak left room (REPROBE_PEAK_SHARE) is not kept:
+    the next request tries the planned partitions once more, and only a failure
+    of that retry makes the recovered partitions stick.
     """
     decision = dict(applied=False)
     engine = profile.get('engine') or {}
@@ -368,6 +385,12 @@ def recovered_compute(profile, history, identity, canvas):
                 updates[name] = value
         if not updates:
             return profile, decision
+        peak = (row.get('observation') or {}).get('peak_reserved_bytes')
+        if (type(peak) is int and peak <= REPROBE_PEAK_SHARE * budget * 1e9
+                and not evidence.get('after_reprobe')):
+            return profile, dict(applied=False, reprobe=True, source_attempt=row.get('id'),
+                                 reason='The recovered request peaked at %.2f of its %.2f GB budget; '
+                                        'try the planned partitions again.' % (peak / 1e9, budget))
         value = copy.deepcopy(profile)
         value['engine'].update(updates)
         if isinstance(value.get('policy'), dict):
@@ -600,6 +623,11 @@ def execute_attempts(history, identity, profile, canvas, launch, *,
                 persist()
                 raise
             row['retained'] = archive(index, row)
+            if (decision.get('numerical_class') == 'compute-partition'
+                    and (report.get('recovered_compute') or {}).get('reprobe')):
+                # The planned partitions failed again after a roomy recovery:
+                # this recovery is kept for the identical request from now on.
+                decision['after_reprobe'] = True
             current, evidence = updated, decision
             persist()
             if on_retry is not None:

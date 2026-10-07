@@ -289,17 +289,58 @@ RESIDUAL_ADMISSION_FLOOR = int(6.25 * GiB)
 # Capped at 6.05 GiB, 1344x768x243 with no block ran out of memory in attention
 # at 5.89 GiB allocated (above the 5.14 peak with a 0.85 GiB margin), and the
 # retry at two heads was no faster than outputs in host memory at four (74-84
-# against 78-85 s/step). Windows keeps the FP8-derived choice 0.3.2 made.
-INT8_GPU_OUTPUT_PEAKS = ((55944, 4.08), (72576, 5.14))
+# against 78-85 s/step). So 0.3.3 kept the FP8-derived choice 0.3.2 made on
+# Windows.
+#
+# Since the attention tail writes into the block's own input and the softmax
+# plane borrows that input's storage (head_chunk.py), the same placement holds
+# one sequence buffer less. Second-pass peaks reserved, four heads, no
+# resident block, int8 ConvRot, 2026-10-07:
+#
+#   tokens     PRO 6000 (Linux)    RTX 3090 (Windows, first step included)
+#    55944     3.40 GiB  16.1 s
+#    72576     4.18 GiB  20.0 s     5.71 GiB  61.7 s/step (host outputs 79.0)
+#   107856     5.95 GiB  29.2 s     7.03 GiB  91.9 s/step (host outputs 117)
+#   218280    11.10 GiB  64.6 s     13.47 GiB  232 s/step (host outputs 283)
+#
+# Capped at 6.64 and 6.2 GiB, budgets of 8 GiB cards, the 3090 ran
+# 1344x768x243 at 5.72 GiB reserved and the uncapped 61.6 s/step. On Linux,
+# 1184x672x243 with two resident blocks peaked at 4.20 GiB under the 4.76 GiB
+# budget of a 6 GiB laptop, and 1344x768x243 peaked at 4.18 under 4.55.
+#
+# Windows keeps more reserved than allocated (5.72 allocated at 107856) and
+# changes its local budget at run time: a larger margin, and below the first
+# measured token count the measurement is not extrapolated. There the plan
+# keeps whichever of the two estimates allows the outputs on the card, so no
+# request that 0.3.3 placed on the card moves to host memory.
+#
+# A LoRA branch on an attention projection keeps the full-height tail, so a
+# request with adapters is planned from the anchors measured before it.
+INT8_GPU_OUTPUT_PEAKS = ((55944, 3.4), (72576, 4.18), (107856, 5.95), (218280, 11.1))
+INT8_GPU_OUTPUT_PEAKS_WINDOWS = ((72576, 5.71), (107856, 7.03), (218280, 13.47))
+INT8_GPU_OUTPUT_PEAKS_FULL_TAIL = ((55944, 4.08), (72576, 5.14))
 INT8_GPU_OUTPUT_MARGIN = int(.25 * GiB)
+INT8_GPU_OUTPUT_MARGIN_WINDOWS = int(.5 * GiB)
 
 
-def int8_gpu_output_need(tokens):
-    """Bytes the int8 staging path needs with its attention outputs on the GPU (Linux)."""
-    (low, at_low), (high, at_high) = INT8_GPU_OUTPUT_PEAKS
-    tokens = high if tokens is None else tokens
-    peak = at_high + (at_high - at_low) / (high - low) * (tokens - high)
-    return int(max(at_low, peak) * GiB) + INT8_GPU_OUTPUT_MARGIN
+def int8_gpu_output_need(tokens, windows=False, full_tail=False):
+    """Bytes the int8 staging path needs with its attention outputs on the GPU.
+
+    Windows has no full-tail measurement, so it returns None there: the caller
+    keeps the FP8-derived estimate 0.3.3 used."""
+    if full_tail and windows:
+        return None
+    peaks = (INT8_GPU_OUTPUT_PEAKS_FULL_TAIL if full_tail
+             else INT8_GPU_OUTPUT_PEAKS_WINDOWS if windows else INT8_GPU_OUTPUT_PEAKS)
+    margin = INT8_GPU_OUTPUT_MARGIN_WINDOWS if windows else INT8_GPU_OUTPUT_MARGIN
+    tokens = 72576 if tokens is None else tokens
+    if tokens <= peaks[0][0]:
+        peak = peaks[0][1]
+    else:
+        segment = next(((a, b) for a, b in zip(peaks, peaks[1:]) if tokens <= b[0]), peaks[-2:])
+        (low, at_low), (high, at_high) = segment
+        peak = at_low + (at_high - at_low) / (high - low) * (tokens - low)
+    return int(peak * GiB) + margin
 MIN_GPU_RESERVE_GIB = .2
 
 
@@ -558,6 +599,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         raise ValueError('LoRA root bytes must be a nonnegative integer')
     if stage == 'encoding':
         lora_max_block_bytes = lora_root_bytes = 0
+    lora = bool(lora_max_block_bytes or lora_root_bytes)
     block_bytes = BLOCK_BYTES + lora_max_block_bytes
     # Two transfer slots plus bounded raw-SwiGLU/LoRA workspace. Resident and
     # retained-host blocks below use the enlarged per-block storage as well.
@@ -924,11 +966,11 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             # Int8 staging keeps its outputs on the GPU only where the measured
             # requirement of that placement fits; GPU_ATTENTION_OUTPUT_BYTES
             # was an FP8 surcharge absorbed by that path's larger estimate.
-            # Windows makes the choice 0.3.2 made, from the FP8-derived
-            # estimate, whose stash int8 never uses: the int8 measurement does
-            # not hold there (INT8_GPU_OUTPUT_PEAKS).
-            need = (fp8_residual_need + GPU_ATTENTION_OUTPUT_BYTES if desktop
-                    else int8_gpu_output_need(effective_tokens))
+            # Windows has its own measurement (INT8_GPU_OUTPUT_PEAKS_WINDOWS)
+            # and keeps the FP8-derived estimate wherever that one is lower.
+            need = int8_gpu_output_need(effective_tokens, windows=desktop, full_tail=lora)
+            if desktop:
+                need = min(fp8_residual_need + GPU_ATTENTION_OUTPUT_BYTES, need or float('inf'))
             cpu_outputs = gpu_budget < need
             if not cpu_outputs:
                 reserve = max(reserve, need)
@@ -1029,12 +1071,18 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                     reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor + placement_workspace,
                     gpu_requirement='estimated_working_set', canvas=canvas)
             head = 4
-            cpu_outputs = residual_offload = True
+            residual_offload = True
+            # Staging the residual alone is the placement measured under
+            # Windows (INT8_GPU_OUTPUT_PEAKS_WINDOWS): 1920x1088x362 peaked at
+            # 13.47 GiB reserved, where outputs in host memory pinned another
+            # 6 GiB of RAM for a slower step.
+            gpu_need = int8_gpu_output_need(effective_tokens, windows=True, full_tail=lora) if int8 else None
+            cpu_outputs = gpu_need is None or gpu_budget < gpu_need
             prefetch = False
             # Do not immediately spend the saved activation space on weights.
             # A complete local request can supply measured placement later.
             resident = 0
-            windows_workspace = residual_need
+            windows_workspace = residual_need if cpu_outputs else max(residual_need, gpu_need)
             windows_activation_limited = True
     if capacity_trial:
         head, resident, prefetch = 4, 0, False
@@ -1188,7 +1236,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                      'This is a capacity attempt, not measured proof that this GPU fits.' %
                      (gpu_budget / GiB, residual_floor / GiB))
     if windows_activation_limited:
-        notes.append('The Windows GPU-output activation estimate exceeds the live budget even with zero resident blocks. Start this token count with four-head groups, host attention outputs and one host residual buffer; estimated workspace %.2f GiB. Resolution, duration, steps, weights and attention backend are preserved. This is request-specific, not a persistent compatibility downgrade.' % (windows_workspace / GiB))
+        notes.append('The Windows GPU-output activation estimate exceeds the live budget even with zero resident blocks. Start this token count with four-head groups, %s attention outputs and one host residual buffer; estimated workspace %.2f GiB. Resolution, duration, steps, weights and attention backend are preserved. This is request-specific, not a persistent compatibility downgrade.' % ('host' if cpu_outputs else 'GPU', windows_workspace / GiB))
     elif windows_workspace is not None:
         notes.append('Windows head-8 GPU-output workspace estimate: %.2f GiB for the selected FF storage path, caches and transfer buffers; remaining live budget permits %d resident blocks. Based on complete Windows measurements, not a capacity guarantee. Head/window/FF tile shapes and system reserves are unchanged.' %
                      (windows_workspace / GiB, resident))
