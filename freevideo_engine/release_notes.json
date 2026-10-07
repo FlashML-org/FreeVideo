@@ -1,24 +1,18 @@
 {
   "schema": 1,
-  "product_version": "0.3.6",
+  "product_version": "0.3.7",
   "en": {
-    "summary": "int8 generation keeps more of its work on the graphics card: 8 to 24 GB cards render longer and larger videos faster, and running out of graphics memory once no longer slows later videos.",
+    "summary": "Installation no longer stops with \"Select at most 64 model libraries\" when ComfyUI has many model folders.",
     "changes": [
-      "int8 attention needs 1 to 2.7 GB less graphics memory, with identical results. Videos that used to keep attention in system memory now stay on the card where they fit, for example 1344x768 for 10 s on 8 GB cards, 20 s on 12 GB cards and 1920x1088 on 16 GB cards. Their refinement steps run up to about 1.3x faster on Windows and 2x on Linux.",
-      "Long 1920x1088 videos on 16 GB cards keep attention on the card and stage only the residual stream in system memory, which also leaves about 6 GB more system memory free.",
-      "After running out of graphics memory, the retry only halves the attention head group instead of shrinking every work partition. If the retry had memory to spare, the next video tries the planned settings again.",
-      "On Windows the first pass keeps half a gigabyte below the graphics memory budget, so its weight cache no longer spills into shared memory.",
-      "Offline installation also takes the optional Reference audio pack. Imported with the other packs, it lets audio references work without downloading their tables first."
+      "Fixed installation stopping with \"Select at most 64 model libraries\" when ComfyUI has more than ten model folders. Each folder now counts once, and when more than 64 are found, the first 64 are used and installation continues.",
+      "A saved model folder that has since been deleted, such as a removed offline package folder, is skipped instead of blocking installation or offline import."
     ]
   },
   "zh": {
-    "summary": "int8 生成更多地留在显卡上：8 到 24 GB 显卡能更快地生成更长、更大的视频；偶尔显存不足也不再拖慢之后的视频。",
+    "summary": "修复 ComfyUI 模型目录较多时，安装提示「Select at most 64 model libraries」的问题。",
     "changes": [
-      "int8 注意力少用 1 到 2.7 GB 显存，生成结果完全相同。以前需要把注意力放到内存的视频，现在放得下就留在显卡上，例如 8 GB 显卡的 1344×768 10 秒、12 GB 显卡的 20 秒、16 GB 显卡的 1920×1088。这些视频的精修步骤在 Windows 上最多快约 1.3 倍，在 Linux 上约 2 倍。",
-      "16 GB 显卡生成 1920×1088 长视频时，注意力留在显卡上，只把残差放到内存，内存也多空出约 6 GB。",
-      "显存不足时，重试只把注意力分组减半，不再把所有分块都降到最小；如果重试时显存还有富余，下一个视频会重新使用原来的设置。",
-      "Windows 上第一遍会在显存预算下留出 0.5 GB 余量，权重缓存不再溢出到共享内存。",
-      "离线安装可以一起导入可选的「音频参考缓存」包，用音频做参考时不必再联网下载对应的缓存。"
+      "修复 ComfyUI 模型目录超过十个时，安装停在「Select at most 64 model libraries」的问题。同一个目录现在只计一次；找到的目录超过 64 个时使用前 64 个，安装照常进行。",
+      "已保存的模型文件夹如果已被删除（例如删除了离线包目录），会自动跳过，不再阻止安装或离线导入。"
     ]
   }
 }
