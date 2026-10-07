@@ -152,6 +152,7 @@ def output_summary(report, relative_video):
                 gpu_total_bytes=report.get('profile', {}).get('policy', {}).get('hardware', {}).get('vram_total'),
                 geometry=report.get('geometry', {}),
                 sampling_plan=report.get('sampling_plan'),
+                low_memory=bool(report.get('low_memory_mode')),
                 reference_trims=report.get('encoding', {}).get('reference_trims') or [],
                 preview=bool(report.get('preview')), upscaled_preview=bool(report.get('upscaled_preview')),
                 video=relative_video.as_posix(), report=relative_video.with_suffix(

@@ -125,6 +125,33 @@ def main():
     cli()
 
 
+def suggest_alternatives(error, hardware, options):
+    """Name smaller requests this GPU can run now, when only VRAM refused this one.
+
+    A request with a new prompt is first planned for its text encoder, which
+    already applies the video stage's VRAM floor, so that is where most
+    refusals happen. Suggestions are planned for the video stage either way.
+    """
+    if error.details.get('insufficient') != ['gpu'] or not options.get('canvas'):
+        return
+    from .policy import describe_alternatives, feasible_alternatives
+    try:
+        rows = feasible_alternatives(hardware, options['canvas'],
+                                     **{key: value for key, value in options.items() if key not in ('canvas', 'stage')})
+    except Exception:  # A suggestion is advisory; the refusal stands as planned.
+        return
+    if rows:
+        error.details['alternatives'] = rows
+        error.args = (str(error) + '\n' + describe_alternatives(rows),)
+
+
+def low_memory_mode(engine):
+    """The placements that trade speed for a smaller GPU working set, if this plan uses them."""
+    if engine.get('residual_offload') or engine.get('attention_cpu_outputs'):
+        return dict(staging=bool(engine.get('residual_offload')), host_outputs=bool(engine.get('attention_cpu_outputs')))
+    return None
+
+
 def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environment=None):
     """Plan with idle-cache accounting; reclaim once if it prevents admission."""
     from .hardware import detect
@@ -254,6 +281,7 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             impossible_capacity = any(error.details[name+'_capacity_bytes'] - error.details[name+'_reserve_bytes']
                                       < error.details[name+'_minimum_bytes'] for name in error.details['insufficient'])
             if attempt or impossible_capacity or not state or not environment.get(ENV):
+                suggest_alternatives(error, hardware, options)
                 raise
         print(json.dumps(dict(event='release_idle_cache', stage=stage,
             reason='Cached models prevent next-stage loading; releasing them and measuring again',
@@ -571,6 +599,10 @@ def _run(args):
                 live['engine'].update({k: profile['engine'][k] for k in ('base', 'checkpoint', 'task', 'steps') if k in profile['engine']})
                 profile = live
                 report['profile'] = profile
+                report['low_memory_mode'] = low_memory_mode(profile['engine'])
+                if report['low_memory_mode']:
+                    # Slower than usual but bounded; the panel says so while it runs.
+                    print(json.dumps(dict(event='low_memory_mode', **report['low_memory_mode'])), flush=True)
             from .prediction import predict
             from .prediction_ui import show as show_prediction, errors as prediction_errors
             condition_hash = tuning.digest(condition)

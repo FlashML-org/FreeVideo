@@ -86,9 +86,11 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     recovery.setAttribute('role', 'status');
     const silence = el('div', 'fv-generation-silence'); silence.hidden = true;
     const notice = el('p', 'fv-generation-note fv-generation-notice'); notice.hidden = true;
+    const lowMemory = el('p', 'fv-generation-note fv-generation-memory'); lowMemory.hidden = true;
+    lowMemory.setAttribute('role', 'status');
     notice.setAttribute('role', 'status');
     const trims = new Map();
-    element.append(heading, track, detail, times, silence, recovery, notice, note);
+    element.append(heading, track, detail, times, silence, recovery, lowMemory, notice, note);
     let state = {}, overall = {}, started = 0, sampledAt = 0, overallAt = 0, timer = null;
     let shownFraction = null;
     // The visible percentage counts toward its value with the bar instead of
@@ -278,6 +280,13 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             stopCount(); countShown = null;
             recovery.hidden = true; recovery.textContent = '';
             trims.clear(); notice.hidden = true; notice.textContent = '';
+            lowMemory.hidden = true; lowMemory.textContent = '';
+        }
+        if (message.low_memory && typeof message.low_memory === 'object') {
+            // Stays for the whole request: the slower steps are expected, not a stall.
+            lowMemory.textContent = t('This GPU has little free memory, so this video uses the low-memory mode. It is slower than usual but will finish. A lower resolution or a shorter video runs faster.',
+                '显存较少，本次使用省显存方式生成，会比平时慢，但能完成。降低分辨率或缩短时长会更快。');
+            lowMemory.hidden = false;
         }
         if (message.reference_trimmed && typeof message.reference_trimmed === 'object') {
             const row = message.reference_trimmed;
@@ -369,6 +378,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     function hide() {
         element.hidden = true; recovery.hidden = true; recovery.textContent = '';
         trims.clear(); notice.hidden = true; notice.textContent = '';
+        lowMemory.hidden = true; lowMemory.textContent = '';
         if (timer !== null) clearInterval(timer); timer = null; state = {}; overall = {}; shownFraction = null;
         stopCount(); countShown = null;
     }

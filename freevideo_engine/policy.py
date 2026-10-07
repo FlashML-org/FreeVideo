@@ -268,6 +268,38 @@ RESIDUAL_ACTIVATION_RESERVE = int(6.4 * GiB)
 # rather than an error, and 0.09 GiB of measured margin is not enough to
 # assume it. benchmarks/pro6000-verification/results-pro6000.md.
 RESIDUAL_ADMISSION_FLOOR = int(6.25 * GiB)
+
+# The int8 staging path -- four heads, the residual stream staged, no resident
+# blocks -- measured with the allocator capped on an RTX PRO 6000 (2026-10-07):
+#
+#   1344x768x243, 72576 tokens   outputs on the GPU    5.14 GiB reserved  20.6 s/step
+#                                outputs in host RAM   3.15 GiB           42.0 s/step
+#   1184x672x243, 55944 tokens   outputs on the GPU    4.48 GiB with one resident
+#                                block, at the 4.76 GiB budget of an RTX 3060
+#                                Laptop report (4.08 without the block)
+#
+# Keeping the outputs on the card costs about 2 GiB at 72576 tokens, not the
+# 0.3 GiB surcharge the FP8 path's larger estimate absorbed. Linear in the
+# token count between those anchors, plus a margin.
+#
+# Linux only. On an RTX 3090 under Windows -- no expandable segments, and an
+# Ampere attention path -- the same placement needed far more. Capped at that
+# laptop's 4.76 GiB, 1184x672x243 with one resident block ran out of memory in
+# its second pass and peaked at 4.38 GiB allocated, 4.67 reserved, without it.
+# Capped at 6.05 GiB, 1344x768x243 with no block ran out of memory in attention
+# at 5.89 GiB allocated (above the 5.14 peak with a 0.85 GiB margin), and the
+# retry at two heads was no faster than outputs in host memory at four (74-84
+# against 78-85 s/step). Windows keeps the FP8-derived choice 0.3.2 made.
+INT8_GPU_OUTPUT_PEAKS = ((55944, 4.08), (72576, 5.14))
+INT8_GPU_OUTPUT_MARGIN = int(.25 * GiB)
+
+
+def int8_gpu_output_need(tokens):
+    """Bytes the int8 staging path needs with its attention outputs on the GPU (Linux)."""
+    (low, at_low), (high, at_high) = INT8_GPU_OUTPUT_PEAKS
+    tokens = high if tokens is None else tokens
+    peak = at_high + (at_high - at_low) / (high - low) * (tokens - high)
+    return int(max(at_low, peak) * GiB) + INT8_GPU_OUTPUT_MARGIN
 MIN_GPU_RESERVE_GIB = .2
 
 
@@ -351,6 +383,57 @@ class ResourceBudgetError(ValueError):
         lines.append('Available memory includes validated idle-cache credit, if present. Resolution, frames and steps were not reduced.')
         super().__init__('\n'.join(lines))
 
+
+
+def feasible_alternatives(hardware, canvas, **options):
+    """Smaller requests this machine can plan now, for a refusal to name.
+
+    The longest video at the requested size, and the requested length at the
+    largest of the panel's smaller pixel targets that fits; each one admitted
+    by this same planner, never estimated separately.
+    """
+    from .geometry import geometry
+    keep = {key: canvas[key] for key in ('task', 'steps', 'reference_video_tokens', 'reference_audio_tokens')
+            if key in canvas}
+
+    def fits(width, height, frames):
+        try:
+            choose(hardware, **dict(options, canvas=dict(geometry(width, height, frames=frames), **keep)))
+            return True
+        except (ResourceBudgetError, ValueError):
+            return False
+
+    width, height, frames = canvas['width'], canvas['height'], canvas['frames']
+    result = []
+    lengths = [n for n in range(39, frames, 17)]
+    low, high, best = 0, len(lengths) - 1, None
+    while low <= high:
+        middle = (low + high) // 2
+        if fits(width, height, lengths[middle]):
+            best, low = lengths[middle], middle + 1
+        else:
+            high = middle - 1
+    if best is not None:
+        result.append(dict(kind='shorter', width=width, height=height, frames=best, seconds=round(best / 24, 1)))
+    ratio = width / height
+    for megapixels in (.75, .5):
+        area = megapixels * 1024 * 1024
+        smaller_width = max(256, int(round((area * ratio) ** .5 / 32)) * 32)
+        smaller_height = max(256, int(round((area / ratio) ** .5 / 32)) * 32)
+        if smaller_width * smaller_height >= width * height:
+            continue
+        if fits(smaller_width, smaller_height, frames):
+            result.append(dict(kind='smaller', width=smaller_width, height=smaller_height, frames=frames,
+                               seconds=round(frames / 24, 1)))
+            break
+    return result
+
+
+def describe_alternatives(rows):
+    """One parseable line for logs, reports and the error panel."""
+    return 'Fits now: ' + '; '.join('%dx%d %s %.1f s' % (row['width'], row['height'],
+                                     'up to' if row['kind'] == 'shorter' else 'at', row['seconds'])
+                                     for row in rows) + '.'
 
 
 def memory_fraction(budget_bytes, total_bytes):
@@ -538,9 +621,18 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # Keep the decoder's fixed workspace funded; neither weights nor its
     # temporal tile shrink in proportion to the number of output frames.
     fixed_workspace = decoder_workspace(canvas)
-    residual_need = max(fixed_workspace, RESIDUAL_ACTIVATION_RESERVE + small_adjustment)
+    # The staging estimate was measured on per-tensor FP8, whose FF keeps every
+    # SwiGLU row for one scale (1.94 GiB at 72576 tokens). Int8 rows carry their
+    # own scales and stash nothing. At 1344x768x243 on int8, with a 4.70 GiB
+    # allocator cap (a 6 GiB RTX 3060 Laptop's budget), this path -- four heads,
+    # attention outputs in host memory, the residual stream staged -- completed
+    # the second pass at a 3.15 GiB reserved peak and decoded at 3.01, where the
+    # FP8-derived 6.4 GiB estimate refused the laptop outright.
+    stash = effective_tokens * FF_STASH_WIDTH * 2 if int8 and effective_tokens else 0
+    fp8_residual_need = max(fixed_workspace, RESIDUAL_ACTIVATION_RESERVE + small_adjustment)
+    residual_need = max(fixed_workspace, RESIDUAL_ACTIVATION_RESERVE + small_adjustment - stash)
     residual_floor = (residual_need if desktop else
-                      max(fixed_workspace, RESIDUAL_ADMISSION_FLOOR + small_adjustment))
+                      max(fixed_workspace, RESIDUAL_ADMISSION_FLOOR + small_adjustment - stash))
     # Preserve the reference-canvas trial boundary while allowing smaller
     # requests to reach their geometry-aware placement below 5 GiB.
     gpu_minimum = max(fixed_workspace, min(5 * GiB, residual_floor))
@@ -828,9 +920,22 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # a good price for a fifth to a third of the sampling time. When the
         # budget cannot cover them the host buffer stays, which is what the
         # 9 GiB/1344x768x345 corner needs.
-        cpu_outputs = not no_weights and gpu_budget < reserve + GPU_ATTENTION_OUTPUT_BYTES
-        if not cpu_outputs:
-            reserve += GPU_ATTENTION_OUTPUT_BYTES
+        if int8 and residual_offload and not no_weights:
+            # Int8 staging keeps its outputs on the GPU only where the measured
+            # requirement of that placement fits; GPU_ATTENTION_OUTPUT_BYTES
+            # was an FP8 surcharge absorbed by that path's larger estimate.
+            # Windows makes the choice 0.3.2 made, from the FP8-derived
+            # estimate, whose stash int8 never uses: the int8 measurement does
+            # not hold there (INT8_GPU_OUTPUT_PEAKS).
+            need = (fp8_residual_need + GPU_ATTENTION_OUTPUT_BYTES if desktop
+                    else int8_gpu_output_need(effective_tokens))
+            cpu_outputs = gpu_budget < need
+            if not cpu_outputs:
+                reserve = max(reserve, need)
+        else:
+            cpu_outputs = not no_weights and gpu_budget < reserve + GPU_ATTENTION_OUTPUT_BYTES
+            if not cpu_outputs:
+                reserve += GPU_ATTENTION_OUTPUT_BYTES
         # Outputs in host memory means the budget could not cover them on the
         # card, which is exactly the regime the PRO 6000 run measured: there,
         # not staging cost 0.95 GiB of peak and died in the first sampling
@@ -849,6 +954,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # weights ran no slower than block 5 on pinned weights. It still
         # relieves host RAM, so the leftover goes to it rather than staying idle.
         resident = max(0, min(RESIDENT_VRAM_CEILING, int((gpu_budget - reserve) / block_bytes)))
+        if desktop and int8 and residual_offload:
+            # Except int8 staging on Windows, where that leftover is what absorbs
+            # fragmentation and a desktop budget that can shrink mid-run. On an
+            # RTX 3090 capped at 4.76 GiB, 1184x672x243 with outputs in host
+            # memory and two blocks peaked at 4.39 GiB allocated, 4.61 reserved,
+            # after two allocator retries; 1344x768x243 without blocks, 3.88 and
+            # 4.52 with none. Every 0.3.2 Windows staging plan held no blocks.
+            resident = 0
     if not small:
         # One measured requirement for the group in use, so the block count is
         # continuous across the band edges rather than restarting at each.

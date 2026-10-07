@@ -331,16 +331,10 @@ class Engine:
                         raise ValueError('FP8 FF chunks require the official inference kernels')
                     self.device_backend.install_chunked_ff(block.ff, ff_chunk, recompute=fp8_ff_recompute)
                     continue
+                from .blocks import chunked_ff
                 original = block.ff.forward
                 block.ff._freevideo_unchunked_forward = original
-
-                def chunked(ff, hidden, *args, original=original, **kwargs):
-                    output = torch.empty_like(hidden)
-                    for start in range(0, hidden.shape[-2], ff_chunk):
-                        output[..., start:start + ff_chunk, :] = original(hidden[..., start:start + ff_chunk, :], *args, **kwargs)
-                    return output
-
-                block.ff.forward = types.MethodType(chunked, block.ff)
+                block.ff.forward = types.MethodType(chunked_ff(original, ff_chunk), block.ff)
         if projection_chunk:
             from .packing import install_streamed_forward
             install_streamed_forward(model, projection_chunk, residual_offload=residual_offload)

@@ -41,16 +41,10 @@ def configuration(engine, selected):
                 # Ampere keeps its existing weight-only arithmetic. Replace
                 # the outer row tiling without nesting the old tiling wrapper.
                 import types
-                import torch
-                chunk = values['ff_chunk']
+                from .blocks import chunked_ff
                 for block in model.transformer_blocks:
-                    original = block.ff._freevideo_unchunked_forward
-                    def forward(self, hidden, *args, original=original, **kwargs):
-                        output = torch.empty_like(hidden)
-                        for start in range(0, hidden.shape[-2], chunk):
-                            output[..., start:start + chunk, :] = original(hidden[..., start:start + chunk, :], *args, **kwargs)
-                        return output
-                    block.ff.forward = types.MethodType(forward, block.ff)
+                    block.ff.forward = types.MethodType(chunked_ff(block.ff._freevideo_unchunked_forward,
+                                                                   values['ff_chunk']), block.ff)
         if changed.intersection(('projection_chunk', 'residual_offload')):
             from .packing import install_streamed_forward
             from .blocks import install_bounded_blocks

@@ -153,10 +153,22 @@ export function failureAdvice(value, t) {
         return row('validation', ['Check the workflow inputs', '请检查工作流输入'],
             ['ComfyUI rejected the workflow before generation. The affected nodes and reasons are listed below.', 'ComfyUI 在生成开始前拒绝了工作流，相关节点和具体原因列在下方。'],
             ['Check the named inputs, connections and model choices. Copy the details or export the error report when asking for help.', '检查下方指出的输入、节点连接和模型选项；反馈时可复制详情或导出错误报告。']);
-    if (/FreeVideo resource planning could not admit/i.test(text))
+    if (/FreeVideo resource planning could not admit/i.test(text)) {
+        // The planner names smaller requests it admitted on this GPU just now.
+        const fits = [...(/Fits now: ([^\n]+?)\.?(?:\n|$)/.exec(text)?.[1] || '').matchAll(/(\d+)x(\d+) (up to|at) ([\d.]+) s/g)]
+            .map(([, width, height, kind, seconds]) => ({width, height, longest: kind === 'up to', seconds: Number(seconds)}));
+        if (fits.length) {
+            const en = fits.map(f => f.longest ? `${f.width} × ${f.height} up to ${f.seconds.toFixed(1)} s` : `${f.width} × ${f.height} at ${f.seconds.toFixed(1)} s`).join(', or ');
+            const zh = fits.map(f => f.longest ? `${f.width}×${f.height} 最长 ${f.seconds.toFixed(1)} 秒` : `${f.width}×${f.height} 生成 ${f.seconds.toFixed(1)} 秒`).join('，或 ');
+            return row('resources', ['This video is too large for the free GPU memory', '这段视频超出了当前可用显存'],
+                ['Resource planning could not fit this request within the GPU memory available right now.', '资源规划发现这段视频超出了当前可用的显存。'],
+                [`This computer can make ${en} right now. Change the duration or total pixels and generate again; closing other programs that use the GPU also frees memory.`,
+                 `这台电脑现在可以生成：${zh}。改一下时长或总像素后再生成即可；关闭其他占用显卡的程序也能腾出显存。`]);
+        }
         return row('resources', ['The request exceeds available memory', '当前任务的可用内存不足'],
             ['Resource planning could not fit this request within the available GPU or system memory.', '资源规划发现当前任务超出了可用显存或系统内存预算。'],
             ['Close other memory-heavy applications, or select a lower resolution or shorter duration and retry. The details show which memory budget was insufficient.', '关闭其他占用内存的程序，或自行调低分辨率、缩短时长后重试。下方详情会指出不足的内存类型和差额。']);
+    }
     if (/commit headroom exhausted|paging file is too small|WinError 1455/i.test(text))
         return row('commit', ['Windows memory allocation limit reached', 'Windows 内存提交额度不足'],
             ['Windows cannot back another memory allocation, even if physical RAM is still available.', 'Windows 已没有足够的提交额度；这与物理 RAM 是否还有空闲是两回事。'],
