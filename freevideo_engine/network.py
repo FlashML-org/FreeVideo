@@ -662,8 +662,8 @@ def pause_download(network, name, path, retained, reason, *, details=None):
             details['file'], details['observed_bytes'], details['allowed_bytes'], details['expected_model_bytes'])
     raise RuntimeError('Model download paused: %s (%s). Temporary files retained. '
         '%s'
-        'Retry setup to continue the same source. If resume is unavailable, enable '
-        '"Allow restarting incomplete downloads" or --allow-model-restart to permit a fresh download.' %
+        'Retry setup to continue the same source. If resume is unavailable, run setup '
+        'with --allow-model-restart to download the file again from the start.' %
         (Path(path).name, reason, explanation))
 
 

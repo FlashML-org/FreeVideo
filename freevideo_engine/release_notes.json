@@ -1,18 +1,20 @@
 {
   "schema": 1,
-  "product_version": "0.3.7",
+  "product_version": "0.3.8",
   "en": {
-    "summary": "Installation no longer stops with \"Select at most 64 model libraries\" when ComfyUI has many model folders.",
+    "summary": "Downloads that cannot resume now start again by themselves, and the ComfyUI setup panel explains why Install / repair is unavailable.",
     "changes": [
-      "Fixed installation stopping with \"Select at most 64 model libraries\" when ComfyUI has more than ten model folders. Each folder now counts once, and when more than 64 are found, the first 64 are used and installation continues.",
-      "A saved model folder that has since been deleted, such as a removed offline package folder, is skipped instead of blocking installation or offline import."
+      "When an interrupted model download cannot be resumed, installation now downloads that file again from the start instead of stopping at every retry. The incomplete copy is kept aside.",
+      "If model preparation stops, the message now names the file and the reason instead of a generic \"preparation stopped\".",
+      "In the ComfyUI setup panel, a short note under the buttons explains why Install / repair is unavailable: run Detect & review, tick the agreement, or resolve the problems shown in the plan. Changing a setting clears the outdated plan."
     ]
   },
   "zh": {
-    "summary": "修复 ComfyUI 模型目录较多时，安装提示「Select at most 64 model libraries」的问题。",
+    "summary": "无法续传的下载会自动从头重新下载；ComfyUI 内的安装面板会说明「安装／修复」暂不可用的原因。",
     "changes": [
-      "修复 ComfyUI 模型目录超过十个时，安装停在「Select at most 64 model libraries」的问题。同一个目录现在只计一次；找到的目录超过 64 个时使用前 64 个，安装照常进行。",
-      "已保存的模型文件夹如果已被删除（例如删除了离线包目录），会自动跳过，不再阻止安装或离线导入。"
+      "模型下载中断且无法续传时，安装会自动从头重新下载该文件，不再每次重试都停下；未完成的文件会另行保留。",
+      "模型准备停止时，提示会写明具体的文件和原因，而不是笼统的「准备已停止」。",
+      "ComfyUI 内的安装面板会在按钮下方说明「安装／修复」暂不可用的原因：需要先「检测并预览」、勾选同意，或先解决计划中标红的问题；修改设置后会清除过期的计划。"
     ]
   }
 }
