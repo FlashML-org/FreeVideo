@@ -5,7 +5,8 @@ import { openSetup } from './setup.js';
 import { wordmark } from './branding.js';
 import { createGenerationProgress, referenceTrimText } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
-import { createUpdateNotice, createVersionInfo } from './updates.js';
+import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
+import { reportIssue, reportTipClosed, showReportTip } from './report_issue.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
@@ -420,6 +421,22 @@ export function openStudio(node) {
     progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
     cleanup.push(createPreviewScene(stage, progress.element, stageMedia));
+    // The report card under the result: 'invite' after a watched video,
+    // 'downloaded' once the user saved the report themselves.
+    function reportCard(mode, animate = true) {
+        const bar = links.querySelector('.fv-actions'), anchor = bar?.querySelector('.fv-action-report');
+        if (disposed || !anchor) return;
+        showReportTip(bar, anchor, t, {mode, animate, onHide: () => { reportTipFor = null; },
+            submit: () => reportIssue(progress.fetchReport, productVersion(), {save: mode === 'invite'})});
+    }
+    async function downloadReport() { await progress.downloadReport(); reportCard('downloaded'); }
+    function placeReportTip(delay) {
+        clearTimeout(reportTipTimer);
+        reportTipTimer = setTimeout(() => {
+            // A card already on screen is redrawn in place, without opening again.
+            if (!reportTipClosed() && result?.video === reportTipFor) reportCard('invite', delay > 0);
+        }, delay);
+    }
     let revealTimer = null;
     function hideProgress() {
         clearTimeout(revealTimer); revealTimer = null;
@@ -456,6 +473,7 @@ export function openStudio(node) {
     const previewObserver = new ResizeObserver(fitPreview);
     previewObserver.observe(previewSpace); cleanup.push(() => previewObserver.disconnect());
     function showProgress(message) {
+        watchedRun = true; reportTipFor = null; clearTimeout(reportTipTimer);
         reuseRow.hidden = true;
         stats.hidden = true;
         budget.textContent = '';
@@ -494,6 +512,9 @@ export function openStudio(node) {
     output.append(el('div', null, 'fv-preview-end'));
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
+    // A run this window watched. Its result can arrive before or after the
+    // final progress message, and more than once; the tip stays with that video.
+    let reportTipTimer = null, watchedRun = false, reportTipFor = null;
     function showResult(r) {
         if (!r?.video || disposed) return; result = r;
         refreshEffortEstimate(true);
@@ -518,8 +539,15 @@ export function openStudio(node) {
             : (Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '');
         // One report entry: the diagnostic export joins the report menu once a result exists.
         progress.report.dataset.covered = 'true';
-        links.replaceChildren(resultActions(r, t, {diagnostic: progress.hasReport() ? progress.downloadReport : null,
+        const reported = progress.hasReport();
+        const tipShowing = !!links.querySelector('.fv-report-tip:not(.fv-report-tip-leaving)');
+        links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    secondPass: r.preview ? secondPass(r) : null}));
+        // After a video finished just now, point at the report menu until the
+        // user closes the tip once, whichever version they first saw it in.
+        if (watchedRun && reported && !r.preview && !r.result_cache_hit && !reportTipClosed()) reportTipFor = r.video;
+        watchedRun = false;
+        if (reportTipFor && reportTipFor === r.video) placeReportTip(tipShowing ? 0 : 650);
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
         if (!progress.element.hidden) {
             progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});

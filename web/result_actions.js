@@ -97,13 +97,13 @@ function deleteAction(t, remove) {
     return menu;
 }
 
-// Download the video first; share and the reports follow, one entry each.
-// A first-pass preview leads with `secondPass` instead, and saved creations end
-// with `remove`. `diagnostic` is an async callback for the redacted support
-// report, when one exists.
+// Download the video first; share and the report follow. A first-pass preview
+// leads with `secondPass` instead, and saved creations end with `remove`.
+// `diagnostic` downloads the redacted report (and may offer to send it); a
+// result without one shows no report entry, because the full generation
+// record keeps local paths and is not meant to be shared.
 export function resultActions(record, t, {diagnostic = null, secondPass = null, remove = null} = {}) {
     const bar = document.createElement('div'); bar.className = 'fv-actions';
-    const finish = () => { if (remove) bar.append(deleteAction(t, remove)); return bar; };
     if (secondPass) bar.append(secondPassAction(t, secondPass));
     if (record.video) {
         const download = action('a', t('Download video', '下载视频'), 'download', secondPass ? 'fv-action-secondary' : 'fv-action-primary');
@@ -115,46 +115,20 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     const label = document.createElement('span'); label.textContent = share.textContent;
     share.replaceChildren(icon('share'), label);
     bar.append(share);
-    const recordLink = record.report ? outputDownloadURL(api, record.report) : null;
-    if (!diagnostic) {
-        if (recordLink) {
-            const report = action('a', t('Report', '报告'), 'report', 'fv-action-secondary');
-            report.href = recordLink; report.download = record.report.split('/').pop(); report.title = t('Generation record (JSON)', '生成记录（JSON）');
-            bar.append(report);
-        }
-        return finish();
+    if (diagnostic) {
+        const reportLabel = t('Diagnostic report', '诊断报告');
+        const report = action('button', reportLabel, 'report', 'fv-action-secondary fv-action-report');
+        report.title = t('Redacted diagnostic report: hardware, settings and timings', '已脱敏的诊断报告：硬件、设置和耗时');
+        const text = report.lastElementChild;
+        report.onclick = async () => {
+            if (report.disabled) return;
+            report.disabled = true; text.textContent = t('Preparing…', '正在整理…');
+            try { await diagnostic(); text.textContent = reportLabel; }
+            catch { text.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试'); }
+            finally { report.disabled = false; }
+        };
+        bar.append(report);
     }
-    const menu = document.createElement('details'); menu.className = 'fv-action-menu';
-    const summary = document.createElement('summary'); summary.className = 'fv-action fv-action-secondary';
-    const text = document.createElement('span'); text.textContent = t('Report', '报告');
-    summary.append(icon('report'), text, icon('chevron'));
-    const list = document.createElement('div'); list.className = 'fv-menu';
-    const item = (tag, title, hint) => {
-        const e = document.createElement(tag); e.className = 'fv-menu-item';
-        const strong = document.createElement('strong'); strong.textContent = title;
-        const small = document.createElement('small'); small.textContent = hint;
-        e.append(strong, small);
-        return e;
-    };
-    const supportLabel = t('Diagnostic report', '诊断报告');
-    const support = item('button', supportLabel, t('Redacted, for problem reports', '已脱敏，可用于反馈问题')); support.type = 'button';
-    const supportTitle = support.querySelector('strong');
-    support.onclick = async () => {
-        if (support.disabled) return;
-        support.disabled = true; supportTitle.textContent = t('Preparing…', '正在整理…');
-        try { await diagnostic(); supportTitle.textContent = supportLabel; menu.open = false; }
-        catch { supportTitle.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试'); }
-        finally { support.disabled = false; }
-    };
-    list.append(support);
-    if (recordLink) {
-        const full = item('a', t('Generation record', '生成记录'), t('Every setting of this run (JSON)', '本次生成的完整参数（JSON）'));
-        full.href = recordLink; full.download = record.report.split('/').pop();
-        full.onclick = () => { menu.open = false; };
-        list.append(full);
-    }
-    menu.append(summary, list);
-    popover(menu, summary, () => { if (!support.disabled) supportTitle.textContent = supportLabel; });
-    bar.append(menu);
-    return finish();
+    if (remove) bar.append(deleteAction(t, remove));
+    return bar;
 }

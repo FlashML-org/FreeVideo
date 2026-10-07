@@ -29,5 +29,37 @@
 .fv-actions .fv-confirm-actions .fv-action{height:34px;min-height:34px;padding:0 14px}
 .fv-actions .fv-action-danger{border-color:transparent;background:var(--fv-danger-subtle,#30212a);color:var(--fv-danger,#f09aa2)}
 .fv-actions .fv-action-danger:hover{border-color:color-mix(in srgb,var(--fv-danger,#f09aa2) 45%,transparent);background:var(--fv-danger-subtle,#30212a);color:var(--fv-danger,#f09aa2)}
+/* The report card: its own row under the action bar, never over the video. Script
+   opens and closes the row by height, so the picture above eases instead of jumping. */
+.fv-result-links>.fv-report-tip{flex:1 0 100%;box-sizing:border-box;padding-top:6px;overflow:hidden;container-type:inline-size}
+.fv-result-links>.fv-report-tip .fv-report-tip-card{position:relative;display:flex;align-items:center;gap:14px;box-sizing:border-box;padding:12px 12px 12px 14px;border:1px solid color-mix(in srgb,var(--fv-accent,#6db8fa) 28%,var(--fv-border,#2a3443));border-radius:14px;background:color-mix(in srgb,var(--fv-accent,#6db8fa) 8%,var(--fv-card,#1a222e));box-shadow:inset 0 1px 0 #ffffff0a;color:var(--fv-ink,#eee);font:13px/1.55 var(--fv-font,system-ui);text-align:left}
+.fv-result-links>.fv-report-tip .fv-report-tip-card::before{content:'';position:absolute;top:-6px;left:calc(var(--fv-tip-notch,50%) - 5px);width:10px;height:10px;box-sizing:border-box;border:solid color-mix(in srgb,var(--fv-accent,#6db8fa) 28%,var(--fv-border,#2a3443));border-width:1px 0 0 1px;border-radius:2px 0 0 0;background:color-mix(in srgb,var(--fv-accent,#6db8fa) 8%,var(--fv-card,#1a222e));transform:rotate(45deg)}
+.fv-result-links>.fv-report-tip .fv-report-tip-glyph,.fv-result-links>.fv-report-tip .fv-report-tip-lock{display:inline-flex;flex:none}
+.fv-result-links>.fv-report-tip .fv-report-tip-glyph svg,.fv-result-links>.fv-report-tip .fv-report-tip-lock svg{width:100%;height:100%}
+.fv-result-links>.fv-report-tip .fv-report-tip-mark{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:linear-gradient(150deg,color-mix(in srgb,var(--fv-accent,#6db8fa) 30%,transparent),color-mix(in srgb,var(--fv-accent,#6db8fa) 10%,transparent));color:var(--fv-accent,#6db8fa);transition:background .2s,color .2s}
+.fv-result-links>.fv-report-tip .fv-report-tip-mark .fv-report-tip-glyph{width:18px;height:18px}
+.fv-result-links>.fv-report-tip.fv-report-tip-sent .fv-report-tip-mark{background:linear-gradient(150deg,color-mix(in srgb,var(--fv-success,#76d9b3) 30%,transparent),color-mix(in srgb,var(--fv-success,#76d9b3) 10%,transparent));color:var(--fv-success,#76d9b3)}
+.fv-result-links>.fv-report-tip .fv-report-tip-text{flex:1;min-width:0;display:grid;gap:2px}
+/* Chinese breaks at its punctuation when it can; two lines come out even. */
+.fv-result-links>.fv-report-tip .fv-report-tip-title,.fv-result-links>.fv-report-tip .fv-report-tip-lead,.fv-result-links>.fv-report-tip .fv-report-tip-note{text-wrap:balance;word-break:keep-all;overflow-wrap:anywhere}
+.fv-result-links>.fv-report-tip .fv-report-tip-title{font-size:13.5px;font-weight:600;line-height:1.45;color:var(--fv-ink,#eee)}
+.fv-result-links>.fv-report-tip .fv-report-tip-lead{margin:0;font-size:13px;line-height:1.55;color:color-mix(in srgb,var(--fv-ink,#eee) 86%,var(--fv-muted,#a5b3c6))}
+.fv-result-links>.fv-report-tip .fv-report-tip-note{display:flex;align-items:flex-start;gap:5px;margin-top:2px;font-size:12px;line-height:1.45;color:var(--fv-muted,#a5b3c6)}
+.fv-result-links>.fv-report-tip .fv-report-tip-lock{width:12px;height:12px;margin-top:2.5px;opacity:.85}
+.fv-result-links>.fv-report-tip .fv-report-tip-note a{display:inline;height:auto;min-height:0;margin:0;padding:0;border:0;background:none;box-shadow:none;color:var(--fv-accent,#6db8fa);font:inherit;text-decoration:none}
+.fv-result-links>.fv-report-tip .fv-report-tip-note a:hover{text-decoration:underline}
+.fv-result-links>.fv-report-tip .fv-report-tip-actions{flex:none;gap:6px}
+.fv-result-links>.fv-report-tip .fv-report-tip-actions .fv-action{height:34px;min-height:34px;padding:0 14px;gap:6px}
+.fv-result-links>.fv-report-tip .fv-report-tip-actions .fv-action .fv-report-tip-glyph{width:13px;height:13px;opacity:.85}
+.fv-result-links>.fv-report-tip .fv-report-tip-close{flex:none;display:grid;place-items:center;width:30px;height:30px;margin:0;padding:0;border:0;border-radius:9px;background:none;color:var(--fv-muted,#a5b3c6);cursor:pointer;box-shadow:none}
+.fv-result-links>.fv-report-tip .fv-report-tip-close:hover{background:color-mix(in srgb,var(--fv-ink,#eee) 8%,transparent);color:var(--fv-ink,#eee)}
+.fv-result-links>.fv-report-tip .fv-report-tip-close:focus-visible{outline:2px solid color-mix(in srgb,var(--fv-accent,#6db8fa) 70%,transparent);outline-offset:1px}
+.fv-result-links>.fv-report-tip .fv-report-tip-close .fv-report-tip-glyph{width:14px;height:14px}
+/* While the invitation shows, a dot on the Diagnostic report button ties the two together. */
+.fv-actions .fv-action-report{position:relative}
+.fv-actions .fv-action-report.fv-report-attention::after{content:'';position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--fv-accent,#6db8fa);box-shadow:0 0 0 2px var(--fv-bg,#111720)}
+/* A narrow card keeps the text on full-width lines and moves the button below it. */
+@container (max-width:640px){.fv-result-links>.fv-report-tip .fv-report-tip-card{flex-wrap:wrap;align-items:flex-start;padding-right:40px}.fv-result-links>.fv-report-tip .fv-report-tip-text{flex:1 1 calc(100% - 50px)}.fv-result-links>.fv-report-tip .fv-report-tip-actions{margin-left:50px}.fv-result-links>.fv-report-tip .fv-report-tip-close{position:absolute;top:8px;right:8px}}
+@media(prefers-reduced-motion:reduce){.fv-result-links>.fv-report-tip .fv-report-tip-mark{transition:none}}
 @keyframes fv-menu-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.fv-actions *{transition:none!important;animation:none!important}}
