@@ -55,7 +55,9 @@ def discover_libraries(folder_paths, environ=None):
                 existing.append(str(path))
         except (OSError, RuntimeError):
             pass
-    return library_roots(existing)
+    # A folder registered under several model types is listed once; finding
+    # more than 64 folders keeps the first 64 rather than failing setup.
+    return library_roots(list(dict.fromkeys(existing)), keep_first=True)
 
 
 # The calibration encodes this once and every variant reads it, so the
@@ -236,7 +238,10 @@ class Setup:
         extra = value.get('extra_libraries', [])
         if not isinstance(extra, list) or not isinstance(value.get('copy', False), bool):
             raise ValueError('Invalid setup choices')
-        libraries = library_roots(discover_libraries(self.folder_paths) + extra)
+        # Folders the user chose are validated and kept first; folders found
+        # automatically fill the remaining places.
+        chosen = library_roots(extra)
+        libraries = library_roots(chosen + discover_libraries(self.folder_paths), keep_first=True)
         self.logs.mkdir(parents=True, exist_ok=True)
         manifest = self.logs / ('libraries-' + uuid.uuid4().hex + '.json')
         save(manifest, dict(version=1, roots=libraries))

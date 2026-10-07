@@ -184,7 +184,9 @@ class Session:
 
     def add_folder(self, folder):
         from .local_models import library_roots
-        self.edit('model_dirs', library_roots(self.form['model_dirs'] + [folder]))
+        # Saved folders that were deleted since are dropped instead of blocking the new one.
+        kept = [p for p in self.form['model_dirs'] if Path(p).expanduser().is_dir()]
+        self.edit('model_dirs', library_roots(kept + [folder]))
 
     def remove_folder(self, index):
         removed = self.form['model_dirs'][index]

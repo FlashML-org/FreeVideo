@@ -12,12 +12,18 @@ BLOCK = 4 * 2**20
 MAX_ENTRIES = 200_000
 MAX_CANDIDATES = 2048
 MAX_ROOTS = 64
+MAX_LISTED = 4096  # Paths accepted before duplicates and nested folders are merged.
 
 
-def library_roots(values):
-    """Normalize explicitly selected libraries without walking entire drives."""
-    if not isinstance(values, list) or len(values) > MAX_ROOTS:
-        raise ValueError('Select at most 64 model libraries')
+def library_roots(values, *, keep_first=False):
+    """Normalize selected libraries without walking entire drives.
+
+    The 64-library limit counts distinct folders: a folder named twice, or one
+    inside another listed folder, counts once. With keep_first, a list found
+    automatically keeps its first 64 folders instead of failing.
+    """
+    if not isinstance(values, list) or len(values) > MAX_LISTED:
+        raise ValueError('Invalid model library list')
     roots = []
     for value in values:
         if not isinstance(value, str) or not value.strip() or len(value) > 4096:
@@ -29,7 +35,12 @@ def library_roots(values):
             roots.append(path)
     # Explicit symlink/junction roots are resolved above. Internal directory
     # links are still skipped by files(); never follow an arbitrary graph.
-    return [str(path) for path in roots if not any(parent in roots for parent in path.parents)]
+    roots = [path for path in roots if not any(parent in roots for parent in path.parents)]
+    if len(roots) > MAX_ROOTS:
+        if not keep_first:
+            raise ValueError('Select at most 64 model libraries')
+        roots = roots[:MAX_ROOTS]
+    return [str(path) for path in roots]
 
 
 def scan_many(directories, rows, *, prior=None, callback=None):
