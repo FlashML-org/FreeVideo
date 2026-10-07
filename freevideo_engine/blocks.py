@@ -8,6 +8,25 @@ def _post_into_branch(residual, gate, indices, branch):
     return branch
 
 
+def chunked_ff(original, chunk):
+    """Run a row-wise FF over tiles of `chunk` rows.
+
+    Each tile's output may replace that tile's input once it is computed. The
+    bounded blocks own their normalized FF input and drop it right after the
+    call, so for them the output goes back into it instead of into a full-size
+    buffer allocated for every block. On Windows, without expandable segments,
+    that allocation is where staging ran out of memory: an RTX 5060 at
+    1344x768x362 asked for 1.12 GiB with 1.06 GiB free in pieces, and an RTX
+    3090 capped at a 6 GiB laptop's 4.76 GiB asked for 0.57 with 0.60 free.
+    """
+    def forward(ff, hidden, *args, **kwargs):
+        output = hidden if getattr(ff, '_freevideo_owns_input', False) else torch.empty_like(hidden)
+        for start in range(0, hidden.shape[-2], chunk):
+            output[..., start:start + chunk, :] = original(hidden[..., start:start + chunk, :], *args, **kwargs)
+        return output
+    return forward
+
+
 def install_bounded_blocks(model, residual_offload=False):
     from src.models.ops.fused_block import _compiled, _pre_ref
     pre = _compiled('pre', _pre_ref)
@@ -37,3 +56,5 @@ def install_bounded_blocks(model, residual_offload=False):
         forward = residual_forward(pre, post)
     for block in model.transformer_blocks:
         block.forward = types.MethodType(forward, block)
+        # Both forwards drop the normalized FF input right after the call.
+        block.ff._freevideo_owns_input = True

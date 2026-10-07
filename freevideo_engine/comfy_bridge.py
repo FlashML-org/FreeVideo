@@ -386,6 +386,9 @@ def progress_message(event):
                     uniform_remaining_steps=False)
     if name == 'preview_mismatch':
         return dict(label='The preview no longer matches; sampling its first pass again', stage='preview_mismatch')
+    if name == 'low_memory_mode':
+        return dict(label='Low-memory mode for this GPU', timing_phase='load',
+                    low_memory=dict(staging=bool(event.get('staging')), host_outputs=bool(event.get('host_outputs'))))
     if name == 'latent_upscale':
         done, total = event.get('completed_steps', 8), event.get('total', 10)
         return dict(label='Upscaling before the second pass', phase='sampling', stage='latent_upscale',

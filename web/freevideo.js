@@ -335,6 +335,7 @@ function resultPanel(node) {
         }
         panel.append(stats, links, progress.report);
         for (const row of value.reference_trims || []) panel.append(el("div", referenceTrimText(row, text), "fv-note fv-trim-note"));
+        if (value.low_memory && !value.result_cache_hit) panel.append(el("div", text('This video used the low-memory mode for this GPU, so it took longer than usual. A lower resolution or a shorter video runs faster.', '这段视频使用了省显存方式，所以比平时慢。降低分辨率或缩短时长会更快。'), "fv-note"));
         warn();
         panel.title = (unified
             ? text("Unified memory: device capacity. Process RAM is not total GPU memory, ", "统一内存为设备总量；进程内存不代表 GPU 内存总占用，")

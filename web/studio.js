@@ -487,7 +487,8 @@ export function openStudio(node) {
         try { await node.freevideoUpscaleResult(saved); await syncQueue(); }
         catch (error) { status.dataset.error = 'true'; status.textContent = error.message; throw error; }
     };
-    output.append(status, reuseRow, trimNote, links, stats, budget, progress.report, prewarm);
+    const memoryNote = el('div', t('This video used the low-memory mode for this GPU, so it took longer than usual. A lower resolution or a shorter video runs faster.', '这段视频使用了省显存方式，所以比平时慢。降低分辨率或缩短时长会更快。'), 'fv-note'); memoryNote.hidden = true;
+    output.append(status, reuseRow, trimNote, memoryNote, links, stats, budget, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     // With the picture, the result's actions and numbers form one block, centred below the header.
     output.append(el('div', null, 'fv-preview-end'));
@@ -506,6 +507,7 @@ export function openStudio(node) {
         reuseRow.hidden = !r.result_cache_hit;
         const trims = Array.isArray(r.reference_trims) ? r.reference_trims : [];
         trimNote.textContent = trims.map(row => referenceTrimText(row, t)).join('\n'); trimNote.hidden = !trims.length;
+        memoryNote.hidden = !r.low_memory || !!r.result_cache_hit;
         regenerate.disabled = false; regenerate.textContent = t('Regenerate', '重新生成');
         const unified = r.memory_model === 'unified';
         metricLabels[2].textContent = unified ? t('Unified memory', '统一内存总量') : t('VRAM peak', '显存峰值');

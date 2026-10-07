@@ -42,7 +42,7 @@ def inside(root, name):
 
 def manifest(root):
     value = json.loads((Path(root) / 'portable.json').read_text(encoding='utf-8'))
-    if value.get('schema_version') != 1 or value.get('variant') not in ('rowwise', 'per_tensor'):
+    if value.get('schema_version') != 1 or value.get('variant') not in ('rowwise', 'per_tensor', 'int8_convrot'):
         raise ValueError('Invalid FreeVideo portable bundle')
     seen = set()
     for row in value['files']:
@@ -118,9 +118,14 @@ def environment(root, value, environ=None):
 
 def configuration(root, value, hardware):
     root = Path(root).resolve()
-    expected = 'per_tensor' if hardware.capability[0] >= 10 else 'rowwise'
-    if hardware.capability < (8, 0) or value['variant'] != expected:
-        raise ValueError('This GPU needs the %s bundle; this archive contains %s. No models were downloaded or changed.' % (expected, value['variant']))
+    from .prepared_model import preferred_format
+    # The GPU's own FP8 granularity, and int8 where it is the faster format.
+    allowed = {'per_tensor' if hardware.capability[0] >= 10 else 'rowwise'}
+    if preferred_format(hardware) == 'int8_convrot':
+        allowed.add('int8_convrot')
+    if hardware.capability < (8, 0) or value['variant'] not in allowed:
+        raise ValueError('This GPU needs the %s bundle; this archive contains %s. No models were downloaded or changed.'
+                         % (' or '.join(sorted(allowed)), value['variant']))
     from . import __version__
     spec = json.loads((Path(__file__).with_name('dependencies.json')).read_text(encoding='utf-8'))
     models = inside(root, value['model_root'])
@@ -131,6 +136,7 @@ def configuration(root, value, hardware):
         model_root=str(models), encoder_model_root=str(inside(root, value['encoder_root'])),
         base=str(models/'h3-base'), checkpoint=str(models/'stage-dmd-step-250'),
         cache=str(inside(root, value['cache'])), encoder=spec['models']['encoder_file'].split('/')[-1],
+        prepared_format='int8_convrot' if value['variant'] == 'int8_convrot' else 'fp8',
         model_paths=str(root/'engine/encoder-paths.yaml'), kernel_capabilities=str(root/'engine/kernel-capabilities.json'),
         gpu_uuid=hardware.gpu_uuid, gpu_name=hardware.gpu_name, model_revision=spec['models']['vdn_revision'],
         vram_gib=None, ram_gib=None, ready=False, portable=True,
@@ -154,8 +160,13 @@ def initialize(root, progress=lambda **kw: None):
             'base_path': machine['encoder_model_root'], 'text_encoders': 'text_encoders/'}})
         # Reuse only this device/driver/runtime's local kernel receipt. No
         # foreign ready machine.json or precompiled GPU cache ships in a ZIP.
-        from .kernel_capabilities import available_backends
+        from .kernel_capabilities import available_backends, readiness, receipt_path
         available_backends(hardware)
+        if machine['prepared_format'] == 'int8_convrot':
+            rows = json.loads(receipt_path().read_text(encoding='utf-8')).get('kernel_probes', [])
+            if not readiness(rows).get('int8_ready'):
+                raise ValueError('The int8 model needs int8 GPU kernels, and they did not pass on this GPU. '
+                                 'No models were changed. Details: ' + str(receipt_path()))
         machine['ready'] = True
         save(root/'engine/machine.json', machine)
         save(root/'engine/prepared-cache.json', dict(cache=machine['cache'],
