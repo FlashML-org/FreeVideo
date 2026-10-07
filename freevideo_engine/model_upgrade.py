@@ -70,17 +70,7 @@ def offer(root):
         # For example an int8 download this GPU then failed to run.
         return unused(root, catalog, current) or dict(status='unavailable', reason=reason, receipt=stamp)
     selection = select(hardware.capability, root, scale_granularity=TARGET)
-    directory = Path(selection['directory'])
-    rows = files(selection)
-    present = 0
-    for row in rows:
-        path = directory / row['file']
-        try:
-            if path.is_file() and path.stat().st_size == row['bytes']:
-                present += row['bytes']
-        except OSError:
-            pass
-    download = sum(row['bytes'] for row in rows) - present
+    download = setup_download(root, machine, selection)
     fused = variant_cleanup.fused_lora_variants(root, catalog, current)
     release = 0 if fused else variant_cleanup.retire(root, catalog, current)['bytes']
     free = shutil.disk_usage(root).free
@@ -88,6 +78,43 @@ def offer(root):
                 architecture=hardware.architecture, gpu=hardware.gpu_name, current=current,
                 download_bytes=download, release_bytes=release, free_bytes=free,
                 required_bytes=download + MARGIN, lora_variants=fused, int8_checked=checked)
+
+
+def setup_download(root, machine, selection):
+    """Bytes the int8 setup run will download, counted as bootstrap.plan counts them.
+
+    Besides the int8 model, setup installs every model file the installation
+    lacks: for example the latent upscaler and the sampling tables, which an
+    engine update never installs, so older installations fetch them here too.
+    """
+    from .bootstrap import PACKAGE, model_target
+    from .install_tuning import required_models
+    from .prepared_model import files
+    from .sampling_assets import install_files
+    rows = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), selection)
+    rows += files(selection)
+    prior = {}
+    if machine.get('setup_run'):
+        try:
+            prior = json.loads((Path(machine['setup_run']) / 'plan.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            prior = {}
+    # The same choice setup makes without --sampling-caches: the previous
+    # setup's, otherwise none for an installation that is already ready.
+    everything = prior['sampling_caches'] if isinstance(prior.get('sampling_caches'), bool) else not machine.get('ready')
+    rows += install_files(bool(everything))
+    model_dir = Path(machine.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
+    encoder_dir = Path(machine.get('encoder_model_root') or prior.get('encoder_dir')
+                       or root / 'models' / 'encoder').expanduser().resolve()
+    present = 0
+    for row in rows:
+        try:
+            path = model_target(row, model_dir, encoder_dir, selection['directory'])
+            if path.is_file() and path.stat().st_size == row['bytes']:
+                present += row['bytes']
+        except (OSError, ValueError):
+            pass
+    return sum(row['bytes'] for row in rows) - present
 
 
 def kernel_receipt(root):
@@ -203,9 +230,15 @@ class ModelUpgrade:
                 if value.get('prepared_format') != TARGET or not value.get('prepared_model'):
                     raise ValueError('The setup plan does not move this installation to int8.')
                 # Nothing beyond what the user agreed to: the approval receipt
-                # makes the run refuse a larger download or a changed model.
-                if value['model_download_bytes'] > offered['download_bytes'] + 64 * (1 << 20):
-                    raise ValueError('The download is larger than shown; check again.')
+                # makes the run refuse a larger download or a changed model. A
+                # larger plan is shown on the card and confirmed again first.
+                planned_bytes = value['model_download_bytes']
+                if planned_bytes > offered['download_bytes'] + 64 * (1 << 20):
+                    free = shutil.disk_usage(root).free
+                    self.state = dict(offered, status='available' if free >= planned_bytes + MARGIN else 'low-disk',
+                                      download_bytes=planned_bytes, required_bytes=planned_bytes + MARGIN,
+                                      free_bytes=free, resized=True)
+                    return
                 receipt = root / 'launcher' / 'model-upgrade-plan.json'
                 save(receipt, value)
                 fetched = self._run(runner, events, 'setup', root,

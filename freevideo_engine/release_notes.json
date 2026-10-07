@@ -1,22 +1,16 @@
 {
   "schema": 1,
-  "product_version": "0.3.0",
+  "product_version": "0.3.1",
   "en": {
-    "summary": "A faster int8 model for GeForce and RTX 30-series cards with a one-click upgrade, and optional prompt enhancement.",
+    "summary": "Fixes the int8 upgrade on older installations.",
     "changes": [
-      "GeForce RTX 40/50-series and RTX 30-series cards use a faster int8 model, closer to the original quality.",
-      "Optional prompt enhancement in the creation panel: a local model rewrites your prompt for MiniMax H3, and you choose the original or the enhanced version. It is off by default and asks before downloading its model (8.3 GiB).",
-      "Faster generation on 8 GB cards.",
-      "Failed installations and updates can be retried in place, and download caches can be cleaned from Settings."
+      "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through."
     ]
   },
   "zh": {
-    "summary": "GeForce 和 RTX 30 系显卡改用更快的 int8 模型，老用户一键升级；新增可选的提示词增强。",
+    "summary": "修复较早安装的用户无法升级到 int8 模型的问题。",
     "changes": [
-      "GeForce RTX 40/50 系和 RTX 30 系显卡换用更快的 int8 模型，画质也更接近原版。",
-      "创作面板新增可选的提示词增强：用本地模型把提示词改写成适合 MiniMax H3 的写法，原文和改写版可任选其一生成。默认关闭，首次使用会先询问再下载模型（8.3 GiB）。",
-      "8 GB 显卡生成更快。",
-      "安装或更新失败可直接重试，设置中可以清理下载缓存。"
+      "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。"
     ]
   }
 }
