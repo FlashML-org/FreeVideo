@@ -51,6 +51,12 @@ def main():
                     bank = ModelBank()
                 import torch
                 torch.set_grad_enabled(False)
+                # The fused block kernels are compiled with dynamic=False, and their row
+                # count includes the prompt's tokens: a two-pass request with a new prompt
+                # adds two graphs to each. Past dynamo's default limit of 8 they run eager
+                # for new shapes; on an L4 the second-pass pre and post kernels then took
+                # 3-4x as long and held 0.8-1.2 GiB more. 64 keeps ~30 prompts compiled.
+                torch._dynamo.config.recompile_limit = max(torch._dynamo.config.recompile_limit, 64)
                 if diagnostics is not None:
                     diagnostics.stage('worker_cuda_setup')
                 # An explicit benchmark cap belongs to its request. A cached
