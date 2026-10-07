@@ -14,6 +14,7 @@ import { attachReferencePicker, referenceItems, syncReferencePrompt } from './pr
 import { createSamplingEffort } from './sampling_effort.js';
 import { resultActions, previewBadge } from './result_actions.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
+import { rememberPromptDraft } from './prompt_draft.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -150,8 +151,15 @@ export function openStudio(node) {
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };
     syncReferencePrompt(node, t);
-    const prompt = el('textarea'); prompt.value = value(node, 'text') || ''; prompt.placeholder = t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
-    prompt.disabled = linked(node, 'text'); prompt.oninput = () => set(node, 'text', prompt.value);
+    // An untouched node shows its starter prompt as a placeholder and generates it.
+    // Once something was typed, an emptied box stays empty and asks for a scene.
+    const starter = node.freevideoStarterPrompt || '';
+    const untouched = () => Boolean(starter) && value(node, 'text') === starter;
+    const shown = text => starter && text === starter ? '' : String(text || '');
+    const prompt = el('textarea'); prompt.value = shown(value(node, 'text')); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
+    const placeholder = () => { prompt.placeholder = untouched() ? starter : t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); };
+    placeholder();
+    prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
     const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
     const references = attachReferencePicker(prompt, {items: () => referenceItems(node), t, view, host: dialog,
         addMedia: () => { mediaDetails.open = true; mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
@@ -159,15 +167,16 @@ export function openStudio(node) {
     mention.title = t('Reference media (@)', '引用素材（@）'); mention.setAttribute('aria-label', mention.title);
     mention.disabled = prompt.disabled; mention.onpointerdown = e => e.preventDefault(); promptEditor.append(mention);
     cleanup.push(() => references.dispose());
-    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t,
+    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter,
         onReport: row => { node.freevideoReportId = row.report_id; progress.updateReport(row); },
-        setText: text => set(node, 'text', text), context: () => {
+        onChange: () => rememberPromptDraft(api, node),
+        setText: text => { set(node, 'text', text || (untouched() ? starter : '')); placeholder(); }, context: () => {
         const items = referenceItems(node);
         if (linked(node, 'conditioning') || items.some(row => !row.file || row.kind !== 'image')) throw new Error('unsupported_media');
         return {seconds: Number(value(node, 'seconds')), media: items.map(row => ({file: row.file, role: row.role || 'reference'}))};
     }});
     cleanup.push(() => enhancer.dispose());
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== value(node, 'text')) prompt.value = value(node, 'text') || ''; references.refresh(); enhancer.sync(); } };
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); placeholder(); references.refresh(); enhancer.sync(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
     const promptSection = section(t('Describe your scene', '描述画面'));
@@ -667,7 +676,7 @@ export function openStudio(node) {
         const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
         if (editing && editing !== generate) { editing.blur(); editing.focus({preventScroll: true}); }
         if ([...dialog.querySelectorAll('input:not(:disabled)')].some(e => !e.reportValidity())) return;
-        if (!prompt.disabled && !prompt.value.trim()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (!prompt.disabled && !prompt.value.trim() && !untouched()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         try {

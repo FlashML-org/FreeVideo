@@ -7,8 +7,14 @@ export class PromptVersions {
         if (this.text() !== text) this.edit(text);
     }
     text() { return this.value[this.value.selected]; }
-    edit(text) {
+    // Clearing or replacing all of the enhanced text starts a new scene rather than
+    // a tweak of the rewrite, so a later rewrite starts from it, not the old original.
+    edit(text, restart = false) {
         this.value.edits = (this.value.edits || 0) + 1;
+        if (restart && this.value.selected === 'rewritten') {
+            Object.assign(this.value, {original: text, rewritten: '', selected: 'original', context: '', useOriginal: false});
+            return;
+        }
         this.value[this.value.selected] = text;
         if (this.value.selected === 'original') this.value.context = '';
     }
@@ -22,8 +28,12 @@ export class PromptVersions {
     select(name) { if (name === 'original' || this.value.rewritten) { this.value.selected = name; this.value.useOriginal = name === 'original'; } }
 }
 
-export function createPromptEnhancer({node, input, editor, api, context, setText, t, onReport = () => {}}) {
-    const versions = new PromptVersions(node.properties?.freevideo_prompt_versions, input.value);
+// An empty box is never rewritten, the untouched starter prompt included:
+// enhancement waits for the user's own scene.
+export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', onReport = () => {}, onChange = () => {}}) {
+    const saved = node.properties?.freevideo_prompt_versions;
+    // Drafts saved before the starter became a placeholder hold it as the original.
+    const versions = new PromptVersions(starter && saved?.original === starter ? {...saved, original: ''} : saved, input.value);
     const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
     const element = el('div', null, 'fv-enhance');
     const bar = el('div', null, 'fv-enhance-bar'), label = el('label', null, 'fv-enhance-toggle');
@@ -63,9 +73,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const actions = el('div', null, 'fv-enhance-install-actions'); actions.append(agree, decline, license);
     install.append(detail, actions);
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
-    let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false;
+    let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
     const errorText = error => ({
         busy: t('Finish the current queue before enhancing this prompt.', '请等待当前队列完成后再改写。'),
+        prompt_required: t('Type a prompt first; enhancement rewrites it before generating.', '请先输入提示词，生成前会自动改写。'),
         setup_required: t('Complete FreeVideo installation first.', '请先完成 FreeVideo 安装。'),
         model_missing: t('Download the optional model to enable enhancement.', '下载可选模型后即可启用。'),
         download_failed: t('Download paused. Retry to resume.', '下载已暂停，重试即可继续。'),
@@ -82,10 +93,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         cancelled: t('Cancelled. Your original prompt is retained.', '已取消，原文已保留。'),
         worker_cleanup_failed: t('The rewrite process could not close. Restart FreeVideo before generating.', '改写进程未能退出，请重启 FreeVideo 后再生成。'),
     }[error?.message] || t('Could not enhance the prompt. Retry or switch enhancement off to use the original.', '暂时无法改写，请重试，或关闭增强使用原文。'));
-    function save() {
+    function save(changed = true) {
         node.properties ||= {};
         node.properties.freevideo_prompt_versions = {...versions.value};
         node.graph?.change();
+        if (changed) onChange();
     }
     function render() {
         toggle.checked = Boolean(versions.value.enabled);
@@ -102,7 +114,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         element.dataset.enabled = String(Boolean(versions.value.enabled));
     }
     function apply() { input.value = versions.text(); setText(input.value); save(); render(); }
-    function changed() { versions.edit(input.value); save(); render(); }
+    function changed() {
+        if (waiting) { waiting = false; show(''); }
+        versions.edit(input.value, replacing || !input.value.trim()); replacing = false; save(); render();
+    }
+    const replace = () => { replacing = input.value.length > 0 && input.selectionStart === 0 && input.selectionEnd === input.value.length; };
+    input.addEventListener('beforeinput', replace);
     input.addEventListener('input', changed);
     async function post(action, body) {
         const reply = await api.fetchApi('/freevideo/prompt-vlm/' + action, {method: 'POST',
@@ -146,6 +163,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     }
     async function enhance() {
         if (running) return running;
+        if (!versions.value.original.trim()) {
+            waiting = true; show(errorText({message: 'prompt_required'}), 'note'); input.focus();
+            throw new Error('prompt_required');
+        }
         const execute = async () => {
             cancelling = false;
             versions.value.useOriginal = false;
@@ -186,16 +207,18 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         else { versions.value.useOriginal = false; save(); render(); enhance().catch(() => {}); }
     };
     redo.onclick = () => enhance().catch(() => {});
-    show(''); save(); render();
+    show(''); save(false); render();
     return {element, async beforeGenerate() {
         if (running) {
             try { await running; }
             catch (error) { if (versions.value.enabled && !versions.value.useOriginal) return false; }
         }
-        if (!versions.value.enabled || versions.value.useOriginal) return;
+        // An untouched box generates the starter prompt as it is.
+        if (!versions.value.enabled || versions.value.useOriginal || !versions.value.original.trim()) return;
         try { if (!versions.fresh(context())) await enhance(); }
         catch (error) { show(errorText(error), error?.message === 'cancelled' ? '' : 'error'); return false; }
     }, sync() { if (input.value !== versions.text()) changed(); }, dispose() {
         disposed = true; cancelJob().catch(() => {}); input.removeEventListener('input', changed);
+        input.removeEventListener('beforeinput', replace);
     }};
 }

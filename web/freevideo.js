@@ -10,6 +10,7 @@ import { installNavigation, refreshNavigation, preferredView } from './view_navi
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
+import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
 import { regenerateResult, upscaleResult } from './studio_queue.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -379,7 +380,11 @@ const progressConnection = createProgressConnection(api, message => {
 app.registerExtension({
     name: "FreeVideo.UnifiedMedia",
     beforeConfigureGraph() { configuringGraph = true; },
-    async setup() { progressConnection.start(); installNavigation(openStudio); startUpdateChecks(); await notifyCompatibility(); },
+    async setup() {
+        progressConnection.start(); installNavigation(openStudio); startUpdateChecks();
+        window.addEventListener('pagehide', () => savePromptDraft(api, true));
+        await notifyCompatibility();
+    },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === 'FreeVideoReference') {
             const connected = nodeType.prototype.onConnectionsChange;
@@ -387,6 +392,7 @@ app.registerExtension({
             return;
         }
         if (!["FreeVideoMedia", "FreeVideoGenerate", "FreeVideoLoRAStack"].includes(nodeData.name)) return;
+        if (nodeData.name === "FreeVideoGenerate") nodeType.prototype.freevideoStarterPrompt = nodeData.input?.required?.text?.[1]?.default || '';
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = created?.apply(this, arguments);
@@ -420,6 +426,13 @@ app.registerExtension({
                         steps.tooltip = text('Changing sampling steps may reduce generation quality. Defaults: 8 + 3. Other second-pass counts must be fewer than first-pass steps.',
                             '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步；其他二采步数需小于一采步数。');
                     }
+                }
+                const prompt = this.widgets?.find(w => w.name === 'text');
+                if (prompt) {
+                    // Every edit, in the creation panel or on the node, is the draft the launcher reopens.
+                    const node = this, callback = prompt.callback;
+                    prompt.callback = function (...args) { if (!configuringGraph) rememberPromptDraft(api, node); return callback?.apply(this, args); };
+                    prompt.inputEl?.addEventListener?.('input', () => rememberPromptDraft(api, node));
                 }
                 resultPanel(this);
                 this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => openStudio(this), {serialize: false});
