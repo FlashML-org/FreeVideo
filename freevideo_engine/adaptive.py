@@ -621,6 +621,11 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     from .system import memory_complete, memory_peak
     from .validation import _retained_array_header, finite_number
     expected = canvas['frames']
+    preview = metrics.get('preview') is True
+    if preview:
+        # A preview decodes its first pass at the planned smaller canvas.
+        first = (metrics.get('sampling_plan') or {}).get('first') or {}
+        canvas = dict(canvas, width=first.get('width'), height=first.get('height'))
     if (metrics.get('success') is not True or metrics.get('phase') != 'complete'
             or metrics.get('finite_latents') is not True or metrics.get('frames') != expected
             or any(metrics.get('geometry', {}).get(k) != canvas[k] for k in ('width','height','frames','fps'))):
@@ -629,6 +634,8 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     times = metrics.get('step_seconds', [])
     from .two_pass import steps as sampling_steps, same_strategy
     total_steps = sampling_steps(metrics.get('sampling_plan'))
+    if preview:
+        total_steps = metrics['sampling_plan']['base_steps']
     if (type(steps) is not int or steps != canvas.get('steps', 8) or len(times) != total_steps
             or not same_strategy(metrics, canvas) or not all(finite_number(t) and t > 0 for t in times)):
         raise ValueError('A probe or incomplete sample cannot become a resource observation.')
@@ -652,6 +659,10 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
         # The output is validated, but these observations cover only a decoder
         # retry. Do not teach placement/ETA that a full request cost this little
         # time or occupied only the decoder's memory.
+        return None
+    if preview or metrics.get('first_pass_source') == 'preview':
+        # A preview stops after its first pass, and its upscale reuses that pass
+        # from an earlier request. Neither costs what a whole request costs.
         return None
     ram, gpu = telemetry.get('ram', {}), telemetry.get('gpu', {})
     counts = (ram.get('ram_observation_samples'), gpu.get('samples'))

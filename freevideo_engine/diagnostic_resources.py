@@ -119,6 +119,8 @@ def encoder_prewarm(value):
     for key in ('gpu_preload', 'worker_released', 'receipt_available'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
+    if value.get('purpose') in ('encoder', 'upscale'):
+        result['purpose'] = value['purpose']
     return result
 
 

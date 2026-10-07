@@ -1,6 +1,6 @@
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
-import { resultActions } from './result_actions.js';
+import { resultActions, previewBadge } from './result_actions.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -54,7 +54,8 @@ async function workflowBackfill(collection, t) {
     actions.append(run, later);
 }
 
-export function openLibrary(t) {
+// ``upscale`` queues the second pass of a first-pass preview (the studio's node).
+export function openLibrary(t, {upscale = null} = {}) {
     if (opened?.open) { opened.focus(); return; }
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     dialog.setAttribute('aria-label', t('Your creations', '我的作品'));
@@ -81,7 +82,8 @@ export function openLibrary(t) {
     stats.setAttribute('aria-label', t('Generation statistics', '生成统计'));
     const budget = el('div', '', 'fv-budget');
     const links = el('div', null, 'fv-result-links');
-    detail.append(all, frame, caption, links, stats, budget);
+    const notice = el('p', '', 'fv-library-message fv-library-notice'); notice.setAttribute('role', 'status');
+    detail.append(all, frame, caption, links, notice, stats, budget);
     body.append(collection, detail); dialog.append(header, body);
     let disposed = false, loading = false, next = null, selected = null, player = null, arrivals = [];
     const rows = new Map(), cards = new Map();
@@ -94,7 +96,9 @@ export function openLibrary(t) {
     };
     const dimensions = row => {
         const g = row.geometry || {}, parts = [];
-        if (g.width && g.height) parts.push(`${g.width} × ${g.height}`);
+        // A preview's file is its first pass; geometry names the finished size.
+        const shown = row.preview && row.preview_geometry?.width ? row.preview_geometry : g;
+        if (shown.width && shown.height) parts.push(`${shown.width} × ${shown.height}`);
         const duration = g.seconds || (g.frames && g.frames / (g.fps || 24));
         if (duration) parts.push(`${Number(duration).toFixed(1)} s`);
         return parts.join(' · ');
@@ -103,20 +107,33 @@ export function openLibrary(t) {
         if (!player) return;
         player.pause(); player.removeAttribute('src'); player.load(); player = null;
     }
+    function mountPlayer(row) {
+        releasePlayer(); frame.replaceChildren();
+        player = el('video'); player.controls = true; player.preload = 'metadata'; player.playsInline = true;
+        player.src = view(row.video);
+        // The picture's own box, so a preview's badge sits on its corner.
+        const media = el('div', null, 'fv-library-media');
+        const g = row.geometry || {};
+        if (g.width > 0 && g.height > 0) frame.style.setProperty('--fv-ratio', String(g.width / g.height));
+        media.append(player);
+        if (row.preview) media.append(previewBadge(row, t));
+        frame.append(media);
+        player.addEventListener('error', () => {
+            if (!disposed && selected === row.video) {
+                const note = el('p', t('This video is unavailable. Refresh if it was moved.', '视频暂时无法打开，若文件已移动请刷新。'), 'fv-library-message');
+                frame.replaceChildren(note);
+            }
+        }, {once: true});
+    }
     function select(row, reveal = true) {
         if (selected !== row.video) {
-            releasePlayer(); frame.replaceChildren();
             selected = row.video;
-            player = el('video'); player.controls = true; player.preload = 'metadata'; player.playsInline = true;
-            player.src = view(row.video); frame.append(player);
-            player.addEventListener('error', () => {
-                if (!disposed && selected === row.video) {
-                    const note = el('p', t('This video is unavailable. Refresh if it was moved.', '视频暂时无法打开，若文件已移动请刷新。'), 'fv-library-message');
-                    frame.replaceChildren(note);
-                }
-            }, {once: true});
+            mountPlayer(row);
             date.textContent = timestamp(row); geometry.textContent = dimensions(row);
-            links.replaceChildren(resultActions(row, t));
+            links.replaceChildren(resultActions(row, t, {
+                secondPass: row.preview && upscale ? () => secondPass(row) : null,
+                remove: () => remove(row)}));
+            notice.textContent = '';
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
         }
         // These are the saved generation's measurements, including when the
@@ -133,10 +150,50 @@ export function openLibrary(t) {
             const item = el('div', null, 'fv-stat');
             item.append(el('strong', number(value, scale, unit)), el('span', label)); stats.append(item);
         }
-        stats.hidden = ![row.sample_seconds, row.request_seconds, row.vram_peak_bytes, row.ram_peak_bytes].some(measured);
-        budget.textContent = measured(row.gpu_budget_bytes)
+        // A preview's timings describe only its first pass; they stay in its report.
+        stats.hidden = row.preview || ![row.sample_seconds, row.request_seconds, row.vram_peak_bytes, row.ram_peak_bytes].some(measured);
+        budget.textContent = !row.preview && measured(row.gpu_budget_bytes)
             ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
         if (reveal) dialog.dataset.detail = 'true';
+    }
+    async function secondPass(row) {
+        notice.textContent = '';
+        try {
+            await upscale(row);
+            notice.textContent = t('Queued. The finished video appears here when the second pass is done.', '已加入队列，二采完成后成片会出现在作品里。');
+        } catch (error) {
+            notice.textContent = t('Could not start the second pass: ', '无法开始二采：') + error.message;
+            throw error;
+        }
+    }
+    // Throws a readable Error for the confirmation to show; on success the
+    // creation leaves the collection.
+    async function remove(row) {
+        // Windows keeps a streamed video open; release it before deleting.
+        if (selected === row.video) releasePlayer();
+        let value = {};
+        try {
+            const response = await api.fetchApi('/freevideo/library/delete', {method: 'POST',
+                headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: row.id})});
+            value = await response.json().catch(() => ({}));
+            if (!response.ok || !value.deleted) throw new Error(value.reason || 'failed');
+        } catch (error) {
+            if (!disposed && selected === row.video) mountPlayer(row);
+            throw new Error(error.message === 'foreign-files'
+                ? t('Not deleted: the folder also holds files FreeVideo did not write: ', '未删除：文件夹里还有不是 FreeVideo 生成的文件：') + (value.kept || []).join(', ')
+                : error.message === 'in-use' ? t('Not deleted: its second pass is running, or the video is still open. Try again in a moment.', '未删除：正在用它跑二采，或视频仍被占用，请稍后再试。')
+                : t('Could not delete this creation.', '无法删除这条作品。'));
+        }
+        if (disposed) return;
+        rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video);
+        if (selected === row.video) {
+            selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
+            stats.hidden = true; stats.replaceChildren(); budget.textContent = '';
+            const next = rows.values().next().value;
+            if (next && !narrow.matches) select(next, false); else dialog.dataset.detail = 'false';
+        }
+        notice.textContent = t('Deleted.', '已删除。');
+        if (!rows.size) message.textContent = t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
     }
     const thumbnails = new IntersectionObserver(entries => {
         for (const {target, isIntersecting} of entries) if (isIntersecting) {
@@ -155,7 +212,9 @@ export function openLibrary(t) {
         const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
         image.dataset.src = api.apiURL('/freevideo/library/thumbnail?' + new URLSearchParams({id}));
         image.onerror = () => { image.hidden = true; };
-        picture.append(image); card.append(picture, el('span', timestamp(row)), el('small', dimensions(row)));
+        picture.append(image);
+        if (row.preview) picture.append(el('span', t('First-pass preview', '一采预览'), 'fv-preview-badge'));
+        card.append(picture, el('span', timestamp(row)), el('small', dimensions(row)));
         cards.set(row.video, card); first ? grid.prepend(card) : grid.append(card); thumbnails.observe(image);
     }
     async function load(appendPage) {

@@ -26,6 +26,33 @@ export async function regenerateResult(api, nodeId, result, currentPrompt) {
     api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
     return reply.prompt_id;
 }
+// Upscale a preview: queue the request that produced it with refine_from set.
+// The bridge continues the preview's own saved request, so later editor
+// changes cannot alter what is upscaled.
+export async function upscaleResult(api, nodeId, result, currentPrompt) {
+    nodeId = String(nodeId);
+    if (!result?.preview || !result.video) throw new Error('not_preview');
+    const path = result.request_id ? '/history/' + encodeURIComponent(result.request_id) : '/history?max_items=64';
+    let rows = [];
+    try {
+        const response = await api.fetchApi(path);
+        if (response.ok) rows = Object.values(await response.json());
+    } catch { /* Cleared/unavailable history: the bridge still uses the preview's request. */ }
+    rows.sort((a, b) => (b.prompt?.[0] || 0) - (a.prompt?.[0] || 0));
+    const saved = rows.find(row => row.outputs?.[nodeId]?.freevideo_summary?.[0]?.video === result.video
+        && row.status?.status_str === 'success' && row.status?.completed
+        && row.prompt?.[2]?.[nodeId]?.class_type === 'FreeVideoGenerate');
+    const snapshot = saved
+        ? {output: clone(saved.prompt[2]), workflow: clone(saved.prompt[3]?.extra_pnginfo?.workflow || {})}
+        : clone(await currentPrompt());
+    if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
+    Object.assign(snapshot.output[nodeId].inputs, {preview: false, refine_from: result.video, force_regenerate: false});
+    const reply = await api.queuePrompt(0, snapshot);
+    if (!reply?.prompt_id) throw new Error('submit_failed');
+    api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
+    return reply.prompt_id;
+}
+
 export function randomSeed() {
     const bytes = crypto.getRandomValues(new Uint32Array(2));
     return (bytes[0] & 0x1fffff) * 0x100000000 + bytes[1];

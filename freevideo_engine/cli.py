@@ -103,6 +103,13 @@ def main():
                           help='First-pass steps (default: 8, or explicit profile). Changes may reduce quality.')
     generate.add_argument('--refine-steps', type=int, choices=range(1, 32), default=3, metavar='1..31',
                           help='Second-pass steps (default: 3, independent schedule). Other counts use the original tail.')
+    upscale = generate.add_mutually_exclusive_group()
+    upscale.add_argument('--preview', action='store_true',
+                         help='Two-pass only: stop after the half-resolution first pass, save it as a quick preview, '
+                              'and keep that pass so the preview can be upscaled later')
+    upscale.add_argument('--refine-from', type=Path, metavar='PREVIEW.mp4',
+                         help="Upscale a finished preview: reuse its first pass, then the latent upscale, the refinement "
+                              "steps and a full-resolution decode. Use the preview's own prompt, seed, size and inputs")
     generate.add_argument('--out', type=Path, required=True)
     generate.add_argument('--width', type=int, default=1344)
     generate.add_argument('--height', type=int, default=768)

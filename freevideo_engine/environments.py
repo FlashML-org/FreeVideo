@@ -1,4 +1,5 @@
 """Pinned installation layouts; model lifetimes are independent of venv count."""
+import os
 from pathlib import Path
 import platform
 
@@ -17,6 +18,47 @@ def constraints_file(name, system=None):
         return constraints()
     prefix = 'windows-' if (system or platform.system()) == 'Windows' else ''
     return Path(__file__).resolve().parent.parent / 'constraints' / (prefix + name + '.txt')
+
+
+# uv reads each value of these options as a space-separated list of files, even
+# when it arrives as one quoted argument: `-c "D:\Comfy UI\pins.txt"` names
+# `D:\Comfy` and `UI\pins.txt` and stops with "File not found" (exit code 2).
+# Requirement files, editables, wheels and --python keep their spaces.
+UV_FILE_LIST_OPTIONS = frozenset(('-c', '--constraint', '--constraints', '-b', '--build-constraint',
+                                  '--build-constraints', '--override', '--overrides'))
+
+
+def uv_file_arguments(command, cwd=None):
+    """Return (command, cwd) for which uv reads constraint files in folders with spaces.
+
+    Such a file is named relative to its folder, which becomes uv's working
+    directory. FreeVideo passes every other path to uv as an absolute path.
+    """
+    command = [str(item) for item in command]
+    if not command or Path(command[0]).name.lower() not in ('uv', 'uv.exe') or command[1:2] != ['pip']:
+        return command, cwd
+    values = {}
+    for index, item in enumerate(command):
+        option, equals, value = item.partition('=')
+        if item in UV_FILE_LIST_OPTIONS and index + 1 < len(command):
+            values[index + 1] = ('', command[index + 1])
+        elif equals and option.startswith('--') and option in UV_FILE_LIST_OPTIONS:
+            values[index] = (option + '=', value)
+    spaced = {index: row for index, row in values.items() if ' ' in row[1]}
+    if not spaced:
+        return command, cwd
+    base = Path(cwd or os.getcwd())
+    folder = (base / next(iter(spaced.values()))[1]).parent
+    result = list(command)
+    for index, (prefix, value) in spaced.items():
+        try:
+            relative = os.path.relpath(base / value, folder)
+        except ValueError:  # Another Windows drive; uv reports the original path.
+            return command, cwd
+        if ' ' in relative:
+            return command, cwd
+        result[index] = prefix + relative
+    return result, str(folder)
 
 
 def bootstrap_versions(value, system=None):

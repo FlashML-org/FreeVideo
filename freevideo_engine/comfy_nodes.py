@@ -47,6 +47,12 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Default: 3. Three steps use the independent refinement schedule. Changing sampling steps may reduce generation quality.'),
                 io.Boolean.Input('force_regenerate', display_name='Force regeneration', default=False, optional=True,
                     tooltip='Generate again even when an identical completed video is saved locally.'),
+                io.Boolean.Input('preview', display_name='Two-pass: preview first pass', default=False, optional=True,
+                    tooltip='Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. '
+                            'Run the second pass from the result when it looks right; it continues from the same latents.'),
+                io.String.Input('refine_from', display_name='Second pass of preview', default='', optional=True, advanced=True,
+                    socketless=True, tooltip='Set by the Run second pass button: the preview video to continue. '
+                                             "The second pass uses the preview's own prompt, seed, size and inputs."),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -57,8 +63,11 @@ class FreeVideoGenerate(io.ComfyNode):
     def validate_inputs(cls, text, width, height, seconds, seed, **kwargs):
         try:
             comfy_bridge.validate_request(text, width, height, seconds, seed)
-            from .two_pass import validate_steps
-            validate_steps(kwargs.get('base_steps', 8), kwargs.get('refine_steps', 3), kwargs.get('two_pass', True))
+            if not kwargs.get('refine_from'):
+                from .two_pass import validate_steps
+                validate_steps(kwargs.get('base_steps', 8), kwargs.get('refine_steps', 3), kwargs.get('two_pass', True))
+                if kwargs.get('preview') and not kwargs.get('two_pass', True):
+                    return 'Preview first needs two-pass acceleration.'
             comfy_bridge.installation()
         except (OSError, ValueError, KeyError) as error:
             return str(error)
@@ -73,9 +82,10 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
-                force_regenerate=False, base_steps=8, refine_steps=3):
+                force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from=''):
         from .two_pass import validate_steps
-        validate_steps(base_steps, refine_steps, two_pass)
+        if not refine_from:
+            validate_steps(base_steps, refine_steps, two_pass)
         from .comfy_media import export
         import folder_paths
         import comfy.model_management as memory
@@ -87,7 +97,7 @@ class FreeVideoGenerate(io.ComfyNode):
         prewarm = {}
         result_reused = [False]
         node_id = cls.hidden.unique_id
-        bar = ProgressBar(base_steps + (refine_steps if two_pass else 0), node_id=node_id)
+        bar = ProgressBar(base_steps + (refine_steps if two_pass and not preview else 0), node_id=node_id)
         last_message = [None]
         last_count = [None]
         def progress(message):
@@ -126,6 +136,10 @@ class FreeVideoGenerate(io.ComfyNode):
         except (ImportError, AttributeError):
             embed = True
         graph = dict(prompt=getattr(cls.hidden, 'prompt', None), workflow=metadata.get('workflow')) if embed else None
+        if graph and refine_from:
+            # The upscaled video is the full request's result: embed that
+            # workflow, not one that points at this machine's preview file.
+            graph = comfy_bridge.without_upscale(graph, node_id, refine_from)
         output_root = Path(folder_paths.get_output_directory()).resolve()
         publish(PromptServer.instance, node_id, {'label': 'Preparing video', 'new_request': True})
         try:
@@ -134,6 +148,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 prompt_rewrite_report=rewrite_report,
                 encoder_prewarm=prewarm, force_regenerate=force_regenerate,
                 base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph,
+                preview=bool(preview), refine_from=refine_from or None,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,
                     references=references, loras=loras, conditioning=conditioning, assets=media))
@@ -153,9 +168,10 @@ class FreeVideoGenerate(io.ComfyNode):
         publish(PromptServer.instance, node_id, {'label': 'Reused previous result' if result_reused[0] else 'Video saved', 'phase': 'complete',
                 'overall': {'status': 'complete', 'fraction': 1.}, 'result': preview['freevideo_summary'][0]})
         measured = json.loads(report)
-        encoder_path = measured.get('encoding', {}).get('encoder')
+        from .encoder_prewarm import warm_target
+        target = warm_target(measured)
         from .resident_process import OWNER
-        if encoder_path and not result_reused[0]:
+        if target and not result_reused[0]:
             server = PromptServer.instance
             client = server.client_id if server is not None else None
             def busy():
@@ -164,13 +180,18 @@ class FreeVideoGenerate(io.ComfyNode):
                 if server is not None:
                     server.send_sync('freevideo_prewarm', dict(value, node=node_id), sid=client)
             try:
-                if OWNER.process is not None:
+                purpose, path = target
+                if purpose == 'upscale':
+                    IDLE.schedule(path, output.with_suffix('.prewarm.json'),
+                                  ram_budget=measured.get('profile', {}).get('inference_ram_budget_gb', 0) * 1e9,
+                                  busy=busy, notify=warmed, purpose='upscale')
+                elif OWNER.process is not None:
                     root, machine = comfy_bridge.installation()
                     environment = comfy_bridge.engine_environment(root, comfy_bridge.source_root())
                     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(comfy_bridge.source_root()))
                     OWNER.warm_encoder(output, machine['python'], environment, busy=busy, notify=warmed)
                 else:
-                    IDLE.schedule(encoder_path, output.with_suffix('.prewarm.json'),
+                    IDLE.schedule(path, output.with_suffix('.prewarm.json'),
                                   ram_budget=measured.get('profile', {}).get('inference_ram_budget_gb', 0) * 1e9,
                                   busy=busy, notify=warmed)
             except (OSError, RuntimeError):

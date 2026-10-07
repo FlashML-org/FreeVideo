@@ -26,7 +26,8 @@ from .monitoring import save
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
-from .environments import ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, bootstrap_versions
+from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file,
+                           bootstrap_versions, uv_file_arguments)
 from . import network
 from . import processes
 from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
@@ -1032,10 +1033,11 @@ class Installer:
         from .package_progress import PackageOutput
         if self.cancel.is_set():
             raise RuntimeError(self.state.get('resource_guard', 'Installation cancelled.'))
+        args, cwd = uv_file_arguments(args, cwd)
         with self.state_lock:
             index = len(self.state['steps'])
             log = self.run_dir / ('%02d-%s.log' % (index, label))
-            row = {'label': label, 'command': list(map(str, args)), 'log': str(log), 'status': 'running'}
+            row = {'label': label, 'command': args, 'log': str(log), 'status': 'running'}
             self.state['steps'].append(row)
             save(self.run_dir / 'status.json', self.state)
         key = str(index) + '-' + label

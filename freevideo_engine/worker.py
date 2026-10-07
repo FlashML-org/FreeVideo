@@ -205,6 +205,9 @@ def generate(request, resident=None):
                     from .latent_upscale import upscale
                     if engine.steps != sampling_plan['base_steps']:
                         raise ValueError('Engine steps disagree with the requested sampling plan')
+                    preview = request.get('preview') is True
+                    if preview and (request.get('resume_refine') or request.get('resume_first_pass')):
+                        raise ValueError('A preview samples its own first pass')
                     if request.get('resume_refine'):
                         # A retry after a second-pass failure: this request's
                         # retained first pass, latent upscale and crop are
@@ -221,123 +224,168 @@ def generate(request, resident=None):
                                               completed_steps=sampling_plan['base_steps'],
                                               total=sampling_plan['total_steps'])), flush=True)
                     else:
-                        pass_budget = (min(request['gpu_budget_bytes'],
-                            metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes'])
-                            if request.get('automatic_pass_cache', False) else None)
-                        first_options = request.get('first_pass_policy', {}).get('profile', {}).get('engine')
-                        metrics['first_pass_policy'] = request.get('first_pass_policy')
-                        latents, audio, first = engine.sample(request['conditioning'], request['seed'],
-                            **sampling_plan['first'], allow_smaller_canvas=True,
-                            pass_cache_budget_bytes=pass_budget, gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
-                            compute_options=first_options,
-                            pass_resident_blocks=first_options.get('resident_blocks') if first_options else None,
-                            step_callback=memory_diagnostics.complete, progress_total=sampling_plan['total_steps'],
-                            budget_refresh=refresh_budget if live_budget is not None else None)
-                        metrics.update(sampling_passes=[first], sample_stage='latent_upscale')
-                        save(request['metrics'], metrics)
-                        print(json.dumps(dict(event='latent_upscale', completed_steps=sampling_plan['base_steps'],
-                                              total=sampling_plan['total_steps'])), flush=True)
-                        tick = time.perf_counter()
-                        if live_budget is not None:
-                            refresh_budget('upscale')
-                        need = upscale_workspace(sampling_plan['upscale_target']) if sampling_plan['upscaler_sha256'] else 0
-                        if need and resident is not None and not resident.ram_fits(2 * 2**30):
-                            resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
-                        torch.cuda.empty_cache()
-                        def upscale_available():
-                            free, _ = torch.cuda.mem_get_info()
-                            budget = metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes']
-                            return min(free - request.get('gpu_reserve_bytes', 0), budget - torch.cuda.memory_allocated())
-                        available = upscale_available()
-                        # Prefer buffer reuse before discarding useful host weights.
-                        # The estimate selects this path, not permission to run.
-                        # Actual allocation remains bounded by the worker's CUDA
-                        # allocator limit. Keep the completed first-pass latents.
-                        memory_saving = available < need
-                        torch.cuda.reset_peak_memory_stats()
-                        lift_canvas = sampling_plan['upscale_target']
-                        retry_upscale = False
-                        upscale_failures = []
-                        metrics['latent_upscale'] = dict(estimated_workspace_bytes=need,
-                            available_workspace_bytes=max(0, available), attempted_below_estimate=memory_saving,
-                            buffer_reuse=memory_saving, allocation_retries=0, allocation_failures=upscale_failures)
-                        save(request['metrics'], metrics)
-                        try:
-                            kwargs = dict(memory_saving=True) if memory_saving else {}
-                            lifted_video, lifted = upscale(latents, request.get('upscaler_checkpoint'),
-                                lift_canvas['width'], lift_canvas['height'], **kwargs)
-                        except Exception as error:
-                            from .adaptive import classify_failure
-                            if classify_failure(error)['kind'] != 'gpu_oom' or (engine.closed and memory_saving):
-                                raise
-                            from .diagnostic_resources import error_details
-                            upscale_failures.append(error_details(error))
-                            retry_upscale = True
-                        if retry_upscale:
-                            # Leave the failed call's traceback before retrying so
-                            # its tensors no longer occupy the allocator. Do not
-                            # sample again or change the temporal normalization.
-                            if not engine.closed:
-                                if resident is not None:
-                                    resident.drop('engine', 'Latent upscale allocation needs additional workspace')
-                                else:
-                                    engine.close()
-                            if resident is not None:
-                                resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
-                            import gc
-                            gc.collect()
-                            torch.cuda.empty_cache()
-                            metrics['latent_upscale'].update(buffer_reuse=True, allocation_retries=1)
+                        if request.get('resume_first_pass'):
+                            # Upscale a finished preview: its retained first pass
+                            # replaces sampling it again; upscale and refine follow.
+                            from .decode_resume import load_first_pass
+                            metrics.update(sample_stage='first_pass_load')
                             save(request['metrics'], metrics)
-                            lifted_video, lifted = upscale(latents, request.get('upscaler_checkpoint'),
-                                lift_canvas['width'], lift_canvas['height'], memory_saving=True)
-                        latents = lifted_video
-                        del lifted_video
-                        latents = crop_latents(latents, sampling_plan)
-                        lifted.update(stage_seconds=time.perf_counter() - tick,
-                            crop=dict(sampling_plan['crop']),
-                            estimated_workspace_bytes=need,
-                            available_workspace_bytes=max(0, available),
-                            attempted_below_estimate=memory_saving,
-                            allocation_retries=len(upscale_failures),
-                            allocation_failures=upscale_failures,
-                            torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
-                            torch_peak_reserved_bytes=torch.cuda.max_memory_reserved(),
-                            transformer_reloaded=engine.closed)
-                        metrics['latent_upscale'] = lifted
-                        if engine.closed:
                             tick = time.perf_counter()
-                            engine, _ = resident.engine(request, factory) if resident is not None else (factory(), False)
-                            reload_seconds = time.perf_counter() - tick
-                            metrics['load_seconds'] += reload_seconds
-                            metrics['load_breakdown']['two_pass_reload_seconds'] = reload_seconds
-                        if artifacts:
-                            # Retain the second pass's input so an out-of-memory
-                            # retry starts there. A failed save only loses that.
+                            latents, audio, first, reused = load_first_pass(request, torch)
+                            latents, audio = latents.to('cuda'), audio.to('cuda')
+                            metrics.update(reused, first_pass_load_seconds=time.perf_counter() - tick)
+                            print(json.dumps(dict(event='first_pass_reused', source='preview',
+                                                  completed_steps=sampling_plan['base_steps'],
+                                                  total=sampling_plan['total_steps'])), flush=True)
+                        else:
+                            pass_budget = (min(request['gpu_budget_bytes'],
+                                metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes'])
+                                if request.get('automatic_pass_cache', False) else None)
+                            first_options = request.get('first_pass_policy', {}).get('profile', {}).get('engine')
+                            metrics['first_pass_policy'] = request.get('first_pass_policy')
+                            latents, audio, first = engine.sample(request['conditioning'], request['seed'],
+                                **sampling_plan['first'], allow_smaller_canvas=True,
+                                pass_cache_budget_bytes=pass_budget, gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
+                                compute_options=first_options,
+                                pass_resident_blocks=first_options.get('resident_blocks') if first_options else None,
+                                step_callback=memory_diagnostics.complete,
+                                progress_total=sampling_plan['base_steps'] if preview else sampling_plan['total_steps'],
+                                budget_refresh=refresh_budget if live_budget is not None else None)
+                        metrics['sampling_passes'] = [first]
+                        if preview:
+                            # Keep the first pass before the latent upscale; an
+                            # upscale of this preview starts from these latents.
+                            if not artifacts:
+                                raise ValueError('A preview needs an artifacts folder for its first pass')
+                            if not bool(torch.isfinite(latents).all() and torch.isfinite(audio).all()):
+                                raise RuntimeError('Non-finite first-pass latents; refusing to save a corrupted preview')
+                            from .decode_resume import refine_provenance, save_first_pass
+                            tick = time.perf_counter()
+                            provenance = refine_provenance(request)
+                            save_first_pass({'video': latents.cpu(), 'audio': audio.cpu(), 'seed': request['seed'],
+                                             'geometry': canvas, 'refine_provenance': provenance}, artifacts, torch)
+                            metrics.update(preview=True, finite_latents=True, first_pass_checkpoint_complete=True,
+                                           refine_provenance=provenance, latent_save_seconds=time.perf_counter() - tick)
+                        else:
+                            metrics['sample_stage'] = 'latent_upscale'
+                            save(request['metrics'], metrics)
+                            print(json.dumps(dict(event='latent_upscale', completed_steps=sampling_plan['base_steps'],
+                                                  total=sampling_plan['total_steps'])), flush=True)
+                            tick = time.perf_counter()
+                            if live_budget is not None:
+                                refresh_budget('upscale')
+                            need = upscale_workspace(sampling_plan['upscale_target']) if sampling_plan['upscaler_sha256'] else 0
+                            if need and resident is not None and not resident.ram_fits(2 * 2**30):
+                                resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
+                            torch.cuda.empty_cache()
+                            def upscale_available():
+                                free, _ = torch.cuda.mem_get_info()
+                                budget = metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes']
+                                return min(free - request.get('gpu_reserve_bytes', 0), budget - torch.cuda.memory_allocated())
+                            available = upscale_available()
+                            # Prefer buffer reuse before discarding useful host weights.
+                            # The estimate selects this path, not permission to run.
+                            # Actual allocation remains bounded by the worker's CUDA
+                            # allocator limit. Keep the completed first-pass latents.
+                            memory_saving = available < need
+                            torch.cuda.reset_peak_memory_stats()
+                            lift_canvas = sampling_plan['upscale_target']
+                            retry_upscale = False
+                            upscale_failures = []
+                            metrics['latent_upscale'] = dict(estimated_workspace_bytes=need,
+                                available_workspace_bytes=max(0, available), attempted_below_estimate=memory_saving,
+                                buffer_reuse=memory_saving, allocation_retries=0, allocation_failures=upscale_failures)
+                            save(request['metrics'], metrics)
                             try:
-                                from .decode_resume import refine_provenance, save_refine_input
-                                provenance = refine_provenance(request)
-                                save_refine_input({'video': latents.cpu(), 'audio': audio.cpu(), 'seed': request['seed'],
-                                                   'geometry': canvas, 'refine_provenance': provenance}, artifacts, torch)
-                                metrics.update(refine_checkpoint_complete=True, refine_provenance=provenance,
-                                               refine_source_attempt=request.get('resource_attempt'))
-                            except (OSError, RuntimeError, ValueError) as error:
-                                metrics['refine_checkpoint_error'] = str(error)
-                    metrics['sample_stage'] = 'refine'
-                    save(request['metrics'], metrics)
-                    def refined_complete(video, sound, receipt):
-                        sampling_complete(video, sound, combine(first, receipt, lifted, sampling_plan))
-                    restart_seed = (request['seed'] + sampling_plan['restart_seed_offset']) % (1 << 64)
-                    latents, audio, second = engine.sample(request['conditioning'], restart_seed,
-                        **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=sampling_plan['refine_steps'],
-                        refine_schedule=sampling_plan.get('refine_schedule'),
-                        final_step_callback=None if decoder_cached else decode_read_ahead.start,
-                        step_callback=memory_diagnostics.complete, sampling_complete_callback=refined_complete,
-                        progress_offset=sampling_plan['base_steps'], progress_total=sampling_plan['total_steps'],
-                        gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
-                        budget_refresh=refresh_budget if live_budget is not None else None)
-                    sampled = combine(first, second, lifted, sampling_plan)
-                    metrics.pop('sample_stage', None)
+                                kwargs = dict(memory_saving=True) if memory_saving else {}
+                                lifted_video, lifted = upscale(latents, request.get('upscaler_checkpoint'),
+                                    lift_canvas['width'], lift_canvas['height'], **kwargs)
+                            except Exception as error:
+                                from .adaptive import classify_failure
+                                if classify_failure(error)['kind'] != 'gpu_oom' or (engine.closed and memory_saving):
+                                    raise
+                                from .diagnostic_resources import error_details
+                                upscale_failures.append(error_details(error))
+                                retry_upscale = True
+                            if retry_upscale:
+                                # Leave the failed call's traceback before retrying so
+                                # its tensors no longer occupy the allocator. Do not
+                                # sample again or change the temporal normalization.
+                                if not engine.closed:
+                                    if resident is not None:
+                                        resident.drop('engine', 'Latent upscale allocation needs additional workspace')
+                                    else:
+                                        engine.close()
+                                if resident is not None:
+                                    resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
+                                import gc
+                                gc.collect()
+                                torch.cuda.empty_cache()
+                                metrics['latent_upscale'].update(buffer_reuse=True, allocation_retries=1)
+                                save(request['metrics'], metrics)
+                                lifted_video, lifted = upscale(latents, request.get('upscaler_checkpoint'),
+                                    lift_canvas['width'], lift_canvas['height'], memory_saving=True)
+                            latents = lifted_video
+                            del lifted_video
+                            latents = crop_latents(latents, sampling_plan)
+                            lifted.update(stage_seconds=time.perf_counter() - tick,
+                                crop=dict(sampling_plan['crop']),
+                                estimated_workspace_bytes=need,
+                                available_workspace_bytes=max(0, available),
+                                attempted_below_estimate=memory_saving,
+                                allocation_retries=len(upscale_failures),
+                                allocation_failures=upscale_failures,
+                                torch_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+                                torch_peak_reserved_bytes=torch.cuda.max_memory_reserved(),
+                                transformer_reloaded=engine.closed)
+                            metrics['latent_upscale'] = lifted
+                            if engine.closed:
+                                tick = time.perf_counter()
+                                engine, _ = resident.engine(request, factory) if resident is not None else (factory(), False)
+                                reload_seconds = time.perf_counter() - tick
+                                metrics['load_seconds'] += reload_seconds
+                                metrics['load_breakdown']['two_pass_reload_seconds'] = reload_seconds
+                            if artifacts:
+                                # Retain the second pass's input so an out-of-memory
+                                # retry starts there. A failed save only loses that.
+                                try:
+                                    from .decode_resume import refine_provenance, save_refine_input
+                                    provenance = refine_provenance(request)
+                                    save_refine_input({'video': latents.cpu(), 'audio': audio.cpu(), 'seed': request['seed'],
+                                                       'geometry': canvas, 'refine_provenance': provenance}, artifacts, torch)
+                                    metrics.update(refine_checkpoint_complete=True, refine_provenance=provenance,
+                                                   refine_source_attempt=request.get('resource_attempt'))
+                                except (OSError, RuntimeError, ValueError) as error:
+                                    metrics['refine_checkpoint_error'] = str(error)
+                    if preview:
+                        sampled = dict(first, sampling_plan=sampling_plan, sampling_passes=[dict(first)],
+                                       step_seconds=list(first['step_seconds']), sample_seconds=first['sample_seconds'])
+                        if not decoder_cached:
+                            decode_read_ahead.start()
+                    else:
+                        metrics['sample_stage'] = 'refine'
+                        save(request['metrics'], metrics)
+                        def refined(receipt):
+                            result = combine(first, receipt, lifted, sampling_plan)
+                            if request.get('resume_first_pass'):
+                                # This request sampled only the refinement; the
+                                # reused first pass's seconds belong to its preview.
+                                result.update(reused_first_pass_seconds=first['sample_seconds'],
+                                              sample_seconds=result['sample_seconds'] - first['sample_seconds'])
+                            return result
+                        def refined_complete(video, sound, receipt):
+                            sampling_complete(video, sound, refined(receipt))
+                        restart_seed = (request['seed'] + sampling_plan['restart_seed_offset']) % (1 << 64)
+                        latents, audio, second = engine.sample(request['conditioning'], restart_seed,
+                            **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=sampling_plan['refine_steps'],
+                            refine_schedule=sampling_plan.get('refine_schedule'),
+                            final_step_callback=None if decoder_cached else decode_read_ahead.start,
+                            step_callback=memory_diagnostics.complete, sampling_complete_callback=refined_complete,
+                            progress_offset=sampling_plan['base_steps'], progress_total=sampling_plan['total_steps'],
+                            gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
+                            budget_refresh=refresh_budget if live_budget is not None else None)
+                        sampled = refined(second)
+                        metrics.pop('sample_stage', None)
                 else:
                     latents, audio, sampled = engine.sample(request['conditioning'], request['seed'],
                         frames=canvas.get('frames', 243), width=canvas.get('width', 1344), height=canvas.get('height', 768),

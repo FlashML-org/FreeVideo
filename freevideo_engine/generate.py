@@ -302,6 +302,10 @@ def _run(args):
     requested_steps = getattr(args, 'base_steps', None)
     refine_steps = getattr(args, 'refine_steps', 3)
     two_pass = getattr(args, 'two_pass', True)
+    preview = getattr(args, 'preview', False) is True
+    from .preview import validate_flags, source as preview_source
+    validate_flags(preview, getattr(args, 'refine_from', None), two_pass)
+    refine_source = preview_source(args.refine_from) if getattr(args, 'refine_from', None) else None
     if requested_steps is not None:
         validate_steps(requested_steps, refine_steps, two_pass)
         if requested_steps != 8:
@@ -446,9 +450,15 @@ def _run(args):
                        PYTORCH_ALLOC_CONF=allocator, PYTORCH_CUDA_ALLOC_CONF=allocator)
             env[LOCK_ENV] = str(descriptor)
             condition = temporary / 'conditioning.pt'
-            if args.conditioning:
+            if refine_source:
+                # The preview's own conditioning: the exact file its first pass used.
+                condition = Path(refine_source['conditioning'])
+                if refine_source['report'].get('encoding'):
+                    report['encoding'] = dict(refine_source['report']['encoding'], reused_from_preview=True)
+                print(json.dumps({'event': 'conditioning_reused', 'source': 'preview'}), flush=True)
+            elif args.conditioning:
                 shutil.copyfile(args.conditioning, condition)
-            if args.prompt_file:
+            if args.prompt_file and not refine_source:
                 encoding = {'prompt': args.prompt_file.read_text(encoding='utf-8'), 'encoder': args.encoder,
                             'comfy_root': str(args.comfy_root or comfy_root()),
                             'model_paths': str(args.model_paths.resolve()) if args.model_paths else None,
@@ -540,9 +550,13 @@ def _run(args):
             sampling_plan = plan_sampling(canvas, two_pass, profile['engine'].get('task', 't2va'),
                                           base_steps=base_steps, refine_steps=refine_steps)
             report['sampling_plan'] = sampling_plan
+            if preview:
+                report['preview'] = dict(geometry=dict(sampling_plan['first'], fps=canvas['fps']))
+            if refine_source:
+                report['upscaled_preview'] = dict(output=refine_source['output'])
             if sampling_plan['enabled'] or sampling_plan['version'] == 2:
                 canvas['sampling_plan'] = sampling_plan
-            print(json.dumps(dict(event='sampling_plan', **sampling_plan)), flush=True)
+            print(json.dumps(dict(event='sampling_plan', **sampling_plan, **({'preview': True} if preview else {}))), flush=True)
             save(destination.with_suffix('.request.json'), report)
             upscaler_checkpoint = None
             if sampling_plan.get('upscaler_sha256'):
@@ -624,18 +638,25 @@ def _run(args):
                        'sampling_plan': sampling_plan, 'upscaler_checkpoint': upscaler_checkpoint,
                        'automatic_pass_cache': not bool(args.profile),
                        'metrics': str(destination.with_suffix('.engine.json'))}
+            if preview:
+                request['preview'] = True
             if allocator_limit_bytes is not None:
                 request['allocator_limit_bytes'] = allocator_limit_bytes
                 report['benchmark_limit'] = {'pytorch_allocator_bytes': request['allocator_limit_bytes'],
                     'scope': 'PyTorch CUDA allocator only; other CUDA allocations and whole-device usage are measured separately.'}
             request_path = temporary / 'video.json'
             resume_decode = resume_refine = None
+            # An upscale reuses its preview's first pass unless a later attempt
+            # retains a newer checkpoint, or the current inputs no longer match.
+            preview_pass = ({key: refine_source[key] for key in ('input', 'metrics', 'request')}
+                            if refine_source else None)
             # Keep explicit dependency overlays while keeping the snapshotted engine first.
             engine_env = dict(env, PYTHONPATH=os.pathsep.join((str(repo), str(vdn_root()),
                                                               env.get('PYTHONPATH', ''))))
             def persist():
                 save(destination.with_suffix('.request.json'), report)
             def launch(selected, attempt):
+                nonlocal preview_pass
                 selected_env = inference_environment(engine_env, selected['inference_ram_budget_gb'] * 1e9)
                 request.update(engine_options=selected['engine'], decoder_options=selected['decoder'],
                                ram_budget_bytes=round(selected['inference_ram_budget_gb'] * 1e9),
@@ -667,6 +688,21 @@ def _run(args):
                     request['resume_refine'] = dict(resume_refine)
                 else:
                     request.pop('resume_refine', None)
+                request.pop('resume_first_pass', None)
+                if resume_decode is None and resume_refine is None and preview_pass is not None:
+                    from .decode_resume import refine_provenance
+                    receipt = json.loads(Path(preview_pass['metrics']).read_text(encoding='utf-8'))
+                    if refine_provenance(request) == receipt.get('refine_provenance'):
+                        request['resume_first_pass'] = dict(preview_pass)
+                        report['upscaled_preview']['first_pass_reused'] = True
+                    else:
+                        # Other models, settings or math: the preview's first pass
+                        # is not this request's. Sample it again instead.
+                        preview_pass = None
+                        report['upscaled_preview'].update(first_pass_reused=False,
+                            reason='The preview no longer matches the current models or settings; '
+                                   'its first pass was sampled again.')
+                        print(json.dumps(dict(event='preview_mismatch')), flush=True)
                 save(request_path, request)
                 print(json.dumps({'event': 'decode_resume' if resume_decode else 'video_start', 'resource_attempt': attempt,
                                   'engine': selected['engine'], 'decoder': selected['decoder']}), flush=True)
@@ -748,7 +784,8 @@ def _run(args):
                 retry_state = dict(attempt=index + 2, max_attempts=getattr(args, 'resource_retries', 2) + 1,
                                    failed_phase=row.get('phase'), kind=row['failure']['kind'],
                                    reuse_sampling=resume_decode is not None,
-                                   reuse_first_pass=resume_decode is None and resume_refine is not None)
+                                   reuse_first_pass=resume_decode is None and (resume_refine is not None
+                                                                               or preview_pass is not None))
                 row['recovery'] = dict(decision, next_profile=selected, **retry_state)
                 persist()
                 print(json.dumps(dict(event='resource_retry', retained=row['retained'], retry=retry_state)), flush=True)
@@ -761,6 +798,11 @@ def _run(args):
                 archive=archive, report=report, persist=persist, on_retry=retry,
                 automatic=not args.profile or getattr(args, 'recover_placement', False),
                 max_retries=getattr(args, 'resource_retries', 2))
+            if preview:
+                # An upscale validates this receipt beside the retained first pass.
+                shutil.copyfile(destination.with_suffix('.engine.json'), artifacts / 'first-pass.engine.json')
+                from .preview import upscale_reads
+                report['preview']['upscale_reads'] = upscale_reads(request['cache'], report['video'], upscaler_checkpoint)
             report['success'] = True
     except BaseException as error:
         from .diagnostic_resources import exception_details

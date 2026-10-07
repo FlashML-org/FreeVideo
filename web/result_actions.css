@@ -19,5 +19,15 @@
 .fv-actions .fv-menu-item strong{font-size:13px;font-weight:600}
 .fv-actions .fv-menu-item small{font-size:11px;color:var(--fv-muted,#a5b3c6);white-space:nowrap}
 .fv-actions .fv-menu-item:disabled{opacity:.7;cursor:progress}
+.fv-actions .fv-action:disabled{opacity:.65;cursor:default;transform:none}
+.fv-actions .fv-action-delete>summary:hover,.fv-actions .fv-action-delete[open]>summary{color:var(--fv-danger,#f09aa2)}
+.fv-actions .fv-confirm{width:288px;padding:14px;display:grid;gap:6px;text-align:left;cursor:default}
+.fv-actions .fv-confirm strong{font-size:13px;font-weight:600;color:var(--fv-ink,#eee)}
+.fv-actions .fv-confirm small{font-size:12px;line-height:1.55;color:var(--fv-muted,#a5b3c6);white-space:normal}
+.fv-actions .fv-confirm .fv-confirm-problem{color:var(--fv-danger,#f09aa2)}
+.fv-actions .fv-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.fv-actions .fv-confirm-actions .fv-action{height:34px;min-height:34px;padding:0 14px}
+.fv-actions .fv-action-danger{border-color:transparent;background:var(--fv-danger-subtle,#30212a);color:var(--fv-danger,#f09aa2)}
+.fv-actions .fv-action-danger:hover{border-color:color-mix(in srgb,var(--fv-danger,#f09aa2) 45%,transparent);background:var(--fv-danger-subtle,#30212a);color:var(--fv-danger,#f09aa2)}
 @keyframes fv-menu-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.fv-actions *{transition:none!important;animation:none!important}}

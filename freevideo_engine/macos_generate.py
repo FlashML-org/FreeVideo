@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import shutil
 import sys
 import time
 import traceback
@@ -106,6 +107,10 @@ def run(args):
     from .support_report import write as write_debug, code_identity
     from .two_pass import plan
     require_native()
+    from .preview import validate_flags, source as preview_source
+    preview = getattr(args, 'preview', False) is True
+    validate_flags(preview, getattr(args, 'refine_from', None), args.two_pass)
+    refine_source = preview_source(args.refine_from, native=True) if getattr(args, 'refine_from', None) else None
     output = Path(args.out).expanduser().resolve()
     artifacts = output.with_suffix('.artifacts')
     if any(p.exists() for p in (output, artifacts, output.with_suffix('.request.json'))):
@@ -148,6 +153,10 @@ def run(args):
         report.update(geometry=canvas, sampling_plan=sampling, profile=dict(policy=resource,
             engine=dict(device_backend='mps', task=task, attention='mps', steps=sampling['base_steps'])),
             encoder_mode='native H3 encoder library child' if args.prompt_file else 'preencoded shared conditioning')
+        if preview:
+            report['preview'] = dict(geometry=dict(sampling['first'], fps=canvas['fps']))
+        if refine_source:
+            report['upscaled_preview'] = dict(output=refine_source['output'])
         env = environment(data_root(), dict(os.environ, PYTHONUNBUFFERED='1', OMP_NUM_THREADS='2', MKL_NUM_THREADS='2'))
         with runtime_lock() as descriptor, awake() as idle_sleep_prevented:
             report['idle_sleep_prevented'] = idle_sleep_prevented
@@ -171,7 +180,20 @@ def run(args):
                 prepared_cache = Path(prepared['cache']).resolve()
                 report['lora'] = prepared['report']
             conditioning = Path(args.conditioning).resolve() if args.conditioning else artifacts / 'conditioning.pt'
-            if args.prompt_file:
+            if preview and args.conditioning:
+                # Keep the preview self-contained for its later upscale.
+                shutil.copyfile(conditioning, artifacts / 'conditioning.pt')
+                conditioning = artifacts / 'conditioning.pt'
+            if refine_source:
+                # The preview's own conditioning: the exact file its first pass used.
+                conditioning = Path(refine_source['conditioning'])
+                prior = refine_source['report']
+                if prior.get('encoding'):
+                    report['encoding'] = dict(prior['encoding'], reused_from_preview=True)
+                task = prior.get('profile', {}).get('engine', {}).get('task', task)
+                report['profile']['engine']['task'] = task
+                print(json.dumps(dict(event='conditioning_reused', source='preview')), flush=True)
+            if args.prompt_file and not refine_source:
                 report['phase'] = 'encoding'
                 save(output.with_suffix('.request.json'), report)
                 prompt = Path(args.prompt_file).read_text(encoding='utf-8')
@@ -211,17 +233,24 @@ def run(args):
                 raise FileNotFoundError('Conditioning is missing: ' + str(conditioning))
             report['phase'] = 'engine'
             save(output.with_suffix('.request.json'), report)
-            print(json.dumps(dict(event='sampling_plan', **sampling)), flush=True)
-            report['resources'] = execute(dict(phase='engine', output=str(output), artifacts=str(artifacts),
+            print(json.dumps(dict(event='sampling_plan', **sampling, **({'preview': True} if preview else {}))), flush=True)
+            engine = dict(phase='engine', output=str(output), artifacts=str(artifacts),
                 conditioning=str(conditioning), cache=str(prepared_cache),
                 base=base, task=task,
                 checkpoint=str(Path(args.checkpoint or checkpoint_path()).resolve()),
-                seed=args.seed, canvas=canvas, sampling=sampling, resources=resource), 'engine')
+                seed=args.seed, canvas=canvas, sampling=sampling, resources=resource)
+            if preview:
+                engine['preview'] = True
+            if refine_source:
+                engine['refine_from'] = {key: refine_source[key] for key in ('input', 'metrics', 'request', 'output')}
+            report['resources'] = execute(engine, 'engine')
             metrics = json.loads(output.with_suffix('.engine.json').read_text())
             if (metrics.get('success') is not True or metrics.get('sampling_plan') != sampling
-                    or len(metrics.get('step_seconds', [])) != sampling['total_steps']
+                    or len(metrics.get('step_seconds', [])) != (sampling['base_steps'] if preview else sampling['total_steps'])
                     or not output.is_file() or output.stat().st_size == 0):
                 raise RuntimeError('Native worker did not complete the requested video')
+            if refine_source:
+                report['upscaled_preview'].update(metrics.get('upscaled_preview') or {})
             report.update(success=True, phase='complete', video=metrics)
             return output
     except BaseException as error:

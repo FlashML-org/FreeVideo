@@ -366,6 +366,9 @@ def progress_message(event):
         return dict(label=label, timing_phase='encoding') if label else None
     if name == 'sampling_plan':
         first, second = event.get('first', {}), event.get('second')
+        if event.get('enabled') and event.get('preview'):
+            return dict(label='First-pass preview · %d × %d · %d steps' % (first['width'], first['height'], event.get('base_steps', 8)),
+                        detail='Run the second pass from the result', sampling_plan=event)
         if event.get('enabled') and second:
             return dict(label='Two-pass · %d × %d → %d × %d · %d + %d steps' %
                         (first['width'], first['height'], second['width'], second['height'],
@@ -374,6 +377,15 @@ def progress_message(event):
         return dict(label='Single-pass · %d steps' % event.get('base_steps', 8), detail=event.get('reason'), sampling_plan=event)
     if name == 'latent_upscaler_prepare':
         return dict(label='Preparing two-pass upscaler', timing_phase='load')
+    if name == 'first_pass_reused':
+        done, total = event.get('completed_steps', 8), event.get('total', 11)
+        return dict(label='Continuing from the preview' if event.get('source') == 'preview'
+                    else 'Reusing the completed first pass', phase='sampling', stage='first_pass_reused',
+                    done=done, total=total, display_fraction=done / total, timing_phase='sampling',
+                    estimated_step_seconds=None, step_elapsed_seconds=0., remaining_seconds=None,
+                    uniform_remaining_steps=False)
+    if name == 'preview_mismatch':
+        return dict(label='The preview no longer matches; sampling its first pass again', stage='preview_mismatch')
     if name == 'latent_upscale':
         done, total = event.get('completed_steps', 8), event.get('total', 10)
         return dict(label='Upscaling before the second pass', phase='sampling', stage='latent_upscale',
@@ -455,6 +467,70 @@ def progress_message(event):
     return None
 
 
+def preview_request(output_directory, relative):
+    """The saved request of a finished preview in this output folder."""
+    if not isinstance(relative, str) or not relative.strip():
+        raise ValueError('Choose a preview to upscale')
+    output_root = Path(output_directory).resolve()
+    video = (output_root / relative).resolve()
+    try:
+        video.relative_to(output_root / 'FreeVideo')
+    except ValueError:
+        raise ValueError('Choose a FreeVideo preview from this output folder') from None
+    path = video.parent / 'comfy-request.json'
+    state = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    if (not isinstance(state, dict) or state.get('preview') is not True or state.get('status') != 'complete'
+            or Path(state.get('output', '')).resolve() != video or not isinstance(state.get('command'), list)
+            or 'generate' not in state['command']):
+        raise ValueError('This video is not a finished FreeVideo preview')
+    if not video.is_file():
+        raise ValueError('The preview video is no longer there; generate it again')
+    return video, state
+
+
+def upscale_command(state, output, video, resources):
+    """The preview's own generate arguments, refining it into a new output."""
+    tail = state['command'][state['command'].index('generate') + 1:]
+    replaced = {'--' + field.replace('_', '-') for field in list(state.get('resources') or {}) + list(resources)}
+    arguments, index = [], 0
+    while index < len(tail):
+        flag = tail[index]
+        if flag == '--preview':
+            index += 1
+            continue
+        if flag in replaced or flag == '--out':
+            if flag == '--out':
+                arguments += ['--out', str(output)]
+            index += 2
+            continue
+        arguments.append(flag)
+        index += 1
+    for field, reserve in resources.items():
+        if reserve is not None:
+            arguments += ['--' + field.replace('_', '-'), str(reserve)]
+    return arguments + ['--refine-from', str(video)]
+
+
+def without_upscale(graph, node_id, refine_from):
+    import copy
+    graph = copy.deepcopy(graph)
+    inputs = ((graph.get('prompt') or {}).get(str(node_id)) or {}).get('inputs')
+    if isinstance(inputs, dict):
+        inputs.update(refine_from='', preview=False)
+    for node in (graph.get('workflow') or {}).get('nodes') or []:
+        values = node.get('widgets_values')
+        if str(node.get('id')) == str(node_id) and isinstance(values, list) and values and values[-1] == refine_from:
+            # Preview first and Upscale preview are the node's last two widgets.
+            values[-1] = ''
+            if len(values) > 1 and type(values[-2]) is bool:
+                values[-2] = False
+    return graph
+
+
+def argument(arguments, flag, default=None):
+    return arguments[arguments.index(flag) + 1] if flag in arguments else default
+
+
 def engine_environment(root, source, environ=None):
     if sys.platform == 'darwin':
         from .macos_bootstrap import environment
@@ -467,11 +543,29 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
-             prompt_rewrite_report=None):
+             prompt_rewrite_report=None, preview=False, refine_from=None):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(force_regenerate) is not bool:
         raise ValueError('Force regeneration must be a boolean')
+    if type(preview) is not bool:
+        raise ValueError('Preview must be a boolean')
+    refine_from = refine_from if isinstance(refine_from, str) and refine_from.strip() else None
+    upscale = None
+    if refine_from:
+        # An upscale continues the preview's own request: its prompt, seed,
+        # canvas, steps and inputs, not whatever the editor shows now.
+        upscale = preview_request(output_directory, refine_from)
+        _, previous = upscale
+        arguments = previous['command'][previous['command'].index('generate') + 1:]
+        prompt = (Path(previous['output']).parent / 'prompt.txt').read_text(encoding='utf-8')
+        width, height = previous['geometry']['width'], previous['geometry']['height']
+        seconds, seed = previous['geometry']['seconds'], previous['seed']
+        two_pass, preview = True, False
+        base_steps = int(argument(arguments, '--base-steps', 8))
+        refine_steps = int(argument(arguments, '--refine-steps', 3))
+    from .preview import validate_flags
+    validate_flags(preview, upscale, two_pass)
     from .two_pass import validate_steps
     validate_steps(base_steps, refine_steps, two_pass)
     canvas = validate_request(prompt, width, height, seconds, seed)
@@ -500,11 +594,20 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
                '--two-pass' if two_pass else '--no-two-pass',
                '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
-    for field, reserve in resources.items():
-        if reserve is not None:
-            command += ['--' + field.replace('_', '-'), str(reserve)]
+    if upscale:
+        command = command[:command.index('generate') + 1] + upscale_command(upscale[1], output, upscale[0], resources)
+    else:
+        for field, reserve in resources.items():
+            if reserve is not None:
+                command += ['--' + field.replace('_', '-'), str(reserve)]
+        if preview:
+            command.append('--preview')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
+    if preview:
+        state['preview'] = True
+    if upscale:
+        state['upscaled_preview'] = str(upscale[0])
     from .diagnostic_resources import encoder_prewarm as prewarm_summary
     state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
     save(run / 'comfy-request.json', state)
@@ -534,7 +637,16 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         if interrupted:
             interrupted()
         extra = {}
-        if export_inputs:
+        media_base = run
+        if upscale:
+            # The preview's retained inputs, exactly as its request used them.
+            arguments = command[command.index('generate') + 1:]
+            media_base = Path(upscale[1]['output']).parent
+            if '--media' in arguments:
+                extra['media'] = json.loads(Path(argument(arguments, '--media')).read_text(encoding='utf-8'))
+            if '--conditioning' in arguments:
+                extra['conditioning'] = argument(arguments, '--conditioning')
+        elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})
             extra = export_inputs(run, canvas) or {}
             if extra:
@@ -549,11 +661,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .media_request import task_for
         from .two_pass import plan
         planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
-        identify = lambda check: request_key(prompt, seed, canvas, planned, extra, machine,
+        # A preview is its own result; an upscale is always run from its preview.
+        keyed = dict(planned, preview=True) if preview else planned
+        identify = lambda check: request_key(prompt, seed, canvas, keyed, extra, machine,
                                              resources, source, environment, inspection=check)
         state['result_cache'] = dict(enabled=False, hit=False, forced=force_regenerate)
         reused = None
-        if not force_regenerate:
+        if not force_regenerate and not upscale:
             send_progress({'label': 'Checking saved video', 'timing_phase': 'encoding'})
             def inspect_saved(check):
                 key = identify(check)
@@ -579,7 +693,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         preparation_started = time.monotonic()
         try:
             # Reference audio selects its own tables; match the encoder's choice.
-            preparation = prepare_sampling_assets(root, machine, planned, engine_task(extra.get('media', {}), run),
+            preparation = prepare_sampling_assets(root, machine, planned, engine_task(extra.get('media', {}), media_base),
                 progress=asset_progress, interrupted=interrupted, environ=environment)
         except BaseException:
             elapsed = time.monotonic() - preparation_started
@@ -627,12 +741,18 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         completed_steps = steps(report.get('sampling_plan'))
         expected_plan = plan(canvas, two_pass, report.get('profile', {}).get('engine', {}).get('task', 't2va'),
                              base_steps=base_steps, refine_steps=refine_steps)
+        shown = canvas
+        if preview:
+            # A preview decodes its first pass at the planned smaller canvas.
+            completed_steps = expected_plan['base_steps']
+            shown = dict(canvas, width=expected_plan['first']['width'], height=expected_plan['first']['height'])
         if (report.get('success') is not True or engine.get('success') is not True
                 or not output.is_file() or not output.stat().st_size
                 or len(engine.get('step_seconds', [])) != completed_steps
                 or engine.get('sampling_plan') != report.get('sampling_plan')
                 or report.get('sampling_plan') != expected_plan
-                or any(engine.get('geometry', {}).get(k) != canvas[k] for k in ('width', 'height', 'frames'))):
+                or bool(report.get('preview')) != preview or bool(report.get('upscaled_preview')) != bool(upscale)
+                or any(engine.get('geometry', {}).get(k) != shown[k] for k in ('width', 'height', 'frames'))):
             from .failure_details import generation_failure
             raise RuntimeError('FreeVideo did not complete the requested video.\n' + generation_failure(run))
         if comfy_metadata:
@@ -651,7 +771,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 return check.measure('output', lambda: cache.remember(cache_key, output, inspection=check))
             stored, timing = inspect_bounded(store_result, interrupted=interrupted)
             state['result_cache'].update(stored=stored is True, store_inspection=timing)
-        send_progress({'label': 'Video + audio saved', 'phase': 'complete', 'done': completed_steps, 'total': completed_steps})
+        send_progress({'label': 'Preview saved' if preview else 'Video + audio saved', 'phase': 'complete',
+                       'done': completed_steps, 'total': completed_steps})
         return output
     except BaseException as error:
         cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in ('InterruptProcessingException', 'CancelledError')
