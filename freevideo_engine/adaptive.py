@@ -63,6 +63,10 @@ def classify_failure(error, metrics=None):
         kind, outcome, retry = 'timeout', 'cancelled', False
     elif details.get('kind') == 'gpu_oom' or 'cuda out of memory' in text or 'cuda error: out of memory' in text:
         kind, outcome, retry = 'gpu_oom', 'resource_failure', True
+    elif details.get('kind') == 'shared_memory_spill':
+        # Windows: the allocator grew past dedicated VRAM (encoder_workspace.SpillGuard);
+        # the worker stopped before running from shared system memory.
+        kind, outcome, retry = 'shared_memory_spill', 'resource_failure', True
     elif isinstance(error, MemoryError) or details.get('kind') == 'ram_pressure':
         kind, outcome, retry = 'ram_pressure', 'resource_failure', True
     elif isinstance(error, WorkerExit) and not (metrics or {}).get('error'):
@@ -534,19 +538,23 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                        measurement=failure, ram_recovery=ram_recovery)
 
 
+MAX_RESOURCE_RETRIES = 3  # MiniMax H3's CLI allows two; Prism's ladder uses three
+
+
 def execute_attempts(history, identity, profile, canvas, launch, *,
                      validate, archive, report, persist, max_retries=2, automatic=True,
-                     prepare=None, on_retry=None):
+                     prepare=None, on_retry=None, recover=None):
     """Run one complete request in fresh children, retaining every failed attempt.
 
     Callbacks make process death, OOM and promotion testable without a tensor
     runtime. ``begin`` commits before ``launch`` is invoked. No exception handler
-    uses failed measurements to certify a profile.
+    uses failed measurements to certify a profile. ``recover`` replaces
+    ``next_placement`` for a model with its own placement (same signature).
     """
     current = copy.deepcopy(profile)
     from .diagnostic_resources import attempt_metrics
-    if type(max_retries) is not int or not 0 <= max_retries <= 2:
-        raise ValueError('Resource retries must be an integer between zero and two.')
+    if type(max_retries) is not int or not 0 <= max_retries <= MAX_RESOURCE_RETRIES:
+        raise ValueError('Resource retries must be an integer between zero and %d.' % MAX_RESOURCE_RETRIES)
     report.setdefault('resource_attempts', [])
     evidence = {'reason': 'Initial automatic placement' if automatic else 'Explicit reproducible profile'}
     for index in range(max_retries + 1):
@@ -591,7 +599,7 @@ def execute_attempts(history, identity, profile, canvas, launch, *,
             previous_gpu_retries = sum(r.get('failure', {}).get('kind') == 'gpu_oom'
                                        for r in report['resource_attempts'][:-1])
             from .decode_resume import completed_sampling
-            updated, decision = next_placement(current, failure, (metrics or {}).get('phase', 'sample'), canvas,
+            updated, decision = (recover or next_placement)(current, failure, (metrics or {}).get('phase', 'sample'), canvas,
                                                previous_ram_retries=previous_ram_retries,
                                                previous_gpu_retries=previous_gpu_retries,
                                                sampling_complete=completed_sampling(metrics))

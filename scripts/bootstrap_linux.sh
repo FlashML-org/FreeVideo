@@ -50,6 +50,7 @@ Setup launcher options:
   --network official      Upstream sources only; compare proxy/direct connections
   --model-downloader xet   Require HF Xet for large weights; stop instead of falling back
   --reuse-models PATH      Verify and reuse compatible models in an existing folder
+  --video-models LIST      h3 (default), prism (Prism preview) or h3,prism
 
 No Python, pip, virtual environment or CUDA toolkit installation is needed beforehand.
 Default installation: this checkout's directory (independent of the current directory).

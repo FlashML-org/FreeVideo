@@ -29,8 +29,11 @@ MAX_EXE_BYTES = 512 * 2**20
 MAC_CHANNEL = 'macos-preview'
 # Stable builds follow the latest vX.Y.Z release; nightly builds follow the
 # rolling `nightly` prerelease. Both carry every platform in one release.
-TRACKS = ('stable', 'nightly')
+# Prism beta builds (Windows only) follow the rolling `prism-preview` prerelease.
+TRACKS = ('stable', 'nightly', 'prism')
 NIGHTLY_TAG = 'nightly'
+PRISM_TAG = 'prism-preview'
+TRACK_TAGS = {'nightly': NIGHTLY_TAG, 'prism': PRISM_TAG}
 RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
                   MAC_CHANNEL: ('FreeVideo-Mac-arm64.dmg', 'update-macos.json')}
 
@@ -45,8 +48,9 @@ def build_track(value):
 
 
 def release_page(current):
-    if build_track(build_identity(current)) == 'nightly':
-        return 'https://github.com/' + REPOSITORY + '/releases/tag/' + NIGHTLY_TAG
+    track = build_track(build_identity(current))
+    if track in TRACK_TAGS:
+        return 'https://github.com/' + REPOSITORY + '/releases/tag/' + TRACK_TAGS[track]
     return RELEASE_PAGE
 
 
@@ -162,10 +166,11 @@ def _json(url, token, *, binary=False, limit=2**20):
 def _release(token, channel, track):
     """The release holding this platform's update, and its metadata asset name."""
     executable, metadata = RELEASE_ASSETS[channel]
-    if track == 'nightly':
-        release = _json(API + '/releases/tags/' + NIGHTLY_TAG, token)
-        if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != NIGHTLY_TAG:
-            raise ValueError('No nightly build is published yet')
+    if track in TRACK_TAGS:
+        tag = TRACK_TAGS[track]
+        release = _json(API + '/releases/tags/' + tag, token)
+        if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != tag:
+            raise ValueError('No %s build is published yet' % ('Prism beta' if track == 'prism' else track))
         return release, executable, metadata
     try:
         release = _json(API + '/releases/latest', token)
@@ -204,10 +209,20 @@ def latest_release(token='', *, channel=CHANNEL, track='stable'):
     return candidate
 
 
-def check(current, token=''):
+def switched(candidate, current):
+    """A Prism test build whose user chose MiniMax H3 alone moves to the regular release, whatever its date."""
+    return (build_track(current) == 'prism' and build_track(candidate) == 'stable'
+            and build_target(candidate) == build_target(current) and candidate['channel'] == current['channel']
+            and candidate['revision'] != current['revision'])
+
+
+def check(current, token='', track=None):
+    """The newest build of this build's release line, or of ``track`` (a Prism test build following the
+    regular release once MiniMax H3 alone is chosen)."""
     current = build_identity(current)
-    candidate = latest_release(token, channel=current['channel'], track=build_track(current))
-    return candidate if newer(candidate, current) else None
+    track = track or build_track(current)
+    candidate = latest_release(token, channel=current['channel'], track=track)
+    return candidate if newer(candidate, current) or switched(candidate, current) else None
 
 
 def checksum(path):
@@ -377,6 +392,19 @@ class UpdateClient:
                 pass
         self.thread = None
         self.cancelled = threading.Event()
+        self.track = build_track(self.current)  # the release line checked; see follow()
+
+    def follow(self, track):
+        """Check ``track`` from now on and right away: the Prism test build follows the regular release
+        while MiniMax H3 alone is chosen (its update removes Prism), and its own line again with Prism."""
+        if track not in TRACKS or track == self.track:
+            return
+        self.track = track
+        if self.available is not None and build_track(self.available) != track:
+            self.available = None
+            self.state = dict(status='idle')
+        if not self.busy:
+            self.run('check')
 
     @property
     def busy(self):
@@ -398,8 +426,13 @@ class UpdateClient:
         def work():
             try:
                 if operation == 'check':
-                    found = check(self.current, self.token)
-                    if found and (self.available is None or newer(found, self.available)):
+                    while True:
+                        track = self.track
+                        found = check(self.current, self.token, track)
+                        if track == self.track:
+                            break  # else the model choice changed during the check: check the new line
+                    if found and (self.available is None or newer(found, self.available)
+                                  or build_track(found) != build_track(self.available)):
                         self.available = found
                         save(self.root / 'updates/available.json', found)
                     self.state = dict(status='available' if self.available else 'current', candidate=self.available)

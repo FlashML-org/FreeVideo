@@ -9,12 +9,34 @@ export const SAMPLING_EFFORTS = Object.freeze([
 
 export const effortName = (t, tier) => t(tier.name, tier.zh);
 
-// The level a plan matches, or undefined for custom steps.
-export function effortFor(steps, twoPass, refine) {
-    return SAMPLING_EFFORTS.find(tier => tier.steps === steps && tier.twoPass === twoPass && (!twoPass || refine === 3));
+// Prism (preview) levels from prism_tiers.json (five): one pass each, by id.
+export const PRISM_COLORS = Object.freeze(['#3dd6b5', '#4ea8ff', '#9d7bff', '#ffa94d', '#ff6b8b']);
+export function prismEfforts(rows) {
+    return Object.freeze((rows || []).map((row, i) => Object.freeze({
+        id: row.id, name: row.en, zh: row.zh, steps: row.steps, twoPass: false,
+        color: PRISM_COLORS[i % PRISM_COLORS.length], note: row.note,
+        // Undistilled levels with t2v generate without a first frame (as the engine checks).
+        t2v: Boolean(row.t2v) && row.distilled === false})));
 }
 
-export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
+// The workspace's Prism levels, shared by the studio and the Media panel.
+let prismLevels = null, prismLevelsRequest = null;
+export function rememberPrismLevels(rows) { prismLevels = prismEfforts(rows); return prismLevels; }
+export function loadPrismLevels(api) {
+    prismLevelsRequest ??= api.fetchApi('/freevideo/models').then(reply => reply.ok ? reply.json() : null)
+        .then(info => info?.prism?.tiers ? rememberPrismLevels(info.prism.tiers) : prismLevels).catch(() => prismLevels);
+    return prismLevelsRequest;
+}
+export const knownPrismLevels = () => prismLevels;
+// Whether this Prism level (id) generates from text alone (false while unknown).
+export const prismTextToVideo = id => Boolean(prismLevels?.find(tier => tier.id === id)?.t2v);
+
+// The level a plan matches, or undefined for custom steps.
+export function effortFor(steps, twoPass, refine, tiers = SAMPLING_EFFORTS) {
+    return tiers.find(tier => tier.steps === steps && tier.twoPass === twoPass && (!twoPass || refine === 3));
+}
+
+export function createSamplingEffort(t, {onChange, onPreview = () => {}, tiers = SAMPLING_EFFORTS}) {
     const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; };
     const element = el('div', 'fv-effort');
     const header = el('div', 'fv-effort-heading');
@@ -24,27 +46,38 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     header.append(label, estimate);
     const rail = el('div', 'fv-effort-rail'); rail.tabIndex = 0;
     rail.setAttribute('role', 'slider'); rail.setAttribute('aria-label', label.textContent);
-    rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', '3');
+    rail.setAttribute('aria-valuemin', '0');
     rail.setAttribute('aria-orientation', 'horizontal');
     // A thick track with the knob inside it; stops sit at the knob's centers.
     const track = el('span', 'fv-effort-track'); track.setAttribute('aria-hidden', 'true');
     const fill = el('span', 'fv-effort-fill'); track.append(fill);
-    const stops = [0, 1, 2, 3].map(i => { const stop=el('span','fv-effort-stop'); stop.style.setProperty('--fv-stop', i / 3); track.append(stop); return stop; });
+    // One stop per level: four for MiniMax H3, five for Prism (preview).
+    let stops = [];
     const knob = el('span', 'fv-effort-knob'); track.append(knob); rail.append(track);
+    const last = () => Math.max(1, levels.length - 1);
     knob.addEventListener('animationend', () => knob.classList.remove('fv-effort-pop'));
     const names = el('div', 'fv-effort-names');
-    const nameButtons = SAMPLING_EFFORTS.map((tier, i) => {
-        const b = el('button', 'fv-effort-name', effortName(t, tier)); b.type = 'button'; b.tabIndex = -1;
-        b.style.setProperty('--fv-stop', i / 3);
-        b.onclick = () => { if (!disabled && pointer === null) commit(i); };
-        names.append(b); return b;
-    });
+    // Each model has its own four levels; MiniMax H3's are the default.
+    let levels = tiers, nameButtons = [];
+    function renderNames() {
+        for (const stop of stops) stop.remove();
+        stops = levels.map((_, i) => { const stop = el('span', 'fv-effort-stop'); stop.style.setProperty('--fv-stop', i / last()); track.insertBefore(stop, knob); return stop; });
+        rail.setAttribute('aria-valuemax', String(last()));
+        nameButtons = levels.map((tier, i) => {
+            const b = el('button', 'fv-effort-name', effortName(t, tier)); b.type = 'button'; b.tabIndex = -1;
+            b.style.setProperty('--fv-stop', i / last());
+            b.onclick = () => { if (!disabled && pointer === null) commit(i); };
+            return b;
+        });
+        names.replaceChildren(...nameButtons);
+    }
+    renderNames();
     const custom = el('span', 'fv-effort-custom', t('Custom steps', '自定义步数')); custom.hidden = true;
     element.append(header, rail, names, custom);
-    let selected = 0, disabled = false, pointer = null, draft = 0, currentSteps = 8, currentRefine = 3, twoPass = true;
+    let selected = 0, disabled = false, pointer = null, draft = 0, currentSteps = 8, currentRefine = 3, twoPass = true, currentTier = null;
     function paint(position) {
-        element.style.setProperty('--fv-position', position / 3);
-        const index = Math.round(position), tier = SAMPLING_EFFORTS[index];
+        element.style.setProperty('--fv-position', position / last());
+        const index = Math.round(position), tier = levels[index];
         nameButtons.forEach((b, i) => b.toggleAttribute('data-active', i === index));
         stops.forEach((stop, i) => stop.toggleAttribute('data-filled', i <= position + .01));
         rail.setAttribute('aria-valuenow', String(index));
@@ -53,17 +86,17 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     function position(event) {
         const box = rail.getBoundingClientRect();
         // The knob's center travels between 18 px from either end (4 px inset, 28 px knob).
-        return Math.max(0, Math.min(3, (event.clientX - box.left - 18) / (box.width - 36) * 3));
+        return Math.max(0, Math.min(last(), (event.clientX - box.left - 18) / (box.width - 36) * last()));
     }
     function commit(index) {
         selected = index; custom.hidden = true; delete element.dataset.custom;
-        paint(index); onChange(SAMPLING_EFFORTS[index]);
+        paint(index); onChange(levels[index]);
         knob.classList.remove('fv-effort-pop'); void knob.offsetWidth; knob.classList.add('fv-effort-pop');
     }
     function cancel() {
         const id = pointer; pointer = null; delete rail.dataset.dragging;
         if (id !== null && rail.hasPointerCapture(id)) rail.releasePointerCapture(id);
-        update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, disabled});
+        update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, disabled, tier: currentTier});
         onPreview(null);
     }
     rail.onpointerdown = event => {
@@ -71,11 +104,11 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         if (disabled || event.button !== 0 || pointer !== null) return;
         event.preventDefault(); rail.focus({preventScroll: true, focusVisible: false}); pointer = event.pointerId;
         rail.setPointerCapture(pointer); rail.dataset.dragging = 'true';
-        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)]);
+        draft = position(event); paint(draft); onPreview(levels[Math.round(draft)]);
     };
     rail.onpointermove = event => {
         if (event.pointerId !== pointer) return;
-        draft = position(event); paint(draft); onPreview(SAMPLING_EFFORTS[Math.round(draft)]);
+        draft = position(event); paint(draft); onPreview(levels[Math.round(draft)]);
     };
     rail.onpointerup = event => {
         if (event.pointerId !== pointer) return;
@@ -89,26 +122,38 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         rail.dataset.keyboard = 'true';
         if (event.key === 'Escape' && pointer !== null) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
         if (disabled || pointer !== null) return;
-        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: 3}[event.key];
+        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: last()}[event.key];
         if (next === undefined) return;
-        event.preventDefault(); commit(Math.max(0, Math.min(3, next)));
+        event.preventDefault(); commit(Math.max(0, Math.min(last(), next)));
     };
     function update(state) {
         currentSteps = Number(state.baseSteps); currentRefine = Number(state.refineSteps);
-        twoPass = state.twoPass; disabled = state.disabled;
+        twoPass = state.twoPass; disabled = state.disabled; currentTier = state.tier ?? null;
         rail.tabIndex = disabled ? -1 : 0; rail.setAttribute('aria-disabled', String(disabled));
         element.dataset.disabled = String(disabled);
         if (pointer !== null) return;
-        const exact = SAMPLING_EFFORTS.findIndex(v => v.steps === currentSteps);
-        selected = exact < 0 ? SAMPLING_EFFORTS.reduce((best, v, i) => Math.abs(v.steps - currentSteps) < Math.abs(SAMPLING_EFFORTS[best].steps - currentSteps) ? i : best, 0) : exact;
-        const isCustom = !effortFor(currentSteps, twoPass, currentRefine);
+        // Levels with ids (Prism) are chosen by id and set their own steps.
+        const byId = currentTier !== null ? levels.findIndex(v => v.id === currentTier) : -1;
+        const exact = byId >= 0 ? byId : levels.findIndex(v => v.steps === currentSteps);
+        selected = exact < 0 ? levels.reduce((best, v, i) => Math.abs(v.steps - currentSteps) < Math.abs(levels[best].steps - currentSteps) ? i : best, 0) : exact;
+        const isCustom = byId < 0 && !effortFor(currentSteps, twoPass, currentRefine, levels);
         element.dataset.custom = String(isCustom); custom.hidden = !isCustom;
         const unit = currentSteps === 1 && !twoPass ? t('step', '步') : t('steps', '步');
         custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`;
         paint(selected);
         if (isCustom) rail.setAttribute('aria-valuetext', custom.textContent);
+        // Prism's levels (they have ids) differ in audio guidance and model, not only in steps.
         rail.title = disabled ? t('Controlled by connected nodes.', '由连接的节点控制。')
+            : levels.some(level => level.id)
+            ? t('Prism (preview): Light, Standard and High sample the same 8 distilled steps and add more audio guidance; Max (20 steps) and Original (50 steps) sample the undistilled model. Higher levels take longer.',
+                'Prism（预览）：「轻量」「标准」「精细」都采样 8 步蒸馏模型，音频引导依次增强；「极致」（20 步）和「原版」（50 步）使用未蒸馏模型。档位越高，耗时越长。')
             : t('Same model. Higher effort uses more sampling steps; results vary by scene.', '使用同一模型，提高档位会增加采样步数；效果因场景而异。');
     }
-    return {element, update, setEstimate(text, title = '') { estimate.textContent = text; estimate.title = title; }, dispose: cancel};
+    function setTiers(next) {
+        if (next === levels || !next?.length) return;
+        levels = next; renderNames();
+        update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, disabled, tier: currentTier});
+    }
+    return {element, update, setTiers, tiers: () => levels,
+        setEstimate(text, title = '') { estimate.textContent = text; estimate.title = title; }, dispose: cancel};
 }

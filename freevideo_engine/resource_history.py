@@ -419,6 +419,24 @@ class ResourceHistory:
             row = db.execute('SELECT * FROM attempts WHERE id=?', (identifier,)).fetchone()
             return self._row(row) if row is not None else None
 
+    def recent(self, identity=None, geometry=None, *, purpose=None, limit=20):
+        """The newest settled attempts (any outcome) of one identity and geometry,
+        newest first: what recently failed on this device, without a full scan."""
+        if type(limit) is not int or limit <= 0:
+            raise ValueError('Attempt limit must be a positive integer')
+        clauses, arguments = ["state!='pending'"], []
+        for name, value in (('identity', identity), ('geometry', geometry)):
+            if value is not None:
+                clauses.append(name + '_json=?')
+                arguments.append(_json(value))
+        if purpose is not None:
+            clauses.append('purpose=?')
+            arguments.append(purpose)
+        query = ('SELECT * FROM attempts WHERE ' + ' AND '.join(clauses)
+                 + ' ORDER BY started DESC,id DESC LIMIT ?')
+        with self._transaction() as db:
+            return [self._row(row) for row in db.execute(query, arguments + [limit])]
+
     def attempts(self):
         with self._transaction() as db:
             return [self._row(row) for row in db.execute('SELECT * FROM attempts ORDER BY started')]

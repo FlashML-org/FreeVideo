@@ -88,6 +88,17 @@ class SamplingProgress:
                        block=index, blocks=self.blocks,
                        estimated_step_seconds=estimate)
 
+    def audio(self, part, index, count):
+        """Prism's audio pass after a step's video passes: ``part`` 'teacher' (base-weight
+        layers) or 'substeps' (audio-only sub-steps), ``index`` of ``count``."""
+        if len(self.completed) >= self.steps:
+            return
+        now = self.clock()
+        if index == 1 or now - self.last_layer_event >= 1.:
+            self.last_layer_event = now
+            self.event('sampling_progress', stage='audio', step=len(self.completed)+1, part=part, index=index,
+                       count=count, estimated_step_seconds=self._visual_step_estimate())
+
     def complete(self, seconds):
         self.completed.append(seconds)
         # Exclude the first step's initialization/compilation. Use at least two
@@ -158,6 +169,14 @@ def progress_message(event):
             estimated = True
             result.update(block=block, blocks=blocks,
                           detail='Step %d · processing layer %d / %d' % (done+1, block, blocks))
+        part, index, count = event.get('part'), event.get('index'), event.get('count')
+        if event.get('stage') == 'audio' and type(index) is int and type(count) is int and 1 <= index <= count:
+            # Prism's audio pass ends each step: the fraction near the step's end.
+            display_fraction = _bounded((done + .88 + .1 * index / count) / total, high=1.)
+            estimated = True
+            result.update(audio_part=part, audio_index=index, audio_count=count,
+                          detail=('Step %d · audio teacher layer %d / %d' if part == 'teacher' else
+                                  'Step %d · audio sub-step %d / %d') % (done + 1, index, count))
     elif name == 'step':
         result.update(stage='complete' if done == total else 'between_steps',
                       detail='Sampling complete · preparing output' if done == total else

@@ -2,9 +2,11 @@
 
 The release workflow runs this after the Windows and Mac jobs. A stable release also refreshes the
 platform tags (windows-preview, macos-preview) that launchers from before combined releases read.
+Pushes to the prism-beta branch refresh only the rolling, Windows-only prism-preview prerelease.
 Writes go through the gh CLI with retries. Update metadata is uploaded last and bound to the
 immutable asset IDs, so a reader never pairs new metadata with an old executable.
 Usage: publish_release.py --track stable|nightly --windows DIR --macos DIR --sha COMMIT
+       publish_release.py --track prism --windows DIR --sha COMMIT
 """
 import argparse
 import hashlib
@@ -19,11 +21,14 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from freevideo_engine.launcher_update import (CHANNEL, MAC_CHANNEL, NIGHTLY_TAG, RELEASE_ASSETS,  # noqa: E402
-                                              build_identity, build_track)
+from freevideo_engine.launcher_update import (CHANNEL, MAC_CHANNEL, NIGHTLY_TAG, PRISM_TAG, RELEASE_ASSETS,  # noqa: E402
+                                              TRACKS, build_identity, build_track)
 from freevideo_engine.release_notes import notes  # noqa: E402
 
 PLATFORMS = (CHANNEL, MAC_CHANNEL)
+# The Prism beta is built from this branch; its release tag has the same name.
+PRISM_BRANCH = 'prism-beta'
+PRISM_TITLE = 'Prism beta (rolling)'
 PAGE = 'https://github.com/FlashML-org/FreeVideo'
 LOGO = '''<div align="center">
   <picture>
@@ -68,7 +73,10 @@ def digest(path):
 
 def load_builds(windows, macos):
     builds = {}
-    for channel, folder in ((CHANNEL, Path(windows)), (MAC_CHANNEL, Path(macos))):
+    for channel, folder in ((CHANNEL, windows), (MAC_CHANNEL, macos)):
+        if folder is None:
+            continue  # The Prism beta has no Mac build.
+        folder = Path(folder)
         raw = json.loads((folder / 'launcher-build.json').read_text(encoding='utf-8'))
         identity = build_identity(raw)
         if identity['channel'] != channel:
@@ -109,7 +117,8 @@ def downloads(base):
 
 def checksums(builds):
     return ['<details><summary>sha256</summary>', '', '```',
-            *('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS), '```', '</details>', '']
+            *('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS if c in builds),
+            '```', '</details>', '']
 
 
 def stable_body(builds, tag):
@@ -240,16 +249,39 @@ def publish_stable(releases, builds, sha, folder):
     print('Published %s/releases/tag/%s' % (PAGE, tag))
 
 
+def prism_body(builds, sha):
+    build = builds[CHANNEL]
+    built = time.strftime('%Y-%m-%d %H:%M', time.gmtime(build['identity']['built_at']))
+    guide = '%s/blob/%s/docs/' % (PAGE, sha)
+    rows = ['## FreeVideo Prism beta (rolling)', '',
+            'Experimental Windows build with the [Prism preview](%sPrism.md), refreshed after every push to the '
+            '`%s` branch. It updates itself from this page. For everyday use, download the '
+            '[latest release](%s/releases/latest).' % (guide, PRISM_BRANCH, PAGE),
+            '',
+            '包含 [Prism 预览](%sPrism.zh-CN.md)的 Windows 实验版，`%s` 分支每次推送后更新，并从本页自动更新。'
+            '日常使用请下载[最新正式版](%s/releases/latest)。' % (guide, PRISM_BRANCH, PAGE),
+            '',
+            '| | |', '|---|---|',
+            '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%s/releases/download/%s/FreeVideo.exe) |'
+            % (PAGE, PRISM_TAG), '',
+            '| commit | built (UTC) | version | Windows |', '|---|---|---|---|',
+            '| [`%s`](%s/commit/%s) | %s | %s | %.1f MB |' % (sha[:9], PAGE, sha, built,
+                                                       escape('v' + build['identity']['product_version']),
+                                                       build['path'].stat().st_size / 1e6), '']
+    rows += checksums(builds)
+    return '\n'.join(rows)
+
+
 def ignored(path):
     # Changes that never trigger a build (see the workflow's push paths-ignore).
     return path.endswith('.md') or path.startswith('.github/')
 
 
-def superseded(releases, sha):
-    main = releases.api('Read current main', 'git/ref/heads/main')['object']['sha']
-    if main == sha:
+def superseded(releases, sha, branch='main'):
+    head = releases.api('Read current %s' % branch, 'git/ref/heads/' + branch)['object']['sha']
+    if head == sha:
         return False
-    comparison = releases.api('Compare with current main', 'compare/%s...%s' % (sha, main))
+    comparison = releases.api('Compare with current %s' % branch, 'compare/%s...%s' % (sha, head))
     files = comparison.get('files')
     later_only_ignored = (comparison.get('status') == 'ahead'
                           and comparison.get('merge_base_commit', {}).get('sha') == sha
@@ -279,20 +311,42 @@ def publish_nightly(releases, builds, sha, folder):
     print('Published %s/releases/tag/%s' % (PAGE, NIGHTLY_TAG))
 
 
+def publish_prism(releases, builds, sha, folder):
+    """Refresh only the prism-preview prerelease: no other release, tag or asset is touched."""
+    if superseded(releases, sha, PRISM_BRANCH):
+        print('%s moved on; the newer build publishes the Prism beta' % PRISM_BRANCH)
+        return
+    build = builds[CHANNEL]
+    sums = write(folder, 'SHA256SUMS.txt', '%s  %s\n' % (build['sha256'], build['path'].name))
+    body = write(folder, 'release-body.md', prism_body(builds, sha))
+    releases.point_tag(PRISM_TAG, sha)
+    if releases.find(PRISM_TAG) is None:
+        gh('Create Prism beta', 'release', 'create', PRISM_TAG, '--verify-tag', '--draft', '--prerelease', '--latest=false',
+           '--title', PRISM_TITLE, '--notes-file', body)
+    gh('Upload Prism beta launcher', 'release', 'upload', PRISM_TAG, str(build['path']), sums, '--clobber')
+    bind_metadata(releases, PRISM_TAG, builds, (CHANNEL,), folder, {CHANNEL: RELEASE_ASSETS[CHANNEL][1]})
+    gh('Publish Prism beta', 'release', 'edit', PRISM_TAG, '--draft=false', '--prerelease', '--latest=false',
+       '--title', PRISM_TITLE, '--notes-file', body)
+    print('Published %s/releases/tag/%s' % (PAGE, PRISM_TAG))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--track', choices=('stable', 'nightly'), required=True)
+    parser.add_argument('--track', choices=TRACKS, required=True)
     parser.add_argument('--windows', type=Path, required=True)
-    parser.add_argument('--macos', type=Path, required=True)
+    parser.add_argument('--macos', type=Path, help='required for stable and nightly; the Prism beta is Windows only')
     parser.add_argument('--sha', required=True)
     parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'FlashML-org/FreeVideo'))
     args = parser.parse_args()
+    if (args.macos is None) != (args.track == 'prism'):
+        parser.error('--macos is required for stable and nightly and not accepted for prism')
     builds = load_builds(args.windows, args.macos)
     if build_track(builds[CHANNEL]['identity']) != args.track:
         raise SystemExit('The builds are %s builds, not %s' % (build_track(builds[CHANNEL]['identity']), args.track))
     releases = Releases(args.repository)
     with tempfile.TemporaryDirectory(prefix='freevideo-publish-') as folder:
-        (publish_stable if args.track == 'stable' else publish_nightly)(releases, builds, args.sha, folder)
+        publish = dict(stable=publish_stable, nightly=publish_nightly, prism=publish_prism)[args.track]
+        publish(releases, builds, args.sha, folder)
 
 
 if __name__ == '__main__':

@@ -36,7 +36,15 @@ ApplicationWindow {
     property bool errorDetailsOpen: false
     property string previousError: ""
     function t(en, zh) { return s.zh ? zh : en }
-    function releaseVersion(value) { return value && value.product_version ? "v" + value.product_version : value && value.version || "—" }
+    // The Prism test build (release track "prism") says so wherever it shows a version; an offered
+    // build carries its own track (the regular release, once MiniMax H3 alone is chosen).
+    function releaseVersion(value) {
+        var version = value && value.product_version ? "v" + value.product_version : value && value.version || "—"
+        var prism = value && value.revision && value.revision === (s.update.candidate || {}).revision ? value.track === "prism" : s.update.track === "prism"
+        return prism && version !== "—" ? version + t(" · Prism test build", " · Prism 测试版") : version
+    }
+    // This Prism test build is offering the regular release: the user chose MiniMax H3 alone.
+    readonly property bool toRegular: s.update.track === "prism" && !!s.update.candidate && s.update.candidate.track !== "prism"
     function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
     readonly property var currentRelease: s.update.current_release || {version: s.update.current}
     readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
@@ -130,6 +138,7 @@ ApplicationWindow {
         if (phase === "restarting" || phase === "engine") return t("ComfyUI restarts once; open FreeVideo pages refresh automatically.", "ComfyUI 会重启一次，已打开的 FreeVideo 页面会自动刷新。")
         if (phase === "checking") return ""
         if (s.update.status === "error" && s.update.error) return s.update.error
+        if (s.update.candidate && toRegular) return t("You chose MiniMax H3 only, so FreeVideo moves to the latest regular release (without Prism). Models and settings are kept.", "你只选择了 MiniMax H3，FreeVideo 会更新到最新正式版（不含 Prism），模型和设置都会保留。")
         if (s.update.candidate) return t("Current version ", "当前版本 ") + releaseVersion(currentRelease) + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
         return t("Installed engine ", "已安装引擎 ") + (s.update.installed || "—") + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
     }
@@ -309,6 +318,20 @@ ApplicationWindow {
                     FText { objectName: "pageHeading"; horizontalAlignment: Text.AlignHCenter; text: s.page === "launcher" ? t("Your workspace", "你的工作空间") : s.page === "comfy" ? t("Set up FreeVideo", "安装 FreeVideo") : s.page === "models" ? t("Set up your models", "准备模型") : s.status === "review" ? t("Ready to install", "确认安装") : s.busy ? t("Setting things up", "正在准备 FreeVideo") : t("Continue your setup", "继续安装"); font.pixelSize: win.compact ? 26 : theme.hero; font.weight: Font.DemiBold; font.letterSpacing: -0.6; Layout.fillWidth: true }
                 }
 
+                // Prism is an early-access preview: every page opens with its notice (the consent repeats it),
+                // and the five-level comparison is one click away before anyone chooses to install it.
+                Rectangle {
+                    objectName: "prismNotice"; visible: !!s.prism_notice; Layout.fillWidth: true
+                    implicitHeight: prismNoticeBody.implicitHeight + 28; radius: theme.radiusMd
+                    color: Qt.rgba(theme.warning.r, theme.warning.g, theme.warning.b, 0.10)
+                    border.color: Qt.rgba(theme.warning.r, theme.warning.g, theme.warning.b, 0.45)
+                    ColumnLayout {
+                        id: prismNoticeBody; x: 16; y: 14; width: parent.width - 32; spacing: 8
+                        FText { text: s.prism_notice || ""; color: theme.warning; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        FButton { objectName: "prismShowcase"; text: t("Watch the comparison before trying Prism ↗", "试用前请先看效果展示 ↗"); onClicked: backend.link(s.prism_showcase) }
+                    }
+                }
+
                 Rectangle {
                     id: failureCard
                     objectName: "failureCard"; visible: !!s.error; Layout.fillWidth: true
@@ -431,6 +454,38 @@ ApplicationWindow {
                     objectName: "modelsPage"
                     visible: s.page === "models"; Layout.fillWidth: true; spacing: 16
                     FCard {
+                        objectName: "videoModels"; Layout.fillWidth: true; padding: 20; spacing: 10
+                        FText { text: t("Models", "模型"); font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        FText { text: t("Choose what to install. Only the chosen models are downloaded.", "选择要安装的模型，只下载选中的模型。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        GridLayout {
+                            Layout.fillWidth: true; columns: win.compact ? 1 : 2; columnSpacing: 12; rowSpacing: 12
+                            Repeater {
+                                model: s.video_models.length
+                                delegate: FChoice {
+                                    required property int index
+                                    property var row: win.s.video_models[index]
+                                    objectName: "videoModel-" + row.id; exclusive: false
+                                    Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
+                                    text: row.title + " · " + row.tag
+                                    detail: row.detail + "\n" + t("Download ", "下载 ") + row.size
+                                    checked: row.checked; enabled: !s.busy && (row.available || row.checked)
+                                    onClicked: backend.selectModel(row.id, checked)
+                                }
+                            }
+                        }
+                        // Prism's Original level at the original precision: an optional, separate download.
+                        FDivider { visible: prismBf16.visible; Layout.topMargin: 4 }
+                        FSwitch {
+                            id: prismBf16
+                            objectName: "prismBf16"; Layout.fillWidth: true
+                            visible: !usingRuntime && !!s.prism_bf16_offered && s.form.selected_models.indexOf("prism") >= 0
+                            text: t("Original: original precision", "原版档：原版精度")
+                            detail: t("Optional bf16 weights for Prism's Original level; without them Original uses the standard weights · +", "可选：Prism 原版档的 BF16 原版权重；不下载时原版档使用标准权重 · +") + bytes(s.prism_bf16_bytes)
+                            checked: !!s.form.prism_bf16; enabled: !s.busy
+                            onToggled: backend.edit("prism_bf16", checked)
+                        }
+                    }
+                    FCard {
                         objectName: "modelLibraries"; visible: !usingRuntime; Layout.fillWidth: true; padding: 20; spacing: 10
                         RowLayout {
                             Layout.fillWidth: true; spacing: 12
@@ -539,7 +594,7 @@ ApplicationWindow {
                         FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
                     FCard {
-                        visible: !usingRuntime; Layout.fillWidth: true; padding: 16
+                        visible: !usingRuntime && s.form.selected_models.indexOf("h3") >= 0; Layout.fillWidth: true; padding: 16
                         FSwitch {
                             objectName: "samplingCaches"; Layout.fillWidth: true
                             text: t("Prepare all quality levels", "提前下载全部质量档位")
@@ -587,7 +642,10 @@ ApplicationWindow {
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: theme.border }
                         FCheck { objectName: "installConsent"; text: s.consent; checked: accepted; onToggled: accepted = checked; Layout.fillWidth: true }
-                        FButton { text: t("Read licenses ↗", "查看许可证 ↗"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: backend.link("https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE") }
+                        Flow {
+                            Layout.fillWidth: true; spacing: 4
+                            Repeater { model: s.license_links; delegate: FButton { required property var modelData; text: modelData.label; flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: backend.link(modelData.url) } }
+                        }
                     }
                 }
 
@@ -729,7 +787,10 @@ ApplicationWindow {
                             FText { text: ["created","present"].indexOf(s.shortcut.status) >= 0 ? "✓  " + t("Shortcut ready", "快捷方式已就绪") : ""; color: theme.success; font.pixelSize: theme.micro }
                         }
                         FCheck { visible: s.needs_consent; text: s.consent; checked: accepted; onToggled: accepted = checked; Layout.fillWidth: true }
-                        FButton { visible: s.needs_consent; text: t("Read licenses ↗", "查看许可证 ↗"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: backend.link("https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE") }
+                        Flow {
+                            visible: s.needs_consent; Layout.fillWidth: true; spacing: 4
+                            Repeater { model: s.license_links; delegate: FButton { required property var modelData; text: modelData.label; flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: backend.link(modelData.url) } }
+                        }
                     }
                 }
 
@@ -1016,7 +1077,7 @@ ApplicationWindow {
             id: modelContents; width: modelScroll.availableWidth
             spacing: 12
             FText { text: t("Download models", "下载模型"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
-            FText { objectName: "videoModelGuide"; text: modelInfo === "video" ? s.video_model_guide : modelInfo === "decoder" ? t("Download the vae and audio_vae folders.", "下载 vae 和 audio_vae 文件夹。") : t("Download the text encoder to your model folder.", "下载文本编码器，放入模型目录。"); color: theme.muted; Layout.fillWidth: true; Layout.bottomMargin: 4 }
+            FText { objectName: "videoModelGuide"; text: modelInfo === "video" ? s.video_model_guide : modelInfo === "decoder" ? t("Download the vae and audio_vae folders.", "下载 vae 和 audio_vae 文件夹。") : modelInfo === "prism" ? t("Prism (preview): download the int8 folder (all RTX 30 / 40 / 50 series GPUs), keeping the folder structure. The bf16 folder is optional, for the Original level.", "Prism（预览）：下载 int8 文件夹（RTX 30／40／50 系通用），并保留目录结构。bf16 文件夹可选，供原版档使用。") : t("Download the text encoder to your model folder.", "下载文本编码器，放入模型目录。"); color: theme.muted; Layout.fillWidth: true; Layout.bottomMargin: 4 }
             Repeater { model: modelLinks[modelInfo]; delegate: FButton { required property var modelData; required property int index; objectName: "modelLink-" + index; text: t(modelData.label, modelData.label_zh) + " ↗"; Layout.fillWidth: true; onClicked: backend.link(modelData.url) } }
             Repeater { model: cloudLinks; delegate: FButton { required property var modelData; text: t("Quark · ", "夸克 · ") + modelData.label + " ↗"; Layout.fillWidth: true; onClicked: backend.link(modelData.url) } }
             FText { text: t("When your download finishes, import a FreeVideo ZIP or choose the folder containing your models.", "下载完成后，导入 FreeVideo ZIP 或选择存放模型的文件夹。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true; Layout.topMargin: 6 }

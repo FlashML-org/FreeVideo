@@ -2,9 +2,11 @@ name: Installation and launchers
 # Every merge to main publishes the rolling nightly (Windows unsigned, Mac not notarized).
 # Users get an update only from a stable vX.Y.Z release, published by running this
 # workflow with "release" checked; Windows signing then waits for the release environment.
+# Every push to prism-beta (or a run of it without "release") publishes only the rolling Windows
+# prism-preview prerelease (unsigned); every prism-beta build is on the prism track and updates only from it.
 on:
   push:
-    branches: [main]
+    branches: [main, prism-beta]
     # A change to the workflows alone does not publish a new Windows build.
     paths-ignore:
       - '**/*.md'
@@ -82,7 +84,7 @@ jobs:
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
-      FREEVIDEO_RELEASE_TRACK: ${{ github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'nightly' }}
+      FREEVIDEO_RELEASE_TRACK: ${{ github.ref == 'refs/heads/prism-beta' && 'prism' || github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'nightly' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -197,7 +199,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   macos:
-    if: github.event_name != 'pull_request'
+    # Prism is not offered on Mac, so the prism-beta branch builds Windows only.
+    if: github.event_name != 'pull_request' && github.ref != 'refs/heads/prism-beta'
     needs: [installation]
     runs-on: macos-15
     timeout-minutes: 30
@@ -277,3 +280,27 @@ jobs:
         run: >-
           python scripts/publish_release.py --track ${{ github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'nightly' }}
           --windows build/windows --macos build/macos --sha ${{ github.sha }}
+  publish-prism:
+    # Refreshes only the prism-preview prerelease, exactly like the nightly; nothing else is touched.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch' && !inputs.release)
+      && github.repository == 'FlashML-org/FreeVideo' && github.ref == 'refs/heads/prism-beta'
+    needs: [windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: windows-launcher
+          path: build/windows
+      - name: Publish the Prism beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python scripts/publish_release.py --track prism --windows build/windows --sha ${{ github.sha }}

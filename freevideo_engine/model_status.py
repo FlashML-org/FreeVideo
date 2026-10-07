@@ -2,13 +2,18 @@
 import math
 import threading
 
-FAMILIES = ('video', 'text', 'decoder', 'sampling')
+FAMILIES = ('video', 'text', 'decoder', 'sampling', 'prism')
 NAMES = {'video': ('Video model', '视频模型'), 'text': ('Text encoder', '文本编码器'),
          'decoder': ('Video & audio decoder', '视频与音频解码器'),
-         'sampling': ('Sampling caches', '采样缓存')}
+         'sampling': ('Sampling caches', '采样缓存'),
+         'prism': ('Prism (preview)', 'Prism（预览）')}
+# The groups that belong to MiniMax H3; Prism downloads as one group.
+H3_FAMILIES = ('video', 'text', 'decoder', 'sampling')
 
 
 def family(row):
+    if row.get('model') == 'prism':
+        return 'prism'
     if row.get('sampling_file'):
         return 'sampling'
     if not row['repo'].startswith('OpenVDN/'):

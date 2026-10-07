@@ -9,6 +9,12 @@ import math
 from .hardware import Hardware, GiB
 from .system import HOST_WEIGHT_HEADROOM, weight_cache_headroom, residual_host_headroom
 
+# PyTorch allocator settings of every CUDA worker (MiniMax H3 and Prism): pinned
+# blocks are not rounded up to a power of two (Prism's pinned expert copies took
+# 24.2 GB instead of 20.6 with the default rounding), and expandable segments
+# where the platform has them. One resident worker serves both models.
+ALLOCATOR_CONFIG = 'backend:native,pinned_max_round_threshold_mb:1,expandable_segments:True'
+
 # One prepared FP8 transformer block, as reserved on the host allocator.
 BLOCK_BYTES = 432_500_000
 
@@ -1257,7 +1263,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     if stream_output:
         notes.append('Decode streams original temporal clips into rgb.npy; full floating video and duplicate RGB storage are avoided.')
     return Policy(2, hardware.to_dict(), gpu_budget, ram_budget, int(reserve_gpu * GiB),
-                  int(reserve_ram * GiB), 'backend:native,pinned_max_round_threshold_mb:1,expandable_segments:True',
+                  int(reserve_ram * GiB), ALLOCATOR_CONFIG,
                   # 504 serialized VAE weight transfers fill 124.8 s of a
                   # 140.4 s decode here, with one slot and no overlap, so a
                   # second slot is worth measuring. It stays off until a

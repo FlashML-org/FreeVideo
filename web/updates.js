@@ -1,8 +1,10 @@
 import { api } from '../../scripts/api.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z, or the rolling nightly.
+// The Prism beta (Windows only) has its own rolling prerelease.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
 const nightlyPage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/nightly';
+const prismPage = 'https://github.com/FlashML-org/FreeVideo/releases/tag/prism-preview';
 const storageKey = 'freevideo.dismissed-update';
 const listeners = new Set();
 // Launcher phases during which the server may disappear and come back updated.
@@ -14,7 +16,13 @@ try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memor
 // rewrites; keep it when reloading into an updated engine.
 const languageHint = (() => { try { return new URLSearchParams(location.search).get('freevideo_lang'); } catch { return null; } })();
 const identity = candidate => candidate ? [candidate.version, candidate.revision, candidate.built_at].join(':') : '';
-const displayVersion = release => release?.product_version ? 'v' + release.product_version : release?.version || '—';
+// The Prism test build (release track "prism") says so wherever it shows a version; an offered
+// build carries its own track (the regular release, once MiniMax H3 alone is chosen).
+const displayVersion = (release, cn) => {
+    const version = release?.product_version ? 'v' + release.product_version : release?.version || '—';
+    const prism = release?.track ? release.track === 'prism' : value?.track === 'prism';
+    return prism && version !== '—' ? version + (cn ? ' · Prism 测试版' : ' · Prism test build') : version;
+};
 // The running release's product version ("0.3.4"), once the first check has answered.
 export const productVersion = () => value?.current_release?.product_version || null;
 const localizedNotes = (release, cn) => release?.release_notes?.[cn ? 'zh' : 'en'];
@@ -125,7 +133,7 @@ export function createUpdateNotice(cn) {
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
         const mac = value?.channel === 'macos-preview';
-        link.href = value?.track === 'nightly' ? nightlyPage : releasePage;
+        link.href = value?.track === 'nightly' ? nightlyPage : value?.track === 'prism' ? prismPage : releasePage;
         link.title = mac
             ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
             : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
@@ -149,7 +157,7 @@ export function createUpdateNotice(cn) {
             text = t('Open the FreeVideo launcher to update, or download the new version.', '请在 FreeVideo 启动器中更新，或下载新版。');
             actions = true;
         } else if (candidate && dismissed !== identity(candidate)) {
-            text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + displayVersion(candidate);
+            text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + displayVersion(candidate, cn);
             if (launcher?.status === 'error' && launcher.error) text += ' · ' + t('last attempt failed', '上次更新未完成');
             actions = true;
         }
@@ -184,7 +192,7 @@ function showReleaseNotes(cn) {
             [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null)]]) {
             if (!release) continue;
             const section = document.createElement('section'), heading = document.createElement('h3');
-            heading.textContent = label + ' · ' + displayVersion(release); section.append(heading);
+            heading.textContent = label + ' · ' + displayVersion(release, cn); section.append(heading);
             const build = document.createElement('p'); build.className = 'fv-release-build';
             build.textContent = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
             section.append(build);
@@ -213,7 +221,7 @@ export function createVersionInfo(cn) {
     element.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
     const render = () => {
         const current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
-        element.textContent = current ? displayVersion(current) : cn ? '版本' : 'Version';
+        element.textContent = current ? displayVersion(current, cn) : cn ? '版本' : 'Version';
     };
     listeners.add(render); render();
     return {element, dispose: () => { listeners.delete(render); closeNotes(); }};

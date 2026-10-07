@@ -1,0 +1,54 @@
+FreeVideo Prism backend: vendored model code
+
+This directory contains inference code adapted from the following projects.
+Each retains its original license; FreeVideo's own changes are Apache-2.0.
+
+Prism
+  Copyright (C) 2026 Tencent. All rights reserved.
+  Licensed under the MIT License.
+  https://huggingface.co/FrancisRing/Prism
+  Source: the Prism single-GPU research branch (Prism-fast, commits 3910631
+  and 0befcb7): hymm/models/modules/{wan_video_dit,wan_audio_dit,
+  interactionv2,mova,dac_vae}.py, hymm/models/modules/block_sparse_attention/*,
+  hymm/diffusion/schedulers/flow_match_pair.py, hymm/fast/{qlinear,qblock,
+  sage_bsa,sage_tune,ivpq_fast,rope,audio_graph,pipeline}.py and the
+  official-VAE speedups of hymm/fast/vae.py (fast_vae.py).
+  The Prism distribution notes that it builds on MOVA-360p (Apache-2.0) and
+  that some components carry Tencent Modifications, Copyright (C) Tencent.
+
+  MIT License: Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including without
+  limitation the rights to use, copy, modify, merge, publish, distribute,
+  sublicense, and/or sell copies of the Software, and to permit persons to whom
+  the Software is furnished to do so, subject to the following conditions:
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+MOVA (MOVA-360p)
+  Copyright (c) MOVA-360p original author and authors (OpenMOSS).
+  Licensed under the Apache License, Version 2.0.
+  https://huggingface.co/OpenMOSS-Team/MOVA-360p
+  Dual-tower bridge, audio DiT, paired flow-matching scheduler and pipeline
+  helpers. Modified (by Tencent for Prism, and by FreeVideo for single-GPU
+  inference) as described in each file's header.
+
+Wan2.1 / Wan2.2
+  Copyright (c) Wan Team, Alibaba. Licensed under the Apache License, Version 2.0.
+  https://github.com/Wan-Video/Wan2.2
+  Video DiT architecture (wan_video_dit.py); the Wan VAE is used through
+  diffusers' AutoencoderKLWan.
+
+Descript Audio Codec (DAC)
+  Copyright (c) 2023-present, Descript. Licensed under the MIT License.
+  https://github.com/descriptinc/descript-audio-codec
+  Decoder architecture in dac_vae.py (continuous MOVA variant).
+
+The Apache-2.0 license text is in FreeVideo's top-level LICENSE file.

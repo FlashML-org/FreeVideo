@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "model": "prism",
+  "status": "provisional",
+  "_todo": "Five levels (2026-10-06): light (calibrated K/V, no base pass), standard (partial teacher from fused layer 10), high (full teacher, default), max (undistilled 20 steps + first-block cache), original (official 50 steps, bf16 + exact attention). Requests name a level with --prism-tier ID; an old request that names only its steps maps 8 -> high, 20 or 30 -> max, 50 -> original (legacy_steps).",
+  "default": "light",
+  "legacy_steps": {
+    "8": "high",
+    "20": "max",
+    "30": "max",
+    "50": "original"
+  },
+  "tiers": [
+    {
+      "id": "light",
+      "en": "Light",
+      "zh": "轻量",
+      "steps": 8,
+      "cfg_steps": 1,
+      "cfg_scale": 2.0,
+      "audio_cfg": 5.0,
+      "shift": 5.0,
+      "audio_shift": 7.0,
+      "distilled": true,
+      "audio_teacher": {
+        "substeps": 4,
+        "cfg": 5.0,
+        "calibrated": "identity"
+      },
+      "sparsity": 0.75,
+      "cdf": 0.2,
+      "attention": "sage",
+      "t2v": false,
+      "note": "260412 distill, 8 steps, CFG 2 on step 1; audio from the student's own v2a K/V (FP8 cache of the conditional pass, 30 fused layers), 4 audio sub-steps with CFG 5; no base pass, no extra download"
+    },
+    {
+      "id": "standard",
+      "en": "Standard",
+      "zh": "标准",
+      "steps": 8,
+      "cfg_steps": 1,
+      "cfg_scale": 2.0,
+      "audio_cfg": 5.0,
+      "shift": 5.0,
+      "audio_shift": 7.0,
+      "distilled": true,
+      "audio_teacher": {
+        "substeps": 4,
+        "cfg": 5.0,
+        "start_layer": 10
+      },
+      "sparsity": 0.75,
+      "cdf": 0.2,
+      "attention": "sage",
+      "t2v": false,
+      "note": "260412 distill, 8 steps, CFG 2 on step 1; partial audio teacher: fused layers 0-9 keep the student's v2a K/V, the base pass runs layers 10-29 from the student's hidden states; 4 audio sub-steps, CFG 5 (~11% faster than High)"
+    },
+    {
+      "id": "high",
+      "en": "High",
+      "zh": "精细",
+      "steps": 8,
+      "cfg_steps": 1,
+      "cfg_scale": 2.0,
+      "audio_cfg": 5.0,
+      "shift": 5.0,
+      "audio_shift": 7.0,
+      "distilled": true,
+      "audio_teacher": {
+        "substeps": 4,
+        "cfg": 5.0
+      },
+      "sparsity": 0.75,
+      "cdf": 0.2,
+      "attention": "sage",
+      "t2v": false,
+      "note": "260412 distill, 8 steps, CFG 2 on step 1; full audio teacher (base pass over the 30 fused layers, 4 audio sub-steps, CFG 5) every step"
+    },
+    {
+      "id": "max",
+      "en": "Max",
+      "zh": "极致",
+      "steps": 20,
+      "cfg_steps": "all",
+      "cfg_scale": 5.0,
+      "audio_cfg": null,
+      "shift": 7.0,
+      "audio_shift": 7.0,
+      "distilled": false,
+      "sparsity": 0.75,
+      "cdf": 0.2,
+      "attention": "sage",
+      "t2v": true,
+      "note": "Undistilled 20 steps, CFG 5 every step (joint video + audio), shifts 7/7, BSA 0.75/0.2; no step cache: the first-block cache (0.12 / 3) was 1.5x faster but lost most of the speech on case 6 (CER 0.57 against 0.14 without it)"
+    },
+    {
+      "id": "original",
+      "en": "Original",
+      "zh": "原版",
+      "steps": 50,
+      "cfg_steps": "all",
+      "cfg_scale": 5.0,
+      "audio_cfg": null,
+      "shift": 7.0,
+      "audio_shift": 7.0,
+      "distilled": false,
+      "sparsity": 0.75,
+      "cdf": 0.2,
+      "weights": "bf16",
+      "attention": "exact",
+      "fallback": {
+        "attention": "sage"
+      },
+      "t2v": true,
+      "note": "Official recipe: base weights, 50 steps, CFG 5 every step (video + audio), shifts 7/7, BSA 0.75/0.2 IVPQ. Default bf16 weights (optional download) + exact bf16 attention; without the bf16 bundle it runs the installed int8/fp8 weights with Sage attention."
+    }
+  ],
+  "fields": "steps, cfg_steps (int or \"all\"), cfg_scale, audio_cfg (null = joint CFG from the uncond pass), shift, audio_shift, distilled, audio_teacher {substeps, cfg, max_sigma, skip_below, every, sparsity, start_layer (partial teacher), calibrated (\"identity\": the student's own K/V instead of the base pass; true: through a prism-kv-calib/1 maps file)}, sparsity, cdf, weights (int8|fp8|bf16), attention (sage|exact), t2v (no first frame; distilled=false only), fallback (settings applied when the level's weights are not installed), fbcache / fbcache_max_skip (first-block step cache threshold and reuses in a row; absent = off)"
+}

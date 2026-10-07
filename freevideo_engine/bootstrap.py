@@ -220,6 +220,8 @@ def prepared_precision(prepared):
 
 
 def model_target(row, model_dir, encoder_dir, prepared_dir=None):
+    if row.get('model') == 'prism':
+        return Path(row['directory']) / row['file']
     if row.get('sampling_file'):
         from .adaln_assets import asset_path
         from .sampling_assets import cache_root
@@ -279,6 +281,18 @@ def plan(args, *, local_progress=None):
     # v0.2.0 stored the encoder directory only in its retained setup plan.
     prior_path = Path(saved['setup_run']) / 'plan.json' if saved.get('setup_run') else None
     prior = json.loads(prior_path.read_text(encoding='utf-8')) if prior_path and prior_path.is_file() else {}
+    from . import video_models
+    # Without an explicit choice, an installation keeps the models it has;
+    # a new one installs MiniMax H3 only.
+    requested = getattr(args, 'selected_models', None)
+    selected = video_models.parse(requested) if requested is not None else video_models.saved_selection(saved, prior)
+    # Leaving out an installed MiniMax H3 keeps it. Setup removes no model
+    # files, so dropping H3 from machine.json would only make it unusable while
+    # its files stay on disk; a choice of Prism alone means "add Prism".
+    kept = ((video_models.H3,) if video_models.H3 not in selected and video_models.h3_installed(saved)
+            and Path(saved['cache']).expanduser().is_dir() else ())
+    selected = video_models.parse(list(selected) + list(kept))
+    h3 = video_models.H3 in selected
     # Hardware detection is the default for fresh installs, updates and retries.
     # Saved benchmark caps must never silently follow a user onto a larger GPU.
     keep_limits = getattr(args, 'keep_resource_limits', False)
@@ -343,8 +357,8 @@ def plan(args, *, local_progress=None):
             cache_format['scale_granularity'] = 'int8_convrot'
     model_dir = Path(args.models or saved.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
     encoder_dir = Path(args.encoder_models or saved.get('encoder_model_root') or prior.get('encoder_dir') or root / 'models' / 'encoder').expanduser().resolve()
-    reuse_cache = args.cache.expanduser().resolve() if args.cache else None
-    if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
+    reuse_cache = args.cache.expanduser().resolve() if args.cache and h3 else None
+    if reuse_cache is None and h3 and not getattr(args, 'rebuild_cache', False):
         revision = json.loads((PACKAGE / 'dependencies.json').read_text(encoding='utf-8'))['models']['vdn_revision']
         for name in ('machine.json', 'prepared-cache.json'):
             cache_record = root / name
@@ -354,19 +368,36 @@ def plan(args, *, local_progress=None):
                 if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
                     reuse_cache = Path(candidate)
                     break
-    if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
+    if reuse_cache is None and h3 and not getattr(args, 'rebuild_cache', False):
         from .install_tuning import discover_prepared
         reuse_cache = discover_prepared(getattr(args, 'reuse_models', None), **cache_format)
     from . import prepared_model
     prepared = None
     model_source = getattr(args, 'model_source', 'prepared')
-    if reuse_cache is None and not getattr(args, 'rebuild_cache', False) and model_source == 'prepared':
+    if reuse_cache is None and h3 and not getattr(args, 'rebuild_cache', False) and model_source == 'prepared':
         prepared = prepared_model.select(root=root, **cache_format)
     prepared_dir = prepared['directory'] if prepared else None
-    if mac_target and reuse_cache is None and prepared is None:
+    if h3 and mac_target and reuse_cache is None and prepared is None:
         errors.append('No verified native-compatible prepared model is available. Source conversion is not supported on Mac.')
-    files = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), reuse_cache or prepared)
+    files = required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), reuse_cache or prepared) if h3 else []
     files += prepared_model.files(prepared)
+    prism = None
+    if video_models.PRISM in selected:
+        # Optional add-ons (bf16 weights for the original level): an explicit choice,
+        # else what this installation's earlier plan or record has.
+        wanted = getattr(args, 'prism_bf16', None)
+        if wanted is not None:
+            addons = ['bf16'] if wanted else []
+        elif isinstance((prior.get('prism') or {}).get('addons'), list):
+            addons = prior['prism']['addons']
+        else:
+            addons = None
+        prism = video_models.prism_plan(None if mac_target else cache_format['capability'], root, saved, system,
+                                        addons=addons, vram_total=None if mac_target else hardware.vram_total,
+                                        ram_total=None if mac_target else hardware.ram_total)
+        errors.extend(prism['errors'])
+        if prism['published']:
+            files += video_models.prism_rows(prism['variant'], prism['directory'], prism['addons'])
     # New installations prepare every quality level; an existing one keeps its
     # earlier choice (off if it predates the option) unless the flag says otherwise.
     sampling_caches = getattr(args, 'sampling_caches', None)
@@ -374,7 +405,7 @@ def plan(args, *, local_progress=None):
         sampling_caches = prior['sampling_caches'] if isinstance(prior.get('sampling_caches'), bool) else not saved.get('ready')
     sampling_caches = bool(sampling_caches)
     from .sampling_assets import install_files, usable_with
-    if prepared or (reuse_cache and usable_with(reuse_cache)):
+    if h3 and (prepared or (reuse_cache and usable_with(reuse_cache))):
         # Published tables match these weights; other caches compute their own.
         files += install_files(sampling_caches)
     local_reuse = None
@@ -428,7 +459,7 @@ def plan(args, *, local_progress=None):
     # future source deletion toward the space needed to complete conversion.
     dependencies = dependency_status(root, layout, system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
-    extra = (0 if reuse_cache or prepared else 52) + (5 if environments_ready else 30 if layout == 'unified' else 45) + 10
+    extra = (0 if reuse_cache or prepared or not h3 else 52) + (5 if environments_ready else 30 if layout == 'unified' else 45) + 10
     frontend = None
     if getattr(args, 'frontend_root', None):
         frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
@@ -467,6 +498,13 @@ def plan(args, *, local_progress=None):
     if disk_plan['mode'] == 'extreme':
         transfers = dict(transfers or {}, file_workers=1, overlap_build=False, mode='streaming-space-saver')
     from .model_status import inventory as model_inventory
+    # A ready installation that adds Prism files keeps generating while they
+    # download: setup fetches them first, beside the installation in use, and
+    # marks it unfinished only for the short steps after (main, Prefetcher).
+    # The download runs in the installed environment, so it must be current.
+    prism_pending = sum(row['bytes'] for row, state in model_entries if row.get('model') == 'prism' and state != 'found')
+    prism_download_first = bool(prism_pending and saved.get('ready') is True and video_models.installed(saved)
+                                and environments_ready and not mac_target)
     value = {'schema_version': 1, 'engine_version': __version__, 'root': str(root), 'inventory': snapshot, 'policy_estimate': None,
             'installation_resources': resources,
             'storage': storage,
@@ -513,12 +551,14 @@ def plan(args, *, local_progress=None):
             'steps': ['Install isolated uv/Python and ' + ('one shared CUDA environment' if layout == 'unified' else 'two pinned CUDA environments'),
                       'Clone pinned VDN, patched Diffusers and the native H3 text-encoder library',
                       'Install verified Windows Triton / Sage2 wheels' if windows_target else 'Install a local CUDA compiler and build Sage2 for the detected GPU only',
-                      'Download and verify pinned base, eight-step checkpoint and encoder weights',
-                      'Prepare or verify the architecture-compatible FP8 cache',
+                      *(['Download and verify pinned base, eight-step checkpoint and encoder weights',
+                         'Prepare or verify the architecture-compatible FP8 cache'] if h3 else []),
+                      *(['Download and verify the Prism (preview) ' + (prism['label'] + ' ' if prism['label'] else '') + 'weights'
+                         + (' and the optional bf16 weights for the Original level' if prism.get('addons') else '')] if prism else []),
                       'Execute small attention/linear kernel probes and save machine configuration'],
-            'licenses': ['https://huggingface.co/OpenVDN/vdn-minimax-h3/blob/751739ee5b9e3ac802dca5d5111075fdaeb47885/LICENSE',
-                         'https://huggingface.co/t8star/Vdn-Minimax-H3-Comfy',
-                         'https://docs.nvidia.com/cuda/eula/index.html']}
+            'licenses': video_models.license_urls(selected) + ['https://docs.nvidia.com/cuda/eula/index.html'],
+            'selected_models': list(selected), 'kept_models': list(kept), 'prism': prism,
+            'prism_download_first': prism_download_first}
     if mac_target:
         from .macos_bootstrap import describe_plan
         describe_plan(value)
@@ -546,6 +586,23 @@ def display(value, ui=None, *, verbose=False):
     for key, default, label in (('model_dir', 'vdn', 'Model directory'), ('encoder_dir', 'encoder', 'Encoder directory')):
         if Path(value[key]) != Path(value['root']) / 'models' / default:
             rows.append((label, value[key]))
+    selected = value.get('selected_models') or ['h3']
+    if selected != ['h3']:
+        rows.append(('Video models', ' + '.join(('MiniMax H3', 'Prism (preview)')[name == 'prism'] for name in selected)))
+    if 'h3' in (value.get('kept_models') or []):
+        rows.append(('MiniMax H3', 'Already installed and kept; setup does not remove installed models'))
+    prism = value.get('prism')
+    if prism:
+        # No weight format for this GPU (or a Mac): the computer is the reason, not the publication.
+        rows.append(('Prism (preview)', ('%s weights · ~%.1f GiB' % (prism['label'], prism['total_bytes']/GiB))
+                     if prism.get('published') else 'Not available on this computer'
+                     if not prism.get('variant') or prism.get('available') is False else 'Model files not published yet'))
+        from .video_models import PRISM_NOTICE, PRISM_SHOWCASE
+        rows.append(('Prism notice', PRISM_NOTICE[0] + ' ' + PRISM_SHOWCASE))
+        if prism.get('addons'):
+            rows.append(('Prism Original', 'Original precision (bf16) weights · +%.1f GiB' % (prism.get('addon_bytes', 0)/GiB)))
+        if value.get('prism_download_first'):
+            rows.append(('During the download', 'The installed models keep working; setup finishes after Prism is downloaded'))
     rows.append(('Model download', '~%.1f GiB; Python / GPU packages are additional' % (value['model_download_bytes']/GiB)
                  if value['model_download_bytes'] else 'No new model files expected · verify existing files'))
     if value.get('disk_mode') == 'extreme':
@@ -560,17 +617,18 @@ def display(value, ui=None, *, verbose=False):
         label = 'Peak disk space' if len(value['disks']) == 1 else 'Disk ' + disk['paths'][0]
         rows.append((label, '~%.1f GiB additional needed · %.1f GiB free' % (disk['needed_bytes']/GiB, disk['free_bytes']/GiB)))
     prepared = value.get('prepared_model')
-    rows.append(('Storage', 'Download slim %s model · no local conversion' % prepared_precision(prepared) if prepared else
-                 ('Reuse prepared %s cache' % ('ConvRot int8' if value.get('prepared_format') == 'int8_convrot' else 'FP8'))
-                 if value['reuse_cache'] else 'Prepare compact FP8 model'))
-    if prepared:
-        rows.append(('Prepared model', prepared['repo'] + ' · ' + prepared['scale_granularity'] +
-                     (' · private, authorized HF token required' if prepared.get('private') else '')))
-    elif value.get('model_source') == 'source':
-        rows.append(('Model source', value['model_source_reason']))
-    rows.append(('Original weights', 'Not downloaded; fixed AdaLN tables included' if prepared else
-                 'Remove verified conversion inputs downloaded/copied here; keep borrowed originals'
-                 if value.get('storage', 'compact') == 'compact' else 'Keep original weights for future conversion'))
+    if 'h3' in selected:
+        rows.append(('Storage', 'Download slim %s model · no local conversion' % prepared_precision(prepared) if prepared else
+                     ('Reuse prepared %s cache' % ('ConvRot int8' if value.get('prepared_format') == 'int8_convrot' else 'FP8'))
+                     if value['reuse_cache'] else 'Prepare compact FP8 model'))
+        if prepared:
+            rows.append(('Prepared model', prepared['repo'] + ' · ' + prepared['scale_granularity'] +
+                         (' · private, authorized HF token required' if prepared.get('private') else '')))
+        elif value.get('model_source') == 'source':
+            rows.append(('Model source', value['model_source_reason']))
+        rows.append(('Original weights', 'Not downloaded; fixed AdaLN tables included' if prepared else
+                     'Remove verified conversion inputs downloaded/copied here; keep borrowed originals'
+                     if value.get('storage', 'compact') == 'compact' else 'Keep original weights for future conversion'))
     setup_ram = 'Bounded model verification; no local conversion' if prepared else 'About 4–8 GiB for model preparation'
     if value.get('build'):
         setup_ram += ' · up to ~%.1f GiB for compilation' % (value['build']['estimated_peak_bytes']/GiB)
@@ -599,8 +657,12 @@ def display(value, ui=None, *, verbose=False):
                  + (' · compare proxy / direct' if networking.get('proxy_configured') or networking.get('git_proxy_configured') else '')))
     ui.panel('FreeVideo / ' + h['system'] + ' setup', rows)
     ui.write('Space and memory are estimates. Setup checks your GPU before marking it ready.\n')
-    ui.write('Model licenses: MiniMax H3, H3 text encoder.\n' if value.get('device_backend') == 'mps' else
-             'Model / toolkit licenses: MiniMax H3, H3 text encoder, NVIDIA CUDA.\n')
+    if selected != ['h3']:
+        from .video_models import license_names
+        ui.write('Model / toolkit licenses: %s; NVIDIA CUDA.\n' % license_names(selected))
+    else:
+        ui.write('Model licenses: MiniMax H3, H3 text encoder.\n' if value.get('device_backend') == 'mps' else
+                 'Model / toolkit licenses: MiniMax H3, H3 text encoder, NVIDIA CUDA.\n')
     ui.write('Use --verbose for full details and license links, or enter d at confirmation.\n')
     for error in value['errors']:
         ui.write('BLOCKED: ' + str(error) + '\n')
@@ -641,6 +703,14 @@ def display_details(value, ui=None):
         else:
             rows.append((name.capitalize(), 'Missing: %s · version mismatches: %s' %
                         (', '.join(row['missing']) or 'none', ', '.join(row['mismatched']) or 'none')))
+    if (value.get('selected_models') or ['h3']) != ['h3']:
+        rows.append(('Video models', ', '.join(value['selected_models'])))
+    if value.get('prism'):
+        prism = value['prism']
+        rows.append(('Prism (preview)', '%s weights · %s · %s' % (prism['label'], prism['repo'], prism['directory'])
+                     if prism.get('variant') else 'Not available on this computer'))
+        if prism.get('addons'):
+            rows.append(('Prism Original', 'Original precision (bf16) weights · %.2f GiB' % (prism.get('addon_bytes', 0)/GiB)))
     rows.append(('Model download', '%.2f GiB · existing files verified after confirmation' % (value['model_download_bytes']/GiB)))
     rows.append(('Storage', value.get('storage', 'compact') + ' · ' + value.get('storage_preparation', 'streamed FP8 preparation without a BF16 disk copy')))
     if value.get('prepared_model'):
@@ -674,7 +744,7 @@ def confirmed(args, value, ask=input, ui=None):
         if not args.yes or not args.accept_model_license:
             raise ValueError('--approved-plan requires explicit plan/license acceptance.')
         reviewed = json.loads(Path(reviewed_path).read_text(encoding='utf-8'))
-        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'prepared_format', 'model_source', 'disk_mode', 'frontend', 'sampling_caches')
+        keys = ('root', 'engine_version', 'environment_layout', 'model_dir', 'encoder_dir', 'vram_gib', 'ram_gib', 'reuse_cache', 'storage', 'storage_cleanup', 'model_downloader', 'prepared_model', 'prepared_format', 'model_source', 'disk_mode', 'frontend', 'sampling_caches', 'selected_models', 'prism')
         changed = any(reviewed.get(key) != value.get(key) for key in keys)
         changed |= reviewed.get('device_backend') != value.get('device_backend')
         if value.get('device_backend') == 'mps':
@@ -683,8 +753,11 @@ def confirmed(args, value, ask=input, ui=None):
             changed |= reviewed.get('inventory', {}).get('selected_gpu', {}).get('uuid') != value['inventory']['selected_gpu']['uuid']
         changed |= value['model_download_bytes'] > reviewed.get('model_download_bytes', -1)
         changed |= bool(reviewed.get('allow_model_restart')) != bool(value.get('allow_model_restart'))
-        for key in ('root', 'roots', 'copy_mode', 'copy_bytes'):
+        for key in ('root', 'roots', 'copy_mode'):
             changed |= (reviewed.get('local_models') or {}).get(key) != (value.get('local_models') or {}).get(key)
+        # Less to copy is no change: an earlier run of this plan (the Prism
+        # download before setup) already imported those files.
+        changed |= ((value.get('local_models') or {}).get('copy_bytes') or 0) > ((reviewed.get('local_models') or {}).get('copy_bytes') or 0)
         changed |= sum(disk['needed_bytes'] for disk in value['disks']) > sum(disk['needed_bytes'] for disk in reviewed.get('disks', []))
         if changed or reviewed.get('errors'):
             raise ValueError('The installation plan changed. Detect configuration again and review the new plan before installing.')
@@ -838,7 +911,11 @@ class Installer:
         self.saved = saved
         # Moving a working installation to int8 checks the int8 kernels first
         # (execute), so a GPU that fails them keeps its configuration as it was.
+        # Only an installation with MiniMax H3 installed and selected moves:
+        # the int8 model is H3's, and a Prism-only one has no H3 paths to probe.
+        from .video_models import H3, h3_installed
         self.int8_check_first = (value.get('prepared_format') == 'int8_convrot' and saved.get('ready') is True
+                                 and H3 in (value.get('selected_models') or [H3]) and h3_installed(saved)
                                  and self.system != 'Darwin' and self.pythons['engine'].is_file())
         if not self.int8_check_first:
             self.mark_unfinished()
@@ -1379,7 +1456,9 @@ class Installer:
 
     def machine_configuration(self, python, encoder_python, comfy, prepared):
         """The complete machine.json written once every setup step has passed."""
-        return {'schema_version': 1, 'root': str(self.root), 'source': str(SOURCE),
+        selected = self.plan.get('selected_models') or ['h3']
+        h3 = 'h3' in selected
+        configuration = {'schema_version': 1, 'root': str(self.root), 'source': str(SOURCE),
             'storage': self.plan.get('storage', 'compact'),
             'disk_mode': self.plan.get('disk_mode', 'normal'),
             'environment_layout': self.layout,
@@ -1392,7 +1471,7 @@ class Installer:
             'encoder_model_root': self.plan['encoder_dir'], 'wheel_cache': self.plan['wheel_cache'],
             'base': str(Path(self.plan['model_dir']) / 'h3-base'),
             'checkpoint': str(Path(self.plan['model_dir']) / 'stage-dmd-step-250'),
-            'cache': json.loads(prepared.read_text(encoding='utf-8'))['cache'],
+            'cache': json.loads(prepared.read_text(encoding='utf-8'))['cache'] if h3 else None,
             'encoder': self.spec['models']['encoder_file'].split('/')[-1],
             'model_paths': str(self.root / 'encoder-paths.yaml'),
             **self.device_configuration(),
@@ -1400,11 +1479,20 @@ class Installer:
             'model_revision': self.spec['models']['vdn_revision'],
             'prepared_format': self.plan.get('prepared_format', 'fp8'),
             'setup_run': str(self.run_dir), 'ready': True}
+        if not h3:
+            # A Prism-only installation has no H3 weights; H3 requests then
+            # report it as not installed instead of failing on missing files.
+            for key in ('base', 'checkpoint', 'cache', 'encoder', 'model_paths', 'model_revision'):
+                configuration.pop(key)
+        if 'prism' in selected:
+            from .video_models import prism_record
+            configuration['models'] = {'prism': prism_record(self.plan['prism'])}
+        return configuration
 
     def device_configuration(self):
         return {'gpu_uuid': self.plan['inventory']['selected_gpu']['uuid']}
 
-    def check_kernels(self, python, kernel_report):
+    def check_kernels(self, python, kernel_report, require_paths=True):
         # Kernel probes execute real CUDA work and take roughly a minute on a
         # consumer GPU.  A completed receipt is reusable only when every
         # input that can change the result still matches: GPU identity,
@@ -1416,7 +1504,9 @@ class Installer:
         receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
                    if isinstance(hardware_data, dict) else None)
         if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths', '--out', kernel_report])
+            # The H3 base and checkpoint folders exist only when H3 is installed.
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe',
+                                     *(['--require-paths'] if require_paths else []), '--out', kernel_report])
         else:
             save(kernel_report, receipt)
             self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')
@@ -1476,18 +1566,22 @@ class Installer:
                       workers=1 if self.plan.get('disk_mode') == 'extreme' else 3)
         python, encoder_python = self.pythons['engine'], self.pythons['encoder']
         prepared = self.run_dir / 'prepared.json'
+        selected = self.plan.get('selected_models') or ['h3']
+        h3 = 'h3' in selected
         self.ui.phase('Optimize model storage', total - 3, total)
-        self.command('prepare', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
-                                '--prepare', '--out', prepared])
+        if h3:
+            self.command('prepare', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
+                                    '--prepare', '--out', prepared])
         self.ui.phase('Verify installation on your GPU', total - 2, total)
         for name, executable in pythons.items():
             self.command(name + '-dependency-check', [uv, 'pip', 'check', '--python', executable])
             self.command(name + '-freeze', [uv, 'pip', 'freeze', '--python', executable])
         kernel_report = self.run_dir / 'kernel-capabilities.json'
-        self.check_kernels(python, kernel_report)
-        require_int8_kernels(self.plan, kernel_report)
-        self.command('storage', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
-                                 '--cleanup', '--out', self.run_dir / 'storage.json'])
+        self.check_kernels(python, kernel_report, require_paths=h3)
+        if h3:
+            require_int8_kernels(self.plan, kernel_report)
+            self.command('storage', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
+                                     '--cleanup', '--out', self.run_dir / 'storage.json'])
         self.record_kernel_validation(results, kernel_report)
         self.ui.phase('Finish setup', total - 1, total)
         configuration = self.machine_configuration(python, encoder_python, comfy, prepared)
@@ -1502,17 +1596,28 @@ class Installer:
         return configuration
 
 
+def video_model_choice(value):
+    from .video_models import parse
+    try:
+        return ','.join(parse(value))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
 class Prefetcher:
     """Download the prepared model an installation is switching to, beside the one in use.
 
     provision --prefetch holds the setup lease (no concurrent setup run) and
     nothing else: a running request keeps the engine lease, so generation
     continues on the installed model. machine.json is unchanged and nothing
-    is removed. Progress uses the installer's step reporting.
+    is removed. Progress uses the installer's step reporting. With prism=True
+    it downloads the Prism (preview) files a ready installation is adding
+    (provision --prefetch-prism), the same way.
     """
     command = Installer.command
 
-    def __init__(self, value, ui=None):
+    def __init__(self, value, ui=None, *, prism=False):
+        self.prism = prism
         self.plan = value
         self.root = Path(value['root'])
         self.system = value['inventory'].get('hardware', {}).get('system', platform.system())
@@ -1537,34 +1642,55 @@ class Prefetcher:
 
     def run(self):
         out = self.run_dir / 'prefetch.json'
-        self.ui.phase('Download the faster model', 1, 2)
+        self.ui.phase('Download Prism (preview) · installed models keep working' if self.prism else 'Download the faster model', 1, 2)
         self.command('models', [self.pythons['engine'], '-m', 'freevideo_engine.provision',
-                                '--plan', self.run_dir / 'plan.json', '--prefetch', '--out', out])
+                                '--plan', self.run_dir / 'plan.json', '--prefetch-prism' if self.prism else '--prefetch',
+                                '--out', out])
         result = json.loads(out.read_text(encoding='utf-8'))
         self.state.update(status='complete' if result.get('complete') else 'incomplete', result=result)
         save(self.run_dir / 'status.json', self.state)
-        self.ui.phase('Model downloaded' if result.get('complete') else 'Model download incomplete', 2, 2)
+        name = 'Prism (preview)' if self.prism else 'Model'
+        self.ui.phase(name + (' downloaded' if result.get('complete') else ' download incomplete'), 2, 2)
         return result
 
 
-def run_prefetch(value, ui):
+def run_prefetch(value, ui, *, prism=False, then_setup=False):
+    """Download beside the installation in use and return the exit code.
+
+    With then_setup a complete download returns None instead and keeps the
+    progress display open for the setup run that follows in this process.
+    """
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt('Download interrupted by signal %s' % signum)
+    previous = processes.termination_handler(interrupted)
+    name = 'Prism (preview)' if prism else 'Model'
+    code = None
     try:
-        prefetcher = Prefetcher(value, ui)
+        prefetcher = Prefetcher(value, ui, prism=prism)
         ui.start(prefetcher.run_dir)
         result = prefetcher.run()
     except BaseException as error:
         message = str(error) if not isinstance(error, KeyboardInterrupt) else 'Stopped'
         ui.event('failure', error=message)
-        print('\nModel download stopped: %s\nThe installed model is unchanged and still in use; downloaded files '
-              'are kept for the next attempt.' % message, file=sys.stderr)
-        return 130 if isinstance(error, KeyboardInterrupt) else 1
+        print('\n%s download stopped: %s\nThe installation is unchanged and still in use; downloaded files '
+              'are kept for the next attempt.' % (name, message), file=sys.stderr)
+        code = 130 if isinstance(error, KeyboardInterrupt) else 1
+    else:
+        if not result.get('complete'):
+            ui.event('failure', error='Some %s files are still missing' % name)
+            print('\nSome %s files are still missing; run the download again. The installation is unchanged '
+                  'and still in use.' % name, file=sys.stderr)
+            code = 1
+        elif not then_setup:
+            print('\nPrism (preview) is downloaded and verified. Run the same setup again to finish installing it.'
+                  if prism else
+                  '\nThe model is downloaded and verified. Run setup with the same --prepared-format to switch to it.')
+            code = 0
     finally:
-        ui.close()
-    if not result.get('complete'):
-        print('\nSome model files are still missing; run the download again.', file=sys.stderr)
-        return 1
-    print('\nThe model is downloaded and verified. Run setup with the same --prepared-format to switch to it.')
-    return 0
+        processes.restore_handlers(previous)
+        if code is not None or not then_setup:
+            ui.close()
+    return code
 
 
 def main(argv=None):
@@ -1577,12 +1703,20 @@ def main(argv=None):
     parser.add_argument('--sampling-caches', action=argparse.BooleanOptionalAction, default=None,
                         help='Install every quality level in advance (default for new installations; existing ones keep '
                              'their choice). The default 8 + 3 refinement tables are always installed.')
+    parser.add_argument('--video-models', dest='selected_models', type=video_model_choice, metavar='h3[,prism]',
+                        help='Video models to install: h3 (MiniMax H3, default for new installations), prism '
+                             '(Prism preview, NVIDIA RTX 30 series or newer) or h3,prism. Existing installations keep '
+                             'their models unless this is given; an installed MiniMax H3 is always kept.')
+    parser.add_argument('--prism-bf16', action=argparse.BooleanOptionalAction, default=None,
+                        help='Also download the optional bf16 Prism weights that the Original level samples at the '
+                             'original precision (~61 GiB). Existing installations keep their choice.')
     parser.add_argument('--prepared-format', choices=('auto', 'int8', 'fp8'), default='auto',
                         help='auto: an installation keeps its recorded format and new installations use int8 on GeForce '
                              'and Ampere cards, FP8 elsewhere. int8/fp8 switch explicitly; files of the other format are kept')
     parser.add_argument('--prefetch-only', action='store_true',
                         help='With --prepared-format: download and verify that model beside the installed one, which stays '
-                             'in use. No other setup step runs and machine.json is unchanged')
+                             'in use. Without it: the Prism (preview) files a ready installation is adding. No other setup '
+                             'step runs and machine.json is unchanged')
     parser.add_argument('--model-source', choices=('prepared', 'source'), default='prepared',
                         help='Default: download a pinned slim model matching the GPU format. source: explicitly download original weights and convert locally')
     parser.add_argument('--encoder-models', type=Path, help='Directory containing text_encoders/')
@@ -1629,8 +1763,6 @@ def main(argv=None):
         parser.error('--auto-resources cannot be combined with --vram-gib or --ram-gib')
     if args.copy_existing_models and not (args.reuse_models or args.reuse_models_manifest):
         parser.error('--copy-existing-models requires --reuse-models or --reuse-models-manifest')
-    if args.prefetch_only and args.prepared_format == 'auto':
-        parser.error('--prefetch-only needs --prepared-format int8 or fp8')
     ui = TerminalUI(platform.system() + ' setup', plain=args.plain, no_color=args.no_color,
                     verbose=args.verbose, show_location=args.verbose)
     try:
@@ -1661,27 +1793,60 @@ def main(argv=None):
         print('Cancelled. No engine or model installation was started.')
         return 0
     if args.prefetch_only:
-        return run_prefetch(value, ui)
-    try:
-        installer_class = Installer
-        if value.get('device_backend') == 'mps':
-            from .macos_setup import Installer as installer_class
-        installer = installer_class(value, ui)
-    except BlockingIOError:
-        print('Setup, testing or generation is using this installation/GPU lock. Retry after it finishes.', file=sys.stderr)
-        from .locking import lock_holders
-        owners = lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))])
-        if owners:
-            print('Processes with open lock handles: %s. Stop the old task before retrying; do not delete lock files.' % ', '.join(map(str, owners)), file=sys.stderr)
-        return 1
-    except (OSError, ValueError) as error:
-        print('Setup could not start: ' + str(error), file=sys.stderr)
-        return 1
+        if args.prepared_format == 'auto' and not value.get('prism_download_first'):
+            print('--prefetch-only needs --prepared-format int8 or fp8, or a setup that adds Prism (preview) files '
+                  'to a ready installation.', file=sys.stderr)
+            return 1
+        return run_prefetch(value, ui, prism=args.prepared_format == 'auto')
+    # Adding Prism to a ready installation: download it beside the installation
+    # in use first. A stopped download leaves machine.json as it was; only the
+    # short steps after it run with the installation marked unfinished.
+    downloaded = bool(value.get('prism_download_first'))
+    if downloaded:
+        code = run_prefetch(value, ui, prism=True, then_setup=True)
+        if code is not None:
+            return code
+    installer_class = Installer
+    if value.get('device_backend') == 'mps':
+        from .macos_setup import Installer as installer_class
+    waiting = False
+    while True:
+        try:
+            installer = installer_class(value, ui)
+            break
+        except BlockingIOError:
+            if downloaded:
+                # A video is still generating with the installed models; setup
+                # continues as soon as it releases the installation.
+                if not waiting:
+                    waiting = True
+                    ui.phase('Waiting for the current video to finish', ui.done, ui.total)
+                try:
+                    time.sleep(5)
+                    continue
+                except KeyboardInterrupt:
+                    ui.event('failure', error='Stopped')
+                    ui.close()
+                    print('\nSetup stopped. Prism (preview) is downloaded; the installation is unchanged and still '
+                          'in use.', file=sys.stderr)
+                    return 130
+            print('Setup, testing or generation is using this installation/GPU lock. Retry after it finishes.', file=sys.stderr)
+            from .locking import lock_holders
+            owners = lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))])
+            if owners:
+                print('Processes with open lock handles: %s. Stop the old task before retrying; do not delete lock files.' % ', '.join(map(str, owners)), file=sys.stderr)
+            return 1
+        except (OSError, ValueError) as error:
+            if downloaded:
+                ui.close()
+            print('Setup could not start: ' + str(error), file=sys.stderr)
+            return 1
     def interrupted(signum, frame):
         raise KeyboardInterrupt('Setup interrupted by signal %s' % signum)
     previous = processes.termination_handler(interrupted)
     try:
-        ui.start(installer.run_dir)
+        if not downloaded:
+            ui.start(installer.run_dir)
         installer.start_monitor()
         installer.execute()
         installer.state['status'] = 'complete'
@@ -1703,7 +1868,10 @@ def main(argv=None):
             ui.close()
     if installer.state['status'] == 'complete':
         entry = '.\\test.ps1' if platform.system() == 'Windows' else './test.sh'
-        print('\nSetup complete. Next: %s --root "%s"' % (entry, installer.root))
+        if 'h3' not in (value.get('selected_models') or ['h3']):
+            print('\nSetup complete. Prism (preview) is ready: choose it in FreeVideo in ComfyUI.')
+        else:
+            print('\nSetup complete. Next: %s --root "%s"' % (entry, installer.root))
         if args.verbose:
             print('Configuration: %s' % (installer.root / 'machine.json'))
         return 0

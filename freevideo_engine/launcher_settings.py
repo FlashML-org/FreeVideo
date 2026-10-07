@@ -27,7 +27,7 @@ def default_language():
 def sanitize(value):
     value = value if isinstance(value, dict) else {}
     result = {k: value[k] for k in TEXT if isinstance(value.get(k), str)}
-    for key in ('separate', 'new_comfy', 'sampling_caches'):
+    for key in ('separate', 'new_comfy', 'sampling_caches', 'prism_bf16'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
     if value.get('model_method') in ('auto', 'manual', 'reuse'):
@@ -37,6 +37,11 @@ def sanitize(value):
     folders = value.get('model_dirs')
     if isinstance(folders, list) and all(isinstance(p, str) for p in folders):
         result['model_dirs'] = list(dict.fromkeys(folders))
+    if value.get('update_track') in ('stable', 'prism'):
+        result['update_track'] = value['update_track']
+    chosen = value.get('selected_models')
+    if isinstance(chosen, list) and chosen and all(name in ('h3', 'prism') for name in chosen):
+        result['selected_models'] = [name for name in ('h3', 'prism') if name in chosen]
     offline = value.get('offline_models')
     if isinstance(offline, list) and all(isinstance(p, str) for p in offline):
         result['offline_models'] = list(dict.fromkeys(offline))

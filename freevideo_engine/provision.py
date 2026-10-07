@@ -68,11 +68,23 @@ def models(plan):
     model_dir, encoder_dir = (Path(plan[name]).expanduser().resolve() for name in ('model_dir', 'encoder_dir'))
     from . import prepared_model
     prepared = plan.get('prepared_model')
-    files = list(required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')), plan.get('reuse_cache') or prepared))
+    # Plans written before the model choice existed install H3 only.
+    selected = plan.get('selected_models') or ['h3']
+    files = list(required_models(json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8')),
+                                 plan.get('reuse_cache') or prepared)) if 'h3' in selected else []
     files += prepared_model.files(prepared)
     from .sampling_assets import install_files, usable_with
-    if prepared or (plan.get('reuse_cache') and usable_with(plan['reuse_cache'])):
+    if 'h3' in selected and (prepared or (plan.get('reuse_cache') and usable_with(plan['reuse_cache']))):
         files += install_files(bool(plan.get('sampling_caches')))
+    if 'prism' in selected:
+        from .video_models import prism_rows, complete
+        prism = plan.get('prism') or {}
+        if not prism.get('published'):
+            raise ValueError('Prism (preview) model files are not published yet; review setup again without Prism.')
+        rows = prism_rows(prism['variant'], prism['directory'], prism.get('addons') or ())
+        if not all(complete(row) for row in rows):
+            raise ValueError('The Prism (preview) manifest changed; review setup again.')
+        files += rows
     mode = plan.get('verification', 'auto')
     from .local_models import key as local_key, import_file
     local_files, missing = [], []
@@ -81,7 +93,9 @@ def models(plan):
     # gigabytes of unrelated local weights. A local match is never downloaded.
     for row in files:
         path = model_target(row, model_dir, encoder_dir, prepared['directory'] if prepared else None)
-        hf_directory = Path(prepared['directory']) if row.get('prepared') else model_dir if row['repo'].startswith('OpenVDN/') else encoder_dir
+        hf_directory = (Path(row['directory']) if row.get('model') == 'prism' else
+                        Path(prepared['directory']) if row.get('prepared') else
+                        model_dir if row['repo'].startswith('OpenVDN/') else encoder_dir)
         if path in destinations:
             raise ValueError('Duplicate model destination in installation plan: ' + str(path))
         destinations.add(path)
@@ -468,6 +482,38 @@ def prefetch(plan, out):
     return result
 
 
+def prefetch_prism(plan, out):
+    """Fetch the Prism (preview) files a ready installation is adding, while it stays in use.
+
+    Like prefetch: only the setup lease is held, so generation continues with
+    the installed models, machine.json is not touched and nothing is removed.
+    The setup run that follows finds the files present and verified, so the
+    installation is unfinished only for its short remaining steps.
+    """
+    from .video_models import complete, prism_rows
+    root = Path(plan['root']).expanduser().resolve()
+    prism = plan.get('prism') or {}
+    if 'prism' not in (plan.get('selected_models') or []) or not prism.get('published'):
+        raise ValueError('This setup plan adds no Prism (preview) files')
+    machine = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
+    if not machine.get('ready'):
+        raise ValueError('Prism (preview) downloads beside a working installation; complete setup first')
+    rows = prism_rows(prism['variant'], prism['directory'], prism.get('addons') or ())
+    if not all(complete(row) for row in rows):
+        raise ValueError('The Prism (preview) manifest changed; review setup again.')
+    with runtime_lock(root / 'setup.lock', inherit=False):
+        # Only the Prism rows: the installed models are verified by setup itself.
+        models(dict(plan, selected_models=['prism'], prepared_model=None, reuse_cache=None))
+    present = [row for row in rows if (Path(row['directory']) / row['file']).is_file()
+               and (Path(row['directory']) / row['file']).stat().st_size == row['bytes']]
+    result = dict(schema_version=1, model='prism', variant=prism['variant'], addons=list(prism.get('addons') or ()),
+                  files=len(rows), present=len(present), bytes=sum(row['bytes'] for row in rows),
+                  complete=len(present) == len(rows), finished=time.time())
+    save(out, result)
+    print(json.dumps(dict(event='prefetch_complete', **result)), flush=True)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--plan', required=True, type=Path)
@@ -476,9 +522,11 @@ def main():
     operation.add_argument('--cleanup', action='store_true')
     operation.add_argument('--prefetch', action='store_true',
                            help='Download and verify another prepared format while the installed one stays in use')
+    operation.add_argument('--prefetch-prism', action='store_true',
+                           help='Download and verify the Prism (preview) files while the installed models stay in use')
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
-    if (args.prepare or args.cleanup or args.prefetch) and args.out is None:
+    if (args.prepare or args.cleanup or args.prefetch or args.prefetch_prism) and args.out is None:
         parser.error('--out is required for preparation, cleanup and prefetch reports')
     plan = json.loads(args.plan.read_text(encoding='utf-8'))
     if args.cleanup:
@@ -490,6 +538,8 @@ def main():
         prepare(plan, args.out)
     elif args.prefetch:
         prefetch(plan, args.out)
+    elif args.prefetch_prism:
+        prefetch_prism(plan, args.out)
     else:
         models(plan)
 

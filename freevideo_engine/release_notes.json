@@ -2,15 +2,19 @@
   "schema": 1,
   "product_version": "0.3.4",
   "en": {
-    "summary": "Diagnostic report saves the diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup.",
+    "summary": "Prism test build: Prism may occasionally have audio problems, so choose it with care; we recommend the mature MiniMax H3. Watch the comparison before trying Prism: https://freevideo-community.pages.dev/prism/ Also new: a Diagnostic report button.",
     "changes": [
+      "Prism preview, early access in this test build: turn a first frame into a 720p video with sound, with five quality levels. It may occasionally have audio problems and may be slower and lower in quality than MiniMax H3, which stays the recommendation. Watch the comparison first: https://freevideo-community.pages.dev/prism/",
+      "Every installer page now shows the Prism read-first notice with a button to the comparison.",
       "Diagnostic report saves the redacted diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup, and it helps other users too. The report has hardware details, settings and timings only, with no prompts, reference images or videos.",
       "After a video finishes, a card under the buttons invites you to submit the report. Once closed, it does not come back, and it never covers the video."
     ]
   },
   "zh": {
-    "summary": "新增「诊断报告」按钮，一键保存诊断报告；欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化。",
+    "summary": "Prism 测试版更新：Prism 可能存在偶发的音频问题，请谨慎选择，推荐使用成熟的 MiniMax H3。试用前请先看效果展示：https://freevideo-community.pages.dev/prism/ 另新增「诊断报告」按钮。",
     "changes": [
+      "Prism 尝鲜测试版（本测试版提供）：从首帧生成带声音的 720p 视频，共五档质量。可能存在偶发的音频问题，请谨慎选择；速度和质量可能不如 MiniMax H3，推荐使用成熟的 MiniMax H3。试用前请先看效果展示：https://freevideo-community.pages.dev/prism/",
+      "安装器每个页面都会显示 Prism 必读须知，并可一键打开效果展示。",
       "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
       "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
     ]

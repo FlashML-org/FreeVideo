@@ -217,7 +217,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         if (!versions.value.enabled || versions.value.useOriginal || !versions.value.original.trim()) return;
         try { if (!versions.fresh(context())) await enhance(); }
         catch (error) { show(errorText(error), error?.message === 'cancelled' ? '' : 'error'); return false; }
-    }, sync() { if (input.value !== versions.text()) changed(); }, dispose() {
+    }, sync() { if (input.value !== versions.text()) changed(); }, available(flag) {
+        // The rewriter targets MiniMax H3: for another model, switch it off (the original
+        // text returns) and hide its controls; the prompt editor itself stays.
+        if (!flag && versions.value.enabled) { toggle.checked = false; toggle.onchange(); }
+        bar.hidden = !flag; status.hidden = !flag; if (!flag) install.hidden = true;
+    }, dispose() {
         disposed = true; cancelJob().catch(() => {}); input.removeEventListener('input', changed);
         input.removeEventListener('beforeinput', replace);
     }};

@@ -97,6 +97,15 @@ def main():
                           help='Fresh-worker placement retries after confirmed resource exhaustion (default: 2)')
     generate.add_argument('--no-tuning', action='store_true', help='Bypass saved tuning and conditioning reuse for this request')
     generate.add_argument('--seed', type=int, default=2026090901)
+    generate.add_argument('--model', choices=('h3', 'prism'), default='h3',
+                          help='Video model: MiniMax H3 (default) or the Prism preview (image to video + audio)')
+    generate.add_argument('--prism-variant', choices=('int8', 'fp8', 'bf16'), help=argparse.SUPPRESS)
+    generate.add_argument('--prism-tier', metavar='ID',
+                          help='Prism quality level id from prism_tiers.json: light (default), standard, high, max, original')
+    generate.add_argument('--prism-steps', type=int, choices=range(1, 101), metavar='1..100',
+                          help='Prism steps: with --prism-tier, that level\'s recipe at these steps; alone, the level '
+                               'these steps selected before levels had ids (8 high, 20 max, 50 original). '
+                               '--base-steps is MiniMax H3\'s 1..32')
     generate.add_argument('--two-pass', action=argparse.BooleanOptionalAction, default=True,
                           help='Sample a smaller canvas, upscale latents and refine (default: on; 8 + 3 steps)')
     generate.add_argument('--base-steps', type=int, choices=range(1, 33), metavar='1..32',
@@ -128,6 +137,14 @@ def main():
                                help='Measure the placement questions this machine can settle')
     calibrate.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.command == 'generate' and args.model == 'prism':
+        # Prism has its own canvas defaults (1280 x 720); keep only explicit sizes.
+        given = {argument.split('=', 1)[0] for argument in sys.argv[1:]}
+        args.prism_width = args.width if '--width' in given else None
+        args.prism_height = args.height if '--height' in given else None
+        from .prism_generate import run as run_prism
+        run_prism(args)
+        return
     if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):
         from .macos_generate import dispatch
         return dispatch(args)

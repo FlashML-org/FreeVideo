@@ -20,6 +20,8 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 ## 更新动态
 
 - **2026-10-07** · **[v0.3.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.2)：先出预览。** 先看半分辨率预览，满意的再继续二采。
+<!-- TODO(prism): Prism 发布时填写日期与版本。 -->
+- **2026-10-06** · **Prism（预览）。** 与 MiniMax H3 并存，使用腾讯开源的 Prism 模型从首帧生成带声音的 720p 视频。安装时在「模型」中选择即可，参见 [Prism 说明](docs/Prism.zh-CN.md)。
 - **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0)：更快的 int8 模型。** GeForce 和 RTX 30 系显卡改用 int8，RTX 3090 生成 5 秒视频快约 2.3 倍。
 - **2026-10-06** · **[作品展示](https://freevideo-community.pages.dev/#gallery)上线。** 观看 FreeVideo 生成的 20 秒视频，以及四档质量的并排对比。
 - **2026-10-06** · **[v0.2.3](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.3)：视频自带工作流。** 把 FreeVideo 生成的视频拖到 ComfyUI 画布上，即可还原提示词、种子和全部参数，之前的视频也能补上。
@@ -65,25 +67,40 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 Mac 预览版暂未进行 Apple 公证，首次打开时 macOS 会拦截。请只从 Release 页面下载，按 [Mac 说明](docs/Mac.zh-CN.md#首次打开)核对文件后再放行。这只对 FreeVideo 生效，不影响其他安全设置。
 
+### Prism（预览）
+
+> **必读须知：** Prism 目前为尝鲜测试版，**可能存在偶发的音频问题，请谨慎选择**。现在支持的加速版本在速度和质量上可能不如生态成熟的 MiniMax H3，**推荐使用成熟的 MiniMax H3。** 试用前请先[看效果展示](https://freevideo-community.pages.dev/prism/)。
+
+FreeVideo 还可以在 NVIDIA RTX 30 系及更新的显卡上运行腾讯开源的音视频模型 [Prism](https://huggingface.co/FrancisRing/Prism)（MIT），从一张首帧生成 1280 × 720、8.5 秒的带声音视频。共有五个质量档位：默认的**轻量**档最快，使用 8 步蒸馏，在 H200 上约 4 分钟（RTX 4070 上 28 分钟）；**标准**、**精细**档的音频引导更充分；**极致**档用原版权重采样 20 步；**原版**档就是 Prism 官方的 50 步配方，保持原版精度。
+
+1. 在启动器的 **模型** 步骤中同时勾选 **Prism · 预览**，并保持 **MiniMax H3** 的勾选（ComfyUI 中：**设置 → 模型**；Linux：`./setup.sh --video-models h3,prism`）。只会下载选中的模型。
+2. 在创作面板的 **模型** 中选择 **Prism**，在 **素材** 中添加首帧后生成。
+
+支持的输入、质量档位和生成时间见 [Prism 说明](docs/Prism.zh-CN.md)。
+
 ### 已有 ComfyUI
 
 以自定义节点方式安装：
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/FlashML-org/FreeVideo.git
+git clone -b prism-beta https://github.com/FlashML-org/FreeVideo.git
 ```
 
 重启 ComfyUI，打开 **工作流 → 浏览模板 → FreeVideo → FreeVideo-All-in-One**，然后在 FreeVideo 的 **设置** 中完成安装。
+
+`prism-beta` 分支在预览版每次更新时整体替换，`git pull` 无法更新。请用 `git fetch origin prism-beta && git reset --hard origin/prism-beta` 更新（会丢弃你在该文件夹中的修改）。
 
 ### Linux
 
 安装：
 
 ```bash
-git clone https://github.com/FlashML-org/FreeVideo.git && cd FreeVideo
+git clone -b prism-beta https://github.com/FlashML-org/FreeVideo.git && cd FreeVideo
 ./setup.sh
 ```
+
+更新时运行 `git fetch origin prism-beta && git reset --hard origin/prism-beta`，再运行一次 `./setup.sh`。
 
 从提示词文件生成视频：
 
@@ -140,4 +157,4 @@ FreeVideo 基于 VDN-H3。如在研究中使用 FreeVideo，请引用 [Video Del
 
 ## 许可证
 
-代码采用 [Apache License 2.0](LICENSE) 授权。模型权重适用 [MiniMax H3 社区许可证](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE)，该许可证对使用地区和用途有所限制。
+代码采用 [Apache License 2.0](LICENSE) 授权。模型权重适用 [MiniMax H3 社区许可证](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE)，该许可证对使用地区和用途有所限制。可选的 Prism 预览版使用 MIT（Prism）及 Apache-2.0（MOVA、Wan2.2、LightX2V）许可的权重，详见[第三方声明](THIRD_PARTY_NOTICES.md)。

@@ -84,6 +84,13 @@ def modelscope_mapping(row, spec=None):
         for variant in settings.get(prefix + '_modelscope_variants', {}).values():
             if row['repo'] == variant['repo'] and row['revision'] == variant['hf_revision']:
                 return dict(variant, family=prefix + '-models')
+    if row.get('model') == 'prism':
+        # Only once the Prism manifest pins a verified ModelScope commit of the same content.
+        from .video_models import prism_manifest
+        mirror = prism_manifest().get('modelscope') or {}
+        if (mirror.get('repo') and len(mirror.get('revision') or '') == 40
+                and mirror.get('hf_revision') == row['revision'] and len(row['revision']) == 40):
+            return dict(mirror, family=mirror.get('family', 'edge-models'))
     return None
 
 

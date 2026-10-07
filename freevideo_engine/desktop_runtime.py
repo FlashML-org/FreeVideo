@@ -107,7 +107,8 @@ def check_launcher_payload(source, destination):
     package = Path(__file__).parent
     files = package_data_files(package.parent)
     # A missing manifest must fail even if the frozen package contains no data.
-    for name in ('dependencies.json', 'bootstrap_versions.json', 'model_files.json', 'prepared_models.json', 'test_prompts.json'):
+    for name in ('dependencies.json', 'bootstrap_versions.json', 'model_files.json', 'prepared_models.json',
+                 'prism_models.json', 'prism_tiers.json', 'test_prompts.json'):
         json.loads((package / name).read_text(encoding='utf-8'))
     for path in files:
         relative = path.relative_to(package.parent)

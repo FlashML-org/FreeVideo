@@ -2,6 +2,7 @@ import { createErrorPanel, errorText } from './error_panel.js';
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
+import { knownPrismLevels, loadPrismLevels, prismTextToVideo } from './sampling_effort.js';
 import { createGenerationProgress, referenceTrimText } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
@@ -12,6 +13,7 @@ import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
 import { regenerateResult, upscaleResult } from './studio_queue.js';
+import { modelGrid, preferInstalledModel, prismOnly, swapModelCanvas, trackModel } from './model_canvas.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -63,6 +65,10 @@ function mediaKind(name) {
     throw new Error(text("Choose an image, video or audio file", "请选择图片、视频或音频文件"));
 }
 
+// The model combo of FreeVideoGenerate stores this name for the Prism preview.
+const PRISM_MODEL = 'Prism (preview)';
+const usesPrism = generate => generate?.widgets?.find(w => w.name === 'model')?.value === PRISM_MODEL;
+
 function mediaPanel(node, mount = null) {
     const serialized = node.widgets.find(w => w.name === "assets");
     serialized.type = "hidden";
@@ -83,8 +89,9 @@ function mediaPanel(node, mount = null) {
         text('Add a voice, music or rhythm reference (its first 15 seconds at most are used)', '添加音色、音乐或节奏参考（最多使用前 15 秒）'), () => audioPicker.click());
     const audioHelp = el('div', '', 'fv-note'); audioHelp.hidden = true;
     const role = el("select"); role.setAttribute("aria-label", text("Use new images as", "新图片用途"));
+    const roleOptions = [];
     for (const [value, label] of [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]]) {
-        const option = el("option", label); option.value = value; role.append(option);
+        const option = el("option", label); option.value = value; role.append(option); roleOptions.push(option);
     }
     role.value = 'reference';
     toolbar.append(add, addAudio, role, picker, audioPicker); panel.append(toolbar, mode, note, audioHelp, connections, cards);
@@ -97,6 +104,17 @@ function mediaPanel(node, mount = null) {
     const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
     const changed = event => { if (String(event.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-media', changed);
+    // Prism (preview) animates one first frame: offer only that role while a connected Generate uses Prism.
+    const prismTargets = () => (node.outputs?.[0]?.links || []).map(id => {
+        const link = node.graph?.links?.[id];
+        return link && node.graph.getNodeById?.(link.target_id);
+    }).filter(usesPrism);
+    const prism = () => prismTargets().length > 0;
+    // Levels with t2v (Max and Original) also run without a first frame; every connected Prism node must allow it.
+    const textOnly = () => prismTargets().every(target => prismTextToVideo(target.widgets?.find(w => w.name === 'prism_quality')?.value));
+    const modelChanged = () => render();
+    window.addEventListener('freevideo-model', modelChanged);
+    window.addEventListener('freevideo-steps', modelChanged);
     function render() {
         for (const preview of cards.querySelectorAll("video,audio")) {
             preview.pause(); preview.removeAttribute("src"); preview.load();
@@ -121,9 +139,25 @@ function mediaPanel(node, mount = null) {
             const chip = el('span', `${label} · ${text('Connected', '已连接')}`, 'fv-connection');
             chip.title = source?.title || source?.type || label; connections.append(chip);
         }
-        mode.textContent = refs ? text("Reference video · experimental", "参考生成 · 实验性") : first && last ? text("First + last frame", "首尾帧生成") : first ? text("Image to video", "图生视频") : last ? text("Last frame to video", "尾帧生成") : text("Text to video · media is optional", "文生视频 · 素材可留空");
+        const prismOnly = prism();
+        if (prismOnly && !knownPrismLevels()) loadPrismLevels(api).then(levels => { if (levels) render(); });
+        const prismText = prismOnly && textOnly();
+        addAudio.disabled = prismOnly || uploading;
+        for (const option of roleOptions) option.disabled = prismOnly && option.value !== 'first';
+        if (prismOnly) role.value = 'first';
+        mode.textContent = prismOnly ? (prismText ? text("Prism (preview) · first frame or text to video", "Prism（预览）· 首帧或文本生成") : text("Prism (preview) · first frame to video", "Prism（预览）· 首帧生成")) : refs ? text("Reference video · experimental", "参考生成 · 实验性") : first && last ? text("First + last frame", "首尾帧生成") : first ? text("Image to video", "图生视频") : last ? text("Last frame to video", "尾帧生成") : text("Text to video · media is optional", "文生视频 · 素材可留空");
+        if (prismOnly) {
+            const fits = (first === 1 || (prismText && !first)) && !last && !refs;
+            message(fits ? (first ? text("Prism (preview) animates this first frame.", "Prism（预览）将从这张首帧开始生成。")
+                    : text("No first frame: Prism (preview) generates from the text alone at this quality level.", "未提供首帧：Prism（预览）将在当前质量档位仅凭文本生成。"))
+                : prismText ? text("Prism (preview) uses at most one first frame. Last frames and references are not supported: disable them, or choose MiniMax H3.", "Prism（预览）最多使用一张首帧，不支持尾帧和参考素材：请关闭这些素材，或改用 MiniMax H3。")
+                : text("This Prism (preview) quality level needs exactly one first frame (Max and Original also generate from text alone). Last frames and references are not supported: disable them, or choose MiniMax H3.", "当前 Prism（预览）质量档位需要且只使用一张首帧（「极致」「原版」档位也可仅凭文本生成），不支持尾帧和参考素材：请关闭这些素材，或改用 MiniMax H3。"), !fits);
+        } else
         message(refs && (first || last) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : text("Connect IMAGE / AUDIO outputs on the left, or drop / paste files here.", "可连接左侧 IMAGE / AUDIO 输入，或拖入、粘贴文件。"), Boolean(refs && (first || last) || first > 1 || last > 1));
-        if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Connect an image / audio node or upload files.\nLeave empty for text to video.", "连接图像／音频节点或上传文件。\n留空即可文生视频。"), "fv-empty"));
+        if (!rows.length && !connections.childElementCount) cards.append(el("div", prismOnly
+            ? (prismText ? text("Upload or connect a first frame,\nor leave empty for text to video.", "上传或连接首帧图片，或留空仅凭文本生成。")
+                : text("Upload or connect the first frame.", "上传或连接首帧图片。"))
+            : text("Connect an image / audio node or upload files.\nLeave empty for text to video.", "连接图像／音频节点或上传文件。\n留空即可文生视频。"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media will come from the connected nodes.\nNo upload is needed.', '素材由已连接的节点提供。\n无需上传文件。'), 'fv-connected-card'));
         rows.forEach((row, index) => {
             const card = el("div", undefined, "fv-card"); card.dataset.enabled = String(row.enabled !== false);
@@ -134,7 +168,7 @@ function mediaPanel(node, mount = null) {
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             const kind = mediaKind(row.file);
             for (const [value, title] of (kind === "image" ? [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]] : [["reference", text("Reference", "参考")]])) {
-                const option = el("option", title); option.value = value; select.append(option);
+                const option = el("option", title); option.value = value; option.disabled = prismOnly && value !== 'first'; select.append(option);
             }
             select.value = row.role; select.onchange = () => { rows[index].role = select.value; update(rows); };
             top.append(enabled, label, select); card.append(top);
@@ -179,14 +213,14 @@ function mediaPanel(node, mount = null) {
                 rows.push({file: result.file, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);
             }
         } catch (error) { message(error.message, true); }
-        finally { uploading = false; node.isUploading = false; add.disabled = false; addAudio.disabled = false; picker.value = ""; audioPicker.value = ''; }
+        finally { uploading = false; node.isUploading = false; add.disabled = false; addAudio.disabled = prism(); picker.value = ""; audioPicker.value = ''; }
     }
     picker.onchange = () => upload(picker.files);
     audioPicker.onchange = () => upload(audioPicker.files);
     panel.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
     panel.ondrop = event => { event.preventDefault(); event.stopPropagation(); upload(event.dataTransfer.files); };
     panel.onpaste = event => { if (event.clipboardData?.files.length) { event.preventDefault(); event.stopPropagation(); upload(event.clipboardData.files); } };
-    const dispose = () => window.removeEventListener('freevideo-media', changed);
+    const dispose = () => { window.removeEventListener('freevideo-media', changed); window.removeEventListener('freevideo-model', modelChanged); window.removeEventListener('freevideo-steps', modelChanged); };
     if (mount) { mount.append(panel); render(); return dispose; }
     node.freevideoCreateMediaEditor = target => mediaPanel(node, target);
     node.addDOMWidget("freevideo_media", "freevideo_media", panel, {serialize: false, getMinHeight: () => 300, getMaxHeight: () => 520});
@@ -273,6 +307,8 @@ function resultPanel(node) {
             const pass = this.widgets?.find(w => w.name === 'two_pass');
             if (refine?.value === 2 && base?.value === 8 && pass?.value !== false) refine.value = 3;
         }
+        // A loaded workflow keeps its canvas and steps; only later model changes swap them.
+        trackModel(this); modelGrid(this); window.dispatchEvent(new CustomEvent('freevideo-model', {detail: this.id}));
         warn(); return result;
     };
     warn();
@@ -362,6 +398,15 @@ function resultPanel(node) {
 }
 
 let configuringGraph = false;
+// A Prism-only installation cannot run MiniMax H3: its Generate nodes move to Prism.
+async function preferInstalled(nodes) {
+    if (!nodes.length) return;
+    let info = null;
+    try { const reply = await api.fetchApi('/freevideo/models'); info = reply.ok ? await reply.json() : null; }
+    catch { return; }  // An older server has no model list; nothing changes.
+    if (!prismOnly(info?.installed) || configuringGraph) return;
+    for (const node of nodes) if (app.graph?.getNodeById?.(node.id) === node) preferInstalledModel(node, info.installed);
+}
 function syncPrompts(reset = false) {
     if (configuringGraph && reset !== true) return;
     for (const node of app.graph?._nodes || []) if (node.type === 'FreeVideoGenerate') syncReferencePrompt(node, text, reset === true);
@@ -393,6 +438,8 @@ app.registerExtension({
             return;
         }
         if (!["FreeVideoMedia", "FreeVideoGenerate", "FreeVideoLoRAStack"].includes(nodeData.name)) return;
+        // MiniMax H3's default prompt, which switching to Prism may replace while untouched (model_canvas.js).
+        const defaultPrompt = nodeData.input?.required?.text?.[1]?.default;
         if (nodeData.name === "FreeVideoGenerate") nodeType.prototype.freevideoStarterPrompt = nodeData.input?.required?.text?.[1]?.default || '';
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -435,6 +482,62 @@ app.registerExtension({
                     prompt.callback = function (...args) { if (!configuringGraph) rememberPromptDraft(api, node); return callback?.apply(this, args); };
                     prompt.inputEl?.addEventListener?.('input', () => rememberPromptDraft(api, node));
                 }
+                const model = this.widgets?.find(w => w.name === 'model');
+                if (model) {
+                    const node = this, chosen = model.callback;
+                    model.label = text('Model', '模型');
+                    model.tooltip = text('MiniMax H3: every input. Prism (preview): a first frame (Max and Original: or text alone) to video + audio at 1280 × 720, 8.5 s.',
+                        'MiniMax H3：支持全部输入。Prism（预览）：从首帧（「极致」「原版」档位也可仅凭文本）生成 1280 × 720、8.5 秒的视频与音频。');
+                    model.callback = function (...args) {
+                        const result = chosen?.apply(this, args);
+                        // A user's change brings the chosen model's canvas and steps (as the creative
+                        // workspace does): Prism 1280 x 720 for 8.5 s, MiniMax H3 back to its 1-32 steps.
+                        if (configuringGraph) trackModel(node); else swapModelCanvas(node);
+                        modelGrid(node);
+                        window.dispatchEvent(new CustomEvent('freevideo-model', {detail: node.id}));
+                        return result;
+                    };
+                }
+                const base = this.widgets?.find(w => w.name === 'base_steps');
+                if (base) {
+                    // A Prism level decides whether a first frame is needed: let the Media panel re-check.
+                    const node = this, stepped = base.callback;
+                    base.callback = function (...args) {
+                        const result = stepped?.apply(this, args);
+                        window.dispatchEvent(new CustomEvent('freevideo-steps', {detail: node.id}));
+                        return result;
+                    };
+                }
+                const level = this.widgets?.find(w => w.name === 'prism_quality');
+                if (level) {
+                    const node = this, picked = level.callback;
+                    level.label = text('Prism quality', 'Prism 质量');
+                    level.tooltip = text('Prism (preview) only. Light (default, the fastest), Standard and High animate a first frame, with a lighter to a full audio pass; Max and Original sample the undistilled model and also generate from text alone. The level sets the steps.',
+                        '仅用于 Prism（预览）。「轻量」（默认，最快）「标准」「精细」从首帧生成，音频处理由轻到全；「极致」「原版」使用未蒸馏模型，也可仅凭文本生成。档位决定采样步数。');
+                    level.callback = function (...args) {
+                        const result = picked?.apply(this, args);
+                        window.dispatchEvent(new CustomEvent('freevideo-steps', {detail: node.id}));
+                        return result;
+                    };
+                    // A Prism workflow saved before the levels had ids chose one by its steps:
+                    // keep the recipe it got then (prism_tiers.json legacy_steps).
+                    const configured = this.onConfigure;
+                    this.onConfigure = function (info, ...rest) {
+                        const result = configured?.apply(this, [info, ...rest]);
+                        if (!info?.properties?.freevideo_prism_levels && usesPrism(this)) {
+                            const steps = this.widgets?.find(w => w.name === 'base_steps')?.value;
+                            const legacy = {8: 'high', 20: 'max', 30: 'max', 50: 'original'}[steps];
+                            if (legacy) level.value = legacy;
+                        }
+                        this.properties = {...(this.properties || {}), freevideo_prism_levels: 2};
+                        return result;
+                    };
+                    this.properties = {...(this.properties || {}), freevideo_prism_levels: 2};
+                }
+                this.freevideoDefaultPrompt = defaultPrompt;
+                trackModel(this); modelGrid(this);
+                // Added to an open workflow (a loaded one is handled after it is configured).
+                if (!configuringGraph) { const node = this; setTimeout(() => preferInstalled([node])); }
                 resultPanel(this);
                 this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => openStudio(this), {serialize: false});
                 const removed = this.onRemoved;
@@ -447,6 +550,7 @@ app.registerExtension({
     afterConfigureGraph() {
         syncPrompts(true);
         configuringGraph = false;
+        preferInstalled((app.graph?._nodes || []).filter(n => n.type === 'FreeVideoGenerate' || n.comfyClass === 'FreeVideoGenerate'));
         progressConnection.reset();
         progressConnection.refresh();
         refreshNavigation();

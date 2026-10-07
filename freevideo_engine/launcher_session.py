@@ -61,8 +61,12 @@ class Session:
         self.form = dict(comfy='', destination=str(home / 'FreeVideo'), engine='', python='',
                          url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
                          separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[],
-                         sampling_caches=not saved.get('installation'))
+                         sampling_caches=not saved.get('installation'), selected_models=['h3'], prism_bf16=False,
+                         update_track='')
         self.form.update({k: v for k, v in saved.items() if k in self.form})
+        # launcher.json may lack the model choice: the official launcher drops it when it saves.
+        self.saved_choice = {key for key in ('selected_models', 'prism_bf16') if key in saved}
+        self.models_edited = False
         if 'environment_method' not in saved and self.form['offline_runtime']:
             self.form['environment_method'] = 'manual'
         if self.form['model_method'] == 'reuse':
@@ -106,6 +110,8 @@ class Session:
             identity = current_build()
             if identity:
                 self.updater = UpdateClient(identity, launcher_root())
+        self.seed_models()
+        self.follow_release_track()
         if self.updater and not self.updater.busy:
             self.updater.run('check')
         self.update_checked = time.monotonic()
@@ -130,6 +136,75 @@ class Session:
 
     def t(self, en, zh):
         return zh if self.language.startswith('zh') else en
+
+    def consent_text(self):
+        text = self.t('I accept the installation plan and model / toolkit licenses.', '我同意安装计划及模型／工具包许可证。')
+        if 'prism' in self.form['selected_models']:
+            from .video_models import license_names
+            zh = self.language.startswith('zh')
+            text += self.t(' Models: ', '模型：') + license_names(self.form['selected_models'], zh) + self.t('.', '。')
+            text += self.t(' I have read the Prism notice and watched the comparison: it is an early-access preview that may occasionally have audio problems and may be slower and lower in quality than MiniMax H3.',
+                           '我已阅读 Prism 必读须知并看过效果展示：它是尝鲜测试版，可能存在偶发的音频问题，速度和质量可能不如 MiniMax H3。')
+        return text
+
+    def prism_notice(self):
+        """The read-first notice every launcher page shows while Prism can be installed here (not on Mac)."""
+        import sys
+        from .video_models import PRISM_NOTICE
+        return '' if sys.platform == 'darwin' else PRISM_NOTICE[self.language.startswith('zh')]
+
+    def prism_showcase(self):
+        from .video_models import PRISM_SHOWCASE
+        return PRISM_SHOWCASE
+
+    def license_links(self):
+        """The license pages the review links to, one per chosen model."""
+        rows = []
+        if 'h3' in self.form['selected_models']:
+            both = 'prism' in self.form['selected_models']
+            rows.append(dict(label=self.t('MiniMax H3 licenses ↗', 'MiniMax H3 许可证 ↗') if both else
+                             self.t('Read licenses ↗', '查看许可证 ↗'),
+                             url='https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE'))
+        if 'prism' in self.form['selected_models']:
+            from .video_models import prism_manifest
+            rows.append(dict(label=self.t('Prism licenses ↗', 'Prism 许可证 ↗'),
+                             url=prism_manifest()['licenses'][0]['url']))
+        return rows
+
+    def seed_models(self):
+        """Start the model choice from the models the installation has.
+
+        A repair or the int8 switch sets the installation up with the chosen
+        models, so a choice of MiniMax H3 alone would remove an installed
+        Prism. launcher.json can lack the choice (the official launcher drops
+        selected_models and prism_bf16 when it saves) or disagree with what was
+        installed; a completed installation then decides. A choice made in this
+        session, and an unfinished setup's pending choice, are kept.
+        """
+        if self.models_edited:
+            return
+        try:
+            machine = json.loads((self.engine_root() / 'machine.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError, TypeError):
+            return
+        from .video_models import installed, prism_saved_addons
+        models = list(installed(machine)) if isinstance(machine, dict) else []
+        if not models:
+            return
+        ready = machine.get('ready') is True
+        if 'selected_models' not in self.saved_choice or ready:
+            self.form['selected_models'] = models
+        if 'prism' in models and ('prism_bf16' not in self.saved_choice or ready):
+            self.form['prism_bf16'] = 'bf16' in prism_saved_addons(machine)
+
+    def model_choices(self):
+        from .video_models import choices
+        rows = []
+        for row in choices(self.language.startswith('zh')):
+            size = ('~%.1f GiB' % (row['bytes'] / 2**30) if row['size_known'] else
+                    self.t('size to be announced', '大小待公布'))
+            rows.append(dict(row, checked=row['id'] in self.form['selected_models'], size=size))
+        return rows
 
     def engine_root(self):
         if self.form['engine'].strip():
@@ -161,7 +236,7 @@ class Session:
             self.token = validate(str(value)); return
         if key not in self.form or self.controller.busy or self.importer.busy or self.cleaner.busy:
             return
-        if key in ('separate', 'repair', 'new_comfy', 'sampling_caches'):
+        if key in ('separate', 'repair', 'new_comfy', 'sampling_caches', 'prism_bf16'):
             value = bool(value)
         if key == 'environment_method' and value not in ('auto', 'manual'):
             raise ValueError('Unknown environment installation method')
@@ -170,8 +245,16 @@ class Session:
                                    'Mac 运行环境由安装器自动准备，请在下一步导入模型包。'))
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
+        if key == 'selected_models':
+            from .video_models import parse
+            try:
+                value = list(parse(list(value) if isinstance(value, (list, tuple)) else value))
+            except (TypeError, ValueError):
+                raise ValueError(self.t('Choose at least one model.', '请至少选择一个模型。'))
         if self.form[key] == value:
             return
+        if key in ('selected_models', 'prism_bf16'):
+            self.models_edited = True
         self.form[key] = value
         self.import_retry = None
         self.cleaner.plan = None
@@ -181,6 +264,24 @@ class Session:
         self.browser_attempted = False
         self.browser_error = self.error = ''
         self.persist()
+
+    def select_model(self, name, checked):
+        """Check or uncheck one model; at least one stays chosen."""
+        chosen = set(self.form['selected_models'])
+        (chosen.add if checked else chosen.discard)(str(name))
+        if not chosen:
+            raise ValueError(self.t('Choose at least one model.', '请至少选择一个模型。'))
+        self.edit('selected_models', [n for n in ('h3', 'prism') if n in chosen])
+        # The user's own choice decides the test build's updates: MiniMax H3 alone -> the regular release.
+        self.form['update_track'] = 'prism' if 'prism' in self.form['selected_models'] else 'stable'
+        self.persist()
+        self.follow_release_track()
+
+    def follow_release_track(self):
+        """A Prism test build whose user chose MiniMax H3 alone is offered the latest regular release
+        (without Prism) at once; choosing Prism again returns to the test build's updates."""
+        if self.updater and self.updater.current.get('track') == 'prism' and self.form.get('update_track'):
+            self.updater.follow(self.form['update_track'])
 
     def add_folder(self, folder):
         from .local_models import library_roots
@@ -296,6 +397,7 @@ class Session:
                 raise ValueError(self.t('Import the Environment ZIP, or choose Automatic installation.',
                                        '请导入运行环境包，或选择「自动安装」。'))
             new_layout(self.form['destination']) if self.form['new_comfy'] else layout(self.form['comfy'])
+            self.seed_models()  # The chosen folder may hold an installation.
             self.persist(); self.page = 'models'; return
         self.browser_attempted = False
         self.browser_error = ''
@@ -848,7 +950,7 @@ class Session:
         candidate = view.get('candidate') or {}
         value = dict(version=__version__, phase=view['phase'], model=self.model_phase(), status=view.get('status'),
                      progress=view.get('progress'), manual=view['manual'], channel=view['channel'], track=view['track'],
-                     candidate=public_details(candidate) if candidate.get('version') else None,
+                     candidate=dict(public_details(candidate), track=candidate.get('track', 'stable')) if candidate.get('version') else None,
                      engine=dict(view['current_release'], pending=view['engine'], installed=view['installed']),
                      error=str(view.get('error') or '')[:500])
         now = time.monotonic()
@@ -977,8 +1079,12 @@ class Session:
                   'pending': ('Download needed', '需要下载'), 'downloading': ('Downloading', '正在下载'),
                   'verifying': ('Transfer complete · verifying (no re-download)', '传输完成 · 正在校验（不会重复下载）'),
                   'paused': ('Paused', '已暂停')}
+        chosen = self.form['selected_models']
         for name in FAMILIES:
             if name == 'sampling' and name not in by_id and not self.form['sampling_caches']:
+                continue
+            # A model's rows appear once it is chosen or the plan includes it.
+            if name not in by_id and ('prism' if name == 'prism' else 'h3') not in chosen:
                 continue
             item = dict(by_id.get(name, {}))
             state = 'ready' if ready else item.get('state', 'waiting')
@@ -1003,6 +1109,12 @@ class Session:
         gpu = plan.get('inventory', {}).get('hardware', {}).get('gpu_name')
         if gpu:
             estimate.append(gpu)
+        if 'h3' in (plan.get('kept_models') or []):
+            # Unticking an installed MiniMax H3 keeps it (bootstrap.plan).
+            estimate.append(self.t('MiniMax H3 already installed · kept', 'MiniMax H3 已安装 · 保留'))
+        if plan.get('prism_download_first'):
+            estimate.append(self.t('Installed models keep working while Prism downloads',
+                                   '下载 Prism 期间，已安装的模型可照常使用'))
         if 'model_download_bytes' in plan:
             estimate.append(self.t('Download ', '需下载 ')+'%.1f GiB' % (plan['model_download_bytes']/2**30))
         if row.get('disks'):
@@ -1021,7 +1133,10 @@ class Session:
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
-        return dict(sampling_cache_bytes=total_bytes(), version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
+        from .video_models import prism_addon_rows
+        bf16 = next((r for r in prism_addon_rows(zh) if r['id'] == 'bf16'), None)
+        return dict(sampling_cache_bytes=total_bytes(), prism_bf16_bytes=bf16['bytes'] if bf16 else 0,
+            prism_bf16_offered=bool(bf16), version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy or self.cleaner.busy,
             cleanup=dict(self.cleaner.state, busy=self.cleaner.busy),
             can_cleanup=not (self.controller.busy or self.importer.busy or self.cleaner.busy or self.closing
@@ -1046,7 +1161,11 @@ class Session:
             update=update, engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),
             review_id=row.get('plan', {}).get('plan_id', ''),
-            consent=self.t('I accept the installation plan and model / toolkit licenses.', '我同意安装计划及模型／工具包许可证。'),
+            consent=self.consent_text(),
+            video_models=self.model_choices(),
+            prism_notice=self.prism_notice(),
+            prism_showcase=self.prism_showcase(),
+            license_links=self.license_links(),
             portable=False, needs_consent=bool(getattr(self.controller, 'fixed_environment', False) is True
                 and not (self.controller.root / 'engine/portable-consent.json').exists()),
             review=dict(engine=str(row.get('selection', {}).get('engine', self.form['engine'])),

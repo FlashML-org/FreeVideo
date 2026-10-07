@@ -12,6 +12,11 @@ import types
 from .resident_process import serve
 
 
+def _gpu_uuid(torch):
+    uuid = str(getattr(torch.cuda.get_device_properties(0), 'uuid', ''))
+    return uuid if not uuid or uuid.startswith(('GPU-', 'MIG-')) else 'GPU-' + uuid
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--endpoint', type=Path, required=True)
@@ -21,15 +26,24 @@ def main():
 
     def snapshot():
         result = bank.snapshot() if bank is not None else dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
-        return dict(result, allocator_config=allocator, capabilities=['encoder-weight-preload'])
+        prism = sys.modules.get('freevideo_engine.prism_resident')
+        if prism is not None and prism.CACHE.held():
+            # Prism's cached models are dropped before another model runs, so the
+            # worker's reserved GPU memory and their host copies are reclaimable.
+            import torch
+            extra = prism.CACHE.snapshot()
+            result = dict(result, reclaimable_gpu_bytes=torch.cuda.memory_reserved(),
+                          reclaimable_ram_bytes=result.get('reclaimable_ram_bytes', 0) + extra['prism_ram_bytes'],
+                          gpu_uuid=result.get('gpu_uuid') or _gpu_uuid(torch), **extra)
+        return dict(result, allocator_config=allocator, capabilities=['encoder-weight-preload', 'prism'])
 
     def run(message):
         nonlocal bank, allocator
         started = time.perf_counter()
         command = message['argv']
         module = command[command.index('-m')+1]
-        if module not in ('freevideo_engine.worker', 'freevideo_engine.encode_worker'):
-            raise ValueError('Only the engine and native encoder use the resident worker')
+        if module not in ('freevideo_engine.worker', 'freevideo_engine.encode_worker', 'freevideo_engine.prism_worker'):
+            raise ValueError('Only the engine, the native encoder and Prism use the resident worker')
         request = json.loads(Path(command[command.index('--request')+1]).read_text(encoding='utf-8'))
         with Path(message['log']).open('w', encoding='utf-8', buffering=1) as log, redirect_stdout(log), redirect_stderr(log):
             metrics = None
@@ -51,6 +65,13 @@ def main():
                     bank = ModelBank()
                 import torch
                 torch.set_grad_enabled(False)
+                prism = module.endswith('.prism_worker')
+                from . import prism_resident
+                if prism:
+                    if bank.entries:
+                        bank.clear('A Prism request needs the memory of the cached MiniMax H3 models')
+                else:
+                    prism_resident.CACHE.clear('A MiniMax H3 request needs the memory of the cached Prism models')
                 if diagnostics is not None:
                     diagnostics.stage('worker_cuda_setup')
                 # An explicit benchmark cap belongs to its request. A cached
@@ -59,6 +80,12 @@ def main():
                 torch.cuda.reset_peak_memory_stats()
                 from .processes import worker_signals
                 with worker_signals():
+                    if prism:
+                        from .prism_worker import run_stage
+                        stage = command[command.index('--stage')+1]
+                        run_stage(request, stage, resident=prism_resident.CACHE)
+                        print(json.dumps(dict(event='resident_models', **snapshot())), flush=True)
+                        return 0
                     if module.endswith('.worker'):
                         from .worker import generate
                         bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'))
@@ -118,6 +145,9 @@ def main():
                 del failed_error
                 if bank is not None:
                     bank.clear()
+                prism = sys.modules.get('freevideo_engine.prism_resident')
+                if prism is not None:
+                    prism.CACHE.clear('Request failed')
                 gc.collect()
                 torch = sys.modules.get('torch')
                 if torch is not None and torch.cuda.is_initialized():

@@ -3,6 +3,8 @@ import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {outputDownloadURL} from '../web/output_download.js';
 import {regenerateResult, upscaleResult} from '../web/studio_queue.js';
+import {knownPrismLevels, loadPrismLevels, prismTextToVideo, rememberPrismLevels} from '../web/sampling_effort.js';
+import {modelGrid, preferInstalledModel, prismOnly, swapModelCanvas, trackModel, PRISM_STARTER} from '../web/model_canvas.js';
 
 class Element {
     constructor(tag) {
@@ -29,7 +31,8 @@ test('main browser entry registers both views and preserves node hooks', async (
     const api = Object.assign(events, {apiURL: value => value});
     const document = {head: new Element('head'), createElement: tag => new Element(tag)};
     const dependencies = {
-        app, api, outputDownloadURL, regenerateResult, upscaleResult,
+        app, api, outputDownloadURL, regenerateResult, upscaleResult, knownPrismLevels, loadPrismLevels, prismTextToVideo,
+        modelGrid, preferInstalledModel, prismOnly, swapModelCanvas, trackModel,
         createErrorPanel: () => ({element: new Element('error'), show() {}, clear() {}}),
         errorText: value => String(value),
         openStudio: node => opened.push(node),
@@ -70,6 +73,8 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest;')
             .replace("import { regenerateResult, upscaleResult } from './studio_queue.js';", 'const {regenerateResult,upscaleResult} = globalThis.__freevideoEntryTest;')
+            .replace("import { modelGrid, preferInstalledModel, prismOnly, swapModelCanvas, trackModel } from './model_canvas.js';", 'const {modelGrid,preferInstalledModel,prismOnly,swapModelCanvas,trackModel} = globalThis.__freevideoEntryTest;')
+            .replace("import { knownPrismLevels, loadPrismLevels, prismTextToVideo } from './sampling_effort.js';", 'const {knownPrismLevels,loadPrismLevels,prismTextToVideo} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest;');
         await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');
@@ -142,6 +147,71 @@ test('main browser entry registers both views and preserves node hooks', async (
             reference_trims: [{kind: 'video', number: 1, seconds: 20.3, used_seconds: 5.17}]}]});
         assert.deepEqual(reused.children.filter(e => e.className === 'fv-note fv-trim-note').map(e => e.textContent),
             ['trimmed video 1'], 'Say which reference was shortened, never cut silently');
+
+        // Changing Model on the node brings that model's canvas and steps, as the
+        // creative workspace does; loading a workflow keeps every saved value.
+        rememberPrismLevels([{id: 'light', en: 'Light', zh: '轻量', steps: 8, distilled: true},
+                             {id: 'original', en: 'Original', zh: '原版', steps: 50, distilled: false, t2v: true}]);
+        class ModelNode extends GenerateNode {
+            constructor() {
+                super(); this.id = 11;
+                this.widgets = Object.entries({width: 1344, height: 768, seconds: 10, base_steps: 8, refine_steps: 3,
+                    two_pass: true, model: 'MiniMax H3', prism_quality: 'light'}).map(([name, value]) => ({name, value, options: {}}));
+            }
+        }
+        await extension.beforeRegisterNodeDef(ModelNode, {name: 'FreeVideoGenerate'});
+        const switched = new ModelNode(); switched.onNodeCreated();
+        const field = name => switched.widgets.find(w => w.name === name);
+        const choose = name => { field('model').value = name; field('model').callback(name); };
+        choose('Prism (preview)');
+        assert.deepEqual(['width', 'height', 'seconds', 'two_pass', 'base_steps'].map(n => field(n).value), [1280, 720, 8.5, false, 8]);
+        assert.equal(field('width').options.step2, 16, 'Prism sizes use a 16-pixel grid');
+        field('prism_quality').value = 'original'; field('base_steps').value = 50;  // as the workspace sets Original
+        choose('MiniMax H3');
+        assert.deepEqual(['width', 'height', 'seconds', 'two_pass', 'base_steps', 'refine_steps'].map(n => field(n).value),
+            [1344, 768, 10, true, 8, 3], 'MiniMax H3 gets its own canvas and steps back, never 50 steps');
+        choose('Prism (preview)');
+        assert.equal(field('base_steps').value, 50, 'Prism keeps the steps of its level');
+        // A loaded workflow (and undo) keeps its saved values.
+        extension.beforeConfigureGraph();
+        for (const [name, value] of Object.entries({model: 'MiniMax H3', width: 640, height: 640, base_steps: 12})) field(name).value = value;
+        switched.onConfigure({}); field('model').callback('MiniMax H3');
+        extension.afterConfigureGraph();
+        assert.deepEqual(['width', 'height', 'base_steps'].map(n => field(n).value), [640, 640, 12]);
+        choose('Prism (preview)');
+        assert.equal(field('width').value, 1280);
+        choose('MiniMax H3');
+        assert.deepEqual(['width', 'height', 'base_steps'].map(n => field(n).value), [640, 640, 12]);
+        // MiniMax H3's untouched default prompt becomes Prism's starter and back; typed text stays.
+        class PromptNode extends ModelNode {
+            constructor() { super(); this.id = 12; this.widgets.push({name: 'text', value: 'H3 default script'}); }
+        }
+        await extension.beforeRegisterNodeDef(PromptNode, {name: 'FreeVideoGenerate',
+            input: {required: {text: ['STRING', {multiline: true, default: 'H3 default script'}]}}});
+        const prompted = new PromptNode(); prompted.onNodeCreated();
+        const promptField = prompted.widgets.find(w => w.name === 'text');
+        const pick = name => { const w = prompted.widgets.find(w => w.name === 'model'); w.value = name; w.callback(name); };
+        pick('Prism (preview)');
+        assert.equal(promptField.value, PRISM_STARTER.en);
+        assert.match(promptField.value, /<speech>.+<\/speech>/); assert.match(promptField.value, /<sfx>.+<\/sfx>/);
+        pick('MiniMax H3');
+        assert.equal(promptField.value, 'H3 default script');
+        promptField.value = 'My own scene';
+        pick('Prism (preview)'); pick('MiniMax H3');
+        assert.equal(promptField.value, 'My own scene', 'Never replace text the user typed');
+        // A Prism-only installation cannot run MiniMax H3: a loaded workflow's node moves to Prism.
+        const nodes = app.graph._nodes;
+        app.graph._nodes = [switched]; app.graph.getNodeById = id => app.graph._nodes.find(n => n.id === id);
+        api.fetchApi = async url => ({ok: url === '/freevideo/models', json: async () => ({installed: ['prism']})});
+        switched.type = 'FreeVideoGenerate';
+        extension.afterConfigureGraph();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.deepEqual(['model', 'width', 'height'].map(n => field(n).value), ['Prism (preview)', 1280, 720]);
+        api.fetchApi = async () => ({ok: true, json: async () => ({installed: ['h3', 'prism']})});
+        choose('MiniMax H3'); extension.afterConfigureGraph();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(field('model').value, 'MiniMax H3', 'With MiniMax H3 installed, the saved model stays');
+        app.graph._nodes = nodes; app.graph.getNodeById = () => {};
 
         class MediaNode extends GenerateNode {
             constructor() {

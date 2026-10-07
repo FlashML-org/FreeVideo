@@ -20,6 +20,8 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 ## News
 
 - **2026-10-07** · **[v0.3.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.2): preview first.** See a half-resolution preview first and finish only the videos you like.
+<!-- TODO(prism): set the date and release version when Prism ships. -->
+- **2026-10-06** · **Prism (preview).** Turn a first frame into a 720p video with sound using Tencent's open Prism model, next to MiniMax H3. Choose it under Models when installing; see the [Prism guide](docs/Prism.md).
 - **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0): a faster int8 model.** GeForce and RTX 30-series cards switch to int8; an RTX 3090 makes a 5-second video about 2.3x faster.
 - **2026-10-06** · **[Gallery](https://freevideo-community.pages.dev/#gallery) is live.** Watch 20-second clips made with FreeVideo, and the four quality levels side by side.
 - **2026-10-06** · **[v0.2.3](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.2.3): videos carry their workflow.** Drop a FreeVideo video onto the ComfyUI canvas to restore its prompt, seed and settings. Earlier videos can get theirs too.
@@ -65,25 +67,40 @@ This preview has been tested on an M5 Mac with 24 GB of unified memory. See the 
 
 The Mac preview isn't notarized by Apple yet, so macOS blocks it the first time you open it. Download it only from the Releases page, then check the file and approve it as described in the [Mac guide](docs/Mac.md#first-open). This approves FreeVideo only; your other security settings stay as they are.
 
+### Prism (preview)
+
+> **Read first:** Prism is an early-access preview and **may occasionally have audio problems**, so choose it with care. Its current accelerated version may be slower and lower in quality than MiniMax H3, whose ecosystem is mature. **We recommend MiniMax H3.** Before trying Prism, [watch the comparison](https://freevideo-community.pages.dev/prism/) first.
+
+FreeVideo can also run [Prism](https://huggingface.co/FrancisRing/Prism), Tencent's open video and audio model (MIT), on NVIDIA RTX 30 series and newer GPUs. Prism animates a first frame into a 1280 × 720, 8.5-second video with sound. It has five quality levels: **Light** (the default, and the fastest) uses an 8-step distillation and takes about 4 minutes on an H200 (28 on an RTX 4070); **Standard** and **High** add more audio guidance; **Max** samples 20 undistilled steps; and **Original** is Prism's official 50-step recipe at its original precision.
+
+1. On the launcher's **Models** step, also check **Prism · Preview** and keep **MiniMax H3** checked (in ComfyUI: **Settings → Models**; on Linux: `./setup.sh --video-models h3,prism`). Only the chosen models are downloaded.
+2. In the creative workspace, choose **Prism** under **Model**, add a first frame in **Media** and generate.
+
+See the [Prism guide](docs/Prism.md) for supported inputs, quality levels and generation times.
+
 ### Existing ComfyUI
 
 Install FreeVideo as a custom node:
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/FlashML-org/FreeVideo.git
+git clone -b prism-beta https://github.com/FlashML-org/FreeVideo.git
 ```
 
 Restart ComfyUI, open **Workflow → Browse Templates → FreeVideo → FreeVideo-All-in-One**, and complete the setup in FreeVideo **Settings**.
+
+The `prism-beta` branch is replaced whenever the preview changes, so `git pull` cannot update it. Update a clone with `git fetch origin prism-beta && git reset --hard origin/prism-beta` (this discards your own edits in that folder).
 
 ### Linux
 
 Install:
 
 ```bash
-git clone https://github.com/FlashML-org/FreeVideo.git && cd FreeVideo
+git clone -b prism-beta https://github.com/FlashML-org/FreeVideo.git && cd FreeVideo
 ./setup.sh
 ```
+
+To update, run `git fetch origin prism-beta && git reset --hard origin/prism-beta`, then `./setup.sh` again.
 
 Generate a video from a prompt file:
 
@@ -140,4 +157,4 @@ the [H3 text encoder for ComfyUI](https://huggingface.co/t8star/Vdn-Minimax-H3-C
 
 ## License
 
-The code is released under the [Apache License 2.0](LICENSE). The model weights are licensed under the [MiniMax H3 Community License](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE), which includes territorial and acceptable-use restrictions.
+The code is released under the [Apache License 2.0](LICENSE). The model weights are licensed under the [MiniMax H3 Community License](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE), which includes territorial and acceptable-use restrictions. The optional Prism preview uses MIT (Prism) and Apache-2.0 (MOVA, Wan2.2, LightX2V) weights; see [third-party notices](THIRD_PARTY_NOTICES.md).

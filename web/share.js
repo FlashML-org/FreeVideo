@@ -1,6 +1,9 @@
 import {api} from '../../scripts/api.js';
 import {closeDialog} from './motion.js';
-import {effortFor, effortName} from './sampling_effort.js';
+import {effortFor, effortName, PRISM_COLORS} from './sampling_effort.js';
+// Prism (preview) levels by id (prism_tiers.json), as the report records them.
+const PRISM_LEVELS = Object.fromEntries([['light', 'Light', '轻量'], ['standard', 'Standard', '标准'], ['high', 'High', '精细'],
+    ['max', 'Max', '极致'], ['original', 'Original', '原版']].map(([id, name, zh], i) => [id, {name, zh, color: PRISM_COLORS[i]}]));
 
 const css=document.createElement('link'); css.rel='stylesheet'; css.href=new URL('./share.css',import.meta.url).href; document.head.append(css);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -39,7 +42,9 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     const ctx=canvas.getContext('2d'),w=shape.width,y=shape.rect[3],H=shape.footer,pad=44,wide=w>=1000;
     const p=record.sampling_plan||{},steps=p.base_steps,refine=p.enabled?p.refine_steps:0;
     // Results made with the earlier 8 + 2 default count as Light.
-    const tier=effortFor(steps,!!p.enabled,p.enabled&&steps===8&&refine===2?3:refine), accent=tier?.color||'#8fa3bb';
+    // Prism (preview) records its own level; H3 levels are matched by their plan.
+    const prismLevel=PRISM_LEVELS[p.model==='prism'?p.tier:''];
+    const tier=p.model==='prism'?prismLevel:effortFor(steps,!!p.enabled,p.enabled&&steps===8&&refine===2?3:refine), accent=tier?.color||'#8fa3bb';
     ctx.fillStyle='#0b1016';ctx.fillRect(0,0,w,shape.height);ctx.clearRect(...shape.rect);
     const bg=ctx.createLinearGradient(0,y,0,y+H);bg.addColorStop(0,'#131b26');bg.addColorStop(1,'#0b1016');
     ctx.fillStyle=bg;ctx.fillRect(0,y,w,H);

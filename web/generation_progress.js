@@ -287,6 +287,15 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                 '显存较少，本次使用省显存方式生成，会比平时慢，但能完成。降低分辨率或缩短时长会更快。');
             lowMemory.hidden = false;
         }
+        if (message.vram_pressure && typeof message.vram_pressure === 'object') {
+            // Another program took GPU memory: Windows moved part of the video's memory to system RAM.
+            if (message.vram_pressure.active) trims.set('vram_pressure', t(
+                'Another program is using GPU memory, so Windows moved part of this video\'s memory to system RAM. Generation continues more slowly; closing that program speeds it up again.',
+                '其他程序占用了显存，Windows 已把本次生成的部分显存移到系统内存。生成会继续，但会变慢；关闭该程序即可恢复速度。'));
+            else trims.delete('vram_pressure');
+            notice.textContent = [...trims.values()].join('\n'); notice.hidden = trims.size === 0;
+            if (!message.phase) return;  // the sampling label and bar stay as they are
+        }
         if (message.reference_trimmed && typeof message.reference_trimmed === 'object') {
             const row = message.reference_trimmed;
             trims.set(`${row.kind}:${row.number}`, referenceTrimText(row, t));
@@ -330,6 +339,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         label.textContent = complete ? t('Video saved', '视频已保存') : sampling ? t('Sampling', '采样')
             : downloadLabel ? downloadLabel
             : message.phase === 'recovery' ? t('Retrying this video', '正在重试本次生成')
+            : message.phase === 'weights_fallback' ? t('Original weights not installed; using INT8', '未安装原版档权重，改用 INT8 权重')
             : message.phase === 'sample_finalize' ? {
                 latent_validation: t('Checking completed sampling', '正在检查采样结果'),
                 latent_save: t('Saving completed sampling', '正在保存采样结果'),
@@ -350,12 +360,20 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                     : t('Decoding video', '解码视频')
                 : phase === 'sample_finalize' ? t('Preparing output', '准备输出')
                 : phase === 'recovery' ? t('Adjusting memory · retrying', '调整内存 · 重试中')
+                : phase === 'weights_fallback' ? t('Using INT8 weights', '改用 INT8 权重')
                 : t('Preparing video', '准备生成');
         }
         if (message.phase === 'dependencies') label.textContent = message.stage === 'probe'
             ? t('Installing sampling cache · testing sources', '补安装采样缓存 · 正在测速')
             : t('Installing sampling cache', '补安装采样缓存');
-        if (sampling && Number.isInteger(message.block)) {
+        if (sampling && Number.isInteger(message.audio_index) && Number.isInteger(message.audio_count)) {
+            // Prism's audio pass at the end of each step
+            detail.textContent = message.audio_part === 'teacher'
+                ? t(`Step ${message.done+1} · audio teacher layer ${message.audio_index} / ${message.audio_count}`,
+                    `第 ${message.done+1} 步 · 音频教师第 ${message.audio_index} / ${message.audio_count} 层`)
+                : t(`Step ${message.done+1} · audio sub-step ${message.audio_index} / ${message.audio_count}`,
+                    `第 ${message.done+1} 步 · 音频子步 ${message.audio_index} / ${message.audio_count}`);
+        } else if (sampling && Number.isInteger(message.block)) {
             detail.textContent = t(`Step ${message.done+1} · processing layer ${message.block} / ${message.blocks}`,
                 `第 ${message.done+1} 步 · 正在处理第 ${message.block} / ${message.blocks} 层`);
         } else if (sampling) {

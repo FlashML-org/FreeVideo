@@ -492,12 +492,20 @@ class Controller:
         self.setup.runner.token = validate(values.get('token', ''))
         url = local_url(values.get('url', ''))
         ready = False
+        # Without a choice, setup keeps the models the installation has
+        # (never MiniMax H3 alone, which would drop an installed Prism).
+        chosen = values.get('selected_models') or None
         if not values.get('repair'):
             try:
                 _, machine = installation(source, {'FREEVIDEO_HOME': str(engine)})
-                # With every quality level requested, set up again only while some are missing.
+                # Set up again only while a chosen model, or (for H3 with every
+                # quality level requested) one of its levels, is missing.
                 from .sampling_assets import installed as sampling_installed
-                ready = not values.get('sampling_caches') or sampling_installed(machine)
+                from .video_models import parse, installed as models_installed, prism_saved_addons
+                wanted = parse(chosen) if chosen else models_installed(machine) or parse(None)
+                ready = all(name in models_installed(machine) for name in wanted) and (
+                    'h3' not in wanted or not values.get('sampling_caches') or sampling_installed(machine)) and (
+                    'prism' not in wanted or not values.get('prism_bf16') or 'bf16' in prism_saved_addons(machine))
             except (OSError, ValueError, KeyError):
                 pass
         self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready)
@@ -507,8 +515,12 @@ class Controller:
             if not isinstance(extra, list) or any(not isinstance(p, str) for p in extra):
                 raise ValueError('Model folders must be a list of directory paths')
             extra = extra + ([values['models']] if values.get('models') else [])
+            from .video_models import parse
             self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
-                sampling_caches=bool(values.get('sampling_caches')), prepared_format=values.get('prepared_format'),
+                sampling_caches=bool(values.get('sampling_caches')),
+                selected_models=list(parse(chosen)) if chosen else None,
+                prism_bf16=values['prism_bf16'] if isinstance(values.get('prism_bf16'), bool) else None,
+                prepared_format=values.get('prepared_format'),
                 frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh)))
             row = self._wait_setup()
             self.state = dict(self.state, plan=row['plan'])
@@ -522,17 +534,29 @@ class Controller:
         if not accepted or not self.selection:
             raise ValueError('Review and accept the current installation plan first')
         selected = dict(self.selection)
-        self.sections = ([('engine', 8)] if not selected['ready'] else []) + (
+        current = self.setup.status() if not selected['ready'] else {}
+        download_first = bool((current.get('plan') or {}).get('prism_download_first'))
+        self.sections = ([('prism', 8)] if download_first else []) + ([('engine', 8)] if not selected['ready'] else []) + (
             [('comfy', 6 if selected.get('new_comfy') else 5)] if selected['separate'] else []) + [('nodes', 1), ('open', 1)]
         if self.cancelled.is_set():
             raise RuntimeError('Stopped; files retained')
         if selected.get('new_comfy'):
             validate_target(selected['root'])
         if not selected['ready']:
-            self.stage('engine', label='Prepare FreeVideo')
-            self._stop_server_for_setup(selected['url'])
-            current = self.setup.status()
-            self.setup.install(dict(plan_id=current.get('plan_id'), accept_licenses=True))
+            if download_first:
+                # Prism downloads beside the ready installation while this
+                # ComfyUI keeps generating; it stops only for the short setup after.
+                self.stage('prism', label='Download Prism (preview)')
+                self.setup.install(dict(plan_id=current.get('plan_id'), accept_licenses=True, download_first=True))
+                self._wait_setup()
+                self._wait_for_idle_queue(selected['url'])
+                self.stage('engine', label='Prepare FreeVideo')
+                self._stop_server_for_setup(selected['url'])
+                self.setup.install_downloaded()
+            else:
+                self.stage('engine', label='Prepare FreeVideo')
+                self._stop_server_for_setup(selected['url'])
+                self.setup.install(dict(plan_id=current.get('plan_id'), accept_licenses=True))
             self._wait_setup()
         if selected['separate']:
             if self.cancelled.is_set():
@@ -555,6 +579,15 @@ class Controller:
         self.selection = selected
         self.state = dict(self.state, selection=dict(selected), deployed=deployed)
         self._connect()
+
+    def _wait_for_idle_queue(self, url):
+        """Let our ComfyUI finish its queued videos before it stops for setup."""
+        while self.owns_server() and queue_busy(url):
+            if self.cancelled.is_set():
+                raise RuntimeError('Stopped; files retained')
+            overall = dict(self.state.get('overall') or {}, label='Waiting for the current video to finish')
+            self.state = dict(self.state, overall=overall)
+            self.cancelled.wait(2)
 
     def _stop_server_for_setup(self, url):
         """Setup reinstalls engine packages that our ComfyUI's resident worker

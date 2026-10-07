@@ -38,7 +38,8 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
         from .resident_process import ENV, RemoteProcess, SessionRestarted
         module = command[command.index('-m')+1] if '-m' in command else None
         process = None
-        if env.get(ENV) and module in ('freevideo_engine.worker', 'freevideo_engine.encode_worker'):
+        if env.get(ENV) and module in ('freevideo_engine.worker', 'freevideo_engine.encode_worker',
+                                       'freevideo_engine.prism_worker'):
             try:
                 process = RemoteProcess(env[ENV], command, env, descriptor, log)
             except SessionRestarted as error:

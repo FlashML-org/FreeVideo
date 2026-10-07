@@ -12,10 +12,12 @@ import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
-import { createSamplingEffort } from './sampling_effort.js';
+import { createSamplingEffort, prismTextToVideo, rememberPrismLevels, SAMPLING_EFFORTS } from './sampling_effort.js';
 import { resultActions, previewBadge } from './result_actions.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { rememberPromptDraft } from './prompt_draft.js';
+import { H3_MODEL, PRISM_MODEL, PRISM_OFFICIAL, prismOnly, swapModelCanvas, trackModel } from './model_canvas.js';
+export { H3_MODEL, PRISM_MODEL, PRISM_OFFICIAL, modelGrid } from './model_canvas.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -44,6 +46,29 @@ function view(file, type = 'input') {
     return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(split + 1), subfolder: split < 0 ? '' : file.slice(0, split), type}));
 }
 const number = (n, divisor = 1, unit = 's') => Number.isFinite(n) && n >= 0 ? `${(n / divisor).toFixed(1)} ${unit}` : '—';
+export const prismFrames = seconds => { const n = Math.ceil(Number(seconds) * 24); return n + ((1 - n) % 4 + 4) % 4; };
+export const h3Frames = seconds => { const n = Math.ceil(Number(seconds) * 24); return n + ((5 - n) % 17 + 17) % 17; };
+
+// Whether a first frame reaches the Generate node (a Media card or a connected input).
+function prismFirstFrame(node) {
+    try { return referenceItems(node).some(r => r.role === 'first'); } catch { return true; }
+}
+
+// Why Prism cannot use the current inputs, or ''. Prism animates one first frame,
+// or generates from text alone on levels that allow it (Max and Original).
+export function prismInputProblem(node, t) {
+    if (linked(node, 'conditioning')) return t('Prism (preview) encodes its own prompt. Disconnect the conditioning input, or choose MiniMax H3.', 'Prism（预览）自行编码提示词，请断开 conditioning 输入，或改用 MiniMax H3。');
+    let items;
+    try { items = referenceItems(node); }
+    catch (error) {  // Unknown upstream nodes are checked when the node runs.
+        return error?.message === 'invalid_media' ? t('Prism (preview) uses exactly one first frame. Disable the other media, or choose MiniMax H3.', 'Prism（预览）只使用一张首帧，请关闭其他素材，或改用 MiniMax H3。') : '';
+    }
+    if (items.some(r => !r.role)) return t('Prism (preview) does not use references. Disable reference images, video and audio in Media, or choose MiniMax H3.', 'Prism（预览）不使用参考素材。请在素材中关闭参考图像、视频和音频，或改用 MiniMax H3。');
+    if (items.some(r => r.role === 'last')) return t('Prism (preview) starts from a first frame only. Remove the last frame, or choose MiniMax H3.', 'Prism（预览）只使用首帧。请移除尾帧，或改用 MiniMax H3。');
+    if (!items.some(r => r.role === 'first') && !prismTextToVideo(value(node, 'prism_quality')))
+        return t('This Prism (preview) quality level needs a first frame: add an image in Media and set it to First frame, or choose Max or Original for text to video. For text alone, MiniMax H3 is the better choice.', '当前 Prism（预览）质量档位需要首帧：请在素材中添加图片并设为首帧，或选择「极致」或「原版」档位进行文生视频。仅凭文本生成时，推荐改用 MiniMax H3。');
+    return '';
+}
 
 export const loraWarning = () => t(
     'FreeVideo needs no acceleration LoRA.',
@@ -152,6 +177,20 @@ export function openStudio(node) {
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };
     syncReferencePrompt(node, t);
+    // Model: MiniMax H3 or Prism (preview). Each keeps its own canvas and quality levels.
+    const modelWidget = widget(node, 'model');
+    const isPrism = () => value(node, 'model') === PRISM_MODEL;
+    const modelSection = section(t('Model', '模型'));
+    const modelSwitch = el('div', null, 'fv-model-switch'); modelSwitch.setAttribute('role', 'radiogroup');
+    modelSwitch.setAttribute('aria-label', t('Model', '模型'));
+    const modelButtons = [[H3_MODEL, 'MiniMax H3', t('Recommended', '推荐')], [PRISM_MODEL, 'Prism', t('Preview', '预览')]].map(([id, name, tag]) => {
+        const b = button('', () => chooseModel(id), 'fv-model-option'); b.dataset.model = id; b.setAttribute('role', 'radio');
+        b.append(el('strong', name), el('small', tag)); modelSwitch.append(b); return b;
+    });
+    const modelNote = el('p', '', 'fv-model-note'); modelNote.setAttribute('role', 'status');
+    modelSection.append(modelSwitch, modelNote);
+    modelSection.hidden = !modelWidget;  // A server without the model input runs MiniMax H3 only.
+    let modelInfo = null, prismTiers = null, prismPixels = null;
     // An untouched node shows its starter prompt as a placeholder and generates it.
     // Once something was typed, an emptied box stays empty and asks for a scene.
     const starter = node.freevideoStarterPrompt || '';
@@ -240,6 +279,11 @@ export function openStudio(node) {
     twoPassLabel.append(el('span', t('Two-pass', '二次采样')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null;
     const effort = createSamplingEffort(t, {onChange: tier => {
+        if (tier.id && isPrism()) {
+            // A Prism level is chosen by id; it sets its own steps and recipe.
+            set(node, 'prism_quality', tier.id);
+            window.dispatchEvent(new CustomEvent('freevideo-steps', {detail: node.id}));
+        }
         baseSteps.value = tier.steps;
         refineSteps.value = 3;
         twoPass.checked = tier.twoPass;
@@ -272,6 +316,7 @@ export function openStudio(node) {
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
     const mediaNode = upstream(node, 'media');
     const [mediaDetails, mediaMount] = expand(t('Media', '素材'));
+    const prismMediaNote = el('p', '', 'fv-note fv-prism-media'); prismMediaNote.hidden = true; mediaMount.append(prismMediaNote);
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false) || mediaNode.inputs?.some(input => ['first', 'last', 'reference', 'reference_audio'].includes(input.name) && input.link != null); }
     else mediaMount.append(el('p', t('Connect a FreeVideo Media panel in node view to upload here.', '在节点视图连接 FreeVideo 素材面板，即可在这里上传。'), 'fv-legacy'));
     const loraNode = upstream(node, 'loras');
@@ -297,7 +342,7 @@ export function openStudio(node) {
     samplingWarning.id = `fv-sampling-warning-${node.id}`;
     samplingWarning.style.color = 'var(--fv-warning)';
     for (const [input, name, label, fallback, maximum] of [
-        [baseSteps, 'base_steps', t('First-pass steps', '一采步数'), 8, 32],
+        [baseSteps, 'base_steps', t('First-pass steps', '一采步数'), 8, isPrism() ? 100 : 32],
         [refineSteps, 'refine_steps', t('Second-pass steps', '二采步数'), 3, 31],
     ]) {
         input.type = 'number'; input.min = '1'; input.max = String(maximum); input.step = '1'; input.required = true;
@@ -311,7 +356,7 @@ export function openStudio(node) {
     baseSteps.onchange = () => {
         // Before validation: one step is valid only once two-pass is off.
         const steps = Number(baseSteps.value);
-        if (baseSteps.value !== '' && Number.isInteger(steps) && steps >= 1 && steps <= 32
+        if (baseSteps.value !== '' && Number.isInteger(steps) && steps >= 1 && steps <= 32 && !isPrism()
                 && !linked(node, 'two_pass') && widget(node, 'two_pass')) {
             if (steps !== 8 && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; }
             else if (steps === 8 && autoSinglePass) { twoPass.checked = true; set(node, 'two_pass', true); autoSinglePass = false; }
@@ -325,19 +370,28 @@ export function openStudio(node) {
         const baseLinked = linked(node, 'base_steps');
         // Two-pass is offered at 8 first-pass steps. A saved workflow that already
         // uses it with other steps is shown as custom and left unchanged.
-        const unavailable = Number(baseSteps.value) !== 8 && !twoPass.checked;
-        twoPass.disabled = unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
+        const prism = isPrism();
+        baseSteps.max = prism ? '100' : '32';  // Prism's Original level samples 50 steps; MiniMax H3 takes 1..32.
+        if (prism && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); }
+        const unavailable = !prism && Number(baseSteps.value) !== 8 && !twoPass.checked;
+        twoPass.disabled = prism || unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
+        twoPassLabel.hidden = prism;  // Prism samples once at the target size.
         twoPassStatus.textContent = unavailable ? t('Coming soon', '即将推出') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
-        // A preview stops after the first pass, so it needs two-pass sampling.
+        // A preview stops after the first pass, so it needs two-pass sampling (Prism has one pass).
         if (!twoPass.checked && previewFirst.checked) {
             previewFirst.checked = false; set(node, 'preview', false);
             if (runButtonReady) updateRunButton();
         }
-        previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
+        previewFirst.disabled = prism || !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
         syncPassMode();
-        baseSteps.disabled = baseLinked || !widget(node, 'base_steps');
-        refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
+        // Prism's level sets its steps (the engine ignores base_steps for Prism).
+        baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || (prism && Boolean(widget(node, 'prism_quality')));
+        if (prism && widget(node, 'prism_quality')) {
+            const level = prismTiers?.find(row => row.id === value(node, 'prism_quality'));
+            if (level && Number(baseSteps.value) !== level.steps) baseSteps.value = level.steps;
+        }
+        refineSteps.disabled = prism || !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
         baseSteps.min = twoPass.checked ? '2' : '1';
         refineSteps.max = baseLinked ? '31' : String(Math.max(3, Math.min(31, Number(baseSteps.value || 8) - 1)));
         refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) !== 3 && Number(refineSteps.value) >= Number(baseSteps.value)
@@ -347,11 +401,18 @@ export function openStudio(node) {
         for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
             if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
                 set(node, name, Number(input.value));
+                // A Prism level decides whether a first frame is needed: let the Media panel re-check.
+                if (name === 'base_steps') window.dispatchEvent(new CustomEvent('freevideo-steps', {detail: node.id}));
             }
         }
+        effort.setTiers(prism ? prismTiers : SAMPLING_EFFORTS);
+        const byLevel = prism && Boolean(widget(node, 'prism_quality'));
         effort.update({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
-            twoPass: twoPass.checked, disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps')});
+            twoPass: twoPass.checked, tier: byLevel ? value(node, 'prism_quality') : null,
+            disabled: (byLevel ? linked(node, 'prism_quality') : baseSteps.disabled) || linked(node, 'two_pass')
+                || linked(node, 'refine_steps') || (prism && !prismTiers?.length)});
         refreshEffortEstimate();
+        updatePrismMedia();
     }
     syncSamplingSteps();
     advanced.append(samplingFields, samplingWarning);
@@ -373,6 +434,11 @@ export function openStudio(node) {
                 '根据本机完整生成记录估算，包含加载与解码；首次准备或其他程序占用可能延长时间。'));
     }
     function refreshEffortEstimate(force = false) {
+        if (isPrism()) {  // Local timings are recorded for MiniMax H3 only.
+            clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); effortEstimateKey = ''; effortEstimate = {};
+            effort.setEstimate('', t('Time estimates are not available for Prism (preview) yet.', 'Prism（预览）暂不提供耗时预估。'));
+            return;
+        }
         let task = 'external';
         try {
             if (!linked(node, 'conditioning')) {
@@ -707,12 +773,14 @@ export function openStudio(node) {
         if (editing && editing !== generate) { editing.blur(); editing.focus({preventScroll: true}); }
         if ([...dialog.querySelectorAll('input:not(:disabled)')].some(e => !e.reportValidity())) return;
         if (!prompt.disabled && !prompt.value.trim() && !untouched()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        const modelProblem = isPrism() ? prismInstallProblem() || prismInputProblem(node, t) || prismLoRAProblem() : '';
+        if (modelProblem) { status.dataset.error = 'true'; status.textContent = modelProblem; mediaDetails.open = true; return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         try {
             lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
-            if (await enhancer.beforeGenerate() === false) return;
+            if (!isPrism() && await enhancer.beforeGenerate() === false) return;
             if (disposed) return;
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
@@ -748,8 +816,13 @@ export function openStudio(node) {
     function updateCanvas() {
         width.value = value(node, 'width'); height.value = value(node, 'height');
         dimensionText(dimensions, dimensionsLinked ? t('Size from connected nodes', '尺寸来自已连接节点') : `${width.value} × ${height.value}`);
-        const requested = Math.ceil(Number(seconds.value) * 24), frames = requested + ((5 - requested) % 17 + 17) % 17;
+        const prism = isPrism(), frames = prism ? prismFrames(seconds.value) : h3Frames(seconds.value);
         duration.textContent = Number.isFinite(frames) ? `${(frames / 24).toFixed(3)} s · 24 fps` : '—';
+        if (prism && Number.isFinite(frames)) {
+            const official = Number(width.value) === PRISM_OFFICIAL.width && Number(height.value) === PRISM_OFFICIAL.height && frames === PRISM_OFFICIAL.frames;
+            duration.textContent += official ? t(' · official setting', ' · 官方设置') : t(' · experimental', ' · 实验性');
+            duration.title = t('Prism (preview) is tuned for 1280 × 720 and 8.5 s. Other sizes and lengths are experimental.', 'Prism（预览）针对 1280 × 720、8.5 秒调优，其他尺寸和时长为实验性。');
+        } else duration.title = '';
         for (const b of shapes.children) b.setAttribute('aria-pressed', String(b.dataset.ratio === selected));
         const shapeIndex = [...shapes.children].findIndex(b => b.dataset.ratio === selected);
         shapes.style.setProperty('--fv-shape-index', Math.max(0, shapeIndex));
@@ -759,8 +832,9 @@ export function openStudio(node) {
     }
     function applySize() {
         if (dimensionsLinked) return;
-        const total = pixels * 1024 ** 2;
-        const w = Math.round(Math.sqrt(total * ratio) / 32) * 32, h = Math.round(Math.sqrt(total / ratio) / 32) * 32;
+        // Prism keeps its official 1280 x 720 area and a 16-pixel grid.
+        const grid = isPrism() ? 16 : 32, total = isPrism() ? PRISM_OFFICIAL.width * PRISM_OFFICIAL.height : pixels * 1024 ** 2;
+        const w = Math.round(Math.sqrt(total * ratio) / grid) * grid, h = Math.round(Math.sqrt(total / ratio) / grid) * grid;
         if (w < 256 || h < 256 || w > 4096 || h > 4096) throw new Error(t('This aspect ratio and pixel count exceed the supported dimensions. Use custom dimensions.', '该比例与像素数超出尺寸范围，请使用自定义宽高。'));
         set(node, 'width', w); set(node, 'height', h); node.properties.freevideo_aspect = selected; node.properties.freevideo_pixels = pixels; updateCanvas();
     }
@@ -829,10 +903,87 @@ export function openStudio(node) {
         busy = cancelling = false; activePrompt = null; updateRunButton(); hideProgress();
         failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; status.dataset.error = 'false'; status.textContent = t('Cancelled', '已取消');
     });
+    function prismInstallProblem() {
+        return modelInfo && !modelInfo.installed?.includes('prism')
+            ? t('Prism (preview) is not installed. Open Settings, choose Prism under Models and install it.', 'Prism（预览）尚未安装。请打开设置，在「模型」中选择 Prism 并安装。') : '';
+    }
+    function prismLoRAProblem() {
+        let active = false;
+        try { active = JSON.parse(value(loraNode, 'adapters') || '[]').some(r => r.enabled !== false); } catch {}
+        if (loraNode && !widget(loraNode, 'adapters')) active = value(loraNode, 'lora') !== 'None';
+        return active ? t('LoRAs are for MiniMax H3. Disable them to generate with Prism (preview).', 'LoRA 仅适用于 MiniMax H3，使用 Prism（预览）前请关闭。') : '';
+    }
+    function chooseModel(id) {
+        if (value(node, 'model') === id || !modelWidget || linked(node, 'model')) return;
+        if (node.freevideoCanvasModel === undefined) trackModel(node);
+        // Each model keeps its canvas and steps (model_canvas.js): the node's Model
+        // callback swaps them as set() runs it; the call after it covers a node without one.
+        set(node, 'model', id);
+        swapModelCanvas(node, {tiers: prismTiers, defaultTier: modelInfo?.prism?.default});
+        selected = node.properties?.freevideo_aspect || 'custom';
+        if (Number.isFinite(node.properties?.freevideo_pixels)) pixels = node.properties.freevideo_pixels;
+        ratio = Number(value(node, 'width')) / Number(value(node, 'height'));
+        seconds.value = value(node, 'seconds'); baseSteps.value = value(node, 'base_steps');
+        refineSteps.value = value(node, 'refine_steps'); twoPass.checked = value(node, 'two_pass') !== false;
+        autoSinglePass = false; status.textContent = ''; status.dataset.error = 'false';
+        applyModelUI();
+    }
+    function applyModelUI() {
+        const prism = isPrism();
+        for (const b of modelButtons) b.setAttribute('aria-checked', String(b.dataset.model === (prism ? PRISM_MODEL : H3_MODEL)));
+        modelSwitch.dataset.model = prism ? 'prism' : 'h3';
+        for (const b of modelButtons) b.disabled = linked(node, 'model');
+        // Prompt enhancement and the guide are written for MiniMax H3; Prism keeps its <speech>/<sfx> tags as typed.
+        enhancer.available(!prism); promptHelp.hidden = prism;
+        const missing = prism ? prismInstallProblem() : '';
+        modelNote.dataset.warning = String(Boolean(missing) || prism);  // Prism's early-access notice reads as a warning.
+        modelNote.textContent = missing || (prism
+            ? t('Read first: Prism is an early-access preview and may occasionally have audio problems, so choose it with care. Its current accelerated version may be slower and lower in quality than MiniMax H3, whose ecosystem is mature; we recommend MiniMax H3. Before trying Prism, watch the comparison first: https://freevideo-community.pages.dev/prism/. Video + audio from a first frame, tuned for 1280 × 720, 8.5 s.',
+                '必读须知：Prism 目前为尝鲜测试版，可能存在偶发的音频问题，请谨慎选择。现在支持的加速版本在速度和质量上可能不如生态成熟的 MiniMax H3，推荐使用成熟的 MiniMax H3。试用前请先看效果展示：https://freevideo-community.pages.dev/prism/。从首帧生成视频与音频，针对 1280 × 720、8.5 秒调优。')
+            : t('Text, first / last frame and reference inputs, with LoRAs.', '支持文本、首尾帧与参考输入，以及 LoRA。'));
+        mp.disabled = dimensionsLinked || prism;
+        // Prism keeps 1280 x 720's pixel count (0.88 MP) whatever the shape.
+        if (prism && !prismPixels) { prismPixels = el('option', t('0.88 MP · Prism', '0.88 MP · Prism')); prismPixels.value = 'prism'; mp.append(prismPixels); }
+        if (prism) mp.value = 'prism';
+        else if (prismPixels) {
+            prismPixels.remove(); prismPixels = null;
+            const near = [...mp.options].find(o => Math.abs(Number(o.value) - pixels) < .03); if (near) mp.value = near.value;
+        }
+        mp.title = prism ? t('Prism (preview) keeps the 1280 × 720 pixel count; pick a shape or set custom dimensions.', 'Prism（预览）保持 1280 × 720 的像素数；可选择画幅或自定义宽高。')
+            : t('1 MP = 1024 × 1024, as in ComfyUI.', '1 MP = 1024 × 1024，与 ComfyUI 一致。');
+        for (const w of [width, height]) w.step = prism ? '16' : '32';
+        seconds.min = prism ? '0.375' : '1.625';
+        samplingWarning.textContent = prism
+            ? t('Prism (preview) quality levels set the steps. Other step counts are experimental.', 'Prism（预览）的质量档位决定步数，其他步数为实验性。')
+            : t('Changing sampling steps may reduce generation quality. Defaults: 8 + 3 steps.', '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步。');
+        if (prism && prismInputProblem(node, t)) mediaDetails.open = true;
+        syncSamplingSteps(); updateCanvas();
+    }
+    function updatePrismMedia() {
+        const prism = isPrism(), problem = prism ? prismInputProblem(node, t) : '';
+        // The Media panel states the same rule itself; this note covers directly connected inputs.
+        prismMediaNote.hidden = !prism || Boolean(mediaNode?.freevideoCreateMediaEditor);
+        prismMediaNote.dataset.error = String(Boolean(problem));
+        prismMediaNote.textContent = problem || (prismFirstFrame(node)
+            ? t('Prism (preview) animates this first frame.', 'Prism（预览）将从这张首帧开始生成。')
+            : t('No first frame: Prism (preview) generates from the text alone at this quality level.', '未提供首帧：Prism（预览）将在当前质量档位仅凭文本生成。'));
+    }
+    const modelChanged = e => { if (String(e.detail) === String(node.id)) applyModelUI(); };
+    window.addEventListener('freevideo-model', modelChanged);
+    const mediaForModel = () => { if (isPrism()) applyModelUI(); };
+    window.addEventListener('freevideo-media', mediaForModel);
+    cleanup.push(() => { window.removeEventListener('freevideo-model', modelChanged); window.removeEventListener('freevideo-media', mediaForModel); });
+    api.fetchApi('/freevideo/models').then(reply => reply.ok ? reply.json() : null).then(info => {
+        if (disposed || !info) return;
+        modelInfo = info; prismTiers = rememberPrismLevels(info.prism?.tiers);
+        // A Prism-only installation cannot run MiniMax H3: open on Prism.
+        if (prismOnly(info.installed) && !isPrism()) chooseModel(PRISM_MODEL);
+        applyModelUI();
+    }).catch(() => {});  // Older servers have no model list; MiniMax H3 keeps working.
     const escape = e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate.click(); } }; dialog.addEventListener('keydown', escape);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
-    document.body.append(dialog); dialog.showModal(); viewChanged('studio', node); updateCanvas();
+    document.body.append(dialog); dialog.showModal(); viewChanged('studio', node); applyModelUI();
     if (node.freevideoProgress) showProgress(node.freevideoProgress);
     else if (result) showResult(result);
     // Do not change any saved width/height simply by opening a workflow.

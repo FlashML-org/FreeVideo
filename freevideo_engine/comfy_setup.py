@@ -129,21 +129,27 @@ class Setup:
         self.logs = self.source / '.freevideo' / 'comfy-setup'
         self.runner = runner_factory(self.source, self.events, self.logs)
         self.state = {'status': 'idle'}
-        self.plan = self.selection = None
+        self.plan = self.selection = self.downloaded = None
         self.token = secrets.token_urlsafe(32)
         from .download_settings import Probe
         self.download_probe = Probe()
 
     def discovery(self, download_root=None):
         root = Path(self.selection['root']) if self.runner.busy and self.selection else installation_root(self.source)
-        ready, detail = False, ''
+        ready, detail, models, addons = False, '', [], []
         try:
-            installation(self.source)
+            _, machine = installation(self.source)
             ready = True
+            from .video_models import installed, prism_saved_addons
+            models = list(installed(machine))
+            addons = list(prism_saved_addons(machine))
         except (OSError, ValueError) as error:
             detail = str(error)
         from .sampling_assets import total_bytes
-        return dict(root=str(root), ready=ready, detail=detail,
+        from .video_models import choices
+        return dict(root=str(root), ready=ready, detail=detail, installed_models=models, installed_prism_addons=addons,
+                    video_models=[{k: row[k] for k in ('id', 'bytes', 'size_known', 'preview', 'available', 'addons')
+                                   if k in row} for row in choices()],
                     libraries=discover_libraries(self.folder_paths), token=self.token,
                     environment='Managed FreeVideo environment; ComfyUI packages are kept',
                     restart_required=False, downloads=self.downloads(download_root or root),
@@ -250,12 +256,18 @@ class Setup:
                 arguments.append('--frontend-download')
         if isinstance(value.get('sampling_caches'), bool):
             arguments.append('--sampling-caches' if value['sampling_caches'] else '--no-sampling-caches')
+        if value.get('selected_models') is not None:
+            from .video_models import parse
+            arguments += ['--video-models', ','.join(parse(value['selected_models']))]
+        if isinstance(value.get('prism_bf16'), bool):
+            # Optional bf16 weights for Prism's original level (original precision).
+            arguments.append('--prism-bf16' if value['prism_bf16'] else '--no-prism-bf16')
         if value.get('prepared_format') in ('int8', 'fp8'):
             arguments += ['--prepared-format', value['prepared_format']]
         if value.get('copy'):
             arguments.append('--copy-existing-models')
         self.selection = dict(root=str(root), arguments=arguments)
-        self.plan = None
+        self.plan = self.downloaded = None
         self.state = dict(status='running', action='plan', libraries=libraries)
         self.events.reset()
         self.runner.start('plan', root, [*arguments, '--plan', '--json'])
@@ -279,11 +291,28 @@ class Setup:
         receipt = self.logs / ('approved-' + uuid.uuid4().hex + '.json')
         save(receipt, self.plan)
         selection = self.selection
+        arguments = [*selection['arguments'], '--plain', '--yes', '--accept-model-license', '--approved-plan', str(receipt)]
+        self.downloaded = None
+        if value.get('download_first') is True and self.plan.get('prism_download_first'):
+            # Only the Prism download, beside the installation in use; then
+            # install_downloaded() runs setup under the same consent.
+            self.downloaded = dict(root=selection['root'], arguments=arguments)
+            arguments = [*arguments, '--prefetch-only']
         self.state = dict(status='running', action='setup')
         self.events.reset()
         self.plan = None  # Consent cannot be replayed, even if a worker fails.
-        self.runner.start('setup', selection['root'], [*selection['arguments'], '--plain',
-            '--yes', '--accept-model-license', '--approved-plan', str(receipt)])
+        self.runner.start('setup', selection['root'], arguments)
+        return self.status()
+
+    def install_downloaded(self):
+        """Setup after a download-first install(): once, after its download completed."""
+        state, downloaded = self.status(), self.downloaded
+        if self.runner.busy or not downloaded or state.get('status') != 'complete':
+            raise ValueError('Inspect this installation again before installing')
+        self.downloaded = None
+        self.state = dict(status='running', action='setup')
+        self.events.reset()
+        self.runner.start('setup', downloaded['root'], downloaded['arguments'])
         return self.status()
 
     def calibrate(self, value):
@@ -411,6 +440,20 @@ def register():
             return web.json_response(dict(discovery=setup.discovery(root), task=setup.status()))
         except (OSError, ValueError) as error:
             return web.json_response({'error': str(error)}, status=400)
+
+    @server.routes.get('/freevideo/models')
+    async def video_models(request):
+        # What the workspace offers: installed models and Prism's levels and canvas.
+        from .video_models import PRISM_FPS, PRISM_OFFICIAL, installed, prism_tiers
+        try:
+            _, machine = installation(setup.source)
+            names = list(installed(machine))
+        except (OSError, ValueError):
+            names = []
+        tiers = prism_tiers()
+        return web.json_response(dict(installed=names, prism=dict(tiers=tiers['tiers'], default=tiers['default'],
+                                                                  official=PRISM_OFFICIAL, fps=PRISM_FPS)),
+                                 headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/setup/{action}')
     async def action(request):

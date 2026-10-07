@@ -38,6 +38,35 @@ export async function openSetup() {
     const copyLabel = node("label"); copyLabel.className = 'fv-check'; const copy = node("input"); copy.type = "checkbox";
     copyLabel.append(copy, node('span', t("Create independent copies (uses extra disk space)", "创建独立副本（额外占用磁盘）"))); inputs.append(copyLabel);
     inputs.append(note(t('Models are reused by default.', '默认直接复用已有模型。')));
+    // Which video models to install; only the chosen ones are downloaded.
+    const modelBox = node('div'); modelBox.className = 'fv-models';
+    modelBox.append(node('h3', t('Models', '模型')));
+    const modelChecks = {};
+    for (const [id, name, tag, detail] of [
+        ['h3', 'MiniMax H3', t('Recommended', '推荐'), t('Text, first / last frame and reference inputs · LoRAs', '文本、首尾帧与参考输入 · 支持 LoRA')],
+        ['prism', 'Prism', t('Preview', '预览'), t('Early-access preview · image to video + audio at 720p', '尝鲜测试版 · 图生视频 + 音频 · 720p')]]) {
+        const label = node('label'); label.className = 'fv-check fv-model';
+        const box = node('input'); box.type = 'checkbox'; box.checked = id === 'h3'; box.value = id;
+        const body = node('span'), size = node('small', '');
+        body.append(node('strong', `${name} · ${tag}`), node('small', detail), size);
+        label.append(box, body); modelBox.append(label); modelChecks[id] = {box, size};
+    }
+    // Prism is an early-access preview: its notice and the comparison link stay under the model choices, always shown.
+    const prismNotice = node('p', t('Read first: Prism is an early-access preview and may occasionally have audio problems, so choose it with care. Its current accelerated version may be slower and lower in quality than MiniMax H3, whose ecosystem is mature; we recommend MiniMax H3. Before trying Prism, watch the comparison first.',
+        '必读须知：Prism 目前为尝鲜测试版，可能存在偶发的音频问题，请谨慎选择。现在支持的加速版本在速度和质量上可能不如生态成熟的 MiniMax H3，推荐使用成熟的 MiniMax H3。试用前请先看效果展示。'));
+    const showcase = node('a', t('Watch the comparison before trying Prism ↗', '试用前请先看效果展示 ↗'));
+    showcase.href = 'https://freevideo-community.pages.dev/prism/'; showcase.target = '_blank'; showcase.rel = 'noopener';
+    prismNotice.append(' ', showcase);
+    prismNotice.className = 'fv-prism-notice'; modelBox.append(prismNotice);
+    // Optional bf16 weights for Prism's original level (original precision); shown while Prism is chosen.
+    const prismBf16Label = node('label'); prismBf16Label.className = 'fv-check fv-addon';
+    const prismBf16 = node('input'); prismBf16.type = 'checkbox';
+    const prismBf16Body = node('span'), prismBf16Size = node('small', '');
+    prismBf16Body.append(node('strong', t('Original level: original precision', '原版档：原版精度')),
+        node('small', t('Optional bf16 weights for Prism’s Original level; without them Original uses the standard weights.', '可选：Prism 原版档的 BF16 原版权重；不下载时原版档使用标准权重。')), prismBf16Size);
+    prismBf16Label.append(prismBf16, prismBf16Body); prismBf16Label.hidden = true; modelBox.append(prismBf16Label);
+    const modelNote = note(''); modelBox.append(modelNote); inputs.append(modelBox);
+    const chosenModels = () => Object.keys(modelChecks).filter(id => modelChecks[id].box.checked);
     const samplingLabel = node('label'); samplingLabel.className = 'fv-check';
     const samplingCaches = node('input'); samplingCaches.type = 'checkbox';
     const samplingText = node('span', t('Prepare all quality levels (optional)', '提前下载全部质量档位（可选）'));
@@ -133,7 +162,7 @@ export async function openSetup() {
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
-    let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId;
+    let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, prismBf16Offered = false;
     const fail = error => { installation.open = true; state.textContent = error.message; state.className = "fv-failure"; state.scrollIntoView({block:'nearest'}); };
     const request = async (action, value) => {
         const response = await api.fetchApi("/freevideo/setup" + (action ? "/" + action : root.value ? '?root='+encodeURIComponent(root.value) : ""), action ? {
@@ -232,6 +261,10 @@ export async function openSetup() {
     };
     const controls = () => {
         for (const e of [root, extra, copy, samplingCaches, inspect, use, hfToken, applyToken, clearToken]) e.disabled = busy;
+        for (const row of Object.values(modelChecks)) row.box.disabled = busy || Boolean(row.unavailable);
+        samplingLabel.hidden = !modelChecks.h3.box.checked;  // Quality-level caches belong to MiniMax H3.
+        prismBf16.disabled = busy;
+        prismBf16Label.hidden = !modelChecks.prism.box.checked || !prismBf16Offered;
         cancel.disabled = !busy; install.disabled = busy || !planId || !accept.checked; accept.disabled = busy; inspect.classList.toggle("fv-primary", !planId); install.classList.toggle("fv-primary", Boolean(planId));
     };
     const invalidate = () => { planId = undefined; accept.checked = false; acceptLabel.hidden = true; controls(); };
@@ -245,7 +278,13 @@ export async function openSetup() {
     }
     applyToken.onclick = () => setToken(hfToken.value);
     clearToken.onclick = () => setToken('');
-    for (const e of [root, extra, copy, samplingCaches]) e.oninput = invalidate;
+    for (const e of [root, extra, copy, samplingCaches, prismBf16]) e.oninput = invalidate;
+    for (const {box} of Object.values(modelChecks)) box.onchange = () => {
+        // Keep at least one model chosen.
+        if (!chosenModels().length) { box.checked = true; modelNote.textContent = t('Choose at least one model.', '请至少选择一个模型。'); }
+        else modelNote.textContent = '';
+        invalidate();
+    };
     accept.onchange = controls;
     function showPlan(value) {
         plan.replaceChildren();
@@ -258,6 +297,16 @@ export async function openSetup() {
             [t("Hardlinked / copied", "硬链接／复制"), `${gib(local.linked_bytes || 0)} / ${gib(local.copy_bytes || 0)}`],
             [t("Additional disk estimate", "额外磁盘预估"), gib(value.disks?.reduce((sum, d) => sum + d.needed_bytes, 0))],
         ];
+        // Leaving MiniMax H3 out of an installation that has it keeps it.
+        if (value.kept_models?.includes('h3')) facts.push(['MiniMax H3', t("Already installed · kept", "已安装 · 保留")]);
+        // No weight format for this GPU (or a Mac): the computer is the reason, not the publication.
+        if (value.prism) facts.push([t("Prism (preview)", "Prism（预览）"), value.prism.published
+            ? `${value.prism.label} · ~${gib(value.prism.total_bytes)}`
+            : !value.prism.variant || value.prism.available === false ? t("Not available on this computer", "本机不可用")
+            : t("Model files not published yet", "模型文件尚未发布")]);
+        if (value.prism_download_first) facts.push([t("During the download", "下载期间"),
+            t("The installed models keep working; setup finishes after Prism is downloaded", "已安装的模型可照常使用，Prism 下载完成后再完成安装")]);
+        if (value.prism?.addons?.includes('bf16')) facts.push([t("Prism Original · original precision", "Prism 原版档 · 原版精度"), `+${gib(value.prism.addon_bytes)}`]);
         if (value.prepared_model) facts.push([t("Model", "模型"), `${value.prepared_model.repo} · ${value.prepared_model.scale_granularity === "int8_convrot"
             ? t("slim ConvRot int8, no local conversion", "精简 ConvRot int8，无需本地转换")
             : t("slim FP8, no local conversion", "精简 FP8，无需本地转换")}`]);
@@ -300,7 +349,7 @@ export async function openSetup() {
     }
     inspect.onclick = async () => {
         invalidate(); busy = true; controls();
-        try { render(await request("inspect", {root: root.value, extra_libraries: extra.value.split("\n").map(s => s.trim()).filter(Boolean), copy: copy.checked, sampling_caches: samplingCaches.checked})); poll(); }
+        try { render(await request("inspect", {root: root.value, extra_libraries: extra.value.split("\n").map(s => s.trim()).filter(Boolean), copy: copy.checked, sampling_caches: samplingCaches.checked && modelChecks.h3.box.checked, selected_models: chosenModels(), ...(prismBf16Offered ? {prism_bf16: prismBf16.checked && modelChecks.prism.box.checked} : {})})); poll(); }
         catch (error) { busy = false; controls(); fail(error); }
     };
     install.onclick = async () => {
@@ -321,6 +370,21 @@ export async function openSetup() {
             + (info.discovery.sampling_cache_bytes ? ' · ' + gib(info.discovery.sampling_cache_bytes) : '');
         // New installations prepare every quality level; a ready one adds them only when chosen.
         samplingCaches.checked = !info.discovery.ready;
+        // A ready installation starts from the models it has; a new one from MiniMax H3.
+        const installed = info.discovery.ready && info.discovery.installed_models?.length ? info.discovery.installed_models : ['h3'];
+        for (const [id, {box, size}] of Object.entries(modelChecks)) {
+            box.checked = installed.includes(id);
+            const row = info.discovery.video_models?.find(r => r.id === id);
+            size.textContent = !row ? '' : row.available === false ? t('Needs an NVIDIA GPU; not available on Mac', '需要 NVIDIA 显卡，Mac 暂不支持')
+                : row.size_known ? `${t('Download', '下载')} ~${gib(row.bytes)}` : t('Download size to be announced', '下载大小待公布');
+            modelChecks[id].unavailable = row?.available === false && !box.checked;
+        }
+        const addon = info.discovery.video_models?.find(r => r.id === 'prism')?.addons?.find(a => a.id === 'bf16');
+        prismBf16Offered = Boolean(addon);  // An older engine has no add-ons.
+        prismBf16.checked = Boolean(info.discovery.installed_prism_addons?.includes('bf16'));
+        prismBf16Size.textContent = !addon ? '' : addon.size_known ? `${t('Download', '下载')} +${gib(addon.bytes)}` : t('Download size to be announced', '下载大小待公布');
+        modelBox.hidden = !info.discovery.video_models;  // An older engine offers MiniMax H3 only.
+        controls();
         paths.textContent = info.discovery.libraries.join("\n") || t("No model libraries found; add a folder above.", "没有发现模型目录，可在上方添加。");
         render(info.task);
         installation.open = !info.discovery.ready || busy;

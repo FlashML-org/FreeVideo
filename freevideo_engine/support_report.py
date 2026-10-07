@@ -205,7 +205,8 @@ def write_retry(output, report, *, index, retained, next_profile=None, decision=
     A separate file keeps the failure evidence alongside the final request's
     complete timings and the cost of every failed attempt.
     """
-    if type(index) is not int or not 1 <= index <= 3 or not isinstance(report, dict):
+    from .adaptive import MAX_RESOURCE_RETRIES
+    if type(index) is not int or not 1 <= index <= MAX_RESOURCE_RETRIES + 1 or not isinstance(report, dict):
         return None
     rows = report.get('resource_attempts')
     if not isinstance(rows, list) or index > len(rows) or not isinstance(rows[index - 1], dict):

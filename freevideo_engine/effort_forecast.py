@@ -38,6 +38,8 @@ def timing_record(report, gpu_uuid, system):
         return None
     shape = report.get('geometry', {})
     plan = report.get('sampling_plan') or shape.get('sampling_plan') or {}
+    if 'prism' in (plan.get('model'), report.get('model')):
+        return None  # These estimates describe MiniMax H3 runs.
     if not all(type(shape.get(k)) is int and shape[k] > 0 for k in ('width', 'height', 'frames')):
         return None
     total = report.get('request_seconds')

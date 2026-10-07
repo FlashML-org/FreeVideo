@@ -156,6 +156,10 @@ class Store:
         # Only a launched video worker can be a load-related interrupted attempt.
         if row.get('purpose') != 'generation' or not row.get('worker'):
             return
+        # Prism has its own plans and retries; its crashes must not tighten
+        # MiniMax H3's settings on the same card.
+        if (row.get('config') or {}).get('model') == 'prism':
+            return
         identity = row.get('identity')
         key = device_key(identity)
         if key is None:

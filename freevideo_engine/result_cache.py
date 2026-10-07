@@ -173,7 +173,8 @@ def _tree(path, *, code=False, inspection=None):
     return rows
 
 
-def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, source, environment, *, inspection=None):
+def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, source, environment, *, inspection=None,
+                model='h3'):
     """Fail closed to ordinary generation if an installation cannot be identified.
 
     Automatic placement is a policy, not a fixed free-memory reading. Preserve
@@ -192,9 +193,15 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         code = phase('code', lambda: {'engine': tree(Path(source) / 'freevideo_engine', code=True),
                 'vdn': tree(machine['vdn_root'], code=True),
                 'encoder': tree(Path(machine['comfy_root']) / 'comfy', code=True)})
-        models = phase('models', lambda: {key: tree(machine[key]) for key in ('cache', 'base', 'checkpoint')})
-        models['encoder'] = file(Path(machine['encoder_model_root']) / 'text_encoders' / machine['encoder'])
-        models['paths'] = file(machine['model_paths'])
+        if model == 'prism':
+            # Prism's own weights; the H3 files play no part in its result.
+            record = machine['models']['prism']
+            models = phase('models', lambda: {'prism': tree(record['root']), 'variant': record['variant'],
+                                              'revision': record.get('revision')})
+        else:
+            models = phase('models', lambda: {key: tree(machine[key]) for key in ('cache', 'base', 'checkpoint')})
+            models['encoder'] = file(Path(machine['encoder_model_root']) / 'text_encoders' / machine['encoder'])
+            models['paths'] = file(machine['model_paths'])
         if sampling_plan.get('upscaler_sha256'):
             from .two_pass import UPSCALER
             models['upscaler'] = file(Path(machine['model_root']) / 'latent_upscaler' / Path(UPSCALER['file']).name)
@@ -251,9 +258,12 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         if native:
             prefixes += ('MLX_', 'MTL_', 'METAL_')
         compute_env = {k: v for k, v in environment.items() if k not in ignored and k.startswith(prefixes)}
-        return _key(dict(schema=2, prompt=prompt, seed=seed, canvas=canvas, sampling_plan=sampling_plan,
-                         media=media, conditioning=conditioning, machine=machine, settings=settings,
-                         models=models, code=code, packages=packages, environment=compute_env))
+        value = dict(schema=2, prompt=prompt, seed=seed, canvas=canvas, sampling_plan=sampling_plan,
+                     media=media, conditioning=conditioning, machine=machine, settings=settings,
+                     models=models, code=code, packages=packages, environment=compute_env)
+        if model != 'h3':
+            value['model'] = model  # H3 keys stay as before, so saved H3 results still match.
+        return _key(value)
     except TimeoutError:
         raise
     except (OSError, ValueError, TypeError, KeyError, AttributeError, sqlite3.Error):

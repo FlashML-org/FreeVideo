@@ -252,7 +252,12 @@ def installation_root(source=None, environ=None):
     return root.resolve()
 
 
-def installation(source=None, environ=None):
+def installation(source=None, environ=None, model=None):
+    """The selected installation and its machine.json.
+
+    ``model`` is 'h3' or 'prism' to require that model; None accepts an
+    installation with either (a Prism-only one has no H3 keys).
+    """
     root = installation_root(source, environ)
     try:
         machine = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
@@ -261,10 +266,21 @@ def installation(source=None, environ=None):
                          'or run setup.cmd (Windows) or setup.sh (Linux) '
                          'in the FreeVideo folder, or set FREEVIDEO_HOME to your existing installation. '
                          'A prepared engine installation is required.') from error
-    required = ('root', 'python', 'cache', 'base', 'checkpoint', 'comfy_python',
-                'comfy_root', 'vdn_root', 'model_paths', 'model_root', 'encoder')
-    if not isinstance(machine, dict) or not machine.get('ready') or any(not machine.get(k) for k in required):
-        raise ValueError('FreeVideo setup is incomplete. Open FreeVideo Settings and click "Install / repair" to repair %s; existing files are reused.' % root)
+    from .video_models import H3, PRISM, SHARED_KEYS, h3_installed, prism_installed
+    incomplete = ('FreeVideo setup is incomplete. Open FreeVideo Settings and click "Install / repair" to repair %s; '
+                  'existing files are reused.' % root)
+    if not isinstance(machine, dict) or not machine.get('ready') or any(not machine.get(k) for k in SHARED_KEYS):
+        raise ValueError(incomplete)
+    if model == PRISM:
+        if not prism_installed(machine):
+            raise ValueError('Prism (preview) is not installed. Open FreeVideo Settings, select Prism (preview) under '
+                             'Models and click "Install / repair"; existing files are reused.')
+    elif not h3_installed(machine):
+        if prism_installed(machine) and model == H3:
+            raise ValueError('MiniMax H3 is not installed in this FreeVideo installation. Open FreeVideo Settings, '
+                             'select MiniMax H3 under Models and click "Install / repair", or choose Prism (preview).')
+        if not prism_installed(machine):
+            raise ValueError(incomplete)
     identity = 'device_identity' if machine.get('device_backend') == 'mps' else 'gpu_uuid'
     if not machine.get(identity):
         raise ValueError('FreeVideo device configuration is missing. Open Settings and click "Install / repair".')
@@ -275,13 +291,16 @@ def installation(source=None, environ=None):
     return root, machine
 
 
-def validate_request(prompt, width, height, seconds, seed):
+def validate_request(prompt, width, height, seconds, seed, model='h3'):
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError('Enter a prompt describing the video and its audio.')
     if type(seed) is not int or not 0 <= seed <= 2**53 - 1:
         raise ValueError('Seed must be an integer between 0 and 9007199254740991.')
     if isinstance(seconds, bool) or not isinstance(seconds, (float, int)) or not math.isfinite(seconds):
         raise ValueError('Duration must be a positive number of seconds.')
+    if model == 'prism':
+        from .video_models import prism_geometry
+        return prism_geometry(width, height, seconds=seconds)
     return geometry(width, height, seconds=seconds)
 
 
@@ -405,6 +424,14 @@ def progress_message(event):
     if name == 'compute_device':
         return {'label': 'Compute device · %s · %s' % (event.get('backend', ''), event.get('name', '')),
                 'device': event}
+    if name == 'vram_pressure':
+        # Another program took GPU memory mid-run: a notice, not a stage change.
+        return {'vram_pressure': event, 'label': ('Another program is using GPU memory · continuing more slowly'
+                                                  if event.get('active') else 'GPU memory available again')}
+    if name == 'prism_weights_fallback':
+        # Original without its optional bf16 weights runs the installed INT8 weights.
+        return {'phase': 'weights_fallback', 'label': 'Original weights not installed; using %s'
+                % str(event.get('used') or 'int8').upper(), 'fallback': event}
     if name == 'resource_retry':
         retry = event.get('retry') if isinstance(event.get('retry'), dict) else {}
         return {'phase': 'recovery', 'label': 'Adjusting memory placement and retrying', 'retry': retry}
@@ -452,7 +479,9 @@ def progress_message(event):
         label = str(event.get('phase', 'Loading video model'))
         if event.get('total'):
             label += ' · %s / %s blocks' % (event.get('done', 0), event['total'])
-        return {'label': label, 'timing_phase': 'load'}
+        # Prism loads its second expert midway through sampling: keep that time in
+        # the sampling phase instead of reopening "load" (double counted progress).
+        return {'label': label, 'timing_phase': 'sampling' if event.get('during_sampling') else 'load'}
     if name == 'lora_prepare':
         return {'label': 'Loading LoRAs · %s / %s' % (event.get('done', '?'), event.get('total', '?')),
                 'timing_phase': 'load'}
@@ -468,6 +497,45 @@ def progress_message(event):
         return {'label': event.get('detail') or event.get('label') or 'Resource forecast ready',
                 'prediction': event}
     return None
+
+
+def _finish_prism(output, run, state, canvas, planned, started, cache, cache_key, identify,
+                  send_progress, interrupted, comfy_metadata):
+    """Check and record a finished Prism video.
+
+    The Prism engine writes the video and, like H3, its request and engine
+    reports. A missing request report is replaced by a minimal one so the
+    workspace and library can show the video; a report that says the
+    request failed, or a missing or empty video, is a failure.
+    """
+    from .failure_details import generation_failure
+    request = output.with_suffix('.request.json')
+    report = json.loads(request.read_text(encoding='utf-8')) if request.is_file() else None
+    engine_file = output.with_suffix('.engine.json')
+    engine = json.loads(engine_file.read_text(encoding='utf-8')) if engine_file.is_file() else {}
+    if (not output.is_file() or not output.stat().st_size or (report is not None and report.get('success') is not True)
+            or engine.get('success') is False
+            or any((report or {}).get('geometry', canvas).get(k) != canvas[k] for k in ('width', 'height', 'frames'))):
+        raise RuntimeError('FreeVideo did not complete the requested Prism (preview) video.\n' + generation_failure(run))
+    if report is None:
+        save(request, dict(success=True, model='prism', geometry=canvas, sampling_plan=planned,
+                           request_seconds=time.monotonic() - started, report_source='comfy_bridge'))
+    if comfy_metadata:
+        from .comfy_metadata import embed_comfy_metadata
+        state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
+    state.update(status='complete', request_seconds=(report or {}).get('request_seconds'),
+                 engine_report=str(engine_file) if engine_file.is_file() else None)
+    if cache_key is not None:
+        from .result_cache import inspect_bounded
+        def store_result(check):
+            if identify(check) != cache_key:
+                return False
+            return check.measure('output', lambda: cache.remember(cache_key, output, inspection=check))
+        stored, timing = inspect_bounded(store_result, interrupted=interrupted)
+        state['result_cache'].update(stored=stored is True, store_inspection=timing)
+    send_progress({'label': 'Video + audio saved', 'phase': 'complete',
+                   'done': planned['total_steps'], 'total': planned['total_steps']})
+    return output
 
 
 def preview_request(output_directory, relative):
@@ -522,11 +590,15 @@ def without_upscale(graph, node_id, refine_from):
         inputs.update(refine_from='', preview=False)
     for node in (graph.get('workflow') or {}).get('nodes') or []:
         values = node.get('widgets_values')
-        if str(node.get('id')) == str(node_id) and isinstance(values, list) and values and values[-1] == refine_from:
-            # Preview first and Upscale preview are the node's last two widgets.
-            values[-1] = ''
-            if len(values) > 1 and type(values[-2]) is bool:
-                values[-2] = False
+        if str(node.get('id')) != str(node_id) or not isinstance(values, list):
+            continue
+        # Preview first and Upscale preview are the node's last two widgets, or come just before
+        # Prism's model and quality widgets.
+        at = next((i for i in (-1, -3) if len(values) >= -i and values[i] == refine_from), None)
+        if at is not None:
+            values[at] = ''
+            if len(values) > -at and type(values[at - 1]) is bool:
+                values[at - 1] = False
     return graph
 
 
@@ -545,35 +617,52 @@ def engine_environment(root, source, environ=None):
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
-             force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
-             prompt_rewrite_report=None, preview=False, refine_from=None):
+             force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None, model='h3',
+             prism_tier=None, prompt_rewrite_report=None, preview=False, refine_from=None):
     if type(two_pass) is not bool:
         raise ValueError('Two-pass generation must be a boolean')
     if type(force_regenerate) is not bool:
         raise ValueError('Force regeneration must be a boolean')
+    from .video_models import from_comfy, PRISM
+    model = from_comfy(model)
+    prism = model == PRISM
+    tier = None
     if type(preview) is not bool:
         raise ValueError('Preview must be a boolean')
     refine_from = refine_from if isinstance(refine_from, str) and refine_from.strip() else None
     upscale = None
-    if refine_from:
-        # An upscale continues the preview's own request: its prompt, seed,
-        # canvas, steps and inputs, not whatever the editor shows now.
-        upscale = preview_request(output_directory, refine_from)
-        _, previous = upscale
-        arguments = previous['command'][previous['command'].index('generate') + 1:]
-        prompt = (Path(previous['output']).parent / 'prompt.txt').read_text(encoding='utf-8')
-        width, height = previous['geometry']['width'], previous['geometry']['height']
-        seconds, seed = previous['geometry']['seconds'], previous['seed']
-        two_pass, preview = True, False
-        base_steps = int(argument(arguments, '--base-steps', 8))
-        refine_steps = int(argument(arguments, '--refine-steps', 3))
-    from .preview import validate_flags
-    validate_flags(preview, upscale, two_pass)
-    from .two_pass import validate_steps
-    validate_steps(base_steps, refine_steps, two_pass)
-    canvas = validate_request(prompt, width, height, seconds, seed)
+    if prism:
+        # Prism samples once at the target size; its quality level sets the recipe
+        # and the steps (a request without a level: the level its steps meant before
+        # the levels had ids, else the default). Preview first / Upscale preview are
+        # MiniMax H3's two-pass features.
+        if refine_from:
+            raise ValueError('Upscale preview is for MiniMax H3; Prism (preview) samples once at the target size')
+        two_pass, refine_steps, preview = False, 3, False
+        from .video_models import prism_tier as level, validate_prism_tier
+        validate_prism_tier(prism_tier)
+        tier = level(prism_tier, steps=None if prism_tier else base_steps)
+        base_steps = tier['steps']
+    else:
+        if refine_from:
+            # An upscale continues the preview's own request: its prompt, seed,
+            # canvas, steps and inputs, not whatever the editor shows now.
+            upscale = preview_request(output_directory, refine_from)
+            _, previous = upscale
+            arguments = previous['command'][previous['command'].index('generate') + 1:]
+            prompt = (Path(previous['output']).parent / 'prompt.txt').read_text(encoding='utf-8')
+            width, height = previous['geometry']['width'], previous['geometry']['height']
+            seconds, seed = previous['geometry']['seconds'], previous['seed']
+            two_pass, preview = True, False
+            base_steps = int(argument(arguments, '--base-steps', 8))
+            refine_steps = int(argument(arguments, '--refine-steps', 3))
+        from .preview import validate_flags
+        validate_flags(preview, upscale, two_pass)
+        from .two_pass import validate_steps
+        validate_steps(base_steps, refine_steps, two_pass)
+    canvas = validate_request(prompt, width, height, seconds, seed, model=model)
     source = Path(source or source_root()).resolve()
-    root, machine = installation(source, environ)
+    root, machine = installation(source, environ, model=model)
     environment = engine_environment(root, source, environ)
     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
                        PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
@@ -595,8 +684,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     command = [machine['python'], '-B', '-m', 'freevideo_engine.managed', '--root', str(root),
                'generate', '--prompt-file', str(run / 'prompt.txt'), '--out', str(output),
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
-               '--two-pass' if two_pass else '--no-two-pass',
-               '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
+               '--two-pass' if two_pass else '--no-two-pass']
+    # Prism: the level by id (it sets the steps); --base-steps is MiniMax H3's 1..32.
+    command += (['--prism-tier', tier['id']] if prism else ['--base-steps', str(base_steps)]) + [
+        '--refine-steps', str(refine_steps)]
     if upscale:
         command = command[:command.index('generate') + 1] + upscale_command(upscale[1], output, upscale[0], resources)
     else:
@@ -605,6 +696,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
+    if prism:
+        command += ['--model', PRISM]
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
     if preview:
@@ -661,13 +754,21 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     save(media_path, extra['media'])
                     command += ['--media', str(media_path)]
             state['command'] = command
-        from .media_request import task_for
-        from .two_pass import plan
-        planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
+        if prism:
+            from .video_models import prism_media_error, prism_sampling_plan
+            problem = prism_media_error(extra.get('media'), extra.get('conditioning'), tier=tier)
+            if problem:
+                raise ValueError(problem)
+            planned = prism_sampling_plan(canvas, tier)
+        else:
+            from .media_request import task_for
+            from .two_pass import plan
+            planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
+        state['model'] = model
         # A preview is its own result; an upscale is always run from its preview.
         keyed = dict(planned, preview=True) if preview else planned
         identify = lambda check: request_key(prompt, seed, canvas, keyed, extra, machine,
-                                             resources, source, environment, inspection=check)
+                                             resources, source, environment, inspection=check, model=model)
         state['result_cache'] = dict(enabled=False, hit=False, forced=force_regenerate)
         reused = None
         if not force_regenerate and not upscale:
@@ -696,8 +797,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         preparation_started = time.monotonic()
         try:
             # Reference audio selects its own tables; match the encoder's choice.
-            preparation = prepare_sampling_assets(root, machine, planned, engine_task(extra.get('media', {}), media_base),
-                progress=asset_progress, interrupted=interrupted, environ=environment)
+            # The H3 AdaLN tables do not apply to Prism.
+            preparation = (dict(status='not-applicable', seconds=0.) if prism else
+                           prepare_sampling_assets(root, machine, planned, engine_task(extra.get('media', {}), media_base),
+                                                   progress=asset_progress, interrupted=interrupted, environ=environment))
         except BaseException:
             elapsed = time.monotonic() - preparation_started
             state['sampling_cache_install'] = dict(status='failed', seconds=elapsed)
@@ -709,7 +812,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             whole_progress = WholeVideoProgress()
             send_progress({'reset': True, 'label': 'Preparing video'})
         whole_progress.sampling_plan = planned
-        whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
+        if not prism:  # H3 timings would mislead a Prism request.
+            whole_progress.forecast(progress_history_forecast(root, machine, dict(canvas, sampling_plan=planned)))
         send_progress({'label': 'Preparing %.3f s video + audio · %d × %d' %
                        (canvas['seconds'], width, height)})
         if release_models:
@@ -717,6 +821,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
         if machine.get('device_backend') != 'mps' and (source/'freevideo_engine'/'resident_worker.py').is_file():
             from .resident_process import OWNER, ENV
+            # One resident worker serves both models; it drops the other model's
+            # cache before a request (resident_worker), so Prism keeps its text
+            # encoder, VAE and experts between requests when the plan allows.
             if environment.get('FREEVIDEO_KEEP_MODELS', 'auto').lower() in ('0', 'off', 'false'):
                 OWNER.close()
                 environment.pop(ENV, None)
@@ -738,6 +845,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             if process.returncode:
                 from .failure_details import generation_failure
                 raise RuntimeError(generation_failure(run, process.returncode))
+        if prism:
+            return _finish_prism(output, run, state, canvas, planned, started, cache, cache_key, identify,
+                                 send_progress, interrupted, comfy_metadata)
         report = json.loads(output.with_suffix('.request.json').read_text(encoding='utf-8'))
         engine = json.loads(output.with_suffix('.engine.json').read_text(encoding='utf-8'))
         from .two_pass import steps, plan

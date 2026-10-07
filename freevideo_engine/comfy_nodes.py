@@ -5,11 +5,19 @@ from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 
 from . import comfy_bridge
 from .default_prompt import DEFAULT_PROMPT
+from .video_models import COMFY_LABELS, H3, PRISM, from_comfy, prism_tiers
 
 References = io.Custom('FREEVIDEO_REFERENCES')
 LoRAs = io.Custom('FREEVIDEO_LORAS')
 Media = io.Custom('FREEVIDEO_MEDIA')
 NO_LORA = 'None'
+
+PRISM_LEVELS = [tier['id'] for tier in prism_tiers()['tiers']]
+PRISM_QUALITY_TOOLTIP = ('Prism (preview) only. ' + '; '.join(
+    '%s: %d steps%s' % (tier['en'], tier['steps'], '' if tier.get('t2v') else ', first frame needed')
+    for tier in prism_tiers()['tiers']) + '. Default: %s. Light and Standard are faster versions of High with '
+    'a lighter audio pass; Max and Original sample the undistilled model.' % prism_tiers()['default'].title())
+
 
 class FreeVideoGenerate(io.ComfyNode):
     @classmethod
@@ -41,8 +49,9 @@ class FreeVideoGenerate(io.ComfyNode):
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
                 io.Boolean.Input('two_pass', display_name='Two-pass acceleration', default=True, optional=True,
                     tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.'),
-                io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=32, optional=True,
-                    tooltip='Default: 8. Changing sampling steps may reduce generation quality.'),
+                io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=100, optional=True,
+                    tooltip='Default: 8. Changing sampling steps may reduce generation quality. MiniMax H3: 1-32. '
+                            'Prism (preview) ignores it: its quality level sets the steps.'),
                 io.Int.Input('refine_steps', display_name='Second-pass steps', default=3, min=1, max=31, optional=True,
                     tooltip='Default: 3. Three steps use the independent refinement schedule. Changing sampling steps may reduce generation quality.'),
                 io.Boolean.Input('force_regenerate', display_name='Force regeneration', default=False, optional=True,
@@ -53,6 +62,16 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.String.Input('refine_from', display_name='Second pass of preview', default='', optional=True, advanced=True,
                     socketless=True, tooltip='Set by the Run second pass button: the preview video to continue. '
                                              "The second pass uses the preview's own prompt, seed, size and inputs."),
+                # After Preview first / Second pass of preview, so a workflow saved by the regular release keeps
+                # its widget values here, and one saved here still opens there (it ignores the last two).
+                io.Combo.Input('model', display_name='Model', options=[COMFY_LABELS[H3], COMFY_LABELS[PRISM]],
+                    default=COMFY_LABELS[H3], optional=True,
+                    tooltip='MiniMax H3: every input. Prism (preview): image or text to video + audio at 1280 x 720, '
+                            '8.5 s; uses its own five quality levels (Prism quality) and samples in one pass.'),
+                # After model, so workflows saved before it keep their widget values; a
+                # Prism workflow saved before it gets the level its steps meant (freevideo.js).
+                io.Combo.Input('prism_quality', display_name='Prism quality', options=PRISM_LEVELS,
+                    default=prism_tiers()['default'], optional=True, tooltip=PRISM_QUALITY_TOOLTIP),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -62,13 +81,19 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, **kwargs):
         try:
-            comfy_bridge.validate_request(text, width, height, seconds, seed)
-            if not kwargs.get('refine_from'):
+            model = from_comfy(kwargs.get('model'))
+            comfy_bridge.validate_request(text, width, height, seconds, seed, model=model)
+            if model == PRISM:
+                from .video_models import validate_prism_tier
+                validate_prism_tier(kwargs.get('prism_quality'))
+                if kwargs.get('refine_from'):
+                    return 'Run second pass is for MiniMax H3; Prism (preview) samples once at the target size.'
+            elif not kwargs.get('refine_from'):
                 from .two_pass import validate_steps
                 validate_steps(kwargs.get('base_steps', 8), kwargs.get('refine_steps', 3), kwargs.get('two_pass', True))
                 if kwargs.get('preview') and not kwargs.get('two_pass', True):
                     return 'Preview first needs two-pass acceleration.'
-            comfy_bridge.installation()
+            comfy_bridge.installation(model=model)
         except (OSError, ValueError, KeyError) as error:
             return str(error)
         return True
@@ -82,9 +107,16 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
-                force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from=''):
-        from .two_pass import validate_steps
-        if not refine_from:
+                force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='', model=None,
+                prism_quality=None):
+        model = from_comfy(model)
+        if model == PRISM:
+            from .video_models import prism_tier, validate_prism_tier
+            validate_prism_tier(prism_quality)
+            base_steps = prism_tier(prism_quality, steps=None if prism_quality else base_steps)['steps']
+            two_pass, preview = False, False  # Prism samples once at the target size.
+        elif not refine_from:
+            from .two_pass import validate_steps
             validate_steps(base_steps, refine_steps, two_pass)
         from .comfy_media import export
         import folder_paths
@@ -147,7 +179,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 metadata=metadata.get('workflow', metadata), progress=progress, two_pass=two_pass,
                 prompt_rewrite_report=rewrite_report,
                 encoder_prewarm=prewarm, force_regenerate=force_regenerate,
-                base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph,
+                base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph, model=model,
+                prism_tier=prism_quality if model == PRISM else None,
                 preview=bool(preview), refine_from=refine_from or None,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,
@@ -159,6 +192,8 @@ class FreeVideoGenerate(io.ComfyNode):
             preview = ui.PreviewVideo([saved_video(output, output_root)]).as_dict()
             preview['freevideo_summary'] = [output_summary(json.loads(report), relative)]
             preview['freevideo_summary'][0]['result_cache_hit'] = result_reused[0]
+            if model != H3:
+                preview['freevideo_summary'][0]['model'] = model
         except BaseException as error:
             cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in ('InterruptProcessingException', 'CancelledError')
             phase = 'cancelled' if cancelled else 'failed'
@@ -171,7 +206,7 @@ class FreeVideoGenerate(io.ComfyNode):
         from .encoder_prewarm import warm_target
         target = warm_target(measured)
         from .resident_process import OWNER
-        if target and not result_reused[0]:
+        if target and not result_reused[0] and model == H3:
             server = PromptServer.instance
             client = server.client_id if server is not None else None
             def busy():

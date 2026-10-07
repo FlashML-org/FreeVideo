@@ -114,13 +114,13 @@ def nonlocal_readout_bytes(canvas, attention_width, text_rows=1024):
     return int(1.25 * (rows + video) * attention_width * 2)
 
 
-def nonlocal_pin_capacity(reserve=NONLOCAL_PIN_RESERVE):
-    """Bytes this process may still page-lock inside its non-local budget, or None if unreadable."""
+def sample_once():
+    """This process's local / non-local budget and usage (AdapterMemory.sample()), or None if unreadable."""
     reader = None
     try:
         reader = AdapterMemory()
-        segment = reader.sample()['nonlocal']
-    except (OSError, AttributeError, ValueError, KeyError):
+        return reader.sample()
+    except (OSError, AttributeError, ValueError, KeyError, RuntimeError):
         return None
     finally:
         if reader is not None:
@@ -128,6 +128,28 @@ def nonlocal_pin_capacity(reserve=NONLOCAL_PIN_RESERVE):
                 reader.close()
             except OSError:
                 pass  # The budget was already read; a failed release changes nothing here.
+
+
+def probe(python, cwd=None, timeout=120):
+    """The budgets a new CUDA process gets (sample_once() in a short-lived child that
+    creates a CUDA context), for a planner that must not create one itself; None if
+    unreadable. The child's own context is included in its local usage."""
+    import json
+    import subprocess
+    code = ('import json, torch; torch.cuda.init(); torch.empty(1, device="cuda"); '
+            'from freevideo_engine.windows_gpu_memory import sample_once; print(json.dumps(sample_once()))')
+    try:
+        result = subprocess.run([python, '-c', code], capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        value = json.loads(result.stdout.strip().splitlines()[-1])
+        return value if isinstance(value, dict) else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def nonlocal_pin_capacity(reserve=NONLOCAL_PIN_RESERVE, sample=None):
+    """Bytes this process may still page-lock inside its non-local budget, or None if unreadable."""
+    sample = sample if sample is not None else sample_once()
+    segment = (sample or {}).get('nonlocal') or {}
     budget, usage = segment.get('budget_bytes'), segment.get('usage_bytes')
     if type(budget) is not int or budget <= 0 or type(usage) is not int or usage < 0:
         return None

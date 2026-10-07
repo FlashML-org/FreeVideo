@@ -13,7 +13,35 @@ from . import processes
 from .system import windows
 
 
+def _prism_requested(command, arguments):
+    if command != 'generate':
+        return False
+    for index, argument in enumerate(arguments):
+        if argument == '--model' and index + 1 < len(arguments):
+            return arguments[index + 1] == 'prism'
+        if argument.startswith('--model='):
+            return argument.split('=', 1)[1] == 'prism'
+    return False
+
+
 def command_for(machine, command, arguments):
+    if _prism_requested(command, arguments):
+        # Prism keeps its own record under machine['models']['prism'];
+        # none of the H3 cache/encoder keys apply (they may be absent).
+        record = (machine.get('models') or {}).get('prism') or {}
+        if not record.get('ready') or not record.get('root'):
+            raise ValueError('Prism (preview) is not installed. Rerun setup and select Prism.')
+        defaults = dict(cache=record['root'], vram_gib=machine.get('vram_gib'), ram_gib=machine.get('ram_gib'))
+        given = {argument.split('=', 1)[0] for argument in arguments if argument.startswith('--')}
+        if '--profile' in given:
+            defaults.pop('vram_gib', None)
+            defaults.pop('ram_gib', None)
+        extra = []
+        for key, value in defaults.items():
+            flag = '--' + key.replace('_', '-')
+            if value is not None and flag not in given:
+                extra += [flag, str(value)]
+        return [machine['python'], '-m', 'freevideo_engine', command, *extra, *arguments]
     defaults = {}
     if command in ('generate', 'bench', 'predict', 'calibrate'):
         defaults.update(cache=machine['cache'])

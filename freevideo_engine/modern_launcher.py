@@ -120,6 +120,10 @@ def create_ui(session, *, show=True):
         def action(self, name, accepted=False):
             self.invoke(session.action, name, accepted)
 
+        @Slot(str, bool)
+        def selectModel(self, name, checked):
+            self.invoke(session.select_model, name, checked)
+
         @Slot(bool)
         def cleanupDownloads(self, remove=False):
             self.invoke(session.cleanup_downloads, remove)

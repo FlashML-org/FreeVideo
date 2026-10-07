@@ -18,11 +18,20 @@ from freevideo_engine.release_notes import catalog, markdown
 from scripts.build_launcher_notices import collect as collect_notices
 
 
+# Every build of the prism-beta branch is the Prism beta, also a local one without
+# FREEVIDEO_RELEASE_TRACK: it follows only the prism-preview prerelease and is never
+# offered a stable or nightly release, which do not know Prism.
+BRANCH_TRACK = 'prism'
+
+
 def release_track():
-    """Nightly builds are made with FREEVIDEO_RELEASE_TRACK=nightly; stable identities stay unchanged."""
-    track = os.environ.get('FREEVIDEO_RELEASE_TRACK') or 'stable'
+    """Nightly and Prism beta builds set FREEVIDEO_RELEASE_TRACK=nightly or prism; stable identities stay unchanged."""
+    track = os.environ.get('FREEVIDEO_RELEASE_TRACK') or BRANCH_TRACK
     if track not in TRACKS:
         raise SystemExit('FREEVIDEO_RELEASE_TRACK must be one of ' + ', '.join(TRACKS))
+    if track != BRANCH_TRACK:
+        raise SystemExit('This branch builds only the Prism beta (FREEVIDEO_RELEASE_TRACK=%s), not %s'
+                         % (BRANCH_TRACK, track))
     return {} if track == 'stable' else {'track': track}
 
 

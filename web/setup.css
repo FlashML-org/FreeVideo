@@ -76,3 +76,9 @@
 .fv-setup .fv-level{margin:4px 0 0;text-align:center;font-weight:var(--fv-semibold);color:var(--fv-accent)}
 .fv-setup .fv-failure{color:var(--fv-danger)}.fv-setup .fv-ready{color:var(--fv-success)}
 @media(max-width:480px){.fv-setup{padding:0 16px 18px}.fv-setup-head{margin:0 -16px 8px;padding:14px 12px 12px 16px}.fv-setup-head .fv-wordmark{width:92px}.fv-setup>details,.fv-setup>section{padding:14px}}
+.fv-setup .fv-models{margin:14px 0 4px}.fv-setup .fv-models h3{margin:0 0 4px;font-size:var(--fv-body);font-weight:var(--fv-semibold,600);color:var(--fv-ink)}
+.fv-setup label.fv-model{margin:8px 0}.fv-setup label.fv-model span{display:flex;flex-direction:column;gap:2px}
+.fv-setup label.fv-model small{font-size:var(--fv-micro);color:var(--fv-muted)}
+.fv-setup .fv-prism-notice{margin:6px 0 8px;color:var(--fv-warning);font-weight:var(--fv-semibold,600);line-height:1.5}
+.fv-setup label.fv-addon{margin:2px 0 8px 26px}.fv-setup label.fv-addon span{display:flex;flex-direction:column;gap:2px}
+.fv-setup label.fv-addon small{font-size:var(--fv-micro);color:var(--fv-muted)}.fv-setup label.fv-addon[hidden]{display:none}
