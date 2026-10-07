@@ -42,6 +42,8 @@ class Session:
     page = 'comfy'
     selected = installed_versions = None
     release_details = None
+    # The source whose earlier copies were removed once ComfyUI ran it.
+    old_versions_retired = None
 
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
@@ -87,6 +89,11 @@ class Session:
         self.model_groups = []
         self.browser_attempted = False
         self.browser_error = ''
+        # What the opened page reported about loading FreeVideo (web/health.js).
+        from .page_check import PageCheck
+        self.page_check = PageCheck()
+        self.browser_opened = None
+        self.page_error = ''
         self.started = None
         self.closing = False
         self.smoke = smoke
@@ -484,6 +491,7 @@ class Session:
             if not open_browser(address):
                 raise OSError('The system did not accept the browser request')
             self.browser_error = ''
+            self.browser_opened = time.monotonic()
         except Exception as error:
             self.browser_error = self.t('ComfyUI is ready. Open the browser again or copy its address.\n',
                                         'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + str(error)
@@ -905,6 +913,14 @@ class Session:
 
         row = self.controller.state
         busy = self.controller.busy
+        selection = getattr(self.controller, 'selection', None)
+        if (row.get('status') == 'open' and not busy and not self.smoke and selection
+                and selection.get('source') != self.old_versions_retired):
+            # ComfyUI runs this version now: earlier FreeVideo copies are no longer read.
+            self.old_versions_retired = selection.get('source')
+            retire = getattr(self.controller, 'retire_old_versions', None)
+            if retire:
+                retire(dict(selection))
         if self.engine_autoinstall and not busy and row.get('action') == 'inspect' and row.get('status') != 'running':
             self.engine_autoinstall = False
             selection = row.get('selection') or {}
@@ -950,6 +966,7 @@ class Session:
             elif not self.reload_expected or time.monotonic() >= self.browser_wait:
                 self.reload_expected = False
                 self.open_browser()
+        self._tick_page_check(row)
         self._tick_model_upgrade(row, busy)
         sources = self.controller.terminal_sources()
         if sources:
@@ -957,6 +974,25 @@ class Session:
             self.tail.select(selected)
             self.tail.read(final=not self.controller.terminal_running(selected))
         self._tick_updates()
+
+    def _tick_page_check(self, row):
+        """Show a page that failed to load FreeVideo, or never reported, in the failure card."""
+        if row.get('status') != 'open' or self.closing or self.smoke:
+            self.page_check.reset()
+            self.browser_opened, self.page_error = None, ''
+            return
+        address = row['url'].split('/?')[0]
+        self.page_check.poll(address)
+        self.page_error = self.page_check.text(self.t, self.browser_opened, address)
+
+    def old_versions_text(self):
+        """What the background removal of earlier FreeVideo copies freed this session."""
+        value = getattr(self.controller, 'old_versions', None)
+        released = value.get('released_bytes') if isinstance(value, dict) else None
+        if not isinstance(released, int) or released < 2**20:
+            return ''
+        size = '%.1f GiB' % (released / 2**30) if released >= 2**30 else '%d MiB' % (released // 2**20)
+        return self.t('Old versions removed · %s freed', '已清理旧版本 · 释放 %s') % size
 
     def snapshot(self):
         from .failure_details import launcher_failure, redacted_launcher_error
@@ -966,7 +1002,7 @@ class Session:
         task = row.get('task', {})
         progress = progress_view(task.get('progress') or {}, zh)
         overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
-        errors = [self.error, self.browser_error, row.get('error', ''), *row.get('errors', [])]
+        errors = [self.error, self.browser_error, self.page_error, row.get('error', ''), *row.get('errors', [])]
         shortcut = row.get('shortcut') or {}
         if shortcut.get('status') == 'failed':
             errors.append(shortcut.get('error', ''))
@@ -1044,6 +1080,7 @@ class Session:
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,
+            old_versions=self.old_versions_text(),
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
             update=update, engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),

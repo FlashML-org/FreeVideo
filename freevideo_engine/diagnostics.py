@@ -200,6 +200,40 @@ def latest(root, category):
     return max(directories, key=lambda p: p.name) if directories else None
 
 
+def web_files(root, machine):
+    """FreeVideo's page files in the source ComfyUI served, against that source's manifest."""
+    sources = []
+    try:
+        sources.append(json.loads((root / 'logs/page-check.json').read_text(encoding='utf-8')).get('source'))
+    except (OSError, ValueError, AttributeError):
+        pass
+    sources.append(machine.get('source'))
+    for source in sources:
+        if not isinstance(source, str) or not source:
+            continue
+        source = Path(source)
+        try:
+            rows = json.loads((source / 'launcher-source.json').read_text(encoding='utf-8'))['sha256']
+            rows = rows if isinstance(rows, dict) else None
+        except (OSError, ValueError, KeyError, TypeError):
+            rows = None
+        if not (source / 'web').is_dir():
+            return dict(source=str(source), error='The web folder is missing')
+        present = {p.relative_to(source).as_posix(): p for p in (source / 'web').rglob('*') if p.is_file()}
+        expected = {k: v for k, v in (rows or {}).items() if k.startswith('web/')}
+        changed = []
+        for name in sorted(set(expected) & set(present)):
+            try:
+                if hashlib.sha256(present[name].read_bytes()).hexdigest() != expected[name]:
+                    changed.append(name)
+            except OSError:
+                changed.append(name)
+        return dict(source=str(source), manifest=rows is not None, files=len(present),
+                    missing=sorted(set(expected) - set(present)), changed=changed,
+                    extra=sorted(set(present) - set(expected)) if rows is not None else [])
+    return dict(error='No FreeVideo source is recorded')
+
+
 def collect(root, config, run, output, *, complete=False, extra_files=(), notes=''):
     root, config = root.expanduser().resolve(), config.expanduser().absolute()
     if run is not None and (not run.is_dir() or is_link(run)):
@@ -346,6 +380,13 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
                 for path in report_files(host_run):
                     add_path('launcher/host-runs/' + host_run.name + '/' +
                              path.relative_to(host_run).as_posix(), path)
+        # What the browser page found (web/health.js), and the page files of the
+        # source ComfyUI served: a missing or changed file explains a page
+        # without FreeVideo's styles or workspace.
+        for name in ('page-check.json', 'page-checks.jsonl'):
+            if (root / 'logs' / name).is_file():
+                add_path('logs/' + name, root / 'logs' / name)
+        add('source/web-files.json', json.dumps(web_files(root, machine)).encode())
         add_path('source/dependencies.json', Path(__file__).with_name('dependencies.json'))
         source = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path(__file__).parent.glob('*.py'))}
         add('source/hashes.json', json.dumps(source).encode())

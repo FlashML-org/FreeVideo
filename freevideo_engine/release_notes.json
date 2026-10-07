@@ -1,20 +1,26 @@
 {
   "schema": 1,
-  "product_version": "0.3.8",
+  "product_version": "0.3.9",
   "en": {
-    "summary": "Downloads that cannot resume now start again by themselves, and the ComfyUI setup panel explains why Install / repair is unavailable.",
+    "summary": "Updates no longer leave earlier versions behind, updating your ComfyUI no longer reinstalls PyTorch, and a FreeVideo page that does not load completely now says why.",
     "changes": [
-      "When an interrupted model download cannot be resumed, installation now downloads that file again from the start instead of stopping at every retry. The incomplete copy is kept aside.",
-      "If model preparation stops, the message now names the file and the reason instead of a generic \"preparation stopped\".",
-      "In the ComfyUI setup panel, a short note under the buttons explains why Install / repair is unavailable: run Detect & review, tick the agreement, or resolve the problems shown in the plan. Changing a setting clears the outdated plan."
+      "After an update, the launcher removes the earlier launcher copies and FreeVideo files it no longer uses, and shows how much space was freed. Models, outputs, files you changed and the copies your shortcuts or pinned icons open are kept.",
+      "On Windows, the downloaded PyTorch packages (about 1.8 GB) are removed once every environment has them installed. They are only needed to create an environment again.",
+      "When ComfyUI runs in FreeVideo's separate environment and you update ComfyUI, the launcher updates that environment before starting it, instead of downloading another one with PyTorch.",
+      "An engine folder inside an existing ComfyUI is now ignored by git, so ComfyUI updaters that stash or clean untracked files no longer copy or move its models and environments.",
+      "If FreeVideo’s page does not load completely in the browser, for example its styles or the creative workspace are missing, the page now says which file failed, why, and what to do. The launcher shows the same problem, and diagnostic reports include it.",
+      "Opening FreeVideo from the launcher now always brings its workflow to the front, even when ComfyUI reopens the tabs from your last session."
     ]
   },
   "zh": {
-    "summary": "无法续传的下载会自动从头重新下载；ComfyUI 内的安装面板会说明「安装／修复」暂不可用的原因。",
+    "summary": "更新后不再残留旧版本文件；升级 ComfyUI 后不再重新安装 PyTorch；FreeVideo 页面没有完整加载时会说明原因。",
     "changes": [
-      "模型下载中断且无法续传时，安装会自动从头重新下载该文件，不再每次重试都停下；未完成的文件会另行保留。",
-      "模型准备停止时，提示会写明具体的文件和原因，而不是笼统的「准备已停止」。",
-      "ComfyUI 内的安装面板会在按钮下方说明「安装／修复」暂不可用的原因：需要先「检测并预览」、勾选同意，或先解决计划中标红的问题；修改设置后会清除过期的计划。"
+      "更新完成后，启动器会自动删除不再使用的旧版启动器和 FreeVideo 文件，并显示释放的空间。模型、生成结果、你改动过的文件，以及快捷方式或固定图标会打开的副本都会保留。",
+      "Windows 上，所有环境都装好 PyTorch 后，会删除已下载的 PyTorch 安装包（约 1.8 GB），这些安装包只在重新创建环境时才需要。",
+      "ComfyUI 在 FreeVideo 准备的独立环境中运行时，升级 ComfyUI 后，启动器会在启动前更新这个环境，不再另外下载一整套带 PyTorch 的环境。",
+      "放在已有 ComfyUI 里的引擎文件夹现在会被 git 忽略，ComfyUI 更新工具暂存或清理未跟踪文件时，不会再复制或移走其中的模型和环境。",
+      "浏览器里的 FreeVideo 页面没有完整加载时（例如样式丢失或创作面板打不开），页面会写明是哪个文件、什么原因、该怎么处理；启动器也会显示同样的问题，诊断报告中也会包含。",
+      "从启动器打开 FreeVideo 时，即使 ComfyUI 恢复了上次的标签页，FreeVideo 工作流也会显示在最前面。"
     ]
   }
 }

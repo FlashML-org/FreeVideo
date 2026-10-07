@@ -98,6 +98,15 @@ def launcher_failure(value, *, zh=False):
                     action='展开详情或导出报告，查看完整检查结果。' if zh else
                            'Open the details or export the report for the complete results.', kind='kernels')
     rules = (
+        # web/health.js lists the failed files and what to do on the page itself.
+        (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
+         ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),
+         ('The browser page names the files that failed and what to do. Follow it, then reload the page; if it happens again, export the report.',
+          '浏览器页面上列出了出错的文件和处理方法。按提示处理后刷新页面；仍然出现时请导出报告。')),
+        (r'The browser has not opened FreeVideo yet|浏览器还没有打开 FreeVideo', 'page-silent',
+         ('The browser has not opened FreeVideo', '浏览器还没有打开 FreeVideo'),
+         ('Click “Open FreeVideo”. If the page stays blank or keeps loading, open it in a current Chrome or Edge.',
+          '请点击“打开 FreeVideo”。如果页面空白或一直在加载，请用最新版 Chrome 或 Edge 打开。')),
         (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
          ('This GPU lacks the required compute support', '这张显卡不满足当前计算要求'),
          ('The detected GPU and compute capability are shown below. The CUDA runtime requires native BF16 computation (SM80 or newer). Use a compatible GPU; changing the driver does not change its hardware capability.',
