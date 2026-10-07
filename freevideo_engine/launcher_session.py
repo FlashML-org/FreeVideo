@@ -42,6 +42,8 @@ class Session:
     page = 'comfy'
     selected = installed_versions = None
     release_details = None
+    # The source whose earlier copies were removed once ComfyUI ran it.
+    old_versions_retired = None
 
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
@@ -905,6 +907,14 @@ class Session:
 
         row = self.controller.state
         busy = self.controller.busy
+        selection = getattr(self.controller, 'selection', None)
+        if (row.get('status') == 'open' and not busy and not self.smoke and selection
+                and selection.get('source') != self.old_versions_retired):
+            # ComfyUI runs this version now: earlier FreeVideo copies are no longer read.
+            self.old_versions_retired = selection.get('source')
+            retire = getattr(self.controller, 'retire_old_versions', None)
+            if retire:
+                retire(dict(selection))
         if self.engine_autoinstall and not busy and row.get('action') == 'inspect' and row.get('status') != 'running':
             self.engine_autoinstall = False
             selection = row.get('selection') or {}
@@ -957,6 +967,15 @@ class Session:
             self.tail.select(selected)
             self.tail.read(final=not self.controller.terminal_running(selected))
         self._tick_updates()
+
+    def old_versions_text(self):
+        """What the background removal of earlier FreeVideo copies freed this session."""
+        value = getattr(self.controller, 'old_versions', None)
+        released = value.get('released_bytes') if isinstance(value, dict) else None
+        if not isinstance(released, int) or released < 2**20:
+            return ''
+        size = '%.1f GiB' % (released / 2**30) if released >= 2**30 else '%d MiB' % (released // 2**20)
+        return self.t('Old versions removed · %s freed', '已清理旧版本 · 释放 %s') % size
 
     def snapshot(self):
         from .failure_details import launcher_failure, redacted_launcher_error
@@ -1044,6 +1063,7 @@ class Session:
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,
+            old_versions=self.old_versions_text(),
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
             update=update, engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),

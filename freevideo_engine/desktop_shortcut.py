@@ -75,6 +75,53 @@ def write_link(path, target, arguments, working_directory, icon):
         if initialized >= 0: ole.CoUninitialize()
 
 
+def read_link_targets(paths):
+    """The programs Windows shortcuts start, keyed by shortcut; unreadable ones are skipped."""
+    import ctypes as c
+    class GUID(c.Structure):
+        _fields_ = [('data', c.c_ubyte * 16)]
+        def __init__(self, value):
+            super().__init__()
+            self.data[:] = uuid.UUID(value).bytes_le
+    ole = c.WinDLL('ole32')
+    ole.CoInitializeEx.argtypes = [c.c_void_p, c.c_uint32]; ole.CoInitializeEx.restype = c.c_long
+    ole.CoUninitialize.argtypes = []; ole.CoUninitialize.restype = None
+    ole.CoCreateInstance.argtypes = [c.POINTER(GUID), c.c_void_p, c.c_uint32, c.POINTER(GUID), c.POINTER(c.c_void_p)]
+    ole.CoCreateInstance.restype = c.c_long
+    initialized = ole.CoInitializeEx(None, 2)
+    if initialized < 0 and initialized != -2147417850:
+        raise OSError('Windows shortcut initialization failed: 0x%08x' % (initialized & 0xffffffff))
+    def method(obj, index, types, *values):
+        table = c.cast(obj, c.POINTER(c.POINTER(c.c_void_p))).contents
+        result = c.WINFUNCTYPE(c.c_long, c.c_void_p, *types)(table[index])(obj, *values)
+        if result < 0:
+            raise OSError('Windows shortcut failed: 0x%08x' % (result & 0xffffffff))
+    targets = {}
+    try:
+        cls = GUID('00021401-0000-0000-c000-000000000046')
+        iid = GUID('000214f9-0000-0000-c000-000000000046')
+        persist_iid = GUID('0000010b-0000-0000-c000-000000000046')
+        for path in paths:
+            link, persist = c.c_void_p(), c.c_void_p()
+            try:
+                if ole.CoCreateInstance(c.byref(cls), None, 1, c.byref(iid), c.byref(link)) < 0:
+                    continue
+                method(link, 0, [c.POINTER(GUID), c.POINTER(c.c_void_p)], c.byref(persist_iid), c.byref(persist))
+                method(persist, 5, [c.c_wchar_p, c.c_uint32], str(path), 0)  # Load, read-only.
+                buffer = c.create_unicode_buffer(32768)
+                method(link, 3, [c.c_wchar_p, c.c_int, c.c_void_p, c.c_uint32], buffer, len(buffer), None, 0)
+                if buffer.value:
+                    targets[str(path)] = buffer.value
+            except OSError:
+                continue
+            finally:
+                if persist: method(persist, 2, [])
+                if link: method(link, 2, [])
+    finally:
+        if initialized >= 0: ole.CoUninitialize()
+    return targets
+
+
 def launcher_target(engine, source, portable_root=None):
     if portable_root:
         target = Path(portable_root) / 'FreeVideo.exe'
