@@ -12,8 +12,9 @@ import { openLibrary, latestVideo } from './library.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { createSamplingEffort } from './sampling_effort.js';
-import { resultActions } from './result_actions.js';
+import { resultActions, previewBadge } from './result_actions.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
+import { rememberPromptDraft } from './prompt_draft.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -150,8 +151,15 @@ export function openStudio(node) {
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };
     syncReferencePrompt(node, t);
-    const prompt = el('textarea'); prompt.value = value(node, 'text') || ''; prompt.placeholder = t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
-    prompt.disabled = linked(node, 'text'); prompt.oninput = () => set(node, 'text', prompt.value);
+    // An untouched node shows its starter prompt as a placeholder and generates it.
+    // Once something was typed, an emptied box stays empty and asks for a scene.
+    const starter = node.freevideoStarterPrompt || '';
+    const untouched = () => Boolean(starter) && value(node, 'text') === starter;
+    const shown = text => starter && text === starter ? '' : String(text || '');
+    const prompt = el('textarea'); prompt.value = shown(value(node, 'text')); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
+    const placeholder = () => { prompt.placeholder = untouched() ? starter : t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); };
+    placeholder();
+    prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
     const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
     const references = attachReferencePicker(prompt, {items: () => referenceItems(node), t, view, host: dialog,
         addMedia: () => { mediaDetails.open = true; mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
@@ -159,15 +167,16 @@ export function openStudio(node) {
     mention.title = t('Reference media (@)', '引用素材（@）'); mention.setAttribute('aria-label', mention.title);
     mention.disabled = prompt.disabled; mention.onpointerdown = e => e.preventDefault(); promptEditor.append(mention);
     cleanup.push(() => references.dispose());
-    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t,
+    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter,
         onReport: row => { node.freevideoReportId = row.report_id; progress.updateReport(row); },
-        setText: text => set(node, 'text', text), context: () => {
+        onChange: () => rememberPromptDraft(api, node),
+        setText: text => { set(node, 'text', text || (untouched() ? starter : '')); placeholder(); }, context: () => {
         const items = referenceItems(node);
         if (linked(node, 'conditioning') || items.some(row => !row.file || row.kind !== 'image')) throw new Error('unsupported_media');
         return {seconds: Number(value(node, 'seconds')), media: items.map(row => ({file: row.file, role: row.role || 'reference'}))};
     }});
     cleanup.push(() => enhancer.dispose());
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== value(node, 'text')) prompt.value = value(node, 'text') || ''; references.refresh(); enhancer.sync(); } };
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); placeholder(); references.refresh(); enhancer.sync(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
     const promptSection = section(t('Describe your scene', '描述画面'));
@@ -199,17 +208,35 @@ export function openStudio(node) {
     const seconds = el('input'); seconds.type = 'number'; seconds.min = '1.625'; seconds.max = '60'; seconds.step = 'any'; seconds.value = value(node, 'seconds'); seconds.disabled = linked(node, 'seconds'); seconds.setAttribute('aria-label', t('Duration in seconds', '时长（秒）'));
     const fields = el('div', null, 'fv-fields'); fields.append(field(t('Total pixels', '总像素'), mp), field(t('Duration · seconds', '时长 · 秒'), seconds)); canvas.append(fields);
     const canvasNote = el('div', null, 'fv-canvas-note'), dimensions = el('span'), duration = el('span'); canvasNote.append(dimensions, duration); canvas.append(canvasNote);
+    // State of the two-pass choice below; the radio group is what is shown.
     const twoPass = el('input'); twoPass.type = 'checkbox'; twoPass.checked = value(node, 'two_pass') !== false;
-    twoPass.setAttribute('role', 'switch');
     twoPass.disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
     // Two-pass switched off only because first-pass steps left 8; returning to 8 restores it.
     let autoSinglePass = false;
-    twoPass.onchange = () => { autoSinglePass = false; set(node, 'two_pass', twoPass.checked); syncSamplingSteps(); };
-    const twoPassLabel = el('label', null, 'fv-two-pass');
+    const twoPassLabel = el('div', null, 'fv-two-pass fv-pass-row');
     twoPassLabel.title = t('Generate at a lower resolution, then upscale and finish sampling at the target size to save time.', '先以低分辨率生成，再放大到目标分辨率完成采样，缩短生成时间。');
-    twoPass.title = twoPassLabel.title;
     const twoPassStatus = el('small', '', 'fv-two-pass-status');
-    twoPassLabel.append(el('span', t('Two-pass acceleration', '二次采样加速')), twoPassStatus, twoPass);
+    // Off, on, or on and paused after the first pass: a preview is one way to run two-pass.
+    const passMode = el('div', null, 'fv-pass-mode'); passMode.setAttribute('role', 'radiogroup');
+    passMode.setAttribute('aria-label', t('Two-pass sampling', '二次采样'));
+    const passOptions = [['off', t('Off', '关闭')], ['on', t('On', '开启')], ['preview', t('Preview first', '先出预览')]].map(([mode, label]) => {
+        const option = el('button', label); option.type = 'button'; option.dataset.mode = mode; option.setAttribute('role', 'radio');
+        option.onclick = () => choosePassMode(mode);
+        return option;
+    });
+    passOptions[2].title = t('Two-pass, paused after the half-resolution first pass so you can look at it. Run the second pass from the result when it looks right: the video matches generating it directly.',
+        '二次采样跑完半分辨率的一采先停下，给你看预览；满意后在结果里点「继续二采」，成片与直接生成一致。');
+    passMode.append(...passOptions);
+    passMode.addEventListener('keydown', event => {
+        const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key];
+        if (!step) return;
+        event.preventDefault();
+        const enabled = passOptions.filter(option => !option.disabled && !option.hidden);
+        const current = enabled.findIndex(option => option.getAttribute('aria-checked') === 'true');
+        const next = enabled[(current + step + enabled.length) % enabled.length];
+        if (next) { next.click(); next.focus(); }
+    });
+    twoPassLabel.append(el('span', t('Two-pass', '二次采样')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null;
     const effort = createSamplingEffort(t, {onChange: tier => {
         baseSteps.value = tier.steps;
@@ -221,6 +248,24 @@ export function openStudio(node) {
         syncSamplingSteps();
     }, onPreview: tier => tier ? showEffortEstimate(tier.steps, tier.twoPass) : showEffortEstimate()});
     const samplingSettings = el('div', null, 'fv-sampling-settings');
+    const previewFirst = el('input'); previewFirst.type = 'checkbox'; previewFirst.checked = value(node, 'preview') === true;
+    function choosePassMode(mode) {
+        const wantsTwoPass = mode !== 'off', wantsPreview = mode === 'preview';
+        if (twoPass.checked !== wantsTwoPass) { twoPass.checked = wantsTwoPass; autoSinglePass = false; set(node, 'two_pass', wantsTwoPass); }
+        if (previewFirst.checked !== wantsPreview) { previewFirst.checked = wantsPreview; set(node, 'preview', wantsPreview); }
+        syncSamplingSteps(); updateRunButton();
+    }
+    function syncPassMode() {
+        const mode = !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on';
+        for (const option of passOptions) {
+            const selected = option.dataset.mode === mode;
+            option.setAttribute('aria-checked', String(selected)); option.tabIndex = selected ? 0 : -1;
+        }
+        passOptions[0].disabled = linked(node, 'two_pass') || !widget(node, 'two_pass');
+        passOptions[1].disabled = twoPass.disabled;
+        passOptions[2].disabled = twoPass.disabled || linked(node, 'preview') || !widget(node, 'preview');
+        passOptions[2].hidden = !widget(node, 'preview');
+    }
     samplingSettings.append(effort.element, twoPassLabel);
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
@@ -273,6 +318,8 @@ export function openStudio(node) {
         syncSamplingSteps();
         baseSteps.reportValidity();
     };
+    // The run button exists only further down; until then its label is set there.
+    let runButtonReady = false;
     function syncSamplingSteps() {
         const baseLinked = linked(node, 'base_steps');
         // Two-pass is offered at 8 first-pass steps. A saved workflow that already
@@ -281,6 +328,13 @@ export function openStudio(node) {
         twoPass.disabled = unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
         twoPassStatus.textContent = unavailable ? t('Coming soon', '即将推出') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
+        // A preview stops after the first pass, so it needs two-pass sampling.
+        if (!twoPass.checked && previewFirst.checked) {
+            previewFirst.checked = false; set(node, 'preview', false);
+            if (runButtonReady) updateRunButton();
+        }
+        previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
+        syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps');
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps');
         baseSteps.min = twoPass.checked ? '2' : '1';
@@ -355,7 +409,7 @@ export function openStudio(node) {
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewCaption = el('span'), previewTools = el('div', null, 'fv-preview-tools');
     previewTools.append(previewCaption, button(t('Creations', '作品'), () => {
-        stage.querySelector('video')?.pause(); openLibrary(t);
+        stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value)});
     })); previewHead.append(previewTools); output.append(previewHead);
     const previewSpace = el('div', null, 'fv-preview-space'); output.append(previewSpace);
     const stage = el('div', null, 'fv-stage');
@@ -373,6 +427,9 @@ export function openStudio(node) {
     }
     cleanup.push(hideProgress);
     let previewRatio = Number(initialWidth) / Number(initialHeight);
+    // The space takes no more height than the picture can use at full width.
+    const ratioStyle = () => { if (Number.isFinite(previewRatio) && previewRatio > 0) previewSpace.style.setProperty('--fv-ratio', String(previewRatio)); };
+    ratioStyle();
     function fitPreview() {
         const {width, height} = previewSpace.getBoundingClientRect();
         if (!width || !height || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
@@ -382,7 +439,7 @@ export function openStudio(node) {
     }
     function previewSize(w, h) {
         if (!(w > 0 && h > 0)) return;
-        previewRatio = w / h;
+        previewRatio = w / h; ratioStyle();
         dimensionText(previewCaption, `${w} × ${h}`);
         fitPreview();
     }
@@ -425,8 +482,15 @@ export function openStudio(node) {
     }, 'fv-quiet');
     reuseRow.append(reuseNotice, regenerate);
     const trimNote = el('div', '', 'fv-note fv-trim-note'); trimNote.hidden = true; trimNote.setAttribute('role', 'status');
+    // Run second pass is the preview's primary action in the result bar.
+    const secondPass = saved => async () => {
+        try { await node.freevideoUpscaleResult(saved); await syncQueue(); }
+        catch (error) { status.dataset.error = 'true'; status.textContent = error.message; throw error; }
+    };
     output.append(status, reuseRow, trimNote, links, stats, budget, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
+    // With the picture, the result's actions and numbers form one block, centred below the header.
+    output.append(el('div', null, 'fv-preview-end'));
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
     function showResult(r) {
@@ -435,7 +499,10 @@ export function openStudio(node) {
         progress.updateReport({report_id: node.freevideoReportId});
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
         const video = el('video'); video.src = view(r.video, 'output'); video.controls = true; video.preload = 'metadata'; video.playsInline = true; stageMedia.append(video);
-        stats.hidden = !!r.result_cache_hit;
+        // A preview is marked on the picture itself; its timings describe only
+        // the half-resolution first pass, so they stay in the report.
+        if (r.preview) stageMedia.append(previewBadge(r, t));
+        stats.hidden = !!r.result_cache_hit || !!r.preview;
         reuseRow.hidden = !r.result_cache_hit;
         const trims = Array.isArray(r.reference_trims) ? r.reference_trims : [];
         trimNote.textContent = trims.map(row => referenceTrimText(row, t)).join('\n'); trimNote.hidden = !trims.length;
@@ -444,12 +511,13 @@ export function openStudio(node) {
         metricLabels[2].textContent = unified ? t('Unified memory', '统一内存总量') : t('VRAM peak', '显存峰值');
         metricLabels[3].textContent = unified ? t('Process RAM peak', '进程内存峰值') : t('RAM peak', '内存峰值');
         const shown = [number(r.sample_seconds), number(r.request_seconds), number(unified ? r.unified_total_bytes : r.vram_peak_bytes, 2 ** 30, 'GiB'), number(r.ram_peak_bytes, 2 ** 30, 'GiB')]; metrics.forEach((e, i) => e.textContent = shown[i]);
-        budget.textContent = r.result_cache_hit ? '' : unified
+        budget.textContent = r.result_cache_hit || r.preview ? '' : unified
             ? (Number.isFinite(r.unified_reserve_bytes) ? `${t('Reserved unified memory', '预留统一内存')} ${number(r.unified_reserve_bytes, 2 ** 30, 'GiB')}` : '')
             : (Number.isFinite(r.gpu_budget_bytes) ? `${t('VRAM budget', '可用显存预算')} ${number(r.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(r.gpu_total_bytes, 2 ** 30, 'GiB')}` : '');
         // One report entry: the diagnostic export joins the report menu once a result exists.
         progress.report.dataset.covered = 'true';
-        links.replaceChildren(resultActions(r, t, {diagnostic: progress.hasReport() ? progress.downloadReport : null}));
+        links.replaceChildren(resultActions(r, t, {diagnostic: progress.hasReport() ? progress.downloadReport : null,
+                                                   secondPass: r.preview ? secondPass(r) : null}));
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
         if (!progress.element.hidden) {
             progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});
@@ -499,6 +567,7 @@ export function openStudio(node) {
     runOptions.append(optionsToggle, optionsPanel);
     const generate = button('', submitDraft, 'fv-primary');
     runrow.append(generate, runOptions);
+    runButtonReady = true;
     const queueActions = el('div', null, 'fv-queue-actions');
     const queueDetails = el('details', null, 'fv-queue-details');
     const queueToggle = el('summary'), queueList = el('div', null, 'fv-queue-list');
@@ -542,7 +611,8 @@ export function openStudio(node) {
         generate.textContent = submitting ? t('Adding…', '正在添加…')
             : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 条任务`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
-            : busy ? t('Add to queue', '添加到队列') : t('Generate video', '生成视频');
+            : busy ? t('Add to queue', '添加到队列')
+            : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频');
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';
         modeHelp.hidden = runMode === 'single';
@@ -606,7 +676,7 @@ export function openStudio(node) {
         const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
         if (editing && editing !== generate) { editing.blur(); editing.focus({preventScroll: true}); }
         if ([...dialog.querySelectorAll('input:not(:disabled)')].some(e => !e.reportValidity())) return;
-        if (!prompt.disabled && !prompt.value.trim()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (!prompt.disabled && !prompt.value.trim() && !untouched()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         try {

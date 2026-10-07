@@ -153,9 +153,12 @@ def output_summary(report, relative_video):
                 geometry=report.get('geometry', {}),
                 sampling_plan=report.get('sampling_plan'),
                 reference_trims=report.get('encoding', {}).get('reference_trims') or [],
+                preview=bool(report.get('preview')), upscaled_preview=bool(report.get('upscaled_preview')),
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
                     '.debug.json' if report.get('diagnostic_file') == relative_video.with_suffix('.debug.json').name
                     else '.request.json').as_posix())
+    if report.get('preview'):
+        result['preview_geometry'] = report['preview'].get('geometry')
     if report.get('device_backend') == 'mps':
         policy = report.get('profile', {}).get('policy', {})
         hardware = report.get('runtime_hardware', {})

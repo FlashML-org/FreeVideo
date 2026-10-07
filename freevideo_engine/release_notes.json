@@ -1,18 +1,28 @@
 {
   "schema": 1,
-  "product_version": "0.3.1",
+  "product_version": "0.3.2",
   "en": {
-    "summary": "Fixes the int8 upgrade on older installations and importing the Environment ZIP.",
+    "summary": "Adds Preview first to two-pass sampling, deleting in Your creations and prompt box improvements (the example prompt as a placeholder, the last prompt restored on reopening), and fixes installing into folders with spaces.",
     "changes": [
-      "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through.",
-      "Importing the Environment ZIP failed with \"No such file or directory: windows-portable.txt\". It imports again."
+      "Two-pass sampling can stop at a quick half-resolution preview: choose Two-pass: Preview first. When a preview looks right, choose Run second pass; the finished video is identical to generating it directly. Make several previews in a batch and pick one in Your creations.",
+      "Your creations can delete videos you no longer need, after a confirmation.",
+      "The example prompt is shown greyed out as a placeholder. Typing replaces it without clearing the box first, and a box that was never typed in generates the example. A box emptied after typing stays empty.",
+      "Prompt enhancement rewrites the prompt that was typed. With an empty box, turning it on asks for a prompt first.",
+      "Replacing or clearing all of the enhanced text starts a new prompt, which is enhanced before generating. Small edits still adjust the enhanced version.",
+      "FreeVideo reopens with the last prompt, finished, unfinished or emptied, and its enhancement setting.",
+      "Installing into a folder whose path contains a space, such as \"Comfy UI\", stopped at the PyTorch step with \"File not found\". It installs normally now."
     ]
   },
   "zh": {
-    "summary": "修复较早安装的用户无法升级到 int8 模型，以及运行环境包无法导入的问题。",
+    "summary": "二次采样新增「先出预览」，作品可以删除，提示词框改进（示例提示词以灰色占位显示，重新打开时恢复上次的提示词），并修复安装路径含空格时无法安装的问题。",
     "changes": [
-      "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。",
-      "导入运行环境包时会报「找不到 windows-portable.txt」，现在可以正常导入。"
+      "二次采样新增「先出预览」：先用半分辨率快速出一版预览，满意后点「继续二采」，成片与直接生成完全一致。可以批量出几版预览，在「作品」里挑一版继续二采。",
+      "「作品」里可以删除不需要的视频，删除前会确认。",
+      "示例提示词以灰色占位显示，直接输入即可替换，无需先清空；未输入过时按示例生成，输入后再清空则保持为空。",
+      "提示词增强改写已输入的提示词。提示词框为空时开启增强，会提示先输入提示词。",
+      "在改写版中全选替换或清空后重新输入，会作为新的提示词，生成前自动改写；局部修改仍只调整改写版。",
+      "重新打开 FreeVideo 时恢复上次编写的提示词（包括未写完或已清空的内容）及增强设置。",
+      "安装位置的路径中有空格（例如「Comfy UI」）时，安装会停在 PyTorch 步骤并报「File not found」。现在可以正常安装。"
     ]
   }
 }

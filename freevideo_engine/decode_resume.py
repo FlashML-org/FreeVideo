@@ -187,6 +187,79 @@ def save_refine_input(value, artifacts, torch):
         temporary.unlink(missing_ok=True)
 
 
+def save_first_pass(value, artifacts, torch):
+    """Retain a preview's first pass atomically: the input of a later upscale."""
+    artifacts = Path(artifacts)
+    artifacts.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix='first-pass.', suffix='.tmp', dir=artifacts, delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        torch.save(value, temporary)
+        temporary.replace(artifacts / 'first-pass.pt')
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def first_pass_complete(metrics):
+    """A finished preview retained its whole first pass, before the latent upscale."""
+    if (not isinstance(metrics, dict) or metrics.get('success') is not True or metrics.get('preview') is not True
+            or metrics.get('first_pass_checkpoint_complete') is not True
+            or not isinstance(metrics.get('refine_provenance'), dict)):
+        return False
+    plan, passes = metrics.get('sampling_plan'), metrics.get('sampling_passes')
+    if not isinstance(plan, dict) or not plan.get('enabled') or not isinstance(passes, list) or len(passes) != 1:
+        return False
+    first = passes[0]
+    if not isinstance(first, dict):
+        return False
+    steps, seconds = first.get('step_seconds'), first.get('sample_seconds')
+    return (isinstance(steps, list) and len(steps) == plan.get('base_steps')
+            and all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in steps)
+            and type(seconds) in (int, float) and math.isfinite(seconds) and seconds >= 0)
+
+
+def load_first_pass(request, torch):
+    """Load a finished preview's first pass on the CPU; the caller moves it to the GPU."""
+    resume = request['resume_first_pass']
+    if not isinstance(resume, dict) or any(not isinstance(resume.get(key), str) or not resume[key]
+                                           for key in ('input', 'metrics', 'request')):
+        raise ValueError('Invalid preview source')
+    paths = {key: Path(resume[key]).resolve() for key in ('input', 'metrics', 'request')}
+    if len({path.parent for path in paths.values()}) != 1 or len(set(paths.values())) != 3:
+        raise ValueError('Preview artifacts must belong to one finished preview')
+    prior = json.loads(paths['request'].read_text(encoding='utf-8'))
+    previous = json.loads(paths['metrics'].read_text(encoding='utf-8'))
+    if not isinstance(prior, dict) or not first_pass_complete(previous):
+        raise ValueError('Upscaling requires a finished preview')
+    provenance = refine_provenance(request)
+    if provenance != refine_provenance(prior) or provenance != previous['refine_provenance']:
+        raise ValueError('The preview does not match this request and its current inputs')
+    canvas, first = request['geometry'], request['sampling_plan']['first']
+    value = torch.load(str(paths['input']), map_location='cpu', weights_only=True)
+    if (not isinstance(value, dict) or type(value.get('seed')) is not int or value['seed'] != request['seed']
+            or value.get('geometry') != canvas or value.get('refine_provenance') != provenance):
+        raise ValueError('Preview first-pass provenance differs from its receipt')
+    width, height, frames, fps = first['width'], first['height'], first['frames'], canvas['fps']
+    if (any(type(n) is not int or n <= 0 for n in (width, height, frames, fps))
+            or width % 32 or height % 32 or frames % 17 != 5 or fps != 24 or frames != canvas['frames']):
+        raise ValueError('Invalid preview first-pass geometry')
+    # The first pass samples the smaller planned canvas: video C=24 with
+    # stride 16; stereo audio C=32 at 40/s for the same duration.
+    shapes = {'video': (1, 24, (frames - 5) // 17 * 5 + 2, height // 16, width // 16),
+              'audio': (2, 32, round(frames / fps * 40))}
+    for key, shape in shapes.items():
+        tensor = value.get(key)
+        if (not isinstance(tensor, torch.Tensor) or tensor.device.type != 'cpu'
+                or tuple(tensor.shape) != shape or not tensor.is_floating_point()
+                or not bool(torch.isfinite(tensor).all())):
+            raise ValueError('Preview first-pass %s latents are malformed or non-finite' % key)
+    receipt = dict(first_pass_reused=True, first_pass_source='preview', refine_provenance=provenance,
+                   first_pass_source_output=prior.get('output'),
+                   first_pass_scope='Reused the first pass of a finished preview; its times and peaks '
+                                    'belong to that preview.')
+    return value['video'], value['audio'], copy.deepcopy(previous['sampling_passes'][0]), receipt
+
+
 def refine_checkpoint_complete(metrics):
     """A failed attempt retained its full first pass, latent upscale and crop."""
     if (not isinstance(metrics, dict) or metrics.get('success') is not False

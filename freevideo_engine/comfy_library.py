@@ -2,7 +2,10 @@
 import asyncio
 import io
 import json
+import os
 import re
+import stat
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -123,6 +126,121 @@ def video_download(output_directory, identity):
     return path, 'FreeVideo_%s_%s.mp4' % (stamp, identity.split('/')[-1][:12])
 
 
+# What a FreeVideo request writes into its own run folder. A creation whose
+# folder holds anything else, or any link, is not deleted at all.
+_OWNED_FILE = re.compile(r'video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|comfy-request\.json|generate\.log'
+                         r'|media\.json|input-conditioning\.pt|(?:first|last)\.png|reference-\d{2}\.(?:png|mp4|wav)')
+_OWNED_FOLDER = 'video.artifacts'
+_REPARSE_POINT = 0x400
+
+
+class DeleteRefused(ValueError):
+    def __init__(self, reason, kept=()):
+        super().__init__(reason)
+        self.reason, self.kept = reason, list(kept)
+
+
+def _plain(path):
+    """A regular file or directory: never a symlink, junction or other reparse point."""
+    info = os.lstat(path)
+    if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & _REPARSE_POINT:
+        return False
+    return stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)
+
+
+def _foreign(folder):
+    """Names in a run folder that FreeVideo did not write, or that are links."""
+    kept = []
+    for entry in sorted(folder.iterdir()):
+        if not _plain(entry):
+            kept.append(entry.name)
+        elif entry.is_dir():
+            if entry.name != _OWNED_FOLDER:
+                kept.append(entry.name + '/')
+                continue
+            for parent, folders, files in os.walk(entry):
+                for name in folders + files:
+                    if not _plain(Path(parent) / name):
+                        kept.append((Path(parent) / name).relative_to(folder).as_posix())
+        elif not _OWNED_FILE.fullmatch(entry.name):
+            kept.append(entry.name)
+    return kept
+
+
+def _remove(folder):
+    """Remove a verified folder bottom-up; return bytes freed and paths left behind."""
+    freed, left = 0, []
+    for parent, folders, files in os.walk(folder, topdown=False):
+        for name in files:
+            path = Path(parent) / name
+            try:
+                if not _plain(path):
+                    left.append(str(path)); continue
+                size = path.stat().st_size
+                path.unlink()
+                freed += size
+            except OSError:
+                left.append(str(path))
+        for name in folders:
+            try:
+                (Path(parent) / name).rmdir()
+            except OSError:
+                left.append(str(Path(parent) / name))
+    try:
+        Path(folder).rmdir()
+    except OSError:
+        left.append(str(folder))
+    return freed, left
+
+
+def delete_video(output_directory, identity):
+    """Delete one saved creation: its whole run folder, only when FreeVideo wrote everything in it.
+
+    The folder is first renamed into FreeVideo/.deleted, so it leaves the
+    library at once, or, when Windows still has a file open, nothing changes.
+    """
+    path = _video(output_directory, identity)
+    _report(path)
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    folder = path.parent
+    if folder.parent.parent != root or not _plain(folder.parent) or not _plain(folder):
+        raise DeleteRefused('not-freevideo')
+    kept = _foreign(folder)
+    if kept:
+        raise DeleteRefused('foreign-files', kept)
+    # A second pass of this preview may be reading its first pass right now.
+    for state_path in root.glob('*/*/comfy-request.json'):
+        try:
+            state = json.loads(state_path.read_text(encoding='utf-8')) if state_path.stat().st_size <= 1024 * 1024 else {}
+        except (OSError, ValueError):
+            continue
+        source = state.get('upscaled_preview') if isinstance(state, dict) else None
+        if state.get('status') in ('starting', 'running') and isinstance(source, str) and Path(source).resolve() == path:
+            raise DeleteRefused('in-use')
+    trash = root / '.deleted'
+    trash.mkdir(exist_ok=True)
+    if not _plain(trash):
+        raise DeleteRefused('not-freevideo')
+    target = trash / ('%s-%d' % (identity.replace('/', '-'), time.time_ns()))
+    try:
+        folder.rename(target)
+    except OSError as error:
+        raise DeleteRefused('in-use') from error
+    freed, left = _remove(target)
+    # A result-cache row naming this creation can no longer be reused.
+    for index in (root / '.result-cache').glob('*.json'):
+        try:
+            if index.stat().st_size <= 1024 * 1024 and json.loads(index.read_text(encoding='utf-8')).get('id') == identity:
+                index.unlink()
+        except (OSError, ValueError, AttributeError):
+            pass
+    # Finish earlier deletions that Windows had kept open.
+    for earlier in trash.iterdir():
+        if earlier != target and _plain(earlier) and earlier.is_dir():
+            freed += _remove(earlier)[0]
+    return dict(id=identity, freed_bytes=freed, left=len(left))
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -175,6 +293,18 @@ def register():
                 raise web.HTTPNotFound(text='Thumbnail unavailable') from None
         return web.Response(body=data, content_type='image/jpeg',
                             headers={'Cache-Control': 'private, max-age=86400'})
+
+    @server.routes.post('/freevideo/library/delete')
+    async def delete(request):
+        try:
+            body = await request.json()
+            result = await asyncio.to_thread(delete_video, folder_paths.get_output_directory(),
+                                             body.get('id') if isinstance(body, dict) else None)
+        except DeleteRefused as error:
+            return web.json_response(dict(deleted=False, reason=error.reason, kept=error.kept[:20]), status=409)
+        except (OSError, ValueError, TypeError):
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        return web.json_response(dict(result, deleted=True))
 
     @server.routes.get('/freevideo/library/download')
     async def download(request):

@@ -34,3 +34,12 @@
 .fv-library .fv-backfill p{margin:0;font-size:12px;line-height:1.6;color:var(--fv-muted)}
 .fv-library .fv-backfill-actions{display:flex;justify-content:center;gap:8px;margin-top:6px}
 .fv-library .fv-backfill-actions button{min-height:30px;padding:4px 12px;font-size:12px}
+.fv-library-picture{position:relative}
+/* The picture, its caption and actions form one block, centred in the detail. */
+.fv-library-detail{container-type:inline-size}.fv-library-detail::after{content:'';margin-top:auto}
+.fv-library-frame{position:relative;container-type:size;max-height:max(160px,calc(100cqw / var(--fv-ratio,1.7778)));margin-top:auto;background:none;box-shadow:none}
+.fv-library-media{position:relative;width:min(100cqw,calc(100cqh * var(--fv-ratio,1.7778)));aspect-ratio:var(--fv-ratio,1.7778);max-width:100%;max-height:100%;overflow:hidden;border-radius:var(--fv-r-md);background:#0d1118;box-shadow:0 12px 40px #0003}
+.fv-library-media video{width:100%;height:100%}
+.fv-library .fv-library-picture .fv-preview-badge{top:6px;left:6px;padding:1px 8px;font-size:10px}
+.fv-library .fv-library-notice{min-height:0;margin:6px 0 0;text-align:center}
+.fv-library .fv-library-notice:empty{display:none}

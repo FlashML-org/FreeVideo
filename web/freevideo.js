@@ -10,7 +10,8 @@ import { installNavigation, refreshNavigation, preferredView } from './view_navi
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
-import { regenerateResult } from './studio_queue.js';
+import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
+import { regenerateResult, upscaleResult } from './studio_queue.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -280,9 +281,13 @@ function resultPanel(node) {
         if (!note) { note = el('div', '', 'fv-note fv-prewarm'); panel.append(note); }
         const onGPU = Number.isFinite(value.gpu_bytes_after);
         const size = onGPU ? ` · ${(value.gpu_bytes_after / 2 ** 30).toFixed(1)} GiB` : '';
-        note.textContent = value.state === 'loading' ? text('Preparing text encoder on GPU in background', '正在后台预加载文本编码器到 GPU') + size
+        const percent = ` · ${Math.min(100, Math.floor(100 * value.done_bytes / value.bytes))}%`;
+        note.textContent = value.purpose === 'upscale'
+            ? (value.state === 'reading' ? text('Preparing the files the second pass reads', '正在预读二采要用的模型文件') + percent
+                : value.state === 'ready' ? text('Second-pass files warmed · no VRAM reserved', '二采要用的模型文件已预热 · 不占用显存') : '')
+            : value.state === 'loading' ? text('Preparing text encoder on GPU in background', '正在后台预加载文本编码器到 GPU') + size
             : value.state === 'partial' ? text('Text encoder partially prepared on GPU', '文本编码器已部分预加载到 GPU') + size
-            : value.state === 'reading' ? text('Preparing encoder files', '正在预读编码器文件') + ` · ${Math.min(100, Math.floor(100 * value.done_bytes / value.bytes))}%`
+            : value.state === 'reading' ? text('Preparing encoder files', '正在预读编码器文件') + percent
             : value.state === 'ready' ? (onGPU ? text('Text encoder ready on GPU', '文本编码器已在 GPU 就绪') + size
                 : text('Encoder files warmed · no VRAM reserved', '编码器文件已预热 · 不占用显存')) : '';
         node.freevideoPrewarm = note.textContent;
@@ -309,6 +314,16 @@ function resultPanel(node) {
         }
         links.append(shareButton(value, text));
         links.append(el("span", value.result_cache_hit ? text("Reused previous result", "已复用上次结果") : value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
+        if (value.preview) {
+            const upscale = el('button', text('Run second pass', '继续二采')); upscale.type = 'button';
+            upscale.title = text('Continue from this preview: latent upscale, the second pass and a full-resolution decode.', '从这个预览接着跑：潜空间放大、二采，再以全分辨率解码。');
+            upscale.onclick = async () => {
+                upscale.disabled = true;
+                try { await node.freevideoUpscaleResult(value); upscale.textContent = text('Queued', '已加入队列'); }
+                catch (error) { upscale.disabled = false; node.freevideoShowFailure({exception_message: error.message}); }
+            };
+            links.append(upscale);
+        }
         if (value.result_cache_hit) {
             const again = el('button', text('Regenerate', '重新生成')); again.type = 'button';
             again.onclick = async () => {
@@ -324,6 +339,12 @@ function resultPanel(node) {
         panel.title = (unified
             ? text("Unified memory: device capacity. Process RAM is not total GPU memory, ", "统一内存为设备总量；进程内存不代表 GPU 内存总占用，")
             : text("VRAM: engine allocator peak. RAM: measured request processes, ", "显存为引擎分配器峰值，内存为请求进程实测，")) + (value.ram_metric || "unknown");
+    };
+    node.freevideoUpscaleResult = async value => {
+        if (node.freevideoUpscaling) return;
+        node.freevideoUpscaling = true;
+        try { return await upscaleResult(api, node.id, value, () => app.graphToPrompt()); }
+        finally { node.freevideoUpscaling = false; }
     };
     node.freevideoRegenerateResult = async value => {
         if (node.freevideoRegenerating) return;
@@ -359,7 +380,11 @@ const progressConnection = createProgressConnection(api, message => {
 app.registerExtension({
     name: "FreeVideo.UnifiedMedia",
     beforeConfigureGraph() { configuringGraph = true; },
-    async setup() { progressConnection.start(); installNavigation(openStudio); startUpdateChecks(); await notifyCompatibility(); },
+    async setup() {
+        progressConnection.start(); installNavigation(openStudio); startUpdateChecks();
+        window.addEventListener('pagehide', () => savePromptDraft(api, true));
+        await notifyCompatibility();
+    },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === 'FreeVideoReference') {
             const connected = nodeType.prototype.onConnectionsChange;
@@ -367,6 +392,7 @@ app.registerExtension({
             return;
         }
         if (!["FreeVideoMedia", "FreeVideoGenerate", "FreeVideoLoRAStack"].includes(nodeData.name)) return;
+        if (nodeData.name === "FreeVideoGenerate") nodeType.prototype.freevideoStarterPrompt = nodeData.input?.required?.text?.[1]?.default || '';
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = created?.apply(this, arguments);
@@ -400,6 +426,13 @@ app.registerExtension({
                         steps.tooltip = text('Changing sampling steps may reduce generation quality. Defaults: 8 + 3. Other second-pass counts must be fewer than first-pass steps.',
                             '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步；其他二采步数需小于一采步数。');
                     }
+                }
+                const prompt = this.widgets?.find(w => w.name === 'text');
+                if (prompt) {
+                    // Every edit, in the creation panel or on the node, is the draft the launcher reopens.
+                    const node = this, callback = prompt.callback;
+                    prompt.callback = function (...args) { if (!configuringGraph) rememberPromptDraft(api, node); return callback?.apply(this, args); };
+                    prompt.inputEl?.addEventListener?.('input', () => rememberPromptDraft(api, node));
                 }
                 resultPanel(this);
                 this.addWidget('button', text('Open creative workspace', '打开创作面板'), null, () => openStudio(this), {serialize: false});

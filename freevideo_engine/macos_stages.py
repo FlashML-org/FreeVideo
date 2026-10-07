@@ -76,12 +76,63 @@ def retain_joined_progress(result, observed):
     result['phase'] = observed.get('sampling_phase', result['phase'])
 
 
+def first_pass_identity(value):
+    """What a native first pass depends on: inputs, models, seed and sampling plan.
+
+    Compute partitions change floating-point reduction order, not the math, so
+    they are excluded, as for CUDA's retained first passes.
+    """
+    from .decode_resume import _digest
+    cache = Path(value['cache'])
+    return dict(seed=value['seed'], canvas=value['canvas'], sampling=value['sampling'],
+                task=value.get('task', 't2va'), base=str(Path(value['base']).resolve()),
+                checkpoint=str(Path(value['checkpoint']).resolve()), cache=str(cache.resolve()),
+                cache_manifest_sha256=_digest(cache / 'manifest.json'),
+                conditioning=str(Path(value['conditioning']).resolve()),
+                conditioning_sha256=_digest(value['conditioning']))
+
+
+def reuse_preview(value, artifacts, result):
+    """Start an upscale from its preview's first pass when it still matches."""
+    import shutil
+    source = value['refine_from']
+    receipt = json.loads(Path(source['metrics']).read_text(encoding='utf-8'))
+    passes = receipt.get('sampling_passes')
+    if (receipt.get('preview') is not True or receipt.get('first_pass_identity') != first_pass_identity(value)
+            or not isinstance(passes, list) or len(passes) != 1
+            or len(passes[0].get('step_seconds', [])) != value['sampling']['base_steps']):
+        result['upscaled_preview'] = dict(first_pass_reused=False,
+            reason='The preview no longer matches the current models or settings; its first pass was sampled again.')
+        print(json.dumps(dict(event='preview_mismatch')), flush=True)
+        return False
+    target = artifacts / 'first-pass.pt'
+    try:
+        os.link(source['input'], target)
+    except OSError:
+        shutil.copyfile(source['input'], target)
+    # The same first-pass receipt as a request that sampled it, naming its source.
+    save(artifacts / 'first-pass.json', dict(sampling_plan=value['sampling'], sampling_passes=list(passes),
+                                             first_pass_source='preview', preview_output=source.get('output')))
+    result.update(sampling_passes=list(passes), first_pass_reused=True, first_pass_source='preview',
+                  upscaled_preview=dict(first_pass_reused=True, output=source.get('output')))
+    print(json.dumps(dict(event='first_pass_reused', source='preview', completed_steps=value['sampling']['base_steps'],
+                          total=value['sampling']['total_steps'])), flush=True)
+    return True
+
+
 def run(value):
     output, artifacts = Path(value['output']), Path(value['artifacts'])
     sampling = value['sampling']
     path = output.with_suffix('.engine.json')
-    result = dict(success=False, device_backend='mps', phase='load', geometry=value['canvas'],
+    preview = value.get('preview') is True
+    geometry = value['canvas']
+    if preview:
+        # A preview stops after the first pass and decodes it at that canvas.
+        geometry = dict(geometry, width=sampling['first']['width'], height=sampling['first']['height'])
+    result = dict(success=False, device_backend='mps', phase='load', geometry=geometry,
                   sampling_plan=sampling, stages={}, sampling_passes=[])
+    if preview:
+        result['preview'] = True
     started = time.monotonic()
     def interrupted(signum, frame):
         raise KeyboardInterrupt('Native stage interrupted by signal ' + str(signum))
@@ -90,6 +141,10 @@ def run(value):
         lifetime = sampling_lifetime(value['resources'])
         with runtime_lock() as descriptor:
             stages = ['first-pass', 'upscale', 'refinement', 'decode'] if sampling['enabled'] else ['first-pass', 'decode']
+            if preview:
+                stages = ['first-pass', 'decode']
+            elif value.get('refine_from') and reuse_preview(value, artifacts, result):
+                stages = ['upscale', 'refinement', 'decode']
             joined = False
             for stage in stages:
                 if joined and stage in ('upscale', 'refinement'):
@@ -136,8 +191,11 @@ def run(value):
                 elif stage in ('first-pass', 'refinement'):
                     result['sampling_passes'].append(observed['sampling'])
                     if stage == 'first-pass' and sampling['enabled']:
-                        save(artifacts / 'first-pass.json', dict(sampling_plan=sampling,
-                             sampling_passes=result['sampling_passes']))
+                        receipt = dict(sampling_plan=sampling, sampling_passes=result['sampling_passes'])
+                        if preview:
+                            # An upscale of this preview checks it still matches.
+                            receipt.update(preview=True, first_pass_identity=first_pass_identity(value))
+                        save(artifacts / 'first-pass.json', receipt)
                 elif stage == 'upscale':
                     result['latent_upscale'] = observed['upscale']
                 else:
@@ -151,7 +209,7 @@ def run(value):
                     sample_seconds=sum(s['work_seconds'] for k, s in completed.items() if k != 'decode'),
                     latent_save_seconds=sum(s.get('latent_save_seconds', 0.) for s in completed.values()),
                     step_seconds=[t for row in result['sampling_passes'] for t in row['step_seconds']])
-            if (len(result['step_seconds']) != sampling['total_steps'] or
+            if (len(result['step_seconds']) != (sampling['base_steps'] if preview else sampling['total_steps']) or
                     not output.is_file() or output.stat().st_size == 0):
                 raise RuntimeError('Native stages did not produce the complete requested video')
             result.update(success=True, phase='complete')
@@ -235,7 +293,9 @@ def worker(value):
                         task=value.get('task', 't2va'), canvas=value['canvas']) as engine:
                 result['load_seconds'] = engine.load_seconds
                 tick = time.monotonic()
-                admission = joined_admission(engine, value) if not refining else dict(selected=False)
+                # A preview stops after the first pass; joining would also refine.
+                admission = (joined_admission(engine, value) if not refining and value.get('preview') is not True
+                             else dict(selected=False))
                 result['sampling_admission'] = admission
                 if admission['selected']:
                     result.update(joined_sampling=True, sampling_passes=[], latent_save_seconds=0.)
@@ -263,7 +323,8 @@ def worker(value):
                 else:
                     video, audio, measured = engine.sample(value['conditioning'],
                         value['seed'] + (sampling['restart_seed_offset'] if refining else 0),
-                        **sampling['second' if refining else 'first'], progress_total=sampling['total_steps'],
+                        **sampling['second' if refining else 'first'],
+                        progress_total=sampling['base_steps'] if value.get('preview') is True else sampling['total_steps'],
                         progress_offset=sampling['base_steps'] if refining else 0,
                         **(dict(initial_latents=(initial['video'], initial['audio']), refine_steps=sampling['refine_steps'],
                                refine_schedule=sampling.get('refine_schedule'))
@@ -290,7 +351,9 @@ def worker(value):
             name = 'upscaled.pt'
         elif phase == 'decode':
             from .macos_decode import decode_to_file
-            initial = torch.load(artifacts / 'latents.pt', map_location='cpu', weights_only=True)
+            # A preview decodes its first pass; the upscale input stays for later.
+            source = 'first-pass.pt' if value.get('preview') is True else 'latents.pt'
+            initial = torch.load(artifacts / source, map_location='cpu', weights_only=True)
             tick = time.monotonic()
             result['decode'] = decode_to_file(initial['video'], initial['audio'], value['output'],
                 base=value['base'], artifacts_dir=artifacts,

@@ -13,6 +13,7 @@ import time
 from . import network, processes
 from .comfy_bridge import installation
 from .comfy_environment import isolated_environment
+from .environments import uv_file_arguments
 from .locking import runtime_lock
 from .monitoring import save
 from .package_progress import PackageOutput
@@ -86,12 +87,13 @@ def _prepare(root, comfy, machine, run, download):
         else:
             log = directory / ('%02d-command.log' % count)
         progress, child, success = LogProgress(log), None, False
+        command, cwd = uv_file_arguments(command, comfy if comfy.is_dir() else root)
         ui.begin(key, label)
         try:
             with log.open('w', encoding='utf-8') as stream:
-                with PackageOutput(list(map(str, command)), stream, environment) as output:
-                    child = processes.popen(list(map(str, command)), env=output.env,
-                        cwd=comfy if comfy.is_dir() else root, stdin=subprocess.DEVNULL,
+                with PackageOutput(command, stream, environment) as output:
+                    child = processes.popen(command, env=output.env,
+                        cwd=cwd, stdin=subprocess.DEVNULL,
                         stdout=output.stdout, stderr=subprocess.STDOUT, supervise=True, start_new_session=True)
                     output.spawned()
                     while child.poll() is None:
