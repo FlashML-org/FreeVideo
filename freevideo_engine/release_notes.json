@@ -2,15 +2,17 @@
   "schema": 1,
   "product_version": "0.3.1",
   "en": {
-    "summary": "Fixes the int8 upgrade on older installations.",
+    "summary": "Fixes the int8 upgrade on older installations and importing the Environment ZIP.",
     "changes": [
-      "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through."
+      "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through.",
+      "Importing the Environment ZIP failed with \"No such file or directory: windows-portable.txt\". It imports again."
     ]
   },
   "zh": {
-    "summary": "修复较早安装的用户无法升级到 int8 模型的问题。",
+    "summary": "修复较早安装的用户无法升级到 int8 模型，以及运行环境包无法导入的问题。",
     "changes": [
-      "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。"
+      "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。",
+      "导入运行环境包时会报「找不到 windows-portable.txt」，现在可以正常导入。"
     ]
   }
 }

@@ -59,6 +59,9 @@ def bundle_data_args(root):
         if path.is_relative_to(root / 'freevideo_engine/launcher/licenses/bundled'):
             continue  # A rebuild collects notices from its current environment.
         arguments.extend(['--add-data', str(path) + os.pathsep + path.parent.relative_to(root).as_posix()])
+    # Importing an offline runtime ZIP fingerprints its pinned dependencies,
+    # including this file outside the package.
+    arguments.extend(['--add-data', str(root / 'constraints/windows-portable.txt') + os.pathsep + 'constraints'])
     return arguments
 
 
