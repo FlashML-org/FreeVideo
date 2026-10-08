@@ -56,8 +56,11 @@ class Engine:
                  window_batch=1, linear_compute='native-fp8', input_cache_dir=None,
                  fp8_gemm='auto', window_varlen=False, varlen_smooth_k=True,
                  task='t2va', stream_weights=False, canvas=None, head_parallelism=1,
-                 residual_offload=False, device_backend=None):
+                 residual_offload=False, device_backend=None, gpu_allocation_bytes=None):
         self.device_backend = device_backend if device_backend is not None else get_backend()
+        if gpu_allocation_bytes is not None and (type(gpu_allocation_bytes) is not int or gpu_allocation_bytes < 0):
+            raise ValueError('GPU allocation limit must be a nonnegative byte count')
+        self.gpu_allocation_bytes = gpu_allocation_bytes
         if self.device_backend.capabilities.name != 'cuda':
             raise NotImplementedError('Engine model execution currently requires the CUDA backend')
         from .media_request import TASKS
@@ -199,7 +202,8 @@ class Engine:
                 logical, reserved = self.device_backend.prepare_streamed_layer(block, streamed_source, index,
                     pin_budget_bytes=max(0, int(pin_host_gb * 1e9) - prepared_pins['reserved']),
                     headroom_bytes=self.weight_cache_headroom_bytes,
-                    nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
+                    nonlocal_reserve_bytes=self.nonlocal_reserve_bytes,
+                    commit_reserve_bytes=self.gpu_commit_reserve())
                 prepared_pins['logical'] += logical
                 prepared_pins['reserved'] += reserved
                 prepared_pins['seconds'] += time.perf_counter() - tick
@@ -371,13 +375,15 @@ class Engine:
                     pin_order = 'interleaved'
                 self.pinned_model_bytes = self.device_backend.pin_layer_weights(pin_layers, max_bytes=int(pin_host_gb * 1e9) if pin_host_gb else None,
                                                            headroom_bytes=host_headroom,
-                                                           nonlocal_reserve_bytes=self.nonlocal_reserve_bytes)
+                                                           nonlocal_reserve_bytes=self.nonlocal_reserve_bytes,
+                                                           commit_reserve_bytes=self.gpu_commit_reserve())
                 pin_seconds = time.perf_counter() - pin_start
             self.pinned_host_allocated_bytes = self.device_backend.host_memory_stats()['allocated_bytes.current']
             print(json.dumps({'event': 'host_weights_pinned', 'seconds': pin_seconds,
                               'logical_bytes': self.pinned_model_bytes,
                               'working_headroom_bytes': host_headroom,
                               'nonlocal_reserve_bytes': self.nonlocal_reserve_bytes,
+                              'gpu_commit_reserve_bytes': self.gpu_commit_reserve(),
                               'pin_order': pin_order,
                               'host_allocator_bytes': self.pinned_host_allocated_bytes}), flush=True)
         if preload_host:
@@ -449,6 +455,13 @@ class Engine:
                        'window_varlen': window_varlen,
                        'varlen_smooth_k': varlen_smooth_k if window_varlen else None,
                        'steps': steps, 'source_id': manifest['source_id']}
+
+    def gpu_commit_reserve(self):
+        """Allocator room this request may still reserve, which WDDM will charge to commit."""
+        from .system import windows
+        if self.gpu_allocation_bytes is None or not windows():
+            return 0
+        return max(0, self.gpu_allocation_bytes - torch.cuda.memory_reserved())
 
     @torch.no_grad()
     def sample(self, *args, compute_options=None, **kwargs):

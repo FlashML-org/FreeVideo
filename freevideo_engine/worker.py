@@ -146,7 +146,11 @@ def generate(request, resident=None):
             metrics['transformer_released_before_decode'] = resident is None or 'engine' not in resident.entries
         else:
             tick = time.perf_counter()
+            # Windows charges the allocator room still to be reserved to commit;
+            # the engine keeps that room out of its locked weights.
+            allocation = metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes']
             factory = lambda: Engine(request['cache'], input_cache_dir=request.get('input_cache_dir'),
+                                     gpu_allocation_bytes=int(allocation),
                                      **dict(options, canvas=request.get('geometry')))
             engine, reused = resident.engine(request, factory) if resident is not None else (factory(), False)
             loaded_seconds = time.perf_counter() - tick

@@ -40,12 +40,15 @@ def _pin_reservation(sizes):
 
 
 @torch.no_grad()
-def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_reserve_bytes=None):
+def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_reserve_bytes=None,
+                      commit_reserve_bytes=0):
     """Pack immutable CPU parameters into persistent pinned planes, one per dtype.
 
     This optional mode trades pageable/mapped storage for locked host residency.
     Rebinding preserves parameter values and permits direct asynchronous H2D.
     """
+    if type(commit_reserve_bytes) is not int or commit_reserve_bytes < 0:
+        raise ValueError('Commit reserve must be a nonnegative byte count')
     layers = list(layers)
     layer_groups = []
     for layer in layers:
@@ -87,7 +90,14 @@ def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_r
     available = memory.get('physical_available_bytes') or memory['available_bytes']
     commit_available = memory.get('commit_available_bytes')
     if commit_available is not None:
-        available = min(available, commit_available)
+        # WDDM charges this process's GPU allocations to system commit as they
+        # are made, so allocator room the request has not reserved yet cannot
+        # back locked pages either. Pinning against commit alone left an 8 GiB
+        # card's request with under 1 GiB of commit once sampling reserved its
+        # workspace, and live pressure then switched off host read-ahead and
+        # the step cache for the rest of the request. The caller passes that
+        # unreserved allocator room; physical RAM is not charged for it.
+        available = min(available, commit_available - commit_reserve_bytes)
     live_cap = available - headroom_bytes
     max_bytes = live_cap if max_bytes is None else min(max_bytes, live_cap)
     from .system import windows
@@ -263,7 +273,8 @@ def unload_streamed_layer(layer, source, index):
 
 
 @torch.no_grad()
-def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_bytes, nonlocal_reserve_bytes=None):
+def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_bytes, nonlocal_reserve_bytes=None,
+                           commit_reserve_bytes=0):
     """Retain one affordable pinned layer or release it before loading the next.
 
     Return logical pinned bytes and the charged allocator reservation. A partial
@@ -277,7 +288,8 @@ def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_b
     pinned = 0
     if 0 < reserved <= pin_budget_bytes:
         pinned = pin_layer_weights([layer], max_bytes=pin_budget_bytes, headroom_bytes=headroom_bytes,
-                                   nonlocal_reserve_bytes=nonlocal_reserve_bytes)
+                                   nonlocal_reserve_bytes=nonlocal_reserve_bytes,
+                                   commit_reserve_bytes=commit_reserve_bytes)
         if pinned == sum(sizes.values()) and all(value.is_pinned() for _, value in cpu_weights(layer)):
             return pinned, reserved
     unload_streamed_layer(layer, source, index)
