@@ -255,25 +255,6 @@
           "离线安装可以一起导入可选的「音频参考缓存」包，用音频做参考时不必再联网下载对应的缓存。"
         ]
       }
-    },
-    {
-      "product_version": "0.3.5",
-      "en": {
-        "summary": "Audio references now guide the voice and sound of the generated video much more closely.",
-        "changes": [
-          "Audio references work as intended: a reference voice or soundtrack, including the sound of a reference video, now guides the generated audio. In our tests, the generated voice matched the reference voice far more closely.",
-          "Audio references use an updated sampling cache (0.3–0.7 GB per quality level). It downloads automatically the first time you use an audio reference, so there is nothing to do before then; the previous cache is removed afterwards.",
-          "Mono reference audio keeps its original volume."
-        ]
-      },
-      "zh": {
-        "summary": "音频参考效果大幅改进，生成的声音会更贴近参考音频的音色。",
-        "changes": [
-          "改进音频参考：参考音频（包括参考视频自带的声音）现在能正确引导生成的声音。我们的测试中，生成的人声与参考音色明显更接近。",
-          "使用音频参考需要更新采样缓存（每个质量档 0.3–0.7 GB），首次使用音频参考时会自动下载，不使用可以忽略；下载完成后会自动删除旧缓存。",
-          "单声道参考音频保持原有音量。"
-        ]
-      }
     }
   ]
 }
