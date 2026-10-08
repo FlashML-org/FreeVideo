@@ -16,6 +16,19 @@ export const MODULES = ['branding.js', 'compatibility.js', 'error_panel.js', 'fr
     'result_actions.js', 'sampling_effort.js', 'setup.js', 'share.js', 'studio.js', 'studio_queue.js',
     'updates.js', 'view_navigation.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A file the browser failed to load stays failed for the page's lifetime even
+// once the server sends it again, and a plain reload can take the same broken
+// copy from the HTTP cache. So when every script is reachable but some would
+// not run, the page refreshes the cache and reloads itself once.
+const RETRY_KEY = 'freevideo.page-retry';
+const RETRY_WINDOW = 5 * 60000;
+// null when this browser keeps no session storage: then nothing retries.
+const retryRecord = (() => {
+    try { return JSON.parse(sessionStorage.getItem(RETRY_KEY) || '{}') || {}; } catch { return null; }
+})();
+const retried = !!retryRecord && Date.now() - (Number(retryRecord.at) || 0) < RETRY_WINDOW;
+// Any click or key outside FreeVideo's own panels: a reload could lose edits.
+let touched = false;
 const fileName = url => decodeURIComponent(String(url).split(/[?#]/)[0].split('/').pop() || String(url));
 const ours = url => typeof url === 'string' && url.startsWith(base.href);
 
@@ -37,6 +50,8 @@ function receive(item) {
 
 // Only the first copy of this file listens; see the end of the file.
 function install() {
+    const touch = event => { if (!event.target?.closest?.('.fv-studio, .fv-health')) touched = true; };
+    addEventListener('pointerdown', touch, true); addEventListener('keydown', touch, true);
     addEventListener('error', event => {
         const target = event.target;
         if (target && target !== window && (target.href || target.src)) note('resource', target.href || target.src, {url: target.href || target.src});
@@ -61,8 +76,8 @@ function install() {
 }
 
 const comfy = () => window.app?.graph ? window.app : window.comfyAPI?.app?.app?.graph ? window.comfyAPI.app.app : null;
-const studioWorkflow = graph => (graph?._nodes || graph?.nodes || []).some(n => n.comfyClass === 'FreeVideoGenerate' || n.type === 'FreeVideoGenerate')
-    && !!graph?.extra?.freevideo_studio;
+const hasGenerate = graph => (graph?._nodes || graph?.nodes || []).some(n => n.comfyClass === 'FreeVideoGenerate' || n.type === 'FreeVideoGenerate');
+const studioWorkflow = graph => hasGenerate(graph) && !!graph?.extra?.freevideo_studio;
 const preferredView = () => { try { return localStorage.getItem('freevideo.view'); } catch { return null; } };
 async function waitFor(test, ms) {
     const end = Date.now() + ms;
@@ -97,8 +112,19 @@ const ADVICE = {
         '同时有其他 ComfyUI 插件报错。可在 ComfyUI“设置 › 扩展”里暂时停用它，然后刷新页面。'),
     reload: t('Reload the page. If it happens again, copy the details and send them to us.',
         '请刷新页面。仍然出现时，复制详情发给我们。'),
+    cache: t('FreeVideo already reloaded this page once with fresh copies of its files. Press Ctrl+F5. If it still fails, turn off browser extensions that block scripts on this page or open the same address in another browser, then copy the details and send them to us.',
+        'FreeVideo 已经用重新下载的文件自动刷新过一次页面。请按 Ctrl+F5 强制刷新；仍然出现时，请停用会拦截此页面脚本的浏览器插件，或换一个浏览器打开同一地址，然后复制详情发给我们。'),
     relaunch: t('Click Start in the FreeVideo launcher again.', '请在 FreeVideo 启动器里重新点击“启动”。'),
 };
+
+// What the HTTP cache holds for a file, which is what a module load reads.
+async function cachedCopy(url) {
+    try {
+        const response = await fetch(url, {cache: 'only-if-cached', mode: 'same-origin'});
+        const type = (response.headers.get('content-type') || '').split(';')[0].trim() || 'no type';
+        return `HTTP ${response.status} ${type}, ${(await response.arrayBuffer()).byteLength} bytes`;
+    } catch { return 'none'; }
+}
 
 // One sentence per finding, naming the file and the reason.
 async function diagnoseModules() {
@@ -125,9 +151,15 @@ async function diagnoseModules() {
     }
     for (const [message, names] of failed) {
         const list = names.length > 3 ? `${names.slice(0, 3).join(cn ? '、' : ', ')}${t(` and ${names.length - 3} more`, ` 等 ${names.length} 个文件`)}` : names.join(cn ? '、' : ', ');
+        const kind = /does not provide an export/.test(message) ? 'mixed'
+            : /SyntaxError|Unexpected token|Unexpected identifier|is not a function|is not defined|is not a constructor/.test(message) ? 'browser' : 'reload';
+        const cache = [];
+        for (const name of names) cache.push(`${name}: ${await cachedCopy(new URL(name, base).href)}`);
+        // Reachable files the browser would not run, or old and new copies mixed:
+        // fresh copies and one reload resolve both.
+        const retry = kind !== 'browser';
         found.push({text: t(`The browser could not run ${list}: ${message}`, `浏览器无法运行 ${list}：${message}`),
-            advice: /does not provide an export/.test(message) ? 'mixed'
-                : /SyntaxError|Unexpected token|Unexpected identifier|is not a function|is not defined|is not a constructor/.test(message) ? 'browser' : 'reload'});
+            advice: retry && retried ? 'cache' : kind, retry, cache});
     }
     return found;
 }
@@ -192,6 +224,61 @@ function pluginErrors() {
         text: t(`Extension ${fileName(name)} reported an error: ${text.slice(0, 240)}`, `插件 ${fileName(name)} 报错：${text.slice(0, 240)}`), advice: 'plugin'}));
 }
 
+// Whenever the workflow in front has a FreeVideo node, the creative workspace
+// or the toolbar that opens it must be on screen. The nodes still generate
+// without them, so a page missing both looks like it works.
+function onScreen(element) {
+    if (!element?.isConnected || element.hidden) return false;
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+    const box = element.getBoundingClientRect();
+    return box.width > 0 && box.height > 0 && box.bottom > 0 && box.right > 0 && box.top < innerHeight && box.left < innerWidth;
+}
+
+// Our sheets are same-origin and never empty: rules that cannot be read were not loaded.
+function sheetLoaded(name) {
+    const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(item => ours(item.href) && fileName(item.href) === name);
+    if (!link || seen.some(row => row.kind === 'resource' && fileName(row.url || '') === name)) return false;
+    try { return link.sheet.cssRules.length > 0; } catch { return false; }
+}
+
+function workspaceProblem(app) {
+    // Scripts that never started are already named by the load check.
+    if (!window.FreeVideoUI?.ready || !hasGenerate(app.graph)) return null;
+    const studio = document.querySelector('dialog.fv-studio[open]');
+    if (studio) return onScreen(studio) ? null
+        : {text: t('The creative workspace is open but cannot be seen on the page.', '创作面板已经打开，但页面上看不到。'), advice: 'reload'};
+    const bar = document.querySelector('.fv-view-navigation');
+    if (!bar) return {text: t('The FreeVideo toolbar that opens the creative workspace is missing from the page.', '页面上没有打开创作面板的 FreeVideo 工具栏。'), advice: 'reload'};
+    if (onScreen(bar)) return null;
+    // Its own stylesheet places it; without that it falls below the canvas.
+    return sheetLoaded('view_navigation.css')
+        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden by the page’s styles.', '打开创作面板的 FreeVideo 工具栏被页面样式隐藏了。'), advice: 'plugin'}
+        : {text: t('The FreeVideo toolbar that opens the creative workspace cannot be seen: its stylesheet view_navigation.css did not load.',
+            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload'};
+}
+
+// Looks again as the page changes, such as another workflow coming to the
+// front. A miss counts once it persists after the toolbar was asked to refresh.
+async function watchWorkspace(app) {
+    let missed = '', shown = '';
+    for (;;) {
+        await sleep(2500);
+        if (document.hidden) continue;
+        const problem = workspaceProblem(app);
+        if (!problem) { missed = ''; continue; }
+        if (missed !== problem.text) {
+            missed = problem.text;
+            window.dispatchEvent(new CustomEvent('freevideo-navigation-refresh'));
+            continue;
+        }
+        if (shown === problem.text) continue;
+        shown = problem.text;
+        const problems = distinct([...lastProblems, problem, ...reports.filter(item => item.type === 'error').map(reportText), ...pluginErrors()]);
+        show(problems); send('error', problems);
+    }
+}
+
 function reportText(item) {
     const where = {studio: t('The creative workspace could not open', '创作面板打不开'),
         navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏没有加载'),
@@ -204,13 +291,32 @@ function reportText(item) {
 const distinct = problems => problems.filter((problem, index) => problems.findIndex(other => other.text === problem.text) === index);
 let card = null, lastProblems = [];
 function details(problems) {
+    const cache = problems.flatMap(p => p.cache || []);
+    const before = retried && Array.isArray(retryRecord.before) ? retryRecord.before : [];
     return [`FreeVideo page check · ${new Date().toISOString()}`,
         `Page: ${location.origin}${location.pathname}`,
         `Browser: ${navigator.userAgent}`,
         `ComfyUI frontend: ${window.__COMFYUI_FRONTEND_VERSION__ || 'unknown'}`,
         `FreeVideo UI: ${JSON.stringify(window.FreeVideoUI || {})}`,
+        `Automatic reload: ${retried ? new Date(Number(retryRecord.at)).toISOString() : retryRecord ? 'not needed' : 'unavailable (no session storage)'}`,
         '', 'Problems:', ...problems.map(p => `- ${p.text}`),
+        ...(cache.length ? ['', 'Browser cache:', ...cache.map(row => `- ${row}`)] : []),
+        ...(before.length ? ['', 'Browser cache before the automatic reload:', ...before.map(row => `- ${row}`)] : []),
         '', 'Errors seen while loading:', ...(seen.length ? seen.map(row => `- [${row.kind}] ${row.text}`) : ['- none'])].join('\n');
+}
+
+// The automatic reload: fresh copies into the HTTP cache, then the address the
+// page was opened with, before launcher.js removed its launch flag. Reported to
+// the launcher only if it fails again, so its card does not flash.
+async function reloadOnce(problems) {
+    if (!retryRecord || retried || touched) return false;
+    try {
+        sessionStorage.setItem(RETRY_KEY, JSON.stringify({at: Date.now(), before: problems.flatMap(p => p.cache || [])}));
+    } catch { return false; }
+    await Promise.all(MODULES.map(name => fetch(new URL(name, base), {cache: 'reload'}).catch(() => null)));
+    if (touched) return false;
+    location.replace(performance.getEntriesByType('navigation')[0]?.name || location.href);
+    return true;
 }
 
 function show(problems) {
@@ -271,12 +377,16 @@ new MutationObserver(() => {
     try { card.hidePopover(); card.showPopover(); } catch { /* Shown below the dialog instead. */ }
 }).observe(document.documentElement, {subtree: true, attributeFilter: ['open']});
 
-let sent = '';
+let sent = '', latest = null;
+const comfyApi = () => comfy()?.api || window.comfyAPI?.api?.api;
 function send(state, problems) {
     // Kept with diagnostic reports, so a report from this computer names the cause.
+    // 'loading' tells ComfyUI this page runs FreeVideo's scripts before the check ends.
+    latest = {state, problems};
     const body = JSON.stringify({state, problems: problems.map(p => p.text), errors: seen.map(row => `[${row.kind}] ${row.text}`),
         ready: !!window.FreeVideoUI?.ready, launch: launchVisit, view: preferredView() || '',
-        agent: navigator.userAgent, frontend: String(window.__COMFYUI_FRONTEND_VERSION__ || ''), page: location.pathname});
+        agent: navigator.userAgent, frontend: String(window.__COMFYUI_FRONTEND_VERSION__ || ''), page: location.pathname,
+        client: String(comfyApi()?.clientId || '')});
     if (body === sent) return;
     sent = body;
     fetch(new URL('../../api/freevideo/launcher/ui', base), {method: 'POST', headers: {'Content-Type': 'application/json'}, body, keepalive: true})
@@ -284,11 +394,14 @@ function send(state, problems) {
 }
 
 async function check() {
+    send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
         const problems = [{text: t('The ComfyUI page did not finish loading within a minute.', 'ComfyUI 页面在一分钟内没有加载完成。'), advice: 'browser'}];
         show(problems); send('error', problems); return;
     }
+    // A restarted ComfyUI has not heard from this page; tell it again.
+    comfyApi()?.addEventListener?.('reconnected', () => { if (latest) { sent = ''; send(latest.state, latest.problems); } });
     // freevideo.js marks itself ready in its setup; launcher.js reports once
     // the workflow is open and in front.
     await waitFor(() => window.FreeVideoUI?.ready, 10000);
@@ -297,7 +410,10 @@ async function check() {
     await sleep(1500);
     const problems = [];
     const ui = window.FreeVideoUI || {};
-    if (!ui.ready) problems.push(...await diagnoseModules());
+    if (!ui.ready) {
+        problems.push(...await diagnoseModules());
+        if (problems.length && problems.every(p => p.retry) && await reloadOnce(problems)) return;
+    }
     if (!ui.ready && !problems.length) problems.push({text: t('FreeVideo’s scripts loaded, but ComfyUI did not start them.', 'FreeVideo 的脚本已下载，但 ComfyUI 没有启动它们。'), advice: 'reload'});
     if (!problems.length) problems.push(...await diagnoseStyles());
     if (launchVisit && !problems.length) {
@@ -327,6 +443,7 @@ async function check() {
         const problems = distinct([...lastProblems, reportText(item)]);
         show(problems); send('error', problems);
     };
+    watchWorkspace(app).catch(error => consoleError.call(console, '[FreeVideo] Workspace check failed:', error));
 }
 
 // A second FreeVideo folder loads this file again; one check covers both.

@@ -91,4 +91,10 @@ export function installNavigation(openStudio) {
     }
     toolbar.append(createUpdateNotice(cn).element);
     document.body.append(toolbar); refreshNavigation();
+    // health.js asks for this before it reports the toolbar missing. A
+    // workspace removed without closing must not keep the toolbar hidden.
+    globalThis.window?.addEventListener('freevideo-navigation-refresh', () => {
+        if (currentView === 'studio' && !document.querySelector('dialog.fv-studio[open]')) currentView = 'nodes';
+        refreshNavigation();
+    });
 }

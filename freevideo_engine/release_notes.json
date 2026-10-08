@@ -1,21 +1,42 @@
 {
   "schema": 1,
-  "product_version": "0.3.13",
+  "product_version": "0.3.14",
   "en": {
-    "summary": "Choosing another location for an automatic installation after an offline one now installs there.",
+    "summary": "When a FreeVideo script fails to load once, the page now recovers by itself, and when the creative workspace cannot be seen, the page or the node says why.",
     "changes": [
-      "After an installation from offline packages, an automatic installation set up in another folder installs into that folder. It no longer reuses the offline installation's engine folder and stops at \"Failed step: vdn-source\".",
-      "An automatic installation pointed at an offline installation's own folder is explained before it starts, with the choice to open that installation or pick another folder."
+      "If the browser fails to load one of FreeVideo's scripts while the ComfyUI page opens, the page refreshes its copies of FreeVideo's files and reloads itself once, returning to the address it was opened with. Before, the page stayed incomplete until a hard reload. The automatic reload is skipped once you have clicked or typed on the page.",
+      "If the scripts still fail after that reload, the message says so and suggests Ctrl+F5 or checking browser extensions, and the copied details include what the browser cache held for each failed file.",
+      "If a FreeVideo node is on the canvas but neither the creative workspace nor the toolbar that opens it can be seen, the page now says so and names the cause, such as a stylesheet that did not load. This is checked on every visit and whenever another workflow comes to the front, not only when the launcher opens the page.",
+      "If FreeVideo’s page scripts do not run in the browser at all, the generating node now shows the cause and what to do in its progress text, since the page itself cannot."
     ]
   },
   "zh": {
-    "summary": "离线安装之后改用自动安装并选择其他位置时，会安装到新选的位置。",
+    "summary": "FreeVideo 的脚本在页面打开时偶尔加载失败，现在页面会自行恢复；看不到创作面板时，页面或节点会说明原因。",
     "changes": [
-      "用离线包安装后，在安装设置里换一个位置进行自动安装，会安装到新选的位置；不再沿用离线安装的引擎目录，也不再停在“Failed step: vdn-source”。",
-      "如果自动安装指向离线安装所在的位置，安装计划页会在开始前说明，并提示在启动页直接打开这份安装或换一个位置。"
+      "打开 ComfyUI 页面时，如果浏览器有一个 FreeVideo 脚本没能加载，页面会重新下载 FreeVideo 的文件并自动刷新一次，回到最初打开的地址。之前页面会一直不完整，直到手动强制刷新。如果你已经在页面上点击或输入过，就不会自动刷新。",
+      "自动刷新后仍然失败时，提示会说明已经刷新过，并建议按 Ctrl+F5 或检查浏览器插件；复制的详情里还会列出每个失败文件在浏览器缓存中的情况。",
+      "画布上有 FreeVideo 节点、却看不到创作面板和打开它的工具栏时，页面会提示并写明原因，例如某个样式文件没有加载。每次打开页面、切换工作流时都会检查，不再只在从启动器打开时检查。",
+      "如果浏览器完全没有运行 FreeVideo 的页面脚本，页面本身无法提示，生成节点会在进度文字里说明原因和处理办法。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.13",
+      "en": {
+        "summary": "Choosing another location for an automatic installation after an offline one now installs there.",
+        "changes": [
+          "After an installation from offline packages, an automatic installation set up in another folder installs into that folder. It no longer reuses the offline installation's engine folder and stops at \"Failed step: vdn-source\".",
+          "An automatic installation pointed at an offline installation's own folder is explained before it starts, with the choice to open that installation or pick another folder."
+        ]
+      },
+      "zh": {
+        "summary": "离线安装之后改用自动安装并选择其他位置时，会安装到新选的位置。",
+        "changes": [
+          "用离线包安装后，在安装设置里换一个位置进行自动安装，会安装到新选的位置；不再沿用离线安装的引擎目录，也不再停在“Failed step: vdn-source”。",
+          "如果自动安装指向离线安装所在的位置，安装计划页会在开始前说明，并提示在启动页直接打开这份安装或换一个位置。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.12",
       "en": {
@@ -248,23 +269,6 @@
           "在改写版中全选替换或清空后重新输入，会作为新的提示词，生成前自动改写；局部修改仍只调整改写版。",
           "重新打开 FreeVideo 时恢复上次编写的提示词（包括未写完或已清空的内容）及增强设置。",
           "安装位置的路径中有空格（例如「Comfy UI」）时，安装会停在 PyTorch 步骤并报「File not found」。现在可以正常安装。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.3.1",
-      "en": {
-        "summary": "Fixes the int8 upgrade on older installations and importing the Environment ZIP.",
-        "changes": [
-          "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through.",
-          "Importing the Environment ZIP failed with \"No such file or directory: windows-portable.txt\". It imports again."
-        ]
-      },
-      "zh": {
-        "summary": "修复较早安装的用户无法升级到 int8 模型，以及运行环境包无法导入的问题。",
-        "changes": [
-          "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。",
-          "导入运行环境包时会报「找不到 windows-portable.txt」，现在可以正常导入。"
         ]
       }
     }
