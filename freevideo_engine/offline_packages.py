@@ -10,7 +10,7 @@ import time
 import zipfile
 
 from .monitoring import save
-from .portable import inside
+from .portable import inside, listing
 
 PREFIX = 'FreeVideo-Windows/'
 # Optional packs (reference-audio tables) carry sampling tables outside the
@@ -164,30 +164,6 @@ def inspect_archive(path):
 VERIFIED = 'import-verified.json'
 
 
-class Tree:
-    """Paths under one root, each directory checked for links once rather than per file.
-
-    portable.inside resolves every path, which on Windows opens it; for an
-    environment of ~50,000 files that alone took minutes.
-    """
-    def __init__(self, root):
-        self.root = Path(root).resolve()
-        self.checked = {self.root}
-
-    def path(self, name):
-        inside(Path('/unused'), name)  # Lexical rules only: no '..', drive or backslash.
-        path = self.root / name
-        for parent in reversed(path.parents):
-            if parent in self.checked or self.root not in parent.parents:
-                continue
-            if parent.is_symlink() or (hasattr(parent, 'is_junction') and parent.is_junction()):
-                raise ValueError('Bundle files must not redirect outside their directory: ' + name)
-            self.checked.add(parent)
-        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
-            raise ValueError('Bundle files must not redirect outside their directory: ' + name)
-        return path
-
-
 def stamps(root):
     try:
         value = json.loads((Path(root) / VERIFIED).read_text(encoding='utf-8'))
@@ -201,13 +177,14 @@ def stamp(path):
     return [info.st_size, info.st_mtime_ns]
 
 
-def unchanged(path, row, known):
+def unchanged(path, row, known, current=None):
     """Still the file its import checked: the size matches, and the recorded time too.
 
-    Only a file whose record says it was rewritten since is hashed.
+    Only a file whose record says it was rewritten since is hashed. `current`
+    is its [size, mtime] when a directory walk already read it.
     """
     try:
-        current = stamp(path)
+        current = current or stamp(path)
     except OSError:
         return False
     if current[0] != row['bytes']:
@@ -227,21 +204,10 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
     path = Path(path).resolve()
     progress(done=0, total=None, detail=path.name)
     value = inspect_archive(path)
-    tree = Tree(Path(destination).resolve() / '.freevideo-packages' / value['id'] / 'FreeVideo-Windows')
-    root = tree.root
+    root = Path(destination).resolve() / '.freevideo-packages' / value['id'] / 'FreeVideo-Windows'
     total = sum(r['bytes'] for r in value['files'])
-    present, seen, shown = {}, 0, time.monotonic()
-    if root.is_dir():
-        for row in value['files']:
-            try:
-                present[row['path']] = stamp(tree.path(row['path']))
-                seen += row['bytes']
-            except FileNotFoundError:
-                pass
-            if time.monotonic() - shown > .2:
-                # Looking over an earlier import moves the bar too.
-                shown = time.monotonic()
-                progress(done=seen, total=total, detail=path.name)
+    found = listing(root) if root.is_dir() else {}
+    present = {row['path']: found[row['path']] for row in value['files'] if row['path'] in found}
     missing = sum(r['bytes'] for r in value['files'] if r['path'] not in present)
     parent = root
     while not parent.exists():
@@ -253,10 +219,10 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
         current = present.get(row['path'])
         if current is None:
             continue
-        if current[0] != row['bytes'] or not unchanged(tree.path(row['path']), row, known):
-            raise ValueError('已有导入文件已改变，未覆盖：' + str(tree.path(row['path'])))
+        if current[0] != row['bytes'] or not unchanged(root / row['path'], row, known, current):
+            raise ValueError('已有导入文件已改变，未覆盖：' + str(root / row['path']))
         verified[row['path']] = current
-    marker = tree.path(value['marker'])
+    marker = root / value['marker']
     if not missing and marker.is_file() and marker.read_bytes() == value['raw']:
         # Imported before and complete: nothing to read again.
         save(root / VERIFIED, verified)
@@ -271,7 +237,9 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
                 raise InterruptedError('已暂停导入，ZIP 与已校验文件保留。')
             if row['path'] in verified:
                 continue
-            target = tree.path(row['path'])
+            # The walk above refused links anywhere in this folder; rows passed
+            # the lexical path rules in inspect_archive.
+            target = root / row['path']
             target.parent.mkdir(parents=True, exist_ok=True)
             partial = target.with_name(target.name + '.importing')
             try:
@@ -320,28 +288,34 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
         raise ValueError('Invalid model inventory')
     from .network import hash_file
     known = {root: stamps(root) for root in models}
-    trees, here = {root: Tree(root) for root in models}, Tree(runtime)
+    # One directory walk per folder: no file is opened to be checked.
+    walks, here = {root: listing(root) for root in models}, listing(runtime)
     total, done = sum(r['bytes'] for r in model['files']), 0
     progress(done=0, total=total, detail='检查配套包')
-    for row in model['files']:
-        target = here.path(row['path'])
-        src = None
+
+    def source_for(row):
         for root in models:
-            candidate = trees[root].path(row['path'])
-            if candidate.is_file() and unchanged(candidate, row, known[root]):
-                src = candidate
-                break
+            current = walks[root].get(row['path'])
+            if current and unchanged(Path(root) / row['path'], row, known[root], current):
+                return Path(root) / row['path']
+        return None
+
+    def place(src, target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(src, target)
+        except OSError:
+            shutil.copyfile(src, target)
+
+    for row in model['files']:
+        target, src = runtime / row['path'], source_for(row)
         if src is None:
             raise ValueError('还需导入「%s」包，缺少文件：%s' % (pack_name(row['path']), row['path']))
-        if target.exists():
+        if row['path'] in here:
             if not os.path.samefile(target, src) and hash_file(target) != row['sha256']:
                 raise ValueError('离线安装已有不同模型，未覆盖：' + str(target))
         else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(src, target)
-            except OSError:
-                shutil.copyfile(src, target)
+            place(src, target)
         done += row['bytes']
         progress(done=done, total=total, detail='检查配套包')
     listed = {row['path'] for row in model['files']}
@@ -350,16 +324,12 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
         if not package.is_file():
             continue
         for row in json.loads(package.read_text(encoding='utf-8')).get('files', []):
-            if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX):
+            if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX) or row['path'] in here:
                 continue
-            src, target = trees[root].path(row['path']), here.path(row['path'])
-            if target.exists() or not src.is_file() or not unchanged(src, row, known[root]):
+            current = walks[root].get(row['path'])
+            if not current or not unchanged(Path(root) / row['path'], row, known[root], current):
                 continue  # The engine fetches a table it cannot find when a request needs it.
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(src, target)
-            except OSError:
-                shutil.copyfile(src, target)
+            place(Path(root) / row['path'], runtime / row['path'])
             listed.add(row['path'])
     code = materialize_source(source, runtime / 'engine/launcher/source')
     variant = model['variant']
@@ -372,18 +342,12 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
     save(runtime / 'portable.json', value)
     # Every model file was verified above and the environment's files at import;
     # the first start takes that instead of reading tens of GiB once more.
-    from .storage import fingerprint
-    imported = stamps(runtime)
+    imported, final = stamps(runtime), listing(runtime)
     trusted = {row['path'] for row in model['files']}
-    for row in config['files']:
-        try:
-            if imported.get(row['path']) == stamp(here.path(row['path'])):
-                trusted.add(row['path'])
-        except OSError:
-            pass
+    trusted |= {row['path'] for row in config['files'] if imported.get(row['path']) == final.get(row['path'])}
     save(runtime / 'engine' / 'portable-verified.json',
-         {row['path']: dict(fingerprint(here.path(row['path'])), sha256=row['sha256'])
-          for row in value['files'] if row['path'] in trusted})
+         {row['path']: dict(bytes=final[row['path']][0], mtime_ns=final[row['path']][1], sha256=row['sha256'])
+          for row in value['files'] if row['path'] in trusted and row['path'] in final})
     return runtime
 
 
