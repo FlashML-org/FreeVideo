@@ -10,7 +10,7 @@ import time
 import zipfile
 
 from .monitoring import save
-from .portable import inside, listing
+from .portable import bundle_name, inside, listing
 
 PREFIX = 'FreeVideo-Windows/'
 # Optional packs (reference-audio tables) carry sampling tables outside the
@@ -85,7 +85,7 @@ def inventory(rows):
     seen = set()
     for row in rows:
         name = row['path']
-        inside(Path('/unused'), name)
+        bundle_name(name)
         # Windows strips trailing dots/spaces and recognizes device names.
         for part in name.split('/'):
             if (part.rstrip(' .') != part or part.split('.')[0].upper() in

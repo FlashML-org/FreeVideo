@@ -26,10 +26,19 @@ def child_lease(descriptor):
             os.environ[LOCK_ENV] = previous
 
 
-def inside(root, name):
+def bundle_name(name):
+    """The lexical rules for a file inside a bundle, without touching the disk.
+
+    Inventories list ~58,000 files; resolving each (inside) opens it on Windows.
+    """
     if (not isinstance(name, str) or not name or '\\' in name or ':' in name
             or PurePosixPath(name).is_absolute() or any(p in ('', '.', '..') for p in name.split('/'))):
         raise ValueError('Invalid bundle path: ' + str(name))
+    return name
+
+
+def inside(root, name):
+    bundle_name(name)
     root = Path(root).resolve()
     path = root / name
     if any(p.is_symlink() or (hasattr(p, 'is_junction') and p.is_junction())
@@ -47,7 +56,7 @@ def listing(root):
     each of ~58,000 files (for stat or its NTFS change time) took minutes under
     real-time scanning. Links are refused.
     """
-    root = Path(root)
+    root = os.path.join(str(root), '')
     found, pending = {}, [root]
     while pending:
         current = pending.pop()
@@ -57,13 +66,13 @@ def listing(root):
             continue
         with entries:
             for entry in entries:
-                if entry.is_symlink() or (hasattr(entry, 'is_junction') and entry.is_junction()):
+                if entry.is_symlink() or entry.is_junction():
                     raise ValueError('Bundle files must not redirect outside their directory: ' + entry.path)
                 if entry.is_dir(follow_symlinks=False):
-                    pending.append(Path(entry.path))
+                    pending.append(entry.path)
                 elif entry.is_file(follow_symlinks=False):
                     info = entry.stat(follow_symlinks=False)
-                    found[Path(entry.path).relative_to(root).as_posix()] = [info.st_size, info.st_mtime_ns]
+                    found[entry.path[len(root):].replace(os.sep, '/')] = [info.st_size, info.st_mtime_ns]
     return found
 
 
@@ -73,7 +82,8 @@ def manifest(root):
         raise ValueError('Invalid FreeVideo portable bundle')
     seen = set()
     for row in value['files']:
-        inside(root, row['path'])
+        # Links anywhere in the bundle are refused by the directory walk in verify.
+        bundle_name(row['path'])
         if row['path'].casefold() in seen or type(row['bytes']) is not int or row['bytes'] < 0:
             raise ValueError('Invalid or duplicate bundle file')
         seen.add(row['path'].casefold())
