@@ -10,6 +10,8 @@ from .comfy_launcher import Launcher
 from .comfy_launcher_runtime import Controller, local_url, matches_server, server_info
 from .monitoring import save
 
+UNREADABLE = 'FreeVideo cannot read its program files'
+
 
 class PortableController(Controller):
     def __init__(self, root):
@@ -68,6 +70,16 @@ class PortableController(Controller):
             self.attach_console(info)
             self.state = dict(self.state, status='open', url=url+'/?freevideo=launch', selection=dict(self.selection))
             return
+        # Windows keeps a folder made by a run as administrator, or under another
+        # account, from this account; the bundled Python would only report a
+        # missing module.
+        for folder in (self.source, Path(self.selection['python']).parent):
+            try:
+                os.listdir(folder)
+            except PermissionError:
+                raise RuntimeError('%s: Windows denies this account access to %s' % (UNREADABLE, folder)) from None
+            except OSError:
+                pass  # Missing files are for the bundle check to name.
         log_path = self.root/'engine/portable-runs'/('%s-%s.log' % (time.time_ns(), os.getpid()))
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialization_log = log_path

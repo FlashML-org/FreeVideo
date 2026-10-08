@@ -158,6 +158,12 @@ def launcher_failure(value, *, zh=False):
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
          ('Download interrupted', '下载中断了'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
+        (r'FreeVideo cannot read its program files', 'unreadable-files',
+         ('FreeVideo cannot read its own files', 'FreeVideo 读不到自己的程序文件'),
+         ('Windows denies this account access to them, usually because they were created while FreeVideo ran as administrator. '
+          'Open FreeVideo normally and import the offline packages again; the files already there are reused.',
+          'Windows 不允许当前账户读取它们，通常是因为这些文件是在“以管理员身份运行”时创建的。'
+          '请正常打开 FreeVideo，重新导入一次离线包，已有的文件会直接复用。')),
         (r'PermissionError|Access is denied|Permission denied|WinError 5\b', 'permission',
          ('This folder is not writable', '无法写入这个目录'),
          ('Choose an installation folder you can write to, then retry.', '选择有写入权限的安装目录后重试。')),

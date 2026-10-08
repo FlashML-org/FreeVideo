@@ -1052,7 +1052,7 @@ class Session:
         errors = [self.error, self.browser_error, self.page_error, row.get('error', ''), *row.get('errors', [])]
         shortcut = row.get('shortcut') or {}
         if shortcut.get('status') == 'failed':
-            errors.append(shortcut.get('error', ''))
+            errors.append(shortcut.get('error_zh' if zh else 'error') or shortcut.get('error', ''))
         error = redacted_launcher_error('\n'.join(str(e) for e in errors if e),
                                         [(self.token, '<REDACTED>')] if self.token else [])
         by_id = {r['id']: r for r in self.model_groups}

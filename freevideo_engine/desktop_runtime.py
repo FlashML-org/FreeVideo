@@ -140,8 +140,12 @@ def materialize_source(bundle=None, destination=None):
     if complete(target):
         return target
     parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='source-', dir=parent) as temporary:
-        stage = Path(temporary)
+    # Not mkdtemp: on Windows its folder is readable only by its owner, and a
+    # run as administrator makes Administrators the owner, so the same person's
+    # normal runs could no longer read the source. This one inherits the parent's.
+    stage = parent / ('source-' + uuid.uuid4().hex)
+    stage.mkdir()
+    try:
         for relative in rows:
             output = stage / relative
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +167,8 @@ def materialize_source(bundle=None, destination=None):
                 if error.errno not in (errno.EEXIST, errno.ENOTEMPTY) and getattr(error, 'winerror', None) != 183:
                     raise
                 # Recheck the winner's contents, then reuse or choose a new name.
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
 
 
 def preflight_json(output):
