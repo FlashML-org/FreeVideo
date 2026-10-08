@@ -39,33 +39,8 @@ def _pin_reservation(sizes):
     return sum((1 << (size - 1).bit_length()) if 0 < size <= threshold else size for size in sizes)
 
 
-@torch.no_grad()
-def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_reserve_bytes=None,
-                      commit_reserve_bytes=0):
-    """Pack immutable CPU parameters into persistent pinned planes, one per dtype.
-
-    This optional mode trades pageable/mapped storage for locked host residency.
-    Rebinding preserves parameter values and permits direct asynchronous H2D.
-    """
-    if type(commit_reserve_bytes) is not int or commit_reserve_bytes < 0:
-        raise ValueError('Commit reserve must be a nonnegative byte count')
-    layers = list(layers)
-    layer_groups = []
-    for layer in layers:
-        by_dtype = {}
-        for name, parameter in cpu_weights(layer):
-            if not isinstance(parameter, torch.nn.Parameter) and parameter._base is not None:
-                # safetensors buffers are views. Reassigning their .data alone
-                # keeps the old view base (and mapped FP8 file) alive alongside
-                # the pinned copy. Detach the registered buffer first; this
-                # shares the bytes without retaining view metadata.
-                parent, _, leaf = name.rpartition('.')
-                owner = layer.get_submodule(parent) if parent else layer
-                parameter = parameter.detach()
-                setattr(owner, leaf, parameter)
-            by_dtype.setdefault(parameter.dtype, []).append(parameter)
-        layer_groups.append(list(by_dtype.items()))
-
+def live_pin_capacity(*, headroom_bytes=None, nonlocal_reserve_bytes=None, commit_reserve_bytes=0):
+    """Bytes that page-locking may take now, beyond the working headroom."""
     # Charge free physical memory only. Effective availability credits this
     # tree's reclaimable mapped pages, which is right for measuring pressure
     # but wrong for deciding how much to lock: locked pages cannot be
@@ -98,8 +73,7 @@ def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_r
         # the step cache for the rest of the request. The caller passes that
         # unreserved allocator room; physical RAM is not charged for it.
         available = min(available, commit_available - commit_reserve_bytes)
-    live_cap = available - headroom_bytes
-    max_bytes = live_cap if max_bytes is None else min(max_bytes, live_cap)
+    cap = available - headroom_bytes
     from .system import windows
     if windows():
         # Free RAM does not bound locked pages on Windows: the WDDM non-local
@@ -118,7 +92,40 @@ def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_r
                 pinned = 0
             capacity = max(0, memory['total_bytes'] // 2 - pinned - reserve)
         if capacity is not None:
-            max_bytes = min(max_bytes, capacity)
+            cap = min(cap, capacity)
+    return cap
+
+
+@torch.no_grad()
+def pin_layer_weights(layers, max_bytes=None, *, headroom_bytes=None, nonlocal_reserve_bytes=None,
+                      commit_reserve_bytes=0):
+    """Pack immutable CPU parameters into persistent pinned planes, one per dtype.
+
+    This optional mode trades pageable/mapped storage for locked host residency.
+    Rebinding preserves parameter values and permits direct asynchronous H2D.
+    """
+    if type(commit_reserve_bytes) is not int or commit_reserve_bytes < 0:
+        raise ValueError('Commit reserve must be a nonnegative byte count')
+    layers = list(layers)
+    layer_groups = []
+    for layer in layers:
+        by_dtype = {}
+        for name, parameter in cpu_weights(layer):
+            if not isinstance(parameter, torch.nn.Parameter) and parameter._base is not None:
+                # safetensors buffers are views. Reassigning their .data alone
+                # keeps the old view base (and mapped FP8 file) alive alongside
+                # the pinned copy. Detach the registered buffer first; this
+                # shares the bytes without retaining view metadata.
+                parent, _, leaf = name.rpartition('.')
+                owner = layer.get_submodule(parent) if parent else layer
+                parameter = parameter.detach()
+                setattr(owner, leaf, parameter)
+            by_dtype.setdefault(parameter.dtype, []).append(parameter)
+        layer_groups.append(list(by_dtype.items()))
+
+    cap = live_pin_capacity(headroom_bytes=headroom_bytes, nonlocal_reserve_bytes=nonlocal_reserve_bytes,
+                            commit_reserve_bytes=commit_reserve_bytes)
+    max_bytes = cap if max_bytes is None else min(max_bytes, cap)
 
     groups, sizes, reserved = [], [], 0
     for entries in layer_groups:
@@ -297,6 +304,24 @@ def prepare_streamed_layer(layer, source, index, *, pin_budget_bytes, headroom_b
         from .torch_compat import empty_host_cache
         empty_host_cache(torch)
     return 0, 0
+
+
+def loading_retains(source, index, *, pin_budget_bytes, **pin_options):
+    """Whether preparing a streamed layer may keep what loading reads: a pin or a view.
+
+    The checks of prepare_streamed_layer (planned budget, then the live cap of
+    pin_layer_weights, with pin_options) and of SafetensorLayers.adopt, made on
+    checkpoint header sizes, which equal the bound tensors, before the layer is
+    read. pin_layer_weights measures with the layer already read into private
+    memory, so the live cap here is charged its size as well.
+    """
+    sizes = source.layer_bytes(index)
+    size = sum(sizes.values())
+    reservation = _pin_reservation(sizes.values())
+    if 0 < reservation <= pin_budget_bytes and reservation <= live_pin_capacity(**pin_options) - size:
+        return True
+    from .streamed_weights import host_view_fits
+    return source.host_views is not None and host_view_fits(size, source.host_view_reserve)
 
 
 class LayerOffloader:

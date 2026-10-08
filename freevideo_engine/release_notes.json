@@ -1,19 +1,34 @@
 {
   "schema": 1,
-  "product_version": "0.3.17",
+  "product_version": "0.3.18",
   "en": {
-    "summary": "On Windows, GPUs with 12 to 20 GB of memory sample a little faster: attention runs 16 heads at a time where memory allows.",
+    "summary": "On Windows computers with little RAM, loading the video model reads much less from the disk.",
     "changes": [
-      "On Windows, attention now runs 16 heads at a time instead of 8 whenever the GPU memory budget leaves room for it. This covers the first pass on 12 to 20 GB GPUs and the second pass on most 16 and 20 GB GPUs. On a 16 GB GPU, a 10-second 1344×768 video took about 6% less time per first-pass step and about 2% less per second-pass step, without using more video memory. FP8 models, requests with a LoRA, Linux and GPUs below 12 GB keep their current settings. The same seed can give a slightly different video than before, as it already does between GPUs with different memory."
+      "On Windows, when RAM cannot hold the whole video model, loading no longer reads the model layers that sampling streams from the disk anyway; each is read when sampling first needs it. With 16 GB of RAM, that is about 13 GB less to read every time the model loads: on an RTX 5060 Ti test machine limited to the RAM of a 16 GB computer, loading took 7 seconds instead of 11, and on a slower drive the saving is a few minutes. Videos are unchanged. Computers that keep the whole model in RAM, Linux and Mac load as before."
     ]
   },
   "zh": {
-    "summary": "在 Windows 上，12–20 GB 显存的显卡采样稍快一些：显存允许时，注意力每次计算 16 个头。",
+    "summary": "在内存较小的 Windows 电脑上，加载视频模型时从硬盘读取的数据少了很多。",
     "changes": [
-      "在 Windows 上，只要显存预算有余量，注意力改为每次计算 16 个头（原来每次 8 个）。12–20 GB 显卡的第一遍，以及大多数 16 GB 和 20 GB 显卡的第二遍都会用上。在 16 GB 显卡上生成 10 秒 1344×768 视频，第一遍每步缩短约 6%，第二遍每步缩短约 2%，显存占用没有增加。FP8 模型、使用 LoRA 的生成、Linux 和 12 GB 以下的显卡保持现有设置。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。"
+      "在 Windows 上，内存放不下整个视频模型时，加载阶段不再预先读取那些采样时本来就要从硬盘读取的模型层，改为采样第一次用到时再读。16 GB 内存的电脑每次加载模型可少读约 13 GB：在按 16 GB 电脑的内存条件运行的 RTX 5060 Ti 测试机上，加载从 11 秒缩短到 7 秒；硬盘较慢时可节省几分钟。生成的视频不变。内存能放下整个模型的电脑、Linux 和 Mac 的加载方式不变。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.17",
+      "en": {
+        "summary": "On Windows, GPUs with 12 to 20 GB of memory sample a little faster: attention runs 16 heads at a time where memory allows.",
+        "changes": [
+          "On Windows, attention now runs 16 heads at a time instead of 8 whenever the GPU memory budget leaves room for it. This covers the first pass on 12 to 20 GB GPUs and the second pass on most 16 and 20 GB GPUs. On a 16 GB GPU, a 10-second 1344×768 video took about 6% less time per first-pass step and about 2% less per second-pass step, without using more video memory. FP8 models, requests with a LoRA, Linux and GPUs below 12 GB keep their current settings. The same seed can give a slightly different video than before, as it already does between GPUs with different memory."
+        ]
+      },
+      "zh": {
+        "summary": "在 Windows 上，12–20 GB 显存的显卡采样稍快一些：显存允许时，注意力每次计算 16 个头。",
+        "changes": [
+          "在 Windows 上，只要显存预算有余量，注意力改为每次计算 16 个头（原来每次 8 个）。12–20 GB 显卡的第一遍，以及大多数 16 GB 和 20 GB 显卡的第二遍都会用上。在 16 GB 显卡上生成 10 秒 1344×768 视频，第一遍每步缩短约 6%，第二遍每步缩短约 2%，显存占用没有增加。FP8 模型、使用 LoRA 的生成、Linux 和 12 GB 以下的显卡保持现有设置。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.16",
       "en": {

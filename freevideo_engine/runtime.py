@@ -166,7 +166,7 @@ class Engine:
         streamed_source = None
         from .system import windows
         incremental_pinning = stream_weights and bool(pin_host_gb) and windows()
-        prepared_pins = dict(logical=0, reserved=0, seconds=0., views=0)
+        prepared_pins = dict(logical=0, reserved=0, seconds=0., views=0, unread=0, unread_bytes=0)
         streamed_refiner_count = (len(model.token_refiner.refiner_blocks)
                                   if stream_weights and offload_refiner and not cache_refined_text else 0)
         if stream_weights and not adaln_cache:
@@ -195,8 +195,35 @@ class Engine:
                 # Only source-backed placeholders may remain empty between
                 # refinement requests; pinned groups keep their own storage.
                 self.stream_refiner_count = streamed_refiner_count
-        def prepare_streamed(block, index):
+        def unread_weights(index):
+            """Layout-only tensors for a streamed block that loading cannot keep.
+
+            A block is read here only for a pinned group or a view. Otherwise
+            its values are dropped, and where RAM is that short the file cache
+            cannot hold them until the first step either.
+            """
+            if streamed_source is None or not streamed_source.direct_read or index < resident_blocks:
+                return None
+            from .offload import loading_retains
+            layer = streamed_refiner_count + index - resident_blocks
+            budget = max(0, int(pin_host_gb * 1e9) - prepared_pins['reserved']) if incremental_pinning else 0
+            if loading_retains(streamed_source, layer, pin_budget_bytes=budget,
+                               headroom_bytes=self.weight_cache_headroom_bytes,
+                               nonlocal_reserve_bytes=self.nonlocal_reserve_bytes,
+                               commit_reserve_bytes=self.gpu_commit_reserve()):
+                return None
+            tensors = streamed_source.placeholders(layer, self.cache / f'blocks/{index:02d}.safetensors')
+            if tensors is not None:
+                prepared_pins['unread'] += 1
+                prepared_pins['unread_bytes'] += sum(streamed_source.layer_bytes(layer).values())
+            return tensors
+        def prepare_streamed(block, index, unread=False):
             logical = 0
+            if unread:
+                # Placeholder values: never pin or view them. The first direct
+                # read in sampling adopts a view if RAM allows by then.
+                self.device_backend.unload_streamed_layer(block, streamed_source, index)
+                return
             if incremental_pinning:
                 tick = time.perf_counter()
                 logical, reserved = self.device_backend.prepare_streamed_layer(block, streamed_source, index,
@@ -271,8 +298,11 @@ class Engine:
                 del table, adaln
             adaln_prepare_seconds += time.perf_counter() - adaln_started
             bind_started = time.perf_counter()
-            weights = {name.removeprefix(prefix): value for name, value in
-                       _load_safetensors(self.cache / f'blocks/{index:02d}.safetensors').items()}
+            weights = unread_weights(index)
+            unread = weights is not None
+            if not unread:
+                weights = _load_safetensors(self.cache / f'blocks/{index:02d}.safetensors')
+            weights = {name.removeprefix(prefix): value for name, value in weights.items()}
             if not adaln_cache:
                 weights.update(adaln)
             result = block.load_state_dict(weights, strict=False, assign=True)
@@ -302,7 +332,7 @@ class Engine:
                 # Keep only the bounded pinned subset or metadata. Immutable
                 # unpinned bytes are reopened by SafetensorLayers on demand,
                 # rather than accumulating until the first sampling step.
-                prepare_streamed(block, streamed_refiner_count + index - resident_blocks)
+                prepare_streamed(block, streamed_refiner_count + index - resident_blocks, unread)
             if (index + 1) % 5 == 0:
                 print(json.dumps({'event': 'prepared_blocks', 'blocks': index + 1,
                                   'adaln_cache': adaln_cache, 'adaln_reused_blocks': table_cache_hits,
@@ -411,6 +441,8 @@ class Engine:
                                'weight_cache_pin_order': pin_order,
                                'host_pinning_during_load': incremental_pinning,
                                'host_views_adopted_during_load': prepared_pins['views'],
+                               'streamed_blocks_unread_during_load': prepared_pins['unread'],
+                               'streamed_bytes_unread_during_load': prepared_pins['unread_bytes'],
                                'host_preload_seconds': self.host_preload_seconds,
                                'remaining_load_seconds': self.load_seconds - adaln_prepare_seconds - pin_seconds - self.host_preload_seconds,
                                'scope': 'Host wall time within model load; AdaLN includes table reads or computation and writes.'}
