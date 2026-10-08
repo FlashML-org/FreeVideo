@@ -78,6 +78,30 @@ class Activity:
         return result
 
 
+def thermal_slowdown(measured, *, share=.5, clock_ratio=.7, minimum_samples=200):
+    """The worker's busy time held back by driver thermal slowdown, or None.
+
+    Counted only when thermal reasons cover at least `share` of the busy
+    samples and the mean SM clock stays below `clock_ratio` of the highest
+    one observed, so a brief hot spell or a normal power cap is not reported.
+    """
+    busy = measured.get('busy_activity') if isinstance(measured, dict) else None
+    if not isinstance(busy, dict):
+        return None
+    samples = busy.get('clock_reason_samples') or 0
+    counts = busy.get('clock_reason_counts') or {}
+    clock = busy.get('sm_clock_mhz') or {}
+    mean, peak = clock.get('mean'), clock.get('maximum')
+    if samples < minimum_samples or not mean or not peak:
+        return None
+    thermal = min(samples, max(counts.get('sw_thermal') or 0, counts.get('hw_thermal') or 0))
+    if thermal < share * samples or mean > clock_ratio * peak:
+        return None
+    temperature = (busy.get('temperature_c') or {}).get('mean')
+    return dict(share=round(thermal / samples, 3), sm_clock_mean_mhz=round(mean), sm_clock_max_mhz=round(peak),
+                temperature_mean_c=round(temperature, 1) if isinstance(temperature, (int, float)) else None)
+
+
 class Monitor:
     def __init__(self, path, interval=0.05, device=None):
         if windows():

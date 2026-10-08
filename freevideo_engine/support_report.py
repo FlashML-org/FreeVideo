@@ -8,6 +8,7 @@ import sys
 import time
 
 from . import __version__
+from .monitoring import thermal_slowdown
 from .diagnostics import Redactor, is_link, read_bounded
 from .diagnostic_resources import kernel_receipt
 from .monitoring import save
@@ -129,6 +130,14 @@ def summarize(report, engine, encoding):
         hints.append(dict(kind='measured', message='This process exceeded its Windows local video-memory budget during sampling. '
             'Compare the per-step nonlocal memory and latency; this is pressure evidence, not a measured PCIe paging rate.',
             message_zh='采样时进程超过了 Windows 分配的本地显存预算。请对照每步共享内存与耗时；这是压力证据，不是 PCIe 换页速率测量。'))
+    thermal = thermal_slowdown(mapping(mapping(report.get('memory')).get('video')).get('gpu'))
+    if thermal:
+        hints.append(dict(kind='measured', message='The GPU was in thermal slowdown for %d%% of its busy time: %d of %d MHz on '
+            'average%s. Cooling limited this request, not the plan.' % (round(100 * thermal['share']), thermal['sm_clock_mean_mhz'],
+            thermal['sm_clock_max_mhz'], ' at %.0f °C' % thermal['temperature_mean_c'] if thermal['temperature_mean_c'] else ''),
+            message_zh='显卡在 %d%% 的计算时间里处于温控降频，平均 %d／%d MHz%s。这次用时受散热限制，不是规划问题。' % (
+            round(100 * thermal['share']), thermal['sm_clock_mean_mhz'], thermal['sm_clock_max_mhz'],
+            '，%.0f °C' % thermal['temperature_mean_c'] if thermal['temperature_mean_c'] else '')))
     attempts = report.get('resource_attempts', [])
     failures = [dict(state=r.get('state'), failure=r.get('failure')) for r in attempts
                 if isinstance(r, dict) and r.get('failure')] if isinstance(attempts, list) else []

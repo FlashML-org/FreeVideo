@@ -205,7 +205,15 @@ def inventory(gpu=None):
             'kernel': platform.release(), 'platform': platform.platform(), 'machine': platform.machine(),
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
             'swap_free_bytes': ram.get('swap_free_bytes'), 'system_memory': ram,
-            'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': shutil.which('git')}
+            'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': usable_git(),
+            'git_found': shutil.which('git')}
+
+
+def usable_git(path=None, env=None):
+    """The Git on PATH when it is new enough for clone(); None otherwise."""
+    executable = shutil.which('git', path=path)
+    version = network.git_version(executable, env) if executable else None
+    return executable if version and version >= network.MIN_GIT else None
 
 
 def existing_parent(path):
@@ -499,7 +507,10 @@ def plan(args, *, local_progress=None):
             'verification': getattr(args, 'verify', 'auto'),
             'build': build,
             'kernel_install': 'Pinned Windows Triton / Sage2 wheels; actual kernels checked before readiness' if windows_target else 'Local Sage2 source build / ABI-keyed wheel cache',
-            'git_install': 'Reuse detected Git' if snapshot.get('git') else 'Install verified portable MinGit locally after confirmation' if windows_target else 'Git required',
+            'git_install': ('Reuse detected Git' if snapshot.get('git') else
+                            'Install verified portable MinGit locally after confirmation' + (
+                                ' (the detected Git is older than %d.%d)' % network.MIN_GIT if snapshot.get('git_found') else '')
+                            if windows_target else 'Git %d.%d or newer required' % network.MIN_GIT),
             'wheel_cache': str(Path(getattr(args, 'wheel_cache', None) or saved.get('wheel_cache') or root / 'wheels').expanduser().resolve()),
             'rebuild_sage': getattr(args, 'rebuild_sage', False),
             'model_download_bytes': sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0),
@@ -1339,7 +1350,8 @@ class Installer:
         return manifest
 
     def install_git_windows(self):
-        if shutil.which('git', path=self.env['PATH']):
+        # An older Git on PATH cannot fetch the pinned sources; use the portable one.
+        if usable_git(self.env['PATH'], self.env):
             return
         spec = self.versions['windows']['git']
         archive = self.root / 'downloads' / ('MinGit-' + spec['version'] + '.zip')

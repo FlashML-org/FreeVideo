@@ -2,19 +2,23 @@
   "schema": 1,
   "product_version": "0.3.11",
   "en": {
-    "summary": "Importing offline packages is faster and shows its progress throughout.",
+    "summary": "Importing offline packages is faster and shows its progress throughout, setup works with an older Git, and a GPU slowed down by heat is named on the result.",
     "changes": [
       "Offline packages are checked once, while they are unpacked. Importing a package again, Checking packages before installing and the first start no longer read every file again.",
       "The Working card shows which package is being imported and how far it is; Checking packages and Verify local files show their progress as well.",
-      "After the Environment package is imported, the model step no longer asks for it again."
+      "After the Environment package is imported, the model step no longer asks for it again.",
+      "On Windows, when the Git already installed is older than 2.35, setup uses FreeVideo's own verified Git instead of stopping with \"'origin' does not appear to be a git repository\". On Linux and macOS, setup names the Git version and asks for 2.35 or newer.",
+      "When the GPU spends most of a generation in thermal slowdown, the result says so, with the temperature and how far the clock dropped, and diagnostic reports include it."
     ]
   },
   "zh": {
-    "summary": "离线包导入更快，全程都能看到进度。",
+    "summary": "离线包导入更快，全程都能看到进度；装有旧版 Git 的电脑可以正常安装；显卡因过热降频变慢时，结果下方会说明。",
     "changes": [
       "离线包只在解压时校验一次；再次导入同一个包、安装前「检查配套包」和首次启动都不再把所有文件重读一遍。",
       "左侧「正在处理」卡片会显示正在导入第几个包和进度；「检查配套包」和「校验本地文件」也有进度条。",
-      "导入运行环境包后，模型这一步不再提示还需要运行环境包。"
+      "导入运行环境包后，模型这一步不再提示还需要运行环境包。",
+      "Windows 上如果已安装的 Git 低于 2.35，安装时会改用 FreeVideo 自带并校验过的 Git，不再因“'origin' does not appear to be a git repository”中断；Linux 和 macOS 会写明 Git 版本，并提示更新到 2.35 或更高版本。",
+      "显卡在生成过程中大部分时间因过热降频时，结果下方会说明温度和降频幅度，诊断报告中也会包含。"
     ]
   }
 }

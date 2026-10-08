@@ -36,6 +36,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         loraPanel: () => () => {}, loraWarning: () => 'LoRA warning', promptGuide: () => new Element('guide'),
         createGenerationProgress: () => ({element: new Element('progress'), report: new Element('report'), updateReport() {}, update() {}, hide() {}, dispose() {}, noticeCount: () => 0}),
         referenceTrimText: row => `trimmed ${row.kind} ${row.number}`,
+        thermalText: thermal => `thermal ${thermal.sm_clock_mean_mhz}`,
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
         startUpdateChecks: () => { updateChecks++; },
@@ -61,7 +62,7 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
             .replace('import { api } from "../../scripts/api.js";', 'const {api} = globalThis.__freevideoEntryTest;')
             .replace("import { openStudio, loraPanel, loraWarning, promptGuide } from \"./studio.js\";", 'const {openStudio,loraPanel,loraWarning,promptGuide} = globalThis.__freevideoEntryTest;')
-            .replace("import { createGenerationProgress, referenceTrimText } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText} = globalThis.__freevideoEntryTest;')
+            .replace("import { createGenerationProgress, referenceTrimText, thermalText } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText,thermalText} = globalThis.__freevideoEntryTest;')
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
             .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
