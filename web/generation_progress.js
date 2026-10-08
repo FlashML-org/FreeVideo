@@ -59,6 +59,15 @@ function planText(message, t) {
 
 // A reference clip longer than the video being generated is cut to the same
 // length, at most 15 s, as in the official pipeline. Say so; never cut silently.
+// The driver held the clock down for heat for most of the run (summary.thermal).
+export function thermalText(thermal, t) {
+    const share = thermal.sm_clock_max_mhz ? Math.round(100 * thermal.sm_clock_mean_mhz / thermal.sm_clock_max_mhz) : null;
+    const heat = Number.isFinite(thermal.temperature_mean_c) ? Math.round(thermal.temperature_mean_c) : null;
+    const detail = [heat !== null ? `${heat} °C` : '', share !== null ? t(`${share}% of its peak clock`, `频率只有峰值的 ${share}%`) : ''].filter(Boolean).join(t(', ', '，'));
+    return t(`The GPU spent most of this video in thermal slowdown${detail ? ` (${detail})` : ''}, so it took much longer than usual. Improve cooling; on a laptop, plug in and choose a high-performance power mode.`,
+        `生成这段视频时，显卡大部分时间因过热降频${detail ? `（${detail}）` : ''}，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。`);
+}
+
 export function referenceTrimText(row, t) {
     const kind = row?.kind === 'audio' ? t('Reference audio', '参考音频') : t('Reference video', '参考视频');
     const name = Number.isInteger(row?.number) ? `${kind} ${row.number}` : kind;

@@ -873,6 +873,29 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
     raise DownloadError('Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name)
 
 
+# clone() passes the remote through GIT_CONFIG_* (Git 2.31) and narrows
+# references with `sparse-checkout set --no-cone` (Git 2.35). Older Git fails
+# with "'origin' does not appear to be a git repository".
+MIN_GIT = (2, 35)
+
+
+def git_version(executable, env=None):
+    """(major, minor) of a Git executable, or None when it cannot be run or read."""
+    try:
+        output = subprocess.run([str(executable), '--version'], env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, timeout=30, **hidden_console()).stdout
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    found = re.search(r'git version (\d+)\.(\d+)', output or '')
+    return (int(found[1]), int(found[2])) if found else None
+
+
+def old_git_message(version):
+    return ('Git %d.%d is too old to download the pinned sources; FreeVideo needs Git %d.%d or newer. '
+            'On Windows, click Retry installation to use FreeVideo\'s own Git; elsewhere, update Git.'
+            % (*version, *MIN_GIT))
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts."""
     target = Path(target)
@@ -880,6 +903,9 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
     env = proxy_environment(env)
     env.update(GIT_TERMINAL_PROMPT='0', GIT_HTTP_LOW_SPEED_LIMIT='1024', GIT_HTTP_LOW_SPEED_TIME='20')
     git = env.get('FREEVIDEO_GIT') or 'git'
+    version = git_version(git, env) if not target.exists() else None
+    if version and version < MIN_GIT:
+        raise RuntimeError(old_git_message(version))
     def execute(label, command):
         command = [git, *command[1:]]
         if run:

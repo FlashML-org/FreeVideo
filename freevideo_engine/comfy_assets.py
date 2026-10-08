@@ -3,6 +3,7 @@ import json
 import logging
 import math
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from .monitoring import thermal_slowdown
 
 
 def saved_video(output, output_directory):
@@ -153,6 +154,7 @@ def output_summary(report, relative_video):
                 geometry=report.get('geometry', {}),
                 sampling_plan=report.get('sampling_plan'),
                 low_memory=bool(report.get('low_memory_mode')),
+                thermal=thermal_slowdown(((report.get('memory') or {}).get('video') or {}).get('gpu')),
                 reference_trims=report.get('encoding', {}).get('reference_trims') or [],
                 preview=bool(report.get('preview')), upscaled_preview=bool(report.get('upscaled_preview')),
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
