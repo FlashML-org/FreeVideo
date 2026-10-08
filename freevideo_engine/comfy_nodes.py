@@ -1,4 +1,5 @@
 """Optional ComfyUI V3 nodes. Never import these from the standalone CLI."""
+import logging
 from pathlib import Path
 
 from comfy_api.latest import ComfyExtension, InputImpl, io, ui
@@ -100,6 +101,14 @@ class FreeVideoGenerate(io.ComfyNode):
         bar = ProgressBar(base_steps + (refine_steps if two_pass and not preview else 0), node_id=node_id)
         last_message = [None]
         last_count = [None]
+        # Without FreeVideo's page scripts the nodes still generate; say why the
+        # creative workspace is missing in ComfyUI's own node text.
+        from .comfy_launcher_api import page_notice
+        notice = page_notice(PromptServer.instance)
+        if notice:
+            logging.warning('[FreeVideo] %s', notice)
+            PromptServer.instance.send_progress_text(notice, node_id)
+        notice = notice + '\n' if notice else ''
         def progress(message):
             if message.get('result_cache_hit'):
                 result_reused[0] = True
@@ -113,7 +122,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 publish(server, node_id, message)
                 if server is not None:
                     detail = message.get('detail')
-                    server.send_progress_text(label + (' · ' + detail if detail else ''), node_id)
+                    server.send_progress_text(notice + label + (' · ' + detail if detail else ''), node_id)
                 last_message[0] = dict(message)
         def release():
             cpu_prewarm = IDLE.stop()
