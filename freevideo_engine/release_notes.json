@@ -1,24 +1,255 @@
 {
   "schema": 1,
-  "product_version": "0.3.11",
+  "product_version": "0.3.12",
   "en": {
-    "summary": "Importing offline packages is faster and shows its progress throughout, setup works with an older Git, and a GPU slowed down by heat is named on the result.",
+    "summary": "Linux setup accepts the Git that current distributions ship and installs its own when needed, offline installs can download the models, the offline text encoder no longer depends on your ComfyUI, and update notes cover every version since yours.",
     "changes": [
-      "Offline packages are checked once, while they are unpacked. Importing a package again, Checking packages before installing and the first start no longer read every file again.",
-      "The Working card shows which package is being imported and how far it is; Checking packages and Verify local files show their progress as well.",
-      "After the Environment package is imported, the model step no longer asks for it again.",
-      "On Windows, when the Git already installed is older than 2.35, setup uses FreeVideo's own verified Git instead of stopping with \"'origin' does not appear to be a git repository\". On Linux and macOS, setup names the Git version and asks for 2.35 or newer.",
-      "When the GPU spends most of a generation in thermal slowdown, the result says so, with the temperature and how far the clock dropped, and diagnostic reports include it."
+      "Linux setup no longer stops with \"Missing git\" when Git is older than 2.35. Git 2.17 or newer on the system is used as it is (Ubuntu 22.04 ships 2.34, Ubuntu 20.04 ships 2.25). Without Git, or with an older one, setup downloads Git 2.56 from conda-forge (about 75 MB, every file checked against a pinned SHA-256) into the installation folder; the system is not changed.",
+      "After importing the Environment package, the models step can download the models (49.1 GB) instead of importing model packages. Downloads resume after a stop, and model packages already imported are used first.",
+      "An offline installation's text encoder uses its own copy of ComfyUI's library from the Environment package, so updating or editing that ComfyUI no longer changes prompt encoding.",
+      "When an update skips versions, its notes include each version since the one you have, newest first.",
+      "Downloading the report from the node panel names the file by when it was saved, as the creation panel does."
     ]
   },
   "zh": {
-    "summary": "离线包导入更快，全程都能看到进度；装有旧版 Git 的电脑可以正常安装；显卡因过热降频变慢时，结果下方会说明。",
+    "summary": "Linux 安装可直接使用各发行版自带的 Git，必要时自行安装；离线安装可以改为自动下载模型；离线安装的文本编码器不再受 ComfyUI 改动影响；更新说明会列出从当前版本以来的每个版本。",
     "changes": [
-      "离线包只在解压时校验一次；再次导入同一个包、安装前「检查配套包」和首次启动都不再把所有文件重读一遍。",
-      "左侧「正在处理」卡片会显示正在导入第几个包和进度；「检查配套包」和「校验本地文件」也有进度条。",
-      "导入运行环境包后，模型这一步不再提示还需要运行环境包。",
-      "Windows 上如果已安装的 Git 低于 2.35，安装时会改用 FreeVideo 自带并校验过的 Git，不再因“'origin' does not appear to be a git repository”中断；Linux 和 macOS 会写明 Git 版本，并提示更新到 2.35 或更高版本。",
-      "显卡在生成过程中大部分时间因过热降频时，结果下方会说明温度和降频幅度，诊断报告中也会包含。"
+      "Linux 安装不再因 Git 低于 2.35 而提示「缺少 git」。系统中 2.17 及以上的 Git 直接使用（Ubuntu 22.04 自带 2.34，Ubuntu 20.04 自带 2.25）；没有 Git 或版本更低时，安装程序从 conda-forge 下载 Git 2.56（约 75 MB，每个文件按固定的 SHA-256 校验）装到安装目录内，不改动系统。",
+      "导入运行环境包后，模型这一步可以选择自动下载（49.1 GB），不必再导入模型包。下载中断后可以续传，已导入的模型包优先使用。",
+      "离线安装的文本编码器改用运行环境包内 ComfyUI 库的独立副本，更新或修改该 ComfyUI 不再影响提示词编码。",
+      "跨版本更新时，更新说明会按从新到旧列出当前版本之后的每个版本。",
+      "在节点视图下载报告时，文件按保存时间命名，与创作面板一致。"
     ]
-  }
+  },
+  "history": [
+    {
+      "product_version": "0.3.11",
+      "en": {
+        "summary": "Importing offline packages is faster and shows its progress throughout, setup works with an older Git, and a GPU slowed down by heat is named on the result.",
+        "changes": [
+          "Offline packages are checked once, while they are unpacked. Importing a package again, Checking packages before installing and the first start no longer read every file again.",
+          "The Working card shows which package is being imported and how far it is; Checking packages and Verify local files show their progress as well.",
+          "After the Environment package is imported, the model step no longer asks for it again.",
+          "On Windows, when the Git already installed is older than 2.35, setup uses FreeVideo's own verified Git instead of stopping with \"'origin' does not appear to be a git repository\". On Linux and macOS, setup names the Git version and asks for 2.35 or newer.",
+          "When the GPU spends most of a generation in thermal slowdown, the result says so, with the temperature and how far the clock dropped, and diagnostic reports include it."
+        ]
+      },
+      "zh": {
+        "summary": "离线包导入更快，全程都能看到进度；装有旧版 Git 的电脑可以正常安装；显卡因过热降频变慢时，结果下方会说明。",
+        "changes": [
+          "离线包只在解压时校验一次；再次导入同一个包、安装前「检查配套包」和首次启动都不再把所有文件重读一遍。",
+          "左侧「正在处理」卡片会显示正在导入第几个包和进度；「检查配套包」和「校验本地文件」也有进度条。",
+          "导入运行环境包后，模型这一步不再提示还需要运行环境包。",
+          "Windows 上如果已安装的 Git 低于 2.35，安装时会改用 FreeVideo 自带并校验过的 Git，不再因“'origin' does not appear to be a git repository”中断；Linux 和 macOS 会写明 Git 版本，并提示更新到 2.35 或更高版本。",
+          "显卡在生成过程中大部分时间因过热降频时，结果下方会说明温度和降频幅度，诊断报告中也会包含。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.10",
+      "en": {
+        "summary": "Long videos on Windows cards with 6–16 GB run faster, Environment ZIPs from earlier versions import again, and creations made with prompt enhancement can be deleted.",
+        "changes": [
+          "On Windows, int8 attention needs about a quarter less GPU memory. More long or large videos now keep attention results on the graphics card instead of in system memory, which makes their steps faster. The output is unchanged.",
+          "When little system memory is free, weights are now read ahead while the previous ones compute, from 1 GB of spare memory instead of 3 GB. Steps that read weights from disk get faster.",
+          "An offline Environment ZIP from an earlier version is accepted again. It now only has to contain the environment this version needs, whichever version it came with.",
+          "When several offline ZIPs are imported together, every one that fits is imported. One that cannot be used no longer stops the others; an environment that does not fit is installed automatically, and the imported models are still used.",
+          "Creations made with prompt enhancement can be deleted from Your creations again.",
+          "Each downloaded diagnostic report is named by when it was saved (FreeVideo-report-date-time.json), so downloading several no longer produces \"video.debug (1).json\", \"(2)\" and so on."
+        ]
+      },
+      "zh": {
+        "summary": "Windows 上 6–16 GB 显卡生成长视频更快；早先版本的运行环境包重新可以导入；用过提示词增强的作品可以正常删除。",
+        "changes": [
+          "Windows 上 int8 注意力占用的显存减少约四分之一，更多长视频或大尺寸视频的注意力结果可以留在显卡上，不再放到内存里，每步更快。生成结果不变。",
+          "内存余量较少时，现在只要有 1 GB 空闲（原来需要 3 GB）就会在计算的同时预读下一批权重，需要从硬盘读权重的步骤会更快。",
+          "早先版本附带的离线运行环境包重新可以导入。现在只检查包里的运行环境是否符合当前版本，不再看它来自哪个版本。",
+          "同时导入多个离线包时，能用的都会导入，某个包用不了也不会再挡住其他包；运行环境不符合时会改为自动安装，已导入的模型照常使用。",
+          "用过提示词增强的作品，现在可以在「你的作品」里正常删除。",
+          "下载的诊断报告按保存时间命名（FreeVideo-report-日期-时间.json），多次下载不会再出现「video.debug (1).json」「(2)」这样的文件名。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.9",
+      "en": {
+        "summary": "Updates no longer leave earlier versions behind, updating your ComfyUI no longer reinstalls PyTorch, and a FreeVideo page that does not load completely now says why.",
+        "changes": [
+          "After an update, the launcher removes the earlier launcher copies and FreeVideo files it no longer uses, and shows how much space was freed. Models, outputs, files you changed and the copies your shortcuts or pinned icons open are kept.",
+          "On Windows, the downloaded PyTorch packages (about 1.8 GB) are removed once every environment has them installed. They are only needed to create an environment again.",
+          "When ComfyUI runs in FreeVideo's separate environment and you update ComfyUI, the launcher updates that environment before starting it, instead of downloading another one with PyTorch.",
+          "An engine folder inside an existing ComfyUI is now ignored by git, so ComfyUI updaters that stash or clean untracked files no longer copy or move its models and environments.",
+          "If FreeVideo’s page does not load completely in the browser, for example its styles or the creative workspace are missing, the page now says which file failed, why, and what to do. The launcher shows the same problem, and diagnostic reports include it.",
+          "Opening FreeVideo from the launcher now always brings its workflow to the front, even when ComfyUI reopens the tabs from your last session."
+        ]
+      },
+      "zh": {
+        "summary": "更新后不再残留旧版本文件；升级 ComfyUI 后不再重新安装 PyTorch；FreeVideo 页面没有完整加载时会说明原因。",
+        "changes": [
+          "更新完成后，启动器会自动删除不再使用的旧版启动器和 FreeVideo 文件，并显示释放的空间。模型、生成结果、你改动过的文件，以及快捷方式或固定图标会打开的副本都会保留。",
+          "Windows 上，所有环境都装好 PyTorch 后，会删除已下载的 PyTorch 安装包（约 1.8 GB），这些安装包只在重新创建环境时才需要。",
+          "ComfyUI 在 FreeVideo 准备的独立环境中运行时，升级 ComfyUI 后，启动器会在启动前更新这个环境，不再另外下载一整套带 PyTorch 的环境。",
+          "放在已有 ComfyUI 里的引擎文件夹现在会被 git 忽略，ComfyUI 更新工具暂存或清理未跟踪文件时，不会再复制或移走其中的模型和环境。",
+          "浏览器里的 FreeVideo 页面没有完整加载时（例如样式丢失或创作面板打不开），页面会写明是哪个文件、什么原因、该怎么处理；启动器也会显示同样的问题，诊断报告中也会包含。",
+          "从启动器打开 FreeVideo 时，即使 ComfyUI 恢复了上次的标签页，FreeVideo 工作流也会显示在最前面。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.8",
+      "en": {
+        "summary": "Downloads that cannot resume now start again by themselves, and the ComfyUI setup panel explains why Install / repair is unavailable.",
+        "changes": [
+          "When an interrupted model download cannot be resumed, installation now downloads that file again from the start instead of stopping at every retry. The incomplete copy is kept aside.",
+          "If model preparation stops, the message now names the file and the reason instead of a generic \"preparation stopped\".",
+          "In the ComfyUI setup panel, a short note under the buttons explains why Install / repair is unavailable: run Detect & review, tick the agreement, or resolve the problems shown in the plan. Changing a setting clears the outdated plan."
+        ]
+      },
+      "zh": {
+        "summary": "无法续传的下载会自动从头重新下载；ComfyUI 内的安装面板会说明「安装／修复」暂不可用的原因。",
+        "changes": [
+          "模型下载中断且无法续传时，安装会自动从头重新下载该文件，不再每次重试都停下；未完成的文件会另行保留。",
+          "模型准备停止时，提示会写明具体的文件和原因，而不是笼统的「准备已停止」。",
+          "ComfyUI 内的安装面板会在按钮下方说明「安装／修复」暂不可用的原因：需要先「检测并预览」、勾选同意，或先解决计划中标红的问题；修改设置后会清除过期的计划。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.7",
+      "en": {
+        "summary": "Installation no longer stops with \"Select at most 64 model libraries\" when ComfyUI has many model folders.",
+        "changes": [
+          "Fixed installation stopping with \"Select at most 64 model libraries\" when ComfyUI has more than ten model folders. Each folder now counts once, and when more than 64 are found, the first 64 are used and installation continues.",
+          "A saved model folder that has since been deleted, such as a removed offline package folder, is skipped instead of blocking installation or offline import."
+        ]
+      },
+      "zh": {
+        "summary": "修复 ComfyUI 模型目录较多时，安装提示「Select at most 64 model libraries」的问题。",
+        "changes": [
+          "修复 ComfyUI 模型目录超过十个时，安装停在「Select at most 64 model libraries」的问题。同一个目录现在只计一次；找到的目录超过 64 个时使用前 64 个，安装照常进行。",
+          "已保存的模型文件夹如果已被删除（例如删除了离线包目录），会自动跳过，不再阻止安装或离线导入。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.6",
+      "en": {
+        "summary": "int8 generation keeps more of its work on the graphics card: 8 to 24 GB cards render longer and larger videos faster, and running out of graphics memory once no longer slows later videos.",
+        "changes": [
+          "int8 attention needs 1 to 2.7 GB less graphics memory, with identical results. Videos that used to keep attention in system memory now stay on the card where they fit, for example 1344x768 for 10 s on 8 GB cards, 20 s on 12 GB cards and 1920x1088 on 16 GB cards. Their refinement steps run up to about 1.3x faster on Windows and 2x on Linux.",
+          "Long 1920x1088 videos on 16 GB cards keep attention on the card and stage only the residual stream in system memory, which also leaves about 6 GB more system memory free.",
+          "After running out of graphics memory, the retry only halves the attention head group instead of shrinking every work partition. If the retry had memory to spare, the next video tries the planned settings again.",
+          "On Windows the first pass keeps half a gigabyte below the graphics memory budget, so its weight cache no longer spills into shared memory.",
+          "Offline installation also takes the optional Reference audio pack. Imported with the other packs, it lets audio references work without downloading their tables first."
+        ]
+      },
+      "zh": {
+        "summary": "int8 生成更多地留在显卡上：8 到 24 GB 显卡能更快地生成更长、更大的视频；偶尔显存不足也不再拖慢之后的视频。",
+        "changes": [
+          "int8 注意力少用 1 到 2.7 GB 显存，生成结果完全相同。以前需要把注意力放到内存的视频，现在放得下就留在显卡上，例如 8 GB 显卡的 1344×768 10 秒、12 GB 显卡的 20 秒、16 GB 显卡的 1920×1088。这些视频的精修步骤在 Windows 上最多快约 1.3 倍，在 Linux 上约 2 倍。",
+          "16 GB 显卡生成 1920×1088 长视频时，注意力留在显卡上，只把残差放到内存，内存也多空出约 6 GB。",
+          "显存不足时，重试只把注意力分组减半，不再把所有分块都降到最小；如果重试时显存还有富余，下一个视频会重新使用原来的设置。",
+          "Windows 上第一遍会在显存预算下留出 0.5 GB 余量，权重缓存不再溢出到共享内存。",
+          "离线安装可以一起导入可选的「音频参考缓存」包，用音频做参考时不必再联网下载对应的缓存。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.5",
+      "en": {
+        "summary": "Audio references now guide the voice and sound of the generated video much more closely.",
+        "changes": [
+          "Audio references work as intended: a reference voice or soundtrack, including the sound of a reference video, now guides the generated audio. In our tests, the generated voice matched the reference voice far more closely.",
+          "Audio references use an updated sampling cache (0.3–0.7 GB per quality level). It downloads automatically the first time you use an audio reference, so there is nothing to do before then; the previous cache is removed afterwards.",
+          "Mono reference audio keeps its original volume."
+        ]
+      },
+      "zh": {
+        "summary": "音频参考效果大幅改进，生成的声音会更贴近参考音频的音色。",
+        "changes": [
+          "改进音频参考：参考音频（包括参考视频自带的声音）现在能正确引导生成的声音。我们的测试中，生成的人声与参考音色明显更接近。",
+          "使用音频参考需要更新采样缓存（每个质量档 0.3–0.7 GB），首次使用音频参考时会自动下载，不使用可以忽略；下载完成后会自动删除旧缓存。",
+          "单声道参考音频保持原有音量。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.4",
+      "en": {
+        "summary": "Diagnostic report saves the diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup.",
+        "changes": [
+          "Diagnostic report saves the redacted diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup, and it helps other users too. The report has hardware details, settings and timings only, with no prompts, reference images or videos.",
+          "After a video finishes, a card under the buttons invites you to submit the report. Once closed, it does not come back, and it never covers the video."
+        ]
+      },
+      "zh": {
+        "summary": "新增「诊断报告」按钮，一键保存诊断报告；欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化。",
+        "changes": [
+          "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
+          "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.3",
+      "en": {
+        "summary": "Runs the int8 model on 6 GB graphics cards and imports the int8 offline packs.",
+        "changes": [
+          "Graphics cards with 6 GB of memory, such as a laptop RTX 3060, can now generate with the int8 model instead of being refused, and 8 to 12 GB cards can make longer videos. These runs use a low-memory mode, which is slower, and FreeVideo says so while generating. When a request still does not fit, the message names sizes and lengths that fit now.",
+          "The launcher imports the new int8 offline packs: video model, text encoder, video & audio decoder, and sampling caches."
+        ]
+      },
+      "zh": {
+        "summary": "6 GB 显存的显卡可以用 int8 模型生成，并支持导入 int8 离线包。",
+        "changes": [
+          "6 GB 显存的显卡（例如笔记本 RTX 3060）现在可以用 int8 模型生成，不再被拒绝；8 到 12 GB 的显卡也能生成更长的视频。这时会改用省显存方式，速度会慢一些，生成时会提示。如果仍然放不下，提示里会给出这台电脑现在能生成的尺寸和时长。",
+          "启动器支持导入新的 int8 离线包：视频模型、文本编码器、视频与音频解码器、采样缓存。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.2",
+      "en": {
+        "summary": "Adds Preview first to two-pass sampling, deleting in Your creations and prompt box improvements (the example prompt as a placeholder, the last prompt restored on reopening), and fixes installing into folders with spaces.",
+        "changes": [
+          "Two-pass sampling can stop at a quick half-resolution preview: choose Two-pass: Preview first. When a preview looks right, choose Run second pass; the finished video is identical to generating it directly. Make several previews in a batch and pick one in Your creations.",
+          "Your creations can delete videos you no longer need, after a confirmation.",
+          "The example prompt is shown greyed out as a placeholder. Typing replaces it without clearing the box first, and a box that was never typed in generates the example. A box emptied after typing stays empty.",
+          "Prompt enhancement rewrites the prompt that was typed. With an empty box, turning it on asks for a prompt first.",
+          "Replacing or clearing all of the enhanced text starts a new prompt, which is enhanced before generating. Small edits still adjust the enhanced version.",
+          "FreeVideo reopens with the last prompt, finished, unfinished or emptied, and its enhancement setting.",
+          "Installing into a folder whose path contains a space, such as \"Comfy UI\", stopped at the PyTorch step with \"File not found\". It installs normally now."
+        ]
+      },
+      "zh": {
+        "summary": "二次采样新增「先出预览」，作品可以删除，提示词框改进（示例提示词以灰色占位显示，重新打开时恢复上次的提示词），并修复安装路径含空格时无法安装的问题。",
+        "changes": [
+          "二次采样新增「先出预览」：先用半分辨率快速出一版预览，满意后点「继续二采」，成片与直接生成完全一致。可以批量出几版预览，在「作品」里挑一版继续二采。",
+          "「作品」里可以删除不需要的视频，删除前会确认。",
+          "示例提示词以灰色占位显示，直接输入即可替换，无需先清空；未输入过时按示例生成，输入后再清空则保持为空。",
+          "提示词增强改写已输入的提示词。提示词框为空时开启增强，会提示先输入提示词。",
+          "在改写版中全选替换或清空后重新输入，会作为新的提示词，生成前自动改写；局部修改仍只调整改写版。",
+          "重新打开 FreeVideo 时恢复上次编写的提示词（包括未写完或已清空的内容）及增强设置。",
+          "安装位置的路径中有空格（例如「Comfy UI」）时，安装会停在 PyTorch 步骤并报「File not found」。现在可以正常安装。"
+        ]
+      }
+    },
+    {
+      "product_version": "0.3.1",
+      "en": {
+        "summary": "Fixes the int8 upgrade on older installations and importing the Environment ZIP.",
+        "changes": [
+          "Older installations could not upgrade to the int8 model: the upgrade stopped with \"The download is larger than shown\". The size shown now includes every file the upgrade downloads, such as the sampling tables, so the upgrade goes through.",
+          "Importing the Environment ZIP failed with \"No such file or directory: windows-portable.txt\". It imports again."
+        ]
+      },
+      "zh": {
+        "summary": "修复较早安装的用户无法升级到 int8 模型，以及运行环境包无法导入的问题。",
+        "changes": [
+          "较早安装的用户升级到 int8 模型时，会停在「下载比显示的大」。现在显示的下载量包含升级要下载的全部文件（例如采样表），可以正常完成升级。",
+          "导入运行环境包时会报「找不到 windows-portable.txt」，现在可以正常导入。"
+        ]
+      }
+    }
+  ]
 }

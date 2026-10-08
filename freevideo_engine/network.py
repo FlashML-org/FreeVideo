@@ -873,10 +873,11 @@ def download(candidates, path, expected, progress=None, *, network=None, env=Non
     raise DownloadError('Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name)
 
 
-# clone() passes the remote through GIT_CONFIG_* (Git 2.31) and narrows
-# references with `sparse-checkout set --no-cone` (Git 2.35). Older Git fails
-# with "'origin' does not appear to be a git repository".
-MIN_GIT = (2, 35)
+# clone() passes the remote through GIT_CONFIG_PARAMETERS and writes the sparse
+# patterns itself instead of using GIT_CONFIG_COUNT (Git 2.31) or
+# `sparse-checkout set --no-cone` (Git 2.35), so the Git that current Linux
+# distributions ship works. MIN_GIT is the oldest Git this sequence is tested on.
+MIN_GIT = (2, 17)
 
 
 def git_version(executable, env=None):
@@ -892,8 +893,12 @@ def git_version(executable, env=None):
 
 def old_git_message(version):
     return ('Git %d.%d is too old to download the pinned sources; FreeVideo needs Git %d.%d or newer. '
-            'On Windows, click Retry installation to use FreeVideo\'s own Git; elsewhere, update Git.'
-            % (*version, *MIN_GIT))
+            'Click Retry installation to use FreeVideo\'s own Git.' % (*version, *MIN_GIT))
+
+
+def git_parameter(value):
+    """A `-c` setting quoted as Git quotes it in GIT_CONFIG_PARAMETERS."""
+    return "'" + value.replace("'", "'\\''").replace('!', "'\\!'") + "'"
 
 
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
@@ -933,20 +938,24 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             # settings when constructing the exact official patched tree.
             execute(target.name + '-line-endings', ['git', '-C', temporary, 'config', 'core.autocrlf', 'false'])
             execute(target.name + '-long-paths', ['git', '-C', temporary, 'config', 'core.longpaths', 'true'])
-            # URL via environment keeps credentials out of process arguments/logs.
-            config_index = int(env.get('GIT_CONFIG_COUNT', 0))
-            fetch_env = dict(env, GIT_CONFIG_COUNT=str(config_index + 1))
-            fetch_env.update({'GIT_CONFIG_KEY_' + str(config_index): 'remote.origin.url',
-                              'GIT_CONFIG_VALUE_' + str(config_index): endpoint})
+            if sparse:
+                # The patterns file with cone mode off is what `sparse-checkout
+                # set --no-cone` writes; every Git reads it at checkout.
+                execute(target.name + '-sparse', ['git', '-C', temporary, 'config', 'core.sparseCheckout', 'true'])
+                execute(target.name + '-sparse-cone', ['git', '-C', temporary, 'config', 'core.sparseCheckoutCone', 'false'])
+                (temporary / '.git' / 'info').mkdir(exist_ok=True)
+                (temporary / '.git' / 'info' / 'sparse-checkout').write_text(''.join(p + '\n' for p in sparse), encoding='utf-8')
+            # The URL reaches Git the way `git -c` hands settings to its own
+            # children, in every Git version: never in process arguments, logs
+            # or the repository's config, even if the fetch is killed.
             original = env
-            env = fetch_env
+            env = dict(env, GIT_CONFIG_PARAMETERS=' '.join(filter(None, (
+                env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint)))))
             try:
                 execute(target.name + '-fetch-' + name, ['git', '-C', temporary, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit])
-                if sparse:
-                    execute(target.name + '-sparse', ['git', '-C', temporary, 'sparse-checkout', 'set', '--no-cone', *sparse])
-                execute(target.name + '-checkout', ['git', '-C', temporary, 'checkout', '--detach', commit])
             finally:
                 env = original
+            execute(target.name + '-checkout', ['git', '-C', temporary, 'checkout', '--detach', commit])
             actual = subprocess.check_output([git, '-C', str(temporary), 'rev-parse', 'HEAD'], env=env, text=True, **hidden_console()).strip()
             if actual != commit:
                 raise ValueError('Downloaded source did not match its pinned commit')

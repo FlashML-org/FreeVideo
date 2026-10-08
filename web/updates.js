@@ -18,6 +18,16 @@ const displayVersion = release => release?.product_version ? 'v' + release.produ
 // The running release's product version ("0.3.4"), once the first check has answered.
 export const productVersion = () => value?.current_release?.product_version || null;
 const localizedNotes = (release, cn) => release?.release_notes?.[cn ? 'zh' : 'en'];
+const versionParts = value => String(value || '').split('.').map(Number);
+const newerThan = (a, b) => {
+    const [x, y] = [versionParts(a), versionParts(b)];
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+    return false;
+};
+// Versions between the installed one and the update, newest first: an
+// update that skips versions still shows what each of them changed.
+export const earlierNotes = (release, installed) => installed
+    ? (release?.release_history || []).filter(row => newerThan(row.product_version, installed)) : [];
 const publish = () => { for (const render of listeners) render(); };
 const later = ms => { clearTimeout(timer); timer = setTimeout(checkUpdates, ms); };
 
@@ -156,7 +166,9 @@ export function createUpdateNotice(cn) {
         element.hidden = !text;
         element.classList.toggle('fv-update-working', busy);
         label.textContent = text;
-        summary.textContent = actions ? localizedNotes(candidate, cn)?.summary || '' : '';
+        const skipped = actions ? earlierNotes(candidate, productVersion()).length : 0;
+        summary.textContent = actions ? (localizedNotes(candidate, cn)?.summary || '')
+            + (skipped ? ' ' + t(`Includes the changes of ${skipped} earlier version${skipped > 1 ? 's' : ''}.`, `另含此前 ${skipped} 个版本的更新。`) : '') : '';
         summary.hidden = !summary.textContent;
         details.hidden = !actions;
         const direct = !!launcher && !launcher.manual && !failure;
@@ -194,7 +206,20 @@ function showReleaseNotes(cn) {
             for (const item of notes?.changes || []) {
                 const row = document.createElement('li'); row.textContent = item; list.append(row);
             }
-            section.append(list); body.append(section);
+            section.append(list);
+            if (release === value?.available) {
+                for (const row of earlierNotes(release, value?.current_release?.product_version)) {
+                    const earlier = localizedNotes(row, cn);
+                    const name = document.createElement('h4'); name.textContent = 'v' + row.product_version;
+                    const text = document.createElement('p'); text.textContent = earlier?.summary || '';
+                    const items = document.createElement('ul');
+                    for (const item of earlier?.changes || []) {
+                        const entry = document.createElement('li'); entry.textContent = item; items.append(entry);
+                    }
+                    section.append(name, text, items);
+                }
+            }
+            body.append(section);
         }
         if (!body.childElementCount) body.textContent = t('Version information is not available yet.', '暂时无法获取版本信息。');
     };

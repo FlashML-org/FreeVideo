@@ -29,7 +29,8 @@ ApplicationWindow {
     readonly property bool manualEnvironment: s.offline.runtime_supported !== false && s.form.new_comfy && s.form.environment_method === "manual"
     readonly property bool usingRuntime: manualEnvironment && s.offline.runtime
     readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
-    readonly property bool offlineSelected: usingRuntime || s.form.model_method === "manual"
+    // An imported environment can take its models from packages or download them.
+    readonly property bool offlineSelected: s.form.model_method === "manual"
     readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && (usingRuntime || s.form.model_dirs.length === 0)
     readonly property int step: s.page === "comfy" ? 0 : s.page === "models" ? 1 : 2
     property string previousPage: ""
@@ -40,6 +41,7 @@ ApplicationWindow {
     function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
     readonly property var currentRelease: s.update.current_release || {version: s.update.current}
     readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
+    readonly property var availableEarlier: s.update.candidate ? (s.update.candidate_earlier || []) : s.update.engine ? (s.update.engine_earlier || []) : []
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
     function number(n) { return typeof n === "number" && isFinite(n) }
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
@@ -138,7 +140,7 @@ ApplicationWindow {
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
-        if (s.page === "models") return t("Check & continue", "检查并继续")
+        if (s.page === "models") return usingRuntime && !offlineSelected ? t("Download models & continue", "下载模型并继续") : t("Check & continue", "检查并继续")
         if (updateFirst) return t("Update & launch", "更新并启动")
         if (s.page === "launcher") return s.status === "open" ? t("Open FreeVideo", "打开 FreeVideo") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Launch FreeVideo", "启动 FreeVideo")
         return s.status === "review" ? t("Install & launch", "安装并启动") : s.status === "restart-required" ? t("Connect again", "重新连接") : t("Check & resume", "检查并继续")
@@ -146,6 +148,7 @@ ApplicationWindow {
     function retryText() {
         if (s.retry_kind === "check") return t("Check again", "重新检查")
         if (s.retry_kind === "launch") return t("Retry launch", "重试启动")
+        if (s.retry_kind === "prepare" && usingRuntime && !offlineSelected) return t("Retry download", "重试下载")
         if (s.retry_kind === "import" || s.retry_kind === "prepare") return t("Retry import", "重试导入")
         return t("Retry installation", "重试安装")
     }
@@ -457,16 +460,16 @@ ApplicationWindow {
                     }
                     RowLayout {
                         visible: usingRuntime; Layout.fillWidth: true
-                        FText { objectName: "runtimeReadyOnModels"; text: t("✓ Environment ready · add your model packages", "✓ 运行环境已就绪 · 继续导入模型包"); color: theme.success; Layout.fillWidth: true }
+                        FText { objectName: "runtimeReadyOnModels"; text: t("✓ Environment ready · now the models", "✓ 运行环境已就绪 · 接下来准备模型"); color: theme.success; Layout.fillWidth: true }
                         FButton { text: t("Change", "更改"); flat: true; enabled: !s.busy; onClicked: backend.action("back", false) }
                     }
-                    FText { visible: !usingRuntime; text: t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
+                    FText { text: usingRuntime ? t("Where should the models come from?", "选择模型来源") : t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
                     RowLayout {
-                        visible: !usingRuntime; Layout.fillWidth: true; spacing: 12
+                        Layout.fillWidth: true; spacing: 12
                         FChoice {
                             objectName: "automaticMethod"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
                             text: t("Automatic download", "自动下载")
-                            detail: t("Download only what's missing.", "自动补齐缺少的文件。")
+                            detail: usingRuntime ? t("Download the models into this offline installation.", "把模型下载到这个离线安装里。") : t("Download only what's missing.", "自动补齐缺少的文件。")
                             checked: !offlineSelected; enabled: !s.busy
                             onClicked: backend.edit("model_method", "auto")
                         }
@@ -488,6 +491,9 @@ ApplicationWindow {
                             }
                             FButton { objectName: "downloadSource"; text: s.source_name + "  ›"; flat: true; implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                         }
+                        FText { visible: usingRuntime; text: t("An interrupted download resumes; downloaded files are kept.", "下载中断后可以接着下载，已下载的文件不会丢。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FMeter { visible: usingRuntime && s.offline.status === "downloading"; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
+                        FText { visible: usingRuntime && s.offline.status === "downloading"; text: t("Downloading models", "下载模型") + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
                     FCard {
                         objectName: "offlineImportCard"; visible: offlineSelected; reveal: true; Layout.fillWidth: true; padding: 20; spacing: 14
@@ -1050,7 +1056,7 @@ ApplicationWindow {
             FText { text: s.update.candidate ? t("Update available", "有可用更新") : s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold }
             FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启即可完成更新，模型和设置都会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + releaseVersion(currentRelease) + t(" (installed ", "（已安装 ") + (s.update.installed || "—") + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Couldn't check for updates. Try again below.", "暂时无法检查更新，请重试。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
-            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; zh: s.zh; heading: t("What's new", "更新内容") + " · " + releaseVersion(availableRelease) }
+            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: t("What's new", "更新内容") + " · " + releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
             FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
             FField { id: githubToken; visible: !!s.update.error; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: t("GitHub token · optional", "GitHub Token · 可选") }
@@ -1077,7 +1083,7 @@ ApplicationWindow {
                 ColumnLayout {
                     id: releaseContents; width: releaseScroll.availableWidth; spacing: 18
                     FText { text: t("Version & release notes", "版本与更新说明"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; release: s.update.candidate; zh: s.zh; heading: t("Available update", "可用更新") + " · " + releaseVersion(s.update.candidate) }
+                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: t("Available update", "可用更新") + " · " + releaseVersion(s.update.candidate) }
                     FDivider { visible: !!s.update.candidate }
                     FReleaseNotes { objectName: "currentReleaseNotes"; Layout.fillWidth: true; release: currentRelease; zh: s.zh; heading: t("Current version", "当前版本") + " · " + releaseVersion(currentRelease) }
                     FText { visible: !!s.update.installed; text: t("Installed engine build: ", "已安装引擎构建号：") + (s.update.installed || ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }

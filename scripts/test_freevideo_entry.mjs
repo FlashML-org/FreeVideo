@@ -43,7 +43,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         installNavigation: callback => installed.push(callback),
         refreshNavigation: () => refreshed++, preferredView: () => null,
         attachReferencePicker() {}, referenceItems: () => [], syncReferencePrompt() {},
-        shareButton: () => new Element('button'),
+        shareButton: () => new Element('button'), reportFileName: () => 'FreeVideo-report-20261008-101530.json',
         rememberPromptDraft() {}, savePromptDraft: async () => false,
     };
     const previous = new Map();
@@ -69,6 +69,7 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt} = globalThis.__freevideoEntryTest;')
             .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
+            .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest;')
             .replace("import { regenerateResult, upscaleResult } from './studio_queue.js';", 'const {regenerateResult,upscaleResult} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest;');

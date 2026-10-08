@@ -209,11 +209,20 @@ def inventory(gpu=None):
             'git_found': shutil.which('git')}
 
 
+# Windows reuses a detected Git from 2.35, the oldest tested there, and
+# otherwise installs its own MinGit.
+WINDOWS_MIN_GIT = (2, 35)
+
+
+def git_floor(system=None):
+    return WINDOWS_MIN_GIT if (system or platform.system()) == 'Windows' else network.MIN_GIT
+
+
 def usable_git(path=None, env=None):
     """The Git on PATH when it is new enough for clone(); None otherwise."""
     executable = shutil.which('git', path=path)
     version = network.git_version(executable, env) if executable else None
-    return executable if version and version >= network.MIN_GIT else None
+    return executable if version and version >= git_floor() else None
 
 
 def existing_parent(path):
@@ -320,7 +329,8 @@ def plan(args, *, local_progress=None):
         if compatibility['error']:
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
-        for name in () if windows_target else ('git', 'compiler'):
+        # A missing or too old Git is replaced by FreeVideo's own.
+        for name in () if windows_target else ('compiler',):
             if not snapshot.get(name):
                 errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
         curl_env = dict(os.environ, FREEVIDEO_HOME=str(root))
@@ -508,9 +518,10 @@ def plan(args, *, local_progress=None):
             'build': build,
             'kernel_install': 'Pinned Windows Triton / Sage2 wheels; actual kernels checked before readiness' if windows_target else 'Local Sage2 source build / ABI-keyed wheel cache',
             'git_install': ('Reuse detected Git' if snapshot.get('git') else
-                            'Install verified portable MinGit locally after confirmation' + (
-                                ' (the detected Git is older than %d.%d)' % network.MIN_GIT if snapshot.get('git_found') else '')
-                            if windows_target else 'Git %d.%d or newer required' % network.MIN_GIT),
+                            ('Install verified portable MinGit locally' if windows_target else
+                             'Install verified portable Git from conda-forge locally') + (
+                                ' (the detected Git is older than %d.%d)' % git_floor(hardware.system)
+                                if snapshot.get('git_found') else '')),
             'wheel_cache': str(Path(getattr(args, 'wheel_cache', None) or saved.get('wheel_cache') or root / 'wheels').expanduser().resolve()),
             'rebuild_sage': getattr(args, 'rebuild_sage', False),
             'model_download_bytes': sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0),
@@ -785,6 +796,8 @@ def setup_task(label):
         'sage2-wheel-install': ('Install SageAttention 2', 'Install the prepared GPU acceleration package'),
         'sage2-windows-wheel-install': ('Install SageAttention 2', 'Install the verified Windows acceleration package'),
         'windows-runtime-check': ('Check GPU runtime', 'Verify CUDA and the Windows runtime libraries'),
+        'portable-git': ('Prepare Git', 'Install the verified Git packages'),
+        'portable-git-check': ('Prepare Git', 'Check the installed Git'),
     }
     title, detail = tasks.get(key, ('Prepare dependencies', 'Prepare verified source files'))
     for prefix, name in (('h3-text-encoder-', 'text encoder'), ('SageAttention-', 'SageAttention 2')):
@@ -1128,7 +1141,7 @@ class Installer:
         def task(name, run, after=(), writes=()):
             tasks[name] = dict(run=run, after=tuple(after), writes=tuple(writes))
         task('python', lambda: self.python_install(uv))
-        task('git', self.install_git_windows if self.system == 'Windows' else lambda: None)
+        task('git', self.install_git)
         # This entry imports only stdlib engine code from the bootstrap Python.
         # It can fetch the exact source trees while large Torch wheels download.
         task('vdn-source', lambda: self.command('vdn-source', [sys.executable, '-c',
@@ -1197,12 +1210,13 @@ class Installer:
                 'assert torch.cuda.is_available(), "CUDA unavailable; check NVIDIA driver and Windows DLL errors above"; '
                 'print("Windows runtime imports passed; GPU kernel probes follow")']), ('runtime',), ('environment:' + name,))
         overlap = (self.plan.get('model_transfer') or {}).get('overlap_build', True)
-        task('sage', lambda: self.install_sage(uv, python), ('runtime',) if overlap else ('runtime', 'models'),
+        # Linux builds SageAttention from a Git checkout.
+        task('sage', lambda: self.install_sage(uv, python), ('runtime', 'git') if overlap else ('runtime', 'git', 'models'),
              ('environment:' + name,))
         if self.plan.get('disk_mode') == 'extreme':
             # Finish all environments before models occupy most of the disk.
             # In particular retain the uv cache until ComfyUI has reused it.
-            tasks['sage']['after'] = ('runtime',)
+            tasks['sage']['after'] = ('runtime', 'git')
             prerequisites = tuple(key for key in tasks if key != 'models')
             frontend = self.plan.get('frontend') or {}
             if frontend.get('separate'):
@@ -1348,6 +1362,82 @@ class Installer:
         save(manifest, record)
         save(self.run_dir / 'sage-wheel.json', record)
         return manifest
+
+    def install_git(self):
+        if self.system == 'Windows':
+            self.install_git_windows()
+        elif self.system == 'Linux' and not usable_git(self.env['PATH'], self.env):
+            self.install_git_linux()
+
+    def install_git_linux(self):
+        """Git from conda-forge, pinned by package hashes, when the system has none new enough."""
+        spec = json.loads((PACKAGE / 'git_linux.json').read_text(encoding='utf-8'))
+        prefix = self.root / 'tools' / ('git-' + spec['version'])
+        executable = prefix / 'bin' / 'git'
+        receipt, content = prefix / '.freevideo-git.json', {k: spec[k] for k in ('version', 'packages')}
+        if not (receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')) == content and executable.is_file()):
+            micromamba, packages = self.fetch_git_linux(spec)
+            # conda writes the prefix into the installed files, so the
+            # environment is created in place; an interrupted one is replaced.
+            if prefix.is_symlink():
+                prefix.unlink()
+            elif prefix.exists():
+                shutil.rmtree(prefix)
+            explicit = self.root / 'downloads' / 'git-linux' / 'explicit.txt'
+            explicit.write_text('@EXPLICIT\n' + ''.join(path.resolve().as_uri() + '\n' for path in packages), encoding='utf-8')
+            cache = self.root / 'tools' / 'micromamba-root'
+            env = {k: v for k, v in self.env.items() if not k.upper().startswith(('CONDA', 'MAMBA'))}
+            self.command('portable-git', [micromamba, 'create', '--yes', '--no-rc', '--offline',
+                                          '--root-prefix', cache, '--prefix', prefix, '--file', explicit], env=env)
+            save(receipt, content)
+            # Only the environment is kept; a damaged one is downloaded again.
+            shutil.rmtree(cache, ignore_errors=True)
+            shutil.rmtree(explicit.parent, ignore_errors=True)
+            micromamba.unlink(missing_ok=True)
+        # PATH, here and in machine.json for ComfyUI, gains only `git`, not
+        # the other tools of the environment.
+        links = self.root / 'tools' / 'git-bin'
+        links.mkdir(parents=True, exist_ok=True)
+        if not (links / 'git').is_symlink() or Path(os.readlink(links / 'git')) != executable:
+            (links / 'git').unlink(missing_ok=True)
+            (links / 'git').symlink_to(executable)
+        self.env['PATH'] = str(links) + os.pathsep + self.env['PATH']
+        self.command('portable-git-check', [links / 'git', '--version'])
+        self.env['FREEVIDEO_GIT'] = str(links / 'git')
+
+    def fetch_git_linux(self, spec):
+        """micromamba and the locked packages, verified by SHA-256, as one step."""
+        directory = self.root / 'downloads' / 'git-linux'
+        tool = spec['micromamba']
+        micromamba = self.root / 'tools' / ('micromamba-' + tool['version'])
+        channels = spec['channels']
+        # Mainland mirrors first when the measured PyPI ranking prefers one.
+        mirrors = [n for n in channels if n != 'official']
+        names = (mirrors + ['official'] if network.ordered(self.network, 'pypi')[0] in mirrors else
+                 ['official'] + mirrors)
+        rows = [(micromamba, network.urls(self.network, 'github', tool['url'], self.env), tool)]
+        rows += [(directory / row['path'].split('/')[-1], [(n, channels[n] + '/' + row['path']) for n in names], row)
+                 for row in spec['packages']]
+        total = sum(row['bytes'] for _, _, row in rows)
+        key = 'download-git-linux'
+        self.ui.begin(key, 'Prepare Git', detail='Download and verify Git %s' % spec['version'])
+        done = 0
+        try:
+            for path, candidates, row in rows:
+                def progress(current, size, speed, before=done):
+                    if self.cancel.is_set():
+                        raise RuntimeError('Installation cancelled; partial download retained.')
+                    self.ui.update(key, done=before + current, total=total, rate=speed, unit='bytes', scope='git',
+                                   detail='%.1f MiB / %.1f MiB' % ((before + current) / 2**20, total / 2**20))
+                network.download(candidates, path, row['sha256'], progress, network=dict(self.network, quiet=True),
+                                 env=self.env, size=row['bytes'], category='github' if path == micromamba else 'download')
+                done += row['bytes']
+        except BaseException:
+            self.ui.end(key, success=False)
+            raise
+        micromamba.chmod(0o755)
+        self.ui.end(key, detail='Verified and ready')
+        return micromamba, [path for path, _, _ in rows[1:]]
 
     def install_git_windows(self):
         # An older Git on PATH cannot fetch the pinned sources; use the portable one.

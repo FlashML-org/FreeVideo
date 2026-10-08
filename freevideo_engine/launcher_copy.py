@@ -119,7 +119,7 @@ def source_name(value, zh=False):
 def display(value, zh=False):
     value = clean(value)
     if not zh:
-        return {'检查配套包': 'Checking packages'}.get(value, value)
+        return {'检查配套包': 'Checking packages', '下载模型': 'Downloading models'}.get(value, value)
     if value in ZH:
         return ZH[value]
     if value in SOURCES:

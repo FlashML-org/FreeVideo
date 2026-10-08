@@ -100,8 +100,8 @@ def launcher_failure(value, *, zh=False):
     rules = (
         (r'Git \d+\.\d+ is too old to download the pinned sources', 'git-version',
          ('Git is too old', 'Git 版本过旧'),
-         ('Click Retry installation; on Windows FreeVideo then uses its own Git. On Linux or macOS, update Git to 2.35 or newer.',
-          '请点击“重试安装”，Windows 上 FreeVideo 会改用自带的 Git；Linux 或 macOS 请把 Git 更新到 2.35 或更高版本。')),
+         ('Click Retry installation; FreeVideo then installs its own Git. On macOS, update the Command Line Tools.',
+          '请点击“重试安装”，FreeVideo 会改用自带的 Git；macOS 请更新命令行工具（Command Line Tools）。')),
         # web/health.js lists the failed files and what to do on the page itself.
         (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),

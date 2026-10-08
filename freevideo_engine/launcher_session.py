@@ -220,6 +220,17 @@ class Session:
         self.imported_batch = None
         self.error = ''
 
+    def prepare_offline(self):
+        """Models from imported packages, or downloaded into the imported environment.
+
+        Imported model packages are always used; the download is for an
+        environment imported without any.
+        """
+        if self.form['model_method'] == 'auto' and not self.form['offline_models']:
+            self.importer.download(self.form['offline_runtime'], self.source, self.form['sampling_caches'])
+        else:
+            self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
+
     def activate_offline(self, root):
         from .offline_packages import check_runtime_platform
         check_runtime_platform()
@@ -257,7 +268,7 @@ class Session:
                 self.importer.start(paths, destination)
                 self.imported_batch = None
             elif kind == 'prepare':
-                self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
+                self.prepare_offline()
                 self.imported_batch = None
             elif kind == 'launch':
                 self.action('launch', accepted)
@@ -298,7 +309,7 @@ class Session:
         if (self.page == 'models' and self.form['new_comfy']
                 and self.form['environment_method'] == 'manual' and self.form['offline_runtime']):
             self.import_retry = ('prepare',)
-            self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
+            self.prepare_offline()
             return
         if self.page == 'comfy':
             if self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime']:
@@ -830,6 +841,15 @@ class Session:
     def installed_version(self):
         return self.source_stamp((self.selected or {}).get('source'))[0]
 
+    def installed_product_version(self):
+        """The product version of the engine the selected installation runs, if it says."""
+        source = (self.selected or {}).get('source')
+        try:
+            value = json.loads((Path(source) / 'freevideo_engine/release_notes.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError, TypeError):
+            return None
+        return value.get('product_version') if isinstance(value, dict) else None
+
     def update_view(self):
         from .release_notes import installed_details, public_details
         if self.release_details is None:
@@ -844,6 +864,11 @@ class Session:
                     channel=self.updater.current.get('channel') if self.updater else None,
                     track=self.updater.current.get('track', 'stable') if self.updater else 'stable',
                     manual=bool(self.updater and self.updater.current.get('packaging') in ('onedir', 'app')))
+        # Versions between the one in use and the update, so skipped notes are not lost.
+        from .release_notes import since
+        current = view['current_release'] or {}
+        view['candidate_earlier'] = since(view.get('candidate'), current.get('product_version')) if view.get('candidate') else []
+        view['engine_earlier'] = since(current, self.installed_product_version()) if view['engine'] else []
         due = ((view.get('candidate') and row['status'] in ('available', 'ready', 'error'))
                or (view['engine'] and self.page == 'launcher'))
         view['remind'] = bool(key and due and self.update_snoozed.get(key, 0) <= time.monotonic()
@@ -1009,7 +1034,9 @@ class Session:
         if self.importer.busy:
             # The sidebar's Working card follows the offline import, not the idle installer.
             state = self.importer.state
-            if state.get('status') == 'preparing':
+            if state.get('status') == 'downloading':
+                label = self.t('Downloading models', '下载模型')
+            elif state.get('status') == 'preparing':
                 label = self.t('Checking packages', '检查配套包')
             else:
                 label = self.t('Importing offline packages', '导入离线包')
