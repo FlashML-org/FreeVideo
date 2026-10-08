@@ -26,6 +26,11 @@ def child_lease(descriptor):
             os.environ[LOCK_ENV] = previous
 
 
+# What the native text encoder library needs from ComfyUI: the same paths as
+# the automatic installation's sparse checkout (bootstrap encoder-source).
+ENCODER_LIBRARY = ('comfy/', 'utils/', 'folder_paths.py', 'node_helpers.py', 'LICENSE')
+
+
 def bundle_name(name):
     """The lexical rules for a file inside a bundle, without touching the disk.
 
@@ -141,7 +146,7 @@ def environment(root, value, environ=None):
     env = isolated_environment(root/'engine', inside(root, value['source']), environ)
     env.update(FREEVIDEO_MODEL_ROOT=str(inside(root, value['model_root'])),
                FREEVIDEO_VDN_ROOT=str(inside(root, value['vdn'])),
-               FREEVIDEO_COMFY_ROOT=str(inside(root, value['comfy'])),
+               FREEVIDEO_COMFY_ROOT=str(inside(root, value.get('encoder_library') or value['comfy'])),
                TORCHINDUCTOR_CACHE_DIR=str(root/'engine/cache/inductor'),
                TRITON_CACHE_DIR=str(root/'engine/cache/triton'),
                HF_HOME=str(root/'engine/cache/huggingface'),
@@ -172,7 +177,8 @@ def configuration(root, value, hardware):
     return dict(schema_version=1, root=str(root/'engine'), source=str(inside(root, value['source'])),
         environment_layout='unified', system=hardware.system, engine_version=__version__,
         python=str(inside(root, value['python'])), comfy_python=str(inside(root, value['python'])),
-        comfy_root=str(inside(root, value['comfy'])), vdn_root=str(inside(root, value['vdn'])),
+        # The encoder's own copy when assembly made one; the bundled ComfyUI otherwise.
+        comfy_root=str(inside(root, value.get('encoder_library') or value['comfy'])), vdn_root=str(inside(root, value['vdn'])),
         model_root=str(models), encoder_model_root=str(inside(root, value['encoder_root'])),
         base=str(models/'h3-base'), checkpoint=str(models/'stage-dmd-step-250'),
         cache=str(inside(root, value['cache'])), encoder=spec['models']['encoder_file'].split('/')[-1],
@@ -229,7 +235,7 @@ def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *,
         controller.cancelled = cancelled
         if cancelled.is_set():
             raise RuntimeError('Startup cancelled')
-    controller.selection = dict(ready=True, root=machine['comfy_root'], engine=machine['root'],
+    controller.selection = dict(ready=True, root=str(inside(root, value['comfy'])), engine=machine['root'],
         source=machine['source'], python=machine['python'], url=url,
         portable=False, separate=False)
     controller.restore_terminal(machine['root'])

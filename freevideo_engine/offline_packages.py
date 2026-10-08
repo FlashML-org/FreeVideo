@@ -10,7 +10,7 @@ import time
 import zipfile
 
 from .monitoring import save
-from .portable import bundle_name, inside, listing
+from .portable import ENCODER_LIBRARY, bundle_name, inside, listing
 
 PREFIX = 'FreeVideo-Windows/'
 # Optional packs (reference-audio tables) carry sampling tables outside the
@@ -264,14 +264,43 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
     return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name)
 
 
+ENCODER_COPY = 'engine/vendor/h3-text-encoder'
+
+
+def encoder_library(runtime, config, present):
+    """Give the text encoder its own copy of ComfyUI's library, as the ZIP had it.
+
+    Updating the bundled ComfyUI then cannot change how prompts are encoded,
+    as with the automatic installation's separate checkout. Made once, from
+    files unchanged since import; if any changed, the bundled ComfyUI is used
+    as before. Returns the copy's folder (or None) and its inventory rows.
+    """
+    comfy = config['configuration']['comfy'].rstrip('/') + '/'
+    known = stamps(runtime)
+    rows = []
+    for row in config['files']:
+        inner = row['path'][len(comfy):] if row['path'].startswith(comfy) else None
+        if inner and any(inner == item or (item.endswith('/') and inner.startswith(item)) for item in ENCODER_LIBRARY):
+            rows.append((row, dict(row, path=ENCODER_COPY + '/' + inner)))
+    if not rows:
+        return None, []
+    pending = [(row, copy) for row, copy in rows if copy['path'] not in present]
+    if not all(row['path'] in present and unchanged(runtime / row['path'], row, known, present[row['path']])
+               for row, _ in pending):
+        return None, []
+    for row, copy in pending:
+        target = runtime / copy['path']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(target.name + '.copying')
+        shutil.copyfile(runtime / row['path'], partial)  # A copy, not a link: an update replaces neither.
+        partial.replace(target)
+    return ENCODER_COPY, [copy for _, copy in rows]
+
+
 def assemble(runtime, models, source, progress=lambda **kw: None):
     """Bind imported components to the current EXE's engine, without running it."""
-    from .desktop_runtime import materialize_source
-    check_runtime_platform()
     runtime = Path(runtime)
-    config = json.loads((runtime / 'runtime.json').read_text(encoding='utf-8'))
-    if not runtime_fits(config):
-        raise RuntimeMismatch(SKIPPED_RUNTIME)
+    config = runtime_config(runtime)
     candidates = []
     for root in models:
         path = Path(root) / 'models/model-pack.json'
@@ -331,24 +360,99 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
                 continue  # The engine fetches a table it cannot find when a request needs it.
             place(Path(root) / row['path'], runtime / row['path'])
             listed.add(row['path'])
+    return finish(runtime, config, model, source, here)
+
+
+def runtime_config(runtime):
+    check_runtime_platform()
+    config = json.loads((Path(runtime) / 'runtime.json').read_text(encoding='utf-8'))
+    if not runtime_fits(config):
+        raise RuntimeMismatch(SKIPPED_RUNTIME)
+    return config
+
+
+def finish(runtime, config, model, source, here=None):
+    """Write portable.json for verified models, give the encoder its library copy and trust both."""
+    from .desktop_runtime import materialize_source
+    runtime = Path(runtime)
+    library, copies = encoder_library(runtime, config, listing(runtime) if here is None else here)
     code = materialize_source(source, runtime / 'engine/launcher/source')
     variant = model['variant']
     from .prepared_model import catalog
     value = dict(config['configuration'], schema_version=1, variant=variant,
         source=str(code.relative_to(runtime).as_posix()),
         source_commit=code.name, cache='models/edge/' + catalog()['variants'][variant]['cache_prefix'],
-        files=config['files'] + model['files'])
+        files=config['files'] + model['files'] + copies, **({'encoder_library': library} if library else {}))
     inventory(value['files'])
     save(runtime / 'portable.json', value)
     # Every model file was verified above and the environment's files at import;
     # the first start takes that instead of reading tens of GiB once more.
     imported, final = stamps(runtime), listing(runtime)
-    trusted = {row['path'] for row in model['files']}
+    trusted = {row['path'] for row in model['files'] + copies}
     trusted |= {row['path'] for row in config['files'] if imported.get(row['path']) == final.get(row['path'])}
     save(runtime / 'engine' / 'portable-verified.json',
          {row['path']: dict(bytes=final[row['path']][0], mtime_ns=final[row['path']][1], sha256=row['sha256'])
           for row in value['files'] if row['path'] in trusted and row['path'] in final})
     return runtime
+
+
+DOWNLOADING = '下载模型'
+
+
+def download(runtime, source, sampling_caches, progress=lambda **kw: None, cancelled=lambda: False):
+    """Fill an imported environment's model folders from the network, then assemble it.
+
+    The installation's own Python runs the automatic installer's downloader
+    (fastest source, resume, verification); its reports drive the progress.
+    """
+    import subprocess
+    from .comfy_environment import isolated_environment
+    from .desktop_runtime import materialize_source
+    from . import processes
+    runtime = Path(runtime)
+    config = runtime_config(runtime)
+    code = materialize_source(source, runtime / 'engine/launcher/source')
+    out = runtime / 'engine' / 'downloaded-models.json'
+    out.unlink(missing_ok=True)
+    env = isolated_environment(runtime / 'engine', code)
+    for key in ('HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE', 'PYTHONHOME'):
+        env.pop(key, None)
+    env.update(PYTHONPATH=str(code), PYTHONNOUSERSITE='1', PYTHONIOENCODING='utf-8',
+               HF_HOME=str(runtime / 'engine/cache/huggingface'))
+    command = [str(inside(runtime, config['configuration']['python'])), '-B', '-m', 'freevideo_engine.portable_models',
+               '--root', str(runtime), '--out', str(out)] + (['--sampling-caches'] if sampling_caches else [])
+    log = runtime / 'engine' / 'model-download.log'
+    log.parent.mkdir(parents=True, exist_ok=True)
+    progress(done=0, total=None, detail=DOWNLOADING)
+    tail = ''
+    with log.open('w', encoding='utf-8') as stream:
+        child = processes.popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                encoding='utf-8', errors='replace', start_new_session=True, supervise=True)
+        try:
+            for line in child.stdout:
+                stream.write(line); stream.flush()
+                tail = (tail + line)[-4000:]
+                if cancelled():
+                    processes.stop(child)
+                    raise InterruptedError('已暂停下载，已下载的文件保留，再次开始会接着下载。')
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get('event') == 'model_groups':
+                    groups = event.get('groups') or []
+                    total = sum(g.get('total_bytes') or 0 for g in groups)
+                    done = sum(max(g.get('ready_bytes') or 0, g.get('downloaded_bytes') or 0) for g in groups)
+                    progress(done=min(done, total), total=total or None, detail=DOWNLOADING)
+        finally:
+            if child.poll() is None:
+                processes.stop(child)
+            child.stdout.close()
+    if child.wait() != 0 or not out.is_file():
+        raise RuntimeError('模型下载未完成，已下载的文件保留，可以重试。日志：%s\n%s' % (log, tail[-1500:]))
+    model = json.loads(out.read_text(encoding='utf-8'))
+    inventory(model['files'])
+    return finish(runtime, config, model, source)
 
 
 class Importer:
@@ -377,6 +481,24 @@ class Importer:
             except Exception as error:
                 self.state = dict(self.state, status='error', error=str(error))
         self.thread = threading.Thread(target=work, name='freevideo-offline-prepare', daemon=True)
+        self.thread.start()
+
+    def download(self, runtime, source, sampling_caches):
+        if self.busy:
+            return
+        self.cancelled.clear()
+        self.state = dict(status='downloading', done=0, total=None, detail=DOWNLOADING, packages=[])
+        def update(**row):
+            self.state = dict(self.state, **row)
+        def work():
+            try:
+                root = download(runtime, source, sampling_caches, update, self.cancelled.is_set)
+                self.state = dict(self.state, status='prepared', ready_root=str(root))
+            except RuntimeMismatch as error:
+                self.state = dict(self.state, status='complete', runtime_skipped=True, detail=str(error))
+            except Exception as error:
+                self.state = dict(self.state, status='error', error=str(error))
+        self.thread = threading.Thread(target=work, name='freevideo-model-download', daemon=True)
         self.thread.start()
 
     def start(self, paths, destination):

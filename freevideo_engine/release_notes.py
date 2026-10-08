@@ -38,6 +38,39 @@ def notes(value):
     return result if len(json.dumps(result).encode('utf-8')) <= MAX_NOTES_BYTES else None
 
 
+MAX_HISTORY = 12
+
+
+def version_key(value):
+    return tuple(int(part) for part in value.split('.'))
+
+
+def history(value, before=None):
+    """Earlier versions' notes, newest first; a malformed entry is left out.
+
+    An update can skip versions; their notes travel with the newest build so
+    the dialog can show everything since the installed version.
+    """
+    rows = []
+    for row in value[:MAX_HISTORY] if isinstance(value, list) else []:
+        version = product_version(row.get('product_version')) if isinstance(row, dict) else None
+        # release_notes.json lists en/zh beside the version; manifests nest them.
+        release = (notes(row.get('release_notes') if 'release_notes' in row else dict(row, schema=1))
+                   if version else None)
+        if release and (before is None or version_key(version) < version_key(before)):
+            rows.append(dict(product_version=version, release_notes=release))
+    return sorted(rows, key=lambda r: version_key(r['product_version']), reverse=True)
+
+
+def since(release, installed):
+    """The notes of every version after the installed one, up to and excluding `release` itself."""
+    current = product_version(installed) if installed else None
+    rows = (release or {}).get('release_history') or []
+    if not current:
+        return []
+    return [row for row in rows if version_key(row['product_version']) > version_key(current)]
+
+
 def optional_fields(value):
     result = {}
     if not isinstance(value, dict):
@@ -47,6 +80,9 @@ def optional_fields(value):
         result['product_version'] = version
     if release:
         result['release_notes'] = release
+    earlier = history(value.get('release_history'), before=version)
+    if version and earlier:
+        result['release_history'] = earlier
     return result
 
 
@@ -57,7 +93,10 @@ def catalog(package=None):
     version, release = product_version(value.get('product_version')), notes(value)
     if not version or not release:
         raise ValueError('Release notes need a product version and complete English/Chinese text')
-    return dict(product_version=version, release_notes=release)
+    earlier = history(value.get('history'), before=version)
+    if len(earlier) != len(value.get('history') or []):
+        raise ValueError('Every earlier version in release_notes.json needs complete English/Chinese text')
+    return dict(product_version=version, release_notes=release, **({'release_history': earlier} if earlier else {}))
 
 
 def public_details(value):

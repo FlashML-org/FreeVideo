@@ -10,6 +10,7 @@ import { installNavigation, refreshNavigation, preferredView } from './view_navi
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
+import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
 import { regenerateResult, upscaleResult } from './studio_queue.js';
 
@@ -310,7 +311,10 @@ function resultPanel(node) {
         const links = el("div", undefined, "fv-links");
         for (const [label, file] of [[text("Download video", "下载视频"), value.video], [text("Report", "报告"), value.report]]) {
             if (!file) continue;
-            const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : file.split("/").pop(); links.append(link);
+            const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : reportFileName();
+            // Named when clicked, like the creation panel's report: saving it again is not "video.debug (1).json".
+            if (file !== value.video) link.onclick = () => { link.download = reportFileName(); };
+            links.append(link);
         }
         links.append(shareButton(value, text));
         links.append(el("span", value.result_cache_hit ? text("Reused previous result", "已复用上次结果") : value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
