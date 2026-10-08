@@ -186,6 +186,20 @@ def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=
     return max(0, int(min(bounds)) - 512 * 2**20)
 
 
+def reusable_cache_bytes(cached, reserved, workspace_peak):
+    """Device bytes a pass cache holds or can take back without a new allocation.
+
+    Planes dropped from the cache stay in the allocator's pool, where
+    mem_get_info no longer counts them as free. Counting only the planes still
+    cached shrank the cache again at every step: an 8 GiB Windows card filled
+    eight first-pass planes after its first step and ended the pass with one.
+    What the allocator holds beyond the step's own peak is the cache's to reuse.
+    """
+    if reserved is None:
+        return cached
+    return max(cached, reserved - workspace_peak)
+
+
 def first_pass_policy(profile, canvas, sampling_plan):
     """Run the existing token-aware policy within the admitted request budgets.
 
