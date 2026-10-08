@@ -1006,6 +1006,18 @@ class Session:
         task = row.get('task', {})
         progress = progress_view(task.get('progress') or {}, zh)
         overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
+        if self.importer.busy:
+            # The sidebar's Working card follows the offline import, not the idle installer.
+            state = self.importer.state
+            if state.get('status') == 'preparing':
+                label = self.t('Checking packages', '检查配套包')
+            else:
+                label = self.t('Importing offline packages', '导入离线包')
+                if (state.get('count') or 0) > 1:
+                    label += ' %d/%d' % (state.get('index') or 1, state['count'])
+                if state.get('detail'):
+                    label += ' · ' + display(state['detail'], zh)
+            overall = dict(label=label, done=state.get('done'), total=state.get('total'))
         errors = [self.error, self.browser_error, self.page_error, row.get('error', ''), *row.get('errors', [])]
         shortcut = row.get('shortcut') or {}
         if shortcut.get('status') == 'failed':
@@ -1072,7 +1084,8 @@ class Session:
             model_upgrade=dict(self.upgrade.state, busy=self.upgrade.busy, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'], zh)),
+                models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
+                                           and not self.form['offline_runtime'], zh)),
             video_model_guide=video_instructions(zh),
             selected=bool(self.selected), error=error, retry_kind=self.retry_kind(), notice=self.notice, compatibility=self.compatibility,
             report=dict(self.report),

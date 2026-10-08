@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import stat
 import threading
+import time
 import zipfile
 
 from .monitoring import save
@@ -158,51 +159,144 @@ def inspect_archive(path):
         return dict(value, marker=marker, raw=raw, id=hashlib.sha256(raw).hexdigest())
 
 
-def import_archive(path, destination, progress=lambda **kw: None, cancelled=lambda: False):
+# Size and modification time of each file an import has hashed. A later check
+# of the same unchanged file trusts them instead of hashing tens of GiB again.
+VERIFIED = 'import-verified.json'
+
+
+class Tree:
+    """Paths under one root, each directory checked for links once rather than per file.
+
+    portable.inside resolves every path, which on Windows opens it; for an
+    environment of ~50,000 files that alone took minutes.
+    """
+    def __init__(self, root):
+        self.root = Path(root).resolve()
+        self.checked = {self.root}
+
+    def path(self, name):
+        inside(Path('/unused'), name)  # Lexical rules only: no '..', drive or backslash.
+        path = self.root / name
+        for parent in reversed(path.parents):
+            if parent in self.checked or self.root not in parent.parents:
+                continue
+            if parent.is_symlink() or (hasattr(parent, 'is_junction') and parent.is_junction()):
+                raise ValueError('Bundle files must not redirect outside their directory: ' + name)
+            self.checked.add(parent)
+        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+            raise ValueError('Bundle files must not redirect outside their directory: ' + name)
+        return path
+
+
+def stamps(root):
+    try:
+        value = json.loads((Path(root) / VERIFIED).read_text(encoding='utf-8'))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def stamp(path):
+    info = Path(path).stat()
+    return [info.st_size, info.st_mtime_ns]
+
+
+def unchanged(path, row, known):
+    """Still the file its import checked: the size matches, and the recorded time too.
+
+    Only a file whose record says it was rewritten since is hashed.
+    """
+    try:
+        current = stamp(path)
+    except OSError:
+        return False
+    if current[0] != row['bytes']:
+        return False
+    if known.get(row['path']) in (None, current):
+        return True
     from .network import hash_file
+    return hash_file(path) == row['sha256']
+
+
+def import_archive(path, destination, progress=lambda **kw: None, cancelled=lambda: False):
+    """Extract once, checked by the ZIP's own CRC-32 and each file's size.
+
+    A file is written under a temporary name and renamed only when complete,
+    so a file found under its own name was checked when it was written.
+    """
     path = Path(path).resolve()
+    progress(done=0, total=None, detail=path.name)
     value = inspect_archive(path)
-    root = Path(destination).resolve() / '.freevideo-packages' / value['id'] / 'FreeVideo-Windows'
+    tree = Tree(Path(destination).resolve() / '.freevideo-packages' / value['id'] / 'FreeVideo-Windows')
+    root = tree.root
     total = sum(r['bytes'] for r in value['files'])
-    missing = sum(r['bytes'] for r in value['files'] if not inside(root, r['path']).is_file())
+    present, seen, shown = {}, 0, time.monotonic()
+    if root.is_dir():
+        for row in value['files']:
+            try:
+                present[row['path']] = stamp(tree.path(row['path']))
+                seen += row['bytes']
+            except FileNotFoundError:
+                pass
+            if time.monotonic() - shown > .2:
+                # Looking over an earlier import moves the bar too.
+                shown = time.monotonic()
+                progress(done=seen, total=total, detail=path.name)
+    missing = sum(r['bytes'] for r in value['files'] if r['path'] not in present)
     parent = root
     while not parent.exists():
         parent = parent.parent
     if shutil.disk_usage(parent).free < missing + 64 * 2**20:
         raise ValueError('磁盘空间不足，导入此包还需约 %.1f GiB。' % (missing / 2**30))
-    done = 0
+    known, verified = stamps(root), {}
+    for row in value['files']:
+        current = present.get(row['path'])
+        if current is None:
+            continue
+        if current[0] != row['bytes'] or not unchanged(tree.path(row['path']), row, known):
+            raise ValueError('已有导入文件已改变，未覆盖：' + str(tree.path(row['path'])))
+        verified[row['path']] = current
+    marker = tree.path(value['marker'])
+    if not missing and marker.is_file() and marker.read_bytes() == value['raw']:
+        # Imported before and complete: nothing to read again.
+        save(root / VERIFIED, verified)
+        progress(done=total, total=total, detail=path.name)
+        return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name)
+    done = sum(r['bytes'] for r in value['files'] if r['path'] in verified)
     root.mkdir(parents=True, exist_ok=True)
+    progress(done=done, total=total, detail=path.name)
     with zipfile.ZipFile(path) as archive:
         for row in value['files']:
             if cancelled():
                 raise InterruptedError('已暂停导入，ZIP 与已校验文件保留。')
-            target = inside(root, row['path'])
-            if target.is_file():
-                if target.stat().st_size != row['bytes'] or hash_file(target) != row['sha256']:
-                    raise ValueError('已有导入文件已改变，未覆盖：' + str(target))
-                done += row['bytes']
-                progress(done=done, total=total, detail=path.name)
+            if row['path'] in verified:
                 continue
+            target = tree.path(row['path'])
             target.parent.mkdir(parents=True, exist_ok=True)
             partial = target.with_name(target.name + '.importing')
-            digest = hashlib.sha256()
-            with archive.open(PREFIX + row['path']) as source, partial.open('wb') as output:
-                while True:
-                    if cancelled():
-                        raise InterruptedError('已暂停导入，ZIP 与已校验文件保留。')
-                    data = source.read(4 * 2**20)
-                    if not data:
-                        break
-                    output.write(data); digest.update(data); done += len(data)
-                    progress(done=done, total=total, detail=path.name)
-            if partial.stat().st_size != row['bytes'] or digest.hexdigest() != row['sha256']:
+            try:
+                # Reading a member to its end checks its CRC-32 (BadZipFile otherwise).
+                with archive.open(PREFIX + row['path']) as source, partial.open('wb') as output:
+                    while True:
+                        if cancelled():
+                            raise InterruptedError('已暂停导入，ZIP 与已校验文件保留。')
+                        data = source.read(4 * 2**20)
+                        if not data:
+                            break
+                        output.write(data); done += len(data)
+                        progress(done=done, total=total, detail=path.name)
+            except zipfile.BadZipFile as error:
+                raise ValueError('离线包已损坏，请重新下载：' + path.name) from error
+            if partial.stat().st_size != row['bytes']:
                 raise ValueError('离线包校验失败，已保留文件：' + path.name)
             partial.replace(target)
-    inside(root, value['marker']).write_bytes(value['raw'])
+            verified[row['path']] = stamp(target)
+    save(root / VERIFIED, verified)
+    marker.write_bytes(value['raw'])
     return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name)
 
 
-def assemble(runtime, models, source):
+def assemble(runtime, models, source, progress=lambda **kw: None):
     """Bind imported components to the current EXE's engine, without running it."""
     from .desktop_runtime import materialize_source
     check_runtime_platform()
@@ -225,15 +319,22 @@ def assemble(runtime, models, source):
     if any(not r['path'].startswith('models/') for r in model['files']):
         raise ValueError('Invalid model inventory')
     from .network import hash_file
+    known = {root: stamps(root) for root in models}
+    trees, here = {root: Tree(root) for root in models}, Tree(runtime)
+    total, done = sum(r['bytes'] for r in model['files']), 0
+    progress(done=0, total=total, detail='检查配套包')
     for row in model['files']:
-        target = inside(runtime, row['path'])
-        sources = [inside(Path(p), row['path']) for p in models]
-        src = next((p for p in sources if p.is_file() and p.stat().st_size == row['bytes']
-                    and hash_file(p) == row['sha256']), None)
+        target = here.path(row['path'])
+        src = None
+        for root in models:
+            candidate = trees[root].path(row['path'])
+            if candidate.is_file() and unchanged(candidate, row, known[root]):
+                src = candidate
+                break
         if src is None:
             raise ValueError('还需导入「%s」包，缺少文件：%s' % (pack_name(row['path']), row['path']))
         if target.exists():
-            if hash_file(target) != row['sha256']:
+            if not os.path.samefile(target, src) and hash_file(target) != row['sha256']:
                 raise ValueError('离线安装已有不同模型，未覆盖：' + str(target))
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -241,6 +342,8 @@ def assemble(runtime, models, source):
                 os.link(src, target)
             except OSError:
                 shutil.copyfile(src, target)
+        done += row['bytes']
+        progress(done=done, total=total, detail='检查配套包')
     listed = {row['path'] for row in model['files']}
     for root in models:
         package = Path(root) / 'offline-package.json'
@@ -249,9 +352,8 @@ def assemble(runtime, models, source):
         for row in json.loads(package.read_text(encoding='utf-8')).get('files', []):
             if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX):
                 continue
-            src, target = inside(Path(root), row['path']), inside(runtime, row['path'])
-            if (target.exists() or not src.is_file() or src.stat().st_size != row['bytes']
-                    or hash_file(src) != row['sha256']):
+            src, target = trees[root].path(row['path']), here.path(row['path'])
+            if target.exists() or not src.is_file() or not unchanged(src, row, known[root]):
                 continue  # The engine fetches a table it cannot find when a request needs it.
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -268,6 +370,20 @@ def assemble(runtime, models, source):
         files=config['files'] + model['files'])
     inventory(value['files'])
     save(runtime / 'portable.json', value)
+    # Every model file was verified above and the environment's files at import;
+    # the first start takes that instead of reading tens of GiB once more.
+    from .storage import fingerprint
+    imported = stamps(runtime)
+    trusted = {row['path'] for row in model['files']}
+    for row in config['files']:
+        try:
+            if imported.get(row['path']) == stamp(here.path(row['path'])):
+                trusted.add(row['path'])
+        except OSError:
+            pass
+    save(runtime / 'engine' / 'portable-verified.json',
+         {row['path']: dict(fingerprint(here.path(row['path'])), sha256=row['sha256'])
+          for row in value['files'] if row['path'] in trusted})
     return runtime
 
 
@@ -286,8 +402,10 @@ class Importer:
             return
         self.state = dict(status='preparing', done=0, total=None, detail='检查配套包', packages=[])
         def work():
+            def update(**row):
+                self.state = dict(self.state, **row)
             try:
-                root = assemble(runtime, models, source)
+                root = assemble(runtime, models, source, update)
                 self.state = dict(self.state, status='prepared', ready_root=str(root))
             except RuntimeMismatch as error:
                 # An earlier import no longer fits after an update: the models stay.
@@ -307,7 +425,8 @@ class Importer:
         def work():
             # Take every ZIP that fits; one that does not never holds back the others.
             packages, skipped, failed = [], False, []
-            for path in paths:
+            for index, path in enumerate(paths):
+                update(index=index + 1, count=len(paths))
                 try:
                     packages.append(import_archive(path, destination, update, self.cancelled.is_set))
                 except RuntimeMismatch:

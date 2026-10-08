@@ -91,6 +91,12 @@ def verify(root, value, progress=lambda **kw: None):
                 raise ValueError('Bundled file changed during verification: ' + row['path'])
         stamps[row['path']] = stamp
         done += row['bytes']
+        elapsed = time.monotonic()-started
+        if elapsed-last_event[0] >= .2:
+            # Files verified before are only looked at; the bar still moves.
+            last_event[0] = elapsed
+            progress(stage='verify', done=done, total=total, detail=row['path'],
+                     elapsed_seconds=elapsed, bytes_per_second=done/max(.001, elapsed))
     save(ledger, stamps)
     progress(stage='verify', done=total, total=total, detail='All bundled files verified')
 
