@@ -130,7 +130,8 @@ class PortableController(Controller):
         machine = json.loads((self.root/'engine/machine.json').read_text(encoding='utf-8'))
         self.progress(dict(stage='comfy', detail='Open FreeVideo workflow'))
         opened = portable.connect(self.root, self.bundle, machine, self.progress_keywords,
-                                  self.cancelled, url=url, on_controller=self.retain_comfy_controller)
+                                  self.cancelled, url=url, on_controller=self.retain_comfy_controller,
+                                  previous=self.comfy_controller)
         self.selection['ready'] = True
         self.ensure_shortcut()
         self.state = dict(self.state, status='open', url=opened, selection=dict(self.selection),

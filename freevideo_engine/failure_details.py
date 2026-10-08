@@ -107,6 +107,14 @@ def launcher_failure(value, *, zh=False):
          ('This folder holds an offline installation', '这个位置是离线包安装'),
          ('Open it from the launcher. For an automatic installation, go back to Setup and choose another folder.',
           '请在启动页直接打开这份安装。如需自动安装，请回到安装设置，换一个安装位置。')),
+        # Both carry ComfyUI's log, whose unrelated lines must not pick the card.
+        (r'ComfyUI is still starting or could not load FreeVideo', 'comfy-nodes',
+         ('ComfyUI did not load FreeVideo', 'ComfyUI 没有加载 FreeVideo'),
+         ('Click Retry. If it stops here again, the ComfyUI log in the details shows why the FreeVideo nodes did not load; export the report to send it.',
+          '请点击重试。如果仍停在这里，详情里的 ComfyUI 日志会显示 FreeVideo 节点没有加载的原因，可以导出报告反馈。')),
+        (r'ComfyUI is already running\. Restart it once', 'comfy-restart',
+         ('ComfyUI must restart to load FreeVideo', 'ComfyUI 需要重启才能加载 FreeVideo'),
+         ('Close the ComfyUI that is running now, then click Retry.', '请关闭正在运行的 ComfyUI，然后点击重试。')),
         # web/health.js lists the failed files and what to do on the page itself.
         (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),

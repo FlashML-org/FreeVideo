@@ -221,10 +221,23 @@ def initialize(root, progress=lambda **kw: None):
     return machine
 
 
-def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *, url='http://127.0.0.1:8188', on_controller=None):
-    """Use the existing ComfyUI connection/startup behavior without installing."""
-    from .comfy_launcher_runtime import Controller
+def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *, url='http://127.0.0.1:8188',
+            on_controller=None, previous=None):
+    """Use the existing ComfyUI connection/startup behavior without installing.
+
+    previous: the controller of an earlier attempt, whose ComfyUI may still run.
+    """
+    from .comfy_launcher_runtime import Controller, deploy, node_target
+    comfy = inside(root, value['comfy'])
+    if node_target(comfy).resolve() != Path(machine['source']).resolve():
+        # An environment package brings ComfyUI without the FreeVideo node: the
+        # launcher source it was imported with backs one, as in any installation.
+        deploy(comfy, machine['source'], machine['root'])
     controller = Controller(machine['source'], child_environment=lambda: environment(root, value))
+    if previous is not None and previous.owns_server():
+        # A ComfyUI this launcher started for an earlier attempt, e.g. one that
+        # came up without FreeVideo: connecting restarts it instead of asking to.
+        controller.server, controller.server_log = previous.server, previous.server_log
     controller.shortcut_root = root
     if not machine['gpu_uuid'].startswith(('GPU-', 'MIG-')):
         raise ValueError('The CUDA device did not provide a valid GPU identity; rerun the GPU check.')
@@ -235,7 +248,7 @@ def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *,
         controller.cancelled = cancelled
         if cancelled.is_set():
             raise RuntimeError('Startup cancelled')
-    controller.selection = dict(ready=True, root=str(inside(root, value['comfy'])), engine=machine['root'],
+    controller.selection = dict(ready=True, root=str(comfy), engine=machine['root'],
         source=machine['source'], python=machine['python'], url=url,
         portable=False, separate=False)
     controller.restore_terminal(machine['root'])

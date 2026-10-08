@@ -20,6 +20,10 @@ itself wrote:
 * launcher/application/<sha256>/ in the installation: the launcher an earlier
   desktop shortcut started, checked by its digest; never the current target or
   one any shortcut, pinned item or Dock item starts;
+* application/<sha256>/ in the launcher folder: the same copies for
+  installations too deep for a shortcut path; never one any shortcut, pinned
+  item or running launcher starts, this installation's target, or a copy of a
+  running launcher's own version;
 * envs/comfyui-*: a separate environment for this same ComfyUI folder that the
   current one replaced;
 * the downloaded PyTorch wheel archives, once every environment has them.
@@ -436,6 +440,20 @@ def run(*, launcher_root=None, launcher_source=None, launcher_build=None, runnin
             for path in sources(launcher_root / 'source', launcher_root, {launcher_source, *editable}, launcher_source):
                 drop(path, launcher_root, 'launcher-source')
         result['released_bytes'] += finish_retired(launcher_root / 'source', launcher_root, VERSION)
+        if linked is not None:
+            # Copies for installations too deep for a shortcut path (desktop_shortcut.copies_folder),
+            # shared by every installation: keep what any shortcut, running launcher or this
+            # installation's record starts, and the copy of a running launcher's own version.
+            keep = {path.parent for path in [*running, *linked]}
+            try:
+                keep.add(Path(json.loads((Path(engine) / 'launcher' / 'desktop-shortcut.json').read_text(encoding='utf-8'))['target']).parent)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+            versions = {path.parent.name[:64] for path in running}
+            for path in applications(launcher_root / 'application', launcher_root, keep):
+                if path.name[:64] not in versions:
+                    drop(path, launcher_root, 'launcher-copy')
+            result['released_bytes'] += finish_retired(launcher_root / 'application', launcher_root, DIGEST)
     if engine:
         engine = Path(engine).absolute()
         receipt_source = None
