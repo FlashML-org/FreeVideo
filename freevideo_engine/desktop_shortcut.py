@@ -6,7 +6,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 import uuid
 
 from .monitoring import save
@@ -21,16 +20,25 @@ def digest(path):
     return value.hexdigest()
 
 
-def desktop_directory():
+def _shell_folder(csidl, what):
     import ctypes
     from ctypes import wintypes
     buffer = ctypes.create_unicode_buffer(32768)
     call = ctypes.WinDLL('shell32').SHGetFolderPathW
     call.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR]
     call.restype = ctypes.c_long
-    if call(None, 0x8010, None, 0, buffer) != 0 or not buffer.value:
-        raise OSError('Windows could not locate your desktop folder')
+    if call(None, csidl | 0x8000, None, 0, buffer) != 0 or not buffer.value:  # CSIDL_FLAG_CREATE
+        raise OSError('Windows could not locate your %s folder' % what)
     return Path(buffer.value)
+
+
+def desktop_directory():
+    return _shell_folder(0x10, 'desktop')  # CSIDL_DESKTOPDIRECTORY, redirected desktops included
+
+
+def start_menu_directory():
+    """Start menu Programs, where Windows search finds FreeVideo when the desktop has no shortcut."""
+    return _shell_folder(0x02, 'Start menu')  # CSIDL_PROGRAMS
 
 
 def write_link(path, target, arguments, working_directory, icon):
@@ -122,6 +130,15 @@ def read_link_targets(paths):
     return targets
 
 
+def _complete(root, fingerprint, folder):
+    """A launcher copy the shortcut can start; one this account cannot read is not."""
+    try:
+        return (digest(root / 'FreeVideo.exe') == fingerprint
+                and (not folder or (root / '_internal').is_dir()))
+    except OSError:
+        return False
+
+
 def launcher_target(engine, source, portable_root=None):
     if portable_root:
         target = Path(portable_root) / 'FreeVideo.exe'
@@ -134,26 +151,136 @@ def launcher_target(engine, source, portable_root=None):
         folder = (current_build() or {}).get('packaging') == 'onedir'
         fingerprint = digest(executable)
         parent = Path(engine) / 'launcher/application'
-        root = parent / fingerprint
-        target = root / 'FreeVideo.exe'
-        if not target.is_file() or digest(target) != fingerprint or (folder and not (root / '_internal').is_dir()):
-            parent.mkdir(parents=True, exist_ok=True)
-            stage = Path(tempfile.mkdtemp(prefix='launcher-', dir=parent))
+        for root in [parent / fingerprint, *sorted(parent.glob(fingerprint + '-*'))]:
+            if _complete(root, fingerprint, folder):
+                return root / 'FreeVideo.exe', [], root / 'FreeVideo.exe'
+        parent.mkdir(parents=True, exist_ok=True)
+        # Not tempfile.mkdtemp: since Python 3.12.4 that folder admits only its owner, so a copy
+        # made while running as administrator could not be opened from the shortcut afterwards.
+        stage = parent / ('launcher-' + uuid.uuid4().hex)
+        stage.mkdir()
+        try:
             shutil.copy2(executable, stage / 'FreeVideo.exe')
             if folder:
                 shutil.copytree(executable.parent / '_internal', stage / '_internal')
             if digest(stage / 'FreeVideo.exe') != fingerprint:
                 raise OSError('Launcher changed while preparing the desktop shortcut; retry installation')
-            if root.exists():
+            root = parent / fingerprint
+            if os.path.lexists(root):
                 root = root.with_name(fingerprint + '-' + uuid.uuid4().hex[:8])
             stage.rename(root)
-            target = root / 'FreeVideo.exe'
-        return target, [], target
+        finally:
+            if stage.exists(): shutil.rmtree(stage, ignore_errors=True)  # Every start retries: no partial copies.
+        return root / 'FreeVideo.exe', [], root / 'FreeVideo.exe'
     python = Path(sys.executable).resolve()
     if python.with_name('pythonw.exe').is_file():
         python = python.with_name('pythonw.exe')
     code = "import runpy,sys;sys.path.insert(0,sys.argv[1]);runpy.run_module('freevideo_engine.comfy_launcher',run_name='__main__')"
     return python, ['-c', code, str(Path(source).resolve())], Path(source) / 'freevideo_engine/assets/icon.ico'
+
+
+def _same(first, second):
+    return bool(first) and bool(second) and os.path.normcase(str(first)) == os.path.normcase(str(second))
+
+
+def _ours(path, entry, target):
+    """A shortcut this or an earlier FreeVideo installation wrote, not one of the user's own.
+
+    The recorded digest stops matching once Windows rewrites a link's tracking
+    data in place, and a reinstall into another folder starts with no record.
+    Either way the old link was kept as the user's own and a second shortcut
+    added next to it, one of them starting a launcher that no longer exists.
+    A link that starts a FreeVideo launcher copy, or names a FreeVideo.exe that
+    is gone, is still ours; a user's own link to anything else is left alone.
+    """
+    if _same(entry.get('path'), path) and entry.get('sha256'):
+        try:
+            if digest(path) == entry['sha256']:
+                return True
+        except OSError:
+            pass
+    try:
+        named = read_link_targets([path]).get(str(path))
+    except (OSError, AttributeError, ValueError):
+        return False  # Unreadable: treat it as the user's.
+    if not named:
+        return False
+    named = Path(named)
+    if _same(named, target) or _same(named, entry.get('target')):
+        return True
+    return named.name.lower() == 'freevideo.exe' and (
+        not named.exists() or named.parent.parent.name.lower() in ('application', 'application.noindex'))
+
+
+def _starts(path, target):
+    try:
+        return _same(read_link_targets([path]).get(str(path)), target)
+    except (OSError, AttributeError, ValueError):
+        return False
+
+
+def _renamed(folder, entry, target):
+    """This installation's link under a name the user chose; refresh it rather than add another."""
+    links = [path for path in folder.glob('*.lnk') if not path.name.startswith('FreeVideo-')]
+    try:
+        named = read_link_targets(links)
+    except (OSError, AttributeError, ValueError):
+        return None
+    copies = Path(target).parent.parent  # <engine>/launcher/application
+    for path in links:
+        found = named.get(str(path))
+        if found and (_same(found, target) or _same(found, entry.get('target'))
+                      or copies.name == 'application' and _same(Path(found).parent.parent, copies)
+                      and Path(found).name.lower() == 'freevideo.exe'):
+            return path
+    return None
+
+
+def _place(folder, entry, target, arguments, icon):
+    """Write or refresh FreeVideo.lnk in one folder, keeping a user's own link of that name."""
+    path = folder / 'FreeVideo.lnk'
+    old = Path(entry['path']) if entry.get('path') else None
+    if old is not None and old.parent == folder and old.is_file() and _ours(old, entry, target):
+        path = old
+    elif not (path.is_file() and _ours(path, entry, target)):
+        path = _renamed(folder, entry, target) or path
+        index = 2
+        while path.name.startswith('FreeVideo') and path.exists() and not _ours(path, entry, target):
+            path = folder / ('FreeVideo (%d).lnk' % index); index += 1
+    if path.is_file():
+        if (_same(entry.get('path'), path) and _same(entry.get('target'), target)
+                and entry.get('arguments') == arguments and entry.get('sha256') == digest(path)):
+            return dict(entry, status='present')
+        if not arguments and _starts(path, target):
+            # Renamed, given another icon or hotkey, or its tracking data rewritten by
+            # Windows: it still starts this launcher, so keep it as it is and record it.
+            return dict(status='present', path=str(path), target=str(target), arguments=arguments, sha256=digest(path))
+    stage = folder / ('FreeVideo-' + uuid.uuid4().hex + '.lnk')
+    try:
+        write_link(stage, target, arguments, target.parent, icon)
+        os.replace(stage, path)
+    finally:
+        if stage.exists(): stage.unlink()
+    return dict(status='created', path=str(path), target=str(target), arguments=arguments, sha256=digest(path))
+
+
+def _failure(error, menu_ready):
+    """What the launcher says when the desktop refused the shortcut, in both languages."""
+    text = str(error)
+    denied = isinstance(error, PermissionError) or '0x80070005' in text.lower() or 'access is denied' in text.lower()
+    en = ['The desktop shortcut could not be created:']
+    zh = ['桌面快捷方式没有创建成功：']
+    if denied:
+        # Controlled folder access (Windows Security) refuses unknown programs on the desktop.
+        en.append('Windows did not allow FreeVideo to write to the desktop. If Controlled folder access is on in '
+                  'Windows Security, allow FreeVideo there, then click Create desktop shortcut.')
+        zh.append('Windows 不允许 FreeVideo 写入桌面。如果在“Windows 安全中心”里开启了“受控文件夹访问”，'
+                  '请允许 FreeVideo，然后点击“创建桌面快捷方式”。')
+    else:
+        en.append(text); zh.append(text)
+    if menu_ready:
+        en.append('FreeVideo is in the Start menu.'); zh.append('开始菜单里可以找到 FreeVideo。')
+    return ' '.join(en), ''.join(zh)
 
 
 def create(engine, source, portable_root=None):
@@ -165,29 +292,28 @@ def create(engine, source, portable_root=None):
     engine = Path(engine)
     receipt = engine / 'launcher/desktop-shortcut.json'
     target, arguments, icon = launcher_target(engine, source, portable_root)
-    desktop = desktop_directory()
-    path = desktop / 'FreeVideo.lnk'
     try:
         previous = json.loads(receipt.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         previous = {}
-    old = Path(previous.get('path', str(path)))
-    if old.parent == desktop and old.is_file() and digest(old) == previous.get('sha256'):
-        path = old
-        if previous.get('target') == str(target) and previous.get('arguments') == arguments:
-            return dict(previous, status='present')
-    else:
-        index = 2
-        while path.exists():
-            path = desktop / ('FreeVideo (%d).lnk' % index); index += 1
-    stage = desktop / ('FreeVideo-' + uuid.uuid4().hex + '.lnk')
+    if not isinstance(previous, dict):
+        previous = {}
+    recorded = {key: value for key, value in previous.items() if key != 'start_menu'}
+    # Each place on its own: a refused desktop must not cost the Start menu entry.
     try:
-        write_link(stage, target, arguments, target.parent, icon)
-        os.replace(stage, path)
-    finally:
-        if stage.exists(): stage.unlink()
-    result = dict(status='created', path=str(path), target=str(target), arguments=arguments, sha256=digest(path))
-    save(receipt, result)
+        menu = _place(start_menu_directory(), previous.get('start_menu') or {}, target, arguments, icon)
+    except OSError as error:
+        menu = dict(status='failed', error=str(error))
+    try:
+        desktop = _place(desktop_directory(), recorded, target, arguments, icon)
+    except OSError as error:
+        en, zh = _failure(error, menu['status'] in ('created', 'present'))
+        if menu['status'] != 'failed':
+            save(receipt, dict(recorded, start_menu=menu))
+        return dict(status='failed', error=en, error_zh=zh, start_menu=menu)
+    result = dict(desktop, start_menu=menu)
+    if result != previous:
+        save(receipt, result)
     return result
 
 
@@ -196,4 +322,5 @@ def create_after_install(engine, source, portable_root=None):
     try:
         return create(engine, source, portable_root)
     except (OSError, ValueError) as error:
-        return dict(status='failed', error='Installed successfully, but the desktop shortcut could not be created: ' + str(error))
+        return dict(status='failed', error='Installed successfully, but the desktop shortcut could not be created: ' + str(error),
+                    error_zh='安装已完成，但桌面快捷方式没有创建成功：' + str(error))

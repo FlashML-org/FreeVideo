@@ -452,6 +452,11 @@ class Controller:
             self.state = dict(status='ready', engine_update_available=not matching_source(self.source, source),
                               selection=dict(self.selection))
             self.restore_terminal(engine)
+            from .system import windows
+            if windows() and getattr(sys, 'frozen', False):
+                # Opening the launcher repairs a missing, broken or stale shortcut
+                # even when no launch follows, such as one that failed to start.
+                self.ensure_shortcut()
             return True
         except (OSError, ValueError, KeyError, TypeError):
             return False

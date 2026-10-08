@@ -1,19 +1,38 @@
 {
   "schema": 1,
-  "product_version": "0.3.15",
+  "product_version": "0.3.16",
   "en": {
-    "summary": "On Windows computers with a small page file, generation keeps its weight read-ahead on and no longer runs out of virtual memory midway.",
+    "summary": "On Windows, FreeVideo repairs its desktop shortcut each time the launcher opens, and keeps starting normally after it was once run as administrator.",
     "changes": [
-      "When FreeVideo keeps model weights in system memory on Windows, it now leaves room in virtual memory (commit) for the GPU memory the request will still allocate. Before, a computer with a small page file could run out midway: the weight read-ahead switched off for the rest of the request, or the request stopped and started again with less kept in memory. In a test with a fixed page file and a 7 GB GPU limit, a request that stopped and restarted midway (851 s) now completes without the restart (622 s)."
+      "On Windows, the launcher checks its desktop shortcut each time it opens and repairs it in place, and FreeVideo is now also added to the Start menu. A shortcut left by an earlier installation, or rewritten by Windows, is updated instead of a second \"FreeVideo (2)\" appearing next to it; a shortcut you renamed keeps its name, and one you gave another icon is left as it is. If Windows does not allow writing to the desktop (for example Controlled folder access in Windows Security), the launcher says so and how to allow FreeVideo, and FreeVideo is still in the Start menu.",
+      "After FreeVideo was once run as administrator, its desktop shortcut still opens it: the launcher copy behind the shortcut stays readable without administrator rights, and an unreadable copy left by an earlier version is replaced the next time the launcher opens.",
+      "Offline installations also keep starting after FreeVideo was once run as administrator. If Windows denies this account access to FreeVideo's program files, the launcher says so and how to fix it, instead of reporting a missing module."
     ]
   },
   "zh": {
-    "summary": "页面文件较小的 Windows 电脑上，生成过程中不再耗尽虚拟内存，权重预读也会一直开着。",
+    "summary": "在 Windows 上，每次打开启动器都会检查并修复桌面快捷方式；以管理员身份运行过一次之后，FreeVideo 也能正常启动。",
     "changes": [
-      "在 Windows 上把模型权重放进内存时，FreeVideo 现在会为本次请求之后还要分配的显存预留虚拟内存（提交内存）。之前页面文件较小的电脑可能在生成中途耗尽虚拟内存：剩下的步骤会关闭权重预读，或者请求中止后减少内存占用再重新开始。在固定页面文件、显存限制为 7 GB 的测试中，原来中途中止重来的请求（851 秒）现在一次完成（622 秒）。"
+      "在 Windows 上，启动器每次打开时都会检查桌面快捷方式并就地修复，开始菜单里现在也会有 FreeVideo。以前安装留下的、或被 Windows 改写过的快捷方式会直接更新，不会再在旁边多出一个“FreeVideo (2)”；改过名字的快捷方式保留原名，换过图标的保持不变。如果 Windows 不允许写入桌面（例如开启了“Windows 安全中心”的“受控文件夹访问”），启动器会说明原因和放行办法，开始菜单里仍然可以找到 FreeVideo。",
+      "以管理员身份运行过一次之后，桌面快捷方式仍能打开 FreeVideo：快捷方式指向的启动器副本不需要管理员权限也能读取；之前版本留下的读不了的副本，会在下次打开启动器时换掉。",
+      "以管理员身份运行过一次之后，离线安装也能正常启动；如果 Windows 不允许当前账户读取程序文件，启动器会说明原因和处理办法，不再只报缺少模块。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.15",
+      "en": {
+        "summary": "On Windows computers with a small page file, generation keeps its weight read-ahead on and no longer runs out of virtual memory midway.",
+        "changes": [
+          "When FreeVideo keeps model weights in system memory on Windows, it now leaves room in virtual memory (commit) for the GPU memory the request will still allocate. Before, a computer with a small page file could run out midway: the weight read-ahead switched off for the rest of the request, or the request stopped and started again with less kept in memory. In a test with a fixed page file and a 7 GB GPU limit, a request that stopped and restarted midway (851 s) now completes without the restart (622 s)."
+        ]
+      },
+      "zh": {
+        "summary": "页面文件较小的 Windows 电脑上，生成过程中不再耗尽虚拟内存，权重预读也会一直开着。",
+        "changes": [
+          "在 Windows 上把模型权重放进内存时，FreeVideo 现在会为本次请求之后还要分配的显存预留虚拟内存（提交内存）。之前页面文件较小的电脑可能在生成中途耗尽虚拟内存：剩下的步骤会关闭权重预读，或者请求中止后减少内存占用再重新开始。在固定页面文件、显存限制为 7 GB 的测试中，原来中途中止重来的请求（851 秒）现在一次完成（622 秒）。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.14",
       "en": {
@@ -240,23 +259,6 @@
         "changes": [
           "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
           "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.3.3",
-      "en": {
-        "summary": "Runs the int8 model on 6 GB graphics cards and imports the int8 offline packs.",
-        "changes": [
-          "Graphics cards with 6 GB of memory, such as a laptop RTX 3060, can now generate with the int8 model instead of being refused, and 8 to 12 GB cards can make longer videos. These runs use a low-memory mode, which is slower, and FreeVideo says so while generating. When a request still does not fit, the message names sizes and lengths that fit now.",
-          "The launcher imports the new int8 offline packs: video model, text encoder, video & audio decoder, and sampling caches."
-        ]
-      },
-      "zh": {
-        "summary": "6 GB 显存的显卡可以用 int8 模型生成，并支持导入 int8 离线包。",
-        "changes": [
-          "6 GB 显存的显卡（例如笔记本 RTX 3060）现在可以用 int8 模型生成，不再被拒绝；8 到 12 GB 的显卡也能生成更长的视频。这时会改用省显存方式，速度会慢一些，生成时会提示。如果仍然放不下，提示里会给出这台电脑现在能生成的尺寸和时长。",
-          "启动器支持导入新的 int8 离线包：视频模型、文本编码器、视频与音频解码器、采样缓存。"
         ]
       }
     }

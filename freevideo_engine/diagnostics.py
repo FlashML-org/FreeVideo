@@ -302,6 +302,10 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
         download_ownership = root / '.freevideo/downloaded-models.json'
         if download_ownership.is_file():
             add_path('installation/downloaded-models.json', download_ownership)
+        # Where the desktop and Start menu shortcuts point, or why Windows refused them.
+        shortcut = root / 'launcher/desktop-shortcut.json'
+        if shortcut.is_file() and not is_link(shortcut):
+            add_path('installation/desktop-shortcut.json', shortcut)
         for label, directory in [('setup', setup), ('run', selected), ('optimization', optimized)]:
             if directory:
                 for path in report_files(directory):
