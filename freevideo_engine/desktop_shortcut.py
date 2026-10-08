@@ -130,6 +130,20 @@ def read_link_targets(paths):
     return targets
 
 
+# IShellLinkW::SetPath fails (E_FAIL) for a target of MAX_PATH, 260 characters, or more.
+LINK_PATH_LIMIT = 259
+
+
+def copies_folder(engine, fingerprint):
+    """Where the launcher copy behind the shortcut goes: in the installation, unless the path
+    would be too long for a Windows shortcut, as in an offline installation in a deep folder."""
+    parent = Path(os.path.abspath(engine)) / 'launcher/application'
+    if len(str(parent / (fingerprint + '-' + 'f' * 8) / 'FreeVideo.exe')) <= LINK_PATH_LIMIT:
+        return parent
+    from .desktop_runtime import launcher_root
+    return Path(os.path.abspath(launcher_root())) / 'application'
+
+
 def _complete(root, fingerprint, folder):
     """A launcher copy the shortcut can start; one this account cannot read is not."""
     try:
@@ -150,7 +164,7 @@ def launcher_target(engine, source, portable_root=None):
         from .launcher_update import current_build
         folder = (current_build() or {}).get('packaging') == 'onedir'
         fingerprint = digest(executable)
-        parent = Path(engine) / 'launcher/application'
+        parent = copies_folder(engine, fingerprint)
         for root in [parent / fingerprint, *sorted(parent.glob(fingerprint + '-*'))]:
             if _complete(root, fingerprint, folder):
                 return root / 'FreeVideo.exe', [], root / 'FreeVideo.exe'

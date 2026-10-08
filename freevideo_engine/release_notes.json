@@ -1,21 +1,42 @@
 {
   "schema": 1,
-  "product_version": "0.3.19",
+  "product_version": "0.3.20",
   "en": {
-    "summary": "On Windows, GPUs with 8 or 10 GB of memory sample the first pass a little faster when a video uses reference images, a first or last frame, or reference audio.",
+    "summary": "Offline installations now open FreeVideo in ComfyUI, and on Linux, GPUs with memory to spare generate faster.",
     "changes": [
-      "On Windows GPUs with 8 or 10 GB of memory, the first pass of a video up to 10 seconds long now runs attention 8 heads at a time when the video uses reference images, a first or last frame, or reference audio, as text-only videos already did, instead of 4. With one reference image, a 10-second 1344×768 video took about 8% less time per first-pass step on an 8 GB budget, staying within the same video memory budget. The same seed can give a slightly different video than before, as it already does between GPUs with different memory.",
-      "On Windows, the model layers kept on the GPU between first-pass steps no longer shrink from step to step, so fewer layers are transferred again on each step."
+      "Offline installations imported from the environment package now open FreeVideo in ComfyUI: the launcher installs the FreeVideo node that the package does not carry. Before, ComfyUI started without FreeVideo and the launch stopped at \"could not load FreeVideo\". A retry now also restarts the ComfyUI that an earlier attempt left running, and the message no longer suggests repairing the environment.",
+      "Offline installations in a longer folder path now also get their desktop and Start menu shortcuts. Windows cannot create a shortcut to a program whose path is 260 characters or longer, and the folders of an offline installation could make the launcher copy's path that long; the copy now goes to a shorter folder in that case.",
+      "On Linux, when the GPU has memory to spare, attention now runs 28 or all 56 heads at a time instead of 16; how many model layers stay on the GPU, and what is kept in system memory, does not change. On a 96 GB GPU, sampling a 10-second 1344×768 video took about 11% less time; with a 16–20 GB budget the gain is about 6–9%. Smaller GPUs and Windows keep their current settings. The same seed can give a slightly different video than before, as it already does between GPUs with different memory.",
+      "On Linux, video decoding now uses its FP16 cache on every GPU (it was on for some only). Decoding a 10-second 1344×768 video on a 96 GB GPU took 15.4 s instead of 19.2 s and 4.2 GB less memory, with identical output."
     ]
   },
   "zh": {
-    "summary": "在 Windows 上，8 GB 和 10 GB 显存的显卡生成带参考图、首尾帧或参考音频的视频时，第一遍采样稍快一些。",
+    "summary": "离线安装可以在 ComfyUI 中打开 FreeVideo；在 Linux 上，显存有富余的显卡生成更快。",
     "changes": [
-      "在 8 GB 和 10 GB 显存的 Windows 显卡上，10 秒以内的视频如果带参考图、首帧或尾帧、参考音频，第一遍注意力改为每次计算 8 个头（原来是 4 个），与纯文本生成一致。带一张参考图生成 10 秒 1344×768 视频时，在 8 GB 显存预算下第一遍每步缩短约 8%，显存仍在原来的预算之内。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。",
-      "在 Windows 上，第一遍步与步之间保留在显卡上的模型层不再逐步减少，每步需要重新传输的层更少。"
+      "用环境包导入的离线安装现在可以在 ComfyUI 中打开 FreeVideo：启动器会安装环境包里没有带的 FreeVideo 节点。之前 ComfyUI 启动时没有加载 FreeVideo，启动停在“无法加载 FreeVideo”。重试时也会重启上一次留下的 ComfyUI，提示也不再让你去修复运行环境。",
+      "离线安装放在较长的文件夹路径下时，现在也能创建桌面和开始菜单快捷方式。Windows 无法为路径达到 260 个字符的程序创建快捷方式，而离线安装的目录层级可能让启动器副本的路径超过这个长度；这种情况下，副本会改放到路径较短的位置。",
+      "在 Linux 上，显存有富余时，注意力改为每次计算 28 个或全部 56 个头（原来每次 16 个）；留在显卡上的模型层数和放在内存里的内容都不变。在 96 GB 显卡上，生成 10 秒 1344×768 视频的采样时间缩短约 11%；显存预算在 16–20 GB 时约缩短 6–9%。显存较小的显卡和 Windows 保持现有设置。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。",
+      "在 Linux 上，所有显卡的视频解码都使用 FP16 缓存（以前只有部分显卡开启）。在 96 GB 显卡上解码 10 秒 1344×768 视频从 19.2 秒降到 15.4 秒，少占 4.2 GB 显存，输出完全一致。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.19",
+      "en": {
+        "summary": "On Windows, GPUs with 8 or 10 GB of memory sample the first pass a little faster when a video uses reference images, a first or last frame, or reference audio.",
+        "changes": [
+          "On Windows GPUs with 8 or 10 GB of memory, the first pass of a video up to 10 seconds long now runs attention 8 heads at a time when the video uses reference images, a first or last frame, or reference audio, as text-only videos already did, instead of 4. With one reference image, a 10-second 1344×768 video took about 8% less time per first-pass step on an 8 GB budget, staying within the same video memory budget. The same seed can give a slightly different video than before, as it already does between GPUs with different memory.",
+          "On Windows, the model layers kept on the GPU between first-pass steps no longer shrink from step to step, so fewer layers are transferred again on each step."
+        ]
+      },
+      "zh": {
+        "summary": "在 Windows 上，8 GB 和 10 GB 显存的显卡生成带参考图、首尾帧或参考音频的视频时，第一遍采样稍快一些。",
+        "changes": [
+          "在 8 GB 和 10 GB 显存的 Windows 显卡上，10 秒以内的视频如果带参考图、首帧或尾帧、参考音频，第一遍注意力改为每次计算 8 个头（原来是 4 个），与纯文本生成一致。带一张参考图生成 10 秒 1344×768 视频时，在 8 GB 显存预算下第一遍每步缩短约 8%，显存仍在原来的预算之内。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。",
+          "在 Windows 上，第一遍步与步之间保留在显卡上的模型层不再逐步减少，每步需要重新传输的层更少。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.18",
       "en": {
@@ -230,23 +251,6 @@
           "模型下载中断且无法续传时，安装会自动从头重新下载该文件，不再每次重试都停下；未完成的文件会另行保留。",
           "模型准备停止时，提示会写明具体的文件和原因，而不是笼统的「准备已停止」。",
           "ComfyUI 内的安装面板会在按钮下方说明「安装／修复」暂不可用的原因：需要先「检测并预览」、勾选同意，或先解决计划中标红的问题；修改设置后会清除过期的计划。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.3.7",
-      "en": {
-        "summary": "Installation no longer stops with \"Select at most 64 model libraries\" when ComfyUI has many model folders.",
-        "changes": [
-          "Fixed installation stopping with \"Select at most 64 model libraries\" when ComfyUI has more than ten model folders. Each folder now counts once, and when more than 64 are found, the first 64 are used and installation continues.",
-          "A saved model folder that has since been deleted, such as a removed offline package folder, is skipped instead of blocking installation or offline import."
-        ]
-      },
-      "zh": {
-        "summary": "修复 ComfyUI 模型目录较多时，安装提示「Select at most 64 model libraries」的问题。",
-        "changes": [
-          "修复 ComfyUI 模型目录超过十个时，安装停在「Select at most 64 model libraries」的问题。同一个目录现在只计一次；找到的目录超过 64 个时使用前 64 个，安装照常进行。",
-          "已保存的模型文件夹如果已被删除（例如删除了离线包目录），会自动跳过，不再阻止安装或离线导入。"
         ]
       }
     }

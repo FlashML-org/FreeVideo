@@ -180,6 +180,9 @@ def prefetch_for_budget(gpu_budget, *, ram_budget=None, twelve=False, ampere=Fal
                 and architecture == 'blackwell-rtx')
             or (twelve and ampere))
 
+# The transformer's attention heads; a group this wide is unchunked.
+ALL_HEADS = 56
+
 # Whole-device bytes a request needs beside the resident blocks, by head
 # group and token count, with the attention outputs on the GPU. A head-group
 # slice is tokens x heads x 128 x 2 bytes, so this scales with the request
@@ -209,6 +212,23 @@ ACTIVATION_BY_TOKENS = {
     4: ((41472, 6.11), (72576, 7.69), (102816, 9.97)),
     8: ((41472, 6.11), (72576, 8.03), (102816, 10.53)),
     16: ((41472, 6.75), (72576, 10.05), (102816, 14.21)),
+    # Wider groups for cards with room to spare. Linux RTX PRO 6000, eight
+    # resident blocks, complete requests from 672x384 to 1920x1088, measured
+    # with the feed-forward unchunked, which needs a little more than the
+    # 2048-row tiles kept here (0.6 GiB at 72576 tokens): whole-device peak
+    # minus the blocks, times 1.05 because FP8 measured 4% above int8 (20.66
+    # against 19.82 GiB at 72576 tokens), plus 0.25 GiB. The same method gave
+    # 4.79 / 7.15 / 10.31 / 13.72 / 18.09 GiB for sixteen heads, close to the
+    # anchors above. With the 2048-row tiles kept, complete 1344x768x243
+    # requests against sixteen heads: all 56 took 7.7% less time per
+    # full-resolution step and 9.3% per first-pass step (int8; FP8 8.1 and
+    # 11.3%), 28 heads 6.4% at full resolution; a 16 GiB budget, which widens
+    # only the first pass, sampled 6% faster, 20 GiB 8.6% and 96 GiB 10.8%.
+    # The tiles stay: a pass with a different group changes them in place,
+    # and the unchunked feed-forward would cost that path special cases for
+    # 2 to 3%.
+    28: ((18144, 6.32), (41472, 9.85), (72576, 14.89), (102816, 21.08), (146880, 28.83)),
+    ALL_HEADS: ((18144, 8.42), (41472, 13.73), (72576, 21.06), (102816, 29.0), (146880, 39.54)),
 }
 
 
@@ -844,8 +864,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # A fixed budget threshold cannot express this: 41472 tokens take
         # sixteen heads on an 8 GiB card and 102816 do not take eight on a
         # 10 GiB one, and the group is worth 13 to 51% where it fits.
+        # Groups wider than sixteen only with room left for the blocks the
+        # card holds anyway: the eight every larger card keeps, or more where
+        # RAM cannot take the rest (ram_wants below), so a wider group never
+        # moves weights to disk.
+        held = max(RESIDENT_TARGET, 50 - max(0, int((retention_budget - 2.5 * GiB) // block_bytes)))
         head = next((group for group in sorted(ACTIVATION_BY_TOKENS, reverse=True)
-                     if gpu_budget >= activation_bytes(group, effective_tokens)), 4)
+                     if gpu_budget >= activation_bytes(group, effective_tokens)
+                     + (held * block_bytes if group > 16 else 0)), 4)
     resident = (4 if ampere else 1) if twelve else 3
     residual_offload = False
     cpu_outputs = False
@@ -1039,11 +1065,18 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             # after two allocator retries; 1344x768x243 without blocks, 3.88 and
             # 4.52 with none. Every 0.3.2 Windows staging plan held no blocks.
             resident = 0
+    pinned_like = None
     if not small:
         # One measured requirement for the group in use, so the block count is
         # continuous across the band edges rather than restarting at each.
         resident = max(0, min(RESIDENT_VRAM_CEILING,
                               int((gpu_budget - activation_bytes(head, effective_tokens)) / block_bytes)))
+        # The pinned subset below keeps the size sixteen heads give it: a
+        # wider group's activations come out of the same budget, and a lower
+        # count here would only lock more host memory, which no run measured.
+        if head > 16:
+            pinned_like = max(0, min(RESIDENT_VRAM_CEILING,
+                                     int((gpu_budget - activation_bytes(16, effective_tokens)) / block_bytes)))
     # Placement alone is numerically neutral. Scale the activation allowance
     # with the actual token count before spending memory on resident weights.
     # The small staging path is anchored to the complete 243-frame Ada run;
@@ -1123,7 +1156,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         head, resident, prefetch = 4, 0, False
         cpu_outputs = residual_offload = True
     pin = max(0, min(22_000_000_000, retention_budget - HOST_WEIGHT_HEADROOM)) / 1e9
-    pin = min(pin, (50 - resident) * block_bytes / 1e9)
+    pin = min(pin, (50 - (resident if pinned_like is None else pinned_like)) * block_bytes / 1e9)
     if small:
         # Only locking every offloaded layer removes the offloader's own
         # staging buffers, so a partial pin pays full memory for both: a
@@ -1330,8 +1363,11 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # Windows also avoids the whole-checkpoint CPU load before uploading the
     # resident prefix. Keep residency/headroom unchanged: this spends less
     # memory on the same placement, rather than filling the reclaimed space.
-    decoder_linear_cache = ((hardware.architecture == 'blackwell-rtx'
-                             and hardware.system == 'Linux')
+    # On Linux every architecture: the cache holds exactly the FP16 values
+    # autocast casts to on each call. On an RTX PRO 6000 a 1344x768x243
+    # decode measured 19.2 s without it and 15.4 s with it, 4.2 GiB lower,
+    # bit-identical; Hopper and Ampere cast the same way.
+    decoder_linear_cache = (hardware.system == 'Linux'
                             or (hardware.architecture in ('ada', 'blackwell-rtx')
                                 and hardware.system == 'Windows'))
     if decoder_offload:
