@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "gpu": "AMD Radeon AI PRO R9700",
+  "architecture": "gfx1201",
+  "advertised_vram_gb": 32,
+  "peak_memory_bandwidth_gb_s": 640,
+  "source_commit": "e09d4bd7a954363fe668712ba2ff4b6d9d16854f",
+  "validated_composition_sha256": "ac22c2475833ef8e9c539213c4fa6c84939f1acb93289d31ee7eea34aa5c94c7",
+  "scope": "Complete native worker from model load to media/artifact save; cached conditioning excludes text encoding. Shared disk caches, fresh process per trial.",
+  "settings": {
+    "width": 1344,
+    "height": 768,
+    "frames": 243,
+    "fps": 24,
+    "duration_seconds": 10.125,
+    "seed": 2026090901,
+    "base_width": 672,
+    "base_height": 384,
+    "base_steps": 8,
+    "refine_steps": 3,
+    "refine_schedule": "community-sigma3-v1",
+    "attention": "BF16 Triton window attention, indexed large windows",
+    "projections": "native FP8, unchanged global activation scales",
+    "effective_ff_chunk": 8192,
+    "tail_chunk": 2048,
+    "head_chunk": 16,
+    "window_batch": 4,
+    "resident_blocks": 8,
+    "pin_host_gb": 4.0,
+    "gpu_budget_bytes": 27917287424,
+    "ram_budget_bytes": 484101042176
+  },
+  "environment": {
+    "system": "Linux",
+    "torch": "2.12.0+rocm10.0.0",
+    "hip": "7.15.26333",
+    "triton": "3.8.0",
+    "python": "3.12.3",
+    "image": "rocm/pytorch@sha256:55bf8baa2a513b1c05bd256119fbc57a6ca64170e6cf5fe519b1cdd0c458cfd9"
+  },
+  "trials": [
+    {
+      "name": "baseline-00",
+      "worker_seconds": 335.45495225302875,
+      "stage_seconds": {
+        "transformer_load": 2.9856610669521615,
+        "base_8": 101.58158824208658,
+        "upscale": 3.542287645977922,
+        "refine_3": 169.0797217229847,
+        "decode_and_save": 56.955979424063116,
+        "worker_other": 1.3097141509642825
+      }
+    },
+    {
+      "name": "baseline-01",
+      "worker_seconds": 333.91811136493925,
+      "stage_seconds": {
+        "transformer_load": 2.9452538919867948,
+        "base_8": 100.93728116701823,
+        "upscale": 3.541318961069919,
+        "refine_3": 169.32141423993744,
+        "decode_and_save": 55.867667763028294,
+        "worker_other": 1.3051753418985754
+      }
+    }
+  ],
+  "worker_mean_seconds": 334.686531808984,
+  "stage_mean_seconds": {
+    "transformer_load": 2.965457479469478,
+    "base_8": 101.2594347045524,
+    "upscale": 3.5418033035239205,
+    "refine_3": 169.20056798146106,
+    "decode_and_save": 56.411823593545705,
+    "worker_other": 1.307444746431429
+  },
+  "validation": {
+    "all_artifacts_finite": true,
+    "repeat_video_latents_bitwise_equal": true,
+    "repeat_audio_latents_bitwise_equal": true,
+    "repeat_rgb_bitwise_equal": true,
+    "repeat_audio_bitwise_equal": true,
+    "repeat_audio_decoder_input_bitwise_equal": true,
+    "is_statistical_speedup_gate": false
+  },
+  "published_5090_reference": {
+    "worker_seconds": 122,
+    "system": "Windows",
+    "vram_gb": 32,
+    "ram_gb": 64,
+    "width": 1344,
+    "height": 768,
+    "requested_seconds": 10,
+    "two_pass": true,
+    "base_steps": null,
+    "refine_steps": null,
+    "text_encoding_scope": "not specified in published entry",
+    "peak_memory_bandwidth_gb_s": 1792,
+    "url": "https://github.com/FlashML-org/FreeVideo/blob/7c3536a999e23ba0e6404b085cbdf42718d435d5/docs/zh-CN/execution-planning.md#端到端",
+    "matched_comparison": false
+  },
+  "hardware_sources": {
+    "r9700": "https://www.amd.com/en/products/graphics/workstations/radeon-ai-pro/ai-9000-series/amd-radeon-ai-pro-r9700.html",
+    "rtx5090": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/"
+  },
+  "bandwidth_ratio_5090_over_r9700": 2.8,
+  "bandwidth_explains_entire_runtime_gap": false,
+  "pr_port_validation": {
+    "upstream_base_commit": "a2cf304a9004ae47388a4073f057682eede550d3",
+    "runtime_source_sha256": {
+      "freevideo_engine/rocm_attention.py": "b617358f51ffed77a6bd1e80fdbe5ba3cfa3be61248db21e76429f52fe6c6ae1",
+      "freevideo_engine/rocm_ffn.py": "af69bbea42d8bec737b0ed0bef2f920feb21974c32510c316eb85709cd1a6ff2",
+      "freevideo_engine/attention.py": "b0d6dbdd42f91b9d6d2bfc66adedee58e341b8028e83ed921767705469a7a244",
+      "freevideo_engine/backends/cuda.py": "75208ae47fb621bdaa838b46ebb404e54eb590e66537492abfe5ee9af735db2c",
+      "freevideo_engine/hardware.py": "52c8ef6fc9cc77ddccb1c581a6db07ef1dacfb71190654f9a5b42506669e75a5"
+    },
+    "trials": [
+      {
+        "name": "pr-native-00",
+        "cache_state": "first run of port; includes JIT compilation",
+        "worker_seconds": 357.46992498904,
+        "stage_seconds": {
+          "transformer_load": 3.0003490949748084,
+          "base_8": 115.85087489301804,
+          "upscale": 3.6154119960265234,
+          "refine_3": 177.07661734800786,
+          "decode_and_save": 56.64414174691774,
+          "worker_other": 1.282529910095036
+        },
+        "pass_effective_ff_chunks": [
+          [
+            8192
+          ],
+          [
+            8192
+          ]
+        ],
+        "geometry": {
+          "width": 1344,
+          "height": 768,
+          "frames": 243,
+          "fps": 24,
+          "seconds": 10.125
+        },
+        "reference": "baseline-00",
+        "output_comparison": {
+          "latent_video": {
+            "shape": [
+              1,
+              24,
+              72,
+              48,
+              84
+            ],
+            "dtype_reference": "torch.float32",
+            "dtype_candidate": "torch.float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "latent_audio": {
+            "shape": [
+              2,
+              32,
+              405
+            ],
+            "dtype_reference": "torch.float32",
+            "dtype_candidate": "torch.float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "rgb.npy": {
+            "shape": [
+              243,
+              768,
+              1344,
+              3
+            ],
+            "dtype_reference": "uint8",
+            "dtype_candidate": "uint8",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "audio.npy": {
+            "shape": [
+              2,
+              324000
+            ],
+            "dtype_reference": "float32",
+            "dtype_candidate": "float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "audio_decoder_input.npy": {
+            "shape": [
+              2,
+              32,
+              405
+            ],
+            "dtype_reference": "float32",
+            "dtype_candidate": "float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          }
+        },
+        "all_artifacts_finite_and_exact": true,
+        "conditioning_sha256": "f409d6fab40b240de2e176bf3b038a679e165b50dd9b56a39dafba5fe84989a2"
+      },
+      {
+        "name": "pr-native-01",
+        "cache_state": "shared disk caches warmed by first run",
+        "worker_seconds": 336.8915135069983,
+        "stage_seconds": {
+          "transformer_load": 3.5325413789832965,
+          "base_8": 102.46272019296885,
+          "upscale": 3.543812985997647,
+          "refine_3": 170.55750283191446,
+          "decode_and_save": 55.584135805023834,
+          "worker_other": 1.2108003121102229
+        },
+        "pass_effective_ff_chunks": [
+          [
+            8192
+          ],
+          [
+            8192
+          ]
+        ],
+        "geometry": {
+          "width": 1344,
+          "height": 768,
+          "frames": 243,
+          "fps": 24,
+          "seconds": 10.125
+        },
+        "reference": "baseline-00",
+        "output_comparison": {
+          "latent_video": {
+            "shape": [
+              1,
+              24,
+              72,
+              48,
+              84
+            ],
+            "dtype_reference": "torch.float32",
+            "dtype_candidate": "torch.float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "latent_audio": {
+            "shape": [
+              2,
+              32,
+              405
+            ],
+            "dtype_reference": "torch.float32",
+            "dtype_candidate": "torch.float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "rgb.npy": {
+            "shape": [
+              243,
+              768,
+              1344,
+              3
+            ],
+            "dtype_reference": "uint8",
+            "dtype_candidate": "uint8",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "audio.npy": {
+            "shape": [
+              2,
+              324000
+            ],
+            "dtype_reference": "float32",
+            "dtype_candidate": "float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          },
+          "audio_decoder_input.npy": {
+            "shape": [
+              2,
+              32,
+              405
+            ],
+            "dtype_reference": "float32",
+            "dtype_candidate": "float32",
+            "finite": true,
+            "exact": true,
+            "maxabs": 0.0,
+            "relative_rmse": 0.0
+          }
+        },
+        "all_artifacts_finite_and_exact": true,
+        "conditioning_sha256": "f409d6fab40b240de2e176bf3b038a679e165b50dd9b56a39dafba5fe84989a2"
+      }
+    ],
+    "is_statistical_speedup_gate": false
+  }
+}

@@ -103,6 +103,12 @@ def thermal_slowdown(measured, *, share=.5, clock_ratio=.7, minimum_samples=200)
 
 
 class Monitor:
+    def __new__(cls, path, interval=0.05, device=None):
+        if cls is Monitor and os.environ.get('ROCR_VISIBLE_DEVICES'):
+            from .rocm_monitoring import ROCmMonitor
+            return object.__new__(ROCmMonitor)
+        return object.__new__(cls)
+
     def __init__(self, path, interval=0.05, device=None):
         if windows():
             candidates = [Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/nvml.dll',
@@ -208,8 +214,9 @@ class Monitor:
     def stop(self):
         self.stop_event.set()
         self.thread.join(timeout=5)
-        self.lib.nvmlShutdown()
+        self.shutdown()
         return {'device': self.device, 'gpu_peak_bytes': self.peak, 'gpu_peak_mib': self.peak / 2**20,
+                'source': getattr(self, 'source', 'NVML'),
                 'gpu_baseline_bytes': self.baseline, 'gpu_last_bytes': self.last,
                 'max_temperature_c': self.max_temperature, 'max_power_mw': self.max_power_mw,
                 'activity': self.activity.result(), 'busy_activity': self.busy_activity.result(),
@@ -219,3 +226,6 @@ class Monitor:
                                   'clock reasons are driver observations, not attribution of elapsed time.',
                 'sampling_interval_seconds': self.interval, 'samples': self.count,
                 'sampling_errors': self.errors, 'sample_csv': str(self.path)}
+
+    def shutdown(self):
+        self.lib.nvmlShutdown()

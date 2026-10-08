@@ -23,9 +23,14 @@ class Hardware:
     cgroup_ram_limit: int | None = None
     gpu_uuid: str = ''
     driver_version: str = ''
+    hip_version: str = ''
+    gcn_arch: str = ''
 
     @property
     def architecture(self):
+        if self.hip_version:
+            arch = self.gcn_arch.split(':')[0]
+            return 'rdna4' if arch in ('gfx1200', 'gfx1201') else 'amd-' + (arch or 'unknown')
         if len(self.capability) != 2 or any(type(v) is not int for v in self.capability):
             return 'other'
         if (8, 0) <= self.capability < (8, 9):
@@ -51,6 +56,13 @@ class Hardware:
         attention kernels must still execute successfully on the selected GPU.
         CPU architecture/platform and driver requirements are checked separately.
         """
+        if self.hip_version:
+            return dict(status='probe-required', admitted=True, gpu_name=self.gpu_name,
+                        capability=list(self.capability), minimum_capability=None,
+                        driver_version=self.driver_version, architecture=self.architecture,
+                        hip_version=self.hip_version, gcn_arch=self.gcn_arch,
+                        linear_compute='native-fp8' if self.architecture == 'rdna4' else 'bf16-weight-only',
+                        validation='ROCm linear and attention execution probes are required before readiness.', error=None)
         capability = self.capability
         known = (len(capability) == 2 and all(type(v) is int for v in capability)
                  and capability[0] > 0 and 0 <= capability[1] <= 9)
@@ -205,10 +217,22 @@ def _detect_local():
     ram = system_memory()
     cap, available = cgroup_capacity(include_reclaimable=True)
     uuid = str(getattr(torch.cuda.get_device_properties(index), 'uuid', ''))
+    if torch.version.hip and uuid:
+        # Some HIP wheels wrap the 16 ASCII KFD hex digits as a CUDA UUID.
+        # Recover the native unique_id rather than publishing that byte wrapper.
+        try:
+            from uuid import UUID
+            native = UUID(uuid).bytes.decode('ascii')
+            if re.fullmatch(r'[0-9a-fA-F]{16}', native):
+                uuid = native.lower()
+        except (ValueError, UnicodeDecodeError):
+            pass
     if uuid and not uuid.startswith(('GPU-', 'MIG-')):
         uuid = 'GPU-' + uuid
     driver = ''
     try:
+        if torch.version.hip:
+            raise RuntimeError('HIP devices do not use NVIDIA driver queries')
         query = [nvidia_smi(), '--query-gpu=driver_version', '--format=csv,noheader']
         if uuid:
             query += ['--id=' + uuid]
@@ -217,11 +241,17 @@ def _detect_local():
         pass
     return Hardware(torch.cuda.get_device_name(index), torch.cuda.get_device_capability(index),
                     total, free, ram['total_bytes'], min(ram['available_bytes'], available) if available is not None else ram['available_bytes'],
-                    platform.system(), str(torch.__version__), str(torch.version.cuda), cap, uuid, driver)
+                    platform.system(), str(torch.__version__), str(torch.version.cuda or ''), cap, uuid, driver,
+                    str(torch.version.hip or ''), str(getattr(torch.cuda.get_device_properties(index), 'gcnArchName', '')))
 
 
 def installed_backends():
     import importlib.metadata
+    try:
+        if 'rocm' in importlib.metadata.version('torch').lower():
+            return {'torch-flash'}
+    except importlib.metadata.PackageNotFoundError:
+        pass
     result = {'cudnn', 'torch-flash'}
     for name, module, distribution in [('sage2', 'sageattention', 'sageattention'), ('fa2', 'flash_attn_2_cuda', 'flash-attn')]:
         try:

@@ -94,6 +94,7 @@ Generate a video from a prompt file:
 ### More details
 
 - [FreeVideo Adaptive Execution Planner](docs/execution-planning.md)
+- [Radeon AI PRO R9700 on Linux: ROCm runtime and benchmark](docs/ROCm.md)
 - [Community results](docs/community-results.md)
 
 ### Support

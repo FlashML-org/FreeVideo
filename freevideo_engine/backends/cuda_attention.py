@@ -4,6 +4,15 @@ import importlib.metadata
 
 class CUDAAttentionKernels:
     def __init__(self, global_backend, window_backend, *, query_chunk=0, window_varlen=False):
+        import os
+        import torch
+        self.rocm_backend = os.environ.get('FREEVIDEO_ROCM_ATTENTION', 'aotriton') if torch.version.hip else None
+        if self.rocm_backend not in (None, 'aotriton', 'triton-window'):
+            raise ValueError('FREEVIDEO_ROCM_ATTENTION must be aotriton or triton-window')
+        if self.rocm_backend == 'triton-window':
+            arch = torch.cuda.get_device_properties(torch.cuda.current_device()).gcnArchName.split(':')[0]
+            if arch != 'gfx1201':
+                raise ValueError('Triton H3 attention is validated only on gfx1201')
         choices = ('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4')
         if global_backend not in choices or window_backend not in choices:
             raise ValueError('Unknown CUDA attention backend')
@@ -29,7 +38,10 @@ class CUDAAttentionKernels:
                 raise ImportError('The fa2 route requires flash-attn 2.x.')
             from flash_attn.flash_attn_interface import flash_attn_varlen_func
 
-    def batched(self, leg, q, k, v, scale):
+    def batched(self, leg, q, k, v, scale, *, window=False):
+        if leg == 'torch-flash' and self.rocm_backend == 'triton-window' and window:
+            from ..rocm_attention import attention
+            return attention(q, k, v, scale)
         if leg == 'sage2':
             return self.attention(q, k, v, tensor_layout='NHD', is_causal=False, sm_scale=scale)
         if leg == 'fa2':

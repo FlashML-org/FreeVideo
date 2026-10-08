@@ -50,12 +50,19 @@ class WindowAttention:
                  if self.device_backend.capabilities.name == 'cuda'
                  else self.device_backend.capabilities.attention_candidates)
         self.backend_calls = {part + '_' + name: 0 for part in ('global', 'window') for name in names}
+        if torch.version.hip:
+            self.backend_calls.update({'global_rocm-triton': 0, 'window_rocm-triton': 0})
         self.select_backend(backend)
 
     def batched(self, q, k, v, scale, *, window=False):
         leg = self.window_backend if window else self.global_backend
         self.calls += 1
-        self.backend_calls[('window_' if window else 'global_') + leg] += 1
+        accelerated_window = (window and leg == 'torch-flash'
+                              and getattr(self.kernels, 'rocm_backend', None) == 'triton-window')
+        actual = 'rocm-triton' if accelerated_window else leg
+        self.backend_calls[('window_' if window else 'global_') + actual] += 1
+        if accelerated_window:
+            return self.kernels.batched(leg, q, k, v, scale, window=True)
         return self.kernels.batched(leg, q, k, v, scale)
 
     def dense(self, q, k, v, scale, *, window=False):
@@ -126,7 +133,19 @@ class WindowAttention:
             elif self.window_batch > 1:
                 if self.batches is None:
                     self.batches = self._window_batches(plan)
+                indexed = (layout.tokens_per_frame >= 1008
+                           and self.window_backend == 'torch-flash'
+                           and getattr(self.kernels, 'rocm_backend', None) == 'triton-window'
+                           and q.ndim == 3 and q.shape == k.shape == v.shape
+                           and q.shape[-1] == 128
+                           and q.dtype == k.dtype == v.dtype == torch.bfloat16)
                 for rows, keys in self.batches:
+                    if indexed:
+                        from .rocm_attention import attention_indexed
+                        out[rows] = attention_indexed(q, k, v, rows, keys, scale)
+                        self.calls += 1
+                        self.backend_calls['window_rocm-triton'] += 1
+                        continue
                     # NHD with an explicit batch dimension. Do not concatenate
                     # sequence lengths: that would mix unrelated attention masks.
                     qw, kw, vw = q[rows], k[keys], v[keys]

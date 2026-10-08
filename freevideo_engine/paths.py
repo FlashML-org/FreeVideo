@@ -49,6 +49,8 @@ def add_vdn():
         sys.path.insert(0, str(diffusers))
     from .fa4_guard import activate
     activate()
+    from .rocm_compat import activate as activate_rocm
+    activate_rocm()
     return root
 
 
