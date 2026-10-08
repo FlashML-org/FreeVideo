@@ -9,8 +9,13 @@ def runtime_packages_supported():
     return sys.platform != 'darwin'
 
 
-def package_instructions(new_comfy, zh=False):
-    """Describe the payloads this host can actually import."""
+def package_instructions(runtime_needed, zh=False):
+    """Describe the payloads this host can actually import.
+
+    runtime_needed: a new installation with the offline environment chosen and
+    no Environment ZIP imported yet; once it is in, asking again only invites
+    importing it a second time.
+    """
     if sys.platform == 'darwin':
         return (
             'Get the four model packs (video model, text encoder, video & audio decoder, sampling caches); they also work on Mac. '
@@ -21,7 +26,7 @@ def package_instructions(new_comfy, zh=False):
             'The reference audio pack is optional, for audio references.',
             '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包；'
             '「音频参考缓存」可选，用音频做参考时才需要。')[bool(zh)]
-    if new_comfy:
+    if runtime_needed:
         text += '\n' + ('For a new installation, also get the Environment package.',
                         '全新安装还需「运行环境」包。')[bool(zh)]
     return text

@@ -26,10 +26,19 @@ def child_lease(descriptor):
             os.environ[LOCK_ENV] = previous
 
 
-def inside(root, name):
+def bundle_name(name):
+    """The lexical rules for a file inside a bundle, without touching the disk.
+
+    Inventories list ~58,000 files; resolving each (inside) opens it on Windows.
+    """
     if (not isinstance(name, str) or not name or '\\' in name or ':' in name
             or PurePosixPath(name).is_absolute() or any(p in ('', '.', '..') for p in name.split('/'))):
         raise ValueError('Invalid bundle path: ' + str(name))
+    return name
+
+
+def inside(root, name):
+    bundle_name(name)
     root = Path(root).resolve()
     path = root / name
     if any(p.is_symlink() or (hasattr(p, 'is_junction') and p.is_junction())
@@ -40,13 +49,41 @@ def inside(root, name):
     return path
 
 
+def listing(root):
+    """Size and modification time of every file under root, from one directory walk.
+
+    Directory entries carry both, so on Windows no file is opened; opening
+    each of ~58,000 files (for stat or its NTFS change time) took minutes under
+    real-time scanning. Links are refused.
+    """
+    root = os.path.join(str(root), '')
+    found, pending = {}, [root]
+    while pending:
+        current = pending.pop()
+        try:
+            entries = os.scandir(current)
+        except FileNotFoundError:
+            continue
+        with entries:
+            for entry in entries:
+                if entry.is_symlink() or entry.is_junction():
+                    raise ValueError('Bundle files must not redirect outside their directory: ' + entry.path)
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry.path)
+                elif entry.is_file(follow_symlinks=False):
+                    info = entry.stat(follow_symlinks=False)
+                    found[entry.path[len(root):].replace(os.sep, '/')] = [info.st_size, info.st_mtime_ns]
+    return found
+
+
 def manifest(root):
     value = json.loads((Path(root) / 'portable.json').read_text(encoding='utf-8'))
     if value.get('schema_version') != 1 or value.get('variant') not in ('rowwise', 'per_tensor', 'int8_convrot'):
         raise ValueError('Invalid FreeVideo portable bundle')
     seen = set()
     for row in value['files']:
-        inside(root, row['path'])
+        # Links anywhere in the bundle are refused by the directory walk in verify.
+        bundle_name(row['path'])
         if row['path'].casefold() in seen or type(row['bytes']) is not int or row['bytes'] < 0:
             raise ValueError('Invalid or duplicate bundle file')
         seen.add(row['path'].casefold())
@@ -58,8 +95,7 @@ def manifest(root):
 
 
 def verify(root, value, progress=lambda **kw: None):
-    """Stream bytes once; only settled file identities can reuse verification."""
-    from .storage import fingerprint
+    """Hash a file only when it is not as last verified (size, modification time)."""
     from .network import hash_file
     root = Path(root)
     ledger = root / 'engine' / 'portable-verified.json'
@@ -67,30 +103,34 @@ def verify(root, value, progress=lambda **kw: None):
         prior = json.loads(ledger.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         prior = {}
+    present = listing(root)
     stamps = {}
     total = sum(r['bytes'] for r in value['files'])
     done, started, last_event = 0, time.monotonic(), [0.]
+    def report(detail, current=0):
+        elapsed = time.monotonic()-started
+        if elapsed-last_event[0] >= .2:
+            last_event[0] = elapsed
+            progress(stage='verify', done=done+current, total=total, detail=detail,
+                     elapsed_seconds=elapsed, bytes_per_second=(done+current)/max(.001, elapsed))
     for row in value['files']:
-        path = inside(root, row['path'])
-        if not path.is_file() or path.stat().st_size != row['bytes']:
+        found = present.get(row['path'])
+        if found is None or found[0] != row['bytes']:
             raise ValueError('Missing or incomplete bundled file: ' + row['path'])
-        stamp = dict(fingerprint(path), sha256=row['sha256'])
-        settled = ('change_time_ns' not in stamp or
-                   (stamp['change_time_ns'] is not None and max(stamp['mtime_ns'], stamp['change_time_ns']) < time.time_ns()-10**9))
-        if not settled or prior.get(row['path']) != stamp:
-            def update(current, length):
-                elapsed = time.monotonic()-started
-                if elapsed-last_event[0] < .2:
-                    return
-                last_event[0] = elapsed
-                progress(stage='verify', done=done+current, total=total, detail=row['path'],
-                         elapsed_seconds=elapsed, bytes_per_second=(done+current)/max(.001, elapsed))
-            if hash_file(path, discard_cache=True, progress=update) != row['sha256']:
+        stamp = dict(bytes=found[0], mtime_ns=found[1], sha256=row['sha256'])
+        entry = prior.get(row['path'])
+        # Earlier ledgers kept more fields; size, time and digest decide.
+        known = isinstance(entry, dict) and all(entry.get(k) == v for k, v in stamp.items())
+        if not known or found[1] >= time.time_ns()-10**9:
+            path = inside(root, row['path'])
+            if hash_file(path, discard_cache=True, progress=lambda current, length: report(row['path'], current)) != row['sha256']:
                 raise ValueError('Bundled file failed verification: ' + row['path'])
-            if stamp != dict(fingerprint(path), sha256=row['sha256']):
+            info = path.stat()
+            if [info.st_size, info.st_mtime_ns] != found:
                 raise ValueError('Bundled file changed during verification: ' + row['path'])
         stamps[row['path']] = stamp
         done += row['bytes']
+        report(row['path'])
     save(ledger, stamps)
     progress(stage='verify', done=total, total=total, detail='All bundled files verified')
 

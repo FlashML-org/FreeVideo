@@ -1,26 +1,20 @@
 {
   "schema": 1,
-  "product_version": "0.3.10",
+  "product_version": "0.3.11",
   "en": {
-    "summary": "Long videos on Windows cards with 6–16 GB run faster, Environment ZIPs from earlier versions import again, and creations made with prompt enhancement can be deleted.",
+    "summary": "Importing offline packages is faster and shows its progress throughout.",
     "changes": [
-      "On Windows, int8 attention needs about a quarter less GPU memory. More long or large videos now keep attention results on the graphics card instead of in system memory, which makes their steps faster. The output is unchanged.",
-      "When little system memory is free, weights are now read ahead while the previous ones compute, from 1 GB of spare memory instead of 3 GB. Steps that read weights from disk get faster.",
-      "An offline Environment ZIP from an earlier version is accepted again. It now only has to contain the environment this version needs, whichever version it came with.",
-      "When several offline ZIPs are imported together, every one that fits is imported. One that cannot be used no longer stops the others; an environment that does not fit is installed automatically, and the imported models are still used.",
-      "Creations made with prompt enhancement can be deleted from Your creations again.",
-      "Each downloaded diagnostic report is named by when it was saved (FreeVideo-report-date-time.json), so downloading several no longer produces \"video.debug (1).json\", \"(2)\" and so on."
+      "Offline packages are checked once, while they are unpacked. Importing a package again, Checking packages before installing and the first start no longer read every file again.",
+      "The Working card shows which package is being imported and how far it is; Checking packages and Verify local files show their progress as well.",
+      "After the Environment package is imported, the model step no longer asks for it again."
     ]
   },
   "zh": {
-    "summary": "Windows 上 6–16 GB 显卡生成长视频更快；早先版本的运行环境包重新可以导入；用过提示词增强的作品可以正常删除。",
+    "summary": "离线包导入更快，全程都能看到进度。",
     "changes": [
-      "Windows 上 int8 注意力占用的显存减少约四分之一，更多长视频或大尺寸视频的注意力结果可以留在显卡上，不再放到内存里，每步更快。生成结果不变。",
-      "内存余量较少时，现在只要有 1 GB 空闲（原来需要 3 GB）就会在计算的同时预读下一批权重，需要从硬盘读权重的步骤会更快。",
-      "早先版本附带的离线运行环境包重新可以导入。现在只检查包里的运行环境是否符合当前版本，不再看它来自哪个版本。",
-      "同时导入多个离线包时，能用的都会导入，某个包用不了也不会再挡住其他包；运行环境不符合时会改为自动安装，已导入的模型照常使用。",
-      "用过提示词增强的作品，现在可以在「你的作品」里正常删除。",
-      "下载的诊断报告按保存时间命名（FreeVideo-report-日期-时间.json），多次下载不会再出现「video.debug (1).json」「(2)」这样的文件名。"
+      "离线包只在解压时校验一次；再次导入同一个包、安装前「检查配套包」和首次启动都不再把所有文件重读一遍。",
+      "左侧「正在处理」卡片会显示正在导入第几个包和进度；「检查配套包」和「校验本地文件」也有进度条。",
+      "导入运行环境包后，模型这一步不再提示还需要运行环境包。"
     ]
   }
 }
