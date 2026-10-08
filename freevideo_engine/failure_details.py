@@ -102,6 +102,11 @@ def launcher_failure(value, *, zh=False):
          ('Git is too old', 'Git 版本过旧'),
          ('Click Retry installation; FreeVideo then installs its own Git. On macOS, update the Command Line Tools.',
           '请点击“重试安装”，FreeVideo 会改用自带的 Git；macOS 请更新命令行工具（Command Line Tools）。')),
+        (r'installation from offline packages; automatic installation does not change it|'
+         r'Existing dependency is not a Git checkout of the pinned source', 'offline-installation',
+         ('This folder holds an offline installation', '这个位置是离线包安装'),
+         ('Open it from the launcher. For an automatic installation, go back to Setup and choose another folder.',
+          '请在启动页直接打开这份安装。如需自动安装，请回到安装设置，换一个安装位置。')),
         # web/health.js lists the failed files and what to do on the page itself.
         (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),

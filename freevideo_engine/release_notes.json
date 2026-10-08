@@ -1,27 +1,44 @@
 {
   "schema": 1,
-  "product_version": "0.3.12",
+  "product_version": "0.3.13",
   "en": {
-    "summary": "Linux setup accepts the Git that current distributions ship and installs its own when needed, offline installs can download the models, the offline text encoder no longer depends on your ComfyUI, and update notes cover every version since yours.",
+    "summary": "Choosing another location for an automatic installation after an offline one now installs there.",
     "changes": [
-      "Linux setup no longer stops with \"Missing git\" when Git is older than 2.35. Git 2.17 or newer on the system is used as it is (Ubuntu 22.04 ships 2.34, Ubuntu 20.04 ships 2.25). Without Git, or with an older one, setup downloads Git 2.56 from conda-forge (about 75 MB, every file checked against a pinned SHA-256) into the installation folder; the system is not changed.",
-      "After importing the Environment package, the models step can download the models (49.1 GB) instead of importing model packages. Downloads resume after a stop, and model packages already imported are used first.",
-      "An offline installation's text encoder uses its own copy of ComfyUI's library from the Environment package, so updating or editing that ComfyUI no longer changes prompt encoding.",
-      "When an update skips versions, its notes include each version since the one you have, newest first.",
-      "Downloading the report from the node panel names the file by when it was saved, as the creation panel does."
+      "After an installation from offline packages, an automatic installation set up in another folder installs into that folder. It no longer reuses the offline installation's engine folder and stops at \"Failed step: vdn-source\".",
+      "An automatic installation pointed at an offline installation's own folder is explained before it starts, with the choice to open that installation or pick another folder."
     ]
   },
   "zh": {
-    "summary": "Linux 安装可直接使用各发行版自带的 Git，必要时自行安装；离线安装可以改为自动下载模型；离线安装的文本编码器不再受 ComfyUI 改动影响；更新说明会列出从当前版本以来的每个版本。",
+    "summary": "离线安装之后改用自动安装并选择其他位置时，会安装到新选的位置。",
     "changes": [
-      "Linux 安装不再因 Git 低于 2.35 而提示「缺少 git」。系统中 2.17 及以上的 Git 直接使用（Ubuntu 22.04 自带 2.34，Ubuntu 20.04 自带 2.25）；没有 Git 或版本更低时，安装程序从 conda-forge 下载 Git 2.56（约 75 MB，每个文件按固定的 SHA-256 校验）装到安装目录内，不改动系统。",
-      "导入运行环境包后，模型这一步可以选择自动下载（49.1 GB），不必再导入模型包。下载中断后可以续传，已导入的模型包优先使用。",
-      "离线安装的文本编码器改用运行环境包内 ComfyUI 库的独立副本，更新或修改该 ComfyUI 不再影响提示词编码。",
-      "跨版本更新时，更新说明会按从新到旧列出当前版本之后的每个版本。",
-      "在节点视图下载报告时，文件按保存时间命名，与创作面板一致。"
+      "用离线包安装后，在安装设置里换一个位置进行自动安装，会安装到新选的位置；不再沿用离线安装的引擎目录，也不再停在“Failed step: vdn-source”。",
+      "如果自动安装指向离线安装所在的位置，安装计划页会在开始前说明，并提示在启动页直接打开这份安装或换一个位置。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.12",
+      "en": {
+        "summary": "Linux setup accepts the Git that current distributions ship and installs its own when needed, offline installs can download the models, the offline text encoder no longer depends on your ComfyUI, and update notes cover every version since yours.",
+        "changes": [
+          "Linux setup no longer stops with \"Missing git\" when Git is older than 2.35. Git 2.17 or newer on the system is used as it is (Ubuntu 22.04 ships 2.34, Ubuntu 20.04 ships 2.25). Without Git, or with an older one, setup downloads Git 2.56 from conda-forge (about 75 MB, every file checked against a pinned SHA-256) into the installation folder; the system is not changed.",
+          "After importing the Environment package, the models step can download the models (49.1 GB) instead of importing model packages. Downloads resume after a stop, and model packages already imported are used first.",
+          "An offline installation's text encoder uses its own copy of ComfyUI's library from the Environment package, so updating or editing that ComfyUI no longer changes prompt encoding.",
+          "When an update skips versions, its notes include each version since the one you have, newest first.",
+          "Downloading the report from the node panel names the file by when it was saved, as the creation panel does."
+        ]
+      },
+      "zh": {
+        "summary": "Linux 安装可直接使用各发行版自带的 Git，必要时自行安装；离线安装可以改为自动下载模型；离线安装的文本编码器不再受 ComfyUI 改动影响；更新说明会列出从当前版本以来的每个版本。",
+        "changes": [
+          "Linux 安装不再因 Git 低于 2.35 而提示「缺少 git」。系统中 2.17 及以上的 Git 直接使用（Ubuntu 22.04 自带 2.34，Ubuntu 20.04 自带 2.25）；没有 Git 或版本更低时，安装程序从 conda-forge 下载 Git 2.56（约 75 MB，每个文件按固定的 SHA-256 校验）装到安装目录内，不改动系统。",
+          "导入运行环境包后，模型这一步可以选择自动下载（49.1 GB），不必再导入模型包。下载中断后可以续传，已导入的模型包优先使用。",
+          "离线安装的文本编码器改用运行环境包内 ComfyUI 库的独立副本，更新或修改该 ComfyUI 不再影响提示词编码。",
+          "跨版本更新时，更新说明会按从新到旧列出当前版本之后的每个版本。",
+          "在节点视图下载报告时，文件按保存时间命名，与创作面板一致。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.11",
       "en": {
