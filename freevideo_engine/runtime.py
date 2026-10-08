@@ -618,8 +618,10 @@ class Engine:
                         cached = offloader.cached_bytes()
                         free, _ = owner.device_backend.memory_info()
                         commit = system_memory().get('commit_available_bytes')
-                        allowance = pass_cache_allowance(live_budget, base_peak, free + cached,
-                            gpu_reserve_bytes, None if commit is None else commit + cached)
+                        from .two_pass import reusable_cache_bytes
+                        held = reusable_cache_bytes(cached, owner.device_backend.memory_reserved(), base_peak)
+                        allowance = pass_cache_allowance(live_budget, base_peak, free + held,
+                            gpu_reserve_bytes, None if commit is None else commit + held)
                         pass_cache.update(gpu_budget_bytes=live_budget, measured_peak_reserved_bytes=peak,
                             live_free_bytes=free, commit_available_bytes=commit, admitted_bytes=allowance)
                         # New planes fill during the next step and only save a

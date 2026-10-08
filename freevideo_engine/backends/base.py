@@ -52,6 +52,10 @@ class DeviceBackend(ABC):
     @abstractmethod
     def max_memory_reserved(self): ...
 
+    def memory_reserved(self):
+        """Bytes the allocator currently holds, or None where it is not exposed."""
+        return None
+
     @abstractmethod
     def reset_peak_memory_stats(self): ...
 

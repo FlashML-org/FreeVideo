@@ -88,7 +88,15 @@ SMALL_ACTIVATION_RESERVES = ((8, int(8.2 * GiB)), (4, int(7.6 * GiB)))
 # not prove that the linear-attention scan workspace remains the same.
 # Larger groups can change floating-point rounding; bit identity is not a
 # requirement for a measured chunking policy. Sixteen was no faster here.
-WINDOWS_SMALL_HEAD8_TOKENS = 18144
+#
+# The ceiling used to be that canvas alone, so one image reference or keyframe
+# (1008 rows at 1344x768) put a 10-second first pass back on four heads.
+# Native Windows int8, RTX 5060 Ti held to an 8 GiB laptop's 7.14 GB budget,
+# 1344x768x243 with one image reference: head 4/8 at 20.90/19.22 s per warm
+# first-pass step, 6.39/6.28 GB reserved with the pass cache. With four image
+# references (18144 + 4032 rows) eight heads peaked at 6.64 GB reserved, no
+# allocator retry and no sample over the local budget.
+WINDOWS_SMALL_HEAD8_TOKENS = 18144 + 4 * 1008
 WINDOWS_SMALL_HEAD8_FRAMES = 243
 # Keeping the attention outputs on the GPU instead of in host memory costs this
 # much extra peak. See benchmarks/2026-09-15-consumer-capacity-grid.json. Measured at four corners of the band that uses the host

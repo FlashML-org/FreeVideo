@@ -38,6 +38,9 @@ class CUDABackend(DeviceBackend):
     def max_memory_reserved(self):
         return self.torch.cuda.max_memory_reserved()
 
+    def memory_reserved(self):
+        return self.torch.cuda.memory_reserved()
+
     def reset_peak_memory_stats(self):
         return self.torch.cuda.reset_peak_memory_stats()
 
