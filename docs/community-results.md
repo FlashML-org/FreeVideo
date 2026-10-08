@@ -4,9 +4,7 @@ Diagnostic reports from community users: the hardware, request, end-to-end time 
 
 | GPU | VRAM | RAM | Request | End-to-end | Version | Optimized in | Estimated after |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| RTX 3060 Laptop | 6 GB | 16 GB | 544×960 · 10 s | Failed | 2026.10.4.15209 | 2026.10.4.53112 | Completes |
 | RTX 4060 Ti | 16 GB | 32 GB | 1920×1088 · 15 s · references | 3306 s | 0.3.0 | 0.3.6 | 2560–2900 s (−410 to −740 s) |
-| RTX 3060 Laptop | 6 GB | 16 GB | 1184×672 · 10 s | Refused | 0.3.1 | 0.3.3 | Runs |
 | RTX 5060 | 8 GB | 16 GB | 1344×768 · 15 s · first frame | 1367 s | 0.3.1 | 0.3.6 | 1120–1190 s (−180 to −250 s) |
 | RTX 3070 Ti | 8 GB | 96 GB | 1344×768 · 10 s · references | 749 s | 0.3.1 | 0.3.6 | 675–705 s (−45 to −75 s) |
 | RTX 4060 | 8 GB | 32 GB | 768×1344 · 15 s · references | 1592 s | 0.3.4 | 0.3.10 | about 1450 s (−145 s) |
@@ -24,4 +22,3 @@ Diagnostic reports from community users: the hardware, request, end-to-end time 
 - Estimated after: derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
 - "—": later versions don't change how this machine runs the request.
 - ¹ The GPU spent most of the run in thermal slowdown (RTX 3070 Laptop: 229 MHz on average at 89 °C; RTX A5000 Laptop: 882 MHz on average), so cooling limited the time.
-- 2026.10.4.x builds are previews from before 0.1.0.
