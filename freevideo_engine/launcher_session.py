@@ -180,6 +180,10 @@ class Session:
         if self.form[key] == value:
             return
         self.form[key] = value
+        if key in ('new_comfy', 'destination', 'comfy'):
+            # A remembered installation's engine belongs to that installation;
+            # another location installs into its own FreeVideo-engine.
+            self.form['engine'] = os.environ.get('FREEVIDEO_HOME') or ''
         self.import_retry = None
         self.cleaner.plan = None
         self.cleaner.state = dict(status='idle', bytes=0, error='')

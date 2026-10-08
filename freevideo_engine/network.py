@@ -919,6 +919,8 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         if result.returncode:
             raise RuntimeError(result.stdout[-2500:])
     if target.exists():
+        if not (target / '.git').exists():
+            raise ValueError('Existing dependency is not a Git checkout of the pinned source: ' + str(target))
         head = subprocess.check_output([git, '-C', str(target), 'rev-parse', 'HEAD'], env=env, text=True, **hidden_console()).strip()
         dirty = subprocess.check_output([git, '-C', str(target), 'status', '--porcelain', '--untracked-files=no'], env=env, text=True, **hidden_console())
         if head != commit or dirty:

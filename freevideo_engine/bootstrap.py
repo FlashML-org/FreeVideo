@@ -288,6 +288,11 @@ def require_int8_kernels(plan, kernel_report):
                            'installation keeps its current model. Details: ' + str(kernel_report))
 
 
+def offline_installation(root):
+    """Whether an engine folder belongs to an installation from offline packages."""
+    return (root.parent / 'portable.json').is_file()
+
+
 def plan(args, *, local_progress=None):
     root = args.root.expanduser().resolve()
     saved = json.loads((root / 'machine.json').read_text(encoding='utf-8')) if (root / 'machine.json').is_file() else {}
@@ -333,6 +338,10 @@ def plan(args, *, local_progress=None):
         for name in () if windows_target else ('compiler',):
             if not snapshot.get(name):
                 errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
+        if offline_installation(root):
+            # Its sources carry no Git history and its Python is the package's.
+            errors.append('This folder holds an installation from offline packages; automatic installation does not change it. '
+                          'Open it from the launcher, or choose another folder for an automatic installation.')
         curl_env = dict(os.environ, FREEVIDEO_HOME=str(root))
         if not args.hardware_json and curl_executable(curl_env) is None:
             errors.append(missing_curl_message(curl_env))
