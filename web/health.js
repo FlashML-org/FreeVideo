@@ -235,6 +235,17 @@ function onScreen(element) {
     return box.width > 0 && box.height > 0 && box.bottom > 0 && box.right > 0 && box.top < innerHeight && box.left < innerWidth;
 }
 
+// Unstyled, the toolbar sits in the page's flow under ComfyUI's full-window
+// canvas: inside the window, sized, and invisible. Look at what is on top of
+// its view switch; a dialog, menu, toast or this card only passes over it.
+const OVERLAYS = 'dialog, [role="dialog"], [role="menu"], .p-dialog-mask, .p-overlay-mask, .p-toast, .litecontextmenu, .fv-health';
+function covered(bar) {
+    const box = (bar.querySelector('.fv-view-switch') || bar).getBoundingClientRect();
+    const top = document.elementFromPoint(Math.min(innerWidth - 1, Math.max(0, box.left + box.width / 2)),
+        Math.min(innerHeight - 1, Math.max(0, box.top + box.height / 2)));
+    return !!top && !bar.contains(top) && !top.closest(OVERLAYS);
+}
+
 // Our sheets are same-origin and never empty: rules that cannot be read were not loaded.
 function sheetLoaded(name) {
     const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(item => ours(item.href) && fileName(item.href) === name);
@@ -250,10 +261,10 @@ function workspaceProblem(app) {
         : {text: t('The creative workspace is open but cannot be seen on the page.', '创作面板已经打开，但页面上看不到。'), advice: 'reload'};
     const bar = document.querySelector('.fv-view-navigation');
     if (!bar) return {text: t('The FreeVideo toolbar that opens the creative workspace is missing from the page.', '页面上没有打开创作面板的 FreeVideo 工具栏。'), advice: 'reload'};
-    if (onScreen(bar)) return null;
-    // Its own stylesheet places it; without that it falls below the canvas.
+    if (onScreen(bar) && !covered(bar)) return null;
+    // Its own stylesheet places it above the canvas.
     return sheetLoaded('view_navigation.css')
-        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden by the page’s styles.', '打开创作面板的 FreeVideo 工具栏被页面样式隐藏了。'), advice: 'plugin'}
+        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡了。'), advice: 'plugin'}
         : {text: t('The FreeVideo toolbar that opens the creative workspace cannot be seen: its stylesheet view_navigation.css did not load.',
             '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload'};
 }
