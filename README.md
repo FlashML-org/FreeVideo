@@ -53,7 +53,7 @@ It coordinates VRAM, system memory and disk, adapting weight placement, compute 
   <img alt="FreeVideo creative workspace" src="https://github.com/user-attachments/assets/7647a6f8-4306-403c-b147-45d7a393e18d" width="92%">
 </div>
 
-**Offline installation:** Download the packages from [Quark](https://pan.quark.cn/s/c51235b84618) and drag the ZIP files into the launcher without extracting them. The common models and the model pack for your GPU (30/40 series or 50 series) are required; a new ComfyUI installation also requires the environment package.
+**Offline installation:** Download the packages from [Quark](https://pan.quark.cn/s/c51235b84618) and drag the ZIP files into the launcher without extracting them. A fully offline installation needs the four model packs (video model, text encoder, video & audio decoder, and sampling caches), plus the environment package for a new ComfyUI installation. After importing only the environment package, you can also choose **Automatic download** for the models (v0.3.12 or newer). The audio reference cache is optional and is used only when a reference includes audio.
 
 ### macOS (Apple silicon preview)
 
