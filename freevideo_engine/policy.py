@@ -774,14 +774,31 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # floor cost every card between there and the twelve band about a tenth of
     # its sampling time for nothing.
     #
-    # Windows keeps the old floor. Its GPU output workspace below is written
-    # for head 8 and was added for a 15.9 GiB card, which is the band this
-    # moves; no Windows measurement covers the wider group there. The floor is
-    # the twelve band's own boundary rather than the 14.5 GiB budget measured
-    # above, so that no half-GiB sliver falls between two bands the way a
-    # 0.25 GiB sliver once did below.
+    # Windows keeps the old floor for FP8. Its GPU output workspace below is
+    # written for head 8 and was added for a 15.9 GiB card, which is the band
+    # this moves; no Windows measurement covers the wider FP8 group there.
+    #
+    # Int8 without LoRA tries sixteen heads below the floor too, from the
+    # twelve band up, and the two checks below narrow it where the measured
+    # requirement or the head-8 workspace plus the wider group's surcharge does
+    # not fit. LoRA keeps eight until the wider group is measured with it.
+    # Measured under Windows on an RTX 5060 Ti 16 GB, int8, 1344x768x243
+    # two-pass:
+    #
+    #   first pass,  18144 tokens   head 8 -> 16   14.25 -> 13.44 s/step
+    #   second pass, 72576 tokens   head 8 -> 16   56.18 -> 55.04 s/step
+    #
+    # Local peaks did not rise: 14.29 -> 14.07 GiB in the first pass with the
+    # same eight resident blocks, and the second pass with two blocks instead
+    # of eight peaked at 10.59 against 13.31. Capped at a 12 GB card's 10.95
+    # GiB, the first pass ran sixteen heads at a 10.42 GiB reserved peak with
+    # no retry, and the second pass kept eight (14.55 and 57.5 s/step). The
+    # wider group pays its surcharge out of residency, which buys under 2%;
+    # where that would turn weights the host retains into per-step reads,
+    # eight heads stay.
     if desktop:
-        head = 8 if twelve or gpu_budget < 20 * GiB else 16
+        widened = int8 and not small and not lora and gpu_budget < 20 * GiB
+        head = 16 if gpu_budget >= 20 * GiB or widened else 8
         # The band alone never checked whether the group's activations fit,
         # and on Windows nothing downstream would tell us: exceeding the card
         # is backed by system memory instead of failing, which is a silent
@@ -806,6 +823,14 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                                 + activation_bytes(head, effective_tokens)
                                 - activation_bytes(8, effective_tokens)) > gpu_budget:
                 head //= 2
+            if widened and head > 8:
+                def held(group):
+                    workspace = (windows_gpu_output_workspace(effective_tokens, prefetch=prefetch, ff_stash=not int8)
+                                 + activation_bytes(group, effective_tokens) - activation_bytes(8, effective_tokens))
+                    return max(0, min(RESIDENT_VRAM_CEILING, int((gpu_budget - workspace) / block_bytes)))
+                if ((50 - held(head)) * block_bytes + int(2.5 * GiB) > ram_budget
+                        >= (50 - held(8)) * block_bytes + int(2.5 * GiB)):
+                    head = 8
     else:
         # The widest group the request can afford at its own token count.
         # A fixed budget threshold cannot express this: 41472 tokens take

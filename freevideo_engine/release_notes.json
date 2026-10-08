@@ -1,23 +1,38 @@
 {
   "schema": 1,
-  "product_version": "0.3.16",
+  "product_version": "0.3.17",
   "en": {
-    "summary": "On Windows, FreeVideo repairs its desktop shortcut each time the launcher opens, and keeps starting normally after it was once run as administrator.",
+    "summary": "On Windows, GPUs with 12 to 20 GB of memory sample a little faster: attention runs 16 heads at a time where memory allows.",
     "changes": [
-      "On Windows, the launcher checks its desktop shortcut each time it opens and repairs it in place, and FreeVideo is now also added to the Start menu. A shortcut left by an earlier installation, or rewritten by Windows, is updated instead of a second \"FreeVideo (2)\" appearing next to it; a shortcut you renamed keeps its name, and one you gave another icon is left as it is. If Windows does not allow writing to the desktop (for example Controlled folder access in Windows Security), the launcher says so and how to allow FreeVideo, and FreeVideo is still in the Start menu.",
-      "After FreeVideo was once run as administrator, its desktop shortcut still opens it: the launcher copy behind the shortcut stays readable without administrator rights, and an unreadable copy left by an earlier version is replaced the next time the launcher opens.",
-      "Offline installations also keep starting after FreeVideo was once run as administrator. If Windows denies this account access to FreeVideo's program files, the launcher says so and how to fix it, instead of reporting a missing module."
+      "On Windows, attention now runs 16 heads at a time instead of 8 whenever the GPU memory budget leaves room for it. This covers the first pass on 12 to 20 GB GPUs and the second pass on most 16 and 20 GB GPUs. On a 16 GB GPU, a 10-second 1344×768 video took about 6% less time per first-pass step and about 2% less per second-pass step, without using more video memory. FP8 models, requests with a LoRA, Linux and GPUs below 12 GB keep their current settings. The same seed can give a slightly different video than before, as it already does between GPUs with different memory."
     ]
   },
   "zh": {
-    "summary": "在 Windows 上，每次打开启动器都会检查并修复桌面快捷方式；以管理员身份运行过一次之后，FreeVideo 也能正常启动。",
+    "summary": "在 Windows 上，12–20 GB 显存的显卡采样稍快一些：显存允许时，注意力每次计算 16 个头。",
     "changes": [
-      "在 Windows 上，启动器每次打开时都会检查桌面快捷方式并就地修复，开始菜单里现在也会有 FreeVideo。以前安装留下的、或被 Windows 改写过的快捷方式会直接更新，不会再在旁边多出一个“FreeVideo (2)”；改过名字的快捷方式保留原名，换过图标的保持不变。如果 Windows 不允许写入桌面（例如开启了“Windows 安全中心”的“受控文件夹访问”），启动器会说明原因和放行办法，开始菜单里仍然可以找到 FreeVideo。",
-      "以管理员身份运行过一次之后，桌面快捷方式仍能打开 FreeVideo：快捷方式指向的启动器副本不需要管理员权限也能读取；之前版本留下的读不了的副本，会在下次打开启动器时换掉。",
-      "以管理员身份运行过一次之后，离线安装也能正常启动；如果 Windows 不允许当前账户读取程序文件，启动器会说明原因和处理办法，不再只报缺少模块。"
+      "在 Windows 上，只要显存预算有余量，注意力改为每次计算 16 个头（原来每次 8 个）。12–20 GB 显卡的第一遍，以及大多数 16 GB 和 20 GB 显卡的第二遍都会用上。在 16 GB 显卡上生成 10 秒 1344×768 视频，第一遍每步缩短约 6%，第二遍每步缩短约 2%，显存占用没有增加。FP8 模型、使用 LoRA 的生成、Linux 和 12 GB 以下的显卡保持现有设置。同一个种子生成的视频可能与以前略有不同，就像在显存不同的显卡上本来就会有差异一样。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.3.16",
+      "en": {
+        "summary": "On Windows, FreeVideo repairs its desktop shortcut each time the launcher opens, and keeps starting normally after it was once run as administrator.",
+        "changes": [
+          "On Windows, the launcher checks its desktop shortcut each time it opens and repairs it in place, and FreeVideo is now also added to the Start menu. A shortcut left by an earlier installation, or rewritten by Windows, is updated instead of a second \"FreeVideo (2)\" appearing next to it; a shortcut you renamed keeps its name, and one you gave another icon is left as it is. If Windows does not allow writing to the desktop (for example Controlled folder access in Windows Security), the launcher says so and how to allow FreeVideo, and FreeVideo is still in the Start menu.",
+          "After FreeVideo was once run as administrator, its desktop shortcut still opens it: the launcher copy behind the shortcut stays readable without administrator rights, and an unreadable copy left by an earlier version is replaced the next time the launcher opens.",
+          "Offline installations also keep starting after FreeVideo was once run as administrator. If Windows denies this account access to FreeVideo's program files, the launcher says so and how to fix it, instead of reporting a missing module."
+        ]
+      },
+      "zh": {
+        "summary": "在 Windows 上，每次打开启动器都会检查并修复桌面快捷方式；以管理员身份运行过一次之后，FreeVideo 也能正常启动。",
+        "changes": [
+          "在 Windows 上，启动器每次打开时都会检查桌面快捷方式并就地修复，开始菜单里现在也会有 FreeVideo。以前安装留下的、或被 Windows 改写过的快捷方式会直接更新，不会再在旁边多出一个“FreeVideo (2)”；改过名字的快捷方式保留原名，换过图标的保持不变。如果 Windows 不允许写入桌面（例如开启了“Windows 安全中心”的“受控文件夹访问”），启动器会说明原因和放行办法，开始菜单里仍然可以找到 FreeVideo。",
+          "以管理员身份运行过一次之后，桌面快捷方式仍能打开 FreeVideo：快捷方式指向的启动器副本不需要管理员权限也能读取；之前版本留下的读不了的副本，会在下次打开启动器时换掉。",
+          "以管理员身份运行过一次之后，离线安装也能正常启动；如果 Windows 不允许当前账户读取程序文件，启动器会说明原因和处理办法，不再只报缺少模块。"
+        ]
+      }
+    },
     {
       "product_version": "0.3.15",
       "en": {
@@ -242,23 +257,6 @@
           "改进音频参考：参考音频（包括参考视频自带的声音）现在能正确引导生成的声音。我们的测试中，生成的人声与参考音色明显更接近。",
           "使用音频参考需要更新采样缓存（每个质量档 0.3–0.7 GB），首次使用音频参考时会自动下载，不使用可以忽略；下载完成后会自动删除旧缓存。",
           "单声道参考音频保持原有音量。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.3.4",
-      "en": {
-        "summary": "Diagnostic report saves the diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup.",
-        "changes": [
-          "Diagnostic report saves the redacted diagnostic report in one click. If you submit it on GitHub, we'll optimize FreeVideo specifically for your setup, and it helps other users too. The report has hardware details, settings and timings only, with no prompts, reference images or videos.",
-          "After a video finishes, a card under the buttons invites you to submit the report. Once closed, it does not come back, and it never covers the video."
-        ]
-      },
-      "zh": {
-        "summary": "新增「诊断报告」按钮，一键保存诊断报告；欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化。",
-        "changes": [
-          "新增「诊断报告」按钮，一键保存脱敏的诊断报告。欢迎在 GitHub 提交，我们会针对您的硬件配置进行专门优化，也能帮助其他用户。报告仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。",
-          "视频生成完成后，按钮下方会显示提交诊断报告的提示；关闭后不再出现，也不会遮挡视频。"
         ]
       }
     }
