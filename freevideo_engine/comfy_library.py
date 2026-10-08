@@ -126,10 +126,13 @@ def video_download(output_directory, identity):
     return path, 'FreeVideo_%s_%s.mp4' % (stamp, identity.split('/')[-1][:12])
 
 
-# What a FreeVideo request writes into its own run folder. A creation whose
-# folder holds anything else, or any link, is not deleted at all.
-_OWNED_FILE = re.compile(r'video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|comfy-request\.json|generate\.log'
-                         r'|media\.json|input-conditioning\.pt|(?:first|last)\.png|reference-\d{2}\.(?:png|mp4|wav)')
+# What a FreeVideo request writes into its own run folder, including the
+# prompt-enhancement record and the staging copy monitoring.save keeps when
+# Windows would not let it replace a JSON record. A creation whose folder
+# holds anything else, or any link, is not deleted at all.
+_OWNED_FILE = re.compile(r'(?:video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|comfy-request\.json|generate\.log'
+                         r'|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
+                         r'|reference-\d{2}\.(?:png|mp4|wav))(?:\.[a-z0-9_]{8}\.tmp)?')
 _OWNED_FOLDER = 'video.artifacts'
 _REPARSE_POINT = 0x400
 

@@ -34,12 +34,50 @@ def pack_name(path):
 
 
 def dependency_id():
+    """Hash of the whole dependency files; earlier EXEs compare Environment ZIPs by it."""
     root = Path(__file__).resolve().parent
     digest = hashlib.sha256()
     for path in (root / 'dependencies.json', root / 'bootstrap_versions.json',
                  root.parent / 'constraints/windows-portable.txt'):
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+# An Environment ZIP holds Python with the pinned packages, the bootstrap tools,
+# and ComfyUI, vdn, diffusers and SageAttention at their pinned commits. Model
+# rows in dependencies.json are not part of it, so a model change keeps the ZIP.
+RUNTIME_KEYS = ('vdn', 'diffusers', 'encoder', 'sageattention')
+# Earlier ZIPs carry only dependency_id, which also hashes the model rows.
+# Each of these described the same runtime as runtime_id 5237c884... .
+EARLIER_RUNTIMES = dict.fromkeys((
+    '32bb93ff31957e629714fb5445562bad39acd51d22bd266705947646072f6175',
+    '5df201020be0ca6b9cd71f4be2c6b331b402280fec556c721388fd9ed28ec001',
+    'a6a447449e2fb66b360846902498256e1f7a243a51bbc7d2269202a9b5786eac',
+    'f8f960e68e4c6caac38ded62c87133097dc39e726e0918352460a5ae81397378',
+    'ea87a269c0fafa5446d9d1c501c5accc3f1f1f6970ad6fa5d6d725fde33a9593',
+), '5237c88452f01b060b664dde4ac237329e28314c3f5a82fe4d1a01c9612543cb')
+SKIPPED_RUNTIME = '运行环境包与这个版本不配套，已跳过；运行环境改为自动安装，其余离线包照常使用。'
+
+
+class RuntimeMismatch(ValueError):
+    """An Environment ZIP for another runtime: skip it and install the runtime online."""
+
+
+def runtime_id():
+    """What the current version needs inside an Environment ZIP, independent of models."""
+    root = Path(__file__).resolve().parent
+    dependencies = json.loads((root / 'dependencies.json').read_text(encoding='utf-8'))
+    value = dict(dependencies={key: dependencies[key] for key in RUNTIME_KEYS if key in dependencies},
+                 bootstrap=json.loads((root / 'bootstrap_versions.json').read_text(encoding='utf-8')),
+                 constraints=(root.parent / 'constraints/windows-portable.txt').read_text(encoding='utf-8')
+                 .replace('\r\n', '\n'))
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def runtime_fits(value):
+    """Any earlier ZIP whose runtime is unchanged serves this version."""
+    found = value.get('runtime_id') or EARLIER_RUNTIMES.get(value.get('dependency_id'))
+    return value.get('schema_version') == 2 and found == runtime_id()
 
 
 def inventory(rows):
@@ -83,8 +121,8 @@ def inspect_archive(path):
         value = json.loads(raw)
         if marker == 'runtime.json':
             check_runtime_platform()
-            if value.get('schema_version') != 2 or value.get('dependency_id') != dependency_id():
-                raise ValueError('运行环境包版本不匹配，请从下载页面获取配套的运行环境包。')
+            if not runtime_fits(value):
+                raise RuntimeMismatch(SKIPPED_RUNTIME)
             value = dict(value, kind='runtime', variant=None)
         elif value.get('schema_version') != 1 or value.get('kind') != 'models' or value.get('variant') not in MODEL_VARIANTS:
             raise ValueError('Invalid model package')
@@ -170,8 +208,8 @@ def assemble(runtime, models, source):
     check_runtime_platform()
     runtime = Path(runtime)
     config = json.loads((runtime / 'runtime.json').read_text(encoding='utf-8'))
-    if config.get('schema_version') != 2 or config.get('dependency_id') != dependency_id():
-        raise ValueError('运行环境包与安装器不匹配')
+    if not runtime_fits(config):
+        raise RuntimeMismatch(SKIPPED_RUNTIME)
     candidates = []
     for root in models:
         path = Path(root) / 'models/model-pack.json'
@@ -251,6 +289,9 @@ class Importer:
             try:
                 root = assemble(runtime, models, source)
                 self.state = dict(self.state, status='prepared', ready_root=str(root))
+            except RuntimeMismatch as error:
+                # An earlier import no longer fits after an update: the models stay.
+                self.state = dict(self.state, status='complete', runtime_skipped=True, detail=str(error))
             except Exception as error:
                 self.state = dict(self.state, status='error', error=str(error))
         self.thread = threading.Thread(target=work, name='freevideo-offline-prepare', daemon=True)
@@ -264,13 +305,21 @@ class Importer:
         def update(**row):
             self.state = dict(self.state, **row)
         def work():
-            try:
-                packages = []
-                for path in paths:
+            # Take every ZIP that fits; one that does not never holds back the others.
+            packages, skipped, failed = [], False, []
+            for path in paths:
+                try:
                     packages.append(import_archive(path, destination, update, self.cancelled.is_set))
-                    update(packages=list(packages))
-                update(status='complete')
-            except Exception as error:
-                update(status='error', error=str(error))
+                except RuntimeMismatch:
+                    skipped = True
+                except InterruptedError as error:
+                    failed.append(str(error))
+                    break
+                except Exception as error:
+                    failed.append('%s：%s' % (Path(path).name, error))
+                update(packages=list(packages))
+            if skipped:
+                update(runtime_skipped=True, detail=SKIPPED_RUNTIME)
+            update(**(dict(status='error', error='\n'.join(failed)) if failed else dict(status='complete')))
         self.thread = threading.Thread(target=work, name='freevideo-package-import', daemon=True)
         self.thread.start()

@@ -294,30 +294,32 @@ RESIDUAL_ADMISSION_FLOOR = int(6.25 * GiB)
 #
 # Since the attention tail writes into the block's own input and the softmax
 # plane borrows that input's storage (head_chunk.py), the same placement holds
-# one sequence buffer less. Second-pass peaks reserved, four heads, no
-# resident block, int8 ConvRot, 2026-10-07:
+# one sequence buffer less, and on Windows the output goes back into that input
+# too. The first attention call of each length compiles and used to leave dead
+# Q/K/V and the previous block's output in reference cycles until the
+# collector ran; that call now collects (head_chunk.py, packing.py). Second-pass
+# peaks reserved, four heads, no resident block, int8 ConvRot, measured
+# without instrumentation (the earlier Windows figures came from synchronizing
+# probes that hid the cycles: 7.03 GiB recorded where 8.23 was reserved):
 #
-#   tokens     PRO 6000 (Linux)    RTX 3090 (Windows, first step included)
+#   tokens     PRO 6000 (Linux)    RTX 3090 (Windows)
 #    55944     3.40 GiB  16.1 s
-#    72576     4.18 GiB  20.0 s     5.71 GiB  61.7 s/step (host outputs 79.0)
-#   107856     5.95 GiB  29.2 s     7.03 GiB  91.9 s/step (host outputs 117)
-#   218280    11.10 GiB  64.6 s     13.47 GiB  232 s/step (host outputs 283)
+#    72576     4.18 GiB  20.0 s     4.21 GiB  61.5 s/step (host outputs 79.0)
+#   107856     5.95 GiB  29.2 s     5.97 GiB  91.8 s/step (host outputs 117)
+#   218280    11.10 GiB  64.6 s     11.27 GiB 231.5 s/step (host outputs 283)
 #
-# Capped at 6.64 and 6.2 GiB, budgets of 8 GiB cards, the 3090 ran
-# 1344x768x243 at 5.72 GiB reserved and the uncapped 61.6 s/step. On Linux,
-# 1184x672x243 with two resident blocks peaked at 4.20 GiB under the 4.76 GiB
-# budget of a 6 GiB laptop, and 1344x768x243 peaked at 4.18 under 4.55.
+# On Linux, 1184x672x243 with two resident blocks peaked at 4.20 GiB under the
+# 4.76 GiB budget of a 6 GiB laptop, and 1344x768x243 peaked at 4.18 under 4.55.
 #
-# Windows keeps more reserved than allocated (5.72 allocated at 107856) and
-# changes its local budget at run time: a larger margin, and below the first
-# measured token count the measurement is not extrapolated. There the plan
-# keeps whichever of the two estimates allows the outputs on the card, so no
-# request that 0.3.3 placed on the card moves to host memory.
+# Windows changes its local budget at run time: a larger margin, and below the
+# first measured token count the measurement is not extrapolated. There the
+# plan keeps whichever of the two estimates allows the outputs on the card, so
+# no request that 0.3.3 placed on the card moves to host memory.
 #
 # A LoRA branch on an attention projection keeps the full-height tail, so a
 # request with adapters is planned from the anchors measured before it.
 INT8_GPU_OUTPUT_PEAKS = ((55944, 3.4), (72576, 4.18), (107856, 5.95), (218280, 11.1))
-INT8_GPU_OUTPUT_PEAKS_WINDOWS = ((72576, 5.71), (107856, 7.03), (218280, 13.47))
+INT8_GPU_OUTPUT_PEAKS_WINDOWS = ((72576, 4.21), (107856, 5.97), (218280, 11.27))
 INT8_GPU_OUTPUT_PEAKS_FULL_TAIL = ((55944, 4.08), (72576, 5.14))
 INT8_GPU_OUTPUT_MARGIN = int(.25 * GiB)
 INT8_GPU_OUTPUT_MARGIN_WINDOWS = int(.5 * GiB)
@@ -1074,7 +1076,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             residual_offload = True
             # Staging the residual alone is the placement measured under
             # Windows (INT8_GPU_OUTPUT_PEAKS_WINDOWS): 1920x1088x362 peaked at
-            # 13.47 GiB reserved, where outputs in host memory pinned another
+            # 11.27 GiB reserved, where outputs in host memory pinned another
             # 6 GiB of RAM for a slower step.
             gpu_need = int8_gpu_output_need(effective_tokens, windows=True, full_tail=lora) if int8 else None
             cpu_outputs = gpu_need is None or gpu_budget < gpu_need

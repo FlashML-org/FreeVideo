@@ -22,6 +22,9 @@ class ResidualState:
         self.closed = False
         self.copies = {'to_host': 0, 'to_device': 0}
         self.copy_wall_seconds = 0.
+        # Set by the block loop: collect reference cycles once this block has
+        # dropped its input (packing.install_streamed_forward).
+        self.collect_after_store = False
 
     def take(self):
         if self.closed or self.tensor is None:
@@ -108,6 +111,10 @@ def residual_forward(pre, post):
         normalized = pre(hidden, self.norm1.weight, self.norm1.eps, scale_a, shift_a, adaln_indices)
         state.store(hidden)
         del hidden
+        if state.collect_after_store:
+            state.collect_after_store = False
+            import gc
+            gc.collect()
         branch = self.attn(normalized, rotary_emb, attention_mask)
         del normalized
         residual = state.restore()

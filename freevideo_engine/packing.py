@@ -14,6 +14,7 @@ is in-place under inference, modality projections are released immediately, and
 the FP32 projections/output normalization run over bounded row chunks. GEMM
 shape changes can alter rounding; this is an explicit optimization profile.
 """
+import gc
 import types
 import torch
 from .fp8 import input_dtype
@@ -24,6 +25,25 @@ from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3Transf
 def install_streamed_forward(model, chunk=1024, residual_offload=False):
     if chunk < 1:
         raise ValueError('Projection chunk must be positive')
+    # Compiling for a new sequence length captures Python frames in reference
+    # cycles that also hold the first block's output. The second block stages
+    # that output to host memory and drops it, but the cycle keeps it alive
+    # through the second block's attention until the collector happens to run:
+    # on an RTX 3090 under Windows, 1344x768x362 second passes allocated
+    # 6.82 GiB instead of 5.74. A staged block collects once right after it
+    # drops its input, in the first forward of each new length.
+    collected = set()
+
+    def blocks(self, value, length, temb, adaln_indices, rotary):
+        first = length not in collected
+        collected.add(length)
+        for index, block in enumerate(self.transformer_blocks):
+            if first and index in (1, 2) and hasattr(value, 'collect_after_store'):
+                value.collect_after_store = True
+            value = block(value, temb, adaln_indices, rotary)
+            if first and index == 0 and not hasattr(value, 'collect_after_store'):
+                gc.collect()
+        return value
 
     def forward(self, hidden_states, audio_hidden_states, encoder_hidden_states,
                 timestep, timestep_indices, token_tags, position_ids,
@@ -57,15 +77,13 @@ def install_streamed_forward(model, chunk=1024, residual_offload=False):
             state = ResidualState(packed)
             del packed
             try:
-                for block in self.transformer_blocks:
-                    state = block(state, temb, adaln_indices, rotary)
+                state = blocks(self, state, length, temb, adaln_indices, rotary)
                 packed = state.take()
                 self._freevideo_residual_stats = state.stats()
             finally:
                 state.close()
         else:
-            for block in self.transformer_blocks:
-                packed = block(packed, temb, adaln_indices, rotary)
+            packed = blocks(self, packed, length, temb, adaln_indices, rotary)
         video_all = torch.empty((packed.shape[0], length, self.proj_out.out_features),
                                 dtype=self.proj_out.weight.dtype, device=packed.device)
         audio_all = torch.empty((packed.shape[0], length, self.audio_proj_out.out_features),

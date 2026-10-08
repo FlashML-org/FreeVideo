@@ -3,7 +3,6 @@
 // user closes it once.
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const TIP_KEY = 'freevideo.report-tip';
-const REPORT_FILE = 'video.debug.json';
 
 const gb = bytes => Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 2 ** 30) : null;
 
@@ -37,11 +36,22 @@ export function reportIssueURL(report, productVersion = null) {
     return `${ISSUE_FORM}?${params}`;
 }
 
+// Each download is named by when it was saved, so saving reports again never
+// leaves "video.debug (1).json"-style copies; the card names the file just saved.
+let savedName = null;
+export function reportFileName(date = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    return `FreeVideo-report-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+        + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
+}
+
 export function saveReport(blob) {
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = REPORT_FILE;
+    savedName = reportFileName();
+    const link = document.createElement('a'); link.href = url; link.download = savedName;
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return savedName;
 }
 
 // Open the prefilled form, saving the report first unless the user just
@@ -119,8 +129,11 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         tip.classList.add('fv-report-tip-sent'); anchor.classList.remove('fv-report-attention');
         mark.replaceChildren(glyph('done'));
         title.textContent = t('Last step', '最后一步');
-        lead.textContent = t(`Please drag ${REPORT_FILE} into "Diagnostic report", then select Submit new issue.`,
-            `请将 ${REPORT_FILE} 拖入「诊断报告」，再点击 Submit new issue 即可。`);
+        lead.textContent = savedName
+            ? t(`Please drag ${savedName} into "Diagnostic report", then select Submit new issue.`,
+                `请将 ${savedName} 拖入「诊断报告」，再点击 Submit new issue 即可。`)
+            : t('Please drag the downloaded report into "Diagnostic report", then select Submit new issue.',
+                '请将下载的诊断报告拖入「诊断报告」，再点击 Submit new issue 即可。');
         const link = el('a', null, t("Page didn't open? Go to GitHub", '页面没有打开？点此前往 GitHub'));
         link.href = address; link.target = '_blank'; link.rel = 'noopener';
         note.replaceChildren(link);

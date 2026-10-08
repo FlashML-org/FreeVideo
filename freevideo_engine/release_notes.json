@@ -1,26 +1,26 @@
 {
   "schema": 1,
-  "product_version": "0.3.9",
+  "product_version": "0.3.10",
   "en": {
-    "summary": "Updates no longer leave earlier versions behind, updating your ComfyUI no longer reinstalls PyTorch, and a FreeVideo page that does not load completely now says why.",
+    "summary": "Long videos on Windows cards with 6–16 GB run faster, Environment ZIPs from earlier versions import again, and creations made with prompt enhancement can be deleted.",
     "changes": [
-      "After an update, the launcher removes the earlier launcher copies and FreeVideo files it no longer uses, and shows how much space was freed. Models, outputs, files you changed and the copies your shortcuts or pinned icons open are kept.",
-      "On Windows, the downloaded PyTorch packages (about 1.8 GB) are removed once every environment has them installed. They are only needed to create an environment again.",
-      "When ComfyUI runs in FreeVideo's separate environment and you update ComfyUI, the launcher updates that environment before starting it, instead of downloading another one with PyTorch.",
-      "An engine folder inside an existing ComfyUI is now ignored by git, so ComfyUI updaters that stash or clean untracked files no longer copy or move its models and environments.",
-      "If FreeVideo’s page does not load completely in the browser, for example its styles or the creative workspace are missing, the page now says which file failed, why, and what to do. The launcher shows the same problem, and diagnostic reports include it.",
-      "Opening FreeVideo from the launcher now always brings its workflow to the front, even when ComfyUI reopens the tabs from your last session."
+      "On Windows, int8 attention needs about a quarter less GPU memory. More long or large videos now keep attention results on the graphics card instead of in system memory, which makes their steps faster. The output is unchanged.",
+      "When little system memory is free, weights are now read ahead while the previous ones compute, from 1 GB of spare memory instead of 3 GB. Steps that read weights from disk get faster.",
+      "An offline Environment ZIP from an earlier version is accepted again. It now only has to contain the environment this version needs, whichever version it came with.",
+      "When several offline ZIPs are imported together, every one that fits is imported. One that cannot be used no longer stops the others; an environment that does not fit is installed automatically, and the imported models are still used.",
+      "Creations made with prompt enhancement can be deleted from Your creations again.",
+      "Each downloaded diagnostic report is named by when it was saved (FreeVideo-report-date-time.json), so downloading several no longer produces \"video.debug (1).json\", \"(2)\" and so on."
     ]
   },
   "zh": {
-    "summary": "更新后不再残留旧版本文件；升级 ComfyUI 后不再重新安装 PyTorch；FreeVideo 页面没有完整加载时会说明原因。",
+    "summary": "Windows 上 6–16 GB 显卡生成长视频更快；早先版本的运行环境包重新可以导入；用过提示词增强的作品可以正常删除。",
     "changes": [
-      "更新完成后，启动器会自动删除不再使用的旧版启动器和 FreeVideo 文件，并显示释放的空间。模型、生成结果、你改动过的文件，以及快捷方式或固定图标会打开的副本都会保留。",
-      "Windows 上，所有环境都装好 PyTorch 后，会删除已下载的 PyTorch 安装包（约 1.8 GB），这些安装包只在重新创建环境时才需要。",
-      "ComfyUI 在 FreeVideo 准备的独立环境中运行时，升级 ComfyUI 后，启动器会在启动前更新这个环境，不再另外下载一整套带 PyTorch 的环境。",
-      "放在已有 ComfyUI 里的引擎文件夹现在会被 git 忽略，ComfyUI 更新工具暂存或清理未跟踪文件时，不会再复制或移走其中的模型和环境。",
-      "浏览器里的 FreeVideo 页面没有完整加载时（例如样式丢失或创作面板打不开），页面会写明是哪个文件、什么原因、该怎么处理；启动器也会显示同样的问题，诊断报告中也会包含。",
-      "从启动器打开 FreeVideo 时，即使 ComfyUI 恢复了上次的标签页，FreeVideo 工作流也会显示在最前面。"
+      "Windows 上 int8 注意力占用的显存减少约四分之一，更多长视频或大尺寸视频的注意力结果可以留在显卡上，不再放到内存里，每步更快。生成结果不变。",
+      "内存余量较少时，现在只要有 1 GB 空闲（原来需要 3 GB）就会在计算的同时预读下一批权重，需要从硬盘读权重的步骤会更快。",
+      "早先版本附带的离线运行环境包重新可以导入。现在只检查包里的运行环境是否符合当前版本，不再看它来自哪个版本。",
+      "同时导入多个离线包时，能用的都会导入，某个包用不了也不会再挡住其他包；运行环境不符合时会改为自动安装，已导入的模型照常使用。",
+      "用过提示词增强的作品，现在可以在「你的作品」里正常删除。",
+      "下载的诊断报告按保存时间命名（FreeVideo-report-日期-时间.json），多次下载不会再出现「video.debug (1).json」「(2)」这样的文件名。"
     ]
   }
 }
