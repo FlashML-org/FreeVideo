@@ -1,6 +1,6 @@
 # Community results
 
-Diagnostic reports from community users: the hardware, request, end-to-end time and version in each report, the version that includes the relevant optimization, and the estimated time after it.
+Thanks to the community members who sent diagnostic reports. FreeVideo already runs on machines from 8 GB laptops to 72 GB workstation cards, and the table below collects measurements on 12 of those GPUs: the hardware, request, version and end-to-end time in each report, the version that includes the relevant optimization, and the estimated time after it.
 
 | GPU | VRAM | RAM | Resolution | Length | Input | Quality | Version | End-to-end | Optimized in | Estimated after |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
