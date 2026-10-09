@@ -48,6 +48,7 @@ jobs:
       - name: Check CLI, ComfyUI entry and packaged resources
         run: |
           python scripts/check_installation.py
+          python scripts/amd/test_rocm_runtime.py
           bash -n setup.sh test.sh freevideo scripts/bootstrap_linux.sh
           ./setup.sh --help
           ./test.sh --help

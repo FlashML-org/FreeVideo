@@ -357,7 +357,7 @@ def _run(args):
         profile = json.loads(args.profile.read_text(encoding='utf-8'))
     else:
         hardware, resident_credit, profile = automatic_profile(args, canvas, stage='before-encoding', evidence=planning)
-    print(json.dumps(dict(event='compute_device', backend='CUDA', name=getattr(hardware, 'gpu_name', None),
+    print(json.dumps(dict(event='compute_device', backend='ROCm' if hardware.hip_version else 'CUDA', name=getattr(hardware, 'gpu_name', None),
                           uuid=getattr(hardware, 'gpu_uuid', None), vram_total_bytes=getattr(hardware, 'vram_total', None),
                           vram_free_bytes=getattr(hardware, 'vram_free', None))), flush=True)
     allocator_limit_bytes = benchmark_allocator_limit(profile, getattr(args, 'allocator_limit_gib', None), hardware)
@@ -528,6 +528,7 @@ def _run(args):
                             encoder_env, descriptor, destination.with_suffix('.encoding.log'),
                             ram_budget_bytes=profile['inference_ram_budget_gb'] * 1e9,
                             ram_budget_is_estimate=ram_budget_is_estimate(args),
+                            gpu=hardware.gpu_uuid if hardware.hip_version else None,
                             minimum_available_bytes=inference_emergency_floor(profile['inference_ram_budget_gb'] * 1e9,
                                 getattr(args, 'ram_reserve_gib', None)),
                             on_start=lambda pid: history.attach_worker(encoder_attempt, pid, phase='encoding'))

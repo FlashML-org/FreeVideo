@@ -44,6 +44,7 @@ def run(args):
             child([args.comfy_python, '-m', 'freevideo_engine.encode_worker', '--request', str(request)],
                   env, descriptor, destination.with_suffix('.encoding.log'), ram_budget_bytes=policy.ram_budget_bytes,
                   ram_budget_is_estimate=ram_budget_is_estimate(args),
+                  gpu=hardware.gpu_uuid if hardware.hip_version else None,
                   minimum_available_bytes=inference_emergency_floor(policy.ram_budget_bytes,
                       getattr(args, 'ram_reserve_gib', None)))
     finally:

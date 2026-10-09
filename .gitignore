@@ -54,6 +54,15 @@ engine-gpu-*.lock
 /comfyui.json
 /optimization-runs/
 
+# Experiment directories may be symlinks to another disk.
+/envs
+/vendor
+/outputs
+/kernel-cache
+/downloads
+/prepared
+/models
+
 # Optional local prompt models, runtime binaries and private rewrite caches.
 /optional/
 *.gguf

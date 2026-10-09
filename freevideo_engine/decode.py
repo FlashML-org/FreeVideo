@@ -7,6 +7,7 @@ import time
 import torch
 
 from .offload import LayerOffloader, pin_layer_weights
+from .rocm_compat import audio_convolutions, video_blas
 from .vae_tiles import TileDecoder, compile_blocks
 
 
@@ -124,7 +125,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
     try:
         # Autocast follows the original renderer. The opt-in Linear cache stores
         # its existing FP16 compute values once; all other weights stay FP32.
-        with torch.autocast(device_type='cuda', dtype=torch.float16, cache_enabled=not offload):
+        with video_blas() as video_blas_metrics, torch.autocast(device_type='cuda', dtype=torch.float16, cache_enabled=not offload):
             if stream_output:
                 from .decode_stream import render_rgb
                 directory = Path(artifacts_dir) if artifacts_dir else Path(out_path).with_suffix('.artifacts')
@@ -189,10 +190,29 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         audio_vae.eval().requires_grad_(False)
         audio_mean = torch.tensor(audio_vae.config.latents_mean, device='cuda').view(1, -1, 1)
         audio_std = torch.tensor(audio_vae.config.latents_std, device='cuda').view(1, -1, 1)
-        audio = audio_vae.decode(audio_latents * audio_std + audio_mean, return_dict=False)[0]
+        audio_input = audio_latents * audio_std + audio_mean
+        audio_diagnostics = dict(device=str(audio_input.device), dtype=str(audio_input.dtype),
+            autocast_enabled=torch.is_autocast_enabled('cuda'),
+            matmul_tf32=torch.backends.cuda.matmul.allow_tf32,
+            cudnn_tf32=torch.backends.cudnn.allow_tf32,
+            input_min=audio_input.min().item(), input_max=audio_input.max().item(),
+            input_rms=audio_input.square().mean().sqrt().item())
+        if torch.version.hip and artifacts_dir:
+            import numpy as np
+            np.save(Path(artifacts_dir) / 'audio_decoder_input.npy', audio_input.cpu().numpy(), allow_pickle=False)
+        with audio_convolutions() as audio_convolution_metrics:
+            if audio_convolution_metrics['changed'] and audio_input.dtype != torch.float32:
+                raise RuntimeError('Native H3 audio convolutions require FP32 input')
+            audio = audio_vae.decode(audio_input, return_dict=False)[0]
         audio = audio.float().permute(1, 0, 2)[0].cpu()
+        audio_diagnostics.update(output_rms=audio.square().mean().sqrt().item(),
+            output_peak=audio.abs().max().item(),
+            saturation_fraction=(audio.abs() >= .999).float().mean().item(),
+            finite=bool(audio.isfinite().all()))
+        if not audio_diagnostics['finite']:
+            raise RuntimeError('Audio VAE returned non-finite samples: '+repr(audio_diagnostics))
         rate = audio_vae.config.sampling_rate
-        del audio_vae, audio_mean, audio_std
+        del audio_vae, audio_mean, audio_std, audio_input
         gc.collect()
         torch.cuda.empty_cache()
         audio_seconds = time.perf_counter() - audio_start
@@ -227,10 +247,12 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             'resident_vae_cache_hit': vae_cache_hit, 'resident_audio_vae_cache_hit': audio_cache_hit,
             'vae_preload_seconds': preload_seconds,
             'audio_load_decode_seconds': audio_seconds, 'encode_seconds': time.perf_counter() - encode_started,
+            'audio_decoder': audio_diagnostics,
+            'audio_convolution': audio_convolution_metrics,
             'decoded_artifact_save_seconds': artifact_seconds,
             'streamed_video_output': stream_output, 'streamed_vae_weights': stream_weights,
             'vae_resident_blocks': resident_blocks,
-            'vae_compiled_blocks': compiled_blocks,
+            'vae_compiled_blocks': compiled_blocks, 'video_blas': video_blas_metrics,
             'video_postprocess_seconds': streamed_timings.get('video_postprocess_seconds'),
             'vae_pinned_weight_bytes': pinned_bytes,
             'decode_save_seconds': time.perf_counter() - started,

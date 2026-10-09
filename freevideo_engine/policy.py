@@ -1261,7 +1261,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                   # matched the recomputing run to the byte across three probe
                   # steps (6.63, 7.37, 8.11 GiB) because those activations are
                   # freed within each block, while it cost 5% of sampling time.
-                  fp8_ff_recompute=(capacity_trial and hardware.capability[0] >= 10 and not int8), cache_refined_text=True,
+                  fp8_ff_recompute=(capacity_trial and not hardware.hip_version and hardware.capability[0] >= 10 and not int8), cache_refined_text=True,
                   resident_blocks=resident, pin_host_gb=round(pin, 3),
                   stream_weights=streamed_weights,
                   # Larger looped batches are optimization candidates; full
@@ -1376,7 +1376,12 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     if stream_output:
         notes.append('Decode streams original temporal clips into rgb.npy; full floating video and duplicate RGB storage are avoided.')
     return Policy(2, hardware.to_dict(), gpu_budget, ram_budget, int(reserve_gpu * GiB),
-                  int(reserve_ram * GiB), 'backend:native,pinned_max_round_threshold_mb:1,expandable_segments:True',
+                  int(reserve_ram * GiB),
+                  # This ROCm stack's MIOpen FP32 audio convolutions produce
+                  # NaNs/saturation with expandable segments. Native allocations
+                  # match the CPU reference; the CUDA policy remains unchanged.
+                  'backend:native' if hardware.hip_version else
+                  'backend:native,pinned_max_round_threshold_mb:1,expandable_segments:True',
                   # 504 serialized VAE weight transfers fill 124.8 s of a
                   # 140.4 s decode here, with one slot and no overlap, so a
                   # second slot is worth measuring. It stays off until a

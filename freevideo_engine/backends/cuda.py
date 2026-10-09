@@ -55,10 +55,22 @@ class CUDABackend(DeviceBackend):
 
     def arithmetic_identity(self):
         import hashlib
+        import os
         from pathlib import Path
         torch = self.torch
         return dict(cuda=torch.version.cuda, gpu=torch.cuda.get_device_name(),
-                    device_backend='cuda',
+                    hip=torch.version.hip,
+                    gcn_arch=getattr(torch.cuda.get_device_properties(0), 'gcnArchName', ''),
+                    device_backend='rocm' if torch.version.hip else 'cuda',
+                    rocm_kernel_environment={name: os.environ.get(name, default) for name, default in
+                        (('FREEVIDEO_ROCM_SPATIAL_CONV', 'miopen'), ('FREEVIDEO_ROCM_ATTENTION', 'aotriton'),
+                         ('FREEVIDEO_ROCM_FFN', 'default'))}
+                        if torch.version.hip else None,
+                    rocm_source_sha256=({name: hashlib.sha256(Path(__file__).parents[1].joinpath(name).read_bytes()).hexdigest()
+                                         for name in ('rocm_ffn.py', 'rocm_attention.py', 'rocm_spatial.py', 'rocm_compat.py')}
+                                        if torch.version.hip else None),
+                    rocm_blas_environment={name: os.environ.get(name) for name in
+                        ('TORCH_BLAS_PREFER_HIPBLASLT', 'ROCBLAS_USE_HIPBLASLT')} if torch.version.hip else None,
                     backend_source_sha256={name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
                                            for name in ('__init__.py', 'base.py', 'cuda.py', 'cuda_attention.py')},
                     tf32=torch.backends.cuda.matmul.allow_tf32,
@@ -77,10 +89,18 @@ class CUDABackend(DeviceBackend):
         precision = manifest.get('precision', 'bf16')
         actual_fp8_gemm = None
         if precision == 'fp8':
-            from src.models.ops.fp8_linear import per_tensor_gemm
+            from src.models.ops import fp8_linear
+            # On ROCm select the verified scale policy from the real architecture,
+            # never from HIP's CUDA capability compatibility value.
+            if self.torch.version.hip:
+                arch = getattr(self.torch.cuda.get_device_properties(0), 'gcnArchName', '').split(':')[0]
+                if linear_compute == 'native-fp8' and arch != 'gfx1201':
+                    raise ValueError('ROCm native FP8 is currently validated only on gfx1201')
+                fp8_linear._PER_TENSOR = True
+            per_tensor_gemm = fp8_linear.per_tensor_gemm
             from ..fp8 import install_cached_linears
             expected = 'per_tensor' if per_tensor_gemm() else 'rowwise'
-            if linear_compute == 'native-fp8' and self.torch.cuda.get_device_capability() < (8, 9):
+            if linear_compute == 'native-fp8' and not self.torch.version.hip and self.torch.cuda.get_device_capability() < (8, 9):
                 raise ValueError('Native FP8 GEMM requires Ada or newer; choose bf16-weight-only on Ampere')
             if linear_compute == 'native-fp8' and manifest['scale_granularity'] != expected:
                 raise ValueError('FP8 cache scale granularity does not match this GPU; prepare a separate cache')
@@ -99,6 +119,17 @@ class CUDABackend(DeviceBackend):
 
     def install_chunked_ff(self, module, chunk, *, recompute=False):
         from ..fp8_ops import install_chunked_ff
+        if self.torch.version.hip:
+            import os
+            selected = os.environ.get('FREEVIDEO_ROCM_FFN', 'default')
+            if selected not in ('default', 'tail-preserving'):
+                raise ValueError('FREEVIDEO_ROCM_FFN must be default or tail-preserving')
+            if selected == 'tail-preserving' and chunk == 2048 and not recompute:
+                arch = self.torch.cuda.get_device_properties(0).gcnArchName.split(':')[0]
+                if arch != 'gfx1201':
+                    raise ValueError('Tail-preserving FP8 FFN is validated only on gfx1201')
+                from ..rocm_ffn import install_tail_preserving_ff
+                return install_tail_preserving_ff(module)
         return install_chunked_ff(module, chunk, recompute=recompute)
 
     def make_offloader(self, layers, **options):
