@@ -92,6 +92,7 @@ Setup installs FreeVideo, ComfyUI and the models, then opens FreeVideo in the br
 ### More details
 
 - [FreeVideo Adaptive Execution Planner](docs/execution-planning.md)
+- [Community results](docs/community-results.md)
 
 ### Support
 
