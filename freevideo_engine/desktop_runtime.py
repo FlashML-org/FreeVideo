@@ -40,7 +40,8 @@ def source_files(root):
     files = [root / name for name in names]
     files += [p for folder in ('freevideo_engine', 'constraints', 'web', 'example_workflows')
               for p in (root / folder).rglob('*')
-              if p.is_file() and p.suffix in ('.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico', '.qml')]
+              if p.is_file() and p.suffix in ('.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico', '.qml',
+                                             '.woff2')]
     return sorted(files)
 
 
