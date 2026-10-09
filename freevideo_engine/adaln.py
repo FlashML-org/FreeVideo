@@ -38,11 +38,21 @@ class CachedModulation(torch.nn.Module):
         self.steps = len(values)
         for index, values_at_step in enumerate(values):
             self.register_buffer(f'step_{index}', torch.cat(values_at_step, dim=-1))
+        # Steps differ in how many distinct timesteps they carry: the first H3
+        # step has video and audio at the same t, so its rows are fewer. The
+        # fused pre/post kernels compile for static shapes and recompiled in the
+        # second step, mid-request and beside a full step's activations. Rows
+        # past a step's own timesteps are never indexed, so the narrower steps
+        # repeat their last row up to the widest step; stored tables are unchanged.
+        self.rows = max(len(getattr(self, f'step_{index}')) for index in range(self.steps))
 
     def forward(self, temb):
         if self.cursor.index < 0:
             raise RuntimeError('AdaLN schedule has not started')
-        return getattr(self, f'step_{self.cursor.index}').chunk(6, dim=-1)
+        values = getattr(self, f'step_{self.cursor.index}')
+        if len(values) < self.rows:
+            values = torch.cat((values, values[-1:].expand(self.rows - len(values), -1)))
+        return values.chunk(6, dim=-1)
 
 
 class TableCache:

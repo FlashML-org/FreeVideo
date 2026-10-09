@@ -194,8 +194,8 @@ class Slot:
 # process on a 56 GiB RTX 3090 machine (about 2 GiB available while sampling),
 # 1344x768x124 went from 15.5-15.9 to 10.7-10.9 s per first-pass step and
 # 29.8-30.0 to 26.0-26.1 per second-pass step at 1 GiB, twice each (327-332 s
-# to 283-294 s for the request). The runtime check in _queue_host stops
-# read-ahead again under live pressure.
+# to 283-294 s for the request). The runtime check in _queue_host returns the
+# extra block under live pressure; read-ahead then shares the staging buffer.
 HOST_PREFETCH_HEADROOM = 1 * 2**30
 
 
@@ -432,7 +432,10 @@ class LayerOffloader:
         from .system import windows
         requested = windows() if host_prefetch is None else host_prefetch
         self.host_prefetch = False
+        # Memory pressure no longer switches read-ahead off (see the shared
+        # reason below); reports keep this field for earlier versions.
         self.host_prefetch_disabled_reason = None
+        self.host_prefetch_shared_reason = None
         self.host_slots = []
         self.host_executor = None
         self.host_pending = {}
@@ -444,6 +447,17 @@ class LayerOffloader:
                 and getattr(weight_source, 'direct_read', False)
                 and getattr(weight_source, 'intermediate_dtype', None) is None
                 and self.pinned_staging):
+            # Without room for a second block of locked pages, read ahead into
+            # the staging buffer every streamed layer already passes through:
+            # the next read starts once the current layer's upload completes,
+            # while that layer computes. Reading on the inference thread instead
+            # waits until it has queued the current layer, and with a full
+            # launch queue the GPU then idles through most of the read. With 18
+            # of 50 layers reread from the file every step, each read about as
+            # long as a layer's compute, 1344x768x362 steps went from 41.1 to
+            # 32.0 s at head groups of 2 and from 34.5 to 27.6 s at 4 on an RTX
+            # PRO 6000 (latents identical); the second block saves 0.4 s more.
+            self.host_slots = [Slot(host=self.slots[0].host, device={})]
             extra = _pin_reservation([plane.numel() * plane.element_size()
                                       for plane in self.slots[0].host.values()])
             if _host_prefetch_fits(extra):
@@ -453,16 +467,15 @@ class LayerOffloader:
                         host[dtype] = torch.empty(count, dtype=dtype, pin_memory=True)
                 except (RuntimeError, MemoryError):
                     host.clear()
-                    self.host_prefetch_disabled_reason = 'host_allocation_refused'
+                    self.host_prefetch_shared_reason = 'host_allocation_refused'
                     from .torch_compat import empty_host_cache
                     empty_host_cache(torch)
                 else:
-                    self.host_slots = [Slot(host=self.slots[0].host, device={}), Slot(host=host, device={})]
-                    self.host_executor = ThreadPoolExecutor(max_workers=1,
-                        thread_name_prefix='freevideo-host-stage')
-                    self.host_prefetch = True
+                    self.host_slots.append(Slot(host=host, device={}))
             else:
-                self.host_prefetch_disabled_reason = 'host_headroom'
+                self.host_prefetch_shared_reason = 'host_headroom'
+            self.host_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='freevideo-host-stage')
+            self.host_prefetch = True
         for index, layer in enumerate(self.layers if manage_hooks else []):
             self.hooks.append(layer.register_forward_pre_hook(
                 lambda module, args, index=index: self._before(index)))
@@ -565,18 +578,24 @@ class LayerOffloader:
         if not self.host_prefetch or self.host_pending:
             return
         now = time.monotonic()
-        if now - self.host_memory_checked >= 1.:
+        if len(self.host_slots) > 1 and now - self.host_memory_checked >= 1.:
             self.host_memory_checked = now
             if not _host_prefetch_fits(0):
-                self.host_prefetch_disabled_reason = 'live_host_pressure'
-                self._stop_host_prefetch()
+                # Return only the extra block of locked pages. Reading ahead
+                # through the shared staging buffer holds no more memory than
+                # reading on demand does.
+                self.host_prefetch_shared_reason = 'live_host_pressure'
+                extra = self.host_slots.pop()
+                if extra.copy_done is not None:
+                    extra.copy_done.synchronize()
+                del extra
+                self.host_cursor = 0
                 from .torch_compat import empty_host_cache
                 empty_host_cache(torch)
-                return
         for index in range(start, len(self.layers)):
             if self.pinned_layers[index] or index in self.cached:
                 continue
-            slot = self.host_slots[self.host_cursor % 2]
+            slot = self.host_slots[self.host_cursor % len(self.host_slots)]
             self.host_cursor += 1
             self.host_pending[index] = (slot, self.host_executor.submit(self._fill_host, index, slot))
             self.host_prefetch_reads += 1
@@ -612,7 +631,7 @@ class LayerOffloader:
                     host_slot, counts, host_seconds = future.result()
                     self.host_prefetch_wait_seconds += time.monotonic() - tick
                 else:
-                    host_slot = self.host_slots[self.host_cursor % 2]
+                    host_slot = self.host_slots[self.host_cursor % len(self.host_slots)]
                     self.host_cursor += 1
                     host_slot, counts, host_seconds = self._fill_host(index, host_slot)
             elif direct:
@@ -727,6 +746,7 @@ class LayerOffloader:
                 'host_prefetch_buffer_bytes': sum(t.numel() * t.element_size()
                     for slot in self.host_slots[1:] for t in slot.host.values()),
                 'host_prefetch_disabled_reason': self.host_prefetch_disabled_reason,
+                'host_prefetch_shared_reason': self.host_prefetch_shared_reason,
                 'disk_read_ahead': self.read_ahead.stats() if self.read_ahead is not None else {'enabled': False},
                 'disk_read_ahead_before_cache': self.read_ahead_before_cache,
                 'timing_note': 'Host staging, buffer waits and H2D may overlap compute. Prefetch wait can include '

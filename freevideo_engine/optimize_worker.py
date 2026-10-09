@@ -52,7 +52,10 @@ def configure(engine, base, patch):
     elif options['ff_chunk'] != base['ff_chunk']:
         raise ValueError('This bounded search keeps Ampere FF chunking fixed')
     from .packing import install_streamed_forward
-    install_streamed_forward(engine.transformer, options['projection_chunk'])
+    # The engine keeps its staged blocks, which take the residual stream as a
+    # ResidualState; the packing forward must hand them one.
+    install_streamed_forward(engine.transformer, options['projection_chunk'],
+                             residual_offload=bool(engine.config.get('residual_offload')))
     engine.config.update({name: options[name] for name in PATCH_KEYS})
     return engine
 

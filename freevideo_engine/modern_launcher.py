@@ -59,7 +59,15 @@ def create_ui(session, *, show=True):
     app.setOrganizationName('FreeVideo')
     app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     font = QFont()
-    font.setFamilies(['Segoe UI', 'Microsoft YaHei UI', 'Noto Sans', 'Noto Sans CJK SC', 'sans-serif'])
+    families = ['Segoe UI', 'Microsoft YaHei UI', 'Noto Sans', 'Noto Sans CJK SC']
+    # The Linux AppImage carries the launcher's Chinese characters for desktops
+    # without a Chinese font; a complete system font still comes first.
+    from PySide6.QtGui import QFontDatabase
+    for path in sorted((Path(__file__).parent / 'assets/fonts').glob('*.otf')):
+        for family in QFontDatabase.applicationFontFamilies(QFontDatabase.addApplicationFont(str(path))):
+            if family not in families:
+                families.append(family)
+    font.setFamilies(families + ['sans-serif'])
     font.setPointSize(10)
     app.setFont(font)
     icon = launcher_icon()
@@ -119,6 +127,10 @@ def create_ui(session, *, show=True):
         @Slot(str, bool)
         def action(self, name, accepted=False):
             self.invoke(session.action, name, accepted)
+
+        @Slot(str)
+        def useDisk(self, folder):
+            self.invoke(session.use_disk, folder)
 
         @Slot(bool)
         def cleanupDownloads(self, remove=False):
@@ -321,6 +333,9 @@ def smoke_test(app, engine, window, bridge, destination):
             primary = window.findChild(QQuickItem, 'primaryButton')
             if primary is None or not primary.isVisible() or primary.width() < 40:
                 raise RuntimeError('Packaged launcher action is not visible: ' + page)
+            if page == 'progress':
+                # The last setup step shows the finished ones with a check mark; keep it for the font check.
+                window.grabWindow().save(str(destination / 'launcher-steps.png'))
         window.setProperty('settingsOpen', True)
         app.processEvents()
         window.setProperty('settingsOpen', False)
@@ -360,6 +375,43 @@ def smoke_test(app, engine, window, bridge, destination):
     timer.start(100)
 
 
+def smoke_connect(app, engine, window, bridge, destination, values):
+    """Connect the packaged launcher to an existing installation, as a person would, and open ComfyUI.
+
+    Exercises what only a packaged launcher does on a real installation: its
+    helper processes, the environment of the programs it starts, its source copy.
+    """
+    from PySide6.QtCore import QTimer
+    from .comfy_launcher_runtime import server_info
+    from .monitoring import save
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    session = engine.session
+    for key, value in values.items():
+        session.edit(key, value)
+    session.action('primary')
+    session.action('primary')
+    deadline = time.monotonic() + 900
+    timer = QTimer(bridge)
+    def step():
+        state = session.controller.state
+        status = state.get('status')
+        if session.controller.busy:
+            return
+        if status == 'review' and time.monotonic() < deadline:
+            session.action('primary', True)
+            return
+        if status in ('open', 'failed', 'cancelled', 'restart-required') or time.monotonic() > deadline:
+            info = server_info(state['url'].split('/?')[0]) if status == 'open' else {}
+            save(destination / 'connect.json', dict(success=status == 'open' and info.get('status') == 'freevideo',
+                                                    status=status, error=state.get('error'), url=state.get('url'), server=info))
+            window.grabWindow().save(str(destination / 'connected.png'))
+            timer.stop()
+            app.quit()
+    timer.timeout.connect(step)
+    timer.start(250)
+
+
 def main(session=None):
     if (getattr(sys, 'frozen', False) and sys.platform == 'darwin'
             and sys.argv[1:2] == ['--macos-process-host']):
@@ -378,14 +430,27 @@ def main(session=None):
         freevideo_engine.__path__.insert(0, str(source / 'freevideo_engine'))
         from .managed import main as managed
         raise SystemExit(managed(sys.argv[3:]))
-    # Linux process supervision reexecutes sys.executable. A frozen GUI must
-    # dispatch this helper before creating another application window.
-    if (getattr(sys, 'frozen', False) and sys.platform == 'linux'
-            and sys.argv[1:4] == ['-B', '-m', 'freevideo_engine.linux_process_host']):
-        from .linux_process_host import main as supervise
-        sys.argv = [sys.argv[3], *sys.argv[4:]]
-        raise SystemExit(supervise())
+    if getattr(sys, 'frozen', False) and sys.platform.startswith('linux'):
+        from .linux_bundle import prepare
+        prepare()
+        # Helpers such as Linux process supervision run this executable again
+        # (processes.module_command); dispatch them before any window exists.
+        if sys.argv[1:2] == ['--freevideo-module'] and len(sys.argv) >= 3:
+            import runpy
+            module = sys.argv[2]
+            if module not in ('freevideo_engine.linux_process_host',):
+                raise SystemExit('Unknown launcher helper: ' + module)
+            # A helper has no window: what PyInstaller set for Qt and for its own
+            # bootloader must not reach the programs it supervises.
+            from .linux_bundle import child_environment
+            clean = child_environment()
+            os.environ.clear()
+            os.environ.update(clean)
+            sys.argv = [module, *sys.argv[3:]]
+            runpy.run_module(module, run_name='__main__', alter_sys=True)
+            raise SystemExit(0)
     smoke = '--smoke-test' in sys.argv
+    connect = json.loads(sys.argv[sys.argv.index('--smoke-connect') + 1]) if smoke and '--smoke-connect' in sys.argv else None
     from .desktop_runtime import launcher_root
     portable_root = Path(sys.executable).parent
     if session is None and getattr(sys, 'frozen', False) and (portable_root / 'portable.json').is_file() and not smoke:
@@ -412,8 +477,11 @@ def main(session=None):
     app, engine, window, bridge = create_ui(session)
     if smoke:
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, lambda: smoke_test(app, engine, window, bridge,
-            sys.argv[sys.argv.index('--smoke-test')+1]))
+        destination = sys.argv[sys.argv.index('--smoke-test')+1]
+        if connect is not None:
+            QTimer.singleShot(0, lambda: smoke_connect(app, engine, window, bridge, destination, connect))
+        else:
+            QTimer.singleShot(0, lambda: smoke_test(app, engine, window, bridge, destination))
     try:
         app.exec()
     finally:

@@ -92,7 +92,7 @@ def generate(request, resident=None):
             live_budget = LiveGPUBudget(torch, metrics['device_memory'],
                 request.get('gpu_capacity_bytes', metrics['device_memory']['device_total_bytes']) - reserve, reserve)
 
-        def refresh_budget(stage, reclaim=None):
+        def refresh_budget(stage, reclaim=None, workspace=None):
             def release(target):
                 if reclaim is not None:
                     reclaim(target)
@@ -102,10 +102,13 @@ def generate(request, resident=None):
                             break
                         if role != 'engine' or stage == 'decode':
                             resident.drop(role, 'Live GPU budget decreased')
-            limit = live_budget.refresh(stage, release)
+            limit = live_budget.refresh(stage, release, workspace=workspace)
             if resident is not None:
                 resident.gpu_budget = limit
             return limit
+        if live_budget is not None:
+            # The pass cache grows only into memory no other process holds.
+            refresh_budget.device_headroom = live_budget.device_headroom
         if resident is not None:
             limit = metrics['device_memory'].get('effective_allocator_limit_bytes')
             if limit is not None:
@@ -279,8 +282,12 @@ def generate(request, resident=None):
                             if live_budget is not None:
                                 refresh_budget('upscale')
                             need = upscale_workspace(sampling_plan['upscale_target']) if sampling_plan['upscaler_sha256'] else 0
-                            if need and resident is not None and not resident.ram_fits(2 * 2**30):
-                                resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
+                            # Its weights go straight to the GPU. Charging 2 GiB of
+                            # host RAM evicted the second pass's own engine on
+                            # tight-RAM machines, which then reloaded every block.
+                            from .two_pass import UPSCALER_HOST_BYTES
+                            if need and resident is not None and not resident.ram_fits(UPSCALER_HOST_BYTES):
+                                resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES)
                             torch.cuda.empty_cache()
                             def upscale_available():
                                 free, _ = torch.cuda.mem_get_info()
@@ -321,7 +328,7 @@ def generate(request, resident=None):
                                     else:
                                         engine.close()
                                 if resident is not None:
-                                    resident.make_room('latent_upscaler', need, ram_need=2 * 2**30)
+                                    resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES)
                                 import gc
                                 gc.collect()
                                 torch.cuda.empty_cache()

@@ -52,6 +52,10 @@ engine-gpu-*.lock
 /tuning/
 /input-cache/
 /comfyui.json
+# ComfyUI that ./setup.sh installs beside the engine, and the service that runs it.
+/ComfyUI/
+/ComfyUI.freevideo-download/
+/launcher/
 /optimization-runs/
 
 # Optional local prompt models, runtime binaries and private rewrite caches.

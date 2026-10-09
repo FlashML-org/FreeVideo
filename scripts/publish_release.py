@@ -1,10 +1,11 @@
 """Publish the built launchers: the rolling nightly, or a stable vX.Y.Z release for every platform.
 
-The release workflow runs this after the Windows and Mac jobs. A stable release also refreshes the
-platform tags (windows-preview, macos-preview) that launchers from before combined releases read.
+The release workflow runs this after the Windows, Mac and Linux jobs. A stable release also refreshes
+the platform tags (windows-preview, macos-preview) that launchers from before combined releases read;
+Linux has no such launchers.
 Writes go through the gh CLI with retries. Update metadata is uploaded last and bound to the
 immutable asset IDs, so a reader never pairs new metadata with an old executable.
-Usage: publish_release.py --track stable|nightly --windows DIR --macos DIR --sha COMMIT
+Usage: publish_release.py --track stable|nightly --windows DIR --macos DIR --linux DIR --sha COMMIT
 """
 import argparse
 import hashlib
@@ -19,11 +20,13 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from freevideo_engine.launcher_update import (CHANNEL, MAC_CHANNEL, NIGHTLY_TAG, RELEASE_ASSETS,  # noqa: E402
-                                              build_identity, build_track)
+from freevideo_engine.launcher_update import (CHANNEL, LINUX_CHANNEL, MAC_CHANNEL, NIGHTLY_TAG,  # noqa: E402
+                                              RELEASE_ASSETS, build_identity, build_track)
 from freevideo_engine.release_notes import notes  # noqa: E402
 
-PLATFORMS = (CHANNEL, MAC_CHANNEL)
+PLATFORMS = (CHANNEL, MAC_CHANNEL, LINUX_CHANNEL)
+LEGACY_PLATFORMS = (CHANNEL, MAC_CHANNEL)
+NAMES = {CHANNEL: 'Windows', MAC_CHANNEL: 'Mac', LINUX_CHANNEL: 'Linux'}
 PAGE = 'https://github.com/FlashML-org/FreeVideo'
 LOGO = '''<div align="center">
   <picture>
@@ -66,9 +69,9 @@ def digest(path):
     return value.hexdigest()
 
 
-def load_builds(windows, macos):
+def load_builds(windows, macos, linux):
     builds = {}
-    for channel, folder in ((CHANNEL, Path(windows)), (MAC_CHANNEL, Path(macos))):
+    for channel, folder in ((CHANNEL, Path(windows)), (MAC_CHANNEL, Path(macos)), (LINUX_CHANNEL, Path(linux))):
         raw = json.loads((folder / 'launcher-build.json').read_text(encoding='utf-8'))
         identity = build_identity(raw)
         if identity['channel'] != channel:
@@ -80,9 +83,9 @@ def load_builds(windows, macos):
     versions = {b['identity'].get('product_version') for b in builds.values()}
     tracks = {build_track(b['identity']) for b in builds.values()}
     if len(versions) != 1 or None in versions:
-        raise SystemExit('Windows and Mac builds must carry the same product version: %s' % sorted(map(str, versions)))
+        raise SystemExit('The Windows, Mac and Linux builds must carry the same product version: %s' % sorted(map(str, versions)))
     if len(tracks) != 1:
-        raise SystemExit('Windows and Mac builds come from different release tracks')
+        raise SystemExit('The Windows, Mac and Linux builds come from different release tracks')
     return builds
 
 
@@ -104,7 +107,8 @@ def whats_new(raw):
 def downloads(base):
     return ['| | |', '|---|---|',
             '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%sFreeVideo.exe) |' % base,
-            '| **macOS** 14+ · Apple silicon | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % base, '']
+            '| **macOS** 14+ · Apple silicon | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % base,
+            '| **Linux** x86_64 · NVIDIA GPU | [FreeVideo-Linux-x86_64.AppImage](%sFreeVideo-Linux-x86_64.AppImage) |' % base, '']
 
 
 def checksums(builds):
@@ -121,11 +125,17 @@ def stable_body(builds, tag):
              '**macOS:** open the DMG and drag FreeVideo.app into Applications. If macOS asks you to confirm the first '
              'launch, see the [first-open steps](%s/blob/main/docs/Mac.md#first-open).' % PAGE,
              '',
+             '**Linux:** make the AppImage executable (`chmod +x FreeVideo-Linux-x86_64.AppImage`) and open it, as on '
+             'Windows. On a server or from a terminal, see [Linux](%s/blob/main/docs/Linux.md).' % PAGE,
+             '',
              '**Windows：** 运行 FreeVideo.exe，选择已有的 ComfyUI 或安装新的 ComfyUI，点击 **安装并启动**。'
              '离线包见[夸克网盘](https://pan.quark.cn/s/c51235b84618)。',
              '',
              '**macOS：** 打开 DMG，将 FreeVideo.app 拖入「应用程序」。首次打开如需确认，请参考'
              '[首次打开步骤](%s/blob/main/docs/Mac.zh-CN.md#首次打开)。' % PAGE,
+             '',
+             '**Linux：** 给 AppImage 加上可执行权限（`chmod +x FreeVideo-Linux-x86_64.AppImage`）后打开，用法与 Windows 相同。'
+             '在服务器或终端中使用请参考 [Linux 说明](%s/blob/main/docs/Linux.zh-CN.md)。' % PAGE,
              '']
     rows += whats_new(builds[CHANNEL]['raw'])
     rows += checksums(builds)
@@ -143,10 +153,10 @@ def nightly_body(builds, sha):
             '基于 `main` 的自动构建，每次合并后更新。日常使用请下载[最新正式版](%s/releases/latest)。' % PAGE,
             '']
     rows += downloads(PAGE + '/releases/download/' + NIGHTLY_TAG + '/')
-    rows += ['| commit | built (UTC) | version | Windows | macOS |', '|---|---|---|---|---|',
-             '| [`%s`](%s/commit/%s) | %s | %s | %s | %s |' % (sha[:9], PAGE, sha, built,
-                                                            escape('v' + builds[CHANNEL]['identity']['product_version']),
-                                                            size[CHANNEL], size[MAC_CHANNEL]), '']
+    rows += ['| commit | built (UTC) | version | Windows | macOS | Linux |', '|---|---|---|---|---|---|',
+             '| [`%s`](%s/commit/%s) | %s | %s | %s | %s | %s |' % (sha[:9], PAGE, sha, built,
+                                                                 escape('v' + builds[CHANNEL]['identity']['product_version']),
+                                                                 size[CHANNEL], size[MAC_CHANNEL], size[LINUX_CHANNEL]), '']
     rows += checksums(builds)
     return '\n'.join(rows)
 
@@ -218,9 +228,9 @@ def publish_stable(releases, builds, sha, folder):
     gh('Publish %s' % tag, 'release', 'edit', tag, '--draft=false', '--prerelease=false', '--latest',
        '--title', title, '--notes-file', body)
     # Launchers from before combined releases read the platform tags; keep them current.
-    for channel in PLATFORMS:
+    for channel in LEGACY_PLATFORMS:
         build = builds[channel]
-        name = 'Windows' if channel == CHANNEL else 'Mac'
+        name = NAMES[channel]
         legacy = write(folder, 'legacy-%s.md' % channel,
                        'The latest FreeVideo is on the [latest release](%s/releases/latest) page.\n\n'
                        '最新版本请前往[最新正式版](%s/releases/latest)下载。\n' % (PAGE, PAGE))
@@ -284,10 +294,11 @@ def main():
     parser.add_argument('--track', choices=('stable', 'nightly'), required=True)
     parser.add_argument('--windows', type=Path, required=True)
     parser.add_argument('--macos', type=Path, required=True)
+    parser.add_argument('--linux', type=Path, required=True)
     parser.add_argument('--sha', required=True)
     parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'FlashML-org/FreeVideo'))
     args = parser.parse_args()
-    builds = load_builds(args.windows, args.macos)
+    builds = load_builds(args.windows, args.macos, args.linux)
     if build_track(builds[CHANNEL]['identity']) != args.track:
         raise SystemExit('The builds are %s builds, not %s' % (build_track(builds[CHANNEL]['identity']), args.track))
     releases = Releases(args.repository)

@@ -10,11 +10,11 @@ const t = (en, zh) => cn ? zh : en;
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
-export const MODULES = ['branding.js', 'compatibility.js', 'error_panel.js', 'freevideo.js', 'generation_progress.js',
-    'health.js', 'launcher.js', 'library.js', 'motion.js', 'output_download.js', 'preview_scene.js',
+export const MODULES = ['compatibility.js', 'error_panel.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
+    'health.js', 'image_editor.js', 'image_editor_engine.js', 'launcher.js', 'library.js', 'motion.js', 'output_download.js', 'preview_scene.js',
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'report_issue.js',
     'result_actions.js', 'sampling_effort.js', 'setup.js', 'share.js', 'studio.js', 'studio_queue.js',
-    'updates.js', 'view_navigation.js'];
+    'toolbar_position.js', 'updates.js', 'view_navigation.js', 'wordmark.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // A file the browser failed to load stays failed for the page's lifetime even
 // once the server sends it again, and a plain reload can take the same broken
@@ -115,7 +115,54 @@ const ADVICE = {
     cache: t('FreeVideo already reloaded this page once with fresh copies of its files. Press Ctrl+F5. If it still fails, turn off browser extensions that block scripts on this page or open the same address in another browser, then copy the details and send them to us.',
         'FreeVideo 已经用重新下载的文件自动刷新过一次页面。请按 Ctrl+F5 强制刷新；仍然出现时，请停用会拦截此页面脚本的浏览器插件，或换一个浏览器打开同一地址，然后复制详情发给我们。'),
     relaunch: t('Click Start in the FreeVideo launcher again.', '请在 FreeVideo 启动器里重新点击“启动”。'),
+    blocked: t(`This is usually an ad blocker. Allow ${location.hostname} in it (uBlock Origin, AdGuard and Adblock Plus can all be turned off for this site), then reload the page.`,
+        `通常是广告拦截插件所致。请在插件里允许 ${location.hostname}（uBlock Origin、AdGuard、Adblock Plus 都可以对当前网站停用拦截），然后刷新页面。`),
 };
+
+// Requests url the way a script (modulepreload) or a stylesheet (preload) is
+// loaded, without running or applying it. The result is for this file alone:
+// its load event does not wait for what it imports. true when it loads, false
+// when the browser stops it, null when this browser cannot tell.
+function loadsAs(kind, url) {
+    const link = document.createElement('link');
+    const rel = kind === 'script' ? 'modulepreload' : 'preload';
+    if (!link.relList?.supports?.(rel)) return Promise.resolve(null);
+    link.rel = rel;
+    if (kind === 'style') link.as = 'style';
+    return new Promise(resolve => {
+        const done = value => { clearTimeout(timer); link.remove(); resolve(value); };
+        const timer = setTimeout(() => done(null), 10000);
+        link.onload = () => done(true); link.onerror = () => done(false);
+        link.href = url; document.head.append(link);
+    });
+}
+// An address this page has never requested: no module-map entry, no cached copy.
+const freshURL = name => `${new URL(name, base).href}?freevideo-check=${Date.now()}`;
+// Blocked: a new address that downloads with fetch but will not load as a
+// script or stylesheet, which is what an ad blocker's rule for a file name
+// does. false when it loads; null when the browser cannot tell or the address
+// does not download either.
+async function blockedAs(kind, name) {
+    const url = freshURL(name), loads = await loadsAs(kind, url);
+    if (loads !== false) return loads === null ? null : false;
+    return (await probe(url)).ok ? true : null;
+}
+// The scripts among names that import a blocked one, directly or through another of them.
+async function importers(names, blocked) {
+    const reach = new Set(blocked), imports = new Map();
+    await Promise.all(names.map(async name => {
+        let text = '';
+        try { text = await (await fetch(new URL(name, base), {cache: 'no-store'})).text(); } catch { /* Imports nothing we know of. */ }
+        imports.set(name, [...text.matchAll(/\b(?:import|export)\b[^'"`;]*?\bfrom\s*['"]\.\/([\w.-]+\.js)['"]|\bimport\s*['"]\.\/([\w.-]+\.js)['"]/g)]
+            .map(match => match[1] || match[2]));
+    }));
+    for (let grew = true; grew;) {
+        grew = false;
+        for (const [name, list] of imports) if (!reach.has(name) && list.some(item => reach.has(item))) { reach.add(name); grew = true; }
+    }
+    return names.filter(name => reach.has(name));
+}
+const listNames = names => names.length > 3 ? `${names.slice(0, 3).join(cn ? '、' : ', ')}${t(` and ${names.length - 3} more`, ` 等 ${names.length} 个文件`)}` : names.join(cn ? '、' : ', ');
 
 // What the HTTP cache holds for a file, which is what a module load reads.
 async function cachedCopy(url) {
@@ -128,9 +175,10 @@ async function cachedCopy(url) {
 
 // One sentence per finding, naming the file and the reason.
 async function diagnoseModules() {
-    const found = [];
+    const found = [], fetched = new Map();
     for (const name of MODULES) {
         const url = new URL(name, base).href, result = await probe(url);
+        fetched.set(name, result);
         if (!result.ok) {
             found.push({text: result.status
                 ? t(`Script ${name} could not be loaded: the server answered HTTP ${result.status}.`, `脚本 ${name} 无法加载：服务器返回 HTTP ${result.status}。`)
@@ -149,17 +197,38 @@ async function diagnoseModules() {
             failed.set(message, [...(failed.get(message) || []), name]);
         }
     }
+    const kindOf = message => /does not provide an export/.test(message) ? 'mixed'
+        : /SyntaxError|Unexpected token|Unexpected identifier|is not a function|is not defined|is not a constructor/.test(message) ? 'browser' : 'reload';
+    // A file that downloads but will not load as a script even from a new
+    // address is blocked, by an ad blocker or another browser extension, and a
+    // reload cannot help. The scripts that import it fail with it.
+    const unloaded = [...failed].filter(([message]) => kindOf(message) === 'reload').flatMap(([, names]) => names);
+    const results = await Promise.all(unloaded.map(name => blockedAs('script', name)));
+    const blocked = unloaded.filter((name, index) => results[index] === true);
+    const checks = unloaded.map((name, index) => `${name}: fetch HTTP ${fetched.get(name).status} ${fetched.get(name).type || 'no type'}; `
+        + `as a script from a new address: ${results[index] ? 'blocked' : results[index] === false ? 'loads' : 'unknown'}`);
+    if (blocked.length) {
+        const dependents = await importers(unloaded.filter(name => !blocked.includes(name)), blocked);
+        const named = new Set([...blocked, ...dependents]);
+        for (const [message, names] of failed) {
+            const rest = names.filter(name => !named.has(name));
+            if (rest.length) failed.set(message, rest); else failed.delete(message);
+        }
+        // The card says what happened; the copied details keep the evidence.
+        const more = dependents.length;
+        if (more) checks.push(`could not run without ${blocked.join(', ')}: ${dependents.join(', ')}`);
+        found.push({text: t(`The browser blocked ${listNames(blocked)}${more ? `, so ${more} more ${more === 1 ? 'script' : 'scripts'} could not run.` : '.'}`,
+            `浏览器拦截了 ${listNames(blocked)}${more ? `，因此另有 ${more} 个脚本无法运行。` : '。'}`), advice: 'blocked', retry: false, checks});
+    }
     for (const [message, names] of failed) {
-        const list = names.length > 3 ? `${names.slice(0, 3).join(cn ? '、' : ', ')}${t(` and ${names.length - 3} more`, ` 等 ${names.length} 个文件`)}` : names.join(cn ? '、' : ', ');
-        const kind = /does not provide an export/.test(message) ? 'mixed'
-            : /SyntaxError|Unexpected token|Unexpected identifier|is not a function|is not defined|is not a constructor/.test(message) ? 'browser' : 'reload';
+        const kind = kindOf(message);
         const cache = [];
         for (const name of names) cache.push(`${name}: ${await cachedCopy(new URL(name, base).href)}`);
         // Reachable files the browser would not run, or old and new copies mixed:
-        // fresh copies and one reload resolve both.
-        const retry = kind !== 'browser';
-        found.push({text: t(`The browser could not run ${list}: ${message}`, `浏览器无法运行 ${list}：${message}`),
-            advice: retry && retried ? 'cache' : kind, retry, cache});
+        // fresh copies and one reload resolve both, unless a file is blocked.
+        const retry = kind !== 'browser' && !blocked.length;
+        found.push({text: t(`The browser could not run ${listNames(names)}: ${message}`, `浏览器无法运行 ${listNames(names)}：${message}`),
+            advice: retry && retried ? 'cache' : kind, retry, cache, checks: found.length ? [] : checks});
     }
     return found;
 }
@@ -171,6 +240,9 @@ function themeApplied() {
     probe.remove();
     return value === '#111720';
 }
+
+const blockedSheet = name => ({text: t(`The browser blocked the stylesheet ${name}.`, `浏览器拦截了样式文件 ${name}。`), advice: 'blocked',
+    checks: [`${name}: downloads with fetch; as a stylesheet from a new address: blocked`]});
 
 async function diagnoseStyles() {
     if (themeApplied()) return [];
@@ -189,7 +261,8 @@ async function diagnoseStyles() {
             : result.type !== 'text/css'
                 ? {text: t(`Stylesheet ${name} was refused: the server sent it as “${result.type || 'no type'}”.`,
                     `样式文件 ${name} 被浏览器拒绝：服务器发送的类型是“${result.type || '未标明'}”。`), advice: 'type'}
-                : {text: t(`Stylesheet ${name} did not load.`, `样式文件 ${name} 没有生效。`), advice: 'reload'});
+                : await blockedAs('style', name) ? blockedSheet(name)
+                    : {text: t(`Stylesheet ${name} did not load.`, `样式文件 ${name} 没有生效。`), advice: 'reload'});
     }
     if (!found.length) {
         found.push({text: links.length
@@ -246,6 +319,13 @@ function covered(bar) {
     return !!top && !bar.contains(top) && !top.closest(OVERLAYS);
 }
 
+// A video enlarged to full screen (the maximize button on a node's video, or
+// the player's own) hides the rest of the page until it is left again.
+function fullscreenOver(element) {
+    const shown = document.fullscreenElement || document.webkitFullscreenElement;
+    return !!shown && !shown.contains(element);
+}
+
 // Our sheets are same-origin and never empty: rules that cannot be read were not loaded.
 function sheetLoaded(name) {
     const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(item => ours(item.href) && fileName(item.href) === name);
@@ -266,7 +346,7 @@ function workspaceProblem(app) {
     return sheetLoaded('view_navigation.css')
         ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡了。'), advice: 'plugin'}
         : {text: t('The FreeVideo toolbar that opens the creative workspace cannot be seen: its stylesheet view_navigation.css did not load.',
-            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload'};
+            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload', sheet: 'view_navigation.css'};
 }
 
 // Looks again as the page changes, such as another workflow coming to the
@@ -276,6 +356,7 @@ async function watchWorkspace(app) {
     for (;;) {
         await sleep(2500);
         if (document.hidden) continue;
+        if (fullscreenOver(document.querySelector('.fv-view-navigation') || document.body)) { missed = ''; continue; }
         const problem = workspaceProblem(app);
         if (!problem) { missed = ''; continue; }
         if (missed !== problem.text) {
@@ -284,8 +365,12 @@ async function watchWorkspace(app) {
             continue;
         }
         if (shown === problem.text) continue;
+        const named = problem.sheet && await blockedAs('style', problem.sheet) ? blockedSheet(problem.sheet) : problem;
+        // The page can change while the stylesheet is checked.
+        if (document.hidden || fullscreenOver(document.querySelector('.fv-view-navigation') || document.body)
+            || workspaceProblem(app)?.text !== problem.text) continue;
         shown = problem.text;
-        const problems = distinct([...lastProblems, problem, ...reports.filter(item => item.type === 'error').map(reportText), ...pluginErrors()]);
+        const problems = distinct([...lastProblems, named, ...reports.filter(item => item.type === 'error').map(reportText), ...pluginErrors()]);
         show(problems); send('error', problems);
     }
 }
@@ -303,6 +388,7 @@ const distinct = problems => problems.filter((problem, index) => problems.findIn
 let card = null, lastProblems = [];
 function details(problems) {
     const cache = problems.flatMap(p => p.cache || []);
+    const checks = problems.flatMap(p => p.checks || []);
     const before = retried && Array.isArray(retryRecord.before) ? retryRecord.before : [];
     return [`FreeVideo page check · ${new Date().toISOString()}`,
         `Page: ${location.origin}${location.pathname}`,
@@ -311,6 +397,7 @@ function details(problems) {
         `FreeVideo UI: ${JSON.stringify(window.FreeVideoUI || {})}`,
         `Automatic reload: ${retried ? new Date(Number(retryRecord.at)).toISOString() : retryRecord ? 'not needed' : 'unavailable (no session storage)'}`,
         '', 'Problems:', ...problems.map(p => `- ${p.text}`),
+        ...(checks.length ? ['', 'Load check:', ...checks.map(row => `- ${row}`)] : []),
         ...(cache.length ? ['', 'Browser cache:', ...cache.map(row => `- ${row}`)] : []),
         ...(before.length ? ['', 'Browser cache before the automatic reload:', ...before.map(row => `- ${row}`)] : []),
         '', 'Errors seen while loading:', ...(seen.length ? seen.map(row => `- [${row.kind}] ${row.text}`) : ['- none'])].join('\n');
@@ -347,12 +434,12 @@ function show(problems) {
     Object.assign(list.style, {margin: '0 0 10px', paddingLeft: '18px'});
     for (const problem of problems) {
         const row = document.createElement('li'); row.textContent = problem.text;
-        Object.assign(row.style, {margin: '2px 0', overflowWrap: 'anywhere'});
+        Object.assign(row.style, {margin: '2px 0', overflowWrap: 'anywhere', textWrap: 'balance'});
         list.append(row);
     }
     const advice = document.createElement('div');
     advice.textContent = [...new Set(problems.map(p => ADVICE[p.advice] || ADVICE.reload))].join(' ');
-    Object.assign(advice.style, {color: '#a5b3c6', marginBottom: '14px'});
+    Object.assign(advice.style, {color: '#a5b3c6', marginBottom: '14px', textWrap: 'pretty'});
     const actions = document.createElement('div');
     Object.assign(actions.style, {display: 'flex', flexWrap: 'wrap', gap: '8px'});
     const action = (label, run, primary = false) => {
@@ -374,19 +461,26 @@ function show(problems) {
     action(t('Close', '关闭'), () => { card?.remove(); card = null; });
     card.append(title, list, advice, actions);
     document.body.append(card);
-    // A modal such as an unstyled workspace sits in the top layer; a manual
-    // popover joins it and returns to the front whenever a dialog opens.
     if (typeof card.showPopover === 'function') {
         card.popover = 'manual';
         Object.assign(card.style, {right: 'auto', bottom: 'auto', margin: '0'});
-        card.showPopover();
+        raise();
     }
     consoleError.call(console, '[FreeVideo] Page check:\n' + details(problems));
 }
-new MutationObserver(() => {
-    if (!card?.isConnected || typeof card.showPopover !== 'function' || !document.querySelector('dialog[open]')) return;
-    try { card.hidePopover(); card.showPopover(); } catch { /* Shown below the dialog instead. */ }
-}).observe(document.documentElement, {subtree: true, attributeFilter: ['open']});
+// A modal such as an unstyled workspace sits in the top layer; a manual
+// popover joins it and returns to the front whenever a dialog opens. Not in
+// front of a video watched full screen: the card waits until it is left.
+function raise() {
+    if (!card?.isConnected || typeof card.showPopover !== 'function' || fullscreenOver(card)) return;
+    try {
+        if (card.matches(':popover-open')) card.hidePopover();
+        card.showPopover();
+    } catch { /* Shown below the dialog instead. */ }
+}
+new MutationObserver(() => { if (document.querySelector('dialog[open]')) raise(); })
+    .observe(document.documentElement, {subtree: true, attributeFilter: ['open']});
+for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, raise);
 
 let sent = '', latest = null;
 const comfyApi = () => comfy()?.api || window.comfyAPI?.api?.api;

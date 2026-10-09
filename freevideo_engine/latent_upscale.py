@@ -59,8 +59,10 @@ def upscale(video, checkpoint, width, height, *, memory_saving=False):
             model = LatentResizer3D(reuse_buffers=memory_saving)
         # Keep the same bounded Windows reader as the main engine; do not
         # create a new copy-on-write mapping/Commit charge for optional weights.
+        # Move each tensor to the device as it is read: host RAM then holds one
+        # tensor (at most 13.5 MiB) instead of the whole 0.66 GiB checkpoint.
         with _open_safetensors(checkpoint, framework='pt', device='cpu') as handle:
-            state = {name: handle.get_tensor(name) for name in handle.keys()}
+            state = {name: handle.get_tensor(name).to(video.device) for name in handle.keys()}
         model.load_state_dict({key.removeprefix('upscaler.'):value for key,value in state.items()},
                               strict=True,assign=True)
         del state

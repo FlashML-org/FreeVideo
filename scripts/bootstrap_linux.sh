@@ -36,9 +36,11 @@ fv_help() {
     cat <<'EOF'
 FreeVideo Linux launcher
 
-  ./setup.sh              Detect missing tools, prepare Python, then review installation
+  ./setup.sh              Install FreeVideo and ComfyUI, then open FreeVideo in the browser
+  ./freevideo             Open FreeVideo again (starts ComfyUI in the background if needed)
+  ./freevideo server      Keep FreeVideo running for other computers; see ./freevideo server --help
+  ./freevideo stop        Stop ComfyUI; ./freevideo status shows whether it runs
   ./test.sh               Generate and retain videos, timings and memory reports
-  ./freevideo optimize    Validate lightweight tuning from the previous test
   ./freevideo diagnose    Export a small local diagnostic ZIP
 
 Setup launcher options:
@@ -50,6 +52,7 @@ Setup launcher options:
   --network official      Upstream sources only; compare proxy/direct connections
   --model-downloader xet   Require HF Xet for large weights; stop instead of falling back
   --reuse-models PATH      Verify and reuse compatible models in an existing folder
+  --no-launch              Stop after the engine; do not install ComfyUI or open FreeVideo
 
 No Python, pip, virtual environment or CUDA toolkit installation is needed beforehand.
 Default installation: this checkout's directory (independent of the current directory).
@@ -279,7 +282,11 @@ freevideo_bootstrap_linux() {
     export FREEVIDEO_HOME="$fv_root"
     export FREEVIDEO_BOOTSTRAP_ROOT="${FREEVIDEO_BOOTSTRAP_ROOT:-$fv_root/.freevideo/bootstrap}"
     [[ "$mode" != cli || "$command_name" != setup ]] || mode=setup
-    [[ "$mode" != cli || -n "$command_name" ]] || help=1
+    # ./freevideo alone opens an installed FreeVideo. Before ./setup.sh it only
+    # shows how to install: nothing is downloaded without that explicit step.
+    if [[ "$mode" == cli && -z "$command_name" ]] && (( ! help )); then
+        if [[ -f "$fv_root/machine.json" ]]; then command_name=open; FREEVIDEO_BOOTSTRAP_ARGS+=(open); else help=1; fi
+    fi
     if (( bootstrap_only || fv_allow_system )) && [[ "$mode" != setup ]]; then
         fv_fail '--bootstrap-only and --install-system-deps are setup options.'; return 1
     fi

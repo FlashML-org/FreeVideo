@@ -24,6 +24,7 @@ from .tensor_io import open_tensors
 from .media_request import digest, verify_files
 from .monitoring import save
 from .storage import fingerprint
+from . import disk_space
 
 
 def _targets(name):
@@ -247,7 +248,7 @@ def prepare(cache, adapters, output_root=None):
             patches.setdefault(targets[patch['target']]['group'], []).append(patch)
     output.mkdir(parents=True, exist_ok=True)
     required = sum(row['bytes'] for row in manifest['groups'] if row['file'] in patches)
-    if shutil.disk_usage(output).free < required + 1024**3:
+    if disk_space.free_bytes(output) < required + 1024**3:
         raise ValueError('Insufficient disk for the separate LoRA variant; original model retained')
     records = []
     started = time.perf_counter()

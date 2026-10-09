@@ -17,6 +17,7 @@ Canvas {
         else if (kind === "download") { c.moveTo(12,3); c.lineTo(12,15); c.moveTo(7,10); c.lineTo(12,15); c.lineTo(17,10); c.moveTo(4,16); c.lineTo(4,21); c.lineTo(20,21); c.lineTo(20,16) }
         else if (kind === "settings") { c.moveTo(5,3); c.lineTo(5,21); c.moveTo(12,3); c.lineTo(12,21); c.moveTo(19,3); c.lineTo(19,21); c.stroke(); c.beginPath(); c.fillStyle=knockout; c.rect(2,7,6,4); c.rect(9,14,6,4); c.rect(16,6,6,4); c.fill() }
         else if (kind === "text") { c.moveTo(5,5); c.lineTo(19,5); c.moveTo(12,5); c.lineTo(12,20); c.moveTo(8,20); c.lineTo(16,20) }
+        else if (kind === "disk") { c.rect(3,7,18,10); c.moveTo(3,13); c.lineTo(21,13); c.moveTo(16.5,15.2); c.lineTo(17.5,15.2) }
         else if (kind === "decoder") { c.rect(3,5,18,14); c.moveTo(8,9); c.lineTo(5,12); c.lineTo(8,15); c.moveTo(16,9); c.lineTo(19,12); c.lineTo(16,15) }
         else { c.rect(3,4,18,16); c.moveTo(9,8); c.lineTo(16,12); c.lineTo(9,16); c.closePath() }
         c.stroke()

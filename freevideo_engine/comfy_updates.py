@@ -84,7 +84,7 @@ class UpdateStatus:
             # Pages that reload themselves after an update polled recently.
             state['clients'] = int(now - self.client_seen < 20)
         if launcher is not None:
-            if launcher.get('channel') in (launcher_update.CHANNEL, launcher_update.MAC_CHANNEL):
+            if launcher.get('channel') in launcher_update.CHANNELS:
                 state['channel'] = launcher['channel']
             if launcher.get('track') in launcher_update.TRACKS:
                 state['track'] = launcher['track']

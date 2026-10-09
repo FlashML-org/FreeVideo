@@ -167,7 +167,11 @@ class Service:
         if owner.process is not None and owner.process.poll() is None and owner.endpoint:
             env[resident_process.ENV] = str(owner.endpoint)
         if env.get(resident_process.ENV) and Path(env[resident_process.ENV]).is_file():
-            resident_process.release_idle_cache(env, descriptor)
+            try:
+                resident_process.release_idle_cache(env, descriptor)
+            except resident_process.SessionRestarted:
+                pass  # That worker already exited, which is the release we need.
+            env.pop(resident_process.ENV, None)
         command = processes.module_command('freevideo_engine.prompt_vlm.worker', assets.directory(root))
         command[0] = machine['comfy_python']
         child = processes.popen(command, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

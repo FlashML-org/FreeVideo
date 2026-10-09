@@ -254,8 +254,11 @@ def models(plan):
                     if time.monotonic() - last[0] >= .5:
                         model_progress.update(row, phase='downloading', done=done, rate=speed)
                         last[0] = time.monotonic()
+                # Setup's approval to start a file over when its source cannot resume
+                # (model_transfer passes it for the large files) covers the tables too.
                 network.download(network.model_urls(networking, row), path, row['sha256'], progress,
-                                 network=dict(networking, quiet=True), size=row['bytes'],
+                                 network=dict(networking, quiet=True, allow_model_restart=plan.get('allow_model_restart', False)),
+                                 size=row['bytes'],
                                  category=network.model_family(row), headers_for=model_headers,
                                  keep_partial=True, stall_seconds=30, slow_seconds=15, low_speed_limit=64 * 1024)
                 complete(row, path, dict(file_identity(path, row), method='full_content_hash_resumable_download'),

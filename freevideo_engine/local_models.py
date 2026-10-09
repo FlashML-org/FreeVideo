@@ -76,6 +76,13 @@ def can_link(source, destination_parent):
         return False
     if os.name != 'nt':
         return True
+    return volume_filesystem(destination_parent) == 'NTFS'
+
+
+def volume_filesystem(path):
+    """The file system of path's Windows volume (NTFS, exFAT, FAT32...), or None elsewhere or when unknown."""
+    if os.name != 'nt':
+        return None
     import ctypes
     from ctypes import wintypes
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -84,11 +91,11 @@ def can_link(source, destination_parent):
         ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
         wintypes.LPWSTR, wintypes.DWORD]
     volume, filesystem = ctypes.create_unicode_buffer(32768), ctypes.create_unicode_buffer(64)
-    if not kernel.GetVolumePathNameW(str(destination_parent), volume, len(volume)):
-        return False
+    if not kernel.GetVolumePathNameW(str(path), volume, len(volume)):
+        return None
     if not kernel.GetVolumeInformationW(volume.value, None, 0, None, None, None, filesystem, len(filesystem)):
-        return False
-    return filesystem.value.upper() == 'NTFS'
+        return None
+    return filesystem.value.upper()
 
 
 def progress_output(value):

@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import struct
+from . import disk_space
 
 CONTRACT = 'minimax-h3-adaln-silu-linear-3x6-v1'
 FORMAT = 'freevideo-adaln-v2'
@@ -208,7 +209,7 @@ def download_table(root, table, index):
             raise ValueError('Missing locally computed AdaLN table; original receipt retained: ' + str(path))
     remaining = sum(r['bytes'] for r in table['files'] if
                     not asset_path(root, '%02d.safetensors' % r['index']).is_file())
-    if shutil.disk_usage(root).free < remaining + 64 * 1024**2:
+    if disk_space.free_bytes(root) < remaining + 64 * 1024**2:
         raise ValueError('Not enough disk space to prepare this sampling preset. Existing files retained.')
     plan = _download_plan()
     remote = table['download']
@@ -257,7 +258,7 @@ def restore_projections(cache, manifest):
         raise ValueError('This schedule/LoRA needs original AdaLN weights. Reuse a full prepared cache; '
                          'the slim package has no pinned recovery source.')
     needed = sum(r['bytes'] for r in missing)
-    if shutil.disk_usage(cache).free < needed + 1024**3:
+    if disk_space.free_bytes(cache) < needed + 1024**3:
         raise ValueError('This schedule/LoRA needs %.2f GiB of optional AdaLN weights; '
                          'insufficient disk space. Existing model and request retained.' % (needed / 1024**3))
     print(json.dumps({'event': 'adaln_sources_required', 'bytes': needed,

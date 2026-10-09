@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 import uuid
+from . import disk_space
 
 BACKFILL_MARKER = '.workflow-backfill.json'
 BACKUP_NAME = 'video.before-workflow.mp4'
@@ -37,7 +38,7 @@ def embed_comfy_metadata(path, *, prompt=None, workflow=None, backup=None):
         if backup is not None and backup.exists():
             logging.info('FreeVideo left %s unchanged: %s already exists.', path, backup.name)
             return False
-        if shutil.disk_usage(path.parent).free < 2 * size + 512 * 1024 * 1024:
+        if disk_space.free_bytes(path.parent) < 2 * size + 512 * 1024 * 1024:
             logging.info('FreeVideo left %s unchanged: not enough free disk space.', path)
             return False
         # faststart puts moov, and with it the metadata, before the media data.

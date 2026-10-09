@@ -117,6 +117,9 @@ def summary_report(report):
         for segment in ('local','nonlocal'):
             item[segment] = _measurements((row.get('windows') or {}).get(segment),
                 diagnostic.WINDOWS_BUDGET)
+        device = diagnostic.numbers(row.get('device_activity'), diagnostic.STEP_ACTIVITY)
+        if device:
+            item['device'] = device
         result['steps'].append(item)
     sampling = summary.get('sampling_memory') or {}
     if sampling.get('windows_status') in ('observing','unavailable','not-applicable','reader-still-stopping'):

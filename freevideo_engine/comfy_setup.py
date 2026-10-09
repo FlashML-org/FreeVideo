@@ -123,6 +123,15 @@ class Events:
         return rows
 
 
+def owned_comfy(root, host):
+    """./setup.sh puts the ComfyUI it installs in <engine>/ComfyUI; that one is the engine's own."""
+    from .comfy_source import RECEIPT, specification
+    try:
+        return host == root / 'ComfyUI' and json.loads((host / RECEIPT).read_text(encoding='utf-8')) == specification()
+    except (OSError, ValueError):
+        return False
+
+
 class Setup:
     def __init__(self, source, folder_paths, runner_factory=SetupRunner):
         self.source = Path(source).resolve()
@@ -209,7 +218,7 @@ class Setup:
             raise ValueError('Choose an engine installation folder')
         root = Path(value).expanduser().resolve()
         host = Path(self.folder_paths.base_path).resolve()
-        if root == Path(root.anchor) or root == host or root in host.parents:
+        if root == Path(root.anchor) or root == host or (root in host.parents and not owned_comfy(root, host)):
             raise ValueError('Use a dedicated FreeVideo folder, not the ComfyUI root or its parent')
         prefix = Path(sys.prefix).resolve()
         # Refuse to pip into the interpreter that is running, and nothing more.

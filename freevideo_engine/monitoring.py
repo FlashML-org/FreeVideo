@@ -1,4 +1,5 @@
 """Whole-device NVML sampling; values include driver reservations."""
+import bisect
 import csv
 import ctypes
 import json
@@ -102,29 +103,59 @@ def thermal_slowdown(measured, *, share=.5, clock_ratio=.7, minimum_samples=200)
                 temperature_mean_c=round(temperature, 1) if isinstance(temperature, (int, float)) else None)
 
 
+def nvml_device(device=None):
+    """Initialize NVML and select one GPU by UUID or index; returns (library, handle, device)."""
+    if windows():
+        candidates = [Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/nvml.dll',
+                      Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'NVIDIA Corporation/NVSMI/nvml.dll']
+        library = next((p for p in candidates if p.is_file()), None)
+        if library is None:
+            raise RuntimeError('NVML DLL is missing from the NVIDIA driver installation; repair the driver and rerun test.')
+        lib = ctypes.CDLL(str(library))
+    else:
+        lib = ctypes.CDLL('libnvidia-ml.so.1')
+    rc = lib.nvmlInit_v2()
+    if rc:
+        raise RuntimeError(f'NVML initialization returned {rc}')
+    handle = ctypes.c_void_p()
+    device = str(device if device is not None else os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')[0])
+    if device.startswith('GPU-'):
+        rc = lib.nvmlDeviceGetHandleByUUID(device.encode(), ctypes.byref(handle))
+    else:
+        rc = lib.nvmlDeviceGetHandleByIndex_v2(int(device), ctypes.byref(handle))
+    if rc:
+        lib.nvmlShutdown()
+        raise RuntimeError(f'NVML could not select {device}: {rc}')
+    return lib, handle, device
+
+
+class DeviceMemory:
+    """Whole-device memory in use by every process, read on demand.
+
+    Windows' per-process budget and CUDA's free memory leave out what other
+    applications hold until the device is already full; NVML counts them.
+    """
+    def __init__(self, device=None):
+        self.lib, self.handle, self.device = nvml_device(device)
+
+    def sample(self):
+        m = Memory()
+        rc = self.lib.nvmlDeviceGetMemoryInfo(self.handle, ctypes.byref(m))
+        if rc:
+            raise RuntimeError(f'NVML memory read returned {rc}')
+        if m.used > m.total or not m.total:
+            raise RuntimeError('Driver returned unavailable NVML device memory')
+        return dict(used_bytes=m.used, total_bytes=m.total)
+
+    def close(self):
+        lib, self.lib = self.lib, None
+        if lib is not None:
+            lib.nvmlShutdown()
+
+
 class Monitor:
     def __init__(self, path, interval=0.05, device=None):
-        if windows():
-            candidates = [Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/nvml.dll',
-                          Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'NVIDIA Corporation/NVSMI/nvml.dll']
-            library = next((p for p in candidates if p.is_file()), None)
-            if library is None:
-                raise RuntimeError('NVML DLL is missing from the NVIDIA driver installation; repair the driver and rerun test.')
-            self.lib = ctypes.CDLL(str(library))
-        else:
-            self.lib = ctypes.CDLL('libnvidia-ml.so.1')
-        rc = self.lib.nvmlInit_v2()
-        if rc:
-            raise RuntimeError(f'NVML initialization returned {rc}')
-        self.handle = ctypes.c_void_p()
-        device = str(device if device is not None else os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')[0])
-        if device.startswith('GPU-'):
-            rc = self.lib.nvmlDeviceGetHandleByUUID(device.encode(), ctypes.byref(self.handle))
-        else:
-            rc = self.lib.nvmlDeviceGetHandleByIndex_v2(int(device), ctypes.byref(self.handle))
-        if rc:
-            self.lib.nvmlShutdown()
-            raise RuntimeError(f'NVML could not select {device}: {rc}')
+        self.lib, self.handle, device = nvml_device(device)
         self.device = device
         self.path, self.interval = Path(path), interval
         self.stop_event = threading.Event()
@@ -219,3 +250,64 @@ class Monitor:
                                   'clock reasons are driver observations, not attribution of elapsed time.',
                 'sampling_interval_seconds': self.interval, 'samples': self.count,
                 'sampling_errors': self.errors, 'sample_csv': str(self.path)}
+
+
+
+def step_activity(csv_path, steps, *, limit_bytes=64 * 2**20):
+    """Add each sampling step's whole-device NVML samples to it as `device_activity`.
+
+    A request-wide mean cannot show one slow step: whether the device was full,
+    another process kept it busy or clocks fell during that step. Steps carry
+    the monotonic time they ended; the monitor's CSV, written by the parent
+    process, carries the same clock. Returns how many steps were annotated.
+    Missing, oversized or partial files add nothing.
+    """
+    windows = sorted((row['monotonic_seconds'] - row['seconds'], row['monotonic_seconds'], index)
+                     for index, row in enumerate(steps if isinstance(steps, list) else [])
+                     if isinstance(row, dict) and all(type(row.get(key)) in (int, float) and row[key] >= 0
+                                                      for key in ('monotonic_seconds', 'seconds')))
+    if not windows:
+        return 0
+    try:
+        if Path(csv_path).stat().st_size > limit_bytes:
+            return 0
+        with open(csv_path, newline='', encoding='utf-8') as handle:
+            samples = list(csv.DictReader(handle))
+    except (OSError, ValueError, csv.Error):
+        return 0
+    def number(sample, key):
+        try:
+            value = float(sample.get(key) or 'nan')
+        except ValueError:
+            return None
+        return value if 0 <= value < float('inf') else None
+    starts = [start for start, _, _ in windows]
+    found = {}
+    for sample in samples:
+        moment = number(sample, 'monotonic_seconds')
+        if moment is None:
+            continue
+        position = bisect.bisect_right(starts, moment) - 1
+        if position < 0 or moment > windows[position][1]:
+            continue
+        item = found.setdefault(windows[position][2], dict(samples=0, busy_samples=0, sums={}))
+        item['samples'] += 1
+        util = number(sample, 'gpu_util_percent')
+        item['busy_samples'] += util is not None and util >= 50
+        for key, value in (('gpu_util_mean_percent', util), ('sm_clock_mean_mhz', number(sample, 'sm_clock_mhz')),
+                           ('power_mean_mw', number(sample, 'power_mw'))):
+            if value is not None:
+                total = item['sums'].setdefault(key, [0., 0])
+                total[0] += value
+                total[1] += 1
+        used, size = number(sample, 'used_bytes'), number(sample, 'total_bytes')
+        if used is not None:
+            item['device_used_peak_bytes'] = max(item.get('device_used_peak_bytes', 0), int(used))
+            item['device_used_minimum_bytes'] = min(item.get('device_used_minimum_bytes', int(used)), int(used))
+        if size is not None:
+            item['device_total_bytes'] = int(size)
+    for index, item in found.items():
+        for key, (total, count) in item.pop('sums').items():
+            item[key] = total / count
+        steps[index]['device_activity'] = item
+    return len(found)

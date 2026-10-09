@@ -12,6 +12,7 @@ ApplicationWindow {
     Connections { target: backend; function onChanged() { win.s = backend.state } }
     property bool settingsOpen: false
     property bool terminalOpen: false
+    property bool confirmArchives: false  // the in-place "delete the imported ZIPs?" step
     property string settingsTab: "downloads"
     property string modelInfo: "video"
     property bool modelInfoOpen: false
@@ -45,7 +46,37 @@ ApplicationWindow {
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
     function number(n) { return typeof n === "number" && isFinite(n) }
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
-    function bytes(n) { return n >= 1073741824 ? (n/1073741824).toFixed(1)+" GiB" : (n/1048576).toFixed(1)+" MiB" }
+    function bytes(n) {
+        // macOS counts in decimal units like Finder: 1.26 TB, 64.4 GB.
+        if (s.decimal_sizes) {
+            var units = [[1e12, " TB", 2], [1e9, " GB", 2], [1e6, " MB", 1]]
+            for (var i = 0; i < units.length; i++)
+                if (n >= units[i][0]) return parseFloat((n/units[i][0]).toFixed(units[i][2])) + units[i][1]
+            return Math.round(n/1e3) + " KB"
+        }
+        return n >= 1073741824 ? (n/1073741824).toFixed(1)+" GiB" : (n/1048576).toFixed(1)+" MiB"
+    }
+    readonly property var disk: s.disk || null
+    readonly property var diskChoices: disk ? disk.others : []
+    readonly property var bestDisk: diskChoices.filter(function(d) { return d.enough })[0] || null
+    property bool diskDialogOpen: false
+    function diskLine() {
+        var d = disk
+        if (!d) return ""
+        var en = "\"" + d.name + "\"", zh = "“" + d.name + "”"
+        if (d.problem === "fat32") return t(en + " uses FAT32, which limits each file to 4 GB, too small for the model files.", zh + "是 FAT32 格式，单个文件最大 4 GB，放不下模型。")
+        if (d.problem === "exfat") return t(en + " uses exFAT, where the FreeVideo environment cannot run.", zh + "是 exFAT 格式，装不了 FreeVideo 的运行环境。")
+        if (d.problem === "disconnected") return t(en + " is not connected. Connect it to continue.", zh + "没有连接，请接上这块硬盘。")
+        if (d.problem === "read-only") return t(en + " is read-only on this Mac.", zh + "在这台 Mac 上是只读的。")
+        if (d.short) return t(en + " has " + d.free + " available; this installation needs about " + d.need + ".",
+                              zh + "可用 " + d.free + "，这次安装需要约 " + d.need + "。")
+        return t(d.name + " · " + d.free + " available", d.name + " · 可用 " + d.free)
+            + (d.need ? t(" · about " + d.need + " needed", " · 需要约 " + d.need) : "")
+    }
+    // The label before diskLine() when the line states the disk rather than a problem.
+    function diskLabel() { return disk && !disk.problem && !disk.short ? t("Disk:", "所在硬盘：") : "" }
+    // On a Mac, a disk problem is fixed by choosing another disk, not by reporting a fault.
+    readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
     // An engine update needs no download; offer it as the way to launch.
     readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent
@@ -331,11 +362,16 @@ ApplicationWindow {
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
+                            FButton { objectName: "moveToDisk"; visible: diskFailure && s.form.new_comfy && !!bestDisk; enabled: !s.busy; primary: true
+                                      text: bestDisk ? t("Install on \"" + bestDisk.name + "\"", "改装到“" + bestDisk.name + "”") : ""
+                                      onClicked: backend.useDisk(bestDisk.path) }
+                            FButton { objectName: "chooseDisk"; visible: diskFailure && s.form.new_comfy && diskChoices.length > (bestDisk ? 1 : 0); enabled: !s.busy
+                                      text: t("Other disks…", "其他硬盘…"); onClicked: diskDialogOpen = true }
                             FButton { objectName: "diskCleanupButton"; visible: s.failure.kind === "disk"; enabled: s.can_cleanup; text: t("Clean download cache", "清理下载缓存"); onClicked: { settingsTab = "general"; settingsOpen = true; backend.cleanupDownloads(false) } }
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
-                            FButton { objectName: "copyError"; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
+                            FButton { objectName: "copyError"; visible: !diskFailure; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
-                            FButton { objectName: "exportError"; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                            FButton { objectName: "exportError"; visible: !diskFailure; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
                             visible: errorDetailsOpen; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
@@ -394,6 +430,18 @@ ApplicationWindow {
                             FButton { text: t("Browse…", "浏览…"); implicitHeight: theme.height + 4; onClicked: backend.browse(s.form.new_comfy ? "destination" : "comfy") }
                         }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        RowLayout {
+                            objectName: "installDisk"; visible: !!disk; Layout.fillWidth: true; spacing: 8
+                            FIcon { kind: "disk"; ink: disk && (disk.problem || disk.short) ? theme.danger : theme.muted; Layout.preferredWidth: 16; Layout.preferredHeight: 16; Layout.alignment: Qt.AlignVCenter }
+                            // A full-width colon carries its own space; pull the value up to it.
+                            FText { id: diskLabelText; objectName: "installDiskLabel"; visible: !!diskLabel(); text: diskLabel(); color: theme.muted; font.pixelSize: theme.micro + 1; wrapMode: Text.NoWrap
+                                    Layout.alignment: Qt.AlignBaseline; Layout.rightMargin: s.zh ? -(8 + Math.round(font.pixelSize / 2) - 2) : -4 }
+                            FText { objectName: "installDiskText"; text: diskLine(); color: disk && (disk.problem || disk.short) ? theme.danger : theme.muted; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; Layout.alignment: Qt.AlignBaseline }
+                            // The label's right edge lines up with Browse; the hover fill reaches into the card's padding.
+                            FButton { objectName: "changeDisk"; visible: s.form.new_comfy && diskChoices.length > 0; enabled: !s.busy; flat: true; implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
+                                      leftPadding: 10; rightPadding: 10; Layout.rightMargin: -10; Layout.alignment: Qt.AlignBaseline
+                                      text: t("Choose another disk", "换一块硬盘"); onClicked: diskDialogOpen = true }
+                        }
                     }
                     FCard {
                         objectName: "runtimeImportCard"; visible: manualEnvironment; Layout.fillWidth: true; padding: shortWindow ? 16 : 20; spacing: 10
@@ -735,6 +783,21 @@ ApplicationWindow {
                             FText { text: ["created","present"].indexOf(s.shortcut.status) >= 0 ? "✓  " + t("Shortcut ready", "快捷方式已就绪") : ""; color: theme.success; font.pixelSize: theme.micro }
                         }
                         FText { objectName: "oldVersions"; visible: !!s.old_versions; text: "✓  " + s.old_versions; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FText { objectName: "copiedModels"; visible: !!s.copied_models; text: s.copied_models || ""; color: theme.muted; font.pixelSize: theme.micro; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        RowLayout {
+                            visible: !!s.archives && !confirmArchives; spacing: 12; Layout.fillWidth: true
+                            FText { objectName: "archivesOffer"; text: s.archives || ""; color: theme.muted; font.pixelSize: theme.micro; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            FButton { objectName: "deleteArchives"; implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding; Layout.rightMargin: -rightPadding; text: t("Delete ZIP files", "删除压缩包"); flat: true; implicitHeight: theme.heightSm - 2; font.pixelSize: theme.micro + 1; enabled: !s.busy; onClicked: confirmArchives = true }
+                        }
+                        // The user's own files, and not recoverable: confirm in place, no dialog.
+                        RowLayout {
+                            visible: !!s.archives && confirmArchives; spacing: 8; Layout.fillWidth: true
+                            FText { objectName: "archivesConfirm"; text: s.archives_confirm || ""; color: theme.text; font.pixelSize: theme.micro; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            FButton { objectName: "confirmDeleteArchives"; text: t("Delete", "删除"); danger: true; implicitHeight: theme.heightSm - 2; font.pixelSize: theme.micro + 1; enabled: !s.busy; onClicked: { confirmArchives = false; backend.action("delete_archives", false) } }
+                            FButton { objectName: "cancelDeleteArchives"; implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding; Layout.rightMargin: -rightPadding; text: t("Cancel", "取消"); flat: true; implicitHeight: theme.heightSm - 2; font.pixelSize: theme.micro + 1; onClicked: confirmArchives = false }
+                        }
+                        FText { objectName: "archivesDone"; visible: !!s.archives_done; text: "✓  " + (s.archives_done || ""); color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FText { objectName: "archivesFailed"; visible: !!s.archives_failed; text: s.archives_failed || ""; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         FCheck { visible: s.needs_consent; text: s.consent; checked: accepted; onToggled: accepted = checked; Layout.fillWidth: true }
                         FButton { visible: s.needs_consent; text: t("Read licenses ↗", "查看许可证 ↗"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: backend.link("https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE") }
                     }
@@ -1008,6 +1071,55 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    FPopup {
+        objectName: "diskDialog"; visible: diskDialogOpen && !!disk; onClosed: diskDialogOpen = false
+        width: Math.min(480, win.width - 40); closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        height: Math.min(diskContents.implicitHeight + padding * 2, win.height - 48)
+        contentItem: ColumnLayout {
+            id: diskContents; spacing: 12
+            FText { text: t("Choose a disk", "选择安装硬盘"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            FText { objectName: "diskDialogText"; Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro + 1
+                    text: (disk && disk.need ? t("This installation needs about " + disk.need + ".\n", "这次安装需要约 " + disk.need + "。\n") : "")
+                          + t("FreeVideo is installed in a FreeVideo folder on the disk you choose.", "FreeVideo 会装在所选硬盘的 FreeVideo 文件夹里。") }
+            Repeater {
+                model: diskChoices
+                delegate: Rectangle {
+                    required property var modelData
+                    objectName: "diskRow-" + modelData.name
+                    Layout.fillWidth: true; implicitHeight: Math.max(52, diskRowText.implicitHeight + 20); radius: theme.radiusSm
+                    color: diskArea.containsMouse && modelData.enough ? theme.hover : theme.bg
+                    border.color: diskArea.containsMouse && modelData.enough ? theme.sheen : theme.border
+                    opacity: modelData.enough ? 1 : 0.55
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12
+                        FIcon { kind: "disk"; ink: modelData.enough ? theme.accent : theme.muted; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                        ColumnLayout {
+                            id: diskRowText; Layout.fillWidth: true; spacing: 2
+                            FText { text: modelData.name; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                            FText { visible: !modelData.enough; Layout.fillWidth: true; color: theme.danger; font.pixelSize: theme.micro
+                                    text: modelData.problem === "exfat" ? t("exFAT not supported", "不支持 exFAT")
+                                        : modelData.problem === "fat32" ? t("FAT32 not supported", "不支持 FAT32")
+                                        : t("Not enough space", "空间不够") }
+                        }
+                        FText { text: t(modelData.free + " available", "可用 " + modelData.free); color: theme.muted; font.pixelSize: theme.micro + 1; font.features: { "tnum": 1 }; wrapMode: Text.NoWrap; Layout.alignment: Qt.AlignVCenter }
+                    }
+                    MouseArea {
+                        id: diskArea; anchors.fill: parent; hoverEnabled: true; enabled: modelData.enough && !s.busy
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: { diskDialogOpen = false; backend.useDisk(modelData.path) }
+                    }
+                    Accessible.role: Accessible.Button; Accessible.name: modelData.name
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true; Layout.topMargin: 4; spacing: 8
+                FButton { text: t("Choose a folder…", "选择文件夹…"); flat: true; onClicked: { diskDialogOpen = false; backend.browse("destination") } }
+                Item { Layout.fillWidth: true }
+                FButton { text: t("Cancel", "取消"); onClicked: diskDialogOpen = false }
             }
         }
     }

@@ -13,6 +13,7 @@ import uuid
 
 from .monitoring import save
 from .paths import data_root
+from . import disk_space
 
 
 def digest(path):
@@ -96,7 +97,7 @@ class InputCache:
             self.note = 'Input exceeds the small-input cache limit; original artifact retained'
             return False
         self.root.mkdir(parents=True, exist_ok=True)
-        if shutil.disk_usage(self.root).free < size + 2**30:
+        if disk_space.free_bytes(self.root) < size + 2**30:
             self.note = 'Low disk space; existing caches retained, new input not cached'
             return False
         checksum = digest(source)

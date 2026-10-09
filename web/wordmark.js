@@ -1,4 +1,5 @@
 // All artwork is served by this custom node; no font/CDN request is needed.
+// Not called branding.js: ad-block lists block scripts by that name.
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./theme.css', import.meta.url).href;
 document.head.append(css);

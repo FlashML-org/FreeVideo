@@ -349,6 +349,9 @@ class Engine:
         # Engine supplies every window call, including the official cuDNN/FA4
         # pair. Avoid upstream auto importing an unselected optional FA4 package.
         set_softmax_backend(model, 'flex')
+        if inference_kernels:
+            from .row_kernels import install as install_row_kernels
+            install_row_kernels()
         set_inference_mode(model, inference_kernels)
         self.attention.install(model)
         if head_chunk:
@@ -611,7 +614,8 @@ class Engine:
                     base_peak = max(pass_cache.get('workspace_peak_bytes', 0), peak - cache_peak)
                     pass_cache['workspace_peak_bytes'] = base_peak
                     live_budget = budget_refresh('sample', lambda limit: offloader.cache_between_steps(
-                        min(cached, max(0, limit - base_peak - 512 * 2**20)), allow_growth=False))
+                        min(cached, max(0, limit - base_peak - 512 * 2**20)), allow_growth=False),
+                        workspace=base_peak)
                     if len(self) < active_steps:
                         from .two_pass import pass_cache_allowance
                         from .system import system_memory
@@ -620,10 +624,19 @@ class Engine:
                         commit = system_memory().get('commit_available_bytes')
                         from .two_pass import reusable_cache_bytes
                         held = reusable_cache_bytes(cached, owner.device_backend.memory_reserved(), base_peak)
+                        # Other applications' memory counts once the device is
+                        # full: growing into it made Windows cut this process's
+                        # budget below its own workspace. Unread: no extra bound.
+                        room = getattr(budget_refresh, 'device_headroom', None)
+                        headroom = room() if callable(room) else None
+                        if type(headroom) is not int:
+                            headroom = None
                         allowance = pass_cache_allowance(live_budget, base_peak, free + held,
-                            gpu_reserve_bytes, None if commit is None else commit + held)
+                            gpu_reserve_bytes, None if commit is None else commit + held,
+                            device_free=None if headroom is None else headroom + held)
                         pass_cache.update(gpu_budget_bytes=live_budget, measured_peak_reserved_bytes=peak,
-                            live_free_bytes=free, commit_available_bytes=commit, admitted_bytes=allowance)
+                            live_free_bytes=free, commit_available_bytes=commit, admitted_bytes=allowance,
+                            device_headroom_bytes=headroom)
                         # New planes fill during the next step and only save a
                         # transfer on a subsequent step. The two-step refine
                         # pass therefore cannot benefit from a late fill.

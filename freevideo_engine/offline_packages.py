@@ -11,6 +11,7 @@ import zipfile
 
 from .monitoring import save
 from .portable import ENCODER_LIBRARY, bundle_name, inside, listing
+from . import disk_space
 
 PREFIX = 'FreeVideo-Windows/'
 # Optional packs (reference-audio tables) carry sampling tables outside the
@@ -203,6 +204,9 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
     """
     path = Path(path).resolve()
     progress(done=0, total=None, detail=path.name)
+    archive = path.stat()
+    # Which ZIP this was, so the launcher can later offer to delete it once installed.
+    origin = dict(archive=str(path), archive_bytes=archive.st_size, archive_mtime_ns=archive.st_mtime_ns)
     value = inspect_archive(path)
     root = Path(destination).resolve() / '.freevideo-packages' / value['id'] / 'FreeVideo-Windows'
     total = sum(r['bytes'] for r in value['files'])
@@ -212,7 +216,7 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
     parent = root
     while not parent.exists():
         parent = parent.parent
-    if shutil.disk_usage(parent).free < missing + 64 * 2**20:
+    if disk_space.free_bytes(parent) < missing + 64 * 2**20:
         raise ValueError('磁盘空间不足，导入此包还需约 %.1f GiB。' % (missing / 2**30))
     known, verified = stamps(root), {}
     for row in value['files']:
@@ -227,7 +231,7 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
         # Imported before and complete: nothing to read again.
         save(root / VERIFIED, verified)
         progress(done=total, total=total, detail=path.name)
-        return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name)
+        return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name, **origin)
     done = sum(r['bytes'] for r in value['files'] if r['path'] in verified)
     root.mkdir(parents=True, exist_ok=True)
     progress(done=done, total=total, detail=path.name)
@@ -261,7 +265,7 @@ def import_archive(path, destination, progress=lambda **kw: None, cancelled=lamb
             verified[row['path']] = stamp(target)
     save(root / VERIFIED, verified)
     marker.write_bytes(value['raw'])
-    return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name)
+    return dict(root=str(root), kind=value['kind'], variant=value['variant'], name=path.name, **origin)
 
 
 ENCODER_COPY = 'engine/vendor/h3-text-encoder'

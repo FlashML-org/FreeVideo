@@ -44,7 +44,7 @@ test('main browser entry registers both views and preserves node hooks', async (
         refreshNavigation: () => refreshed++, preferredView: () => null,
         attachReferencePicker() {}, referenceItems: () => [], syncReferencePrompt() {},
         shareButton: () => new Element('button'), reportFileName: () => 'FreeVideo-report-20261008-101530.json',
-        rememberPromptDraft() {}, savePromptDraft: async () => false,
+        rememberPromptDraft() {}, savePromptDraft: async () => false, openImageEditor: async () => null, icon: () => '',
     };
     const previous = new Map();
     for (const [name, value] of Object.entries({
@@ -72,6 +72,7 @@ test('main browser entry registers both views and preserves node hooks', async (
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest;')
             .replace("import { regenerateResult, upscaleResult } from './studio_queue.js';", 'const {regenerateResult,upscaleResult} = globalThis.__freevideoEntryTest;')
+            .replace("import { openImageEditor, icon } from './image_editor.js';", 'const {openImageEditor,icon} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest;');
         await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');

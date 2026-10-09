@@ -6,7 +6,8 @@ from urllib.parse import quote, urlsplit
 
 
 def runtime_packages_supported():
-    return sys.platform != 'darwin'
+    """The offline Environment package carries a Windows runtime."""
+    return sys.platform == 'win32'
 
 
 def package_instructions(runtime_needed, zh=False):
@@ -22,6 +23,12 @@ def package_instructions(runtime_needed, zh=False):
             'The installer downloads the Mac environment automatically. Do not download the Windows Environment package.',
             '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包，Mac 同样适用。'
             'Mac 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
+    if sys.platform.startswith('linux'):
+        return (
+            'Get the four model packs (video model, text encoder, video & audio decoder, sampling caches); they also work on Linux. '
+            'The installer downloads the Linux environment automatically. Do not download the Windows Environment package.',
+            '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包，Linux 同样适用。'
+            'Linux 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
     text = ('Get the four model packs: video model, text encoder, video & audio decoder, and sampling caches. '
             'The reference audio pack is optional, for audio references.',
             '下载「视频模型」「文本编码器」「视频与音频解码器」「采样缓存」四个模型包；'

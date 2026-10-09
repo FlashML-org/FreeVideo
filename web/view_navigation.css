@@ -15,3 +15,11 @@
 .fv-view-navigation{animation:fv-panel-enter .25s ease}
 @media(max-width:380px){.fv-view-row>.fv-wordmark{width:76px}.fv-view-navigation .fv-view-switch button{font-size:12px;padding:7px 8px}}
 @media(prefers-reduced-motion:reduce){.fv-view-navigation,.fv-view-navigation *{animation:none!important;transition:none!important}}
+/* Dragged like a window: press anywhere on the bar and move. A press that does not move stays a click. */
+.fv-view-navigation{padding-left:20px;padding-right:20px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}.fv-view-navigation img,.fv-view-navigation a{-webkit-user-drag:none}
+.fv-view-navigation.fv-dragging{box-shadow:0 18px 48px #0008;border-color:color-mix(in srgb,var(--fv-border) 70%,var(--fv-ink))}
+html.fv-toolbar-dragging,html.fv-toolbar-dragging *{cursor:grabbing!important;user-select:none!important;-webkit-user-select:none!important}
+/* Six dots in the left padding, beside the first row, as on ComfyUI's own run bar. */
+.fv-view-row{position:relative}.fv-view-grip{position:absolute;left:-14px;top:50%;translate:0 -50%;width:8px;height:12px;opacity:0;pointer-events:none;color:var(--fv-muted);transition:opacity .2s,color .2s;background:radial-gradient(circle,currentColor 1.1px,transparent 1.5px) 0 0/4px 4px}
+.fv-view-navigation:hover .fv-view-grip{opacity:.75}.fv-view-navigation.fv-dragging .fv-view-grip{opacity:1;color:var(--fv-ink)}@media(hover:none){.fv-view-grip{opacity:.5}}
+@media(max-width:480px){.fv-view-navigation .fv-version-info{display:none}}

@@ -15,7 +15,8 @@ GIT_PROXY_PATTERN = r'^(http\..*proxy|https\.proxy|remote\..*\.proxy|core\.gitpr
 
 
 def inherited(environ=None):
-    env = dict(os.environ if environ is None else environ)
+    from .linux_bundle import child_environment
+    env = child_environment(environ)
     # GUI processes on Windows often have no proxy environment variables.
     # Read the user's OS proxy without editing its settings. Explicit child
     # overrides (including NO_PROXY) always take precedence.

@@ -134,10 +134,11 @@ export function createUpdateNotice(cn) {
     element.append(label, details, apply, link, dismiss, stop, summary);
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
-        const mac = value?.channel === 'macos-preview';
+        const mac = value?.channel === 'macos-preview', linux = value?.channel === 'linux-preview';
         link.href = value?.track === 'nightly' ? nightlyPage : releasePage;
         link.title = mac
             ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
+            : linux ? t('After your task finishes, open the new FreeVideo AppImage to update.', '当前任务完成后，打开新版 FreeVideo AppImage 更新。')
             : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
         const progress = launcher?.progress, percent = progress?.total ? ' ' + Math.floor(100 * progress.done / progress.total) + '%' : '';
         // The last model state seen stays while ComfyUI is away.

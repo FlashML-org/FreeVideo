@@ -2,7 +2,7 @@ import { createErrorPanel, errorText, createErrorReport } from './error_panel.js
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
-import { wordmark } from './branding.js';
+import { wordmark } from './wordmark.js';
 import { createGenerationProgress, referenceTrimText, thermalText } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';

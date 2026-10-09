@@ -13,6 +13,7 @@ import shutil
 from . import adaln_assets as assets
 from . import network
 from .monitoring import save
+from . import disk_space
 
 
 CATALOG_FILE = Path(__file__).with_name('macos_reference_catalog.json')
@@ -139,7 +140,7 @@ def ensure(cache, identity, count, *, catalog, networking=None, env=None):
     # Rejected partial bytes are retained by the shared downloader. Reserve a
     # full replacement even when an existing prefix looks complete.
     needed = sum(row['bytes'] for _, _, row in missing)
-    if missing and shutil.disk_usage(root).free < needed + 256 * 2**20:
+    if missing and disk_space.free_bytes(root) < needed + 256 * 2**20:
         raise ValueError('Insufficient disk space for Mac reference constants; existing files retained')
     for sidecar, row in recovered:
         if not sidecar.exists():

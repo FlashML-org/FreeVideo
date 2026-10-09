@@ -18,6 +18,10 @@ def saved_video(output, output_directory):
         if getattr(args, 'enable_assets', False):
             # ComfyUI enriches output entries itself when global assets are on.
             return entry
+        from app.database.db import can_create_session
+        if not can_create_session():
+            # Newer ComfyUI opens its database only with assets on; without it there is no library to add to.
+            return entry
         from app.assets.services.ingest import register_file_in_place
         registered = register_file_in_place(abs_path=str(output), name=output.name, tags=['output'])
         entry['id'] = registered.ref.id

@@ -414,7 +414,8 @@ def run(*, launcher_root=None, launcher_source=None, launcher_build=None, runnin
         comfy_root=None, engine_source=None, server_source=None, receipt=True):
     """Remove what the current launcher and installation no longer use; report what was freed."""
     from .locking import runtime_lock
-    result = dict(released_bytes=0, removed=[], kept=[])
+    # download_bytes: installer downloads this installation no longer needs (PyTorch wheels), part of released_bytes.
+    result = dict(released_bytes=0, download_bytes=0, removed=[], kept=[])
     snapshot = references()
 
     def drop(path, root, kind):
@@ -501,12 +502,21 @@ def run(*, launcher_root=None, launcher_source=None, launcher_build=None, runnin
                     for path in environments(engine, current):
                         drop(path, engine, 'comfyui-environment')
                     result['released_bytes'] += finish_retired(engine / 'envs', engine, ENVIRONMENT)
+                # Offline package extractions and download leftovers that duplicate verified model files.
+                from .package_cleanup import run as package_leftovers
+                leftovers = package_leftovers(engine, comfy_root, running=snapshot)
+                result['released_bytes'] += leftovers['released_bytes']
+                result['removed'] += leftovers['removed']
+                result['kept'] += leftovers['kept']
+                result['copied_model_bytes'] = leftovers['copied_model_bytes']
+                result['copied_model_reason'] = leftovers['copied_model_reason']
                 if machine and machine.get('ready') is True and all(python.is_file() for python in pythons):
                     for path in torch_wheels(engine, pythons):
                         try:
                             size = path.stat().st_size
                             path.unlink()
                             result['released_bytes'] += size
+                            result['download_bytes'] += size
                             result['removed'].append(dict(kind='torch-wheel', path=str(path), bytes=size))
                         except OSError:
                             result['kept'].append(dict(kind='torch-wheel', path=str(path), reason='in use'))

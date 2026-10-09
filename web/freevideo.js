@@ -13,6 +13,7 @@ import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
 import { regenerateResult, upscaleResult } from './studio_queue.js';
+import { openImageEditor, icon } from './image_editor.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -98,6 +99,65 @@ function mediaPanel(node, mount = null) {
     const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
     const changed = event => { if (String(event.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-media', changed);
+    // The video this panel feeds: its canvas is the natural shape for a keyframe crop.
+    const graphLink = id => node.graph?.links?.get?.(id) ?? node.graph?.links?.[id];
+    const videoSize = () => {
+        for (const other of node.graph?._nodes || node.graph?.nodes || []) {
+            const input = other.inputs?.find(i => i.name === 'media' && i.link != null);
+            if (!input || String(graphLink(input.link)?.origin_id) !== String(node.id)) continue;
+            const size = name => Number(other.widgets?.find(w => w.name === name)?.value);
+            if (size('width') > 0 && size('height') > 0) return {width: size('width'), height: size('height')};
+        }
+        return null;
+    };
+    // One file into ComfyUI's input folder, through FreeVideo's streaming upload.
+    async function uploadOne(file) {
+        const body = new FormData(); body.append('file', file);
+        const response = await api.fetchApi('/freevideo/media/upload', {method: 'POST', body});
+        const result = await response.json(); if (!response.ok) throw new Error(result.error || response.statusText);
+        return result;
+    }
+    async function editImage(file, tool = null) {
+        if (node.isUploading) return;
+        const original = read().find(row => row.file === file);
+        if (!original) return;
+        const source = original.source || original.file;
+        // Other pictures in this panel can be placed on the image as layers.
+        const library = read().filter(row => row.file !== file && mediaKind(row.file) === 'image')
+            .map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+        let outcome;
+        try {
+            outcome = await openImageEditor({source, name: source, target: videoSize(), edit: original.edit || null, role: original.role,
+                t: text, resolve: viewURL, upload: uploadOne, library, tool});
+        } catch (error) { message(text('The image could not be opened for editing.', '这张图片无法打开编辑。'), true); return; }
+        if (!outcome) return;
+        // The cards may have changed meanwhile; find this one again by its file.
+        const rows = read(), at = rows.findIndex(row => row.file === file);
+        if (at < 0) return;
+        if (outcome.restore) {
+            const {source: kept, edit: _, ...rest} = rows[at];
+            rows[at] = {...rest, file: kept || rest.file}; update(rows);
+            message(text('Restored the original image.', '已恢复原图。')); return;
+        }
+        node.isUploading = true; add.disabled = true; addAudio.disabled = true;
+        message(text('Uploading the edited image…', '正在上传编辑后的图片…'));
+        try {
+            const result = await uploadOne(new File([outcome.blob], outcome.name, {type: outcome.blob.type}));
+            const latest = read(), index = latest.findIndex(row => row.file === file);
+            if (index < 0) return;
+            latest[index] = {...latest[index], file: result.file, source, edit: outcome.edit}; update(latest);
+            message(text(`Saved the edited image, ${outcome.width}×${outcome.height}. The original is kept.`,
+                `已保存编辑后的图片（${outcome.width}×${outcome.height}），原图保留。`));
+        } catch (error) { message(error.message, true); }
+        finally { node.isUploading = false; add.disabled = false; addAudio.disabled = false; }
+    }
+    function restoreImage(file) {
+        const rows = read(), at = rows.findIndex(row => row.file === file);
+        if (at < 0 || !rows[at].source) return;
+        const {source, edit: _, ...rest} = rows[at];
+        rows[at] = {...rest, file: source}; update(rows);
+        message(text('Restored the original image. Edit it again to reapply the changes.', '已恢复原图；再次编辑可以重新应用修改。'));
+    }
     function render() {
         for (const preview of cards.querySelectorAll("video,audio")) {
             preview.pause(); preview.removeAttribute("src"); preview.load();
@@ -131,19 +191,45 @@ function mediaPanel(node, mount = null) {
             const top = el("div", undefined, "fv-row");
             const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = row.enabled !== false;
             enabled.setAttribute("aria-label", text("Use media", "使用素材")); enabled.onchange = () => { rows[index].enabled = enabled.checked; update(rows); };
-            const label = el("span", row.file.split("/").pop(), "fv-file"); label.title = row.file;
+            const label = el("span", (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             const kind = mediaKind(row.file);
             for (const [value, title] of (kind === "image" ? [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]] : [["reference", text("Reference", "参考")]])) {
                 const option = el("option", title); option.value = value; select.append(option);
             }
             select.value = row.role; select.onchange = () => { rows[index].role = select.value; update(rows); };
-            top.append(enabled, label, select); card.append(top);
+            top.append(enabled, label);
+            if (row.source) top.append(el('span', text('Edited', '已编辑'), 'fv-edited'));
+            top.append(select); card.append(top);
             const preview = el(kind === "image" ? "img" : kind); preview.className = "fv-preview";
             preview.src = viewURL(row.file);
-            if (kind === "image") { preview.loading = "lazy"; preview.alt = label.textContent; }
-            else { preview.controls = true; preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; } }
-            card.append(preview);
+            if (kind === "image") {
+                preview.loading = "lazy"; preview.alt = label.textContent;
+                // The picture itself opens the editor; a badge says so on hover.
+                const wrap = el("div", undefined, "fv-preview-wrap");
+                const badge = el("button", undefined, "fv-preview-edit"); badge.type = "button";
+                badge.innerHTML = icon("edit", 14); badge.append(el("span", text("Edit", "编辑")));
+                badge.title = text("Crop, retouch, add text or layers", "裁剪、修图、加文字或图层");
+                badge.onclick = event => { event.stopPropagation(); editImage(row.file); };
+                preview.title = text("Edit image", "编辑图片"); preview.onclick = () => editImage(row.file);
+                wrap.append(preview, badge); card.append(wrap);
+                const size = videoSize();
+                if (size && (row.role === "first" || row.role === "last")) {
+                    // A keyframe of another shape is centre-cropped when the video starts; offer the crop now.
+                    preview.addEventListener("load", () => {
+                        const off = Math.abs(Math.log((preview.naturalWidth / preview.naturalHeight) / (size.width / size.height))) > .02;
+                        if (!off || !preview.isConnected) return;
+                        const note = el("div", undefined, "fv-shape-note");
+                        note.append(el("span", text(`Its shape differs from the video (${size.width}×${size.height}); the edges are cropped when generating.`,
+                            `比例与视频（${size.width}×${size.height}）不同，生成时会居中裁掉多出的部分。`)),
+                            button(text("Adjust crop", "调整裁剪"), text("Choose what the video keeps", "选择视频保留的画面"), () => editImage(row.file, "crop")));
+                        wrap.after(note);
+                    }, {once: true});
+                }
+            } else {
+                preview.controls = true; preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; }
+                card.append(preview);
+            }
             if (kind !== "image") {
                 // References are cut to the generated length (at most 15 s); say so before the run.
                 const length = el("div", "", "fv-note"); length.hidden = true; card.append(length);
@@ -156,6 +242,10 @@ function mediaPanel(node, mount = null) {
             }
             const controls = el("div", undefined, "fv-row");
             const move = delta => { const target = index + delta; if (target < 0 || target >= rows.length) return; [rows[index], rows[target]] = [rows[target], rows[index]]; update(rows); };
+            if (kind === "image") {
+                controls.append(button(text("Edit", "编辑"), text("Crop, retouch, add text or layers", "裁剪、修图、加文字或图层"), () => editImage(row.file)));
+                if (row.source) controls.append(button(text("Original", "恢复原图"), text("Use the original image again; the edit can be reopened", "改回原图；之后仍可重新编辑"), () => restoreImage(row.file)));
+            }
             controls.append(button("↑", text("Move earlier", "向前移动"), () => move(-1)), button("↓", text("Move later", "向后移动"), () => move(1)),
                 button(text("Remove", "移除"), text("Remove from this request; keep the uploaded file", "从本次请求移除，保留已上传文件"), () => { rows.splice(index, 1); update(rows); }));
             card.append(controls); cards.append(card);
@@ -174,9 +264,7 @@ function mediaPanel(node, mount = null) {
                 const rows = read(); if (rows.length >= 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
                 const kind = mediaKind(file.name);
                 message(`${text("Uploading", "正在上传")} ${index + 1}/${files.length} · ${file.name}`);
-                const body = new FormData(); body.append("file", file);
-                const response = await api.fetchApi("/freevideo/media/upload", {method: "POST", body});
-                const result = await response.json(); if (!response.ok) throw new Error(result.error || response.statusText);
+                const result = await uploadOne(file);
                 rows.push({file: result.file, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);
             }
         } catch (error) { message(error.message, true); }
