@@ -1,4 +1,7 @@
-"""A durable, per-user Windows shortcut; no shell scripts or registry writes."""
+"""A durable, per-user shortcut: a Windows link, or a Linux desktop entry for the AppImage.
+
+No shell scripts or registry writes.
+"""
 import hashlib
 import json
 import os
@@ -297,11 +300,132 @@ def _failure(error, menu_ready):
     return ' '.join(en), ''.join(zh)
 
 
+# --- Linux: the AppImage in the application menu and on the desktop ---------------
+
+APP_ID = 'org.flashml.FreeVideo'
+APPIMAGE_NAME = 'FreeVideo-Linux-x86_64.AppImage'
+
+
+def desktop_quote(value):
+    """Desktop Entry quoting: double quotes, with a backslash before \\, ", ` and $."""
+    value = str(value).replace('%', '%%')
+    if not any(c in value for c in ' \t\n"\'\\><~|&;$*?#()`'):
+        return value
+    return '"' + ''.join('\\' + c if c in '"`$\\' else c for c in value) + '"'
+
+
+def _xdg(variable, fallback):
+    value = os.environ.get(variable, '')
+    return Path(value) if os.path.isabs(value) else fallback
+
+
+def linux_desktop_directory():
+    """The desktop folder the file manager shows (XDG_DESKTOP_DIR), which may be localized."""
+    config = _xdg('XDG_CONFIG_HOME', Path.home() / '.config') / 'user-dirs.dirs'
+    try:
+        for line in config.read_text(encoding='utf-8').splitlines():
+            if line.startswith('XDG_DESKTOP_DIR='):
+                return Path(line.split('=', 1)[1].strip().strip('"').replace('$HOME', str(Path.home())))
+    except OSError:
+        pass
+    return Path.home() / 'Desktop'
+
+
+def appimage_target(engine, appimage):
+    """A copy of the AppImage for the menu entry, wherever the download itself later goes."""
+    fingerprint = digest(appimage)
+    parent = copies_folder(engine, fingerprint)
+    for root in [parent / fingerprint, *sorted(parent.glob(fingerprint + '-*'))]:
+        try:
+            if digest(root / APPIMAGE_NAME) == fingerprint and os.access(root / APPIMAGE_NAME, os.X_OK):
+                return root / APPIMAGE_NAME
+        except OSError:
+            continue
+    parent.mkdir(parents=True, exist_ok=True)
+    stage = parent / ('launcher-' + uuid.uuid4().hex)
+    stage.mkdir()
+    try:
+        shutil.copy2(appimage, stage / APPIMAGE_NAME)
+        (stage / APPIMAGE_NAME).chmod(0o755)
+        if digest(stage / APPIMAGE_NAME) != fingerprint:
+            raise OSError('Launcher changed while preparing the desktop shortcut; retry installation')
+        root = parent / fingerprint
+        if os.path.lexists(root):
+            root = root.with_name(fingerprint + '-' + uuid.uuid4().hex[:8])
+        stage.rename(root)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+    return root / APPIMAGE_NAME
+
+
+def desktop_entry(target, icon):
+    return ('[Desktop Entry]\nType=Application\nName=FreeVideo\nComment=Install and open FreeVideo in ComfyUI\n'
+            'Comment[zh_CN]=安装并在 ComfyUI 中打开 FreeVideo\nExec=%s\nIcon=%s\nTerminal=false\n'
+            'Categories=AudioVideo;Video;Graphics;\nStartupWMClass=FreeVideo\n' % (desktop_quote(target), icon))
+
+
+def _write_entry(path, content, *, trusted=False):
+    """Write or repair our entry; a file of the same name that starts something else stays."""
+    try:
+        current = path.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        current = None
+    if current == content:
+        return dict(status='present', path=str(path))
+    if current is not None and not any(line.startswith('Exec=') and 'FreeVideo' in line for line in current.splitlines()):
+        return dict(status='kept', path=str(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name('.' + path.name + '.' + uuid.uuid4().hex[:8])
+    temporary.write_text(content, encoding='utf-8')
+    temporary.chmod(0o755)
+    os.replace(temporary, path)
+    if trusted and shutil.which('gio'):
+        # GNOME asks before running a desktop launcher it has not been told to trust.
+        subprocess.run(['gio', 'set', str(path), 'metadata::trusted', 'true'],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return dict(status='created', path=str(path))
+
+
+def create_linux(engine):
+    from .linux_bundle import appimage
+    image = appimage()
+    if image is None:
+        return dict(status='not-applicable')  # Started from a checkout: ./setup.sh adds the freevideo command.
+    engine = Path(engine)
+    target = appimage_target(engine, image)
+    data = _xdg('XDG_DATA_HOME', Path.home() / '.local/share')
+    icon = data / 'icons/hicolor/512x512/apps' / (APP_ID + '.png')
+    source_icon = Path(__file__).parent / 'assets/icon.png'
+    if not icon.is_file() or digest(icon) != digest(source_icon):
+        icon.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_icon, icon)
+    content = desktop_entry(target, icon)
+    menu = _write_entry(data / 'applications' / (APP_ID + '.desktop'), content)
+    desktop = linux_desktop_directory()
+    # A server has no desktop folder; never create one for it.
+    result = (_write_entry(desktop / 'FreeVideo.desktop', content, trusted=True) if desktop.is_dir()
+              else dict(status='not-applicable', path=str(desktop / 'FreeVideo.desktop')))
+    result = dict(result, target=str(target), start_menu=menu)
+    if result['status'] == 'not-applicable':
+        result['status'] = menu['status']
+    receipt = engine / 'launcher/desktop-shortcut.json'
+    try:
+        previous = json.loads(receipt.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        previous = None
+    if result != previous:
+        save(receipt, result)
+    return result
+
+
 def create(engine, source, portable_root=None):
     if not windows():
         if sys.platform == 'darwin':
             from .macos_shortcut import create as create_mac
             return create_mac(engine)
+        if sys.platform.startswith('linux'):
+            return create_linux(engine)
         return dict(status='not-applicable')
     engine = Path(engine)
     receipt = engine / 'launcher/desktop-shortcut.json'

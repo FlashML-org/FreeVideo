@@ -96,7 +96,10 @@ class SamplingMemory:
                 old['over_budget_samples'] += sample['usage_bytes'] > sample['budget_bytes']
 
     def complete(self, seconds):
-        row = dict(step=self.index, seconds=seconds, elapsed_seconds=time.monotonic()-self.started)
+        # The absolute monotonic end lets the report place the GPU monitor's
+        # samples (another process, same clock) inside each step.
+        now = time.monotonic()
+        row = dict(step=self.index, seconds=seconds, elapsed_seconds=now-self.started, monotonic_seconds=now)
         current_compiler = compilation.snapshot()
         row['compiler'] = compilation.difference(self.previous_compiler, current_compiler)
         self.previous_compiler = current_compiler

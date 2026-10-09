@@ -1,6 +1,7 @@
 import {api} from '../../scripts/api.js';
 import {closeDialog} from './motion.js';
 import {effortFor, effortName} from './sampling_effort.js';
+import {fontCSS, loadFont} from './fonts.js';
 
 const css=document.createElement('link'); css.rel='stylesheet'; css.href=new URL('./share.css',import.meta.url).href; document.head.append(css);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -25,8 +26,10 @@ async function withGraph(blob,graph){
 const tint=(hex,alpha)=>{const v=parseInt(hex.slice(1),16);return `rgba(${v>>16},${v>>8&255},${v&255},${alpha})`;};
 let opened;
 
-// Deterministic Canvas rendering: browser fonts cover CJK and no external
-// resources or user prompt are included. The image window preserves every pixel.
+// Deterministic Canvas rendering in FreeVideo's bundled sans (load it first: shareFonts), never a
+// font of the computer; no external resources or user prompt are included. The image window
+// preserves every pixel.
+export const shareFonts=()=>Promise.all([loadFont('sans',400),loadFont('sans',700)]);
 export function shareLayout(width,height) {
     const w=width>=height?1200:900, scale=w/width, footer=w>=1000?148:200;
     const h=Math.round(Math.min(1800,height*scale)/2)*2, artWidth=Math.round(h*width/height/2)*2;
@@ -48,12 +51,11 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     const line=ctx.createLinearGradient(0,0,w,0);line.addColorStop(0,tint(accent,0));line.addColorStop(.5,tint(accent,.75));line.addColorStop(1,tint(accent,0));
     ctx.fillStyle=line;ctx.fillRect(0,y,w,2);
     if(frame)ctx.drawImage(frame,...shape.rect);
-    const font='"Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
-    const fit=(text,weight,size,max)=>{while(size>12){ctx.font=`${weight} ${size}px ${font}`;if(ctx.measureText(text).width<=max)break;size--;}return ctx.measureText(text).width;};
+    const fit=(text,weight,size,max)=>{while(size>12){ctx.font=fontCSS('sans',weight,size);if(ctx.measureText(text).width<=max)break;size--;}return ctx.measureText(text).width;};
     const logoWidth=wide?156:140, logoTop=wide?y+H/2-26:y+30;
     ctx.drawImage(logo,pad,logoTop,logoWidth,logoWidth*337/2016);
     const seconds=g.seconds||g.frames/(g.fps||24);
-    ctx.font=`400 14px ${font}`;ctx.fillStyle='#6f8399';ctx.textAlign=wide?'left':'right';
+    ctx.font=fontCSS('sans',400,14);ctx.fillStyle='#6f8399';ctx.textAlign=wide?'left':'right';
     ctx.fillText(`${g.width} × ${g.height}${Number.isFinite(seconds)?' · '+seconds.toFixed(1)+' s':''}`,wide?pad:w-pad,wide?y+H/2+24:y+46);
     ctx.textAlign='left';
     const gpu=(record.gpu||t('GPU not recorded','显卡未记录')).replace(/^NVIDIA\s+/,'').replace(/GeForce\s+/,'');
@@ -61,7 +63,7 @@ export function drawShareCard(canvas,frame,logo,record,t) {
         [t('Quality','质量'),tier?effortName(t,tier):(steps?t('Custom','自定义'):'—'),true]];
     const labelY=wide?y+H/2-16:y+H-80, valueY=wide?y+H/2+26:y+H-38;
     const drawStat=([label,value,pill],x,max)=>{
-        ctx.font=`500 13px ${font}`;ctx.fillStyle='#7d90a6';ctx.fillText(label,x,labelY);
+        ctx.font=fontCSS('sans',500,13);ctx.fillStyle='#7d90a6';ctx.fillText(label,x,labelY);
         if(!pill){fit(value,600,28,max);ctx.fillStyle='#eef3fa';ctx.fillText(value,x,valueY);return;}
         const text=fit(value,650,20,max-32),pw=text+32;
         ctx.beginPath();ctx.roundRect(x,valueY-27,pw,34,17);ctx.fillStyle=tint(accent,.16);ctx.fill();
@@ -70,7 +72,7 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     };
     if(wide){
         // Right-aligned columns; each takes its own width, separated by hairlines.
-        const widths=stats.map(([label,value,pill])=>{ctx.font=`500 13px ${font}`;const l=ctx.measureText(label).width;
+        const widths=stats.map(([label,value,pill])=>{ctx.font=fontCSS('sans',500,13);const l=ctx.measureText(label).width;
             const v=pill?Math.min(fit(value,650,20,220),220)+32:Math.min(fit(value,600,28,300),300);return Math.max(l,v);});
         let x=w-pad;
         for(let i=stats.length-1;i>=0;i--){
@@ -161,7 +163,7 @@ export async function openShare(record,t){
         metadata=await response.json();
         [first,logo]=await Promise.all([image(api.apiURL('/freevideo/share/frame?'+new URLSearchParams({id}))),image(new URL('./assets/freevideo.svg',import.meta.url).href)]);
         if(disposed)return;
-        if(document.fonts?.ready)await document.fonts.ready;
+        await shareFonts();if(document.fonts?.ready)await document.fonts.ready;
         shape=drawShareCard(canvas,null,logo,metadata,t);template=canvas.toDataURL('image/png').split(',')[1];
         preview.style.aspectRatio=`${shape.width}/${shape.height}`;
         player.style.cssText=`left:${shape.rect[0]/shape.width*100}%;top:0;width:${shape.rect[2]/shape.width*100}%;height:${shape.rect[3]/shape.height*100}%`;

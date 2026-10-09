@@ -35,6 +35,9 @@ def descriptors():
 
 def module_command(module, *arguments):
     """Also works with portable Windows Python, whose ._pth ignores PYTHONPATH."""
+    if getattr(sys, 'frozen', False) and sys.platform.startswith('linux'):
+        # The Linux launcher (AppImage) runs its own helpers; see modern_launcher.main.
+        return [sys.executable, '--freevideo-module', module, *map(str, arguments)]
     code = ("import runpy,sys;sys.path.insert(0,sys.argv.pop(1));"
             "runpy.run_module(sys.argv.pop(1),run_name='__main__',alter_sys=True)")
     return [sys.executable, '-B', '-X', 'utf8', '-c', code,

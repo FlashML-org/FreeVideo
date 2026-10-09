@@ -28,6 +28,7 @@ from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
 from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file,
                            bootstrap_versions, uv_file_arguments)
+from . import disk_space
 from . import network
 from . import processes
 from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
@@ -206,6 +207,7 @@ def inventory(gpu=None):
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
             'swap_free_bytes': ram.get('swap_free_bytes'), 'system_memory': ram,
             'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': usable_git(),
+            **({} if platform.system() == 'Windows' else {'make': shutil.which('make')}),
             'git_found': shutil.which('git')}
 
 
@@ -335,9 +337,15 @@ def plan(args, *, local_progress=None):
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
         # A missing or too old Git is replaced by FreeVideo's own.
-        for name in () if windows_target else ('compiler',):
-            if not snapshot.get(name):
-                errors.append('Missing %s. Run ./setup.sh interactively to install basic tools, then review the engine plan.' % name)
+        if not windows_target:
+            # ./setup.sh installs these before planning; the desktop launcher names the command instead.
+            missing = ([] if snapshot.get('compiler') else ['g++']) + ([] if snapshot.get('make', True) else ['make'])
+            if missing:
+                from .system import linux_tools_command
+                command = linux_tools_command(missing)
+                errors.append('Missing %s, needed to build GPU acceleration for this GPU. %s, then check again.' % (
+                    ' and '.join(missing), 'In a terminal, run: ' + command if command else
+                    'Ask your administrator to install them'))
         if offline_installation(root):
             # Its sources carry no Git history and its Python is the package's.
             errors.append('This folder holds an installation from offline packages; automatic installation does not change it. '
@@ -441,7 +449,7 @@ def plan(args, *, local_progress=None):
         present += row['bytes'] if size_matches else 0
         device = existing_parent(path.parent)
         entry = groups.setdefault(str(device), {'path': str(device), 'needed_bytes': 0,
-                                                'free_bytes': shutil.disk_usage(device).free})
+                                                'free_bytes': disk_space.free_bytes(device)})
         local = (local_reuse or {}).get('matches', {}).get(row['repo'] + '/' + row['file'])
         model_entries.append((row, 'found' if size_matches else 'verified' if local else 'download'))
         entry['needed_bytes'] += 0 if size_matches or local and local['method'] == 'hardlink' else row['bytes']
@@ -455,7 +463,11 @@ def plan(args, *, local_progress=None):
     # future source deletion toward the space needed to complete conversion.
     dependencies = dependency_status(root, layout, system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
-    extra = (0 if reuse_cache or prepared else 52) + (5 if environments_ready else 30 if layout == 'unified' else 45) + 10
+    # A Mac environment has no CUDA packages: a fresh one measured 4.3 GB
+    # including the package cache, against 30 GiB allowed for CUDA ones.
+    environment_gib = ((1 if environments_ready else 6) if mac_target else
+                       5 if environments_ready else 30 if layout == 'unified' else 45)
+    extra = (0 if reuse_cache or prepared else 52) + environment_gib + 10
     frontend = None
     if getattr(args, 'frontend_root', None):
         frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
@@ -467,9 +479,11 @@ def plan(args, *, local_progress=None):
         eligible=bool(windows_target and layout == 'unified' and (reuse_cache or prepared)
                       and getattr(args, 'model_downloader', 'auto') != 'xet'),
         environments_ready=environments_ready, frontend=frontend,
-        keep_extreme=reviewed.get('disk_mode') == 'extreme')
+        keep_extreme=reviewed.get('disk_mode') == 'extreme', frontend_gib=disk_space.frontend_gib(mac_target))
     extra = disk_plan['environment_cache_safety_gib']
     errors.extend(disk_plan['errors'])
+    if mac_target:
+        errors.extend(disk_space.problem_messages([root, model_dir, encoder_dir] + ([frontend['root']] if frontend else [])))
     if reuse_cache and not cache_compatible(reuse_cache, **cache_format):
         errors.append('--cache must contain a prepared FP8 cache compatible with this GPU scale format.')
     from .download_settings import read as download_preferences
@@ -1080,10 +1094,13 @@ class Installer:
         self.ui.begin(key, title, detail=str(log) if self.ui.verbose else detail)
         progress = LogProgress(log)
         parallel_tasks = set()
+        models_step = label == 'models'
         def update_progress(*, final=False):
             self.ui.update(key, **progress.read(final=final))
             if progress.model_groups is not None:
                 self.ui.event('models', groups=progress.model_groups)
+                if models_step and getattr(self, 'model_bytes_callback', None):
+                    self.model_bytes_callback(progress.model_groups)
                 progress.model_groups = None
             for name, details in progress.take_tasks().items():
                 subkey = key + '-' + name
@@ -1576,12 +1593,27 @@ class Installer:
         tasks, pythons, comfy = self.component_tasks(uv)
         total = len(tasks) + 4  # Bootstrap, preparation, checks and final readiness.
         phase = 'Install with space saver' if self.plan.get('disk_mode') == 'extreme' else 'Install components in parallel'
+        weighted = dict(finished=set(), fetched=0, shown=1.)
+        def publish():
+            with self.state_lock:
+                units = install_phase_units(len(tasks), weighted['finished'], self.plan.get('model_download_bytes') or 0,
+                                            weighted['fetched'])
+                # Never step back: a restarted file may report fewer bytes for a moment.
+                weighted['shown'] = done = max(weighted['shown'], 1 + units)
+            self.ui.phase(phase, done, total)
         def scheduling(name, status, completed, count):
             with self.state_lock:
                 self.state.setdefault('schedule', {})[name] = dict(status=status, after=tasks[name]['after'],
                     exclusive_writers=tasks[name]['writes'], epoch=time.time())
                 save(self.run_dir / 'status.json', self.state)
-            self.ui.phase(phase, 1 + completed, total)
+                if status in ('complete', 'skipped'):
+                    weighted['finished'].add(name)
+            publish()
+        def model_bytes(groups):
+            weighted['fetched'] = sum(min(group.get('download_bytes') or 0, group.get('downloaded_bytes') or 0)
+                                      for group in groups or ())
+            publish()
+        self.model_bytes_callback = model_bytes
         self.ui.phase(phase, 1, total)
         results = run(tasks, self.cancel, progress=scheduling,
                       workers=1 if self.plan.get('disk_mode') == 'extreme' else 3)
@@ -1611,6 +1643,26 @@ class Installer:
         save(self.root / 'machine.json', configuration)
         self.ui.phase('Setup complete', total, total)
         return configuration
+
+
+# What the rest of an installation weighs against the model download in the
+# overall bar: PyTorch wheels, packages, sources and checks, as bytes.
+INSTALL_PHASE_OTHER_BYTES = 6 * 2**30
+
+
+def install_phase_units(tasks, finished, download_bytes, fetched_bytes):
+    """Units of the parallel install phase completed, out of ``tasks``.
+
+    Counting finished tasks left the overall bar still for the whole model
+    download (one task, most of the time). That task now takes a share of the
+    phase in proportion to its bytes and advances with the bytes fetched.
+    """
+    if download_bytes <= 0:
+        return len(finished)
+    share = download_bytes / (download_bytes + INSTALL_PHASE_OTHER_BYTES)
+    others = len(finished - {'models'})
+    models = 1. if 'models' in finished else min(1., max(0, fetched_bytes) / download_bytes)
+    return tasks * ((1 - share) * others / max(1, tasks - 1) + share * models)
 
 
 class Prefetcher:
@@ -1728,6 +1780,8 @@ def main(argv=None):
     parser.add_argument('--hardware-json', type=Path, help='Offline inventory fixture, only with --plan')
     parser.add_argument('--yes', action='store_true')
     parser.add_argument('--accept-model-license', action='store_true')
+    parser.add_argument('--no-launch', action='store_true',
+                        help='Linux: finish after the engine instead of installing ComfyUI and opening FreeVideo')
     parser.add_argument('--approved-plan', type=Path, help='GUI confirmation receipt; changed paths, models or larger disk/download requirements require a new review')
     args = parser.parse_args(argv)
     if not 1 <= args.network_timeout <= 30:
@@ -1813,10 +1867,14 @@ def main(argv=None):
             installer.locks.close()
             ui.close()
     if installer.state['status'] == 'complete':
-        entry = '.\\test.ps1' if platform.system() == 'Windows' else './test.sh'
-        print('\nSetup complete. Next: %s --root "%s"' % (entry, installer.root))
         if args.verbose:
             print('Configuration: %s' % (installer.root / 'machine.json'))
+        from .comfy_service import after_setup, continues_after_setup
+        if continues_after_setup(no_launch=args.no_launch, approved_plan=args.approved_plan):
+            print('\nSetup complete.')
+            return after_setup(installer.root)
+        entry = '.\\test.ps1' if platform.system() == 'Windows' else './test.sh'
+        print('\nSetup complete. Next: %s --root "%s"' % (entry, installer.root))
         return 0
     ui.event('failure', error=installer.state.get('resource_guard') or installer.state['error'])
     print('\nSetup failed: %s\nAll files retained. Logs: %s\nRerun the same setup command to resume.' %

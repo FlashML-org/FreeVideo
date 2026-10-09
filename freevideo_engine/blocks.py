@@ -29,12 +29,14 @@ def chunked_ff(original, chunk):
 
 def install_bounded_blocks(model, residual_offload=False):
     from src.models.ops.fused_block import _compiled, _pre_ref
+    from .row_kernels import POST_ROWS, dynamic_rows
     pre = _compiled('pre', _pre_ref)
     # Autotuning a mutating kernel clones its full branch input. That extra
     # ~758 MiB copy defeats reuse under small memory limits. This elementwise
     # kernel needs no shape search or reduction; use the fixed launch policy.
-    post = torch.compile(_post_into_branch, dynamic=False,
-                         options={'triton.autotune_pointwise': False})
+    # One graph for every row count, like the kernels in row_kernels.
+    post = dynamic_rows(torch.compile(_post_into_branch, dynamic=False,
+                                      options={'triton.autotune_pointwise': False}), POST_ROWS)
 
     def forward(self, hidden_states, temb, adaln_indices, rotary_emb, attention_mask=None):
         if torch.is_grad_enabled():

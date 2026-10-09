@@ -20,6 +20,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 from .comfy_bridge import installation
+from . import disk_space
 from .comfy_environment import isolated_environment
 from .comfy_setup import Setup, SetupRunner
 from .comfy_source import SOURCE_DISK_BYTES, new_layout, validate_target
@@ -35,27 +36,21 @@ def disk_review(plan, engine, comfy, *, separate, new_comfy):
     """Add frontend costs to the right volume, including cross-drive installs."""
     frontend = plan.get('frontend')
     if frontend and frontend['root'] == str(Path(comfy).resolve()) and frontend['separate'] == separate:
-        from .install_disk import existing, errors
-        disks = [dict(disk, paths=list(disk['paths']),
-                      free_bytes=shutil.disk_usage(existing(disk['paths'][0])).free)
+        from .install_disk import errors
+        disks = [dict(disk, paths=list(disk['paths']), free_bytes=disk_space.free_bytes(disk['paths'][0]))
                  for disk in plan.get('disks', [])]
         return 0, disks, errors(disks)  # Already included before automatic mode selection.
-    def existing(path):
-        path = Path(path)
-        while not path.exists() and path != path.parent:
-            path = path.parent
-        return path
     disks = {}
     for disk in plan.get('disks', []):
-        parent = existing(disk['paths'][0])
-        disks[parent.stat().st_dev] = dict(disk, paths=list(disk['paths']))
+        disks[disk_space.disk_key(disk['paths'][0])] = dict(disk, paths=list(disk['paths']))
     extra = 0
-    for path, amount in ((engine, 12 * 2**30 if separate else 0), (comfy, SOURCE_DISK_BYTES if new_comfy else 0)):
+    frontend_bytes = disk_space.frontend_gib(sys.platform == 'darwin') * 2**30
+    for path, amount in ((engine, frontend_bytes if separate else 0), (comfy, SOURCE_DISK_BYTES if new_comfy else 0)):
         if not amount:
             continue
-        parent = existing(path)
-        disk = disks.setdefault(parent.stat().st_dev, dict(paths=[str(parent)], needed_bytes=0))
-        disk['free_bytes'] = shutil.disk_usage(parent).free
+        parent = disk_space.existing(path)
+        disk = disks.setdefault(disk_space.disk_key(parent), dict(paths=[str(parent)], needed_bytes=0))
+        disk['free_bytes'] = disk_space.free_bytes(parent)
         disk['needed_bytes'] += amount
         extra += amount
     from .install_disk import errors
@@ -137,7 +132,8 @@ def probe_host(descriptor, python=None):
     if not python:
         return dict(ready=False, python=None, libraries=[str(Path(descriptor['root']) / 'models')],
                     reason='No ComfyUI Python found; prepare a separate environment.')
-    env = dict(os.environ, PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1')
+    from .linux_bundle import child_environment
+    env = dict(child_environment(), PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1')
     # SystemRoot and Windows crypto variables must survive even an isolated test.
     for name in ('PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV', 'CONDA_PREFIX'):
         env.pop(name, None)
@@ -252,6 +248,13 @@ def shield_engine(engine):
     return True
 
 
+def checkout_entry(data, folder):
+    """A FreeVideo checkout's own entry point, put back by git, a node updater or a copied repository."""
+    text = data.decode('utf-8', 'replace')
+    return ('async def comfy_entrypoint' in text and 'from .freevideo_engine.' in text
+            and (Path(folder) / 'freevideo_engine' / 'comfy_nodes.py').is_file())
+
+
 def deploy(root, source, engine):
     """Update only our entry point; preserve source edits, libraries and templates."""
     root, source, engine = map(lambda p: Path(p).resolve(), (root, source, engine))
@@ -262,8 +265,10 @@ def deploy(root, source, engine):
     previous = json.loads(receipt.read_text(encoding='utf-8')) if receipt.is_file() else {}
     entry = target / '__init__.py'
     old = entry.read_bytes() if entry.is_file() else None
-    if old and previous.get('entry_sha256') and hashlib.sha256(old).hexdigest() != previous['entry_sha256']:
-        raise ValueError('The managed FreeVideo entry point was edited. Changes are retained; restore it before updating.')
+    if (old and previous.get('entry_sha256') and hashlib.sha256(old).hexdigest() != previous['entry_sha256']
+            and not checkout_entry(old, target)):
+        raise ValueError(f'The managed FreeVideo entry point ({entry}) was edited. Changes are retained; '
+                         'undo them or delete that file before updating.')
     # The small loader may be replaced; all original checkout files remain intact.
     code = ("# Installed by FreeVideo launcher. Original entry points are retained in the engine launcher/backups folder.\n"
             "import importlib.util as _util\nimport json as _json\nfrom pathlib import Path as _Path\nimport sys as _sys\n"
@@ -324,7 +329,7 @@ class Controller:
         self.update_bridge = None
         # Earlier FreeVideo copies removed in the background once ComfyUI runs
         # this version; kept out of `state`, which the task thread replaces.
-        self.old_versions = dict(released_bytes=0)
+        self.old_versions = dict(released_bytes=0, download_bytes=0)
         self._old_versions_thread = None
 
     def retire_old_versions(self, selected):
@@ -342,7 +347,8 @@ class Controller:
                              engine_source=selected['source'], server_source=server_info(selected['url']).get('source'))
             except Exception as error:  # Cleanup never affects using ComfyUI.
                 result = dict(released_bytes=0, error=type(error).__name__ + ': ' + str(error))
-            self.old_versions = dict(result, released_bytes=self.old_versions['released_bytes'] + result['released_bytes'])
+            self.old_versions = dict(result, released_bytes=self.old_versions['released_bytes'] + result['released_bytes'],
+                                     download_bytes=self.old_versions.get('download_bytes', 0) + result.get('download_bytes', 0))
         self._old_versions_thread = threading.Thread(target=work, name='freevideo-old-versions', daemon=True)
         self._old_versions_thread.start()
 
@@ -452,8 +458,9 @@ class Controller:
             self.state = dict(status='ready', engine_update_available=not matching_source(self.source, source),
                               selection=dict(self.selection))
             self.restore_terminal(engine)
+            from .linux_bundle import appimage
             from .system import windows
-            if windows() and getattr(sys, 'frozen', False):
+            if getattr(sys, 'frozen', False) and (windows() or appimage() is not None):
                 # Opening the launcher repairs a missing, broken or stale shortcut
                 # even when no launch follows, such as one that failed to start.
                 self.ensure_shortcut()
@@ -697,8 +704,11 @@ class Controller:
         deadline = time.monotonic() + 10
         while True:
             with socket.socket(socket.AF_INET6 if parsed.hostname == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
-                if sys.platform == 'darwin':
-                    # Reopening our own server must tolerate TIME_WAIT on macOS.
+                if sys.platform != 'win32':
+                    # Reopening a server that just stopped must tolerate its
+                    # connections in TIME_WAIT, as ComfyUI's own bind does. A
+                    # listening socket still refuses the bind. (On Windows the
+                    # option would let two servers share the port.)
                     check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     check.bind((parsed.hostname, parsed.port or 80))

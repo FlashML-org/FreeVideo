@@ -22,6 +22,16 @@ def open_browser(url):
             import os
             os.startfile(url)
             return True
+        from .linux_bundle import child_environment, frozen_linux
+        if frozen_linux():
+            # webbrowser would hand the launcher's own environment to the browser.
+            import shutil
+            import subprocess
+            opener = shutil.which('xdg-open')
+            if opener:
+                subprocess.Popen([opener, url], env=child_environment(), stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True
         import webbrowser
         return webbrowser.open(url, new=2)
 

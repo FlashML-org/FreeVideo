@@ -18,6 +18,7 @@ import urllib.request
 
 from .diagnostics import Redactor
 from .monitoring import save
+from . import disk_space
 
 REPOSITORY = 'FlashML-org/FreeVideo'
 # The channel names the platform; launchers from before combined releases read
@@ -27,12 +28,16 @@ API = 'https://api.github.com/repos/' + REPOSITORY
 RELEASE_PAGE = 'https://github.com/' + REPOSITORY + '/releases/latest'
 MAX_EXE_BYTES = 512 * 2**20
 MAC_CHANNEL = 'macos-preview'
+# Linux has no release before combined releases, so no platform tag to fall back on.
+LINUX_CHANNEL = 'linux-preview'
 # Stable builds follow the latest vX.Y.Z release; nightly builds follow the
 # rolling `nightly` prerelease. Both carry every platform in one release.
 TRACKS = ('stable', 'nightly')
 NIGHTLY_TAG = 'nightly'
 RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
-                  MAC_CHANNEL: ('FreeVideo-Mac-arm64.dmg', 'update-macos.json')}
+                  MAC_CHANNEL: ('FreeVideo-Mac-arm64.dmg', 'update-macos.json'),
+                  LINUX_CHANNEL: ('FreeVideo-Linux-x86_64.AppImage', 'update-linux.json')}
+CHANNELS = tuple(RELEASE_ASSETS)
 
 
 def build_target(value):
@@ -52,7 +57,7 @@ def release_page(current):
 
 def build_identity(value):
     if (not isinstance(value, dict) or value.get('repository') != REPOSITORY
-            or value.get('channel') not in (CHANNEL, MAC_CHANNEL) or value.get('schema') != 1
+            or value.get('channel') not in CHANNELS or value.get('schema') != 1
             or not re.fullmatch(r'[0-9a-f]{40,64}', str(value.get('revision', '')))
             or type(value.get('built_at')) is not int or value['built_at'] <= 0
             or not isinstance(value.get('version'), str) or len(value['version']) > 64):
@@ -60,6 +65,9 @@ def build_identity(value):
     if value['channel'] == MAC_CHANNEL:
         if value.get('target') != 'macos-arm64' or value.get('packaging') != 'app':
             raise ValueError('Invalid Mac launcher build identity')
+    elif value['channel'] == LINUX_CHANNEL:
+        if value.get('target') != 'linux-x86_64' or value.get('packaging') != 'appimage':
+            raise ValueError('Invalid Linux launcher build identity')
     elif build_target(value) != 'windows-x86_64':
         raise ValueError('Launcher update channel does not match its target')
     if build_track(value) not in TRACKS:
@@ -71,6 +79,8 @@ def build_identity(value):
         result['packaging'] = 'onedir'
     if value['channel'] == MAC_CHANNEL:
         result.update(target='macos-arm64', packaging='app')
+    if value['channel'] == LINUX_CHANNEL:
+        result.update(target='linux-x86_64', packaging='appimage')
     from .release_notes import optional_fields
     result.update(optional_fields(value))
     return result
@@ -176,6 +186,8 @@ def _release(token, channel, track):
     names = {a.get('name') for a in (release or {}).get('assets', []) if isinstance(a, dict)}
     if isinstance(release, dict) and not release.get('draft') and not release.get('prerelease') and metadata in names:
         return release, executable, metadata
+    if channel == LINUX_CHANNEL:
+        raise ValueError('No published update is available for this platform')
     # Until the first combined release, updates come from the platform tag.
     release = _json(API + '/releases/tags/' + channel, token)
     if not isinstance(release, dict) or release.get('draft') or release.get('tag_name') != channel:
@@ -185,7 +197,7 @@ def _release(token, channel, track):
 
 def latest_release(token='', *, channel=CHANNEL, track='stable'):
     """Read and validate the published build without downloading an executable."""
-    if channel not in (CHANNEL, MAC_CHANNEL):
+    if channel not in CHANNELS:
         raise ValueError('Unknown launcher update channel')
     if track not in TRACKS:
         raise ValueError('Unknown launcher release track')
@@ -227,7 +239,7 @@ def verified(path, asset):
 
 
 def executable_path(root, candidate):
-    filename = 'FreeVideo-Mac-arm64.dmg' if build_target(candidate) == 'macos-arm64' else 'FreeVideo.exe'
+    filename = RELEASE_ASSETS[candidate['channel']][0]
     return Path(root).absolute().resolve() / 'updates' / candidate['asset']['sha256'] / filename
 
 
@@ -242,7 +254,7 @@ def download(candidate, root, token='', *, progress=None, cancel=None):
     # only ours; never touch another attempt, the original launcher or models.
     import tempfile
     import shutil
-    if shutil.disk_usage(target.parent).free < asset['bytes'] + 16*2**20:
+    if disk_space.free_bytes(target.parent) < asset['bytes'] + 16*2**20:
         raise OSError('Not enough disk space to download the launcher update')
     start, done = time.monotonic(), 0
     stage = None
@@ -263,6 +275,8 @@ def download(candidate, root, token='', *, progress=None, cancel=None):
             raise ValueError('Launcher update failed size/content verification; original EXE retained')
         if cancel is not None and cancel.is_set():
             raise InterruptedError('Update stopped before activation')
+        if build_target(candidate) == 'linux-x86_64':
+            stage.chmod(0o755)  # An AppImage runs itself.
         stage.replace(target)
         return target
     finally:
@@ -284,7 +298,8 @@ def launch_download(candidate, root, *, token='', popen=None):
     path = executable_path(root, candidate)
     if not verified(path, candidate['asset']):
         raise DownloadedLauncherUnavailable('Downloaded launcher is missing or changed; download again')
-    env = dict(os.environ, FREEVIDEO_LAUNCHER_HOME=str(Path(root).absolute().resolve()))
+    from .linux_bundle import child_environment
+    env = dict(child_environment(), FREEVIDEO_LAUNCHER_HOME=str(Path(root).absolute().resolve()))
     if token:
         env['GITHUB_TOKEN'] = token  # Session only; never stored in a receipt or command.
     kwargs = dict(cwd=path.parent, env=env, close_fds=True)

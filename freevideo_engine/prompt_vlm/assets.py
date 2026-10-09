@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import shutil
+from .. import disk_space
 
 
 def catalog():
@@ -48,7 +49,7 @@ def install(root, progress, check):
             size = partial.stat().st_size
             if size < row['bytes']:
                 retained += size
-    if shutil.disk_usage(folder).free < total - retained + 256 * 2**20:
+    if disk_space.free_bytes(folder) < total - retained + 256 * 2**20:
         raise ValueError('disk_space')
     plan = _download_plan(root)
     # This catalog has no verified ModelScope mirror yet. Preserve configured

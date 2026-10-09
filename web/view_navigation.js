@@ -1,7 +1,8 @@
 import { app } from '../../scripts/app.js';
 import { openSetup } from './setup.js';
-import { wordmark } from './branding.js';
+import { wordmark } from './wordmark.js';
 import { createUpdateNotice, createVersionInfo } from './updates.js';
+import { makeMovable } from './toolbar_position.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -53,6 +54,8 @@ export function installNavigation(openStudio) {
     toolbar = document.createElement('aside'); toolbar.className = 'fv-view-navigation';
     toolbar.setAttribute('aria-label', t('FreeVideo workspace', 'FreeVideo 工作区'));
     const row = document.createElement('div'); row.className = 'fv-view-row';
+    // The whole bar drags like a window; these dots say so on hover.
+    const grip = document.createElement('span'); grip.className = 'fv-view-grip'; grip.setAttribute('aria-hidden', 'true');
     const brand = wordmark();
     const choose = () => {
         const focused = Object.values(app.canvas?.selected_nodes || {}).find(n => n.comfyClass === 'FreeVideoGenerate' || n.type === 'FreeVideoGenerate');
@@ -60,7 +63,7 @@ export function installNavigation(openStudio) {
     };
     const settings = document.createElement('button'); settings.type = 'button';
     settings.textContent = t('Settings', '设置'); settings.className = 'fv-view-settings'; settings.onclick = openSetup;
-    row.append(brand, viewSwitch('nodes', choose, () => {}), createVersionInfo(cn).element, settings); toolbar.append(row);
+    row.append(grip, brand, viewSwitch('nodes', choose, () => {}), createVersionInfo(cn).element, settings); toolbar.append(row);
     let shown = false;
     try { shown = localStorage.getItem('freevideo.view-guide') === '1'; } catch { /* Show once this session. */ }
     if (!shown) {
@@ -91,6 +94,7 @@ export function installNavigation(openStudio) {
     }
     toolbar.append(createUpdateNotice(cn).element);
     document.body.append(toolbar); refreshNavigation();
+    makeMovable(toolbar);
     // health.js asks for this before it reports the toolbar missing. A
     // workspace removed without closing must not keep the toolbar hidden.
     globalThis.window?.addEventListener('freevideo-navigation-refresh', () => {

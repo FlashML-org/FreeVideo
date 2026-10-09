@@ -49,6 +49,31 @@ def project_rows(planes, out, project, size=TAIL_ROWS):
         out[rows] = project(part)
 
 
+def release_readouts(policy):
+    """Return a previous canvas's page-locked attention readouts before allocating new ones.
+
+    The first pass's readouts stayed referenced while the refine pass allocated
+    its larger ones, and the host allocator kept the freed blocks. Windows
+    page-locks both against a non-local budget of about half of physical RAM:
+    a 16 GiB machine failed cudaHostAlloc at the refine pass's first layer.
+    """
+    held = [getattr(policy, name, None) for name in ('group_readouts', 'host_outputs')]
+    for name in ('group_readouts', 'host_outputs', 'host_output_key'):
+        if hasattr(policy, name):
+            delattr(policy, name)
+    if any(value is not None for value in held):
+        del held
+        gc.collect()
+        # Copies into blocks the host allocator is about to free can still be
+        # in flight at a pass's first layer (residual staging, the previous
+        # pass's last tiles). Returning them then broke the next copy on
+        # Windows with cudaErrorInvalidValue; wait for the device first.
+        if torch.cuda.is_initialized():
+            torch.cuda.synchronize()
+        from .torch_compat import empty_host_cache
+        empty_host_cache(torch)
+
+
 def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projection_chunk=1024, grouped_outputs=False,
                         parallelism=1):
     if chunk < 1 or projection_chunk < 1:
@@ -103,12 +128,15 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
             stores = getattr(policy, 'group_readouts', None)
             if stores is None or any(not store.supports(rows, widths, x.dtype, projection_chunk)
                                      for store, rows in zip(stores, (len(x), linear_shape[0]))):
+                stores = None  # the old tuple must be unreferenced when it is returned
+                release_readouts(policy)
                 policy.group_readouts = tuple(HeadReadouts(rows, widths, x.dtype, projection_chunk)
                                              for rows in (len(x), linear_shape[0]))
             soft, linear = policy.group_readouts
         elif cpu_outputs:
             key = (soft_shape, linear_shape, x.dtype)
             if getattr(policy, 'host_output_key', None) != key:
+                release_readouts(policy)
                 policy.host_outputs = (torch.empty(soft_shape, dtype=x.dtype, pin_memory=True),
                                        torch.empty(linear_shape, dtype=x.dtype, pin_memory=True))
                 policy.host_output_key = key

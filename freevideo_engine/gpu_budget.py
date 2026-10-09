@@ -136,15 +136,26 @@ def configure(torch, budget_bytes, explicit_limit=None, *, reserve_bytes=0, syst
     return report
 
 
+# A falling driver budget can be Windows answering a full device: once this
+# process frees its optional cache planes the budget returns within seconds.
+# Before lowering the cap below the next step's measured workspace (a certain
+# OOM and a full restart), wait this long for it to come back.
+SETTLE_SECONDS = 15.
+SETTLE_INTERVAL = .5
+
+
 class LiveGPUBudget:
     """Refresh a Windows allocator ceiling at idle CUDA stage/step boundaries.
 
     The 256 MiB reserve is growth headroom, in addition to observed allocations
     outside Torch. A larger driver budget must survive two observations before
-    use. Pressure takes effect immediately, reclaiming optional weights first.
-    No background thread changes CUDA limits or frees tensors in active kernels.
+    use. Pressure takes effect immediately, reclaiming optional weights first;
+    a cap that would fall below the next step's workspace first waits briefly
+    for the budget to recover. No background thread changes CUDA limits or
+    frees tensors in active kernels.
     """
-    def __init__(self, torch, report, maximum_bytes, reserve_bytes, *, reader_factory=None):
+    def __init__(self, torch, report, maximum_bytes, reserve_bytes, *, reader_factory=None,
+                 device_factory=None, settle_seconds=SETTLE_SECONDS, sleep=time.sleep, clock=time.monotonic):
         self.torch, self.report = torch, report
         self.total = report['device_total_bytes']
         self.limit = report['effective_allocator_limit_bytes']
@@ -152,8 +163,11 @@ class LiveGPUBudget:
                            report.get('benchmark_allocator_limit_bytes') or self.total)
         self.reserve = reserve_bytes
         self.pending = None
-        self.started = time.monotonic()
+        self.settle_seconds, self.sleep, self.clock = settle_seconds, sleep, clock
+        self.started = clock()
         self.reader = None
+        self.device = None
+        self.device_memory = None
         self.receipt = report['dynamic_budget'] = dict(enabled=True,
             base_reserve_bytes=reserve_bytes, maximum_allocator_bytes=self.maximum,
             minimum_limit_bytes=self.limit, maximum_limit_bytes=self.limit,
@@ -165,13 +179,24 @@ class LiveGPUBudget:
             self.reader = reader_factory()
         except (OSError, RuntimeError, AttributeError, ValueError) as error:
             self._error(error)
+        try:
+            if device_factory is None and windows():
+                from .monitoring import DeviceMemory
+                uuid = str(getattr(torch.cuda.get_device_properties(torch.cuda.current_device()), 'uuid', ''))
+                if uuid and not uuid.startswith(('GPU-', 'MIG-')):
+                    uuid = 'GPU-' + uuid
+                device_factory = lambda: DeviceMemory(uuid or None)
+            if device_factory is not None:
+                self.device = device_factory()
+        except (OSError, RuntimeError, AttributeError, ValueError) as error:
+            self._error(error)
 
     def _error(self, error):
         errors = self.receipt['errors']
         if len(errors) < 8 and str(error) not in errors:
             errors.append(str(error))
 
-    def refresh(self, stage, reclaim=None):
+    def _observe(self):
         cuda = self.torch.cuda
         free, _ = cuda.mem_get_info()
         reserved = cuda.memory_reserved()
@@ -188,6 +213,38 @@ class LiveGPUBudget:
         known = 'wddm_pool_capacity_bytes' in decision['bounds']
         if not known:
             candidate = min(candidate, self.limit)
+        self.device_memory = None
+        if self.device is not None:
+            try:
+                self.device_memory = self.device.sample()
+            except (OSError, RuntimeError, AttributeError, ValueError) as error:
+                self._error(error)
+        return free, reserved, local, decision, known, candidate
+
+    def device_headroom(self):
+        """Physical device memory no process holds at the last observation, or None if unread."""
+        memory = self.device_memory or {}
+        used, total = memory.get('used_bytes'), memory.get('total_bytes')
+        if type(used) is not int or type(total) is not int:
+            return None
+        return max(0, total - used)
+
+    def _settle(self, workspace):
+        """Wait for a driver budget that again covers `workspace` twice in a row."""
+        deadline = self.clock() + self.settle_seconds
+        seen, samples = [], 0
+        while self.clock() < deadline:
+            self.sleep(SETTLE_INTERVAL)
+            *_, known, candidate = self._observe()
+            samples += 1
+            seen = seen + [candidate] if known and candidate >= workspace else []
+            if len(seen) == 2:
+                return min(seen), samples
+        return None, samples
+
+    def refresh(self, stage, reclaim=None, workspace=None):
+        cuda = self.torch.cuda
+        free, reserved, local, decision, known, candidate = self._observe()
         target, action = self.limit, 'hold'
         if candidate < self.limit:
             target, action, self.pending = candidate, 'shrink', None
@@ -199,12 +256,13 @@ class LiveGPUBudget:
                 self.pending, action = candidate, 'pending'
         else:
             self.pending = None
-        row = dict(stage=stage, elapsed_seconds=time.monotonic()-self.started,
+        row = dict(stage=stage, elapsed_seconds=self.clock()-self.started,
                    previous_limit_bytes=self.limit, candidate_limit_bytes=candidate,
                    allocator_limit_bytes=target, action=action, driver_available=known,
                    live_free_bytes=free, reserved_bytes=reserved,
                    non_torch_local_bytes=decision['observed_non_torch_local_bytes'],
-                   driver_budget_bytes=local.get('budget_bytes') if known else None)
+                   driver_budget_bytes=local.get('budget_bytes') if known else None,
+                   device_used_bytes=(self.device_memory or {}).get('used_bytes'))
         self.receipt['observations'] += 1
         self.receipt['last'] = row
         if action in ('shrink', 'grow'):
@@ -215,6 +273,14 @@ class LiveGPUBudget:
                     reclaim(target)
                 if cuda.memory_reserved() > target:
                     cuda.empty_cache()
+                if known and workspace is not None and target < workspace:
+                    started = self.clock()
+                    settled, samples = self._settle(workspace)
+                    row.update(settle_seconds=self.clock() - started, settle_samples=samples,
+                               workspace_bytes=int(workspace))
+                    if settled is not None:
+                        target = min(settled, self.limit)
+                        row.update(action='settled', allocator_limit_bytes=target, settled_candidate_bytes=settled)
             # The setter only governs future allocations. If active tensors
             # cannot fit after reclamation, use the existing controlled OOM
             # recovery rather than assume that setting a fraction evicts them.
@@ -232,5 +298,11 @@ class LiveGPUBudget:
         if reader is not None:
             try:
                 reader.close()
+            except (OSError, RuntimeError) as error:
+                self._error(error)
+        device, self.device = self.device, None
+        if device is not None:
+            try:
+                device.close()
             except (OSError, RuntimeError) as error:
                 self._error(error)

@@ -1,0 +1,6 @@
+# Native launcher build dependencies; inference runs in its managed environment.
+pyinstaller==6.22.3
+psutil==7.2.2
+# Build only: cuts the bundled Chinese font down to the launcher's characters.
+fonttools==4.66.1
+PySide6-Essentials==6.11.2

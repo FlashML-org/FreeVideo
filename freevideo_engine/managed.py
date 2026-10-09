@@ -44,8 +44,16 @@ def _main(argv=None):
     parser.add_argument('--root', type=Path, default=Path(os.environ.get('FREEVIDEO_HOME', DEFAULT_ROOT)))
     parser.add_argument('--config', type=Path)
     args, rest = parser.parse_known_args(argv)
-    if not rest or rest[0] in ('-h', '--help'):
-        print('FreeVideo Engine ' + __version__ + '\n\nUsage: ./freevideo [--root PATH] COMMAND [OPTIONS]\n\n'
+    # On Linux the bare command opens FreeVideo; elsewhere the desktop app does.
+    if (rest and rest[0] in ('-h', '--help')) or (not rest and not sys.platform.startswith('linux')):
+        print('FreeVideo Engine ' + __version__ + '\n\nUsage: ./freevideo [--root PATH] [COMMAND] [OPTIONS]\n\n'
+              '  (none)     Linux: open FreeVideo in ComfyUI, installing and starting it as needed\n'
+              '  open       The same; --port N, --no-browser\n'
+              '  server     Linux: keep FreeVideo running for other computers (SSH tunnel, or\n'
+              '             --listen 0.0.0.0 with an access link); --enable starts it with your session\n'
+              '  status     Show whether FreeVideo is running and its address\n'
+              '  stop       Stop ComfyUI (not while a job runs, unless --force)\n'
+              '  restart    Restart ComfyUI, for example after updating FreeVideo\n'
               '  setup      Detect hardware, review and install from scratch\n'
               '  test       Run full video/audio tests with a live dashboard\n'
               '  optimize   Reuse test results and validate lightweight local tuning\n'
@@ -57,14 +65,19 @@ def _main(argv=None):
               '  doctor     Check dependencies and GPU kernels\n'
               '  diagnose   Collect a small local report, including failed installs\n'
               '  bench      Compare attention backends\n\n'
-              'Examples:\n  ./freevideo setup --plan\n  ./freevideo test --suite quick\n'
-              '  ./freevideo generate --prompt-file prompt.txt --out video.mp4\n\n'
+              'Examples:\n  ./freevideo\n  ./freevideo server --listen 0.0.0.0\n  ./freevideo setup --plan\n'
+              '  ./freevideo test --suite quick\n  ./freevideo generate --prompt-file prompt.txt --out video.mp4\n\n'
               'Use COMMAND --help for options. Windows: .\\setup.ps1 / .\\test.ps1 / .\\freevideo.ps1; Linux: ./setup.sh / ./test.sh / ./freevideo.')
         return 0
+    if not rest:
+        rest = ['open']
     command, tail = rest[0], rest[1:]
     if command == 'setup':
         from .bootstrap import main as setup
         return setup(['--root', str(args.root), *tail])
+    if command in ('open', 'stop', 'status', 'restart', 'server'):
+        from .comfy_service import cli
+        return cli(command, args.root, tail)
     if command == 'diagnose':
         from .diagnostics import main as diagnose
         return diagnose(['--root', str(args.root), *(['--config', str(args.config)] if args.config else []), *tail])

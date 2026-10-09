@@ -150,6 +150,12 @@ def ensure_checkpoint():
     return path
 
 
+# Host RAM the upscaler needs beside a resident engine. latent_upscale moves
+# each checkpoint tensor (at most 13.5 MiB) to the device as it is read; this
+# covers one in flight plus the reader's buffers, with ample margin.
+UPSCALER_HOST_BYTES = 256 * 2**20
+
+
 def upscale_workspace(canvas):
     """Conservative admission estimate, not a measured capacity guarantee."""
     latent_frames = (canvas['frames'] - 5) // 17 * 5 + 2
@@ -165,12 +171,15 @@ def upscale_workspace(canvas):
 WINDOWS_PASS_CACHE_MARGIN = 512 * 2**20
 
 
-def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=None, windows=None):
+def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=None, windows=None,
+                         device_free=None):
     """Spare capacity after one real step, bounded independently by live space.
 
     Keep another 512 MiB beyond the existing OS reserve for pass-local growth,
     and on Windows another WINDOWS_PASS_CACHE_MARGIN below the local budget.
     Windows GPU allocations can also consume commit; retain host workspace.
+    `device_free` is what the whole device can still take with every other
+    process counted (Windows' budget and CUDA's free memory leave them out).
     """
     if windows is None:
         import os
@@ -178,6 +187,8 @@ def pass_cache_allowance(budget, peak_reserved, free, reserve, commit_available=
     if windows:
         budget -= WINDOWS_PASS_CACHE_MARGIN
     bounds = [budget - peak_reserved, free - reserve]
+    if device_free is not None:
+        bounds.append(device_free - reserve)
     if commit_available is not None:
         # Sampling workspace has already been exercised. This cache creates no
         # new host tensors, so do not reserve the full model-loading allowance

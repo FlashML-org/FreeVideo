@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import re
+import sys
 
 from .diagnostics import Redactor
 
@@ -67,18 +68,63 @@ def setup_command_failure(label, log, exit_code):
     return '\n'.join(lines) + STEP_OUTPUT + output
 
 
-def launcher_failure(value, *, zh=False):
-    """Short guidance for known failures; callers retain the full error separately."""
+# Checked before free space: freeing space cannot fix a disk that cannot hold the installation.
+PLACE_RULES = (
+    (r'The installation folder is on a FAT32 disk', 'disk-format',
+     ('This disk cannot hold the models', '这块硬盘放不下模型'),
+     ('It is formatted as FAT32, which stores files up to 4 GB; the text encoder alone is 15.7 GB. '
+      'Choose a folder on an APFS or Mac OS Extended disk.',
+      '它是 FAT32 格式，单个文件最大 4 GB，而文本编码器一个文件就有 15.7 GB。'
+      '请选择 APFS 或 Mac OS 扩展格式硬盘上的文件夹。')),
+    (r'The installation folder is on an exFAT disk', 'disk-format',
+     ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
+     ("It is formatted as exFAT, where FreeVideo's Python environment does not work. "
+      'Choose a folder on an APFS or Mac OS Extended disk.',
+      '它是 exFAT 格式，FreeVideo 的 Python 运行环境在这种格式上无法正常工作。'
+      '请选择 APFS 或 Mac OS 扩展格式硬盘上的文件夹。')),
+    (r'The installation folder is on a disk that is not connected', 'disk-missing',
+     ('The disk is not connected', '这块硬盘没有连接'),
+     ('Connect the disk that holds the installation folder, then check again, or choose another folder.',
+      '请接上安装位置所在的硬盘后重新检查，或者换一个位置。')),
+    (r'The installation folder is on a read-only disk', 'disk-read-only',
+     ('This disk is read-only', '这块硬盘是只读的'),
+     ('This Mac can read the disk but not write to it, as with NTFS disks. Choose a folder on another disk.',
+      '这台 Mac 只能读取这块硬盘，不能写入（例如 NTFS 格式的硬盘）。请选择其他硬盘上的文件夹。')),
+)
+
+
+def launcher_failure(value, *, zh=False, other_disk=False, disk_name=''):
+    """Short guidance for known failures; callers retain the full error separately.
+
+    other_disk: the launcher can offer another disk with enough room (macOS).
+    disk_name: the disconnected disk the launcher found; the error's paths are redacted.
+    """
     if not value:
         return dict(title='', detail='', action='', kind='')
     text = str(value)
     summary = text.partition(STEP_OUTPUT)[0]
+    if disk_name and 'on a disk that is not connected' in summary:
+        return dict(title='这块硬盘没有连接' if zh else 'The disk is not connected', kind='disk-missing', detail='',
+                    action=('请接上“%s”后点击“重新检查”' % disk_name + ('，或者改装到其他硬盘。' if other_disk else '。') if zh else
+                            'Connect "%s" and click Check again' % disk_name + (', or install on another disk.' if other_disk else '.')))
+    for pattern, kind, title, action in PLACE_RULES:
+        if re.search(pattern, summary):
+            return dict(title=title[zh], detail='', action=action[zh], kind=kind)
     disk = re.search(r'Insufficient disk space: need ([\d.]+) GiB, available ([\d.]+) GiB, short ([\d.]+) GiB', summary, re.I)
     if disk:
-        needed, available, short = disk.groups()
-        return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk',
-                    detail=('需要 %s GiB，可用 %s GiB。再释放 %s GiB 后点击“重新检查”。' % (needed, available, short)
-                            if zh else 'Need %s GiB; %s GiB available. Free another %s GiB, then click “Check again”.' % (needed, available, short)),
+        if sys.platform == 'darwin':
+            # In Finder's units, so the numbers match what it shows for the disk.
+            from .disk_space import size_text
+            sizes = tuple(size_text(float(value) * 2**30) for value in disk.groups())
+            # The figures and what to do go on their own lines, so a narrow window breaks between them.
+            detail = (('需要约 %s，可用 %s。\n再释放 %s 后点击“重新检查”' % sizes) + ('，或者改装到其他硬盘。' if other_disk else '。')
+                      if zh else ('Needs about %s; %s available.\nFree up %s and click Check again' % sizes)
+                      + (', or install on another disk.' if other_disk else '.'))
+        else:
+            sizes = tuple('%s GiB' % value for value in disk.groups())
+            detail = ('需要 %s，可用 %s。再释放 %s 后点击“重新检查”。' % sizes
+                      if zh else 'Need %s; %s available. Free another %s, then click “Check again”.' % sizes)
+        return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk', detail=detail,
                     action='重新检查' if zh else 'Check again')
     if text.startswith('ComfyUI could not start.'):
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',

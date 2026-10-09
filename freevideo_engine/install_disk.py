@@ -1,8 +1,9 @@
 """Disk estimates and live guards for the automatic Windows space saver."""
 from pathlib import Path
-import shutil
 import hashlib
 import json
+
+from . import disk_space
 
 GiB = 1 << 30
 SPACE_FLOOR = 2 * GiB
@@ -17,8 +18,11 @@ def existing(path):
 
 def add(disks, path, amount):
     parent = existing(path)
-    disk = disks.setdefault(parent.stat().st_dev,
-        dict(paths=[], needed_bytes=0, free_bytes=shutil.disk_usage(parent).free))
+    # Volumes of one APFS container share their free space.
+    key = disk_space.disk_key(parent)
+    if key not in disks:
+        disks[key] = dict(paths=[], needed_bytes=0, free_bytes=disk_space.free_bytes(parent))
+    disk = disks[key]
     if str(parent) not in disk['paths']:
         disk['paths'].append(str(parent))
     disk['needed_bytes'] += amount
@@ -49,7 +53,8 @@ def frontend_ready(root, frontend):
         return False
 
 
-def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend=None, keep_extreme=False):
+def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend=None, keep_extreme=False,
+           frontend_gib=12):
     """Estimate each volume for the selected installation strategy."""
     frontend = frontend or {}
     def estimate(extreme):
@@ -59,7 +64,7 @@ def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend
         extra = (1 if environments_ready else 6) if extreme else normal_extra
         add(disks, root, extra * GiB)
         if frontend.get('separate') and not (extreme and frontend_ready(root, frontend)):
-            add(disks, root, (3 if extreme else 12) * GiB)
+            add(disks, root, (3 if extreme else frontend_gib) * GiB)
         if frontend.get('download') and not Path(frontend['root']).exists():
             add(disks, frontend['root'], GiB)
         if extreme:
@@ -88,11 +93,11 @@ def check_floor(paths):
     seen = set()
     for path in paths:
         parent = existing(path)
-        device = parent.stat().st_dev
+        device = disk_space.disk_key(parent)
         if device in seen:
             continue
         seen.add(device)
-        free = shutil.disk_usage(parent).free
+        free = disk_space.free_bytes(parent)
         if free < SPACE_FLOOR:
             raise RuntimeError('Space-saving installation paused: less than 2 GiB free on %s '
                                '(%.2f GiB available). Free space and resume; downloaded files are retained.' %

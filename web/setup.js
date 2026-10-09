@@ -1,5 +1,5 @@
 import { api } from "../../scripts/api.js";
-import { wordmark } from './branding.js';
+import { wordmark } from './wordmark.js';
 import { openCompatibility } from './compatibility.js';
 import { animateDetails, closeDialog } from './motion.js';
 

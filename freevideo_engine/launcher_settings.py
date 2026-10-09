@@ -9,6 +9,7 @@ from .monitoring import save
 
 TEXT = ('comfy', 'destination', 'engine', 'models', 'python', 'url', 'language', 'offline_runtime')
 SELECTION = ('root', 'engine', 'source', 'python', 'url')
+ARCHIVE = ('path', 'bytes', 'mtime_ns', 'kind', 'root')
 
 
 def default_language():
@@ -40,6 +41,12 @@ def sanitize(value):
     offline = value.get('offline_models')
     if isinstance(offline, list) and all(isinstance(p, str) for p in offline):
         result['offline_models'] = list(dict.fromkeys(offline))
+    archives = value.get('imported_archives')
+    if isinstance(archives, list):
+        result['imported_archives'] = [
+            {k: row[k] for k in ARCHIVE} for row in archives
+            if isinstance(row, dict) and all(isinstance(row.get(k), str) for k in ('path', 'root', 'kind'))
+            and all(type(row.get(k)) is int for k in ('bytes', 'mtime_ns'))][-64:]
     record = value.get('installation')
     if isinstance(record, dict) and all(isinstance(record.get(k), str) and record[k] for k in SELECTION):
         result['installation'] = {k: record[k] for k in SELECTION}

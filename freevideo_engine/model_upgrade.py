@@ -23,6 +23,7 @@ from pathlib import Path
 import shutil
 import threading
 import time
+from . import disk_space
 
 GiB = 1 << 30
 MARGIN = 2 * GiB
@@ -73,7 +74,7 @@ def offer(root):
     download = setup_download(root, machine, selection)
     fused = variant_cleanup.fused_lora_variants(root, catalog, current)
     release = 0 if fused else variant_cleanup.retire(root, catalog, current)['bytes']
-    free = shutil.disk_usage(root).free
+    free = disk_space.free_bytes(root)
     return dict(status='available' if free >= download + MARGIN else 'low-disk',
                 architecture=hardware.architecture, gpu=hardware.gpu_name, current=current,
                 download_bytes=download, release_bytes=release, free_bytes=free,
@@ -234,7 +235,7 @@ class ModelUpgrade:
                 # larger plan is shown on the card and confirmed again first.
                 planned_bytes = value['model_download_bytes']
                 if planned_bytes > offered['download_bytes'] + 64 * (1 << 20):
-                    free = shutil.disk_usage(root).free
+                    free = disk_space.free_bytes(root)
                     self.state = dict(offered, status='available' if free >= planned_bytes + MARGIN else 'low-disk',
                                       download_bytes=planned_bytes, required_bytes=planned_bytes + MARGIN,
                                       free_bytes=free, resized=True)

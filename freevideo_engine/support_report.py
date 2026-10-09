@@ -163,7 +163,7 @@ def summarize(report, engine, encoding):
         sampling_reused=sampling_reused,
         sampling_memory=sampling_memory or None,
         decoder_read_ahead={key: decoder_read_ahead[key] for key in (
-            'state', 'read_bytes', 'total_bytes', 'allowance_bytes',
+            'state', 'read_bytes', 'total_bytes', 'allowance_bytes', 'target_bytes',
             'elapsed_seconds', 'gpu_allocation_bytes', 'private_buffer_bytes',
             'sampling') if key in decoder_read_ahead} or None,
         device_memory=mapping(engine.get('device_memory')) or None,
@@ -187,6 +187,7 @@ def summarize(report, engine, encoding):
             host_prefetch_wait_seconds=offload.get('host_prefetch_wait_seconds'),
             host_prefetch_buffer_bytes=offload.get('host_prefetch_buffer_bytes'),
             host_prefetch_disabled_reason=offload.get('host_prefetch_disabled_reason'),
+            host_prefetch_shared_reason=offload.get('host_prefetch_shared_reason'),
             h2d_seconds=offload.get('h2d_seconds'), timing_scope='Transfer/wait timers may overlap; do not add to wall time.',
             pinning_scope='pin_host_gb is requested decimal GB. pinned_model_bytes is actual weight payload; '
                           'pinned_host_allocated_bytes includes rounded active and cached host allocations at load. '
@@ -282,6 +283,10 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         engine_output = Path(_retry['retained']) / output.name if video_retry else output
         engine = mapping(request.get('video')) or read_json('.engine.json', engine_output.with_suffix('.engine.json'))
         engine = sampling_sidecar(engine, engine_output)
+        steps = mapping(engine.get('sampling_memory')).get('steps')
+        if isinstance(steps, list) and steps:
+            from .monitoring import step_activity
+            step_activity(engine_output.with_suffix('.engine.gpu.csv'), steps)
         encoding = mapping(request.get('encoding')) or read_json('.encoding.json')
         if encoder_retry:
             request = dict(request, success=False, phase='encoder_oom')

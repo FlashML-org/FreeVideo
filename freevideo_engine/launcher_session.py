@@ -2,11 +2,13 @@
 import json
 import os
 from pathlib import Path
+import sys
 import threading
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
+from . import disk_space
 from .comfy_launcher_runtime import Controller, layout, local_url, new_layout
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
@@ -24,6 +26,10 @@ CHECK_SECONDS = 30 * 60
 SNOOZE_SECONDS = 4 * 3600
 QUEUE_POLL_SECONDS = 3
 RECEIPT_POLL_SECONDS = 5
+
+
+def size_text(value):
+    return '%.1f GiB' % (value / 2**30) if value >= 2**30 else '%d MiB' % (value // 2**20)
 
 
 class Session:
@@ -63,7 +69,7 @@ class Session:
         self.form = dict(comfy='', destination=str(home / 'FreeVideo'), engine='', python='',
                          url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
                          separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[],
-                         sampling_caches=not saved.get('installation'))
+                         imported_archives=[], sampling_caches=not saved.get('installation'))
         self.form.update({k: v for k, v in saved.items() if k in self.form})
         if 'environment_method' not in saved and self.form['offline_runtime']:
             self.form['environment_method'] = 'manual'
@@ -173,8 +179,9 @@ class Session:
         if key == 'environment_method' and value not in ('auto', 'manual'):
             raise ValueError('Unknown environment installation method')
         if key == 'environment_method' and value == 'manual' and not runtime_packages_supported():
-            raise ValueError(self.t('The Mac environment is prepared automatically. Import model packages in the next step.',
-                                   'Mac 运行环境由安装器自动准备，请在下一步导入模型包。'))
+            system = 'Mac' if sys.platform == 'darwin' else 'Linux'
+            raise ValueError(self.t('The %s environment is prepared automatically. Import model packages in the next step.' % system,
+                                   '%s 运行环境由安装器自动准备，请在下一步导入模型包。' % system))
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
         if self.form[key] == value:
@@ -192,6 +199,21 @@ class Session:
         self.browser_attempted = False
         self.browser_error = self.error = ''
         self.persist()
+
+    def use_disk(self, folder):
+        """Move a new installation to another disk, then show the location page to confirm it."""
+        if not self.form['new_comfy'] or self.controller.busy or self.importer.busy or self.cleaner.busy:
+            return
+        self.edit('destination', str(folder))
+        self.page = 'comfy'
+
+    def disk_view(self, row, failure):
+        """The disk under the chosen location, with other disks to move to (macOS only)."""
+        if self.page != 'comfy' and not str(failure.get('kind', '')).startswith('disk'):
+            return None
+        need = sum(d.get('needed_bytes', 0) for d in row.get('disks', [])) if row.get('status') == 'review' else 0
+        folder = self.form['destination'] if self.form['new_comfy'] else self.form['comfy']
+        return disk_space.location(folder, need_bytes=need, suggest=self.form['new_comfy'])
 
     def add_folder(self, folder):
         from .local_models import library_roots
@@ -305,6 +327,8 @@ class Session:
             return
         if name == 'browser':
             self.open_browser(); return
+        if name == 'delete_archives':
+            self.delete_archives(); return
         if name == 'shortcut':
             self.controller.run('shortcut', self.controller.state.get('status')); return
         if name not in ('primary', 'launch'):
@@ -923,6 +947,13 @@ class Session:
             self.imported_batch = imported
             retry = self.import_retry
             for package in imported.get('packages', []):
+                if package.get('archive'):
+                    # The user's own ZIP: offered for deletion once the installation holds its contents.
+                    record = dict(path=package['archive'], bytes=package['archive_bytes'],
+                                  mtime_ns=package['archive_mtime_ns'], kind=package['kind'], root=package['root'])
+                    self.form['imported_archives'] = [r for r in self.form['imported_archives']
+                                                      if r.get('path') != record['path']] + [record]
+                    self.archive_view = None
                 if package['kind'] == 'runtime':
                     self.edit('offline_runtime', package['root'])
                     self.edit('environment_method', 'manual')
@@ -1022,10 +1053,89 @@ class Session:
         """What the background removal of earlier FreeVideo copies freed this session."""
         value = getattr(self.controller, 'old_versions', None)
         released = value.get('released_bytes') if isinstance(value, dict) else None
+        if isinstance(released, int):
+            # PyTorch wheels a fresh installation downloaded are not an earlier version.
+            downloads = value.get('download_bytes')
+            released -= downloads if isinstance(downloads, int) else 0
         if not isinstance(released, int) or released < 2**20:
             return ''
-        size = '%.1f GiB' % (released / 2**30) if released >= 2**30 else '%d MiB' % (released // 2**20)
-        return self.t('Old versions removed · %s freed', '已清理旧版本 · 释放 %s') % size
+        kinds = {row.get('kind') for row in value.get('removed', []) if isinstance(row, dict)}
+        if kinds and kinds <= {'offline-package', 'download-leftover', 'torch-wheel'}:
+            # Only this installation's own extractions and download leftovers: not an earlier version.
+            return self.t('Temporary setup files removed · %s freed', '已清理安装时的临时文件 · 释放 %s') % size_text(released)
+        return self.t('Old versions removed · %s freed', '已清理旧版本 · 释放 %s') % size_text(released)
+
+    def copied_models_text(self):
+        """Models copied from a library the installation could not link to, with what would save the space."""
+        value = getattr(self.controller, 'old_versions', None)
+        copied = value.get('copied_model_bytes') if isinstance(value, dict) else None
+        if not isinstance(copied, int) or copied < 2**30:
+            return ''
+        if value.get('copied_model_reason') == 'exfat':
+            return self.t('This disk uses exFAT, so %s of models had to be copied instead of shared with your model library.',
+                          '这块硬盘是 exFAT 格式，有 %s 的模型只能复制，不能和模型库共用。') % size_text(copied)
+        return self.t('%s of models were copied from another disk. Keep your model library on the same disk as FreeVideo '
+                      'to avoid this.',
+                      '有 %s 的模型是从另一块硬盘复制来的。把模型库和 FreeVideo 放在同一块硬盘上，就不会多占这部分空间。') % size_text(copied)
+
+    def archive_offer(self):
+        """The imported ZIPs whose contents the running installation holds, verified."""
+        if self.controller.state.get('status') != 'open' or not self.form.get('imported_archives'):
+            return None
+        engine = (self.controller.selection or {}).get('engine')
+        if not engine:
+            return None
+        def identity(path):
+            try:
+                info = os.stat(path)
+                return path, info.st_size, info.st_mtime_ns
+            except OSError:
+                return path, None, None
+        # A ZIP moved, changed or deleted while the launcher is open is noticed on the next view.
+        key = (engine, tuple(identity(r['path']) for r in self.form['imported_archives']))
+        if getattr(self, 'archive_view', None) is None or self.archive_view[0] != key:
+            from .package_cleanup import archives
+            self.archive_view = (key, archives(self.form['imported_archives'], engine))
+        return self.archive_view[1]
+
+    def delete_archives(self):
+        from .package_cleanup import delete_archives
+        engine = (self.controller.selection or {}).get('engine')
+        if self.controller.state.get('status') != 'open' or not engine:
+            return
+        offered = len((self.archive_offer() or {}).get('paths', []))
+        freed, removed = delete_archives(self.form['imported_archives'], engine)
+        self.archives_failed = max(0, offered - len(removed))
+        self.form['imported_archives'] = [r for r in self.form['imported_archives'] if r['path'] not in removed]
+        self.archive_view = None
+        self.archives_freed = (getattr(self, 'archives_freed', 0) or 0) + freed
+        self.persist()
+
+    def archives_text(self):
+        offer = self.archive_offer()
+        if offer and offer['bytes'] >= 2**20:
+            return self.t('The offline package ZIP files you imported still take %s. FreeVideo no longer needs them.',
+                          '导入用过的离线包压缩包还占着 %s，FreeVideo 已经用不到它们。') % size_text(offer['bytes'])
+        return ''
+
+    def archives_confirm_text(self):
+        offer = self.archive_offer()
+        if not offer or offer['bytes'] < 2**20:
+            return ''
+        count = len(offer['paths'])
+        english = 'Delete 1 ZIP file (%s)? This cannot be undone.' if count == 1 else 'Delete %d ZIP files (%%s)? This cannot be undone.' % count
+        return self.t(english % size_text(offer['bytes']), '删除 %d 个压缩包（%s）？删除后不能恢复。' % (count, size_text(offer['bytes'])))
+
+    def archives_done_text(self):
+        freed = getattr(self, 'archives_freed', 0) or 0
+        return self.t('ZIP files deleted · %s freed', '已删除压缩包 · 释放 %s') % size_text(freed) if freed >= 2**20 else ''
+
+    def archives_failed_text(self):
+        failed = getattr(self, 'archives_failed', 0) or 0
+        if not failed:
+            return ''
+        return self.t('1 ZIP file could not be deleted.' if failed == 1 else '%d ZIP files could not be deleted.' % failed,
+                      '%d 个压缩包没能删除。' % failed)
 
     def snapshot(self):
         from .failure_details import launcher_failure, redacted_launcher_error
@@ -1059,7 +1169,8 @@ class Session:
         ready = bool(row.get('selection', {}).get('ready') or row.get('status') == 'open')
         models = []
         states = {'ready': ('Ready locally', '本地已就绪'), 'waiting': ('Waiting for scan', '等待检查'),
-                  'pending': ('Download needed', '需要下载'), 'downloading': ('Downloading', '正在下载'),
+                  'pending': ('Download needed', '需要下载'), 'remaining': ('Waiting for remaining files', '等待补齐剩余文件'),
+                  'downloading': ('Downloading', '正在下载'),
                   'verifying': ('Transfer complete · verifying (no re-download)', '传输完成 · 正在校验（不会重复下载）'),
                   'paused': ('Paused', '已暂停')}
         for name in FAMILIES:
@@ -1067,7 +1178,10 @@ class Session:
                 continue
             item = dict(by_id.get(name, {}))
             state = 'ready' if ready else item.get('state', 'waiting')
-            if state == 'waiting' and item.get('download_bytes'):
+            if state == 'pending':
+                # Part of the group is ready; the rest (often small config files) waits for a download slot.
+                state = 'remaining'
+            elif state == 'waiting' and item.get('download_bytes'):
                 state = 'pending'
             total = item.get('total_bytes', 0)
             done = total if state == 'ready' else min(total,
@@ -1089,9 +1203,9 @@ class Session:
         if gpu:
             estimate.append(gpu)
         if 'model_download_bytes' in plan:
-            estimate.append(self.t('Download ', '需下载 ')+'%.1f GiB' % (plan['model_download_bytes']/2**30))
+            estimate.append(self.t('Download ', '需下载 ')+disk_space.size_text(plan['model_download_bytes']))
         if row.get('disks'):
-            estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+'%.1f GiB' % (sum(d.get('needed_bytes', 0) for d in row['disks'])/2**30))
+            estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+disk_space.size_text(sum(d.get('needed_bytes', 0) for d in row['disks'])))
         update = self.update_view()
         probe = self.probe.snapshot()
         speeds = []
@@ -1106,7 +1220,14 @@ class Session:
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
-        return dict(sampling_cache_bytes=total_bytes(), version=__version__, zh=self.language.startswith('zh'), form=dict(self.form),
+        failure = launcher_failure(error, zh=self.language.startswith('zh'))
+        disk = self.disk_view(row, failure)
+        if disk and str(failure.get('kind', '')).startswith('disk'):
+            failure = launcher_failure(error, zh=self.language.startswith('zh'),
+                other_disk=self.form['new_comfy'] and any(d['enough'] for d in disk['others']),
+                disk_name=disk['name'] if disk['problem'] == 'disconnected' else '')
+        return dict(sampling_cache_bytes=total_bytes(), version=__version__,
+            disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy or self.cleaner.busy,
             cleanup=dict(self.cleaner.state, busy=self.cleaner.busy),
             can_cleanup=not (self.controller.busy or self.importer.busy or self.cleaner.busy or self.closing
@@ -1123,12 +1244,14 @@ class Session:
             models=models, overall=overall, progress=progress, detail=clean(progress.get('detail', '')),
             progress_text=progress_text(progress, self.language.startswith('zh')),
             elapsed=duration(time.monotonic()-self.started) if self.started else '', summary=' · '.join(estimate),
-            failure=launcher_failure(error, zh=self.language.startswith('zh')),
+            failure=failure,
             source=source, source_name=source_name(source, zh), proxy_mode=preferences['proxy_mode'],
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,
-            old_versions=self.old_versions_text(),
+            old_versions=self.old_versions_text(), copied_models=self.copied_models_text(),
+            archives=self.archives_text(), archives_confirm=self.archives_confirm_text(),
+            archives_done=self.archives_done_text(), archives_failed=self.archives_failed_text(),
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
             update=update, engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),

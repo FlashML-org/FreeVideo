@@ -29,6 +29,28 @@ def missing_curl_message(env=None):
     return 'Missing curl for bounded downloads and HTTP/SOCKS proxy support. Run ./setup.sh to install it.'
 
 
+def linux_tools_command(names, which=shutil.which, root=None):
+    """The package command for missing build tools, as ./setup.sh would run it.
+
+    The desktop launcher cannot ask for a password in a terminal, so its plan
+    names the command; ./setup.sh installs the same packages itself.
+    """
+    manager = next((m for m in ('apt-get', 'dnf', 'yum', 'zypper') if which(m)), None)
+    if manager is None:
+        return None
+    packages = []
+    for name in names:
+        package = {'g++': 'build-essential' if manager == 'apt-get' else 'gcc-c++',
+                   'make': 'build-essential' if manager == 'apt-get' else 'make'}.get(name, name)
+        if package not in packages:
+            packages.append(package)
+    install = {'apt-get': 'apt-get install -y', 'dnf': 'dnf install -y', 'yum': 'yum install -y',
+               'zypper': 'zypper --non-interactive install'}[manager]
+    privilege = '' if (root if root is not None else os.geteuid() == 0) else 'sudo '
+    update = privilege + 'apt-get update && ' if manager == 'apt-get' else ''
+    return update + privilege + install + ' ' + ' '.join(packages)
+
+
 def source_root():
     """Find the checkout/ZIP by package location, never by the caller's cwd.
 

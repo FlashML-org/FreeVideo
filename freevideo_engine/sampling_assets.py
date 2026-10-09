@@ -8,6 +8,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 import time
+from . import disk_space
 
 COMMUNITY_PREFIX = 'community-sigma3-'
 WORKERS = 6
@@ -203,7 +204,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     started = time.monotonic()
     total = sum(row['bytes'] for _, row, _ in missing)
     shared.mkdir(parents=True, exist_ok=True)
-    free = shutil.disk_usage(shared).free
+    free = disk_space.free_bytes(shared)
     if free < total + 256 * 2**20:
         raise ValueError('Not enough disk space for sampling caches: %.0f MiB needed, %.0f MiB free in %s. '
                          'Free space and retry.' % ((total + 256 * 2**20) / 2**20, free / 2**20, shared))

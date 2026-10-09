@@ -240,7 +240,8 @@ class Runner:
                 str(self.source / 'freevideo.ps1'), '--root', str(root), *arguments]
 
     def environment(self, root):
-        return dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+        from .linux_bundle import child_environment
+        return dict(child_environment(), PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
 
     def prepare(self, action, root, env, progress):
         return env

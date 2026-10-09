@@ -1,5 +1,5 @@
 name: Installation and launchers
-# Every merge to main publishes the rolling nightly (Windows unsigned, Mac not notarized).
+# Every merge to main publishes the rolling nightly (Windows unsigned, Mac not notarized, Linux AppImage).
 # Users get an update only from a stable vX.Y.Z release, published by running this
 # workflow with "release" checked; Windows signing then waits for the release environment.
 on:
@@ -249,10 +249,70 @@ jobs:
             ${{ runner.temp }}/freevideo-smoke/smoke.json
           if-no-files-found: ignore
           retention-days: 1
+  linux:
+    if: github.event_name != 'pull_request'
+    needs: [installation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    # glibc 2.34, the oldest PySide6 6.11 supports: Ubuntu 22.04, Debian 12, Fedora 36, RHEL 9 and newer.
+    container: quay.io/pypa/manylinux_2_34_x86_64:2026.10.03-1@sha256:e4ca528d41ab66b3654110295d7a2c7bfa599ddbb6efb269ec21f7f73b88f1b6
+    env:
+      FREEVIDEO_RELEASE_TRACK: ${{ github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'nightly' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the libraries Qt loads, and those bundled for desktops that lack them
+        run: |
+          dnf install -y epel-release
+          dnf install -y xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm xcb-util \
+            libxkbcommon-x11 libxkbcommon mesa-libGL mesa-libEGL fontconfig freetype dbus-libs xorg-x11-server-Xvfb
+      - name: Prepare Python 3.12 with a shared libpython
+        run: |
+          /opt/python/cp312-cp312/bin/python -m pip install uv==0.9.0
+          /opt/python/cp312-cp312/bin/uv python install 3.12
+          /opt/python/cp312-cp312/bin/uv venv /opt/launcher --python 3.12
+          /opt/python/cp312-cp312/bin/uv pip install --python /opt/launcher/bin/python -r constraints/linux-launcher.txt
+      - name: Check installation and build the Linux launcher
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          /opt/launcher/bin/python scripts/check_installation.py
+          /opt/launcher/bin/python scripts/build_linux.py --out build/linux
+      - name: Start the AppImage on a virtual display
+        env:
+          FREEVIDEO_LAUNCHER_HOME: ${{ runner.temp }}/freevideo-launcher-state
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 &
+          export DISPLAY=:99
+          sleep 2
+          build/linux/release/FreeVideo-Linux-x86_64.AppImage --smoke-test "$RUNNER_TEMP/freevideo-smoke"
+          /opt/launcher/bin/python -c "import json, os; from pathlib import Path; value=json.loads((Path(os.environ['RUNNER_TEMP'])/'freevideo-smoke/smoke.json').read_text()); assert value['success'] and not value['model_modules_imported'], value"
+      - name: Stage the Linux launcher for publishing
+        run: |
+          mkdir -p build/linux-publish
+          cp build/linux/release/FreeVideo-Linux-x86_64.AppImage build/linux/release/launcher-build.json build/linux-publish/
+      - name: Keep the Linux launcher for publishing
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-launcher
+          path: build/linux-publish/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Keep failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-build-failure
+          path: |
+            ${{ runner.temp }}/freevideo-smoke/smoke.json
+            ${{ runner.temp }}/freevideo-smoke/launcher.png
+          if-no-files-found: ignore
+          retention-days: 1
   publish:
     # Release assets use Releases storage, not the Actions artifact quota.
     if: github.event_name != 'pull_request' && github.repository == 'FlashML-org/FreeVideo' && github.ref == 'refs/heads/main'
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -270,10 +330,14 @@ jobs:
         with:
           name: macos-launcher
           path: build/macos
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: linux-launcher
+          path: build/linux
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: >-
           python scripts/publish_release.py --track ${{ github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'nightly' }}
-          --windows build/windows --macos build/macos --sha ${{ github.sha }}
+          --windows build/windows --macos build/macos --linux build/linux --sha ${{ github.sha }}

@@ -248,11 +248,11 @@ def failure_cleanup(value):
 def decoder_read_ahead(value):
     """Keep bounded decoder overlap evidence without paths or free-form text."""
     value = mapping(value)
-    result = numbers(value, ('read_bytes', 'total_bytes', 'allowance_bytes',
+    result = numbers(value, ('read_bytes', 'total_bytes', 'allowance_bytes', 'target_bytes',
                              'elapsed_seconds', 'private_buffer_bytes',
                              'gpu_allocation_bytes'))
     state = value.get('state')
-    if state in ('not-started', 'reading', 'ready', 'skipped', 'stopped', 'failed'):
+    if state in ('not-started', 'reading', 'ready', 'partial', 'skipped', 'stopped', 'failed'):
         result['state'] = state
     sampling = mapping(value.get('sampling'))
     if sampling:
@@ -298,9 +298,9 @@ def weight_placement(value):
     result = numbers(value, WEIGHT_PLACEMENT)
     if type(value.get('host_prefetch')) is bool:
         result['host_prefetch'] = value['host_prefetch']
-    reason = value.get('host_prefetch_disabled_reason')
-    if reason in ('host_headroom', 'host_allocation_refused', 'live_host_pressure'):
-        result['host_prefetch_disabled_reason'] = reason
+    for key in ('host_prefetch_disabled_reason', 'host_prefetch_shared_reason'):
+        if value.get(key) in ('host_headroom', 'host_allocation_refused', 'live_host_pressure'):
+            result[key] = value[key]
     return result
 
 
@@ -444,6 +444,9 @@ def resources(value):
 
 WINDOWS_BUDGET = ('peak_usage_bytes', 'minimum_budget_bytes', 'maximum_budget_bytes',
                  'first_budget_bytes', 'last_budget_bytes', 'budget_changes', 'over_budget_samples', 'samples')
+# Whole-device NVML samples inside one sampling step (monitoring.step_activity).
+STEP_ACTIVITY = ('samples', 'busy_samples', 'gpu_util_mean_percent', 'sm_clock_mean_mhz', 'power_mean_mw',
+                 'device_used_peak_bytes', 'device_used_minimum_bytes', 'device_total_bytes')
 
 
 def dynamic_budget(value):
@@ -455,9 +458,10 @@ def dynamic_budget(value):
     def clean(row):
         row = mapping(row)
         item = numbers(row, ('elapsed_seconds', 'previous_limit_bytes', 'candidate_limit_bytes',
-            'allocator_limit_bytes', 'live_free_bytes', 'reserved_bytes', 'non_torch_local_bytes', 'driver_budget_bytes'))
+            'allocator_limit_bytes', 'live_free_bytes', 'reserved_bytes', 'non_torch_local_bytes', 'driver_budget_bytes',
+            'device_used_bytes', 'workspace_bytes', 'settle_seconds', 'settle_samples', 'settled_candidate_bytes'))
         for key, allowed in (('stage', ('load', 'sample', 'upscale', 'decode')),
-                             ('action', ('hold', 'pending', 'shrink', 'grow'))):
+                             ('action', ('hold', 'pending', 'shrink', 'settled', 'grow'))):
             if row.get(key) in allowed:
                 item[key] = row[key]
         if type(row.get('driver_available')) is bool:
@@ -504,6 +508,9 @@ def sampling(value):
         for segment in ('local', 'nonlocal'):
             item[segment] = numbers(observed.get(segment),
                 WINDOWS_BUDGET)
+        device = numbers(row.get('device_activity'), STEP_ACTIVITY)
+        if device:
+            item['device'] = device
         result['steps'].append(item)
     observed = mapping(value.get('incomplete_step_windows'))
     result['incomplete_step'] = {segment: numbers(observed.get(segment),
@@ -526,7 +533,7 @@ def sampling_passes(value):
             config=numbers(config, ENGINE_KNOBS), offload=weight_placement(row.get('offload')),
             cache_admission=numbers(row.get('pass_cache_admission'), ('gpu_budget_bytes', 'admitted_bytes',
                 'measured_peak_reserved_bytes', 'live_free_bytes', 'commit_available_bytes',
-                'requested_resident_blocks', 'workspace_peak_bytes', 'peak_cache_bytes')),
+                'requested_resident_blocks', 'workspace_peak_bytes', 'peak_cache_bytes', 'device_headroom_bytes')),
             kernels=kernel_receipt(row))
         item['config'].update({key: config[key] for key in ENGINE_KNOBS if type(config.get(key)) is bool})
         refinement = mapping(row.get('refinement'))
