@@ -32,4 +32,4 @@ include = ["freevideo_engine*"]
 
 [tool.setuptools.package-data]
 "freevideo_engine.prompt_vlm" = ["model.json"]
-freevideo_engine = ["build-version.txt", "build-identity.json", "release_notes.json", "dependencies.json", "model_files.json", "model_shares.json", "prepared_models.json", "macos_reference_catalog.json", "superseded_tables.json", "bootstrap_versions.json", "git_linux.json", "uv_downloads.json", "torch_downloads.json", "test_prompts.json", "windows_bootstrap.ps1", "assets/*.png", "assets/*.ico", "launcher/*.qml", "launcher/licenses/*.txt", "licenses/*.txt"]
+freevideo_engine = ["build-version.txt", "build-identity.json", "release_notes.json", "dependencies.json", "model_files.json", "model_shares.json", "prepared_models.json", "macos_reference_catalog.json", "superseded_tables.json", "bootstrap_versions.json", "curl_windows.json", "git_linux.json", "uv_downloads.json", "torch_downloads.json", "test_prompts.json", "windows_bootstrap.ps1", "assets/*.png", "assets/*.ico", "launcher/*.qml", "launcher/licenses/*.txt", "licenses/*.txt"]
