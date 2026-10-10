@@ -167,6 +167,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         return refreshing;
     }
     async function start(snapshot, {count = 1, repeat = false, seedIndex = -1} = {}) {
+        if (disposed) throw new Error('disposed');
         if (submitting) throw new Error('submitting');
         if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('invalid_count');
         if (repeat && loop?.active) throw new Error('loop_active');
@@ -176,7 +177,8 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (repeat) loop = session;
         submitting = true; lastError = null; publish();
         try {
-            for (let i = 0; i < (repeat ? 1 : count); i++) await submit(session, repeat || count > 1);
+            for (let i = 0; i < (repeat ? 1 : count) && !disposed; i++)
+                await submit(session, repeat || count > 1);
         } catch (error) { fail(error); throw error; }
         finally { session.sending = false; submitting = false; publish(); await refresh().catch(() => {}); }
     }
