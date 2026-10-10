@@ -29,9 +29,22 @@ def open_browser(url):
             import subprocess
             opener = shutil.which('xdg-open')
             if opener:
-                subprocess.Popen([opener, url], env=child_environment(), stdin=subprocess.DEVNULL,
+                command = [opener, url]
+            else:
+                # Without xdg-open, start the browser webbrowser would choose (gio open,
+                # x-www-browser, firefox...) the same way.
+                import webbrowser
+                try:
+                    browser = webbrowser.get()
+                except webbrowser.Error:
+                    return False
+                command = [browser.name] + [arg.replace('%s', url) for arg in browser.args]
+            try:
+                subprocess.Popen(command, env=child_environment(), stdin=subprocess.DEVNULL,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                return True
+            except OSError:
+                return False
+            return True
         import webbrowser
         return webbrowser.open(url, new=2)
 

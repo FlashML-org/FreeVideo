@@ -51,12 +51,15 @@ def summarize(report, engine, encoding):
     cache_hit = any(mapping(report.get(k)).get(flag) is True for k, flag in
                     (('input_cache', 'conditioning_hit'), ('tuning', 'conditioning_cache_hit'), ('encoding', 'cache_hit')))
     preencoded = str(report.get('encoder_mode', '')).startswith('preencoded')
+    # An upscale carries its preview's encoding receipt; that time was spent
+    # by the preview request, not this one.
+    from_preview = mapping(encoding).get('reused_from_preview') is True
     sampling_reused = engine.get('sampling_reused') is True
     stages = []
     # Substage timers overlap their parent. Only these top-level stages may
     # contribute to request accounting. Cached receipts describe a past run.
     for name, zh, value in (
-        ('text_encoding', '文本编码（含加载）', 0 if cache_hit or preencoded else encoding.get('work_seconds')),
+        ('text_encoding', '文本编码（含加载）', 0 if cache_hit or preencoded or from_preview else encoding.get('work_seconds')),
         ('model_load', '视频模型准备与加载', engine.get('load_seconds')),
         ('sampling', '采样', engine.get('sample_seconds')),
         ('latent_save', '保存潜变量', engine.get('latent_save_seconds')),
@@ -64,6 +67,8 @@ def summarize(report, engine, encoding):
         stages.append(dict(stage=name, label_zh=zh, seconds=number(value)))
         if name == 'sampling' and sampling_reused:
             stages[-1].update(reused_from_attempt=True, label_zh='采样（复用本次请求已完成的采样）')
+        if name == 'text_encoding' and from_preview:
+            stages[-1].update(reused_from_preview=True, label_zh='文本编码（复用预览的结果）')
     total = number(report.get('request_seconds'))
     measured = sum(row['seconds'] for row in stages if row['seconds'] is not None)
     accounting = 'partial: missing stage timers' if any(r['seconds'] is None for r in stages) else 'complete stage timers'
@@ -168,7 +173,7 @@ def summarize(report, engine, encoding):
             'sampling') if key in decoder_read_ahead} or None,
         device_memory=mapping(engine.get('device_memory')) or None,
         seconds_per_completed_nfe=(sum(steps)/len(steps) if steps else None),
-        conditioning_cache_hit=cache_hit, preencoded=preencoded,
+        conditioning_cache_hit=cache_hit, preencoded=preencoded, conditioning_from_preview=from_preview,
         geometry=report.get('geometry') or engine.get('geometry'),
         task=config.get('task'), effective_engine_config=config,
         config_scope='executed' if engine.get('config') else 'planned; executed config unavailable',
@@ -202,11 +207,42 @@ def summarize(report, engine, encoding):
             final_stage_reserved_bytes=engine.get('final_stage_peak_reserved_bytes'),
             whole_gpu_peak_bytes=mapping(mapping(report.get('resources')).get('gpu')).get('gpu_peak_bytes'),
             video_ram=mapping(mapping(report.get('resources')).get('ram')),
-            encoding_ram=None if cache_hit or preencoded else mapping(mapping(report.get('encoding_resources')).get('ram'))),
-        encoder_metrics_scope='cached receipt from a previous request; excluded from current timing' if cache_hit else 'this request',
+            encoding_ram=None if cache_hit or preencoded or from_preview else mapping(mapping(report.get('encoding_resources')).get('ram'))),
+        encoder_metrics_scope=('cached receipt from a previous request; excluded from current timing' if cache_hit else
+                               "the preview's receipt; excluded from current timing" if from_preview else 'this request'),
         compile_seconds=None,
         compile_scope=(sampling_memory.get('compiler_scope') or
                        'Compilation is not timed separately; never infer it from a slow first step.'))
+
+
+REQUEST_FIELDS = ('seed', 'encoder_mode', 'profile', 'resource_planning', 'compatibility',
+    'reclaimable_resident_models', 'idle_resources', 'tuning', 'input_cache', 'resource_attempts',
+    'resource_prediction', 'resource_prediction_error', 'error', 'error_message', 'error_type',
+    'resource_error', 'exception', 'encoding_failure', 'phase')
+
+
+def preview_receipts(output, read_json):
+    """The finished preview an upscale continued from, as its own request.
+
+    The upscale reuses the preview's text encoding and first pass. That time
+    belongs to the earlier request, but its process (encoding, load, each
+    first-pass step, decode, failed attempts) stays in the upscale's report
+    so a problem in the preview remains visible.
+    """
+    report = read_json('preview .request.json', output.with_suffix('.request.json'))
+    if not report.get('preview'):
+        return None
+    report = dict(report)
+    engine = mapping(report.get('video')) or read_json('preview .engine.json', output.with_suffix('.engine.json'))
+    encoding = mapping(report.get('encoding')) or read_json('preview .encoding.json', output.with_suffix('.encoding.json'))
+    if not report.get('resources'):
+        report['resources'] = dict(
+            ram=read_json('preview .engine.memory.json', output.with_suffix('.engine.memory.json')),
+            gpu=read_json('preview .engine.gpu.json', output.with_suffix('.engine.gpu.json')))
+    if not report.get('encoding_resources'):
+        report['encoding_resources'] = dict(
+            ram=read_json('preview .encoding.memory.json', output.with_suffix('.encoding.memory.json')))
+    return report, engine, encoding
 
 
 def write_retry(output, report, *, index, retained, next_profile=None, decision=None):
@@ -286,7 +322,15 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         steps = mapping(engine.get('sampling_memory')).get('steps')
         if isinstance(steps, list) and steps:
             from .monitoring import step_activity
-            step_activity(engine_output.with_suffix('.engine.gpu.csv'), steps)
+            # A decoder retry reuses an earlier attempt's steps; that worker's
+            # GPU samples were retained with the attempt.
+            sampled_output = engine_output
+            if engine.get('sampling_reused') is True:
+                for row in request.get('resource_attempts') or ():
+                    if (isinstance(row, dict) and row.get('id') == engine.get('sampling_source_attempt')
+                            and isinstance(row.get('retained'), str)):
+                        sampled_output = Path(row['retained']) / output.name
+            step_activity(sampled_output.with_suffix('.engine.gpu.csv'), steps)
         encoding = mapping(request.get('encoding')) or read_json('.encoding.json')
         if encoder_retry:
             request = dict(request, success=False, phase='encoder_oom')
@@ -307,9 +351,16 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         except (OSError, RuntimeError):
             pass
         include_logs = True
+        preview_source = mapping(request.get('upscaled_preview')).get('output')
+        preview_source = Path(preview_source) if isinstance(preview_source, str) and preview_source else None
+        if preview_source and preview_source.name in ('', '.', '..'):
+            preview_source = None
+        prompts = [output.parent / 'prompt.txt', output.with_suffix('.artifacts') / 'prompt.txt']
+        if preview_source:
+            prompts += [preview_source.parent / 'prompt.txt', preview_source.with_suffix('.artifacts') / 'prompt.txt']
         # The bridge prompt exists before the worker creates its artifacts.
         # Live exports during startup must redact it too.
-        for prompt in (output.parent / 'prompt.txt', output.with_suffix('.artifacts') / 'prompt.txt'):
+        for prompt in prompts:
             if not prompt.exists():
                 continue
             try:
@@ -326,6 +377,15 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                 notes.append('Log text omitted: prompt could not be read safely for redaction')
         redactor.structured(request)  # Learn prompts before redacting repeated error text.
         redactor.structured(bridge)
+        preview = None
+        try:
+            preview = preview_receipts(preview_source, read_json) if preview_source else None
+            if preview:
+                redactor.structured(preview[0])
+        except Exception:
+            # A broken earlier request must not discard this request's report.
+            preview = preview_source = None
+            notes.append('preview request: unreadable')
         # Failed children never return their telemetry into request['resources'].
         # Their retained memory files must feed the summary, not just an unused
         # raw section of the local report.
@@ -371,10 +431,7 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
             summary['status'] = 'retrying'
         payload = dict(schema_version=1, summary=summary,
             runtime_code=request.get('runtime_code'), collector_version=__version__,
-            request={k:request[k] for k in ('seed', 'encoder_mode', 'profile', 'resource_planning', 'compatibility',
-                'reclaimable_resident_models', 'idle_resources', 'tuning', 'input_cache', 'resource_attempts',
-                'resource_prediction', 'resource_prediction_error', 'error', 'error_message', 'error_type',
-                'resource_error', 'exception', 'encoding_failure', 'phase') if k in request},
+            request={k:request[k] for k in REQUEST_FIELDS if k in request},
             engine=engine, encoding=encoding,
             memory=dict(video=request.get('resources'),
                         encoding=request.get('encoding_resources') or dict(ram=read_json('.encoding.memory.json')),
@@ -382,6 +439,37 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                               'Cached encoder receipts do not describe this request’s peak.'),
             bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm') if k in bridge},
             collection_notes=notes, log_tails={})
+        try:
+            if preview:
+                previous, previous_engine, previous_encoding = preview
+                previous_summary = summarize(previous, previous_engine, previous_encoding)
+                payload['preview_request'] = dict(label_zh='预览阶段（之前的请求）',
+                    scope='The preview this upscale continued from: an earlier request with its own encoding, load, '
+                          "first pass and decode. Its time is not part of this request's request_seconds or stage table.",
+                    runtime_code=previous.get('runtime_code'), summary=previous_summary,
+                    request={k: previous[k] for k in REQUEST_FIELDS if k in previous},
+                    engine=previous_engine, encoding=previous_encoding,
+                    memory=dict(video=previous.get('resources'), encoding=previous.get('encoding_resources')))
+            elif preview_source:
+                # A preview deleted since keeps the section its upscale's final
+                # report saved. Only a live export reads it: its run folder
+                # belongs to this request, while a reused CLI output path may
+                # hold an older video's report.
+                saved = mapping(read_json('.debug.json').get('preview_request')) if live else {}
+                if saved.get('summary'):
+                    payload['preview_request'] = saved
+                else:
+                    notes.append('preview request: unavailable')
+        except Exception:
+            payload.pop('preview_request', None)
+            notes.append('preview request: unreadable')
+        seconds = number(mapping(mapping(payload.get('preview_request')).get('summary')).get('request_seconds'))
+        if seconds is not None:
+            summary['findings'].append(dict(kind='measured',
+                message='This request continued from a preview, an earlier request of %.0f s. The preview\'s encoding, '
+                        'load, first pass and decode are reported under preview_request and are not counted here.' % seconds,
+                message_zh='本次请求从预览继续，预览是之前的一次请求（%.0f 秒）。预览的编码、加载、第一遍和解码单独列在'
+                           '“预览阶段（之前的请求）”（preview_request），不计入本次用时。' % seconds))
         rewrite = read_json('prompt-rewrite', output.parent / 'prompt-rewrite.json')
         if rewrite.get('schema') == 'freevideo.prompt-vlm':
             payload['prompt_rewrite'] = rewrite
@@ -405,6 +493,13 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
                     if k in ('code', 'models', 'settings', 'packages', 'inputs', 'output')
                     and type(v) in (int, float) and math.isfinite(v) and v >= 0}
                 payload['bridge']['result_cache'][key] = shown
+        preview_tokens = mapping(mapping(payload.get('preview_request')).get('encoding')).get('token_summary')
+        from .comfy_progress import progress_timeline
+        from .progress_timeline import validate as validate_timeline
+        timeline = validate_timeline(progress_timeline(output))
+        if timeline is not None:
+            payload['progress_timeline'] = timeline
+            summary['progress_timeline'] = dict(events=len(timeline['events']), dropped=timeline['dropped'])
         # Scrub structured prompts before processing log tails that may repeat them.
         payload = redactor.structured(payload)
         if live:
@@ -413,6 +508,8 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         # Restore only its fixed numeric counts, never token IDs or text.
         from .diagnostic_resources import token_summary
         payload['encoding']['token_summary'] = token_summary(encoding.get('token_summary'))
+        if mapping(mapping(payload.get('preview_request')).get('encoding')):
+            payload['preview_request']['encoding']['token_summary'] = token_summary(preview_tokens)
         for suffix in ('.engine.log', '.encoding.log', '.lora.log'):
             path = (engine_output if suffix == '.engine.log' else output).with_suffix(suffix)
             if include_logs and path.is_file() and not is_link(path):
@@ -441,6 +538,10 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
             suffix = ('.encoder-retry-' if encoder_retry else '.retry-') + str(_retry['index']) + '.debug.json'
         target = output.with_suffix(suffix)
         cleaned = clean(payload)
+        if timeline is not None:
+            # Counter slashes in fixed label keys look like paths to the text
+            # scrubber. Restore only the receipt already validated above.
+            cleaned['progress_timeline'] = timeline
         from .diagnostic_summary import summary_report
         cleaned['analysis'] = summary_report(cleaned)
         save(target, cleaned)

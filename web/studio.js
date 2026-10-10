@@ -6,10 +6,12 @@ import { wordmark } from './wordmark.js';
 import { createGenerationProgress, referenceTrimText, thermalText } from './generation_progress.js';
 import { viewSwitch, viewChanged } from './view_navigation.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
+import { createPortNotice } from './port_notice.js';
 import { reportIssue, reportTipClosed, showReportTip } from './report_issue.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, latestVideo } from './library.js';
+import { openLibrary } from './library.js';
+import { createRecentVideos } from './studio_recent.js';
 import { createStudioQueue, randomSeed } from './studio_queue.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt } from './prompt_references.js';
 import { createSamplingEffort } from './sampling_effort.js';
@@ -146,6 +148,8 @@ export function openStudio(node) {
     header.append(brand, navigation, tools);
     const body = el('div', null, 'fv-body'), controls = el('div', null, 'fv-controls'), output = el('div', null, 'fv-preview-column');
     dialog.append(header, body); body.append(controls, output);
+    const portNotice = createPortNotice(cn);
+    if (portNotice) output.append(portNotice);
     const updateNotice = createUpdateNotice(cn);
     output.append(updateNotice.element); cleanup.push(updateNotice.dispose);
     const section = (label, parent = controls) => { const wrap = el('section', null, 'fv-section'); wrap.append(el('div', label, 'fv-label')); parent.append(wrap); return wrap; };
@@ -507,17 +511,22 @@ export function openStudio(node) {
     };
     const memoryNote = el('div', t('This video used the low-memory mode for this GPU, so it took longer than usual. A lower resolution or a shorter video runs faster.', '这段视频使用了省显存方式，所以比平时慢。降低分辨率或缩短时长会更快。'), 'fv-note'); memoryNote.hidden = true;
     const thermalNote = el('div', '', 'fv-note'); thermalNote.hidden = true;
-    output.append(status, reuseRow, trimNote, memoryNote, thermalNote, links, stats, budget, progress.report, prewarm);
+    output.append(status, reuseRow, trimNote, memoryNote, thermalNote, links, stats, budget, progress.stall, progress.report, prewarm);
     const failure = createErrorPanel(t); output.append(failure.element);
     // With the picture, the result's actions and numbers form one block, centred below the header.
     output.append(el('div', null, 'fv-preview-end'));
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0];
+    const recent = createRecentVideos(t, {body, onSelect: row => showResult(row, {chosen: true})});
+    body.append(recent.element); previewTools.insertBefore(recent.toggle, previewTools.lastElementChild);
+    cleanup.push(() => recent.dispose());
     // A run this window watched. Its result can arrive before or after the
     // final progress message, and more than once; the tip stays with that video.
     let reportTipTimer = null, watchedRun = false, reportTipFor = null;
-    function showResult(r) {
+    // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
+    function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r;
+        recent.setSelected(r.video);
         refreshEffortEstimate(true);
         progress.updateReport({report_id: node.freevideoReportId});
         stage.querySelector('video')?.pause(); stageMedia.replaceChildren();
@@ -547,12 +556,13 @@ export function openStudio(node) {
                                                    secondPass: r.preview ? secondPass(r) : null}));
         // After a video finished just now, point at the report menu until the
         // user closes the tip once, whichever version they first saw it in.
-        if (watchedRun && reported && !r.preview && !r.result_cache_hit && !reportTipClosed()) reportTipFor = r.video;
-        watchedRun = false;
+        if (!chosen && watchedRun && reported && !r.preview && !r.result_cache_hit && !reportTipClosed()) reportTipFor = r.video;
+        if (!chosen) watchedRun = false;
         if (reportTipFor && reportTipFor === r.video) placeReportTip(tipShowing ? 0 : 650);
         const g = r.geometry; if (g?.width && g?.height) previewSize(g.width, g.height);
-        if (!progress.element.hidden) {
-            progress.update({phase: 'complete', overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});
+        if (!chosen && !progress.element.hidden) {
+            progress.update({phase: 'complete', ...(r.preview ? {label: 'Preview saved'} : {}),
+                overall: {status: 'complete', fraction: 1, remaining_seconds: 0}});
             stage.dataset.revealing = 'true';
             clearTimeout(revealTimer); revealTimer = setTimeout(hideProgress, 550);
         }
@@ -835,6 +845,7 @@ export function openStudio(node) {
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     document.body.append(dialog); dialog.showModal(); viewChanged('studio', node); updateCanvas();
+    const recentLoad = recent.refresh();
     if (node.freevideoProgress) showProgress(node.freevideoProgress);
     else if (result) showResult(result);
     // Do not change any saved width/height simply by opening a workflow.
@@ -842,7 +853,7 @@ export function openStudio(node) {
         if (disposed) return;
         if (busy) { showProgress(node.freevideoProgress || {label: queued ? t('Waiting in queue', '正在排队') : t('Syncing generation progress', '正在同步生成进度')}); }
         else if (!result) {
-            const saved = await latestVideo();
+            const saved = (await recentLoad)[0];
             if (!disposed && !busy && !result && saved) showResult(saved);
         }
     }).catch(() => {});

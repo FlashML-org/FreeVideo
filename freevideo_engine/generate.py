@@ -296,6 +296,17 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
         os.environ.pop(ENV, None)
 
 
+def _runtime_libraries(error, record):
+    """Check the cuDNN files when this process saw them refused, or when the
+    hardware probe, which imports torch, failed. Workers check their own failures."""
+    try:
+        from .runtime_libraries import mismatch, diagnose
+        if mismatch(error) or getattr(error, 'torch_probe_failed', False):
+            record['runtime_libraries'] = diagnose()
+    except Exception:
+        pass
+
+
 def run(args):
     """Also retain admission/import failures before the main request starts."""
     output = Path(args.out).expanduser().resolve()
@@ -313,6 +324,7 @@ def run(args):
                 phase=planning[-1]['stage'] if planning else 'preflight', resource_planning=planning,
                 error_type=type(error).__name__, exception=exception_details(error),
                 error_message=str(error), resource_error=getattr(error, 'details', None), runtime_code=code_identity())
+            _runtime_libraries(error, record)
             try:
                 save(output.with_suffix('.request.json'), record)
                 write_debug(output, record)
@@ -736,8 +748,10 @@ def _run(args):
                                    'its first pass was sampled again.')
                         print(json.dumps(dict(event='preview_mismatch')), flush=True)
                 save(request_path, request)
+                # The epoch pairs with the worker's own events to time its start.
                 print(json.dumps({'event': 'decode_resume' if resume_decode else 'video_start', 'resource_attempt': attempt,
-                                  'engine': selected['engine'], 'decoder': selected['decoder']}), flush=True)
+                                  'engine': selected['engine'], 'decoder': selected['decoder'],
+                                  'epoch': time.time()}), flush=True)
                 try:
                     telemetry = child([sys.executable, '-m', 'freevideo_engine.worker', '--request', str(request_path)],
                         selected_env, descriptor, destination.with_suffix('.engine.log'),
@@ -845,6 +859,7 @@ def _run(args):
         report['error_type'] = type(error).__name__
         if hasattr(error, 'details'):
             report['resource_error'] = error.details
+        _runtime_libraries(error, report)
         if applied:
             report['tuning']['disabled_after_failure'] = tuning.disable_profile(applied, error)
         raise

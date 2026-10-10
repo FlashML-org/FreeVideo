@@ -333,7 +333,10 @@ class Engine:
                 # unpinned bytes are reopened by SafetensorLayers on demand,
                 # rather than accumulating until the first sampling step.
                 prepare_streamed(block, streamed_refiner_count + index - resident_blocks, unread)
-            if (index + 1) % 5 == 0:
+            # A block whose sampling table is computed here, for a step count
+            # without stored tables, takes far longer than a cached one; report
+            # each of those so the load visibly moves.
+            if (index + 1) % 5 == 0 or (adaln_cache and not cache_hit):
                 print(json.dumps({'event': 'prepared_blocks', 'blocks': index + 1,
                                   'adaln_cache': adaln_cache, 'adaln_reused_blocks': table_cache_hits,
                                   'resident_uploaded_blocks': min(index + 1, resident_blocks),

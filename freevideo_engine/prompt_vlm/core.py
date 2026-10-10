@@ -101,14 +101,22 @@ def vision_mlp(self, x):
     return out
 
 
-def prepare(model):
-    """Transform on CPU before accelerate installs placement/offload hooks."""
+def prepare(model, each_layer=None):
+    """Transform before accelerate installs placement/offload hooks.
+
+    each_layer(layer, merge) replaces the plain merge, so a caller can move the
+    layer to the GPU first: merging there never holds a second copy in RAM.
+    """
     if model.config.model_type != 'qwen3_vl' or model.config.text_config.hidden_act != 'silu':
         raise ValueError('Unsupported prompt model architecture')
     for layer in model.model.language_model.layers:
-        layer.mlp = GatedMLP(layer.mlp)
-        merge_qkv(layer.self_attn)
+        (each_layer or (lambda layer, merge: merge(layer)))(layer, merge_layer)
     for block in model.model.visual.blocks:
         block.attn.forward = types.MethodType(vision_attention, block.attn)
         block.mlp.forward = types.MethodType(vision_mlp, block.mlp)
     return model
+
+
+def merge_layer(layer):
+    layer.mlp = GatedMLP(layer.mlp)
+    merge_qkv(layer.self_attn)

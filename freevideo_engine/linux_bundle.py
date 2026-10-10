@@ -80,6 +80,9 @@ def prepare():
         os.environ['LD_LIBRARY_PATH'] = original
         if not original:
             os.environ.pop('LD_LIBRARY_PATH')
+    elif inside_bundle(os.environ.get('LD_LIBRARY_PATH', '')):
+        # PyInstaller saves no original when the person had none: the value is the bundle's alone.
+        os.environ.pop('LD_LIBRARY_PATH')
     for name in APPIMAGE_VARIABLES:
         os.environ.pop(name, None)
 

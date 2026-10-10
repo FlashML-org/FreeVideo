@@ -461,6 +461,9 @@ const HEAL_PATCH = 3, HEAL_COARSE = 24, HEAL_WINDOW = 3, HEAL_MARGIN = 384, HEAL
 const HEAL_SEARCH = 60000, HEAL_WINDOW_FINE = 1;
 // A whole stroke leans on nearby patches; a caption's thin strokes have picture all around them.
 const HEAL_NEAR = 4, HEAL_NEAR_TEXT = .25, HEAL_GUESS = .1, HEAL_TEXT_OUTLINE = .15;
+// A caption's letters share one stroke width: parts whose half-widths are within this ratio (and a
+// pixel) agree, and a joint or a curve may be this many times as thick as the stroke.
+const HEAL_TEXT_AGREE = 1.35, HEAL_TEXT_JOINT = 1.5;
 // Pixels within r of a set pixel (a square neighbourhood).
 function dilate(map, w, h, r) {
     const rows = new Uint8Array(w * h), out = new Uint8Array(w * h);
@@ -474,9 +477,67 @@ function dilate(map, w, h, r) {
     }
     return out;
 }
+// Chessboard distance of each set pixel to the nearest unset one in the picture (0 when unset).
+// When some pixel is unset, a pixel survives thinning by r (no unset pixel within r) exactly when
+// its distance is above r.
+function distances(map, w, h) {
+    const far = w + h, out = new Int32Array(w * h);
+    for (let i = 0; i < w * h; i++) out[i] = map[i] ? far : 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!out[i]) continue;
+        let v = out[i];
+        if (x > 0) v = Math.min(v, out[i - 1] + 1);
+        if (y > 0) {
+            v = Math.min(v, out[i - w] + 1);
+            if (x > 0) v = Math.min(v, out[i - w - 1] + 1);
+            if (x < w - 1) v = Math.min(v, out[i - w + 1] + 1);
+        }
+        out[i] = v;
+    }
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+        const i = y * w + x;
+        if (!out[i]) continue;
+        let v = out[i];
+        if (x < w - 1) v = Math.min(v, out[i + 1] + 1);
+        if (y < h - 1) {
+            v = Math.min(v, out[i + w] + 1);
+            if (x > 0) v = Math.min(v, out[i + w - 1] + 1);
+            if (x < w - 1) v = Math.min(v, out[i + w + 1] + 1);
+        }
+        out[i] = v;
+    }
+    return out;
+}
+// The set pixels of a distance map farther than r from an unset one.
+function beyond(dist, r) {
+    const out = new Uint8Array(dist.length);
+    for (let i = 0; i < dist.length; i++) out[i] = dist[i] > r ? 1 : 0;
+    return out;
+}
+// Each connected part (8 neighbours) of a map, handed to each as a list of its pixels.
+function parts(map, w, h, each) {
+    const seen = new Uint8Array(w * h);
+    for (let start = 0; start < w * h; start++) {
+        if (!map[start] || seen[start]) continue;
+        seen[start] = 1;
+        const part = [], stack = [start];
+        while (stack.length) {
+            const i = stack.pop(), x = i % w, y = (i - x) / w;
+            part.push(i);
+            for (let ny = y - 1; ny <= y + 1; ny++) for (let nx = x - 1; nx <= x + 1; nx++) {
+                if (ny < 0 || nx < 0 || ny >= h || nx >= w) continue;
+                const j = ny * w + nx;
+                if (map[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+            }
+        }
+        each(part);
+    }
+}
 // The coarsest level's start: ring by ring from the edge inwards, each hole
-// pixel takes the centre of the source patch that best matches its filled neighbours.
-function peel(E, hole, sources, pr, lw, lh) {
+// pixel takes the centre of the source patch that best matches its filled neighbours
+// (not the avoided ones, unless nothing else is near).
+function peel(E, hole, sources, pr, lw, lh, avoid = null) {
     const filled = new Uint8Array(lw * lh);
     for (let i = 0; i < lw * lh; i++) filled[i] = hole[i] ? 0 : 1;
     const stride = Math.max(1, Math.ceil(sources.length / HEAL_PEEL)), S = sources.filter((_, k) => k % stride === 0);
@@ -490,8 +551,9 @@ function peel(E, hole, sources, pr, lw, lh) {
             let n = 0, count = 0;
             for (let dy = -pr; dy <= pr; dy++) for (let dx = -pr; dx <= pr; dx++, n++) {
                 qs[n] = Math.min(lh - 1, Math.max(0, fy + dy)) * lw + Math.min(lw - 1, Math.max(0, fx + dx));
-                ks[n] = filled[qs[n]]; count += ks[n];
+                ks[n] = filled[qs[n]] && !(avoid && avoid[qs[n]] && !hole[qs[n]]) ? 1 : 0; count += ks[n];
             }
+            if (!count) for (n = 0; n < qs.length; n++) { ks[n] = filled[qs[n]]; count += ks[n]; }
             let best = S[0], bestV = Infinity;
             for (const s of S) {
                 const sx = s % lw, sy = (s - sx) / lw;
@@ -510,38 +572,40 @@ function peel(E, hole, sources, pr, lw, lh) {
     }
 }
 // The fill of the hole pixels (Float32Array RGBA of the region), or null when no patch fits.
-function patchFill(region, hole, w, h, holeSize, near) {
+// avoid marks pixels that are neither a source nor a known neighbour (the rest of a caption).
+function patchFill(region, hole, w, h, holeSize, near, avoid = null) {
     const pr = HEAL_PATCH, area = (2 * pr + 1) * (2 * pr + 1);
     let count = 1 + Math.max(0, Math.ceil(Math.log2(holeSize / HEAL_COARSE)));
     while (count > 1 && Math.min(w >> (count - 1), h >> (count - 1)) < 4 * (2 * pr + 1)) count--;
-    const levels = [{w, h, img: region, hole}];
+    const levels = [{w, h, img: region, hole, avoid}];
     for (let l = 1; l < count; l++) {
         const p = levels[l - 1], nw = Math.max(1, p.w >> 1), nh = Math.max(1, p.h >> 1);
-        const img = new Float32Array(nw * nh * 4), nhole = new Uint8Array(nw * nh);
+        const img = new Float32Array(nw * nh * 4), nhole = new Uint8Array(nw * nh), navoid = p.avoid && new Uint8Array(nw * nh);
         for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
             const i = y * nw + x;
             for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
                 const j = Math.min(p.h - 1, y * 2 + dy) * p.w + Math.min(p.w - 1, x * 2 + dx);
                 if (p.hole[j]) nhole[i] = 1;
+                if (navoid && p.avoid[j]) navoid[i] = 1;
                 for (let c = 0; c < 4; c++) img[i * 4 + c] += p.img[j * 4 + c] / 4;
             }
         }
-        levels.push({w: nw, h: nh, img, hole: nhole});
+        levels.push({w: nw, h: nh, img, hole: nhole, avoid: navoid});
     }
     let nnf = null, E = null;
     for (let l = count - 1; l >= 0; l--) {
-        const {w: lw, h: lh, img, hole: lhole} = levels[l];
-        const nearHole = dilate(lhole, lw, lh, pr);
+        const {w: lw, h: lh, img, hole: lhole, avoid: lavoid} = levels[l];
+        const nearHole = dilate(lhole, lw, lh, pr), nearAvoid = lavoid && dilate(lavoid, lw, lh, pr);
         const targets = [], valid = new Uint8Array(lw * lh), sources = [];
         for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
             const i = y * lw + x;
             if (nearHole[i]) targets.push(i);
-            else if (x >= pr && y >= pr && x < lw - pr && y < lh - pr) { valid[i] = 1; sources.push(i); }
+            else if (x >= pr && y >= pr && x < lw - pr && y < lh - pr && !(nearAvoid && nearAvoid[i])) { valid[i] = 1; sources.push(i); }
         }
         if (!sources.length) return null;
         E = new Float32Array(img);
         const coarse = l === count - 1 ? null : levels[l + 1];
-        if (!coarse) peel(E, lhole, sources, pr, lw, lh);
+        if (!coarse) peel(E, lhole, sources, pr, lw, lh, lavoid);
         else for (let i = 0; i < lw * lh; i++) {
             // This level starts from the coarser fill, upsampled bilinearly.
             if (!lhole[i]) continue;
@@ -549,6 +613,25 @@ function patchFill(region, hole, w, h, holeSize, near) {
             const fx = clamp((x + .5) / 2 - .5, 0, uw - 1), fy = clamp((y + .5) / 2 - .5, 0, uh - 1);
             const ix = Math.floor(fx), iy = Math.floor(fy), ax = fx - ix, ay = fy - iy;
             const jx = Math.min(uw - 1, ix + 1), jy = Math.min(uh - 1, iy + 1);
+            if (coarse.avoid) {
+                // An avoided coarse pixel outside the coarser hole is the caption itself: the others share its weight.
+                const at = [iy * uw + ix, iy * uw + jx, jy * uw + ix, jy * uw + jx];
+                const f = [(1 - ax) * (1 - ay), ax * (1 - ay), (1 - ax) * ay, ax * ay];
+                let barred = 0, sum = 0;
+                for (let n = 0; n < 4; n++) {
+                    if (coarse.avoid[at[n]] && !coarse.hole[at[n]]) { f[n] = 0; barred |= 1 << n; } else sum += f[n];
+                }
+                if (barred && barred !== 15) {
+                    // The open corners carry no weight of their own here: they share it evenly.
+                    if (!sum) for (let n = 0; n < 4; n++) if (!(barred >> n & 1)) { f[n] = 1; sum++; }
+                    for (let k = 0; k < 4; k++) {
+                        let v = 0;
+                        for (let n = 0; n < 4; n++) v += ce[at[n] * 4 + k] * f[n];
+                        E[i * 4 + k] = v / sum;
+                    }
+                    continue;
+                }
+            }
             for (let k = 0; k < 4; k++) {
                 E[i * 4 + k] = (ce[(iy * uw + ix) * 4 + k] * (1 - ax) + ce[(iy * uw + jx) * 4 + k] * ax) * (1 - ay)
                     + (ce[(jy * uw + ix) * 4 + k] * (1 - ax) + ce[(jy * uw + jx) * 4 + k] * ax) * ay;
@@ -557,7 +640,7 @@ function patchFill(region, hole, w, h, holeSize, near) {
         const span2 = Math.max(1, holeSize / (1 << l)) ** 2;
         // How much each pixel's difference counts: estimated (hole) pixels less than real ones.
         const weight = new Float64Array(lw * lh);
-        for (let i = 0; i < lw * lh; i++) weight[i] = lhole[i] ? HEAL_GUESS : 1;
+        for (let i = 0; i < lw * lh; i++) weight[i] = lhole[i] ? HEAL_GUESS : lavoid && lavoid[i] ? 0 : 1;
         // Patch distance times a preference for nearby sources. limit: stop early once the
         // distance is clearly above it (the margin keeps the choice exact).
         const cost = (t, s, limit) => {
@@ -654,7 +737,7 @@ function patchFill(region, hole, w, h, holeSize, near) {
             }
             const diff = new Float64Array(lw * lh * 4), wt = new Float64Array(lw * lh);
             for (let i = 0; i < lw * lh; i++) {
-                if (!ring[i] || !(pt[i] > 0)) continue;
+                if (!ring[i] || !(pt[i] > 0) || (lavoid && lavoid[i])) continue;
                 wt[i] = 1;
                 for (let c = 0; c < 4; c++) diff[i * 4 + c] = img[i * 4 + c] - pa[i * 4 + c] / pt[i];
             }
@@ -666,44 +749,98 @@ function patchFill(region, hole, w, h, holeSize, near) {
     return E;
 }
 
-// The caption inside a stroke: thin, bright, colourless strokes and their outline.
-// Null when the stroke holds no such text, or so much (over 70%) that it is not a caption.
-function textHole(d, hole, w, h, brush) {
+// Bright, colourless pixels (a caption's letters) among those set in within.
+function brightCore(d, within, w, h) {
     const core = new Uint8Array(w * h);
-    let found = 0, total = 0;
     for (let i = 0; i < w * h; i++) {
-        if (!hole[i]) continue;
-        total++;
+        if (!within[i]) continue;
         const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
         if ((77 * r + 150 * g + 29 * b) >> 8 >= 190 && Math.max(r, g, b) - Math.min(r, g, b) <= 60) core[i] = 1;
     }
-    // Letters are thin: what survives thinning by a tenth of the brush (a white
-    // shirt, a lamp) is picture, and so is anything right beside it.
-    const t = Math.max(1, Math.round(.1 * brush)), gaps = core.map(v => 1 - v), thinned = dilate(gaps, w, h, t).map(v => 1 - v);
-    const thick = dilate(thinned, w, h, t + 2);
-    for (let i = 0; i < w * h; i++) if (thick[i]) core[i] = 0;
-    // Specks (a highlight on a buckle) are not letters either.
-    const least = Math.max(4, Math.round((.12 * brush) ** 2)), seen = new Uint8Array(w * h);
-    for (let start = 0; start < w * h; start++) {
-        if (!core[start] || seen[start]) continue;
-        seen[start] = 1;
-        const part = [], stack = [start];
-        while (stack.length) {
-            const i = stack.pop(), x = i % w, y = (i - x) / w;
-            part.push(i);
-            for (let ny = y - 1; ny <= y + 1; ny++) for (let nx = x - 1; nx <= x + 1; nx++) {
-                if (ny < 0 || nx < 0 || ny >= h || nx >= w) continue;
-                const j = ny * w + nx;
-                if (core[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+    return core;
+}
+
+// The half-width up to which a bright part counts as lettering. Past a tenth of the brush it is
+// picture (a white shirt, a lamp), unless the stroke holds a caption whose letters are that thick
+// themselves (a small brush on a large or bold caption): when three or more parts agree on a stroke
+// width, joints and curves of that caption count as letters up to HEAL_TEXT_JOINT times its widest.
+// The agreeing parts that cover the most pixels set it, so a few slivers the stroke's edge cut off
+// do not. Parts below least (specks) take no part.
+function strokeLimit(core, dist, w, h, brush, least) {
+    const base = Math.max(1, Math.round(.1 * brush)), widths = [];
+    parts(core, w, h, part => {
+        if (part.length < least) return;
+        // A part's half-width: the median distance along its middle (where no neighbour lies farther from the edge).
+        const ridge = [];
+        for (const i of part) {
+            const x = i % w, y = (i - x) / w, v = dist[i];
+            let top = true;
+            for (let ny = y - 1; ny <= y + 1 && top; ny++) for (let nx = x - 1; nx <= x + 1; nx++) {
+                if (ny >= 0 && nx >= 0 && ny < h && nx < w && dist[ny * w + nx] > v) { top = false; break; }
             }
+            if (top) ridge.push(v);
         }
+        ridge.sort((a, b) => a - b);
+        widths.push([ridge[ridge.length >> 1], part.length]);
+    });
+    widths.sort((a, b) => a[0] - b[0]);
+    let most = 0, widest = 0;
+    for (let i = 0, j = 0, count = 0, pixels = 0; i < widths.length; i++) {
+        count++; pixels += widths[i][1];
+        while (widths[j][0] * HEAL_TEXT_AGREE + 1 < widths[i][0]) { count--; pixels -= widths[j][1]; j++; }
+        if (count >= 3 && pixels > most) { most = pixels; widest = widths[i][0]; }
+    }
+    // A part inside a stroke is no wider than the brush, except where the picture's edge stands in
+    // for the background a stroke would have around it (a selection one pixel wide): there its
+    // half-width can run the selection's whole length.
+    return most && widest >= base ? Math.ceil(HEAL_TEXT_JOINT * Math.min(widest, Math.max(base, brush))) : base;
+}
+
+// The caption inside a stroke: thin, bright, colourless strokes and their outline, with the
+// half-width past which a bright part is picture. Null when the stroke holds no such text, or so
+// much (over 70%) that it is not a caption.
+function textHole(d, hole, w, h, brush) {
+    const core = brightCore(d, hole, w, h);
+    let total = 0;
+    for (let i = 0; i < w * h; i++) total += hole[i];
+    // Letters are thin: what survives thinning by the limit (a white shirt, a lamp) is picture,
+    // and so is anything right beside it. Specks (a highlight on a buckle) are not letters either.
+    const least = Math.max(4, Math.round((.12 * brush) ** 2)), dist = distances(core, w, h);
+    const t = strokeLimit(core, dist, w, h, brush, least), thick = dilate(beyond(dist, t), w, h, t + 2);
+    for (let i = 0; i < w * h; i++) if (thick[i]) core[i] = 0;
+    let found = 0;
+    parts(core, w, h, part => {
         if (part.length < least) for (const i of part) core[i] = 0;
         else found += part.length;
-    }
+    });
     if (!found || found * 10 > total * 7) return null;
     const grown = dilate(core, w, h, Math.max(2, Math.round(HEAL_TEXT_OUTLINE * brush)));
     for (let i = 0; i < w * h; i++) grown[i] &= hole[i];
-    return grown;
+    return {mask: grown, core, limit: t};
+}
+
+// The rest of the letters a caption stroke cut through: thin bright parts of the region (as thin
+// as limit allows) that hold letters found in the stroke and lie a fifth or more outside the hole,
+// with their outline, outside the hole. Null unless the stroke cut through a third or more of the
+// letters it holds: a stroke over a whole caption leaves alone what merely touches it.
+function letterRest(d, hole, letters, w, h, brush, limit) {
+    const core = brightCore(d, new Uint8Array(w * h).fill(1), w, h), rest = new Uint8Array(w * h);
+    const thick = dilate(beyond(distances(core, w, h), limit), w, h, limit + 2);
+    for (let i = 0; i < w * h; i++) if (thick[i]) core[i] = 0;
+    let held = 0, cut = 0;
+    parts(core, w, h, part => {
+        if (!part.some(i => letters[i])) return;
+        held++;
+        let inside = 0;
+        for (const i of part) inside += hole[i];
+        if ((part.length - inside) * 5 < part.length) return;
+        for (const i of part) rest[i] = 1;
+        cut++;
+    });
+    if (!cut || cut * 3 < held) return null;
+    const out = dilate(rest, w, h, Math.max(2, Math.round(HEAL_TEXT_OUTLINE * brush)));
+    for (let i = 0; i < w * h; i++) if (hole[i]) out[i] = 0;
+    return out;
 }
 
 // Spot healing: fill the stroke (only its caption when text is set, and
@@ -721,14 +858,17 @@ function heal(raster, mask, text = false, brush = 0) {
     let [x0, y0, x1, y1] = box();
     if (x1 < 0) return;
     const rctx = context(raster);
+    let limit = 0, letters = null;
     if (text) {
         // Only the caption is replaced, and the work centres on it rather than on the stroke.
         const bw = x1 - x0 + 1, bh = y1 - y0 + 1, hole = new Uint8Array(bw * bh);
         for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) hole[y * bw + x] = md[((y + y0) * w + x + x0) * 4 + 3] > 8 ? 1 : 0;
         const words = textHole(rctx.getImageData(x0, y0, bw, bh).data, hole, bw, bh, brush);
         if (!words) return;     // no caption under the stroke: nothing to remove
+        limit = words.limit;
+        letters = {core: words.core, x0, y0, w: bw};
         for (let i = 3; i < md.length; i += 4) md[i] = 0;
-        for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) md[((y + y0) * w + x + x0) * 4 + 3] = words[y * bw + x] ? 255 : 0;
+        for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) md[((y + y0) * w + x + x0) * 4 + 3] = words.mask[y * bw + x] ? 255 : 0;
         [x0, y0, x1, y1] = box();
     }
     const size = Math.max(x1 - x0 + 1, y1 - y0 + 1);
@@ -740,7 +880,20 @@ function heal(raster, mask, text = false, brush = 0) {
     for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
         const a = md[((y + ry0) * w + x + rx0) * 4 + 3]; alpha[y * rw + x] = a; hole[y * rw + x] = a > 8 ? 1 : 0;
     }
-    const fill = patchFill(new Float32Array(d), hole, rw, rh, size, text ? HEAL_NEAR_TEXT : HEAL_NEAR);
+    // Letters the caption stroke cut through go on outside it: no patch comes from them, and next
+    // to the hole they are filled too (only the hole is kept), so the fill does not draw them back in.
+    let work = hole, avoid = null;
+    if (text) {
+        const found = new Uint8Array(rw * rh), {core, x0: bx, y0: by, w: bw} = letters;
+        for (let i = 0; i < core.length; i++) if (core[i]) found[(Math.floor(i / bw) + by - ry0) * rw + i % bw + bx - rx0] = 1;
+        avoid = letterRest(d, hole, found, rw, rh, brush, limit);
+    }
+    if (avoid) {
+        const close = dilate(hole, rw, rh, Math.max(4, Math.round(brush / 2)));
+        work = hole.slice();
+        for (let i = 0; i < rw * rh; i++) if (avoid[i] && close[i]) work[i] = 1;
+    }
+    const fill = patchFill(new Float32Array(d), work, rw, rh, size, text ? HEAL_NEAR_TEXT : HEAL_NEAR, avoid);
     if (fill) {
         for (let i = 0; i < rw * rh; i++) {
             if (!hole[i]) continue;
@@ -749,7 +902,11 @@ function heal(raster, mask, text = false, brush = 0) {
         }
     } else {
         const col = new Float32Array(rw * rh * 4), wt = new Float32Array(rw * rh);
-        for (let i = 0; i < rw * rh; i++) { const known = 1 - alpha[i] / 255; wt[i] = known; for (let c = 0; c < 4; c++) col[i * 4 + c] = d[i * 4 + c] * known; }
+        // The rest of the caption is no more known here than for patches.
+        // Unless that leaves nothing known: then the stroke fills as it would without a caption.
+        let rest = avoid;
+        if (rest) { rest = null; for (let i = 0; i < rw * rh && !rest; i++) if (!avoid[i] && !work[i] && alpha[i] < 255) rest = avoid; }
+        for (let i = 0; i < rw * rh; i++) { const known = rest && (rest[i] || work[i]) ? 0 : 1 - alpha[i] / 255; wt[i] = known; for (let c = 0; c < 4; c++) col[i * 4 + c] = d[i * 4 + c] * known; }
         const smooth = pullPush(col, wt, rw, rh);
         for (let i = 0; i < rw * rh; i++) { const a = alpha[i] / 255; if (a) for (let c = 0; c < 4; c++) d[i * 4 + c] = d[i * 4 + c] * (1 - a) + smooth[i * 4 + c] * a; }
     }

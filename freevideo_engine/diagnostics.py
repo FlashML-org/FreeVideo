@@ -88,8 +88,18 @@ class Redactor:
         # The callback returns only a stable placeholder and the final path
         # component, which is enough to identify a binary/config/log while
         # removing usernames, drive letters, mounts and parent directories.
-        value = ABSOLUTE_PATH.sub(lambda match: self._path_placeholder(match.group(0)), value)
+        value = ABSOLUTE_PATH.sub(self._path_match, value)
         return value
+
+    @classmethod
+    def _path_match(cls, match):
+        value = match.group(0)
+        # Text is often redacted again (a worker's log inside a report, the
+        # launcher terminal).  The ``/name`` after an earlier ``<PATH>`` is that
+        # pass's own output, unless it still has a directory in it.
+        if match.string.endswith('<PATH>', 0, match.start()) and not re.search(r'[\\/]', value[1:].rstrip('\\/')):
+            return value
+        return cls._path_placeholder(value)
 
     @staticmethod
     def _path_key(key):

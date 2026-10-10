@@ -2,9 +2,11 @@
 import asyncio
 import io
 import json
+import logging
 import os
 import re
 import stat
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -196,6 +198,117 @@ def _remove(folder):
     return freed, left
 
 
+# Decoded frames and audio the engine writes to build and check the MP4.
+# Nothing reads them once a creation is saved: Creations, sharing and the
+# workflow read the MP4, and an upscale reads the preview's first pass. The
+# sampling result, conditioning and first pass stay.
+_DECODED = ('rgb.npy', 'audio.npy', 'audio.wav')
+_ATTEMPT = re.compile(r'\d{2}-[0-9A-Za-z_-]+')
+_RELEASED = '.decoded-released.json'
+# The startup release, a generation re-arming it and a library delete take
+# turns, so none of them reads a folder or the marker while another writes it.
+_RELEASING = threading.Lock()
+
+
+def release_decoded(folder):
+    """Delete a saved creation's decoded frames and audio, retried attempts' included.
+
+    Only where the engine writes them: video.artifacts itself and its
+    attempts/NN-id folders. A folder holding anything FreeVideo did not write,
+    or any link, is left alone, as delete_video leaves it. Paths Windows still
+    has open are listed.
+    """
+    folder = Path(folder)
+    artifacts = folder / _OWNED_FOLDER
+    try:
+        if not _plain(folder) or _foreign(folder):
+            return dict(freed_bytes=0, left=[], skipped='foreign-files')
+        if not artifacts.is_dir():
+            return dict(freed_bytes=0, left=[], skipped='no-artifacts')
+        places, freed, left = [artifacts], 0, []
+        try:
+            if (artifacts / 'attempts').is_dir():
+                places += [path for path in sorted((artifacts / 'attempts').iterdir())
+                           if _ATTEMPT.fullmatch(path.name) and path.is_dir()]
+        except OSError:
+            left.append(_OWNED_FOLDER + '/attempts')  # retried at a later start
+        for place in places:
+            for name in _DECODED:
+                path = place / name
+                try:
+                    if not _plain(path):
+                        continue
+                    size = path.stat().st_size
+                    path.unlink()
+                    freed += size
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    left.append(path.relative_to(folder).as_posix())
+        return dict(freed_bytes=freed, left=left)
+    except OSError:
+        # Listed as left, so a later start tries the whole folder again.
+        return dict(freed_bytes=0, left=['.'], skipped='unreadable')
+
+
+def release_later(output_directory):
+    """Have the next start finish a release that Windows kept open."""
+    from .monitoring import save
+    with _RELEASING:
+        save(Path(output_directory).resolve() / 'FreeVideo' / _RELEASED, dict(schema=1, pending=True))
+
+
+def release_earlier(output_directory):
+    """Once after updating, release the creations saved before completion did it.
+
+    Only finished creations of the creative workspace, which writes
+    comfy-request.json, and none that is being generated. Later starts repeat
+    it while a file Windows kept open is left.
+    """
+    from .monitoring import save
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    marker = root / _RELEASED
+    if not root.is_dir():
+        return None
+    with _RELEASING:
+        # A marker Windows would not let save replace stays beside it as a
+        # staging copy; the release it asked for is still owed.
+        staged = sorted(root.glob(_RELEASED + '.*.tmp'))
+        try:
+            if not staged and json.loads(marker.read_text(encoding='utf-8')).get('pending') is not True:
+                return None
+        except (OSError, ValueError, AttributeError):
+            pass
+        totals = dict(videos=0, freed_bytes=0, left=0, skipped=0)
+        for path in sorted(root.glob('*/*/video.mp4')):
+            folder = path.parent
+            try:
+                if (not _ID.fullmatch(folder.relative_to(root).as_posix())
+                        or not _plain(folder.parent) or not _plain(folder)):
+                    continue
+                _report(path)
+                state = folder / 'comfy-request.json'
+                if state.stat().st_size > 1024 * 1024:
+                    continue
+                state = json.loads(state.read_text(encoding='utf-8'))
+                if not isinstance(state, dict) or state.get('status') in ('starting', 'running'):
+                    continue
+            except (OSError, ValueError, TypeError):
+                continue
+            result = release_decoded(folder)
+            totals['videos'] += result['freed_bytes'] > 0
+            totals['freed_bytes'] += result['freed_bytes']
+            totals['left'] += len(result['left'])
+            totals['skipped'] += result.get('skipped') == 'foreign-files'
+        save(marker, dict(schema=1, pending=totals['left'] > 0, released_at=time.time(), **totals))
+        for path in staged:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    return totals
+
+
 def delete_video(output_directory, identity):
     """Delete one saved creation: its whole run folder, only when FreeVideo wrote everything in it.
 
@@ -208,27 +321,29 @@ def delete_video(output_directory, identity):
     folder = path.parent
     if folder.parent.parent != root or not _plain(folder.parent) or not _plain(folder):
         raise DeleteRefused('not-freevideo')
-    kept = _foreign(folder)
-    if kept:
-        raise DeleteRefused('foreign-files', kept)
-    # A second pass of this preview may be reading its first pass right now.
-    for state_path in root.glob('*/*/comfy-request.json'):
+    # Not while the startup release is deleting files in this folder.
+    with _RELEASING:
+        kept = _foreign(folder)
+        if kept:
+            raise DeleteRefused('foreign-files', kept)
+        # A second pass of this preview may be reading its first pass right now.
+        for state_path in root.glob('*/*/comfy-request.json'):
+            try:
+                state = json.loads(state_path.read_text(encoding='utf-8')) if state_path.stat().st_size <= 1024 * 1024 else {}
+            except (OSError, ValueError):
+                continue
+            source = state.get('upscaled_preview') if isinstance(state, dict) else None
+            if state.get('status') in ('starting', 'running') and isinstance(source, str) and Path(source).resolve() == path:
+                raise DeleteRefused('in-use')
+        trash = root / '.deleted'
+        trash.mkdir(exist_ok=True)
+        if not _plain(trash):
+            raise DeleteRefused('not-freevideo')
+        target = trash / ('%s-%d' % (identity.replace('/', '-'), time.time_ns()))
         try:
-            state = json.loads(state_path.read_text(encoding='utf-8')) if state_path.stat().st_size <= 1024 * 1024 else {}
-        except (OSError, ValueError):
-            continue
-        source = state.get('upscaled_preview') if isinstance(state, dict) else None
-        if state.get('status') in ('starting', 'running') and isinstance(source, str) and Path(source).resolve() == path:
-            raise DeleteRefused('in-use')
-    trash = root / '.deleted'
-    trash.mkdir(exist_ok=True)
-    if not _plain(trash):
-        raise DeleteRefused('not-freevideo')
-    target = trash / ('%s-%d' % (identity.replace('/', '-'), time.time_ns()))
-    try:
-        folder.rename(target)
-    except OSError as error:
-        raise DeleteRefused('in-use') from error
+            folder.rename(target)
+        except OSError as error:
+            raise DeleteRefused('in-use') from error
     freed, left = _remove(target)
     # A result-cache row naming this creation can no longer be reused.
     for index in (root / '.result-cache').glob('*.json'):
@@ -253,6 +368,16 @@ def register():
         return
     server._freevideo_library = True
     thumbnails = asyncio.Semaphore(1)
+
+    def release():
+        try:
+            result = release_earlier(folder_paths.get_output_directory())
+            if result and result['freed_bytes']:
+                logging.info('FreeVideo freed %.1f GB of decoded frames and audio from %d earlier videos.',
+                             result['freed_bytes'] / 1e9, result['videos'])
+        except Exception:
+            logging.warning('FreeVideo could not free the decoded files of earlier videos.', exc_info=True)
+    threading.Thread(target=release, name='freevideo-release-decoded', daemon=True).start()
 
     @server.routes.get('/freevideo/sampling-estimate')
     async def sampling_estimate(request):

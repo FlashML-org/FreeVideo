@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import time
 import traceback
@@ -23,6 +24,26 @@ def sampling_lifetime(resource):
     if mode not in ('phase', 'auto', 'request'):
         raise ValueError('Unknown native sampling lifetime: ' + str(mode))
     return mode
+
+
+def read_receipt(receipt):
+    try:
+        observed = json.loads(receipt.read_text(encoding='utf-8'))
+        if not isinstance(observed, dict):
+            raise ValueError('Native stage receipt is not an object')
+    except (OSError, ValueError) as error:
+        # A child killed while writing its receipt must not
+        # replace the original failure/cancellation with a
+        # secondary JSON error in this controller.
+        observed = dict(success=False, receipt_error=str(error))
+    return observed
+
+
+def memory_exhausted(stage, observed):
+    """A sampling pass that stopped because MPS reached its allocator limit."""
+    # The physical RAM floor protects the whole machine, and the outer guard also ends the request.
+    return (stage in ('first-pass', 'refinement') and observed.get('success') is False
+            and 'MPS backend out of memory' in str(observed.get('error_message', '')))
 
 
 def joined_admission(engine, value):
@@ -131,6 +152,7 @@ def run(value):
         geometry = dict(geometry, width=sampling['first']['width'], height=sampling['first']['height'])
     result = dict(success=False, device_backend='mps', phase='load', geometry=geometry,
                   sampling_plan=sampling, stages={}, sampling_passes=[])
+    retained_joined = {}
     if preview:
         result['preview'] = True
     started = time.monotonic()
@@ -146,6 +168,7 @@ def run(value):
             elif value.get('refine_from') and reuse_preview(value, artifacts, result):
                 stages = ['upscale', 'refinement', 'decode']
             joined = False
+            retry = False
             for stage in stages:
                 if joined and stage in ('upscale', 'refinement'):
                     continue
@@ -153,26 +176,54 @@ def run(value):
                 save(path, result)
                 request = artifacts / (stage + '-request.json')
                 receipt = artifacts / (stage + '-result.json')
-                save(request, dict(value, phase=stage, report=str(receipt)))
-                tick = time.monotonic()
-                try:
-                    # Inherit stdout/stderr: progress and errors stay in the same
-                    # engine log consumed by the existing UI and report exporter.
-                    processes.run([sys.executable, '-m', __name__, '--request', str(request)],
-                        env=dict(os.environ, **{LOCK_ENV: str(descriptor)}),
-                        pass_fds=(descriptor,), check=True)
-                finally:
-                    if receipt.is_file():
-                        try:
-                            observed = json.loads(receipt.read_text(encoding='utf-8'))
-                            if not isinstance(observed, dict):
-                                raise ValueError('Native stage receipt is not an object')
-                        except (OSError, ValueError) as error:
-                            # A child killed while writing its receipt must not
-                            # replace the original failure/cancellation with a
-                            # secondary JSON error in this controller.
-                            observed = dict(success=False, receipt_error=str(error))
-                        result['stages'][stage] = dict(observed, process_seconds=time.monotonic() - tick)
+                while True:
+                    save(request, dict(value, phase=stage, report=str(receipt), **(
+                        {'memory_retry': True} if retry and stage in ('first-pass', 'refinement') else {})))
+                    tick = time.monotonic()
+                    try:
+                        # Inherit stdout/stderr: progress and errors stay in the same
+                        # engine log consumed by the existing UI and report exporter.
+                        processes.run([sys.executable, '-m', __name__, '--request', str(request)],
+                            env=dict(os.environ, **{LOCK_ENV: str(descriptor)}),
+                            pass_fds=(descriptor,), check=True)
+                    except subprocess.CalledProcessError:
+                        failed = read_receipt(receipt)
+                        if retry or not memory_exhausted(stage, failed):
+                            raise
+                        # Unified memory taken by other applications can leave a
+                        # sampling pass short of its plan. Retry it once in a fresh
+                        # process with the smallest grouped-projection partitions.
+                        # Keeping a saved first pass avoids changing its latents
+                        # with those new partitions.
+                        retry = True
+                        rows = failed.get('sampling_passes')
+                        if (stage == 'first-pass' and failed.get('joined_sampling') is True
+                                and failed.get('sampling_phase') in ('upscale', 'refinement')
+                                and (artifacts / 'first-pass.pt').is_file()
+                                and (artifacts / 'first-pass.json').is_file()
+                                and isinstance(rows, list) and len(rows) == 1
+                                and isinstance(rows[0], dict) and isinstance(rows[0].get('step_seconds'), list)
+                                and len(rows[0]['step_seconds']) == sampling['base_steps']):
+                            retain_joined_progress(result, failed)
+                            retained_joined = failed
+                        result.setdefault('memory_retries', []).append(dict(phase=stage,
+                            error_type=failed.get('error_type'), error_message=failed.get('error_message'),
+                            compute=failed.get('compute'), process_seconds=time.monotonic() - tick))
+                        print(json.dumps(dict(event='resource_retry', retry=dict(
+                            failed_phase='refinement' if stage == 'refinement' or retained_joined else 'sampling',
+                            kind='unified_memory', attempt=2, max_attempts=2,
+                            reuse_first_pass=stage == 'refinement' or bool(retained_joined)))), flush=True)
+                        if retained_joined:
+                            break
+                        receipt.unlink(missing_ok=True)
+                        continue
+                    finally:
+                        if receipt.is_file():
+                            result['stages'][stage] = dict(read_receipt(receipt),
+                                                           process_seconds=time.monotonic() - tick)
+                    break
+                if stage == 'first-pass' and retained_joined:
+                    continue
                 observed = result['stages'].get(stage, {})
                 if observed.get('success') is not True:
                     raise RuntimeError('Native stage did not complete: ' + stage)
@@ -205,9 +256,12 @@ def run(value):
                 # controller is interrupted. Failed/incomplete work is retained
                 # separately in the stage receipt and process elapsed time.
                 completed = {k: s for k, s in result['stages'].items() if s.get('success') is True}
-                result.update(load_seconds=sum(s.get('load_seconds', 0.) for s in completed.values()),
-                    sample_seconds=sum(s['work_seconds'] for k, s in completed.items() if k != 'decode'),
-                    latent_save_seconds=sum(s.get('latent_save_seconds', 0.) for s in completed.values()),
+                result.update(load_seconds=retained_joined.get('load_seconds', 0.)
+                    + sum(s.get('load_seconds', 0.) for s in completed.values()),
+                    sample_seconds=retained_joined.get('completed_work_seconds', 0.)
+                    + sum(s['work_seconds'] for k, s in completed.items() if k != 'decode'),
+                    latent_save_seconds=retained_joined.get('latent_save_seconds', 0.)
+                    + sum(s.get('latent_save_seconds', 0.) for s in completed.values()),
                     step_seconds=[t for row in result['sampling_passes'] for t in row['step_seconds']])
             if (len(result['step_seconds']) != (sampling['base_steps'] if preview else sampling['total_steps']) or
                     not output.is_file() or output.stat().st_size == 0):
@@ -215,7 +269,7 @@ def run(value):
             result.update(success=True, phase='complete')
     except BaseException as error:
         observed = result['stages'].get('first-pass', {})
-        if observed.get('joined_sampling') is True and observed.get('success') is not True:
+        if observed.get('joined_sampling') is True and observed.get('success') is not True and not retained_joined:
             try:
                 retain_joined_progress(result, observed)
             except (ValueError, TypeError, KeyError) as receipt_error:
@@ -229,13 +283,14 @@ def run(value):
         save(path, result)
 
 
-def stage_compute(resource, canvas):
+def stage_compute(resource, canvas, retry=False):
     """Partitions for this sampling stage from its live unified-memory allowance.
 
     The supervisor's policy fixes the reserve and allocator ceiling; the stage
     process sees its own live availability, which is larger after the encoder
     or a previous stage exited. Explicit `compute_plan: False` keeps the
-    reference partitions."""
+    reference partitions. A retry after running out of memory takes the
+    smallest grouped-projection partitions."""
     if resource.get('compute_plan') is False:
         return {}
     from .geometry import geometry
@@ -245,7 +300,7 @@ def stage_compute(resource, canvas):
     budget = int(max(0, min(resource['allocator_capacity_bytes'], available)))
     shape = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
     tokens, frames = shape['video_tokens'] + 1024, shape['latent_frames']
-    result = plan(budget, tokens, frames=frames)
+    result = plan(budget, tokens, frames=frames, allow_bounded=True, force_bounded=retry)
     try:
         import mlx.core as mx
         mx.array([1.0])            # Fails early where Metal is unusable for MLX.
@@ -274,8 +329,11 @@ def worker(value):
                 raise ValueError('Refinement is absent from this sampling plan')
             initial = torch.load(artifacts / 'upscaled.pt', map_location='cpu', weights_only=True) if refining else None
             print(json.dumps(dict(event='model_load_phase', phase='Loading native MPS model')), flush=True)
-            compute = stage_compute(resource, sampling['second' if refining else 'first'])
+            retry = value.get('memory_retry') is True
+            compute = stage_compute(resource, sampling['second' if refining else 'first'], retry=retry)
             result['compute'] = compute
+            if retry:
+                result['memory_retry'] = True
             with Engine(value['cache'], base=value['base'], checkpoint=value['checkpoint'],
                         steps=sampling['base_steps'], budget_bytes=resource['allocator_capacity_bytes'],
                         budget_ceiling_bytes=resource['allocator_capacity_bytes'],
@@ -289,13 +347,14 @@ def worker(value):
                         fast_kernels=compute.get('fast_kernels', False),
                         resident_bytes=compute.get('resident_bytes', 0),
                         attention_batch_bytes=compute.get('attention_batch_bytes', 1 << 29),
-                        plan_compute=bool(compute),
+                        plan_compute=bool(compute), memory_retry=retry and bool(compute),
                         task=value.get('task', 't2va'), canvas=value['canvas']) as engine:
                 result['load_seconds'] = engine.load_seconds
                 tick = time.monotonic()
                 # A preview stops after the first pass; joining would also refine.
-                admission = (joined_admission(engine, value) if not refining and value.get('preview') is not True
-                             else dict(selected=False))
+                # A memory retry keeps each pass in its own process.
+                admission = (joined_admission(engine, value) if not refining and not retry
+                             and value.get('preview') is not True else dict(selected=False))
                 result['sampling_admission'] = admission
                 if admission['selected']:
                     result.update(joined_sampling=True, sampling_passes=[], latent_save_seconds=0.)

@@ -57,7 +57,7 @@ def summary_report(report):
     kernels = diagnostic.kernel_receipt(summary.get('kernels') or engine)
     if kernels:
         result['kernels'] = kernels
-    for key in ('conditioning_cache_hit','preencoded'):
+    for key in ('conditioning_cache_hit','preencoded','conditioning_from_preview'):
         if type(summary.get(key)) is bool:
             result[key] = summary[key]
     result['geometry'] = _measurements(summary.get('geometry'), ('width','height','frames','fps','video_tokens','reference_video_tokens','reference_audio_tokens'))
@@ -90,8 +90,9 @@ def summary_report(report):
     for row in (summary.get('stages') or [])[:16]:
         if row.get('stage') in ('text_encoding','model_load','sampling','latent_save','decode_save','other_or_unmeasured','installation'):
             result['stages'].append(dict(stage=row['stage'], **_measurements(row, ('seconds',))))
-            if type(row.get('reused_from_attempt')) is bool:
-                result['stages'][-1]['reused_from_attempt'] = row['reused_from_attempt']
+            for flag in ('reused_from_attempt', 'reused_from_preview'):
+                if type(row.get(flag)) is bool:
+                    result['stages'][-1][flag] = row[flag]
     result['step_seconds'] = [x for x in (summary.get('step_seconds') or [])[:128] if _number(x) is not None]
     result['memory'] = _measurements(summary.get('observed_memory'), (
         'sampling_allocated_bytes','sampling_reserved_bytes','final_stage_allocated_bytes','final_stage_reserved_bytes',
@@ -151,11 +152,12 @@ def summary_report(report):
     result['exception'] = [diagnostic.trace(row) for row in diagnostic.sequence(request.get('exception'))[:4]]
     result['encoder_failure'] = diagnostic.failure(diagnostic.mapping(request.get('encoding_failure')).get('failure'))
     result['encoder_resources'] = (diagnostic.resources(diagnostic.mapping(report.get('memory')).get('encoding'))
-                                   if not summary.get('conditioning_cache_hit') and not summary.get('preencoded') else {})
+                                   if not any(summary.get(k) for k in ('conditioning_cache_hit', 'preencoded', 'conditioning_from_preview'))
+                                   else {})
     previous_prewarm = diagnostic.encoder_prewarm(diagnostic.mapping(report.get('bridge')).get('encoder_prewarm'))
     if previous_prewarm:
         result['encoder_resources']['previous_prewarm'] = previous_prewarm
-    if not summary.get('conditioning_cache_hit') and not summary.get('preencoded'):
+    if not any(summary.get(k) for k in ('conditioning_cache_hit', 'preencoded', 'conditioning_from_preview')):
         encoding = diagnostic.mapping(report.get('encoding'))
         from .encoder_diagnostics import STAGES
         result['encoder_resources']['timing'] = diagnostic.encoder_timing(encoding.get('timing'))
@@ -203,7 +205,7 @@ def summary_report(report):
     if result.get('kernels') and result['worker_resources'].get('gpu'):
         result['kernels']['gpu_activity'] = result['worker_resources']['gpu']
     result['hardware_stage'] = 'request_start'
-    result['diagnostic_revision'] = 9
+    result['diagnostic_revision'] = 10
     phase = (engine.get('phase') or diagnostic.mapping(request.get('encoding_failure')).get('phase')
              or request.get('phase'))
     if result['status'] == 'running':
@@ -230,6 +232,22 @@ def summary_report(report):
         planning_retained=len(result['resource_planning']))
     if type(engine.get('sampling_reused')) is bool:
         result['coverage']['sampling_reused'] = engine['sampling_reused']
+    preview = diagnostic.mapping(report.get('preview_request'))
+    if isinstance(preview.get('summary'), dict):
+        # The preview an upscale continued from: an earlier request, analysed
+        # on its own and never added to this request's time.
+        try:
+            previous = summary_report({k: v for k, v in preview.items() if k != 'preview_request'})
+            version = diagnostic.mapping(preview.get('runtime_code')).get('version')
+            previous.pop('version')
+            if _label(version):
+                previous['version'] = version
+            previous['scope'] = 'earlier request; not part of request_seconds'
+        except Exception:
+            result['coverage']['preview_request'] = False
+        else:
+            result['preview_request'] = previous
+            result['coverage']['preview_request'] = True
     return result
 
 

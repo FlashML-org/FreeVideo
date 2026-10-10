@@ -96,6 +96,9 @@ def main():
             record.update(success=False, error=repr(error), work_seconds=time.perf_counter() - started)
             from .adaptive import classify_failure
             record['failure'] = classify_failure(error)
+            from .runtime_libraries import mismatch, diagnose
+            if mismatch(error):
+                record['failure']['runtime_libraries'] = diagnose()
             save(request['metrics'], record)
             if 'torch' in sys.modules and sys.modules['torch'].cuda.is_initialized():
                 from .encoder_memory import failure_resources
@@ -110,14 +113,37 @@ def main():
         raise
 
 
+def start_read_ahead(trace, path, request):
+    """Read the checkpoint into the OS cache while the model is copied to the device.
+
+    Speculative: any failure here leaves the loader exactly as before. Once per
+    request: a later attempt's copy does not start it again."""
+    if getattr(trace, 'read_ahead', None) is not None or 'encoder_read_ahead' in trace.data:
+        return
+    try:
+        from .encoder_read_ahead import EncoderReadAhead
+        trace.read_ahead = EncoderReadAhead(path, ram_budget_bytes=request.get('ram_budget_bytes')).start()
+    except Exception as error:
+        trace.data['encoder_read_ahead'] = dict(state='failed', reason=type(error).__name__ + ': ' + str(error))
+
+
+def stop_read_ahead(trace):
+    """Stop the checkpoint read-ahead, once, and keep what it read in the metrics."""
+    reader = getattr(trace, 'read_ahead', None)
+    if reader is not None and 'encoder_read_ahead' not in trace.data:
+        trace.data['encoder_read_ahead'] = reader.close()
+
+
 def encode(args, request, resident=None, diagnostics=None):
     from .encoder_diagnostics import EncoderTrace
     trace = diagnostics or EncoderTrace(request, resident=resident is not None)
     try:
         metrics = _encode(args, request, resident, trace)
     except BaseException:
+        stop_read_ahead(trace)
         trace.finish(False)
         raise
+    stop_read_ahead(trace)
     result = trace.finish(True, metrics)
     if not args.check_library and not request.get('idle_preload'):
         print(json.dumps({'event': 'encoder_complete', **result}), flush=True)
@@ -306,6 +332,10 @@ def _encode(args, request, resident, trace):
     checkpoint_paths = [path]
     def timed_load(*values, **kwargs):
         phase('encoder_device_load', load_seconds=load_seconds)
+        if not encoder_cache_hit:
+            # Only for the copy: reads that overlapped the library import or
+            # the model's construction slowed them (see encoder_read_ahead).
+            start_read_ahead(trace, path, request)
         print(json.dumps({'event': 'encoder_device_reuse' if encoder_on_gpu(clip) else 'encoder_device_load_start'}), flush=True)
         tick = time.perf_counter()
         import comfy.model_management as memory
@@ -314,6 +344,7 @@ def _encode(args, request, resident, trace):
             memory.EXTRA_RESERVED_VRAM = max(memory.EXTRA_RESERVED_VRAM, current['need'] - int(.8 * 2**30))
         result = native_load(*values, **kwargs)
         torch.cuda.synchronize()
+        stop_read_ahead(trace)
         transfer_seconds[0] += time.perf_counter() - tick
         phase('encoder_page_release', device_load_seconds=transfer_seconds[0])
         # The checkpoint's pages are dead weight once its weights are on the

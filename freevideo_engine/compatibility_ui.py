@@ -59,14 +59,12 @@ def open_settings(window, root, zh=True):
         level.set(round(level.get())); changed()
         if int(level.get()) == 0: automatic.set(False)
     scale.bind('<ButtonRelease-1>', released)
-    ttk.Checkbutton(body, variable=automatic, text='异常中断后自动启用／提高兼容档' if zh else
-                    'Enable / increase compatibility after an unexpected interruption').pack(anchor='w')
-    ttk.Label(body, text=('仅调整分块和预取，可能降低速度并产生浮点差异。\n'
-        '不改变分辨率、时长、步数或 attention 后端。\n'
-        '不能保证避免设备故障；设置从下一次生成生效。') if zh else
-        ('Adjusts grouping and prefetch; may reduce speed and change floating-point results.\n'
-         'Keeps resolution, duration, steps and attention.\n'
-         'Cannot guarantee hardware stability. Applies to the next generation.'),
+    ttk.Checkbutton(body, variable=automatic, text='异常中断后自动提高兼容档位' if zh else
+                    'Raise the level automatically after an unexpected interruption').pack(anchor='w')
+    ttk.Label(body, text='从下一次生成起生效。档位越高，显卡每次处理的数据越少，生成越慢，画面也会有细微差别；'
+        '分辨率、时长和步数不变。' if zh else
+        'Applies from the next generation. Higher levels have the GPU handle less at a time, so generation is slower '
+        'and the picture differs slightly; resolution, duration and steps stay the same.',
         style='Muted.TLabel', wraplength=460).pack(fill='x', pady=16)
     def save():
         try:

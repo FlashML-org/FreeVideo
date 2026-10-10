@@ -156,7 +156,7 @@ class TerminalUI:
         with self._lock:
             self.tasks[key] = dict(label=clean(label or key), detail=clean(detail), total=total, done=0,
                                    state='running', started=time.monotonic(), heartbeat=time.monotonic(),
-                                   estimate=ProgressEstimate(), scope=None, unit=None, event_tick=0.,
+                                   estimate=ProgressEstimate(), scope=None, unit=None, activity='', name='', event_tick=0.,
                                    display_observed_at=time.monotonic())
             self.event('task', key=str(key), label=self.tasks[key]['label'], detail=clean(detail), done=0, total=total,
                        elapsed_seconds=0, remaining_seconds=None)
@@ -164,7 +164,7 @@ class TerminalUI:
                 self.write('  > %s%s\n' % (self.tasks[key]['label'], ' · ' + clean(detail) if detail else ''))
 
     def update(self, key, *, detail=None, done=None, total=None, resource=None, scope=None, rate=None,
-               unit=None, display_fraction=None, estimated=None, estimated_step_seconds=None, step_elapsed_seconds=None):
+               unit=None, activity=None, name=None, display_fraction=None, estimated=None, estimated_step_seconds=None, step_elapsed_seconds=None):
         with self._lock:
             row = self.tasks.get(key)
             if row is None:
@@ -176,12 +176,16 @@ class TerminalUI:
                 row['estimated'] = False
                 row['estimated_step_seconds'] = None
                 row['step_elapsed_seconds'] = None
-            for name, value in [('detail', clean(detail) if detail is not None else None), ('done', done), ('total', total),
+                row['activity'] = ''
+                row['name'] = ''
+                row['rate'] = None
+            for field, value in [('detail', clean(detail) if detail is not None else None), ('done', done), ('total', total),
+                                ('activity', activity), ('name', clean(name) if name is not None else None), ('rate', rate),
                                 ('scope', scope), ('unit', unit), ('display_fraction', display_fraction),
                                 ('estimated', estimated), ('estimated_step_seconds', estimated_step_seconds),
                                 ('step_elapsed_seconds', step_elapsed_seconds)]:
                 if value is not None:
-                    row[name] = value
+                    row[field] = value
             now = time.monotonic()
             row['display_observed_at'] = now
             if done is not None or total is not None:
@@ -191,7 +195,8 @@ class TerminalUI:
             if now - row['event_tick'] >= .5:
                 self.event('progress', key=str(key), label=row['label'], detail=row['detail'], done=row['done'], total=row['total'],
                            resource=self.resource, elapsed_seconds=now-row['started'], remaining_seconds=row['estimate'].remaining(now),
-                           unit=row['unit'], display_fraction=row.get('display_fraction'), estimated=row.get('estimated', False),
+                           unit=row['unit'], activity=row['activity'], name=row['name'], rate=row.get('rate'),
+                           display_fraction=row.get('display_fraction'), estimated=row.get('estimated', False),
                            estimated_step_seconds=row.get('estimated_step_seconds'),
                            step_elapsed_seconds=row.get('step_elapsed_seconds'))
                 row['event_tick'] = now
@@ -211,7 +216,8 @@ class TerminalUI:
             if detail is not None:
                 row['detail'] = clean(detail)
             self.event('task_end', key=str(key), label=row['label'], detail=row['detail'], done=row['done'], total=row['total'],
-                       state=row['state'], elapsed_seconds=row['seconds'], remaining_seconds=0 if success else None)
+                       state=row['state'], activity='', name='',
+                       elapsed_seconds=row['seconds'], remaining_seconds=0 if success else None)
             if not self.live:
                 self.write('  %s %s · %s · %s\n' % ('✓' if success else '✕', row['label'], duration(row['seconds']), row['detail']))
 
@@ -326,6 +332,14 @@ class LogProgress:
         tasks, self.parallel_tasks = self.parallel_tasks, {}
         return tasks
 
+    @staticmethod
+    def merge(result, values):
+        # Several scopes can arrive in a single read, before TerminalUI sees
+        # them. Do not carry activity/name from an earlier file into the last.
+        if values.get('scope') is not None and values['scope'] != result.get('scope'):
+            result.update(activity='', name='')
+        result.update(values)
+
     def read(self, *, final=False):
         result = {}
         try:
@@ -341,7 +355,7 @@ class LogProgress:
                     if not chunk:
                         break
                     chunks += 1
-                    result.update(self._consume(chunk))
+                    self.merge(result, self._consume(chunk))
         except OSError:
             pass
         return result
@@ -350,6 +364,8 @@ class LogProgress:
         lines = (self.pending + chunk).replace('\r', '\n').split('\n')
         self.pending = lines.pop()
         result = {}
+        def update(**values):
+            self.merge(result, values)
         for line in lines:
             # uv does not emit byte progress to redirected logs. Show the real
             # package phase and announced sizes, without inventing a percentage.
@@ -357,28 +373,30 @@ class LogProgress:
             git = re.search(r'(Receiving objects|Resolving deltas|Updating files):\s*\d+%\s*\((\d+)/(\d+)\)', text)
             if git:
                 phase, done, total = git.groups()
-                result.update(done=int(done), total=int(total), scope='git-' + phase, unit='items', detail=text)
+                # The card says what Git is doing; its percentages and counts stay in the terminal.
+                update(done=int(done), total=int(total), scope='git-' + phase, unit='items', detail=text, activity='note',
+                       name='Downloading components' if phase == 'Receiving objects' else 'Preparing components')
             package = re.fullmatch(r'Downloading ([\w.-]+) \(([\d.]+)(KiB|MiB|GiB)\)', text)
             if package:
                 name, size, unit = package.groups()
                 self.packages[name] = float(size) * {'KiB': 2**10, 'MiB': 2**20, 'GiB': 2**30}[unit]
                 amount = sum(self.packages.values()) / 2**30
                 size_text = '%.1f GiB' % amount if amount >= 1 else '%.0f MiB' % (amount * 1024)
-                result.update(done=0, total=0, scope='package-download',
+                update(done=0, total=0, scope='package-download', activity='note', name='Downloading runtime packages',
                               detail='Downloading packages · about %s across %d files' % (size_text, len(self.packages)))
             elif re.match(r'Resolved \d+ packages? in ', text):
                 self.packages.clear()
                 self.installing_packages = False
-                result.update(done=0, total=0, scope='package-resolve', detail='Dependencies resolved · preparing downloads')
+                update(done=0, total=0, scope='package-resolve', detail='Dependencies resolved · preparing downloads')
             elif re.match(r'Prepared \d+ packages? in ', text):
                 self.installing_packages = True
-                result.update(done=0, total=0, scope='package-install', detail='Downloads ready · installing packages')
+                update(done=0, total=0, scope='package-install', detail='Downloads ready · installing packages')
             elif re.match(r'Installed \d+ packages? in ', text):
-                result.update(done=0, total=0, scope='package-finish', detail='Packages installed · finishing checks')
+                update(done=0, total=0, scope='package-finish', detail='Packages installed · finishing checks')
             match = re.search(r'\[(\d+)/(\d+)\]', line)
             if match:
                 self.installing_packages |= 'Installing wheels' in text
-                result.update(done=int(match[1]), total=int(match[2]),
+                update(done=int(match[1]), total=int(match[2]),
                               detail='Installing packages' if self.installing_packages else 'Compiling CUDA kernels',
                               scope='package-install' if self.installing_packages else 'compile', unit='items')
             try:
@@ -400,42 +418,45 @@ class LogProgress:
                         detail += ' · ' + message['detail']
                     if kind == 'step':
                         detail += ' · %.2f s last step' % event['seconds']
-                    result.update(done=message['done'], total=message['total'], detail=detail,
+                    update(done=message['done'], total=message['total'], detail=detail,
                                   scope=message['phase'], unit='items',
                                   display_fraction=message.get('display_fraction'),
                                   estimated=message.get('estimated', False),
                                   estimated_step_seconds=message.get('estimated_step_seconds'),
                                   step_elapsed_seconds=message.get('step_elapsed_seconds'))
             elif kind == 'prepared_blocks':
-                result.update(done=event['blocks'], total=50, detail='Load cached blocks and upload resident weights')
+                update(done=event['blocks'], total=50, detail='Load cached blocks and upload resident weights')
                 if event['blocks'] == 50:
-                    result.update(done=0, total=0, detail='Finish model placement')
+                    update(done=0, total=0, detail='Finish model placement')
             elif kind == 'model_ready':
                 if event.get('operation') == 'verify':
                     continue  # Local verification cannot reset download ETA.
                 self.model_source = ''
                 self.model_backend = ''
-                result.update(done=0, total=0, detail='Verified ' + Path(event['file']).name, scope='verified', unit='items')
+                update(done=0, total=0, detail='Verified ' + Path(event['file']).name, scope='verified', unit='items')
             elif kind == 'prepare_fp8_phase':
                 work = 'Verify cached weights' if event['phase'] == 'verify_cache' else 'Read and convert source weights'
-                result.update(done=max(0, event['index'] - 1), total=event['total'],
+                update(done=max(0, event['index'] - 1), total=event['total'],
                               detail=work + ' · ' + event['group'], scope='prepare-fp8-' + event['phase'], unit='items')
             elif kind == 'prepared_fp8_group':
-                result.update(done=event.get('index', 0), total=event.get('total', 0),
+                update(done=event.get('index', 0), total=event.get('total', 0),
                               detail=('Reuse verified FP8 ' if event.get('reused') else 'Prepare FP8 ') + event['group'], scope='prepare-fp8', unit='items')
             elif kind == 'storage_compacted':
-                result.update(done=0, total=0, detail='Storage ready · %.2f GiB released' % (event['released_bytes'] / 2**30))
+                update(done=0, total=0, activity='', name='',
+                       detail='Storage ready · %.2f GiB released' % (event['released_bytes'] / 2**30))
             elif kind in ('verify_model', 'download_model', 'assemble_model'):
                 self.model_source = ''
                 self.model_backend = ''
-                result.update(done=0, total=0, scope=event['file'], unit='bytes',
+                update(done=0, total=0, scope=event['file'], unit='bytes',
+                              activity={'verify_model': 'check', 'download_model': 'download'}.get(kind, ''),
+                              name=event.get('name') or model_download_name(event['file']).split(' · ')[0],
                               detail={'verify_model': 'Verify ', 'download_model': 'Download ',
                                       'assemble_model': 'Assemble downloaded parts · '}[kind] + model_download_name(event['file']))
             elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models') and event.get('action') == 'attempt':
                 self.model_backend = ''
                 self.model_source = {'modelscope': 'ModelScope', 'official': 'Hugging Face',
                                      'hf-mirror': 'HF Mirror', 'user': 'Custom source'}.get(event['source'], 'Model source')
-                result.update(done=0, total=0, scope='connecting-' + self.model_source, unit='bytes',
+                update(done=0, total=0, scope='connecting-' + self.model_source, unit='bytes',
                               detail='Connecting to ' + self.model_source + ' · ' + event['file'])
             elif kind == 'network' and event.get('action') == 'backend':
                 self.model_backend = {'hf-xet': 'HF Xet', 'modelscope-ranges': 'ModelScope parallel',
@@ -449,7 +470,7 @@ class LogProgress:
                 else:
                     detail+=' · Resuming %.1f MiB retained' % (event.get('resume_bytes',0)/2**20)
                 self.last_notice=detail
-                result.update(done=0,total=0,rate=None,scope='manual-switch',unit='bytes',detail=detail)
+                update(done=0,total=0,rate=None,scope='manual-switch',unit='bytes',detail=detail)
             elif kind == 'network' and event.get('action') in ('retry', 'route-retry', 'resume-refused', 'paused', 'restart-approved'):
                 action = event['action']
                 label = {'retry': 'Retrying same source', 'resume-refused': 'Resume unavailable; checking another source',
@@ -464,7 +485,9 @@ class LogProgress:
                     # not a reliable count of bytes actually downloaded.
                     detail = label + ' · Cannot resume this format; enable restart in Setup · ' + event.get('file', '')
                 self.last_notice = detail if action == 'paused' else None
-                result.update(done=0, total=0, rate=None, scope=action, unit='bytes', detail=detail)
+                update(done=0, total=0, rate=None, scope=action, unit='bytes', detail=detail)
+                if action in ('retry', 'route-retry'):
+                    update(activity='resume', name='')
             elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models') and event.get('action') in ('fallback', 'verifying'):
                 action = event['action']
                 self.model_backend = ''
@@ -472,19 +495,22 @@ class LogProgress:
                           else 'Download response too large · switching source · ' if event.get('reason') == 'response-size-exceeded'
                           else 'Download memory budget reached · switching to streaming · ' if event.get('reason') in ('memory-guard', 'low-live-memory-use-streaming')
                           else 'Download source failed · trying another source · ')
-                result.update(done=0, total=0, rate=None, scope=action + '-' + event['file'],
+                update(done=0, total=0, rate=None, scope=action + '-' + event['file'],
                               unit='bytes', detail=detail + event['file'])
             elif kind == 'decode_phase':
-                result.update(done=0, total=0, detail=event['phase'])
+                update(done=0, total=0, detail=event['phase'])
             elif kind == 'local_model_progress':
                 from .desktop_runtime import local_model_ui
                 local = local_model_ui(event)
-                result.update(done=local['done'], total=local['total'], rate=event.get('bytes_per_second'),
+                update(done=local['done'], total=local['total'], rate=event.get('bytes_per_second'),
+                              activity=local['activity'], name=local['name'],
                               scope='local-' + event.get('file', ''), unit='bytes', detail=local['label'] + ' · ' + local['detail'])
             elif kind == 'model_verification_progress':
                 state = event.get('state', 'running')
                 active = state == 'running'
                 self.parallel_tasks['verify-models'] = dict(label='Verify / reuse local models', state=state,
+                    activity='check' if active else '',
+                    name=(event.get('name') or model_download_name(event.get('file', '')).split(' · ')[0]) if active else '',
                     done=event.get('done_bytes', 0) if active else event.get('files_done', 0),
                     total=event.get('total_bytes', 0) if active else event.get('files_total', 0),
                     rate=event.get('bytes_per_second') if active else None,
@@ -500,7 +526,7 @@ class LogProgress:
                     # Older workers and invalid backend counters must not look
                     # like successful completion. Retain the reported numbers
                     # as an explicit error, with no percentage or estimate.
-                    result.update(done=0, total=0, rate=None, scope='invalid-' + description, unit='bytes',
+                    update(done=0, total=0, rate=None, scope='invalid-' + description, unit='bytes',
                         detail='Download counter mismatch · %.1f MiB reported / %.1f MiB expected · %s' %
                                (done/2**20, total/2**20, description))
                     continue
@@ -509,7 +535,9 @@ class LogProgress:
                 source = self.model_backend or self.model_source
                 speed = event.get('network_bytes_per_second')
                 shown_speed = speed if speed is not None else event['bytes_per_second']
-                result.update(done=done, total=total, scope=description + self.model_source, rate=event['bytes_per_second'], unit='bytes',
+                update(done=done, total=total, scope=description + self.model_source, rate=event['bytes_per_second'], unit='bytes',
+                    activity='download', name=event.get('name') or ('PyTorch' if description == 'torch'
+                        else model_download_name(description).split(' · ')[0]),
                     detail='%s%s%.1f MiB/s · %.1f / %.1f MiB · %s' %
                     (source + ' · ' if source else '',
                      '~' if event.get('counter_source') == 'uv-terminal' else '', shown_speed/2**20,

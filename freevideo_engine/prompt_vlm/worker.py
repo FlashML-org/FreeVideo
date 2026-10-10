@@ -47,8 +47,9 @@ def failure(error, mode='rewrite'):
 
 
 def begin(stats):
-    """Imports and the RAM check shared by every mode; returns checkpoint()."""
+    """Imports and the available-RAM readings shared by every mode; returns checkpoint()."""
     started = time.monotonic()
+    stats['available_memory_at_start_bytes'] = available_memory()
     import hashlib
     stats['code_sha256'] = {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
                             for name in ('core.py', 'worker.py', 'rules.py')}
@@ -65,8 +66,6 @@ def begin(stats):
         gpu_snapshot(stats)
         emit(phase=phase, diagnostics=dict(stats), **extra)
     stats['available_memory_before_load_bytes'] = available_memory()
-    if stats['available_memory_before_load_bytes'] < 11 * 2**30:
-        raise ValueError('ram_space')
     torch.set_num_threads(min(8, os.cpu_count() or 1))
     return torch, checkpoint
 
@@ -86,43 +85,96 @@ def tokenize(processor, messages, max_pixels=512 * 32 * 32):
         return_dict=True, return_tensors='pt', processor_kwargs={'images_kwargs': {'max_pixels': max_pixels}})
 
 
+# Available RAM each placement needs. A GPU-resident load reads one layer at a
+# time into a small buffer; its figure covers the whole worker and is checked
+# against the reading taken when the worker starts (on Windows the imports and
+# CUDA context alone take about 2.5 GB of commit). Other placements map and
+# merge the whole model in RAM; theirs is checked after the imports.
+RESIDENT_RAM = 4 * 2**30
+MAPPED_RAM = 11 * 2**30
+
+
+# GPU space beside the weights and the KV cache: prefill activations, a
+# widened int8 weight, the per-layer merge while loading and allocator slack.
+WORKING_VRAM = 3 * 2**28
+OUTPUT_TOKENS = 1800
+
+
+def kv_positions(input_tokens):
+    """Cache positions reserved for a request: the input and its rewrite, then a
+    dialogue retry that resends both with a short correction and writes another.
+    A retry that would need more is skipped when the model is held on the GPU."""
+    return input_tokens + 2 * OUTPUT_TOKENS + 256
+
+
+def kv_bytes(stored, input_tokens):
+    keys = [row for name, row in stored.items() if name.endswith('self_attn.k_proj.weight')]
+    per_token = 2 * len(keys) * (keys[0]['shape'][0] if keys else 0) * 2  # K and V, bf16
+    return per_token * kv_positions(input_tokens)
+
+
+def retry_allowed(tokens, stats):
+    """A dialogue retry must fit the context limit and, on the GPU, the reserved cache."""
+    if tokens + OUTPUT_TOKENS > stats.get('kv_positions', tokens + OUTPUT_TOKENS):
+        stats['dialogue_retry_skipped'] = 'gpu_space'
+        return False
+    return tokens <= 6500
+
+
+def placement(weights, int8_saving, kv, allocator_budget):
+    """'bf16' or 'int8' when weights, KV and working space fit the GPU, else None
+    (map in RAM and run the layers that do not fit from there).
+
+    Cards that cannot hold bf16 weights (8-10 GB) would otherwise run part of
+    every token from system RAM, about 1 token/s on Windows.
+    """
+    room = allocator_budget - kv - WORKING_VRAM
+    return 'bf16' if weights <= room else 'int8' if weights - int8_saving <= room else None
+
+
 def load_model(folder, torch, stats, checkpoint):
     """Weights, FreeToken operators and GPU placement; returns (model, device)."""
-    import psutil
-    from transformers import Qwen3VLForConditionalGeneration
-    from .core import prepare, GatedMLP
-    checkpoint('load_weights')
-    loading = time.monotonic()
-    model = Qwen3VLForConditionalGeneration.from_pretrained(folder, dtype=torch.bfloat16,
-        device_map='cpu', local_files_only=True, trust_remote_code=False, attn_implementation='sdpa').eval()
-    stats['load_seconds'] = time.monotonic() - loading
-    preparing = time.monotonic()
-    prepare(model)
-    accelerations = []
-    if isinstance(model.model.language_model.layers[0].mlp, GatedMLP):
-        accelerations += ['merged_gate_up', 'per_image_sdpa', 'chunked_vision_mlp']
-    if hasattr(model.model.language_model.layers[0].self_attn, 'qkv_proj'):
-        accelerations.append('merged_qkv')
-    stats.update(accelerations=accelerations,
-                 backend='freetoken-portable-ops+transformers' if accelerations else 'transformers')
-    stats['prepare_ops_seconds'] = time.monotonic() - preparing
+    from . import core, int8
+    from .load import stored
     checkpoint('placement')
     placing = time.monotonic()
-    mapping = {'': 'cpu'}
-    device = 'cpu'
+    shapes = stored(folder)
+    weights = sum(row['bytes'] for row in shapes.values())
+    resident = None
+    weight_budget = 0
     if torch.cuda.is_available():
-        from accelerate import dispatch_model, infer_auto_device_map
         from .. import gpu_budget
         free, _ = torch.cuda.mem_get_info()
         stats.update(gpu_name=torch.cuda.get_device_name(), gpu_free_before_load_bytes=free,
                      gpu_compute_capability=list(torch.cuda.get_device_capability()))
         admission = gpu_budget.configure(torch, free, reserve_bytes=256 * 2**20)
         free = min(free, admission.get('effective_allocator_limit_bytes') or free)
-        # Keep activation/KV space and the desktop outside the weight budget.
+        # When the layers do not all fit, keep activation/KV space and the
+        # desktop outside the budget for the layers that stay on the GPU.
         weight_budget = min(9 * 2**30, max(0, free - 2 * 2**30))
-        stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget)
+        kv = kv_bytes(shapes, stats.get('input_tokens', 6500))
+        stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget, gpu_kv_reserve_bytes=kv)
+        resident = placement(weights, int8.saved_bytes(shapes), kv, free)
+    stats['ram_required_bytes'] = RESIDENT_RAM if resident else MAPPED_RAM
+    available = stats['available_memory_at_start_bytes' if resident else 'available_memory_before_load_bytes']
+    if available < stats['ram_required_bytes']:
+        raise ValueError('ram_space')
+    checkpoint('load_weights')
+    loading = time.monotonic()
+    if resident:
+        from .load import resident as load_resident
+        model = load_resident(folder, torch, 'cuda:0', resident)
+        mapping, device = {'': 0}, 'cuda:0'
+        stats.update(weights=resident, kv_positions=kv_positions(stats.get('input_tokens', 6500)))
+    else:
+        import psutil
+        from transformers import Qwen3VLForConditionalGeneration
+        model = Qwen3VLForConditionalGeneration.from_pretrained(folder, dtype=torch.bfloat16,
+            device_map='cpu', local_files_only=True, trust_remote_code=False, attn_implementation='sdpa').eval()
+        core.prepare(model)
+        mapping, device = {'': 'cpu'}, 'cpu'
         if weight_budget > 2 * 2**30:
-            weights = sum(p.numel() * p.element_size() for p in model.parameters())
+            from accelerate import dispatch_model, infer_auto_device_map
             mapping = infer_auto_device_map(model, max_memory={0: weight_budget,
                 'cpu': min(psutil.virtual_memory().total - 2 * 2**30, weights + available_memory() - 2 * 2**30)},
                 no_split_module_classes=['Qwen3VLTextDecoderLayer', 'Qwen3VLVisionBlock'], dtype=torch.bfloat16)
@@ -130,7 +182,9 @@ def load_model(folder, torch, stats, checkpoint):
                 raise ValueError('ram_space')
             model = dispatch_model(model, mapping)
             device = 'cuda:0' if any(v == 0 for v in mapping.values()) else 'cpu'
-    stats.update(placement_seconds=time.monotonic() - placing,
+    stats.update(load_seconds=time.monotonic() - loading, placement_seconds=time.monotonic() - placing,
+                 accelerations=['merged_gate_up', 'per_image_sdpa', 'chunked_vision_mlp', 'merged_qkv'],
+                 backend='freetoken-portable-ops+transformers',
                  cpu_offload=any(v == 'cpu' for v in mapping.values()) and any(v == 0 for v in mapping.values()),
                  execution_device=device, device_map=mapping)
     return model, device
@@ -213,7 +267,7 @@ def rewrite(folder, value, stats):
         retry = messages + [{'role': 'assistant', 'content': text}, {'role': 'user', 'content': DIALOGUE_RETRY + '\n'.join(
             '- [%s] %s' % (language(line), line) for line in missing)}]
         retry_inputs = tokenize(processor, retry)
-        if retry_inputs.input_ids.shape[-1] <= 6500:
+        if retry_allowed(retry_inputs.input_ids.shape[-1], stats):
             again, _ = generate(torch, model, retry_inputs.to(device), 1800, time.monotonic(), lambda timing: None)
             second = processor.decode(again, skip_special_tokens=True)
             stats.update(dialogue_retry=True, retry_output_tokens=len(again),

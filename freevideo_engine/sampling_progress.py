@@ -157,7 +157,7 @@ def progress_message(event):
             display_fraction = _bounded((done + local) / total, high=1.)
             estimated = True
             result.update(block=block, blocks=blocks,
-                          detail='Step %d · processing layer %d / %d' % (done+1, block, blocks))
+                          detail='Step %d of %d' % (done+1, total))
     elif name == 'step':
         result.update(stage='complete' if done == total else 'between_steps',
                       detail='Sampling complete · preparing output' if done == total else

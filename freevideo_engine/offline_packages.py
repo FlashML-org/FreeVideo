@@ -57,6 +57,8 @@ EARLIER_RUNTIMES = dict.fromkeys((
     'a6a447449e2fb66b360846902498256e1f7a243a51bbc7d2269202a9b5786eac',
     'f8f960e68e4c6caac38ded62c87133097dc39e726e0918352460a5ae81397378',
     'ea87a269c0fafa5446d9d1c501c5accc3f1f1f6970ad6fa5d6d725fde33a9593',
+    # The ModelScope mapping of the tables for other step counts (a model row).
+    'c5275824a6b316e95e30f0c9438ee080352122460a94124f2f1660480131cfea',
 ), '5237c88452f01b060b664dde4ac237329e28314c3f5a82fe4d1a01c9612543cb')
 SKIPPED_RUNTIME = '运行环境包与这个版本不配套，已跳过；运行环境改为自动安装，其余离线包照常使用。'
 

@@ -26,8 +26,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.Int.Input('width', default=1344, min=256, max=4096, step=32),
                 io.Int.Input('height', default=768, min=256, max=4096, step=32),
                 io.Float.Input('seconds', display_name='Duration (s)', default=10., min=1.625, max=60., step=.1,
-                    tooltip='24 fps. H3 rounds up to its 17n+5 frame grid: 10 s becomes 10.125 s. '
-                            'Longer than 15 s is experimental.'),
+                    tooltip='24 fps. The length is rounded up slightly to a length the model can generate; '
+                            'for example, 10 s becomes 10.125 s. Videos longer than 15 s are experimental.'),
                 io.Int.Input('seed', default=2026090903, min=0, max=2**53-1, control_after_generate=True),
                 io.Image.Input('first', display_name='First frame', optional=True,
                     tooltip='One image. Center-cropped to the selected canvas; enables I2VA.'),
@@ -37,8 +37,9 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Experimental Ref2VA. Use FreeVideo Reference nodes. VDN is not reference-trained.'),
                 LoRAs.Input('loras', display_name='LoRAs', optional=True),
                 io.Conditioning.Input('conditioning', optional=True,
-                    tooltip='Native H3 layer-50 conditioning including keyframe/reference metadata. '
-                            'Replaces prompt/media encoding. Generic CLIP conditioning is incompatible.'),
+                    tooltip='Native MiniMax-H3 conditioning from a compatible community node, with keyframes or references. '
+                            'When it is connected, the prompt and media inputs are not used. '
+                            'Conditioning from generic CLIP nodes is rejected.'),
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
                 io.Boolean.Input('two_pass', display_name='Two-pass acceleration', default=True, optional=True,
                     tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.'),
@@ -112,7 +113,9 @@ class FreeVideoGenerate(io.ComfyNode):
         def progress(message):
             if message.get('result_cache_hit'):
                 result_reused[0] = True
-            label = message.get('label') or 'Generating video'
+            # The sampling label also serves terminal readers and can contain
+            # a stage percentage. Native node text keeps only its step detail.
+            label = 'Sampling' if message.get('phase') == 'sampling' else message.get('label') or 'Generating video'
             count = (message.get('done'), message.get('total'))
             if message.get('done') is not None and count != last_count[0]:
                 bar.update_absolute(message['done'], message['total'])
@@ -339,7 +342,7 @@ class FreeVideoFrames(io.ComfyNode):
                     if first is None:
                         first = last
             if first is None:
-                raise ValueError('The video contains no frames')
+                raise ValueError('No picture could be read from this video file. Choose another video.')
             return io.NodeOutput(*(torch.from_numpy(frame.copy()).float().div_(255)[None] for frame in (first, last)))
 
 

@@ -2,7 +2,7 @@
 import math
 import time
 
-from .terminal_ui import duration
+from .launcher_copy import size_text
 
 
 def number(value):
@@ -64,25 +64,40 @@ class ProgressState:
         return value
 
 
-def progress_text(event, zh=False):
-    """A truthful count/ETA for the current file or operation, never stage averages."""
-    t = lambda en, cn: cn if zh else en
-    total, done = event.get('total'), event.get('done')
-    valid = number(total) and total > 0 and number(done) and done <= total
+def transfer_parts(done, total, rate, decimal_sizes=False):
+    """"5.2 / 14.6 GiB" and "31.0 MiB/s" when known; decimal units on macOS, as Finder shows."""
+    base = 1000 if decimal_sizes else 1024
+    units = ('KB', 'MB', 'GB', 'TB') if decimal_sizes else ('KiB', 'MiB', 'GiB', 'TiB')
     parts = []
-    if valid:
-        parts.append('%.0f%%' % (100 * done / total))
-        if event.get('unit') == 'bytes':
-            unit, size = ('GiB', 2**30) if total >= 2**30 else ('MiB', 2**20)
-            parts.append('%.1f / %.1f %s' % (done / size, total / size, unit))
-        else:
-            parts.append('%d / %d' % (done, total))
-    elif event.get('state') == 'complete':
-        parts.append(t('Complete', '已完成'))
-    else:
-        parts.append(t('Measuring progress…', '正在获取进度…'))
-    remaining = event.get('remaining_seconds')
-    if valid and number(remaining) and remaining > 0:
-        parts.append(t('File ETA ~', '本文件预计剩余约 ') if event.get('unit') == 'bytes' else t('ETA ~', '预计剩余约 '))
-        parts[-1] += duration(math.ceil(remaining))
-    return ' · '.join(parts)
+    if number(total) and total > 0:
+        done = min(done, total) if number(done) else 0
+        power = 1
+        while power < 4 and total >= base ** (power + 1):
+            power += 1
+        digits = 1 if power >= 3 else 0
+        parts.append('%.*f / %.*f %s' % (digits, done / base ** power, digits, total / base ** power, units[power - 1]))
+    if number(rate) and rate >= base:
+        power = 2 if rate >= base ** 2 else 1
+        parts.append('%.*f %s/s' % (1 if power == 2 else 0, rate / base ** power, units[power - 1]))
+    return parts
+
+
+def progress_text(event, zh=False, *, decimal_sizes=False):
+    """One activity line for the launcher; step counts and ETAs remain in worker events/logs."""
+    t = lambda en, cn: cn if zh else en
+    activity, name = event.get('activity'), event.get('name') or ''
+    if activity == 'resume':
+        return t('The connection dropped; resuming the download and keeping what was already downloaded',
+                 '连接中断，正在继续下载，已下载的部分会保留')
+    if activity == 'check':
+        return t('Checking ', '正在校验 ') + name
+    if activity == 'copy':
+        return t('Copying ', '正在复制 ') + name
+    if activity == 'note':
+        # A fixed description of the step (already translated with the event), and its speed if any.
+        return ' · '.join([name] + transfer_parts(0, 0, event.get('rate'), decimal_sizes))
+    if activity == 'download':
+        total = event.get('total') if event.get('unit') == 'bytes' else 0
+        return ' · '.join([t('Downloading ', '正在下载 ') + name] +
+                          transfer_parts(event.get('done'), total or 0, event.get('rate'), decimal_sizes))
+    return ''

@@ -93,11 +93,41 @@ PLACE_RULES = (
 )
 
 
-def launcher_failure(value, *, zh=False, other_disk=False, disk_name=''):
+# Failures the launcher's Repair button fixes, and what to do where it has none
+# (no installed engine yet, or a fixed offline environment).
+WITHOUT_REPAIR = {
+    'dependencies': ('Return to Installation and check the same folder to restore missing dependencies.',
+                     '返回安装设置，检查当前安装目录，补齐运行依赖。'),
+    'runtime-libraries': ('Once the current task ends, open Settings › Environment and click Repair. FreeVideo installs a fresh copy of PyTorch.',
+                          '当前任务结束后，请在“设置 → 环境”里点击“修复”，FreeVideo 会重新安装一份完整的 PyTorch。'),
+}
+
+
+# The failures whose card offers Repair (when the launcher can repair this installation).
+REPAIR_KINDS = tuple(WITHOUT_REPAIR)
+
+
+DEPENDENCIES = (('The environment needs repair', '运行环境需要修复'),
+                ('Click Repair to check this installation and restore what is missing.',
+                 '请点击“修复”，FreeVideo 将检查这份安装并补装缺失的组件。'))
+
+
+def _stopped_on_missing_module(text):
+    """ComfyUI itself stopped on an import, not a custom node that logged one and loaded on."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    errors = [i for i, line in enumerate(lines) if re.match(r'^[\w.]+(?:Error|Exception)\b', line)]
+    return bool(errors) and bool(re.match(r'^(?:ModuleNotFoundError|ImportError): (?:No module named|DLL load failed)',
+                                          lines[errors[-1]])) \
+        and not any('for custom nodes' in line for line in lines[errors[-1] + 1:])
+
+
+def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
     disk_name: the disconnected disk the launcher found; the error's paths are redacted.
+    can_repair: the launcher's Repair button can fix this installation.
+    repairs_comfy: ComfyUI runs in the environment the launcher made, which Repair reinstalls.
     """
     if not value:
         return dict(title='', detail='', action='', kind='')
@@ -127,6 +157,8 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name=''):
         return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk', detail=detail,
                     action='重新检查' if zh else 'Check again')
     if text.startswith('ComfyUI could not start.'):
+        if can_repair and repairs_comfy and _stopped_on_missing_module(summary):
+            return dict(title=DEPENDENCIES[0][zh], detail='', action=DEPENDENCIES[1][zh], kind='dependencies')
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
                     detail='ComfyUI 进程在启动时退出。' if zh else 'The ComfyUI process exited during startup.',
                     action='展开详情查看退出码与插件错误；已有 ComfyUI 可使用原启动器检查。' if zh else
@@ -221,15 +253,20 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name=''):
         (r'PermissionError|Access is denied|Permission denied|WinError 5\b', 'permission',
          ('This folder is not writable', '无法写入这个目录'),
          ('Choose an installation folder you can write to, then retry.', '选择有写入权限的安装目录后重试。')),
-        (r'ModuleNotFoundError|No module named|DLL load failed', 'dependencies',
-         ('The environment needs repair', '运行环境需要修复'),
-         ('Return to Installation and check the same folder to restore missing dependencies.', '返回安装设置，检查当前安装目录，补齐运行依赖。')),
+        # A worker's own check of the cuDNN files it loaded (runtime_libraries).
+        (r"FreeVideo's PyTorch library files do not match", 'runtime-libraries',
+         ('PyTorch files have been changed', 'PyTorch 文件已被更改'),
+         ('Click Repair to reinstall a complete copy of PyTorch. Models and videos are kept.',
+          '请点击“修复”，FreeVideo 将重新安装完整的 PyTorch，模型和视频都会保留。')),
+        (r'ModuleNotFoundError|No module named|DLL load failed', 'dependencies', *DEPENDENCIES),
         (r'CUDA (?:error: )?out of memory|torch\.OutOfMemoryError|Insufficient currently available memory|crossed its RAM budget|paging file is too small|WinError 1455', 'memory',
          ('Memory is unavailable for this step', '这一步可用内存不足'),
          ('Close other memory-heavy applications and retry. Copy the details if it continues.', '关闭占用内存较多的程序后重试；仍失败时可复制详情反馈。')),
     )
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
+            if kind in WITHOUT_REPAIR and not can_repair:
+                action = WITHOUT_REPAIR[kind]
             return dict(title=title[zh], detail='', action=action[zh], kind=kind)
     # Validation messages are already actionable. Show the cause, not a stack
     # trace or a guessed hardware diagnosis, and leave long details expandable.
@@ -257,22 +294,52 @@ def _read(path, limit, *, tail=False):
         return ''
 
 
-def generation_failure(run, exit_code=None):
-    """Surface the cause, including a child traceback, even without a report."""
+def _report(run):
+    try:
+        report = json.loads(_read(Path(run) / 'video.request.json', 512*1024))
+    except (ValueError, TypeError):
+        report = {}
+    return report if isinstance(report, dict) else {}
+
+
+# Stands in for the repair sentence until the report text is redacted: the
+# redactor reads "Install / repair" as a path.
+REPAIR_MARK = 'FREEVIDEO_REPAIR_SENTENCE'
+
+
+def _runtime_explanation(report, repair=None):
+    """What the request or a worker found when cuDNN files differed, or ''."""
+    from .runtime_libraries import REINSTALL, summary
+    encoding, attempts = report.get('encoding_failure'), report.get('resource_attempts')
+    # The request's own check comes first: torch can fail to load before any worker starts.
+    found = [report, encoding.get('failure') if isinstance(encoding, dict) else None]
+    found += [row.get('failure') for row in attempts if isinstance(row, dict)] if isinstance(attempts, list) else []
+    return next(filter(None, (summary(f.get('runtime_libraries'), repair or REINSTALL)
+                              for f in found if isinstance(f, dict))), '')
+
+
+def runtime_explanation(run, repair=None):
+    """The changed-library sentence of a failed run, for the launcher's Repair card."""
+    return _runtime_explanation(_report(run), repair)
+
+
+def generation_failure(run, exit_code=None, *, repair=None):
+    """Surface the cause, including a child traceback, even without a report.
+
+    `repair` is the sentence that says where this user repairs an installation.
+    """
     run = Path(run)
     redactor = Redactor()
     prompt = _read(run / 'prompt.txt', 128*1024).strip()
     if prompt:
         redactor.prompts.add(prompt)
     lines = ['FreeVideo generation failed' + (' (exit %s)' % exit_code if exit_code is not None else '')]
-    raw = _read(run / 'video.request.json', 512*1024)
-    try:
-        report = json.loads(raw)
-    except (ValueError, TypeError):
-        report = {}
-    if not isinstance(report, dict):
-        report = {}
+    report = _report(run)
     redactor.structured(report)  # Collect prompt values without showing the request.
+    # What the worker found when cuDNN refused its own files, ahead of the trace.
+    explained = _runtime_explanation(report, REPAIR_MARK)
+    if explained:
+        lines.append(explained)
     error = report.get('error_message') or report.get('error')
     if isinstance(error, str):
         lines.append(error[:8192])
@@ -322,6 +389,9 @@ def generation_failure(run, exit_code=None):
         lines.append('The worker ended without a readable error report.')
     lines.append('\nRetained outputs: ' + str(run))
     value = redactor.text('\n'.join(lines))
+    if explained:
+        from .runtime_libraries import REINSTALL
+        value = value.replace(REPAIR_MARK, repair or REINSTALL, 1)
     value = re.sub(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))', '', value)
     return re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', value)
 

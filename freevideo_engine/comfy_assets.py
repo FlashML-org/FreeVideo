@@ -1,36 +1,19 @@
 """File-backed ComfyUI media bundles; no tensor or model imports."""
 import json
-import logging
 import math
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from .monitoring import thermal_slowdown
 
 
 def saved_video(output, output_directory):
-    """Publish the same file to ComfyUI's preview/history and native assets."""
+    """Name the saved file for ComfyUI's preview/history; the file is never copied or rewritten."""
     output = Path(output).resolve()
     relative = output.relative_to(Path(output_directory).resolve())
     if not output.is_file():
         raise FileNotFoundError(output)
-    entry = dict(filename=relative.name, subfolder=relative.parent.as_posix(), type='output')
-    try:
-        from comfy.cli_args import args
-        if getattr(args, 'enable_assets', False):
-            # ComfyUI enriches output entries itself when global assets are on.
-            return entry
-        from app.database.db import can_create_session
-        if not can_create_session():
-            # Newer ComfyUI opens its database only with assets on; without it there is no library to add to.
-            return entry
-        from app.assets.services.ingest import register_file_in_place
-        registered = register_file_in_place(abs_path=str(output), name=output.name, tags=['output'])
-        entry['id'] = registered.ref.id
-    except ImportError:
-        logging.getLogger(__name__).info('Native asset registration is unavailable in this ComfyUI; video remains in output history.')
-    except Exception:
-        # An unavailable asset database must never invalidate a saved video.
-        logging.getLogger(__name__).warning('FreeVideo video was saved, but ComfyUI asset registration failed: %s', output, exc_info=True)
-    return entry
+    # ComfyUI adds executed outputs to its assets itself, and only while the user has assets on;
+    # FreeVideo never writes to the asset database, so an off switch stays off.
+    return dict(filename=relative.name, subfolder=relative.parent.as_posix(), type='output')
 
 
 EXTENSIONS = {

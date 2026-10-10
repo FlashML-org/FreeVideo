@@ -6,6 +6,13 @@ from pathlib import Path
 import threading
 import time
 
+if __name__ == '__main__':
+    # Before torch and the CUDA libraries load. With the stage event before the
+    # model and the first prepared_blocks, a request held at "Loading video
+    # model" shows in its log whether the process started, got as far as the
+    # model, or stopped while reading blocks.
+    print(json.dumps({'event': 'worker_start', 'pid': os.getpid(), 'epoch': time.time()}), flush=True)
+
 import torch
 
 from .policy import memory_fraction
@@ -118,6 +125,25 @@ def generate(request, resident=None):
         if manifest.get('precision') not in ('fp8', 'int8', 'bf16'):
             raise ValueError('The Engine requires an official FP8 or int8 cache')
         options, decoder = request['engine_options'], request['decoder_options']
+
+        def fit_decoder():
+            # The plan sized the decoder's resident blocks to the request's
+            # budget. When another program takes GPU memory during sampling,
+            # the Windows limit shrinks below them: 29 of 36 blocks against a
+            # 9.08 GB limit failed on the first clip, and the retry decoded
+            # with none. Keep what the current limit holds, by the planner's
+            # rule; resident and streamed blocks decode the same values.
+            nonlocal decoder
+            limit = metrics['device_memory'].get('effective_allocator_limit_bytes')
+            planned = decoder.get('resident_blocks', 0)
+            if decoder.get('offload') and planned and limit:
+                from .policy import decoder_resident_blocks
+                fit = decoder_resident_blocks(limit, canvas,
+                                              linear_compute_cache=bool(decoder.get('linear_compute_cache')))
+                if fit < planned:
+                    decoder = dict(decoder, resident_blocks=fit)
+                    metrics.setdefault('decoder_residency', dict(planned_resident_blocks=planned))
+                    metrics['decoder_residency'].update(resident_blocks=fit, allocator_limit_bytes=int(limit))
         resume = request.get('resume_decode') is not None
         if not resume and options.get('task', 't2va') != 't2va':
             from .media_conditioning import describe
@@ -142,6 +168,7 @@ def generate(request, resident=None):
             metrics.update(sampled, phase='decode', decode_phase='latent_transfer')
             save(request['metrics'], metrics)
             print(json.dumps(dict(event='decode_resume', sampling_source_attempt=metrics['sampling_source_attempt'])), flush=True)
+            fit_decoder()
             if resident is not None:
                 resident.decoder_room(decoder, canvas)
             latents, audio = latents.to('cuda'), audio.to('cuda')
@@ -155,6 +182,9 @@ def generate(request, resident=None):
             factory = lambda: Engine(request['cache'], input_cache_dir=request.get('input_cache_dir'),
                                      gpu_allocation_bytes=int(allocation),
                                      **dict(options, canvas=request.get('geometry')))
+            # CUDA and the GPU budget are ready; the model itself comes next.
+            print(json.dumps({'event': 'model_load_phase', 'phase': 'Loading video model', 'stage': 'engine',
+                              'epoch': time.time(), 'seconds': time.perf_counter() - started}), flush=True)
             engine, reused = resident.engine(request, factory) if resident is not None else (factory(), False)
             loaded_seconds = time.perf_counter() - tick
             metrics.update(config=dict(engine.config), load_seconds=loaded_seconds,
@@ -412,6 +442,7 @@ def generate(request, resident=None):
             sample_finalize_phase('transformer_release')
             # A one-shot worker releases the transformer. An interactive worker
             # keeps it if live memory also covers decoding, otherwise evicts it.
+            fit_decoder()
             if resident is not None:
                 resident.decoder_room(decoder, canvas)
             else:
@@ -448,6 +479,7 @@ def generate(request, resident=None):
             if resident is not None:
                 metrics['resident_admission'] = list(resident.decisions)
             save(request['metrics'], metrics)
+        fit_decoder()
         metrics.update(decode_to_file(latents, audio, request['output'], base=base, artifacts_dir=artifacts,
                                      model_cache=resident, phase_callback=decode_phase, **decoder))
         if resume and artifacts:
@@ -467,6 +499,9 @@ def generate(request, resident=None):
         metrics['error'] = repr(error)
         from .adaptive import classify_failure
         metrics['failure'] = classify_failure(error)
+        from .runtime_libraries import mismatch, diagnose
+        if mismatch(error):
+            metrics['failure']['runtime_libraries'] = diagnose()
         # A driver query can itself fail. Persist the original exception first.
         save(request['metrics'], metrics)
         from .encoder_memory import failure_resources

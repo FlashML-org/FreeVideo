@@ -3,7 +3,9 @@
 Project independent output channels per head group. Reuse original norms,
 RoPE, window attention, delta scans and full-width output projections. Grouped
 GEMM/text-state shapes can change rounding; native/full-output checks are required.
-This adapter is not enabled by the engine default policy yet.
+Int8 projections take their channel slice of the same product (bit-identical).
+Planning binds this adapter only where the smallest original partition's full
+Q/K/V do not fit, and for a stage retried after running out of memory.
 """
 import types
 
@@ -36,9 +38,14 @@ def install(model, attention, *, head_chunk=4, row_chunk=1024, qk_prepare=None):
     def project(module, value, channels, count, dim):
         if not isinstance(module, torch.nn.Linear):
             raise TypeError('Grouped MPS attention requires eager Linear projections')
-        weight = module.weight[channels]
-        bias = None if module.bias is None else module.bias[channels]
-        output = F.linear(value, weight, bias)
+        channel_forward = getattr(module, '_freevideo_project_channels', None)
+        if channel_forward is not None:
+            # Int8 storage: the same product as the full projection, these columns only.
+            output = channel_forward(value, channels)
+        else:
+            weight = module.weight[channels]
+            bias = None if module.bias is None else module.bias[channels]
+            output = F.linear(value, weight, bias)
         output = apply_lora(module, value, output, channels=channels)
         policy['largest_projected_elements'] = max(policy['largest_projected_elements'], output.numel())
         return output.unflatten(-1, (count, dim))

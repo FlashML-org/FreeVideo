@@ -463,13 +463,14 @@ class Desktop:
 
     def show_plan(self):
         """Figures go in tiles; only what a figure cannot say stays as text."""
+        from .bootstrap import download_bytes
         gib = lambda value: '%.1f GiB' % (value/2**30)
         h = self.plan['inventory']['hardware']
         estimate = self.plan.get('installation_resources') or self.plan.get('policy_estimate')
         local = self.plan.get('local_models')
         tiles = [(self.t('VRAM free', '空闲显存'), '%s / %s' % (gib(h['vram_free']), gib(h['vram_total']))),
                  (self.t('RAM available', '可用内存'), '%s / %s' % (gib(h['ram_available']), gib(h['ram_total']))),
-                 (self.t('To download', '需下载'), gib(self.plan['model_download_bytes']))]
+                 (self.t('To download', '需下载'), gib(download_bytes(self.plan)))]
         if estimate:
             tiles.append((self.t('Installation RAM budget', '安装内存预算'), gib(estimate['ram_budget_bytes'])))
         for disk in self.plan['disks'][:1]:

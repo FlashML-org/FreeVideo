@@ -56,8 +56,10 @@ def available_memory():
     return available, group.get('complete', True)
 
 
-def prefetch(path, selected, cancelled, *, busy=None, notify=None, availability=available_memory):
+def prefetch(path, selected, cancelled, *, busy=None, notify=None, availability=None):
     """Read one checkpoint, or several files in the order given, into the OS file cache."""
+    if availability is None:
+        availability = available_memory
     paths = [Path(item) for item in path] if isinstance(path, (list, tuple)) else [Path(path)]
     result = dict(selected, state='skipped', done_bytes=0)
     started = time.monotonic()

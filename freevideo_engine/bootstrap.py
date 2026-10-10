@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import signal
 import subprocess
@@ -121,6 +122,31 @@ def setup_memory_failure(pressure):
     return detail + ' Downloaded files are retained.'
 
 
+def reinstall_download_bytes(dependencies, system):
+    """Bytes setup downloads again to replace changed PyTorch files: the pinned
+    Windows wheel (torch_download), elsewhere the package's installed size, an
+    upper bound for its wheel. Marks each environment's damaged packages."""
+    if system == 'Darwin':
+        return 0
+    from .environments import ENVIRONMENTS
+    from .runtime_libraries import damaged, installed_bytes
+    from .torch_download import select
+    total = 0
+    for name, row in dependencies.items():
+        if not row.get('exists'):
+            continue
+        row['damaged'] = broken = damaged(row['python'])
+        pins = ENVIRONMENTS.get(name, {})
+        wheels = {w['package']: w['bytes'] for w in (select(pins['torch'], pins['cuda']) or [])} if system == 'Windows' and pins else {}
+        total += sum(wheels.get(package) or installed_bytes(row['python'], package) for package in broken)
+    return total
+
+
+def download_bytes(plan):
+    """What a reviewed plan downloads: models plus packages reinstalled over changed files."""
+    return (plan.get('model_download_bytes') or 0) + (plan.get('package_download_bytes') or 0)
+
+
 def dependency_status(root, layout='unified', system=None):
     """Inspect distribution metadata only: no tensor imports or downloads."""
     result = {}
@@ -164,6 +190,43 @@ def dependency_status(root, layout='unified', system=None):
                     for p in names if p in installed and p in expected and installed[p] != expected[p]}
         result[name] = row
     return result
+
+
+def torch_stack(name):
+    """A package whose change brings a new PyTorch build and, on Linux, its CUDA wheels."""
+    return name in ('torch', 'torchvision', 'torchaudio') or name.startswith(('nvidia-', 'cuda-'))
+
+
+def environment_in_place(row, python_version):
+    """An existing environment that only lacks ordinary packages: setup adds them beside the rest."""
+    if not row.get('exists') or row.get('error'):
+        return False
+    if any(torch_stack(name) for name in [*row.get('missing', []), *row.get('mismatched', {})]):
+        return False
+    try:
+        config = (Path(row['python']).parent.parent / 'pyvenv.cfg').read_text(encoding='utf-8')
+    except OSError:
+        return False
+    found = re.search(r'^version(?:_info)?\s*=\s*([\d.]+)\s*$', config, re.M)
+    return bool(found) and found.group(1) == python_version
+
+
+def environment_allowance_gib(dependencies, *, mac, layout, python_version):
+    """Disk for the Python environments, by what setup will actually install."""
+    ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
+    if mac:
+        # A Mac environment has no CUDA packages: a fresh one measured 4.3 GB
+        # including the package cache, against 30 GiB allowed for CUDA ones.
+        return 1 if ready else 6
+    if ready:
+        return 5
+    if all(environment_in_place(r, python_version) for r in dependencies.values()):
+        # A repair that adds ordinary packages. Even reinstalling the whole
+        # Windows PyTorch as a copy (cuDNN repair) is a 1.78 GiB wheel plus
+        # about 4.5 GB installed; a Linux unified environment is 5.3 GiB in all.
+        return 10
+    # New environments, or a new PyTorch stack or Python: downloaded afresh.
+    return 30 if layout == 'unified' else 45
 
 
 def digest(path, algorithm='sha256', git_blob=False):
@@ -462,24 +525,25 @@ def plan(args, *, local_progress=None):
     # GiB; allow 52 GiB including the largest group in progress. Never credit
     # future source deletion toward the space needed to complete conversion.
     dependencies = dependency_status(root, layout, system)
+    package_download_bytes = reinstall_download_bytes(dependencies, system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
-    # A Mac environment has no CUDA packages: a fresh one measured 4.3 GB
-    # including the package cache, against 30 GiB allowed for CUDA ones.
-    environment_gib = ((1 if environments_ready else 6) if mac_target else
-                       5 if environments_ready else 30 if layout == 'unified' else 45)
+    python_version = None if mac_target else bootstrap_versions(
+        json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system)['python']
+    environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version)
     extra = (0 if reuse_cache or prepared else 52) + environment_gib + 10
     frontend = None
     if getattr(args, 'frontend_root', None):
         frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
                         separate=args.frontend_separate, download=args.frontend_download)
-    from .install_disk import budget as disk_budget
+    from .install_disk import budget as disk_budget, frontend_gib as frontend_allowance_gib
     reviewed = (json.loads(Path(args.approved_plan).read_text(encoding='utf-8'))
                 if getattr(args, 'approved_plan', None) else saved)
     disk_plan = disk_budget(groups, root, extra,
         eligible=bool(windows_target and layout == 'unified' and (reuse_cache or prepared)
                       and getattr(args, 'model_downloader', 'auto') != 'xet'),
         environments_ready=environments_ready, frontend=frontend,
-        keep_extreme=reviewed.get('disk_mode') == 'extreme', frontend_gib=disk_space.frontend_gib(mac_target))
+        keep_extreme=reviewed.get('disk_mode') == 'extreme',
+        frontend_gib=frontend_allowance_gib(root, frontend['root'], mac_target) if frontend else disk_space.frontend_gib(mac_target))
     extra = disk_plan['environment_cache_safety_gib']
     errors.extend(disk_plan['errors'])
     if mac_target:
@@ -548,6 +612,7 @@ def plan(args, *, local_progress=None):
             'wheel_cache': str(Path(getattr(args, 'wheel_cache', None) or saved.get('wheel_cache') or root / 'wheels').expanduser().resolve()),
             'rebuild_sage': getattr(args, 'rebuild_sage', False),
             'model_download_bytes': sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0),
+            'package_download_bytes': package_download_bytes,
             'existing_model_bytes_size_matched': present, 'disks': disk_plan['disks'],
             'additional_environment_cache_safety_gib': extra,
             'preparation_ram_estimate_gib': ('Bounded hash/header verification; no transformer loaded or converted' if prepared else
@@ -593,6 +658,8 @@ def display(value, ui=None, *, verbose=False):
             rows.append((label, value[key]))
     rows.append(('Model download', '~%.1f GiB; Python / GPU packages are additional' % (value['model_download_bytes']/GiB)
                  if value['model_download_bytes'] else 'No new model files expected · verify existing files'))
+    if value.get('package_download_bytes'):
+        rows.append(('Package download', '~%.1f GiB to replace changed PyTorch files' % (value['package_download_bytes']/GiB)))
     if value.get('disk_mode') == 'extreme':
         rows.append(('Disk mode', 'Automatic space saver · sequential downloads · temporary package cache removed before models'))
     if value.get('local_models'):
@@ -687,6 +754,8 @@ def display_details(value, ui=None):
             rows.append((name.capitalize(), 'Missing: %s · version mismatches: %s' %
                         (', '.join(row['missing']) or 'none', ', '.join(row['mismatched']) or 'none')))
     rows.append(('Model download', '%.2f GiB · existing files verified after confirmation' % (value['model_download_bytes']/GiB)))
+    if value.get('package_download_bytes'):
+        rows.append(('Package download', '%.2f GiB to replace changed PyTorch files' % (value['package_download_bytes']/GiB)))
     rows.append(('Storage', value.get('storage', 'compact') + ' · ' + value.get('storage_preparation', 'streamed FP8 preparation without a BF16 disk copy')))
     if value.get('prepared_model'):
         prepared = value['prepared_model']
@@ -727,6 +796,7 @@ def confirmed(args, value, ask=input, ui=None):
         else:
             changed |= reviewed.get('inventory', {}).get('selected_gpu', {}).get('uuid') != value['inventory']['selected_gpu']['uuid']
         changed |= value['model_download_bytes'] > reviewed.get('model_download_bytes', -1)
+        changed |= (value.get('package_download_bytes') or 0) > (reviewed.get('package_download_bytes') or 0)
         changed |= bool(reviewed.get('allow_model_restart')) != bool(value.get('allow_model_restart'))
         for key in ('root', 'roots', 'copy_mode', 'copy_bytes'):
             changed |= (reviewed.get('local_models') or {}).get(key) != (value.get('local_models') or {}).get(key)
@@ -883,10 +953,18 @@ class Installer:
             shutil.copyfile(previous, self.run_dir / 'machine.before.json')
             saved = json.loads(previous.read_text(encoding='utf-8'))
         self.saved = saved
+        # Changed PyTorch files (runtime_libraries) stop torch from importing,
+        # so no GPU check can pass until the torch step below reinstalls them.
+        self.damaged_before = []
+        if self.system != 'Darwin' and self.pythons['engine'].is_file():
+            from .runtime_libraries import damaged
+            self.damaged_before = damaged(self.pythons['engine'])
         # Moving a working installation to int8 checks the int8 kernels first
         # (execute), so a GPU that fails them keeps its configuration as it was.
+        # With changed files that check cannot run; the one after installing still does.
         self.int8_check_first = (value.get('prepared_format') == 'int8_convrot' and saved.get('ready') is True
-                                 and self.system != 'Darwin' and self.pythons['engine'].is_file())
+                                 and self.system != 'Darwin' and self.pythons['engine'].is_file()
+                                 and not self.damaged_before)
         if not self.int8_check_first:
             self.mark_unfinished()
         self.env = dict(os.environ, FREEVIDEO_HOME=str(self.root),
@@ -912,6 +990,8 @@ class Installer:
             self.env = environment(self.root, self.env)
         self.network = dict(value.get('network', {}), events_path=str(self.run_dir / 'network.jsonl'), quiet=True)
         self.state = {'status': 'running', 'steps': [], 'plan': value}
+        if self.damaged_before:
+            self.state['damaged_before'] = self.damaged_before
         self.state_lock = threading.Lock()
         self.cancel = threading.Event()
         self.versions = bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), self.system)
@@ -1055,13 +1135,15 @@ class Installer:
                 raise RuntimeError('Installation cancelled; partial download retained.')
             rate_text = ('%.1f KiB/s' % (speed/1024) if speed < 2**20 else '%.1f MiB/s' % (speed/2**20))
             self.ui.update(key, done=done, total=total, rate=speed, unit='bytes', scope=path.name,
+                activity='download', name=path.name,
                 detail=(path.name + ' · ' if candidates is not None else '') +
                     ('%.1f MiB / %.1f MiB' % (done/2**20, total/2**20) if total else '%.1f MiB downloaded' % (done/2**20)) +
                     ' · ' + rate_text + source_detail())
         try:
             def feedback(row):
                 transfer.update(row)
-                self.ui.update(key, detail=path.name + source_detail() + ' · ' + row['action'] +
+                self.ui.update(key, activity='resume' if row['action'] in ('retry', 'route-retry') else '', name=path.name,
+                               detail=path.name + source_detail() + ' · ' + row['action'] +
                                (' · ' + row['reason'] if row.get('reason') else ''))
             networking = dict(self.network, event_callback=feedback)
             if candidates is None:
@@ -1202,7 +1284,13 @@ class Installer:
                                run=lambda args, env: self.command(label + '-torch', args, env=env),
                                constraints=['-c', constraints_file(label, self.system)], check=check):
                         return
-                return self.packages(label + '-torch', argv, group)
+                from .runtime_libraries import damaged, reinstall_arguments
+                fresh = damaged(executable)
+                result = self.packages(label + '-torch', [*argv[:5], *reinstall_arguments(fresh), *argv[5:]], group)
+                # Files linked from a changed uv cache arrive with a new environment.
+                if not fresh and damaged(executable):
+                    result = self.packages(label + '-torch', [*argv[:5], *reinstall_arguments(damaged(executable)), *argv[5:]], group)
+                return result
             task(name + '-torch', torch_packages,
                  (name + '-venv',), writer)
         name = 'unified' if self.layout == 'unified' else 'engine'
@@ -1453,9 +1541,15 @@ class Installer:
                 def progress(current, size, speed, before=done):
                     if self.cancel.is_set():
                         raise RuntimeError('Installation cancelled; partial download retained.')
+                    # One step for micromamba and the packages: the line names Git with the step's total.
                     self.ui.update(key, done=before + current, total=total, rate=speed, unit='bytes', scope='git',
+                                   activity='download', name='Git',
                                    detail='%.1f MiB / %.1f MiB' % ((before + current) / 2**20, total / 2**20))
-                network.download(candidates, path, row['sha256'], progress, network=dict(self.network, quiet=True),
+                def feedback(event):
+                    if event['action'] in ('retry', 'route-retry'):
+                        self.ui.update(key, activity='resume', name='Git')
+                network.download(candidates, path, row['sha256'], progress,
+                                 network=dict(self.network, quiet=True, event_callback=feedback),
                                  env=self.env, size=row['bytes'], category='github' if path == micromamba else 'download')
                 done += row['bytes']
         except BaseException:

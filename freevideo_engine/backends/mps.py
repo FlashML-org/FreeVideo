@@ -3,10 +3,40 @@
 Model loading/streaming are integrated separately. Unsupported services fail
 explicitly; model operations never route to CUDA or implicit CPU fallback.
 """
+import ctypes
 import math
 import os
+import sys
 
 from .base import BackendCapabilities, DeviceBackend
+
+
+def recommended_working_set_bytes():
+    """Metal's default-device working-set recommendation without a Torch allocator."""
+    if sys.platform != 'darwin':
+        return None
+    try:
+        objc = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
+        metal = ctypes.CDLL('/System/Library/Frameworks/Metal.framework/Metal')
+        metal.MTLCreateSystemDefaultDevice.argtypes, metal.MTLCreateSystemDefaultDevice.restype = [], ctypes.c_void_p
+        objc.sel_registerName.argtypes, objc.sel_registerName.restype = [ctypes.c_char_p], ctypes.c_void_p
+        message = objc.objc_msgSend
+        message.argtypes, message.restype = [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_uint64
+        working_set = objc.sel_registerName(b'recommendedMaxWorkingSetSize')
+        release = objc.sel_registerName(b'release')
+        if not working_set or not release:
+            return None
+        device = metal.MTLCreateSystemDefaultDevice()
+        if not device:
+            return None
+        try:
+            return int(message(device, working_set))
+        finally:
+            # The Create rule gives this probe an owned device reference.
+            message.restype = None
+            message(device, release)
+    except Exception:
+        return None
 
 
 def allocator_ceiling(budget, recommended, total, available, owned, reserve, explicit=None):

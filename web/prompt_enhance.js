@@ -74,6 +74,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     install.append(detail, actions);
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
     let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
+    // Available RAM the model needs; the server knows the usual case for this card.
+    let ramBytes = 11 * 2 ** 30;
+    const gib = value => String(Math.round(value / 2 ** 30));
     const errorText = error => ({
         busy: t('Finish the current queue before enhancing this prompt.', '请等待当前队列完成后再改写。'),
         prompt_required: t('Type a prompt first; enhancement rewrites it before generating.', '请先输入提示词，生成前会自动改写。'),
@@ -81,7 +84,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         model_missing: t('Download the optional model to enable enhancement.', '下载可选模型后即可启用。'),
         download_failed: t('Download paused. Retry to resume.', '下载已暂停，重试即可继续。'),
         disk_space: t('Not enough disk space for the optional model.', '可选模型的磁盘空间不足，请清理后重试。'),
-        ram_space: t('This model needs about 11 GiB of available RAM to load. You can keep using the original.', '此模型加载需约 11 GiB 可用内存，可先使用原文生成。'),
+        ram_space: t(`This model needs about ${gib(error?.ramBytes || ramBytes)} GiB of available RAM to load. You can keep using the original.`, `此模型加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存，可先使用原文生成。`),
         unsupported_media: t('Use images added in Media for enhancement; connected nodes, video and audio are not supported yet.', '增强暂支持在素材中添加的图片；连接节点、视频和音频暂不支持。'),
         too_many_images: t('Use up to 8 reference images for enhancement.', '增强暂支持最多 8 张参考图。'),
         invalid_prompt: t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
@@ -136,6 +139,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     async function poll(action, body) {
         if (disposed || cancelling) throw new Error('cancelled');
         const started = await post(action, body); job = started.job;
+        const since = performance.now(), elapsed = () => Math.floor((performance.now() - since) / 1000);
         if (disposed || cancelling) await post('cancel', {job});
         try {
             for (;;) {
@@ -146,13 +150,19 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     onReport(row);
                 }
                 if (row.phase === 'complete') return row;
-                if (row.phase === 'failed') throw new Error(row.error || 'rewrite_failed');
+                if (row.phase === 'failed') throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes});
                 if (row.phase === 'cancelled') throw new Error('cancelled');
                 if (disposed) throw new Error('cancelled');
                 if (row.phase === 'download') {
                     const fraction = (row.done || 0) / (row.total || 1), gib = value => (value / 2 ** 30).toFixed(1);
                     show(t(`Downloading the model · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`, `正在下载模型 · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`), 'progress', fraction);
-                } else show(row.phase === 'rewriting' ? t('Enhancing the prompt…', '正在改写提示词…') : t('Preparing enhancement…', '正在准备提示词增强…'), 'progress');
+                } else {
+                    // The ellipsis says "still going" until the seconds start counting.
+                    const [en, zh] = row.phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
+                    const s = elapsed(), m = Math.floor(s / 60), r = s % 60;
+                    show(s < 1 ? t(en + '…', zh + '…') : s < 60 ? t(`${en} · ${s} s`, `${zh} · ${s} 秒`)
+                        : t(`${en} · ${m} min${r ? ` ${r} s` : ''}`, `${zh} · ${m} 分${r ? ` ${r} 秒` : ''}`), 'progress');
+                }
                 await new Promise(resolve => setTimeout(resolve, 400));
             }
         } catch (error) {
@@ -175,10 +185,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             const info = await reply.json();
             if (!reply.ok) throw new Error(info.error);
             token = info.token;
+            if (info.ram_bytes) ramBytes = info.ram_bytes;
             if (!info.ready) {
                 const model = String(info.model || 'Qwen/Qwen3-VL-4B-Instruct').split('/').pop().replace(/-Instruct$/, '');
-                detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs 11 GiB free RAM. Your prompt and images stay on this computer.`,
-                    `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 11 GiB 可用内存。提示词和图片只在本机处理。`);
+                detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
+                    `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
                 install.hidden = false; render();
                 const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
                 consent = null; install.hidden = true; render();

@@ -633,6 +633,22 @@ def decoder_workspace(canvas=None):
     return int(3.25 * GiB * max(1., area))
 
 
+def decoder_block_bytes(*, linear_compute_cache=False):
+    """GPU bytes of one resident decoder block.
+
+    A block holds 268,435,456 bytes of FP32 Linear weights and 139,264 of
+    other parameters. The Linear compute cache keeps those Linear weights
+    as FP16 and the rest FP32: 134,217,728 + 139,264 bytes.
+    """
+    return 134356992 if linear_compute_cache else 268574720
+
+
+def decoder_resident_blocks(gpu_budget, canvas=None, *, linear_compute_cache=False):
+    """Offloaded decoder blocks kept on the GPU beside its clip workspace."""
+    return max(0, min(36, int((gpu_budget - decoder_workspace(canvas))
+                              / decoder_block_bytes(linear_compute_cache=linear_compute_cache))))
+
+
 def adaln_extra_bytes(canvas=None):
     """Resident modulation constants beyond the measured eight-step schedule.
 
@@ -1438,13 +1454,6 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                     if canvas is not None else 1344 * 768 * 243 * 3)
     stream_output = decoder_offload or ram_budget < 8 * GiB + 3 * output_bytes
     decoder_stream_weights = decoder_offload and ram_budget < 14 * GiB
-    # A decoder block contains 268,574,720 bytes of original FP32 weights.
-    # Temporal streaming bounds the live clip workspace, so use spare VRAM for
-    # these repeatedly-read weights before spending RAM on host copies. At the
-    # reference canvas a streamed/offloaded clip measured 3.07 GiB whole-GPU;
-    # 3.25 GiB includes the transfer slot and a small workspace allowance.
-    vae_workspace = decoder_workspace(canvas)
-    vae_resident = max(0, min(36, int((gpu_budget - vae_workspace) / 268574720))) if decoder_offload else 0
     # The bounded decoder loader stores Linear weights in the FP16 dtype that
     # autocast would use anyway. This reduces streamed transfer volume and
     # avoids repeated conversion in a fully resident decoder. Both paths are
@@ -1452,8 +1461,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # RTX 4060 Ti / RTX 5060 Ti. The Windows Blackwell cache also avoids
     # materializing a full FP32 checkpoint on the host before decode.
     # Windows also avoids the whole-checkpoint CPU load before uploading the
-    # resident prefix. Keep residency/headroom unchanged: this spends less
-    # memory on the same placement, rather than filling the reclaimed space.
+    # resident prefix.
     # On Linux every architecture: the cache holds exactly the FP16 values
     # autocast casts to on each call. On an RTX PRO 6000 a 1344x768x243
     # decode measured 19.2 s without it and 15.4 s with it, 4.2 GiB lower,
@@ -1461,6 +1469,18 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     decoder_linear_cache = (hardware.system == 'Linux'
                             or (hardware.architecture in ('ada', 'blackwell-rtx')
                                 and hardware.system == 'Windows'))
+    # Temporal streaming bounds the live clip workspace, so use spare VRAM for
+    # the repeatedly-read decoder blocks before spending RAM on host copies. At
+    # the reference canvas a streamed/offloaded clip measured 3.07 GiB
+    # whole-GPU; 3.25 GiB includes the transfer slot and a small workspace
+    # allowance. Blocks count at the size they are held in, so the cache's
+    # half-size blocks fill the room it frees: streamed blocks are read and
+    # converted again for every clip. RTX PRO 6000, streamed FP16 decoder,
+    # 243 frames: 960x544 took 11.0 s with 29 blocks and 8.9 s with all 36;
+    # 1344x768 at a 7 GB limit 20.5-25.2 s with 13 and 16.8-17.2 s with 26;
+    # all 36 peaked at 5.65 GiB allocated there. Same values in every case.
+    vae_resident = (decoder_resident_blocks(gpu_budget, canvas, linear_compute_cache=decoder_linear_cache)
+                    if decoder_offload else 0)
     if decoder_offload:
         weight_format = 'FP16 Linear / FP32 other' if decoder_linear_cache else 'FP32'
         notes.append('Decoder keeps %d/36 %s blocks on GPU using live free VRAM; streams only the remainder, with original tiles and blending.' % (vae_resident, weight_format))

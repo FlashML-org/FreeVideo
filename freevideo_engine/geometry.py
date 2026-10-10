@@ -17,7 +17,7 @@ def geometry(width=1344, height=768, frames=None, seconds=None):
     aligned = requested + (5 - requested) % 17
     latent_frames = (aligned - 5) // 17 * 5 + 2
     if latent_frames < 12:
-        raise ValueError('H3 hybrid window inference needs at least 39 aligned frames (1.625 seconds).')
+        raise ValueError('The video must be at least 1.625 s long.')
     return dict(width=width, height=height, fps=24, requested_frames=requested,
                 requested_seconds=seconds, frames=aligned, seconds=aligned / 24,
                 latent_frames=latent_frames, video_tokens=latent_frames * (height // 32) * (width // 32),

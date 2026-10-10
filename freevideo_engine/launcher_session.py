@@ -9,10 +9,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
 from . import disk_space
-from .comfy_launcher_runtime import Controller, layout, local_url, new_layout
+from .comfy_launcher_runtime import Controller, layout, local_url, managed_frontend, new_layout
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
+from .launcher_copy import size_text
 from .launcher_terminal import Tail
 from .model_status import FAMILIES, NAMES
 from .model_guidance import package_instructions, video_instructions, runtime_packages_supported
@@ -26,10 +27,6 @@ CHECK_SECONDS = 30 * 60
 SNOOZE_SECONDS = 4 * 3600
 QUEUE_POLL_SECONDS = 3
 RECEIPT_POLL_SECONDS = 5
-
-
-def size_text(value):
-    return '%.1f GiB' % (value / 2**30) if value >= 2**30 else '%d MiB' % (value // 2**20)
 
 
 class Session:
@@ -94,6 +91,8 @@ class Session:
         self.log_source = None
         self.model_groups = []
         self.browser_attempted = False
+        self.browser_url = None
+        self.port_notice_url = None
         self.browser_error = ''
         # What the opened page reported about loading FreeVideo (web/health.js).
         from .page_check import PageCheck
@@ -197,6 +196,7 @@ class Session:
         self.controller.selection = None
         self.controller.state = dict(status='idle')
         self.browser_attempted = False
+        self.port_notice_url = None
         self.browser_error = self.error = ''
         self.persist()
 
@@ -275,8 +275,10 @@ class Session:
             return
         # The model download holds the setup lease; launching and opening
         # FreeVideo continue, anything that would start setup waits for it.
-        if (self.upgrade.active or self.model_switch) and (name in ('retry', 'setup') or
-                                                          (name == 'primary' and self.page != 'launcher')):
+        # Retrying a failed start only launches again.
+        if (self.upgrade.active or self.model_switch) and (
+                name == 'setup' or (name == 'retry' and self.retry_kind() != 'launch')
+                or (name == 'primary' and self.page != 'launcher')):
             return
         if self.importer.busy:
             if name == 'stop':
@@ -287,6 +289,18 @@ class Session:
                 self.controller.cancel()
             return
         self.error = ''
+        if name == 'repair':
+            # One click instead of Settings › repair switch › Installation › Check:
+            # plan a repair of this installation. The review installs it, and
+            # setup first stops this launcher's own idle ComfyUI.
+            if not self.can_repair():
+                return
+            self.persist()
+            self.controller.run('inspect', dict(self.form, token=self.token, repair=True))
+            self.page = 'progress'
+            self.model_groups = []
+            self.started = time.monotonic()
+            return
         if name == 'retry':
             kind = self.retry_kind()
             if kind == 'import':
@@ -346,6 +360,7 @@ class Session:
             new_layout(self.form['destination']) if self.form['new_comfy'] else layout(self.form['comfy'])
             self.persist(); self.page = 'models'; return
         self.browser_attempted = False
+        self.port_notice_url = None
         self.browser_error = ''
         if self.page == 'launcher' and getattr(self.controller, 'fixed_environment', False) is True:
             consent = self.controller.root / 'engine/portable-consent.json'
@@ -369,6 +384,22 @@ class Session:
             self.page = 'progress'
             self.model_groups = []
         self.started = time.monotonic()
+
+    def can_repair(self):
+        """An installed engine this launcher can check and reinstall again."""
+        return (bool(self.selected) and getattr(self.controller, 'fixed_environment', False) is not True
+                and not (self.controller.busy or self.importer.busy or self.cleaner.busy or self.closing
+                         or self.engine_updating or self.upgrade.active or self.model_switch))
+
+    def repairs_comfy(self):
+        """ComfyUI runs in the environment this launcher made, so Repair reinstalls its packages."""
+        selected = self.controller.selection or self.selected
+        if not isinstance(selected, dict) or not selected.get('python') or not selected.get('engine'):
+            return False
+        try:
+            return managed_frontend(selected)
+        except (OSError, TypeError, ValueError):
+            return False
 
     def retry_kind(self):
         if self.importer.state.get('status') == 'error' and self.import_retry:
@@ -520,7 +551,15 @@ class Session:
             return
         from .windows_ux import open_browser
         self.browser_attempted = True
-        address = self._browser_url(self.controller.state['url'])
+        self.browser_url = self.controller.state['url']
+        address = self._browser_url(self.browser_url)
+        moved_from = self.controller.state.get('moved_from')
+        if moved_from and self.port_notice_url != self.browser_url:
+            parsed = urlsplit(address)
+            query = parse_qsl(parsed.query, keep_blank_values=True)
+            query.append(('freevideo_port_from', moved_from))
+            address = urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
+                                 urlencode(query), parsed.fragment))
         # ComfyUI itself may follow the browser's language, but the FreeVideo
         # panels need an explicit choice when the launcher language differs
         # from the operating system. Keep the controller's canonical URL
@@ -529,6 +568,8 @@ class Session:
         try:
             if not open_browser(address):
                 raise OSError('The system did not accept the browser request')
+            if moved_from:
+                self.port_notice_url = self.browser_url
             self.browser_error = ''
             self.browser_opened = time.monotonic()
         except Exception as error:
@@ -702,12 +743,17 @@ class Session:
         now = time.monotonic()
         if (self.foreign_thread is None or not self.foreign_thread.is_alive()) and (
                 self.foreign_state is None or now - self.foreign_polled >= QUEUE_POLL_SECONDS):
-            from .comfy_launcher_runtime import server_info
-            url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
+            from .comfy_launcher_runtime import launcher_comfy, server_info
+            selected = dict(self.controller.selection or self.selected or {})
+            url = selected.get('url') or self.form['url']
             self.foreign_polled = now
             def poll():
-                # Off the UI thread, like the queue poll.
-                self.foreign_state = server_info(url).get('status') != 'offline'
+                # Off the UI thread, like the queue poll. Another program's
+                # server at the address of a ComfyUI the launcher downloaded is
+                # not this installation: that ComfyUI moves to a free port.
+                info = server_info(url)
+                self.foreign_state = info.get('status') != 'offline' and not (
+                    selected.get('root') and selected.get('engine') and launcher_comfy(selected, info))
             self.foreign_thread = threading.Thread(target=poll, name='freevideo-server', daemon=True)
             self.foreign_thread.start()
         return self.foreign_state
@@ -757,6 +803,7 @@ class Session:
         self.reload_expected = (self.update_source == 'browser' or self.resume_pages
                                 or self.controller.state.get('status') == 'open')
         self.browser_attempted = False
+        self.port_notice_url = None
         self.browser_wait = None
         self.persist()
         self.controller.run('inspect', dict(self.form, token=self.token))
@@ -1019,6 +1066,10 @@ class Session:
                         'stages': [{'stage': 'installation', 'seconds': time.monotonic()-self.started}]},
                         'request': {'exception': row.get('exception', []), 'phase': self.controller.section or 'installation'},
                         'log_tails': {'installation': row.get('error', '')}})
+        if (not busy and row.get('status') == 'open' and row.get('moved_from')
+                and row.get('url') != self.browser_url):
+            self.browser_attempted = False
+            self.reload_expected = False
         if not busy and not self.closing and row.get('status') == 'open' and not self.browser_attempted:
             # After an update, open pages reload themselves; open a new tab
             # only if none of them returns.
@@ -1138,11 +1189,13 @@ class Session:
                       '%d 个压缩包没能删除。' % failed)
 
     def snapshot(self):
-        from .failure_details import launcher_failure, redacted_launcher_error
+        from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error
         from .launcher_copy import display, progress_view, source_name
         zh = self.language.startswith('zh')
         row = self.controller.state
         task = row.get('task', {})
+        port_from = int(row['moved_from']) if row.get('status') == 'open' and 'moved_from' in row else 0
+        port_to = (urlsplit(row['url']).port or 80) if port_from else 0
         progress = progress_view(task.get('progress') or {}, zh)
         overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
         if self.importer.busy:
@@ -1168,11 +1221,12 @@ class Session:
         by_id = {r['id']: r for r in self.model_groups}
         ready = bool(row.get('selection', {}).get('ready') or row.get('status') == 'open')
         models = []
-        states = {'ready': ('Ready locally', '本地已就绪'), 'waiting': ('Waiting for scan', '等待检查'),
-                  'pending': ('Download needed', '需要下载'), 'remaining': ('Waiting for remaining files', '等待补齐剩余文件'),
-                  'downloading': ('Downloading', '正在下载'),
-                  'verifying': ('Transfer complete · verifying (no re-download)', '传输完成 · 正在校验（不会重复下载）'),
+        states = {'ready': ('Ready', '已就绪'), 'done': ('Done', '已完成'), 'waiting': ('Waiting for scan', '等待检查'),
+                  'pending': ('Download needed', '需要下载'), 'replace': ('Needs replacing', '需要替换'),
+                  'queued': ('Waiting to download', '等待下载'), 'downloading': ('Downloading', '正在下载'),
+                  'verifying': ('Downloaded; verifying', '已下载，正在校验'),
                   'paused': ('Paused', '已暂停')}
+        review = row.get('status') == 'review'
         for name in FAMILIES:
             if name == 'sampling' and name not in by_id and not self.form['sampling_caches']:
                 continue
@@ -1180,9 +1234,15 @@ class Session:
             state = 'ready' if ready else item.get('state', 'waiting')
             if state == 'pending':
                 # Part of the group is ready; the rest (often small config files) waits for a download slot.
-                state = 'remaining'
+                state = 'queued'
             elif state == 'waiting' and item.get('download_bytes'):
-                state = 'pending'
+                state = 'pending' if review else 'queued'
+            elif state == 'waiting' and 0 < item.get('total_bytes', 0) <= item.get('verified_bytes', 0):
+                # Every file of this group is here and already verified: nothing is left to check.
+                # Files that only match in size still wait for their integrity check.
+                state = 'ready'
+            if state == 'ready' and item.get('download_bytes') and not review:
+                state = 'done'  # Downloaded during this installation.
             total = item.get('total_bytes', 0)
             done = total if state == 'ready' else min(total,
                     item.get('verified_bytes', 0)+item.get('downloaded_bytes', 0))
@@ -1190,6 +1250,21 @@ class Session:
                 detail=self.t(*states.get(state, states['waiting'])), done=done, total=total,
                 found=item.get('existing_bytes', 0), download=item.get('download_bytes', 0),
                 rate='%.1f MiB/s' % (item['bytes_per_second']/2**20) if item.get('bytes_per_second') else ''))
+        # A model download names its group, so it shows the group's download, as in the plan and the rows below.
+        groups = {self.t(*NAMES[group['id']]): group for group in self.model_groups
+                  if group.get('id') in NAMES and group.get('download_bytes')}
+        current = progress
+        if progress.get('activity') == 'download' and progress.get('name') in groups:
+            group = groups[progress['name']]
+            current = dict(progress, unit='bytes', total=group['download_bytes'],
+                           done=min(group['download_bytes'], group.get('downloaded_bytes') or 0),
+                           rate=group.get('bytes_per_second') or progress.get('rate'))
+        file_text = progress_text(current, zh, decimal_sizes=sys.platform == 'darwin')
+        # The time row's estimate: only while downloading, from what is left at the current speed.
+        from .setup_progress import number
+        left, rate = (current.get('total') or 0) - (current.get('done') or 0), current.get('rate')
+        remaining = (left / rate if current.get('activity') == 'download' and current.get('unit') == 'bytes'
+                     and number(rate) and rate > 0 and number(left) and left > 0 else None)
         try:
             preferences = download_preferences(self.engine_root() / 'download-settings.json')
         except (OSError, ValueError):
@@ -1203,7 +1278,8 @@ class Session:
         if gpu:
             estimate.append(gpu)
         if 'model_download_bytes' in plan:
-            estimate.append(self.t('Download ', '需下载 ')+disk_space.size_text(plan['model_download_bytes']))
+            from .bootstrap import download_bytes
+            estimate.append(self.t('Download ', '需下载 ')+disk_space.size_text(download_bytes(plan)))
         if row.get('disks'):
             estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+disk_space.size_text(sum(d.get('needed_bytes', 0) for d in row['disks'])))
         update = self.update_view()
@@ -1220,12 +1296,20 @@ class Session:
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
-        failure = launcher_failure(error, zh=self.language.startswith('zh'))
+        failure = launcher_failure(error, zh=self.language.startswith('zh'), can_repair=self.can_repair(),
+                                   repairs_comfy=self.repairs_comfy())
         disk = self.disk_view(row, failure)
         if disk and str(failure.get('kind', '')).startswith('disk'):
             failure = launcher_failure(error, zh=self.language.startswith('zh'),
                 other_disk=self.form['new_comfy'] and any(d['enough'] for d in disk['others']),
                 disk_name=disk['name'] if disk['problem'] == 'disconnected' else '')
+        # A problem card comes first: no update window opens over it (one already open closes
+        # without counting as "Later", and reminds again once the card is gone). Repair installs
+        # the launcher's own engine as it sets up again, so with Repair on the card the engine
+        # update is part of it rather than a second offer.
+        repair_offered = bool(error) and self.can_repair() and failure.get('kind') in REPAIR_KINDS
+        update = dict(update, remind=update['remind'] and not error,
+                      with_repair=repair_offered and bool(update.get('engine')))
         return dict(sampling_cache_bytes=total_bytes(), version=__version__,
             disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=self.controller.busy or self.importer.busy or self.cleaner.busy,
@@ -1239,16 +1323,19 @@ class Session:
                 models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
                                            and not self.form['offline_runtime'], zh)),
             video_model_guide=video_instructions(zh),
-            selected=bool(self.selected), error=error, retry_kind=self.retry_kind(), notice=self.notice, compatibility=self.compatibility,
+            selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error, retry_kind=self.retry_kind(), notice=self.notice,
+            # Qt reads a list as an array; LEVELS is a tuple.
+            compatibility=dict(self.compatibility, levels=list(self.compatibility.get('levels') or ())),
             report=dict(self.report),
-            models=models, overall=overall, progress=progress, detail=clean(progress.get('detail', '')),
-            progress_text=progress_text(progress, self.language.startswith('zh')),
+            models=models, overall=overall, progress=progress, detail='' if file_text else clean(progress.get('detail', '')),
+            progress_text=file_text, remaining_seconds=remaining,
             elapsed=duration(time.monotonic()-self.started) if self.started else '', summary=' · '.join(estimate),
             failure=failure,
             source=source, source_name=source_name(source, zh), proxy_mode=preferences['proxy_mode'],
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,
+            port_from=port_from, port_to=port_to,
             old_versions=self.old_versions_text(), copied_models=self.copied_models_text(),
             archives=self.archives_text(), archives_confirm=self.archives_confirm_text(),
             archives_done=self.archives_done_text(), archives_failed=self.archives_failed_text(),

@@ -64,8 +64,8 @@ export async function openCompatibility() {
         slider.setAttribute('aria-label', t('Compatibility level', '兼容性档位'));
         const autoLabel = element('label'), automatic = element('input');
         autoLabel.className = 'fv-check'; automatic.type = 'checkbox'; automatic.checked = value.automatic;
-        autoLabel.append(automatic, element('span', t('Automatically enable / increase after unexpected interruption', '异常中断后自动启用／提高兼容档')));
-        const note = element('p', t('Applies to the next generation. Smaller work groups can be slower and shift floating-point results; resolution, duration and steps are unchanged.', '从下一次生成生效。更小的分组可能变慢并产生浮点差异；分辨率、时长和步数不变。'));
+        autoLabel.append(automatic, element('span', t('Raise the level automatically after an unexpected interruption', '异常中断后自动提高兼容档位')));
+        const note = element('p', t('Applies from the next generation. Higher levels have the GPU handle less at a time, so generation is slower and the picture differs slightly; resolution, duration and steps stay the same.', '从下一次生成起生效。档位越高，显卡每次处理的数据越少，生成越慢，画面也会有细微差别；分辨率、时长和步数不变。'));
         note.className = 'fv-muted';
         status.before(name, slider, autoLabel, note);
         const render = () => { name.textContent = value.levels[Number(slider.value)][cn ? 'zh' : 'en']; }; render();

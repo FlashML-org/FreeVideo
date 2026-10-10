@@ -180,7 +180,11 @@ def detect():
     code = 'import json; from freevideo_engine.hardware import _detect_local; print(json.dumps(_detect_local().to_dict()))'
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
     if result.returncode:
-        raise RuntimeError('Hardware detection failed: ' + result.stderr[-2000:])
+        error = RuntimeError('Hardware detection failed: ' + result.stderr[-2000:])
+        # The probe imports torch; a damaged library can end it without a word
+        # (a truncated one is a bus error on Linux). See runtime_libraries.
+        error.torch_probe_failed = True
+        raise error
     observed = Hardware.from_dict(json.loads(result.stdout.strip().splitlines()[-1]))
     # The isolated torch probe has exited. Its temporary Python/CUDA host heap
     # must not be subtracted again from the future worker's whole-process RAM

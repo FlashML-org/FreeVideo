@@ -1,5 +1,6 @@
 """Windows allocator admission; no Torch import or device probing at import time."""
 import math
+import threading
 import time
 from .system import windows
 
@@ -142,6 +143,43 @@ def configure(torch, budget_bytes, explicit_limit=None, *, reserve_bytes=0, syst
 # OOM and a full restart), wait this long for it to come back.
 SETTLE_SECONDS = 15.
 SETTLE_INTERVAL = .5
+# NVML answers in milliseconds. It is opened before the model loads and before
+# any progress event, where a driver call that does not return would hold the
+# request at "Loading video model" for good. Past this, the budget goes without
+# the whole-device reading, as it did before that reading existed.
+DEVICE_OPEN_SECONDS = 2.
+
+
+def open_bounded(factory, seconds):
+    """`factory()`, or TimeoutError after `seconds`; a late result is closed."""
+    lock, state = threading.Lock(), {}
+
+    def work():
+        try:
+            value = factory()
+        except BaseException as error:
+            with lock:
+                state['error'] = error
+            return
+        with lock:
+            late = state.get('abandoned', False)
+            if not late:
+                state['value'] = value
+        if late:
+            try:
+                value.close()
+            except (OSError, RuntimeError, AttributeError):
+                pass
+    thread = threading.Thread(target=work, name='freevideo-device-memory', daemon=True)
+    thread.start()
+    thread.join(seconds)
+    with lock:
+        if 'value' in state:
+            return state['value']
+        if 'error' in state:
+            raise state['error']
+        state['abandoned'] = True
+    raise TimeoutError('NVML did not answer within %g s; device-wide memory is not read for this request' % seconds)
 
 
 class LiveGPUBudget:
@@ -155,7 +193,8 @@ class LiveGPUBudget:
     frees tensors in active kernels.
     """
     def __init__(self, torch, report, maximum_bytes, reserve_bytes, *, reader_factory=None,
-                 device_factory=None, settle_seconds=SETTLE_SECONDS, sleep=time.sleep, clock=time.monotonic):
+                 device_factory=None, settle_seconds=SETTLE_SECONDS, sleep=time.sleep, clock=time.monotonic,
+                 device_open_seconds=DEVICE_OPEN_SECONDS):
         self.torch, self.report = torch, report
         self.total = report['device_total_bytes']
         self.limit = report['effective_allocator_limit_bytes']
@@ -187,7 +226,7 @@ class LiveGPUBudget:
                     uuid = 'GPU-' + uuid
                 device_factory = lambda: DeviceMemory(uuid or None)
             if device_factory is not None:
-                self.device = device_factory()
+                self.device = open_bounded(device_factory, device_open_seconds)
         except (OSError, RuntimeError, AttributeError, ValueError) as error:
             self._error(error)
 

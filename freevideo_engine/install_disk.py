@@ -53,6 +53,30 @@ def frontend_ready(root, frontend):
         return False
 
 
+# Adding missing packages to the launcher's existing ComfyUI environment: at
+# most a whole Windows PyTorch reinstalled as a copy, a 1.78 GiB wheel plus
+# about 4.5 GB installed (the cuDNN repair).
+FRONTEND_IN_PLACE_GIB = 5
+
+
+def frontend_in_place(root, comfy):
+    """The launcher's ComfyUI environment for this ComfyUI exists: setup repairs or updates it in place."""
+    try:
+        record = json.loads((Path(root) / 'launcher' / 'comfy-host.json').read_text(encoding='utf-8'))
+        environment = Path(record['environment'])
+        identity = json.loads((environment / 'freevideo-host.json').read_text(encoding='utf-8'))
+        return (environment.resolve().parent == (Path(root) / 'envs').resolve() and Path(record['python']).is_file()
+                and Path(identity['comfy']).resolve() == Path(comfy).resolve())
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def frontend_gib(root, comfy, mac):
+    """Disk for a separate ComfyUI environment: a new one, or packages added to the existing one."""
+    gib = disk_space.frontend_gib(mac)
+    return min(gib, FRONTEND_IN_PLACE_GIB) if frontend_in_place(root, comfy) else gib
+
+
 def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend=None, keep_extreme=False,
            frontend_gib=12):
     """Estimate each volume for the selected installation strategy."""

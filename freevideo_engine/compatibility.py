@@ -17,9 +17,9 @@ import time
 
 LEVELS = (
     dict(level=0, en='Off · automatic performance', zh='关闭 · 自动性能'),
-    dict(level=1, en='Light · heads ≤ 4, window 1', zh='轻度 · head ≤ 4，window 1', head=4),
-    dict(level=2, en='Compatible · heads ≤ 2, window 1', zh='兼容 · head ≤ 2，window 1', head=2),
-    dict(level=3, en='Strong · head 1, window 1, no prefetch', zh='加强 · head 1，window 1，关闭预取', head=1),
+    dict(level=1, en='Light · the GPU handles a little less at a time', zh='轻度 · 显卡每次处理的数据减少一些', head=4),
+    dict(level=2, en='Compatible · the GPU handles less at a time; slower', zh='兼容 · 显卡每次处理的数据更少，生成更慢', head=2),
+    dict(level=3, en='Strong · the least at a time, with no read-ahead; slowest', zh='加强 · 每次处理的数据最少，并且不提前读取，生成最慢', head=1),
 )
 
 

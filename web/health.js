@@ -11,8 +11,8 @@ const t = (en, zh) => cn ? zh : en;
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
 export const MODULES = ['compatibility.js', 'error_panel.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
-    'health.js', 'image_editor.js', 'image_editor_engine.js', 'launcher.js', 'library.js', 'motion.js', 'output_download.js', 'preview_scene.js',
-    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'report_issue.js',
+    'health.js', 'image_editor.js', 'image_editor_engine.js', 'launcher.js', 'library.js', 'motion.js', 'output_download.js', 'port_notice.js', 'preview_scene.js',
+    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'report_issue.js', 'studio_recent.js',
     'result_actions.js', 'sampling_effort.js', 'setup.js', 'share.js', 'studio.js', 'studio_queue.js',
     'toolbar_position.js', 'updates.js', 'view_navigation.js', 'wordmark.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -98,10 +98,10 @@ async function probe(url) {
 }
 
 const ADVICE = {
-    files: t('FreeVideo’s page files are missing or unreadable. In the FreeVideo launcher, open Settings and click “Install / repair”, then open FreeVideo again.',
-        'FreeVideo 的网页文件缺失或无法读取。请在 FreeVideo 启动器的“设置”里点击“安装 / 修复”，完成后重新打开。'),
-    type: t('ComfyUI sent the file with the wrong type, so the browser refused it. Restart ComfyUI; if it persists, copy the details and send them to us.',
-        'ComfyUI 发给浏览器的文件类型不对，浏览器拒绝使用。请重启 ComfyUI；仍然出现时，复制详情发给我们。'),
+    files: t('FreeVideo’s page files are missing or unreadable. In the FreeVideo launcher, open Settings and click Repair, then open FreeVideo again. Without the launcher, update the FreeVideo node and restart ComfyUI.',
+        'FreeVideo 的网页文件缺失或无法读取。请在 FreeVideo 启动器的“设置”里点击“修复”，完成后重新打开。没有使用启动器时，请更新 FreeVideo 节点并重启 ComfyUI。'),
+    type: t('ComfyUI sent the file with the wrong type, so the browser refused it. Restart ComfyUI. If it persists, copy the details and submit them in a GitHub issue; we will look into it and work on a fix for you.',
+        'ComfyUI 发给浏览器的文件类型不对，浏览器拒绝使用。请重启 ComfyUI；仍然出现时，请复制详情并提交到 GitHub issue，我们会专门排查，为您解决这个问题。'),
     browser: t('This browser cannot run FreeVideo. Open the same address in a current Chrome or Edge.',
         '当前浏览器无法运行 FreeVideo。请用最新版 Chrome 或 Edge 打开同一个地址。'),
     mixed: t('The browser mixed files from two FreeVideo versions. Press Ctrl+F5 to reload without the cache.',
@@ -110,10 +110,10 @@ const ADVICE = {
         '请保留 custom_nodes/FreeVideo，把其他 FreeVideo 文件夹移出 custom_nodes，然后重启 ComfyUI。'),
     plugin: t('Another ComfyUI extension reported an error at the same time. Turn it off in ComfyUI Settings › Extensions, then reload.',
         '同时有其他 ComfyUI 插件报错。可在 ComfyUI“设置 › 扩展”里暂时停用它，然后刷新页面。'),
-    reload: t('Reload the page. If it happens again, copy the details and send them to us.',
-        '请刷新页面。仍然出现时，复制详情发给我们。'),
-    cache: t('FreeVideo already reloaded this page once with fresh copies of its files. Press Ctrl+F5. If it still fails, turn off browser extensions that block scripts on this page or open the same address in another browser, then copy the details and send them to us.',
-        'FreeVideo 已经用重新下载的文件自动刷新过一次页面。请按 Ctrl+F5 强制刷新；仍然出现时，请停用会拦截此页面脚本的浏览器插件，或换一个浏览器打开同一地址，然后复制详情发给我们。'),
+    reload: t('Reload the page. If it happens again, copy the details and submit them in a GitHub issue; we will look into it and work on a fix for you.',
+        '请刷新页面。仍然出现时，请复制详情并提交到 GitHub issue，我们会专门排查，为您解决这个问题。'),
+    cache: t('FreeVideo already reloaded this page once with fresh copies of its files. Press Ctrl+F5. If it still fails, turn off browser extensions that block scripts on this page or open the same address in another browser. If that does not help, copy the details and submit them in a GitHub issue; we will look into it and work on a fix for you.',
+        'FreeVideo 已经用重新下载的文件自动刷新过一次页面。请按 Ctrl+F5 强制刷新；仍然出现时，请停用会拦截此页面脚本的浏览器插件，或换一个浏览器打开同一地址。仍未解决时，请复制详情并提交到 GitHub issue，我们会专门排查，为您解决这个问题。'),
     relaunch: t('Click Start in the FreeVideo launcher again.', '请在 FreeVideo 启动器里重新点击“启动”。'),
     blocked: t(`This is usually an ad blocker. Allow ${location.hostname} in it (uBlock Origin, AdGuard and Adblock Plus can all be turned off for this site), then reload the page.`,
         `通常是广告拦截插件所致。请在插件里允许 ${location.hostname}（uBlock Origin、AdGuard、Adblock Plus 都可以对当前网站停用拦截），然后刷新页面。`),
@@ -438,7 +438,17 @@ function show(problems) {
         list.append(row);
     }
     const advice = document.createElement('div');
-    advice.textContent = [...new Set(problems.map(p => ADVICE[p.advice] || ADVICE.reload))].join(' ');
+    const adviceText = [...new Set(problems.map(p => ADVICE[p.advice] || ADVICE.reload))].join(' ');
+    for (const [index, text] of adviceText.split('GitHub issue').entries()) {
+        if (index) {
+            const link = document.createElement('a');
+            link.textContent = 'GitHub issue'; link.href = 'https://github.com/FlashML-org/FreeVideo/issues';
+            link.target = '_blank'; link.rel = 'noopener noreferrer';
+            Object.assign(link.style, {color: '#6db8fa', textDecoration: 'underline', font: 'inherit'});
+            advice.append(link);
+        }
+        advice.append(document.createTextNode(text));
+    }
     Object.assign(advice.style, {color: '#a5b3c6', marginBottom: '14px', textWrap: 'pretty'});
     const actions = document.createElement('div');
     Object.assign(actions.style, {display: 'flex', flexWrap: 'wrap', gap: '8px'});

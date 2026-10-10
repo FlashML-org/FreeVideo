@@ -41,6 +41,13 @@ ApplicationWindow {
     function releaseVersion(value) { return value && value.product_version ? "v" + value.product_version : value && value.version || "—" }
     function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
     readonly property var currentRelease: s.update.current_release || {version: s.update.current}
+    // One line for the current step: the installer's text when it has one (a download and its size,
+    // a resumed download, a check), else the step's own detail (keeping the original file), else nothing.
+    readonly property string stepText: s.progress_text || s.detail || ""
+    // While something downloads, the installer gives the seconds left from its bytes and speed; nothing otherwise.
+    readonly property string remainingText: !number(s.remaining_seconds) || s.remaining_seconds <= 0 ? ""
+        : s.remaining_seconds < 60 ? t("Less than a minute left", "预计还需不到 1 分钟")
+        : t("About " + Math.round(s.remaining_seconds / 60) + "\u00a0min left", "预计还需约 " + Math.round(s.remaining_seconds / 60) + "\u00a0分钟")
     readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
     readonly property var availableEarlier: s.update.candidate ? (s.update.candidate_earlier || []) : s.update.engine ? (s.update.engine_earlier || []) : []
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
@@ -79,7 +86,7 @@ ApplicationWindow {
     readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
     // An engine update needs no download; offer it as the way to launch.
-    readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent
+    readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent && !s.repair_offered
     function percent(row) { return row && row.total ? Math.floor(100 * row.done / row.total) + "%" : "" }
     readonly property var upgrade: s.model_upgrade || ({})
     readonly property bool upgradeShown: !upgrade.dismissed && ["available", "low-disk", "downloading", "downloaded", "switching", "releasing", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0
@@ -360,6 +367,9 @@ ApplicationWindow {
                         id: failureBody; x: 18; y: 18; width: parent.width - 36; spacing: 10
                         FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
+                        // Repair sets up again from the launcher's own engine, so it brings the update along.
+                        FText { objectName: "repairUpdatesEngine"; visible: !!s.update.with_repair; Layout.fillWidth: true; color: theme.text
+                                text: t("Repair also updates the engine to " + releaseVersion(currentRelease) + ".", "修复时会一并更新到新版引擎 " + releaseVersion(currentRelease) + "。") }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
                             FButton { objectName: "moveToDisk"; visible: diskFailure && s.form.new_comfy && !!bestDisk; enabled: !s.busy; primary: true
@@ -369,6 +379,7 @@ ApplicationWindow {
                                       text: t("Other disks…", "其他硬盘…"); onClicked: diskDialogOpen = true }
                             FButton { objectName: "diskCleanupButton"; visible: s.failure.kind === "disk"; enabled: s.can_cleanup; text: t("Clean download cache", "清理下载缓存"); onClicked: { settingsTab = "general"; settingsOpen = true; backend.cleanupDownloads(false) } }
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
+                            FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "copyError"; visible: !diskFailure; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
                             FButton { objectName: "exportError"; visible: !diskFailure; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
@@ -613,22 +624,26 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 4
                             FText { text: s.status === "review" ? t("Installation plan", "安装计划") : s.overall.label || s.progress.label || t("Checking your installation", "正在检查安装"); font.pixelSize: theme.strong + 1; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                            FText { visible: !!s.summary; text: s.summary; color: theme.muted; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
+                            // The plan's line (GPU, download, disk peak) belongs to the review; while installing,
+                            // the step line already gives the download, so the card does not repeat it.
+                            FText { objectName: "planSummary"; visible: !!s.summary && !s.busy; text: s.summary; color: theme.muted; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
                         }
                         FText { visible: s.busy; opacity: overallMeter.known ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 200 } } text: Math.round(overallMeter.shown*100)+"%"; font.features: { "tnum": 1 }; font.pixelSize: 28; font.weight: Font.DemiBold; font.letterSpacing: -0.5; Layout.alignment: Qt.AlignTop }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 10; visible: s.busy
                         FMeter { id: overallMeter; objectName: "overallProgress"; Layout.fillWidth: true; fraction: win.fraction(s.overall); active: s.busy }
+                        // One percentage on the card and no step counts. The time row holds at most two times:
+                        // the elapsed time and, while something downloads, one estimate of what is left.
                         RowLayout {
-                            Layout.fillWidth: true
-                            FText { text: t("Overall progress", "整体进度") + (number(s.overall.total) ? " · " + Math.floor(s.overall.done || 0) + " / " + s.overall.total : ""); font.pixelSize: theme.micro; color: theme.muted; Layout.fillWidth: true }
-                            FText { visible: !!s.elapsed; text: t("Elapsed ", "已用时 ") + s.elapsed; font.pixelSize: theme.micro; color: theme.muted }
+                            Layout.alignment: Qt.AlignRight; spacing: 20; visible: !!s.elapsed
+                            FText { objectName: "elapsedText"; text: t("Elapsed ", "已用时 ") + s.elapsed; font.pixelSize: theme.micro; color: theme.muted }
+                            FText { objectName: "remainingText"; visible: !!remainingText; text: remainingText; font.pixelSize: theme.micro; color: theme.muted }
                         }
-                        Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4; height: 1; color: theme.border }
-                        FText { text: s.detail; visible: !!s.detail; Layout.fillWidth: true; font.pixelSize: theme.micro + 1 }
-                        FMeter { Layout.fillWidth: true; fraction: win.fraction(s.progress); active: s.busy; subdued: true }
-                        FText { visible: !!s.progress_text; text: s.progress_text; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        Rectangle { visible: !!stepText; Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4; height: 1; color: theme.border }
+                        // The step's numbers are in this one line; the bar under it shows the same progress without numbers.
+                        FText { objectName: "stepText"; text: stepText; visible: !!stepText; Layout.fillWidth: true; font.pixelSize: theme.micro + 1 }
+                        FMeter { objectName: "stepProgress"; visible: !!stepText && win.fraction(s.progress) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.progress); active: s.busy; subdued: true }
                     }
                     ColumnLayout {
                         visible: s.status === "review"; Layout.fillWidth: true; spacing: 12
@@ -668,12 +683,12 @@ ApplicationWindow {
                                 ColumnLayout {
                                     spacing: 3; Layout.fillWidth: true
                                     FText { text: modelData.title; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                                    FText { text: modelData.detail + (modelData.rate ? "  ·  " + modelData.rate : ""); font.pixelSize: theme.micro; Layout.fillWidth: true; color: modelData.state === "ready" ? theme.success : theme.muted }
+                                    FText { text: modelData.detail; font.pixelSize: theme.micro; Layout.fillWidth: true; color: modelData.state === "ready" ? theme.success : theme.muted }
                                 }
-                                FText { visible: modelData.total > 0; text: modelData.state === "ready" ? bytes(modelData.total) : bytes(modelData.done) + " / " + bytes(modelData.total); font.pixelSize: theme.micro; color: theme.muted; font.features: { "tnum": 1 } }
+                                // What this group downloads, as in the plan; nothing for one already here.
+                                FText { objectName: "modelSize-" + modelData.id; visible: modelData.download > 0; text: bytes(modelData.download); font.pixelSize: theme.micro; color: theme.muted; font.features: { "tnum": 1 } }
                                 FButton { text: t("Download links ↗", "下载地址 ↗"); implicitHeight: theme.heightSm; flat: true; font.pixelSize: theme.micro + 1; visible: s.form.model_method === "manual"; onClicked: { modelInfo = modelData.id === "text" ? "encoder" : modelData.id; modelInfoOpen = true } }
                             }
-                            FMeter { objectName: "modelProgress-" + modelData.id; visible: modelData.total > 0 && modelData.state !== "ready"; Layout.fillWidth: true; Layout.leftMargin: 52; fraction: modelData.done / Math.max(1,modelData.total); subdued: true }
                         }
                     }
                 }
@@ -682,8 +697,8 @@ ApplicationWindow {
                     objectName: "launcherPage"
                     visible: s.page === "launcher"; Layout.fillWidth: true; spacing: 16
                     FCard {
-                        objectName: "updateBanner"
-                        visible: updateOffered || (!!s.update.phase && s.update.phase !== "review")
+                        id: updateBanner; objectName: "updateBanner"
+                        visible: (updateOffered && !(s.update.with_repair && !s.update.candidate)) || (!!s.update.phase && s.update.phase !== "review")
                         reveal: true; Layout.fillWidth: true; padding: 18; spacing: 10
                         color: theme.accentSubtle; border.color: theme.accentDim
                         RowLayout {
@@ -696,7 +711,8 @@ ApplicationWindow {
                             }
                             FButton { objectName: "cancelUpdateButton"; visible: s.update.phase === "waiting"; flat: true; text: t("Cancel update", "取消更新"); onClicked: { manualUpdate = false; backend.dismissUpdate() } }
                             FButton {
-                                objectName: "engineUpdateButton"; primary: true; visible: !s.update.phase; enabled: !s.busy
+                                // Repair and opening FreeVideo come first; the banner's colour already marks the update.
+                                id: engineUpdate; objectName: "engineUpdateButton"; primary: !s.repair_offered && s.status !== "open"; visible: !s.update.phase; enabled: !s.busy
                                 text: s.update.status === "error" ? t("Retry update", "重试更新") : s.update.status === "ready" && s.update.candidate ? t("Restart & update", "重启并更新") : t("Update now", "立即更新")
                                 onClicked: { manualUpdate = !!s.update.candidate; backend.update("") }
                             }
@@ -756,11 +772,13 @@ ApplicationWindow {
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 6
-                                FText { text: s.status === "open" ? t("FreeVideo is ready", "FreeVideo 已就绪") : s.busy ? t("Starting ComfyUI", "正在启动 ComfyUI") : s.status === "restart-required" ? t("Restart ComfyUI", "请重启 ComfyUI") : s.status === "failed" ? t("Startup interrupted", "启动未完成") : t("Ready to launch", "准备就绪"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                                FText { text: s.status === "open" ? s.url : s.status === "restart-required" ? t("Restart your running ComfyUI to load the updated nodes, then connect again.", "重启正在运行的 ComfyUI 以载入更新后的节点，再点击重新连接。") : t("Your models and environment are connected.", "已连接你的模型与运行环境。"); color: theme.muted; Layout.fillWidth: true }
+                                // A failed start stays failed while another task (an import, a cleanup) runs: the controller's own tasks clear it first.
+                                FText { objectName: "statusTitle"; text: s.status === "open" ? t("FreeVideo is ready", "FreeVideo 已就绪") : s.status === "failed" ? t("Startup interrupted", "启动未完成") : s.busy ? t("Starting ComfyUI", "正在启动 ComfyUI") : s.status === "restart-required" ? t("Restart ComfyUI", "请重启 ComfyUI") : t("Ready to launch", "准备就绪"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                FText { objectName: "statusDetail"; text: s.status === "open" ? s.url : s.status === "restart-required" ? t("Restart your running ComfyUI to load the updated nodes, then connect again.", "重启正在运行的 ComfyUI 以载入更新后的节点，再点击重新连接。") : s.status === "failed" ? t("ComfyUI did not start. See the message above.", "ComfyUI 未能启动，原因见上方。") : t("Your models and environment are connected.", "已连接你的模型与运行环境。"); color: theme.muted; Layout.fillWidth: true }
+                                FText { objectName: "portMovedNote"; visible: s.status === "open" && s.port_from > 0; text: t("Port %1 is in use by another program, so FreeVideo now uses port %2 and will keep using this address.", "端口 %1 已被其他程序占用，FreeVideo 改用端口 %2，以后也使用这个地址。").arg(s.port_from).arg(s.port_to); font.pixelSize: 13; color: theme.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -2 }
                             }
                         }
-                        FMeter { visible: s.busy; Layout.fillWidth: true; fraction: win.fraction(s.overall); active: s.busy }
+                        FMeter { objectName: "statusMeter"; visible: s.busy && s.status !== "failed"; Layout.fillWidth: true; fraction: win.fraction(s.overall); active: visible }
                         RowLayout {
                             visible: s.status === "open"; Layout.fillWidth: true; spacing: 8
                             FButton { text: t("Copy address", "复制地址"); onClicked: backend.copy(s.url) }
@@ -814,9 +832,11 @@ ApplicationWindow {
                 FButton { objectName: "backButton"; text: t("Back", "上一步"); flat: true; visible: s.page === "models" || s.page === "progress"; enabled: !s.busy; onClicked: backend.action("back", false) }
                 Item { Layout.fillWidth: true }
                 FButton { visible: s.busy && !s.cleanup.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
-                FButton { objectName: "launchInstalledButton"; visible: updateFirst; flat: true; text: t("Launch current version", "启动当前版本"); onClicked: backend.action("primary", accepted) }
+                // After a failed start, "Retry launch" already starts the installed version: one button, and the update banner leads.
+                // Other retries (an import) start something else, so this one stays.
+                FButton { objectName: "launchInstalledButton"; visible: updateFirst && s.retry_kind !== "launch"; flat: true; text: t("Launch current version", "启动当前版本"); onClicked: backend.action("primary", accepted) }
                 FButton {
-                    objectName: "primaryButton"; primary: true; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
+                    objectName: "primaryButton"; primary: !s.repair_offered && !(s.retry_kind === "launch" && engineUpdate.visible); implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
                     text: s.busy ? t("Working…", "正在处理…") : primaryText()
                     enabled: !s.busy && !(s.page === "launcher" && s.needs_consent && !accepted)
                              && !(s.page === "progress" && s.status === "review" && !s.retry_kind && (!accepted || !!s.error))
@@ -1024,12 +1044,13 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 FText { text: t("Level", "档位"); Layout.fillWidth: true }
-                                FText { text: s.compatibility.available ? String(s.compatibility.level || 0) + " / 3" : "—"; color: s.compatibility.available ? theme.accent : theme.disabled; font.weight: Font.DemiBold; font.features: { "tnum": 1 } }
+                                // The level's name: the word before " · " in compatibility.LEVELS.
+                                FText { objectName: "compatibilityLevel"; text: s.compatibility.available && s.compatibility.levels && s.compatibility.levels[s.compatibility.level || 0] ? t(s.compatibility.levels[s.compatibility.level || 0].en.split(" · ")[0], s.compatibility.levels[s.compatibility.level || 0].zh.split(" · ")[0]) : "—"; color: s.compatibility.available ? theme.accent : theme.disabled; font.weight: Font.DemiBold }
                             }
                             FSlider { Layout.fillWidth: true; from: 0; to: 3; stepSize: 1; value: s.compatibility.level || 0; enabled: s.compatibility.available && !s.busy; snapMode: Slider.SnapAlways; onMoved: backend.compatibility(Math.round(value), s.compatibility.automatic) }
-                            FText { text: s.compatibility.available ? t("Higher levels lower memory peaks and may generate more slowly.", "档位越高，瞬时负载越低，生成可能变慢。") : t("Available after hardware setup.", "完成硬件检查后可调整。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                            FText { objectName: "compatibilityNote"; text: s.compatibility.available ? t("Applies from the next generation. Higher levels have the GPU handle less at a time, so generation is slower and the picture differs slightly; resolution, duration and steps stay the same.", "从下一次生成起生效。档位越高，显卡每次处理的数据越少，生成越慢，画面也会有细微差别；分辨率、时长和步数不变。") : t("Available after hardware setup.", "完成硬件检查后可调整。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             FDivider {}
-                            FSwitch { Layout.fillWidth: true; text: t("Adjust automatically", "自动调整"); detail: t("Raise the level after an unexpected interruption.", "异常中断后自动提高档位。"); checked: !!s.compatibility.automatic; enabled: s.compatibility.available && !s.busy; onToggled: backend.compatibility(s.compatibility.level, checked) }
+                            FSwitch { objectName: "compatibilityAutomatic"; Layout.fillWidth: true; text: t("Raise the level automatically after an unexpected interruption", "异常中断后自动提高兼容档位"); checked: !!s.compatibility.automatic; enabled: s.compatibility.available && !s.busy; onToggled: backend.compatibility(s.compatibility.level, checked) }
                         }
                         FButton { text: t("Qt notices & licenses ↗", "Qt 组件与许可证 ↗"); flat: true; implicitHeight: theme.heightSm; leftPadding: 4; font.pixelSize: theme.micro; onClicked: backend.link("https://doc.qt.io/qt-6/licenses-used-in-qt.html") }
                     }
@@ -1050,7 +1071,19 @@ ApplicationWindow {
                             Layout.fillWidth: true; title: t("Maintenance", "维护")
                             FSwitch { Layout.fillWidth: true; text: t("Create a separate ComfyUI environment", "创建独立的 ComfyUI 环境"); checked: s.form.separate; onToggled: backend.edit("separate", checked) }
                             FDivider {}
-                            FSwitch { Layout.fillWidth: true; text: t("Repair the engine installation", "修复引擎安装"); checked: s.form.repair; onToggled: backend.edit("repair", checked) }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 16
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 2
+                                    FText { text: t("Repair FreeVideo", "修复 FreeVideo"); Layout.fillWidth: true; color: s.can_repair ? theme.text : theme.disabled }
+                                    FText {
+                                        text: s.can_repair ? t("Checks this installation and reinstalls anything missing or changed. Models and videos are kept.", "检查这份安装，重新安装缺失或被改动的部分。模型和视频都会保留。")
+                                                           : t("Available once FreeVideo is installed.", "安装完成后可用。")
+                                        font.pixelSize: theme.micro; color: theme.muted; Layout.fillWidth: true
+                                    }
+                                }
+                                FButton { objectName: "repairButton"; text: t("Repair", "修复"); enabled: s.can_repair; onClicked: { settingsOpen = false; backend.action("repair", false) } }
+                            }
                         }
                     }
                     Rectangle {
