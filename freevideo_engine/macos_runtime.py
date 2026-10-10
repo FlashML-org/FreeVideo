@@ -95,7 +95,7 @@ class Engine:
                  reserve_bytes=2 * 2**30, query_chunk=128, ff_chunk=256, projection_chunk=256,
                  weight_decoder='cpu', budget_ceiling_bytes=None, attention_chunk=None, task='t2va', canvas=None,
                  head_chunk=4, window_batch=1, attention_impl='torch', fast_kernels=False,
-                 resident_bytes=0, attention_batch_bytes=1 << 29, plan_compute=False):
+                 resident_bytes=0, attention_batch_bytes=1 << 29, plan_compute=False, memory_retry=False):
         attention_chunk = projection_chunk if attention_chunk is None else attention_chunk
         if type(attention_chunk) is not int or attention_chunk < 1:
             raise ValueError('MPS attention row chunk must be a positive integer')
@@ -106,9 +106,11 @@ class Engine:
             raise ValueError('Native window attention must use torch or mlx')
         if type(resident_bytes) is not int or resident_bytes < 0:
             raise ValueError('MPS retained layer bytes must be a nonnegative integer')
-        if type(plan_compute) is not bool:
+        if type(plan_compute) is not bool or type(memory_retry) is not bool:
             raise ValueError('MPS compute planning must be explicitly enabled or disabled')
-        self.plan_compute, self.compute = plan_compute, None
+        # A stage retried after running out of unified memory plans its smallest,
+        # grouped-projection partitions whatever the fresh allowance suggests.
+        self.plan_compute, self.memory_retry, self.compute = plan_compute, memory_retry, None
         self._ff_originals = []
         self._block_originals = []
         self.block_policy = None
@@ -292,8 +294,8 @@ class Engine:
     def _bind_attention(self, *, head_chunk, row_chunk, ff_chunk, bounded=False):
         """Bind one phase's attention and owned-buffer policy as a unit.
 
-        Automatic planning currently never enables the bounded candidate. Its
-        explicit binding is available for complete native acceptance. Validate
+        Planning enables the bounded candidate only where the smallest original
+        partition does not fit, or for a memory retry (macos_compute.plan). Validate
         the block contract before changing attention, and restore the captured
         upstream block methods when returning to the reference path.
         """
@@ -401,7 +403,8 @@ class Engine:
         from .backends.mps_linear import install as install_linear
         rows = sequence_tokens(canvas, prompt_rows)
         computed = plan(self.policy['effective_allocator_limit_bytes'], rows['total'],
-                        frames=canvas['latent_frames'], layers=len(self.model.transformer_blocks))
+                        frames=canvas['latent_frames'], layers=len(self.model.transformer_blocks),
+                        allow_bounded=True, force_bounded=getattr(self, 'memory_retry', False))
         computed.update(tokens=rows['total'], packed_rows=rows, frames=canvas['latent_frames'],
                         admission='enforced allocator cap, after conditioning; before sampling')
         for module, original in self._ff_originals:

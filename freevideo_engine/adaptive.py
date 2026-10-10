@@ -70,6 +70,9 @@ def classify_failure(error, metrics=None):
     else:
         kind, outcome, retry = 'code_error', 'code_failure', False
     result = dict(kind=kind, outcome=outcome, retryable=retry, reason=str(error))
+    if isinstance(details.get('runtime_libraries'), dict):
+        # Found by the worker that loaded the libraries; the parent cannot see them.
+        result['runtime_libraries'] = details['runtime_libraries']
     allocation = getattr(error, 'freevideo_allocation', details.get('allocation'))
     if isinstance(allocation, dict) and type(allocation.get('fp8_ff_activation_stash_bytes')) is int and allocation['fp8_ff_activation_stash_bytes'] > 0:
         result['allocation'] = {'fp8_ff_activation_stash_bytes': allocation['fp8_ff_activation_stash_bytes']}

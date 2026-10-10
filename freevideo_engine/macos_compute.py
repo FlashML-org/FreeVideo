@@ -13,6 +13,8 @@ compute per step short.
 """
 GiB = 2**30
 HIDDEN, HEADS, HEAD_DIM, FF = 5376, 56, 128, 17920
+# MiniMax-H3's audio clock matches Diffusers' audio_latent_num_frames and MINIMAX_H3_AUDIO_CHANNELS.
+VIDEO_FPS, AUDIO_LATENT_FPS, AUDIO_CHANNELS = 24, 40, 2
 LAYER_BYTES = 856_311_776          # one decoded BF16 transformer block
 PREFETCH_BYTES = 512 << 20        # total bound for one layer, including LoRA sidecars
 RESIDENT_LIMIT = 50
@@ -86,23 +88,28 @@ def sequence_tokens(canvas, prompt_rows):
 
 
 def plan(budget_bytes, tokens, *, frames=72, reserve_bytes=GiB, layers=50,
-         allow_retention=True, allow_bounded=False):
+         allow_retention=True, allow_bounded=False, force_bounded=False):
     """Head group, row chunks and retained-layer bytes for one sampling stage."""
     if type(budget_bytes) is not int or budget_bytes <= 0 or type(tokens) is not int or tokens <= 0:
         raise ValueError('Compute planning needs a positive byte budget and token count')
-    if type(allow_bounded) is not bool:
+    if type(allow_bounded) is not bool or type(force_bounded) is not bool:
         raise ValueError('Bounded planning must be explicitly enabled or disabled')
+    if force_bounded and not allow_bounded:
+        raise ValueError('Forced bounded planning must also allow bounded buffers')
     available = budget_bytes - reserve_bytes - LAYER_BYTES - PREFETCH_BYTES
     # Keep a tenth of the allowance unplanned for allocator fragmentation.
-    group, chunk, window = next(((g, c, w) for g, c, w in CANDIDATES
-                                 if working_bytes(tokens, g, ff_chunk=c, window_bytes=w, frames=frames)
-                                 <= .9 * available),
-                                CANDIDATES[-1])
+    group, chunk, window = CANDIDATES[-1] if force_bounded else next(
+        ((g, c, w) for g, c, w in CANDIDATES
+         if working_bytes(tokens, g, ff_chunk=c, window_bytes=w, frames=frames) <= .9 * available),
+        CANDIDATES[-1])
     working = working_bytes(tokens, group, ff_chunk=chunk, window_bytes=window, frames=frames)
-    # The candidate is opt-in until native complete-product acceptance. Cover
-    # only the smallest existing partition; do not increase head/FF groups or
-    # spend the released buffers on additional retained weights.
-    bounded = allow_bounded and (group, chunk, window) == CANDIDATES[-1]
+    # Grouped projections and owned buffers cover only the smallest partition,
+    # and only where its full Q/K/V do not fit (a 10 s 1344x768 second pass on
+    # a 24 GiB Mac with other applications open) or after a stage ran out of
+    # memory. Allowances the original partitions fit keep their path and
+    # speed; do not increase head/FF groups or retain weights with the
+    # released buffers.
+    bounded = allow_bounded and (group, chunk, window) == CANDIDATES[-1] and (force_bounded or working > available)
     if bounded:
         working = bounded_working_bytes(tokens, frames=frames)
     # A retained layer saves one 0.12 s load per step on an M5, against 2.7 s
@@ -121,6 +128,48 @@ def plan(budget_bytes, tokens, *, frames=72, reserve_bytes=GiB, layers=50,
         result.update(bounded_buffers=True,
             scope='Grouped projections and owned intermediate buffers; unified working estimate is not a physical capacity result.')
     return result
+
+
+def generated_audio_tokens(frames):
+    return AUDIO_CHANNELS * int(round(frames / VIDEO_FPS * AUDIO_LATENT_FPS))
+
+
+def request_admission(resource, sampling, *, preview=False, working_set_bytes=None, reference_tokens=0,
+                      text_tokens=None):
+    """Before any model loads: does this request's largest sampling pass fit?
+
+    Each sampling stage plans against the request's allocator capacity, live
+    available memory after the reserve and Metal's recommended working set,
+    and takes grouped projections when its full Q/K/V do not fit. Clamp the
+    preflight capacity and live allowance to that recommendation when known.
+    Compare the smallest such plan now, so a second pass that cannot fit is
+    known before a 20-minute first pass. 'refuse': more than this Mac can ever
+    allow (a lower resolution or shorter video is needed); 'tight': more than
+    other applications currently leave free; 'fits' otherwise. Approximate rows
+    (video + 1024) precede conditioning; live memory still decides later.
+    Add the known reference video and audio rows to that estimate.
+    With text_tokens, use the actual text rows and generated audio clock instead.
+    """
+    from .geometry import geometry
+    if type(reference_tokens) is not int or reference_tokens < 0:
+        raise ValueError('Request admission needs a nonnegative integer reference token count')
+    if text_tokens is not None and (type(text_tokens) is not int or text_tokens <= 0):
+        raise ValueError('Request admission needs a positive integer text token count')
+    phase = 'refinement' if sampling['enabled'] and not preview else 'first-pass'
+    canvas = sampling['second' if phase == 'refinement' else 'first']
+    shape = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
+    conditioning_tokens = 1024 if text_tokens is None else text_tokens + generated_audio_tokens(canvas['frames'])
+    tokens, frames = shape['video_tokens'] + conditioning_tokens + reference_tokens, shape['latent_frames']
+    needed = bounded_working_bytes(tokens, frames=frames) + GiB + LAYER_BYTES + PREFETCH_BYTES
+    capacity, allowance = resource['allocator_capacity_bytes'], resource['allocator_bytes']
+    if working_set_bytes is not None:
+        capacity, allowance = min(capacity, working_set_bytes), min(allowance, working_set_bytes)
+    state = 'refuse' if needed > capacity else 'tight' if needed > allowance else 'fits'
+    return dict(state=state, phase=phase, needed_bytes=int(needed), allowance_bytes=int(allowance),
+                capacity_bytes=int(capacity), tokens=tokens, width=canvas['width'], height=canvas['height'],
+                frames=canvas['frames'], working_set_bytes=working_set_bytes, reference_tokens=reference_tokens,
+                text_tokens=text_tokens,
+                scope='Smallest grouped-projection plan of the largest sampling pass, before model load.')
 
 
 def shared_sampling_plan(budget_bytes, sampling, prompt_rows, *, phase_reference_tokens=None):

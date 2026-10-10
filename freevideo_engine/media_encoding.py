@@ -174,7 +174,7 @@ def prepare(media, canvas, directory):
                 del previous
                 count = count - (count - 5) % 17
                 if count < 22:
-                    raise ValueError('Reference video needs at least 22 normalized frames for H3/Qwen temporal encoding')
+                    raise ValueError('The reference video is too short; it needs to be at least about 1 s long.')
                 pixels.flush()
                 ref.update(pixels=str(target), frames=count, normalized_fps=24)
                 used = count / 24.

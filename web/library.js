@@ -12,6 +12,36 @@ const view = file => {
 };
 let opened;
 
+export async function libraryPage(t, {limit = 24, before = null, signal} = {}) {
+    const query = new URLSearchParams({limit: String(limit)});
+    if (before) query.set('before', before);
+    const response = await api.fetchApi('/freevideo/library?' + query, {signal});
+    if (response.status === 404) throw Object.assign(new Error(t('Restart ComfyUI to open your creations after updating.', '更新后重启 ComfyUI，即可打开作品。')), {restart: true});
+    if (!response.ok) throw new Error(t('Could not load your creations. Try Refresh.', '作品暂时无法读取，请点击刷新。'));
+    return response.json();
+}
+
+export function videoTimestamp(row, t) {
+    const value = new Date(row.created_at);
+    return Number.isNaN(value.getTime()) ? t('Saved video', '已保存的视频')
+        : value.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+}
+
+export function videoDimensions(row) {
+    const g = row.geometry || {}, parts = [];
+    // A preview's file is its first pass; geometry names the finished size.
+    const shown = row.preview && row.preview_geometry?.width ? row.preview_geometry : g;
+    if (shown.width && shown.height) parts.push(`${shown.width} × ${shown.height}`);
+    const duration = g.seconds || (g.frames && g.frames / (g.fps || 24));
+    if (duration) parts.push(`${Number(duration).toFixed(1)} s`);
+    return parts.join(' · ');
+}
+
+export function videoThumbnailURL(row) {
+    const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
+    return api.apiURL('/freevideo/library/thumbnail?' + new URLSearchParams({id}));
+}
+
 export async function latestVideo() {
     const response = await api.fetchApi('/freevideo/library?limit=1');
     if (!response.ok) return null;
@@ -89,20 +119,7 @@ export function openLibrary(t, {upscale = null} = {}) {
     const rows = new Map(), cards = new Map();
     const abort = new AbortController();
     const narrow = matchMedia('(max-width: 680px)');
-    const timestamp = row => {
-        const value = new Date(row.created_at);
-        return Number.isNaN(value.getTime()) ? t('Saved video', '已保存的视频')
-            : value.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
-    };
-    const dimensions = row => {
-        const g = row.geometry || {}, parts = [];
-        // A preview's file is its first pass; geometry names the finished size.
-        const shown = row.preview && row.preview_geometry?.width ? row.preview_geometry : g;
-        if (shown.width && shown.height) parts.push(`${shown.width} × ${shown.height}`);
-        const duration = g.seconds || (g.frames && g.frames / (g.fps || 24));
-        if (duration) parts.push(`${Number(duration).toFixed(1)} s`);
-        return parts.join(' · ');
-    };
+    const timestamp = row => videoTimestamp(row, t), dimensions = videoDimensions;
     function releasePlayer() {
         if (!player) return;
         player.pause(); player.removeAttribute('src'); player.load(); player = null;
@@ -184,6 +201,8 @@ export function openLibrary(t, {upscale = null} = {}) {
                 : error.message === 'in-use' ? t('Not deleted: its second pass is running, or the video is still open. Try again in a moment.', '未删除：正在用它跑二采，或视频仍被占用，请稍后再试。')
                 : t('Could not delete this creation.', '无法删除这条作品。'));
         }
+        // Other views of the library (the studio's Recent videos) drop it too.
+        window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row.video}}));
         if (disposed) return;
         rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video);
         if (selected === row.video) {
@@ -209,8 +228,7 @@ export function openLibrary(t, {upscale = null} = {}) {
         card.setAttribute('aria-pressed', String(row.video === selected));
         const picture = el('div', null, 'fv-library-picture');
         const image = el('img'); image.alt = ''; image.decoding = 'async';
-        const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
-        image.dataset.src = api.apiURL('/freevideo/library/thumbnail?' + new URLSearchParams({id}));
+        image.dataset.src = videoThumbnailURL(row);
         image.onerror = () => { image.hidden = true; };
         picture.append(image);
         if (row.preview) picture.append(el('span', t('First-pass preview', '一采预览'), 'fv-preview-badge'));
@@ -222,12 +240,7 @@ export function openLibrary(t, {upscale = null} = {}) {
         loading = true; arrivals = []; refresh.disabled = more.disabled = true;
         message.textContent = rows.size ? '' : t('Loading your creations…', '正在读取作品…');
         try {
-            const query = new URLSearchParams({limit: '24'});
-            if (appendPage && next) query.set('before', next);
-            const response = await api.fetchApi('/freevideo/library?' + query, {signal: abort.signal});
-            if (response.status === 404) throw new Error(t('Restart ComfyUI to open your creations after updating.', '更新后重启 ComfyUI，即可打开作品。'));
-            if (!response.ok) throw new Error(t('Could not load your creations. Try Refresh.', '作品暂时无法读取，请点击刷新。'));
-            const data = await response.json(); if (disposed) return;
+            const data = await libraryPage(t, {before: appendPage ? next : null, signal: abort.signal}); if (disposed) return;
             if (!appendPage) { thumbnails.disconnect(); grid.replaceChildren(); cards.clear(); rows.clear(); }
             for (const row of data.items || []) append(row);
             for (const row of arrivals) append(row, true);

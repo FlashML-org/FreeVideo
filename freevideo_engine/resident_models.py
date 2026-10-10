@@ -315,7 +315,10 @@ class ModelBank:
             # The streamed decoder installs offload hooks on a different model;
             # its workspace cannot credit a cached full-GPU decoder it won't use.
             self.drop('video_vae', 'The requested streamed decoder cannot reuse the full-GPU VAE')
-            need = (options.get('resident_blocks', 0)*268574720 + 4*GiB)
+            from .policy import decoder_block_bytes
+            need = (options.get('resident_blocks', 0)
+                    * decoder_block_bytes(linear_compute_cache=bool(options.get('linear_compute_cache')))
+                    + 4*GiB)
         else:
             need = 15*GiB + max(0, (canvas.get('video_tokens', 72576)-72576)*30000)
         need = self.peaks.get(('decode', key(dict(options=options, canvas=canvas))), need)

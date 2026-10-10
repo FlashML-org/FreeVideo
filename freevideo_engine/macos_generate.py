@@ -83,7 +83,7 @@ def encoder_checkpoint(args):
                     folders.append(base / folder.strip())
     matches = {(folder / filename).resolve() for folder in folders if (folder / filename).is_file()}
     if len(matches) != 1:
-        raise ValueError('Expected one installed native H3 encoder checkpoint; run Install / repair')
+        raise ValueError('Expected one installed native H3 encoder checkpoint. In the FreeVideo launcher, open Settings and click Repair.')
     return matches.pop()
 
 
@@ -98,6 +98,22 @@ def conditioning_cache(checkpoint, library):
     identity = dict(backend='mps', macos=platform.mac_ver()[0], checkpoint=fingerprint(checkpoint),
         torch=importlib.metadata.version('torch'), sources=sources, precision='native-h3-fp32-v1')
     return InputCache(identity)
+
+
+def _check_admission(admission, sampling):
+    if admission['state'] == 'refuse':
+        # error_panel.js shows the lower-resolution advice for this text.
+        raise MemoryError('Generation needs at least %.1f GiB of unified memory for %s at %d × %d; '
+                          'this Mac can allocate at most %.1f GiB.' % (
+                              math.ceil(admission['needed_bytes'] / GiB * 10) / 10,
+                              'the second pass' if admission['phase'] == 'refinement' else 'this video',
+                              admission['width'], admission['height'],
+                              math.floor(admission['capacity_bytes'] / GiB * 10) / 10))
+    if admission['state'] == 'tight':
+        print(json.dumps(dict(event='unified_memory_tight', phase=admission['phase'],
+                              needed_bytes=admission['needed_bytes'],
+                              allowance_bytes=admission['allowance_bytes'],
+                              first_pass_steps=sampling['base_steps'])), flush=True)
 
 
 def run(args):
@@ -153,6 +169,18 @@ def run(args):
         report.update(geometry=canvas, sampling_plan=sampling, profile=dict(policy=resource,
             engine=dict(device_backend='mps', task=task, attention='mps', steps=sampling['base_steps'])),
             encoder_mode='native H3 encoder library child' if args.prompt_file else 'preencoded shared conditioning')
+        # Known before the text encoder and a 20-minute first pass: whether the
+        # largest sampling pass can fit, and whether other applications leave it room.
+        from .macos_compute import generated_audio_tokens, request_admission
+        from .backends.mps import recommended_working_set_bytes
+        working_set = recommended_working_set_bytes()
+        conditioning_info = media.get('conditioning_info', {})
+        reference_tokens = (conditioning_info.get('reference_video_tokens', 0)
+                            + conditioning_info.get('reference_audio_tokens', 0))
+        admission = report['memory_admission'] = request_admission(resource, sampling, preview=preview,
+                                                                  working_set_bytes=working_set,
+                                                                  reference_tokens=reference_tokens)
+        _check_admission(admission, sampling)
         if preview:
             report['preview'] = dict(geometry=dict(sampling['first'], fps=canvas['fps']))
         if refine_source:
@@ -190,6 +218,7 @@ def run(args):
                 prior = refine_source['report']
                 if prior.get('encoding'):
                     report['encoding'] = dict(prior['encoding'], reused_from_preview=True)
+                conditioning_info = prior.get('encoding', {}).get('conditioning_info', {})
                 task = prior.get('profile', {}).get('engine', {}).get('task', task)
                 report['profile']['engine']['task'] = task
                 print(json.dumps(dict(event='conditioning_reused', source='preview')), flush=True)
@@ -220,7 +249,8 @@ def run(args):
                     print(json.dumps(dict(event='conditioning_cache_hit')), flush=True)
                 report['input_cache'] = dict(conditioning_hit=bool(metrics.get('cache_hit')))
                 report['encoding'] = metrics
-                encoded_task = metrics.get('conditioning_info', {}).get('task')
+                conditioning_info = metrics.get('conditioning_info', {})
+                encoded_task = conditioning_info.get('task')
                 if task.startswith('ref2va'):
                     if (encoded_task not in ('ref2va', 'ref2va_audio', 'ref2va_av') or
                             args.task in ('ref2va_audio', 'ref2va_av') and args.task != encoded_task):
@@ -231,6 +261,23 @@ def run(args):
                     raise ValueError('Native encoder did not return the requested keyframe task')
             if not conditioning.is_file():
                 raise FileNotFoundError('Conditioning is missing: ' + str(conditioning))
+            reference_tokens = (conditioning_info.get('reference_video_tokens', 0)
+                                + conditioning_info.get('reference_audio_tokens', 0))
+            text_tokens = conditioning_info.get('text_tokens')
+            if text_tokens is None:
+                shape = report.get('encoding', {}).get('shape')
+                text_tokens = shape[0] if shape else None
+            if refine_source and not conditioning_info:
+                prior_admission = prior.get('memory_admission', {})
+                reference_tokens = prior_admission.get('reference_tokens', reference_tokens)
+                if text_tokens is None:
+                    text_tokens = prior_admission.get('text_tokens')
+            conditioning_tokens = 1024 if text_tokens is None else text_tokens + generated_audio_tokens(admission['frames'])
+            if conditioning_tokens + reference_tokens > 1024 + admission['reference_tokens']:
+                report['memory_admission_before_encoding'] = admission
+                admission = report['memory_admission'] = request_admission(resource, sampling, preview=preview,
+                    working_set_bytes=working_set, reference_tokens=reference_tokens, text_tokens=text_tokens)
+                _check_admission(admission, sampling)
             report['phase'] = 'engine'
             save(output.with_suffix('.request.json'), report)
             print(json.dumps(dict(event='sampling_plan', **sampling, **({'preview': True} if preview else {}))), flush=True)

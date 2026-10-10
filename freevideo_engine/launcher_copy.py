@@ -2,6 +2,7 @@
 import re
 
 from .terminal_ui import clean
+from .model_status import NAMES
 
 
 SOURCES = {
@@ -35,8 +36,11 @@ ZH = dict([
     ('Check installed packages', '检查运行环境'), ('Save installed versions', '保存安装信息'),
     ('Check build tools', '检查编译工具'), ('Build SageAttention 2', '准备 GPU 加速'),
     ('Install SageAttention 2', '安装 GPU 加速组件'), ('Prepare dependencies', '准备运行组件'),
-    ('Install components in parallel', '安装运行组件'),
-    ('Install with space saver', '极限省空间安装'),
+    # The parallel phase also downloads the models (internal names stay as they are).
+    ('Install components in parallel', '安装组件和模型'),
+    ('Install with space saver', '安装组件和模型（极限省空间）'),
+    ('Download the faster model', '下载更快的模型'), ('Model downloaded', '模型已下载'),
+    ('Model download incomplete', '模型下载未完成'),
     ('Release installation cache', '释放安装缓存'),
     ('Install acceleration and download models', '安装加速组件和下载模型'),
     ('Verify installation on your GPU', '检查 GPU 加速'), ('Finish setup', '完成安装'),
@@ -110,6 +114,19 @@ ZH = dict([
     ('setup', '安装'), ('initialize', '初始化'), ('launch', '启动'),
     ('Hugging Face · Video', 'Hugging Face · 视频'), ('Hugging Face · Audio', 'Hugging Face · 音频'),
 ])
+ZH.update(NAMES.values())
+# Card lines for steps that only report counts (the terminal keeps the counts).
+ZH.update([('Downloading components', '正在下载组件'), ('Preparing components', '正在准备组件'),
+           ('Downloading runtime packages', '正在下载运行组件'), ('Finding existing models', '正在查找已有模型')])
+
+
+def size_text(value, decimal_sizes=False):
+    if decimal_sizes:
+        for unit, scale, digits in (('TB', 1e12, 2), ('GB', 1e9, 2), ('MB', 1e6, 1)):
+            if value >= scale:
+                return ('%.*f' % (digits, value / scale)).rstrip('0').rstrip('.') + ' ' + unit
+        return '%d KB' % round(value / 1e3)
+    return '%.1f GiB' % (value / 2**30) if value >= 2**30 else '%d MiB' % (value // 2**20)
 
 
 def source_name(value, zh=False):
@@ -119,7 +136,11 @@ def source_name(value, zh=False):
 def display(value, zh=False):
     value = clean(value)
     if not zh:
-        return {'检查配套包': 'Checking packages', '下载模型': 'Downloading models'}.get(value, value)
+        # English names for stages whose internal names describe how they run, not what they do.
+        return {'检查配套包': 'Checking packages', '下载模型': 'Downloading models',
+                'Install components in parallel': 'Install components and models',
+                'Install with space saver': 'Install components and models (space saver)',
+                'Optimize model storage': 'Prepare models'}.get(value, value)
     if value in ZH:
         return ZH[value]
     if value in SOURCES:
@@ -152,5 +173,5 @@ def display(value, zh=False):
 
 
 def progress_view(event, zh=False):
-    return {key: display(value, zh) if key in ('label', 'detail') else value
+    return {key: display(value, zh) if key in ('label', 'detail', 'name') else value
             for key, value in event.items()}

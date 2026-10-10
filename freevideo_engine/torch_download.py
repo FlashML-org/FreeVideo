@@ -37,6 +37,7 @@ def fetch(row, root, family, networking, env, ui, check):
         names = list(row['sources'])
     candidates = [(name, row['sources'][name]) for name in names if name in row['sources']]
     key = 'download-' + row['filename']
+    name = 'PyTorch' if row['package'] == 'torch' else row['package']
     source = ''
     ui.begin(key, 'Download PyTorch + CUDA', detail=row['filename'])
     success = False
@@ -44,7 +45,8 @@ def fetch(row, root, family, networking, env, ui, check):
     def feedback(event):
         nonlocal source
         source = {'official': 'PyTorch', 'nju': 'Nanjing University mirror'}.get(event.get('source'), '')
-        ui.update(key, detail=row['package'] + (' · Source: ' + source if source else '') +
+        ui.update(key, activity='resume' if event['action'] in ('retry', 'route-retry') else '', name=name,
+                  detail=row['package'] + (' · Source: ' + source if source else '') +
                   ' · ' + event['action'] + (' · ' + event['reason'] if event.get('reason') else ''))
 
     def progress(done, total, speed):
@@ -52,6 +54,7 @@ def fetch(row, root, family, networking, env, ui, check):
         unit, divisor = ('GiB', 2**30) if total >= 2**30 else ('MiB', 2**20)
         rate = '%.1f MiB/s' % (speed / 2**20) if speed >= 2**20 else '%.1f KiB/s' % (speed / 1024)
         ui.update(key, done=done, total=total, rate=speed, unit='bytes', scope=row['filename'],
+                  activity='download', name=name,
                   detail='%s · %.2f / %.2f %s · %s%s' % (row['package'], done/divisor, total/divisor,
                       unit, rate, ' · Source: ' + source if source else ''))
 
@@ -75,19 +78,35 @@ def install(uv, python, pins, cuda, *, root, networking, env, ui, run, constrain
     check = check or (lambda: None)
     check()
     installed = installed_versions(python)
-    if all(installed.get(row['package']) == row['version'] for row in selected):
+    # The right versions can still hold changed files: a cuDNN library
+    # replaced in this environment fails every request with
+    # CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH, and setup or repair would
+    # otherwise find nothing to do.
+    from .runtime_libraries import damaged, reinstall_arguments
+    broken = damaged(python)
+    if all(installed.get(row['package']) == row['version'] for row in selected) and not broken:
         return True
     family = 'torch-' + cuda + '-' + next(row['version'].split('+')[0] for row in selected if row['package'] == 'torch')
-    requirements = []
-    for row in selected:
-        if installed.get(row['package']) == row['version']:
-            requirements.append(row['package'] + '==' + row['version'])
-        else:
-            requirements.append(fetch(row, root, family, networking, env, ui, check))
-    command = [uv, 'pip', 'install', '--python', python, *requirements, *constraints]
-    # The large CUDA wheels are now local. Small ordinary dependencies use the
-    # measured PyPI mirrors, without accidentally selecting a different torch.
-    network.package_command(networking, 'pypi', lambda attempt_env, _: run(command, attempt_env), env)
+
+    def install_packages(present, fresh):
+        requirements = []
+        for row in selected:
+            if present.get(row['package']) == row['version'] and row['package'] not in fresh:
+                requirements.append(row['package'] + '==' + row['version'])
+            else:
+                requirements.append(fetch(row, root, family, networking, env, ui, check))
+        command = [uv, 'pip', 'install', '--python', python, *reinstall_arguments(fresh), *requirements, *constraints]
+        # The large CUDA wheels are now local. Small ordinary dependencies use the
+        # measured PyPI mirrors, without accidentally selecting a different torch.
+        network.package_command(networking, 'pypi', lambda attempt_env, _: run(command, attempt_env), env)
+
+    install_packages(installed, broken)
+    if not broken:
+        # A new environment links whatever the uv cache holds, so a file
+        # changed there arrives with it. Check once; unpack fresh files if so.
+        broken = damaged(python)
+        if broken:
+            install_packages(installed_versions(python), broken)
     return True
 
 

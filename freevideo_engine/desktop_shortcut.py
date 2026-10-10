@@ -382,7 +382,8 @@ def _write_entry(path, content, *, trusted=False):
     os.replace(temporary, path)
     if trusted and shutil.which('gio'):
         # GNOME asks before running a desktop launcher it has not been told to trust.
-        subprocess.run(['gio', 'set', str(path), 'metadata::trusted', 'true'],
+        from .linux_bundle import child_environment
+        subprocess.run(['gio', 'set', str(path), 'metadata::trusted', 'true'], env=child_environment(),
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return dict(status='created', path=str(path))
 

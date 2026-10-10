@@ -86,4 +86,4 @@ def check_selected():
     module = importlib.import_module('flash_attn.cute.flash_fwd')
     digest = hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
     if digest == ORIGINAL:
-        raise RuntimeError('FA4 b26 needs its SM120 valid-tile fix. Run freevideo setup --fa4-guard, then start a fresh process.')
+        raise RuntimeError('The attention speed-up component on this computer needs an update. Run freevideo setup --fa4-guard in a terminal, then restart FreeVideo.')

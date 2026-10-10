@@ -178,8 +178,8 @@ def prepare(cache, adapters, output_root=None):
     manifest_path = cache / 'manifest.json'
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
     if manifest.get('precision') == 'int8':
-        raise ValueError('This LoRA also changes non-linear or modulation weights, which cannot be merged '
-                         'into the int8 model yet. LoRAs that only adapt linear layers work.')
+        raise ValueError('This LoRA changes parts of the model that the int8 version cannot merge yet, '
+                         'so it cannot be used for now. LoRAs that change only linear layers work.')
     if manifest.get('precision') != 'fp8':
         raise ValueError('LoRA variants require the prepared FP8 model')
     from .adaln_assets import SLIM_FORMATS, restore_projections

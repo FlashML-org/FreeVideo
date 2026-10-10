@@ -20,11 +20,11 @@ from .package_progress import PackageOutput
 from .terminal_ui import LogProgress, TerminalUI
 
 
-def prepare(root, comfy, run=None, download=False):
+def prepare(root, comfy, run=None, download=False, repair=False):
     root, comfy = Path(root).resolve(), Path(comfy).resolve()
     _, machine = installation(environ={'FREEVIDEO_HOME': str(root)})
     with runtime_lock(root / 'launcher' / 'host-setup.lock', inherit=False):
-        return _prepare(root, comfy, machine, run, download)
+        return _prepare(root, comfy, machine, run, download, repair)
 
 
 def prepare_for_setup(root, comfy, plan_path):
@@ -60,7 +60,7 @@ def previous_environment(root, identity):
     return None
 
 
-def _prepare(root, comfy, machine, run, download):
+def _prepare(root, comfy, machine, run, download, repair=False):
     source = Path(__file__).resolve().parents[1]
     env = isolated_environment(root, source)
     if machine.get('git'):
@@ -160,7 +160,10 @@ def _prepare(root, comfy, machine, run, download):
         env_root = previous_environment(root, identity) or env_root
     python = env_root / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     receipt = env_root / 'freevideo-host.json'
-    if not (python.is_file() and receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')) == identity):
+    # The receipt records the dependency contract, not that every package is
+    # still there: a repair installs and checks the packages again. uv only
+    # verifies what is already installed.
+    if repair or not (python.is_file() and receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')) == identity):
         uv = root / 'tools' / ('uv.exe' if os.name == 'nt' else 'uv' if sys.platform == 'darwin' else 'uv-x86_64-unknown-linux-gnu/uv')
         if not uv.is_file():
             raise ValueError('The engine download tool is missing. Run engine repair first.')
@@ -214,12 +217,13 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--comfy', type=Path, required=True)
     parser.add_argument('--download-comfy', action='store_true', help='Download the pinned ComfyUI application into a new folder')
+    parser.add_argument('--repair', action='store_true', help='Install and check the ComfyUI packages again, even in a recorded environment')
     parser.add_argument('--setup-plan', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.setup_plan:
         prepare_for_setup(args.root, args.comfy, args.setup_plan)
     else:
-        prepare(args.root, args.comfy, download=args.download_comfy)
+        prepare(args.root, args.comfy, download=args.download_comfy, repair=args.repair)
 
 
 if __name__ == '__main__':

@@ -22,11 +22,15 @@ def tables():
     for bank in banks:
         for table in bank.get('tables', []):
             count = len(table['identity']['timesteps'])
-            if count not in (3, 8, 12, 16, 20) or table['directory'] in seen:
+            # Every first-pass count a request accepts (two_pass.validate_steps).
+            if not 1 <= count <= 32 or table['directory'] in seen:
                 continue
             seen.add(table['directory'])
+            # The tables for other step counts (about 54 GB) are fetched only
+            # by the request that uses one; offline packs leave them out.
             result.append(dict(table, download={k: bank[k] for k in ('repo', 'revision', 'prefix')},
-                               on_demand=bool(bank.get('on_demand'))))
+                               on_demand=bool(bank.get('on_demand')),
+                               offline_pack=bank.get('offline_pack', True) is not False))
     return result
 
 

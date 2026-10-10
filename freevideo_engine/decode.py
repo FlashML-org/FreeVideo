@@ -117,7 +117,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
     load_seconds = time.perf_counter() - started
     decode_started = time.perf_counter()
     phase('video_decode')
-    print(json.dumps({'event': 'decode_phase', 'phase': 'Decoding video tiles'}), flush=True)
+    print(json.dumps({'event': 'decode_phase', 'phase': 'Decoding the video'}), flush=True)
     offload_stats = None
     rgb_mapping = None
     streamed_timings = {}

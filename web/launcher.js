@@ -1,6 +1,7 @@
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { restorePromptDraft } from './prompt_draft.js';
+import { takePortMarker } from './port_notice.js';
 
 // health.js names what failed; files loaded before it queue their reports.
 const health = item => (window.__freevideoHealth ||= []).push(item);
@@ -38,6 +39,7 @@ app.registerExtension({
     name: 'FreeVideo.Launcher',
     afterConfigureGraph() { configured = performance.now(); },
     async setup() {
+        takePortMarker();
         const url = new URL(window.location.href);
         if (url.searchParams.get('freevideo') !== 'launch') return;
         url.searchParams.delete('freevideo');

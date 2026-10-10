@@ -107,11 +107,11 @@ class Progress:
         self.callback = callback
         self.started = self.tick = time.monotonic()
 
-    def send(self, phase, path='', done=0, total=0, *, force=False):
+    def send(self, phase, path='', done=0, total=0, *, force=False, name=''):
         now = time.monotonic()
         if self.callback and (force or now-self.tick >= .5):
             elapsed = now-self.started
-            self.callback(dict(phase=phase, file=Path(path).name if path else '', done_bytes=done,
+            self.callback(dict(phase=phase, name=name, file=Path(path).name if path else '', done_bytes=done,
                 total_bytes=total, elapsed_seconds=elapsed,
                 bytes_per_second=done/elapsed if elapsed and total else None))
             self.tick = now
@@ -120,6 +120,8 @@ class Progress:
 def hash_source(path, row, progress=None, output=None):
     """Bounded RAM hashing, optionally copying in the same sequential read."""
     import hashlib
+    from .model_status import NAMES, family
+    name = NAMES[family(row)][0]
     before = fingerprint(path)
     if before['bytes'] != row['bytes'] or not stat.S_ISREG(path.stat().st_mode):
         raise ValueError('Local model size/type changed: ' + str(path))
@@ -130,7 +132,7 @@ def hash_source(path, row, progress=None, output=None):
     phase = 'copy' if output is not None else 'verify'
     progress = progress or Progress()
     progress.started = time.monotonic()
-    progress.send(phase, path, total=row['bytes'], force=True)
+    progress.send(phase, path, total=row['bytes'], force=True, name=name)
     with path.open('rb') as stream:
         for block in iter(lambda: stream.read(BLOCK), b''):
             if done+len(block) > row['bytes']:
@@ -140,10 +142,10 @@ def hash_source(path, row, progress=None, output=None):
                 output.write(block)
             discard_read_cache(stream.fileno(), done, len(block))
             done += len(block)
-            progress.send(phase, path, done, row['bytes'])
+            progress.send(phase, path, done, row['bytes'], name=name)
     if fingerprint(path) != before or done != row['bytes']:
         raise ValueError('Local model changed while being read: ' + str(path))
-    progress.send(phase, path, done, row['bytes'], force=True)
+    progress.send(phase, path, done, row['bytes'], force=True, name=name)
     return digest.hexdigest(), before
 
 

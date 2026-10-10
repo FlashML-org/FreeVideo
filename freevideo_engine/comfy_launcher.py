@@ -600,7 +600,8 @@ class Launcher:
         if hardware.get('gpu_name'):
             summary.append(hardware['gpu_name'])
         if 'model_download_bytes' in plan:
-            summary.append(self.t('To download ', '需下载 ') + '%.1f GiB' % (plan['model_download_bytes']/2**30))
+            from .bootstrap import download_bytes
+            summary.append(self.t('To download ', '需下载 ') + '%.1f GiB' % (download_bytes(plan)/2**30))
         if state == 'review' and row.get('disks'):
             needed = sum(d.get('needed_bytes', 0) for d in row['disks'])
             summary.append(self.t('Peak disk space ~', '预计磁盘峰值 ~') + '%.1f GiB' % (needed/2**30))
@@ -693,7 +694,7 @@ class Launcher:
         self.poll_timer = self.window.after(120, self.poll)
 
     def render_progress(self, row, task, progress):
-        from .launcher_copy import display
+        from .launcher_copy import display, progress_view
         overall = row.get('overall') or task.get('phase_progress') or dict(done=0, total=1)
         total, done = overall.get('total'), overall.get('done')
         valid = number(total) and total > 0 and number(done) and done <= total
@@ -708,7 +709,7 @@ class Launcher:
             self.overall_text.set('')
         label = clean(progress.get('label') or overall.get('label') or self.t('Checking configuration', '正在检查配置'))
         self.phase.set(display(label, self.zh))
-        self.current_text.set(progress_text(progress, self.zh))
+        self.current_text.set(progress_text(progress_view(progress, self.zh), self.zh, decimal_sizes=sys.platform == 'darwin'))
         total, done = progress.get('total'), progress.get('done')
         valid = number(total) and total > 0 and number(done) and done <= total
         self.bar.stop()

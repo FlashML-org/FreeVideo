@@ -44,8 +44,12 @@ class PageCheck:
         self.thread.start()
 
     def text(self, t, opened_at, address, now=None):
-        """The failure text for a page that failed or never reported; '' otherwise."""
+        """The failure text for a page that failed or never reported, or for a
+        repair a failed run asked for; '' otherwise."""
         report = self.report
+        repair = report.get('repair')
+        if isinstance(repair, dict) and isinstance(repair.get('text'), str) and repair['text']:
+            return repair['text'][:2000]
         if report.get('state') == 'error':
             problems = [p for p in report.get('problems') or [] if isinstance(p, str) and p]
             lines = [t('The browser page did not load FreeVideo completely.', '浏览器页面没有完整加载 FreeVideo。')]

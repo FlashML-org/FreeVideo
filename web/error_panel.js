@@ -6,6 +6,49 @@ const scalar = value => typeof value === 'string' ? value : typeof value === 'nu
 const list = value => Array.isArray(value) ? value : [];
 const record = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
+// The engine's own messages for errors people can fix themselves.
+const PLAIN_ERRORS = [
+    {key: 'reference-too-short', message: 'The reference video is too short; it needs to be at least about 1 s long.',
+        title: ['The reference video is too short', '参考视频太短'],
+        summary: ['It needs to be at least about 1 s long. Choose a longer video.', '参考视频至少需要约 1 秒，请换一段更长的视频。']},
+    {key: 'video-no-picture', message: 'No picture could be read from this video file. Choose another video.',
+        title: ['This video could not be read', '无法读取这个视频'],
+        summary: ['No picture could be read from this video file. Choose another video.', '无法从这个视频文件里读出画面，请换一个视频。']},
+    {key: 'lora-int8', message: 'This LoRA changes parts of the model that the int8 version cannot merge yet, so it cannot be used for now. LoRAs that change only linear layers work.',
+        title: ['This LoRA cannot be used with the int8 model yet', '这个 LoRA 暂时不能用于 int8 模型'],
+        summary: ['This LoRA changes parts of the model that the int8 version cannot merge yet, so it cannot be used for now. LoRAs that change only linear layers work.', '这个 LoRA 修改了 int8 模型目前还不能合并的部分，暂时无法使用。只修改线性层的 LoRA 可以正常使用。']},
+    {key: 'fa4-update', message: 'The attention speed-up component on this computer needs an update. Run freevideo setup --fa4-guard in a terminal, then restart FreeVideo.',
+        title: ['The attention speed-up component needs an update', '需要更新注意力加速组件'],
+        summary: ['The attention speed-up component on this computer needs an update. Run freevideo setup --fa4-guard in a terminal, then restart FreeVideo.', '这台电脑的注意力加速组件需要更新。请在终端运行 freevideo setup --fa4-guard，然后重新启动 FreeVideo。']},
+    {key: 'duration-too-short', message: 'The video must be at least 1.625 s long.',
+        title: ['The video is too short', '视频时长太短'],
+        summary: ['The video must be at least 1.625 s long.', '视频时长不能短于 1.625 秒。']},
+];
+
+// The engine raises these exact sentences as the whole message. Only its first
+// line counts (after an optional "ValueError: "), or the line right under the
+// worker's "FreeVideo generation failed" header, so an input echoed inside or
+// below another error, even one line of a longer prompt, never turns into this advice.
+function knownError(text) {
+    const lines = String(text).slice(0, 65536).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const index = /^FreeVideo generation failed(?: \(exit -?\d+\))?$/.test(lines[0] ?? '') ? 1 : 0;
+    const line = (lines[index] ?? '').replace(/^[A-Za-z_][\w.]*(?:Error|Exception):\s*/, '');
+    return PLAIN_ERRORS.find(error => line === error.message)?.key ?? null;
+}
+
+// When a diagnostic report exists the card hides Export report; the same advice
+// then names Download report in the preview or node panel.
+const DOWNLOAD_ADVICE = ['If it still fails, click Download report in the preview or node panel and attach the report to a GitHub issue.',
+    '仍然失败时，请在预览区或节点面板中点击“下载报告”，并提交到 GitHub issue。'];
+const EXPORT_TO_DOWNLOAD = [
+    ['Export the report if it still fails.', DOWNLOAD_ADVICE[0]],
+    ['If it still fails, export the report and attach it to a GitHub issue.', DOWNLOAD_ADVICE[0]],
+    ['仍失败时请导出报告。', DOWNLOAD_ADVICE[1]],
+    ['仍然失败时，请导出报告并提交到 GitHub issue。', DOWNLOAD_ADVICE[1]],
+    ['If it still fails, export the report.', DOWNLOAD_ADVICE[0]],
+    ['仍然失败时，请导出报告。', DOWNLOAD_ADVICE[1]],
+];
+
 export function errorText(detail) {
     if (typeof detail === 'string') return detail;
     if (reports.has(detail)) return detail.details;
@@ -122,10 +165,14 @@ export function createErrorReport(detail, context = {}) {
     const progress = {};
     for (const key of ['phase', 'stage']) if (typeof context.progress?.[key] === 'string') progress[key] = clean(context.progress[key]);
     for (const key of ['done', 'total']) if (Number.isFinite(context.progress?.[key])) progress[key] = context.progress[key];
+    const message = scalar(response.error?.message) || scalar(response.error) || scalar(response.message)
+        || scalar(detail?.exception_message) || scalar(detail?.message) || scalar(detail) || 'FreeVideo generation failed.';
     const report = {
         schema: 'freevideo.error-report', schema_version: 1, created_at: new Date().toISOString(),
-        stage, message: clean(scalar(response.error?.message) || scalar(response.error) || scalar(response.message)
-            || scalar(detail?.exception_message) || scalar(detail?.message) || scalar(detail) || 'FreeVideo generation failed.'),
+        stage, message: clean(message),
+        // Chosen from the original message before redaction removes any input
+        // text from it, so a card shown again from this report keeps its advice.
+        known_error: knownError(message),
         error_details: clean(scalar(response.error?.details)),
         exception_type: clean(scalar(detail?.exception_type) || scalar(response.error?.type) || scalar(detail?.name)),
         http_status: Number.isInteger(detail?.status) ? detail.status : null,
@@ -146,9 +193,17 @@ export function createErrorReport(detail, context = {}) {
 
 // Match explicit failure signatures, not a guessed GPU/RAM capacity. Keep the
 // original error separately so an explanation never replaces diagnostic data.
-export function failureAdvice(value, t) {
+// known: a report's known_error. Pass null when the report has none, so an
+// echoed sentence in its redacted text is not taken for the engine's message.
+export function failureAdvice(value, t, known = knownError(value)) {
     const text = String(value).slice(0, 65536);
     const row = (kind, title, summary, action) => ({kind, title: t(...title), summary: t(...summary), action: t(...action)});
+    // ComfyUI and worker tracebacks carry English exceptions. Translate these
+    // actionable failures through the existing signature/advice path.
+    for (const {key, title, summary} of PLAIN_ERRORS) {
+        if (key === known)
+            return {...row(key, title, summary, ['', '']), plain: true};
+    }
     if (/Prompt outputs failed validation|Required input is missing|Value not in list|Return type mismatch|Failed to validate prompt|value (?:\S+ )?(?:smaller|bigger) than/i.test(text))
         return row('validation', ['Check the workflow inputs', '请检查工作流输入'],
             ['ComfyUI rejected the workflow before generation. The affected nodes and reasons are listed below.', 'ComfyUI 在生成开始前拒绝了工作流，相关节点和具体原因列在下方。'],
@@ -158,25 +213,31 @@ export function failureAdvice(value, t) {
         const fits = [...(/Fits now: ([^\n]+?)\.?(?:\n|$)/.exec(text)?.[1] || '').matchAll(/(\d+)x(\d+) (up to|at) ([\d.]+) s/g)]
             .map(([, width, height, kind, seconds]) => ({width, height, longest: kind === 'up to', seconds: Number(seconds)}));
         if (fits.length) {
-            const en = fits.map(f => f.longest ? `${f.width} × ${f.height} up to ${f.seconds.toFixed(1)} s` : `${f.width} × ${f.height} at ${f.seconds.toFixed(1)} s`).join(', or ');
-            const zh = fits.map(f => f.longest ? `${f.width}×${f.height} 最长 ${f.seconds.toFixed(1)} 秒` : `${f.width}×${f.height} 生成 ${f.seconds.toFixed(1)} 秒`).join('，或 ');
+            const en = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} up to ${f.seconds.toFixed(1)}\u00a0s` : `${f.width}\u00a0×\u00a0${f.height} at ${f.seconds.toFixed(1)}\u00a0s`).join(', or ');
+            const zh = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} 最长 ${f.seconds.toFixed(1)}\u00a0秒` : `${f.width}\u00a0×\u00a0${f.height} 生成 ${f.seconds.toFixed(1)}\u00a0秒`).join('，或 ');
             return row('resources', ['This video is too large for the free GPU memory', '这段视频超出了当前可用显存'],
-                ['Resource planning could not fit this request within the GPU memory available right now.', '资源规划发现这段视频超出了当前可用的显存。'],
+                ['Before generating, FreeVideo estimated the GPU memory this video needs, and it is more than the GPU has free right now.', 'FreeVideo 在开始生成前估算了所需显存，这段视频超过了显卡现在空闲的显存。'],
                 [`This computer can make ${en} right now. Change the duration or total pixels and generate again; closing other programs that use the GPU also frees memory.`,
-                 `这台电脑现在可以生成：${zh}。改一下时长或总像素后再生成即可；关闭其他占用显卡的程序也能腾出显存。`]);
+                 `这台电脑现在可以生成：${zh}。请调整时长或总像素后重新生成；关闭其他占用显卡的程序也可以腾出显存。`]);
         }
         return row('resources', ['The request exceeds available memory', '当前任务的可用内存不足'],
-            ['Resource planning could not fit this request within the available GPU or system memory.', '资源规划发现当前任务超出了可用显存或系统内存预算。'],
-            ['Close other memory-heavy applications, or select a lower resolution or shorter duration and retry. The details show which memory budget was insufficient.', '关闭其他占用内存的程序，或自行调低分辨率、缩短时长后重试。下方详情会指出不足的内存类型和差额。']);
+            ['Before generating, FreeVideo estimated the GPU memory and RAM this task needs, and it is more than is available right now.', 'FreeVideo 在开始生成前估算了所需的显存和内存，这次任务超过了现在可用的部分。'],
+            ['Close other memory-heavy programs, or lower the resolution or shorten the duration, and retry. The details show whether GPU memory or RAM ran short, and by how much.', '请关闭其他占用内存的程序，或调低分辨率、缩短时长后重试。详情里写明了是显存还是内存不足，以及还差多少。']);
     }
     if (/commit headroom exhausted|paging file is too small|WinError 1455/i.test(text))
         return row('commit', ['Windows memory allocation limit reached', 'Windows 内存提交额度不足'],
-            ['Windows cannot back another memory allocation, even if physical RAM is still available.', 'Windows 已没有足够的提交额度；这与物理 RAM 是否还有空闲是两回事。'],
+            ['Windows cannot back another memory allocation, even if physical RAM is still available.', 'Windows 已没有足够的内存提交额度；即使物理内存还有空闲，也无法再分配内存。'],
             ['Close memory-heavy applications and retry. In Windows virtual memory settings, use a system-managed paging file on a drive with free space.', '关闭占用内存较多的程序后重试。在 Windows 虚拟内存设置中，使用系统管理的分页文件，并确保所在磁盘有空闲空间。']);
+    // Refused before it starts: more than this Mac can allocate at all, so closing
+    // other applications cannot help (macos_generate.request_admission).
+    if (/needs at least [\d.]+ GiB of unified memory for .*this Mac can allocate at most/i.test(text))
+        return row('unified-memory-limit', ['Not enough unified memory', '统一内存不足'],
+            ['These settings need more unified memory than this Mac can allocate, even with other applications closed.', '这组设置需要的统一内存超过了这台 Mac 可分配的上限，关闭其他程序也无法满足。'],
+            ['Choose a lower resolution or a shorter duration and retry.', '请降低分辨率或缩短时长后重试。']);
     if (/MPS backend out of memory|MPS (?:generation|encoding|decoding) reached|No unified-memory allowance|Native generation needs at least .* unified memory/i.test(text))
-        return row('unified-memory', ['Unified memory is insufficient', '统一内存不足'],
-            ['Mac CPU and GPU share memory. This stage exceeded the MPS allocation limit or the system memory safety threshold.', 'Mac 的 CPU 与 GPU 共用内存。这一阶段触及了 MPS 分配上限或系统内存保护线。'],
-            ['Close memory-heavy applications and retry. Review any manual RAM limit or reserve; a lower resolution or shorter duration may also help. Export the report if it still fails.', '关闭占用内存较多的程序后重试，检查手动 RAM 限额和预留设置；也可降低分辨率或缩短时长。仍失败时请导出报告。']);
+        return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
+            ['On a Mac, the CPU and GPU share unified memory. This step needed more unified memory than was available at the time.', 'Mac 的 CPU 和 GPU 共用统一内存。这一步需要的统一内存超过了当时可用的量。'],
+            ['Close memory-heavy applications and retry, or choose a lower resolution or a shorter duration. If you set a memory limit or reserve in Settings, check it as well. If it still fails, export the report.', '请关闭占用内存较多的程序后重试，或降低分辨率、缩短时长。如果在设置中手动设置了内存上限或预留，请一并检查。仍然失败时，请导出报告。']);
     if (/CUDA out of memory|torch\.OutOfMemoryError|cudaErrorMemoryAllocation/i.test(text))
         return row('vram', ['GPU memory allocation failed', '显存分配失败'],
             ['The GPU could not allocate the memory needed at this stage.', '这一阶段的显存申请没有成功。'],
@@ -204,11 +265,11 @@ export function failureAdvice(value, t) {
             ['Check your connection or select another download source in Settings, then retry. Existing download fragments are retained.', '检查网络，或在设置中切换下载源后重试。已有下载片段会保留。']);
     if (/ModuleNotFoundError|No module named|DLL load failed/i.test(text))
         return row('dependencies', ['A runtime dependency could not load', '运行依赖无法加载'],
-            ['The runtime may be incomplete or an incompatible environment may have been selected.', '运行环境可能不完整，或使用了不兼容的环境。'],
-            ['Open the FreeVideo launcher and rerun installation for the same folder to check dependencies. If it persists, copy the details below.', '打开 FreeVideo 启动器，对同一安装目录重新执行安装以检查依赖。仍失败时可复制下方详情。']);
+            ['A component FreeVideo needs could not load. This usually means the environment is incomplete or an incompatible environment was selected.', 'FreeVideo 运行所需的组件没能加载，通常是运行环境不完整，或者选择了不兼容的环境。'],
+            ['In the FreeVideo launcher, open Settings › Environment and click Repair; it checks this installation and restores what is missing. If it still fails, export the report and attach it to a GitHub issue.', '请在 FreeVideo 启动器的“设置 → 环境”里点击“修复”，它会检查这份安装并补齐缺少的组件。仍然失败时，请导出报告并提交到 GitHub issue。']);
     return row('unknown', ['Generation stopped', '生成已停止'],
-        ['This request did not complete. The exact error is retained below.', '这次请求未完成，具体错误已保留在下方。'],
-        ['Copy the error details when reporting the issue; they include the failed stage when available.', '反馈问题时请复制错误详情，其中会保留已记录的失败阶段。']);
+        ['FreeVideo hit an internal error, and this generation did not finish.', 'FreeVideo 内部出错，这次生成没有完成。'],
+        ['Click Export report and attach the report to a GitHub issue; we will look into it and fix the problem for you.', '请点击“导出报告”，并把报告提交到 GitHub issue，我们会专门排查，为您解决这个问题。']);
 }
 
 let activeDialog = null;
@@ -232,6 +293,11 @@ function showFailureDialog(report, t) {
     activeDialog = dialog; dialog.showModal();
 }
 
+// PyTorch ends its MPS out-of-memory message by suggesting a watermark setting
+// that may make the system fail; the card advises otherwise. Only the shown
+// cause drops it: the technical details and the report keep the original text.
+const shownCause = text => text.replace(/\s*Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=[\d.]+ to disable upper limit for memory allocations(?: \(may cause system failure\))?\.?/g, '');
+
 export function createErrorPanel(t) {
     if (!document.getElementById('freevideo-error-style')) {
         const style = document.createElement('style'); style.id = 'freevideo-error-style';
@@ -240,6 +306,7 @@ export function createErrorPanel(t) {
 .fv-failure textarea{box-sizing:border-box;width:100%;height:180px;min-height:100px;resize:vertical;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg,#202126);color:var(--fv-ink,#eee);font:12px/1.5 monospace;padding:9px;white-space:pre-wrap}
 .fv-failure button,.fv-failure-dialog>button{min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised,#303138);color:var(--fv-ink,#eee);padding:5px 12px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer}
 .fv-failure p{font-size:14px;line-height:1.6;margin:8px 0}.fv-failure summary{cursor:pointer;margin-top:12px}.fv-failure .fv-failure-cause{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}.fv-failure .fv-failure-privacy{font-size:12px;color:var(--fv-muted,#bbb)}
+.fv-failure code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:inherit;white-space:nowrap;background:var(--fv-raised);border-radius:var(--fv-r-xs,3px);padding:0 3px}
 .fv-failure-dialog{box-sizing:border-box;width:min(560px,94vw);max-height:88vh;overflow:auto;padding:22px 24px;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-lg,16px);background:var(--fv-bg,#202126);color:var(--fv-ink,#eee);box-shadow:0 24px 80px #0008}
 .fv-failure-dialog::backdrop{background:#070a0db8;backdrop-filter:blur(6px)}.fv-failure-dialog>.fv-failure{border:0;margin:0 0 16px;padding:0}.fv-failure-dialog>button{display:block;margin-left:auto;background:var(--fv-accent,#6db8fa);border-color:var(--fv-accent,#6db8fa);color:var(--fv-bg,#111720);font-weight:var(--fv-semibold,600)}`;
         document.head.append(style);
@@ -253,6 +320,7 @@ export function createErrorPanel(t) {
     actions.append(copy, download);
     const explanation = document.createElement('p'), action = document.createElement('p');
     const location = document.createElement('p'), cause = document.createElement('p'); cause.className = 'fv-failure-cause';
+    location.className = 'fv-failure-location';
     const privacy = document.createElement('p'); privacy.className = 'fv-failure-privacy';
     privacy.textContent = t('Known input text, paths and common credentials are removed. Export saves a local JSON file; review it before sharing.',
         '已去除已知输入文本、路径和常见凭据。导出会保存为本地 JSON 文件，分享前可查看内容。');
@@ -260,6 +328,8 @@ export function createErrorPanel(t) {
     let currentReport = null;
     const disclosure = document.createElement('details'), summary = document.createElement('summary');
     summary.textContent = t('Technical details', '技术详情');
+    const detailLocation = document.createElement('p'); detailLocation.className = 'fv-failure-location'; detailLocation.hidden = true;
+    const detailCause = document.createElement('p'); detailCause.className = 'fv-failure-cause'; detailCause.hidden = true;
     const details = document.createElement('textarea'); details.readOnly = true;
     details.setAttribute('aria-label', t('Error details', '错误详情')); details.spellcheck = false;
     copy.onclick = async () => {
@@ -293,11 +363,11 @@ export function createErrorPanel(t) {
             if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
         }
     };
-    disclosure.append(summary, details);
+    disclosure.append(summary, detailLocation, detailCause, details);
     head.append(title, actions); element.append(head, explanation, location, cause, action, disclosure, privacy, downloadStatus);
     return {element, show(value, popup = true, context = {}) {
         const report = createErrorReport(value, context); currentReport = report;
-        const advice = failureAdvice(report.details, t);
+        const advice = failureAdvice(report.details, t, report.known_error ?? null);
         if (report.stage === 'submission' && advice.kind === 'unknown') {
             advice.title = t('The task could not be submitted', '任务提交失败');
             advice.summary = t('The task submission returned an error. Its details are shown below.', '提交任务时返回了错误，具体原因显示在下方。');
@@ -306,17 +376,42 @@ export function createErrorPanel(t) {
             advice.title = t('The queue operation did not complete', '队列操作未完成');
             advice.summary = t('Check that ComfyUI is still running and connected, then retry.', '请确认 ComfyUI 仍在运行、连接正常后重试。');
         }
+        if (advice.kind === 'unknown' && ['submission', 'queue'].includes(report.stage))
+            advice.action = t('Copy the error details when reporting the issue; they include the failed stage when available.', '反馈问题时请复制错误详情，其中会保留已记录的失败阶段。');
         title.textContent = advice.title; explanation.textContent = advice.summary; action.textContent = advice.action;
+        if (advice.kind === 'fa4-update') {
+            const command = 'freevideo setup --fa4-guard';
+            const [before, after] = advice.summary.split(command);
+            const code = document.createElement('code'); code.textContent = command;
+            explanation.replaceChildren(document.createTextNode(before), code, document.createTextNode(after));
+        }
+        action.hidden = !advice.action;
         const stage = report.stage === 'submission' ? t('Submitting task', '提交任务')
             : report.stage === 'queue' ? t('Queue operation', '队列操作') : t('Executing workflow', '执行工作流');
         location.textContent = stage + (report.http_status ? ` · HTTP ${report.http_status}` : '')
             + report.nodes.map(node => ` · ${node.type || t('Node', '节点')} #${node.id}`).join('');
         const reasons = report.nodes.flatMap(node => node.errors.map(error =>
             `${node.type || t('Node', '节点')} #${node.id}${error.input ? ' · ' + error.input : ''}: ${error.message}${error.details ? ': ' + error.details : ''}`));
-        cause.textContent = reasons.length ? reasons.join('\n') : [report.message, report.error_details].filter(Boolean).join('\n');
+        const causeText = shownCause(reasons.length ? reasons.join('\n') : [report.message, report.error_details].filter(Boolean).join('\n'));
+        const internal = advice.kind === 'unknown' && !['submission', 'queue'].includes(report.stage);
+        const causeInDetails = advice.kind !== 'validation' && !['submission', 'queue'].includes(report.stage);
+        location.hidden = causeInDetails; detailLocation.hidden = !causeInDetails;
+        detailLocation.textContent = causeInDetails ? location.textContent : '';
+        if (causeInDetails) location.textContent = '';
+        cause.hidden = causeInDetails; detailCause.hidden = !causeInDetails;
+        cause.textContent = causeInDetails ? '' : causeText;
+        detailCause.textContent = causeInDetails ? causeText : '';
         details.value = report.details; disclosure.open = false; element.hidden = false;
         downloadStatus.textContent = '';
         download.hidden = diagnosticReports.has(report);
+        if (internal && download.hidden)
+            action.textContent = t('Click Download report in the preview or node panel and attach the report to a GitHub issue; we will look into it and fix the problem for you.',
+                '请在预览区或节点面板中点击“下载报告”，并把报告提交到 GitHub issue，我们会专门排查，为您解决这个问题。');
+        else if (download.hidden) {
+            // Advice that ends with "export the report" points at the report this card does offer.
+            for (const [from, to] of EXPORT_TO_DOWNLOAD)
+                if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, to);
+        }
         privacy.textContent = download.hidden
             ? t('Use Download report in the preview or node panel for the diagnostic report.', '完整诊断请使用预览区或节点面板中的“下载报告”。')
             : t('Known input text, paths and common credentials are removed. Export saves a local error summary; review it before sharing.',

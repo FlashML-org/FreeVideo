@@ -23,13 +23,40 @@ class Service:
         self.process = None
         self.result_expires = 0.
         self.report = {}
+        self.ram = None
         atexit.register(self.close)
 
     def info(self):
-        root, _ = self.installation()
+        root, machine = self.installation()
         spec = assets.catalog()
         return dict(ready=assets.ready(root), model=spec['repo'], license=spec['license'],
-                    bytes=sum(row['bytes'] for row in spec['files']), busy=self.busy())
+                    bytes=sum(row['bytes'] for row in spec['files']), busy=self.busy(),
+                    ram_bytes=self.ram_bytes(machine))
+
+    def ram_bytes(self, machine):
+        """Available RAM the model usually needs on this computer, for the download card.
+
+        The worker decides from free VRAM when it loads: 8 GB and larger NVIDIA
+        cards hold the whole model. Asks the driver once, without CUDA; anything
+        unknown states the larger figure.
+        """
+        if self.ram is None:
+            from .worker import MAPPED_RAM, RESIDENT_RAM
+            self.ram = MAPPED_RAM
+            if machine.get('device_backend', 'cuda') == 'cuda':
+                from .. import processes
+                from ..system import nvidia_smi
+                try:
+                    rows = [line.split(',') for line in processes.run(
+                        [nvidia_smi(), '--query-gpu=uuid,memory.total', '--format=csv,noheader,nounits'],
+                        timeout=10, capture_output=True, text=True).stdout.splitlines() if line.strip()]
+                    totals = {uuid.strip(): float(mib) for uuid, mib in rows}
+                    total = totals.get(machine.get('gpu_uuid')) or (len(totals) == 1 and next(iter(totals.values())))
+                    if total and total >= 7.5 * 1024:
+                        self.ram = RESIDENT_RAM
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+                    pass
+        return self.ram
 
     def busy(self):
         return self.thread is not None and self.thread.is_alive()

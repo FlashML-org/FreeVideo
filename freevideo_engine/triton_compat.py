@@ -6,8 +6,15 @@ from pathlib import Path
 
 COMPILER_ENVIRONMENT_KEYS = (
     'TRITON_CACHE_DIR', 'TORCHINDUCTOR_CACHE_DIR', 'CUDA_CACHE_PATH',
-    'TORCHINDUCTOR_USE_STATIC_CUDA_LAUNCHER',
+    'CUDA_CACHE_MAXSIZE', 'TORCHINDUCTOR_USE_STATIC_CUDA_LAUNCHER',
 )
+# The driver's JIT cache limit; 4 GiB is the most it accepts. RTX 50 kernels
+# ship as capsule-Mercury cubins, and a Windows driver (616.92) finalized
+# them again on first load and kept the result in CUDA_CACHE_PATH, entries up
+# to 58 MiB (10 MiB in all on Linux). At the default 1 GiB the cache filled,
+# the driver evicted entries, and finalizing one again stalled encoding, the
+# first step, the latent upscale or decoding for about 10 s, at random.
+CUDA_CACHE_MAXSIZE = str(4 << 30)
 
 
 def environment(root, environ):
@@ -19,6 +26,8 @@ def environment(root, environ):
                         ('CUDA_CACHE_PATH', 'cuda')):
         if not env.get(key):
             env[key] = str(cache / folder)
+    if not env.get('CUDA_CACHE_MAXSIZE'):
+        env['CUDA_CACHE_MAXSIZE'] = CUDA_CACHE_MAXSIZE
     if os.name == 'nt' and any(not os.path.abspath(env[key]).isascii()
                               for key in ('TRITON_CACHE_DIR', 'TORCHINDUCTOR_CACHE_DIR')):
         # The static launcher passes a UTF-8 narrow filename to cuModuleLoad.

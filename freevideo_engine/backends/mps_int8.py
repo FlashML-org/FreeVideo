@@ -444,6 +444,31 @@ def install(model, *, stats=None, storage=None, int8_linears=None):
         stats['int8_forwards'] += 1
         return output.reshape(*value.shape[:-1], module.out_features)
 
+    def project_channels(module, value, channels):
+        # Grouped Q/K/V projections take one head group's output channels. The
+        # int8 product computes every output element independently over the
+        # same quantized input row, so a channel slice equals those columns of
+        # the full forward, and Q/K/V still share one input quantization.
+        weight = module.weight
+        bias = None if module.bias is None else module.bias[channels]
+        if weight.dtype == torch.int8:
+            if value.dtype != torch.bfloat16 or value.device.type != 'mps' or weight.is_meta:
+                raise RuntimeError('Int8 weights need a loaded layer and BF16 MPS inputs')
+            pair = (weight, module.weight_scale)
+        elif value.dtype != torch.bfloat16 or value.device.type != 'mps' or weight.is_meta:
+            return torch.nn.functional.linear(value, weight[channels], bias)
+        else:
+            pair = quantized_weight(weight)
+        rows = value.reshape(-1, value.shape[-1])
+        if rows.stride(1) != 1:
+            rows = rows.contiguous()
+        output = matmul(quantized_input(rows, getattr(module, '_freevideo_convrot', False)),
+                        pair[0][channels], pair[1][channels])
+        if bias is not None:
+            output += bias
+        stats['int8_channel_forwards'] = stats.get('int8_channel_forwards', 0) + 1
+        return output.reshape(*value.shape[:-1], output.shape[-1])
+
     for name, module in model.named_modules():
         # Only matrices the prepared model stores as int8 get int8 placeholders;
         # every other Linear keeps its BF16 storage and ordinary forward.
@@ -459,6 +484,7 @@ def install(model, *, stats=None, storage=None, int8_linears=None):
                     module._freevideo_convrot = True
                     stats['convrot_modules'] += 1
             module.forward = types.MethodType(forward, module)
+            module._freevideo_project_channels = types.MethodType(project_channels, module)
             stats['modules'] += 1
     return dict(implementation='mps-int8-tensorops-v1', storage=storage or 'quantize-on-load',
                 modules=stats['modules'])

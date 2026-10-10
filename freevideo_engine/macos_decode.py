@@ -83,7 +83,7 @@ def decode_to_file(latents, audio_latents, output, *, base, artifacts_dir,
                 handles.append(layer.register_forward_pre_hook(guard))
             mean = torch.tensor(vae.config.latents_mean, device='mps').view(1, -1, 1, 1, 1)
             std = torch.tensor(vae.config.latents_std, device='mps').view(1, -1, 1, 1, 1)
-            phase('Decoding video tiles')
+            phase('Decoding the video')
             def progress(done, total, elapsed):
                 print(json.dumps(dict(event='decode_progress', done=done, total=total,
                                       elapsed_seconds=elapsed)), flush=True)

@@ -1,6 +1,7 @@
 """Reopen immutable safetensor layer views only while filling an offload slot."""
 from contextlib import contextmanager
 from pathlib import Path
+import threading
 
 
 _TORCH_DTYPES = {'BOOL': 'bool', 'U8': 'uint8', 'I8': 'int8', 'I16': 'int16',
@@ -251,6 +252,22 @@ class LayerReadAhead:
         self.pending_bytes = 0
 
 
+_READ_PIECE = 8 << 20
+_reader = None
+_reader_lock = threading.Lock()
+
+
+def _reader_pool():
+    """Threads shared by every streamed source's direct reads."""
+    global _reader
+    with _reader_lock:
+        if _reader is None:
+            from concurrent.futures import ThreadPoolExecutor
+            from .tensor_io import read_threads
+            _reader = ThreadPoolExecutor(read_threads(), thread_name_prefix='freevideo-stream-read')
+        return _reader
+
+
 # Streamed layers kept in RAM as read-only file views must leave this much
 # physical memory free. A 27.98 GiB Windows machine started sampling at
 # 7.31 GiB available and ran the refine pass at 6.98 GiB: 0.35 GiB of later
@@ -351,7 +368,6 @@ class SafetensorLayers:
         """
         if not self.direct_read or self.intermediate_dtype is not None:
             return False
-        import os
         import math
         import sys
         import torch
@@ -403,21 +419,14 @@ class SafetensorLayers:
         buffers = {dtype: memoryview(plane.detach().view(torch.uint8).numpy()).cast('B')
                    for dtype, plane in planes.items()}
         try:
+            pieces = []
             for path, entries in reads.items():
-                with path.open('rb', buffering=0) as stream:
-                    observed = _file_identity(os.fstat(stream.fileno()))
-                    if observed != self.handle_files[path]:
-                        raise CheckpointChangedError(path, 'handle', self.handle_files[path], observed)
-                    for start, size, dtype, offset, _ in sorted(entries, key=lambda row: row[0]):
-                        stream.seek(start)
-                        begin = offset * planes[dtype].element_size()
-                        target = buffers[dtype][begin:begin + size]
-                        done = 0
-                        while done < size:
-                            count = stream.readinto(target[done:])
-                            if not count:
-                                raise ValueError('Incomplete streamed checkpoint: ' + str(path))
-                            done += count
+                for start, size, dtype, offset, _ in sorted(entries, key=lambda row: row[0]):
+                    begin = offset * planes[dtype].element_size()
+                    target = buffers[dtype][begin:begin + size]
+                    pieces += [(path, start + at, target[at:at + _READ_PIECE])
+                               for at in range(0, size, _READ_PIECE)]
+            self._read_pieces(pieces)
             if self.host_views is not None:
                 size = sum(row[1] for entries in reads.values() for row in entries)
                 if host_view_fits(size, self.host_view_reserve):
@@ -426,6 +435,77 @@ class SafetensorLayers:
             for path in reads:
                 self.check(path)
         return True
+
+    def _read_pieces(self, pieces):
+        """Read (path, position, destination) pieces on a few handles at once.
+
+        One handle reading a streamed layer tensor by tensor leaves most of a
+        fast drive idle: 28 int8 layers (12.1 GB) read from an NVMe drive with
+        a cold cache at 2.66 GB/s that way and at 3.4-4.4 GB/s as 8 MiB pieces
+        on four handles. With 34 such layers read every step, 960x544 steps
+        took 4.4 s instead of 6.0-6.2 s, bit-identical (Linux, RTX PRO 6000).
+        Loading already reads its blocks like this (tensor_io.ParallelReads).
+        Each piece fills exactly its bytes of the slot, and every handle is
+        checked against the file it opened. FREEVIDEO_READ_THREADS=1 reads on
+        the calling thread alone.
+        """
+        import os
+        from contextlib import ExitStack
+        from .tensor_io import read_threads
+        threads = min(read_threads(), len(pieces))
+        # A reader still running when this call leaves would write into a slot
+        # its caller may reuse. After a failure here a reader writes nothing
+        # more, and the call returns only once none is reading.
+        state = dict(stop=False, active=0)
+        idle = threading.Condition()
+
+        def read(group):
+            with idle:
+                if state['stop']:
+                    return
+                state['active'] += 1
+            try:
+                streams = {}
+                with ExitStack() as opened:
+                    for path, position, target in group:
+                        if state['stop']:
+                            return
+                        stream = streams.get(path)
+                        if stream is None:
+                            stream = streams[path] = opened.enter_context(path.open('rb', buffering=0))
+                            observed = _file_identity(os.fstat(stream.fileno()))
+                            if observed != self.handle_files[path]:
+                                raise CheckpointChangedError(path, 'handle', self.handle_files[path], observed)
+                        stream.seek(position)
+                        done = 0
+                        while done < len(target):
+                            count = stream.readinto(target[done:])
+                            if not count:
+                                raise ValueError('Incomplete streamed checkpoint: ' + str(path))
+                            done += count
+            finally:
+                with idle:
+                    state['active'] -= 1
+                    idle.notify_all()
+
+        if threads < 2:
+            read(pieces)
+            return
+        # Neighbouring pieces go to different handles, so together the
+        # readers still move through each file from front to back.
+        from concurrent.futures import wait
+        futures = []
+        try:
+            for first in range(threads):
+                futures.append(_reader_pool().submit(read, pieces[first::threads]))
+            wait(futures)
+        except BaseException:
+            with idle:
+                state['stop'] = True
+                idle.wait_for(lambda: not state['active'])
+            raise
+        for future in futures:
+            future.result()
 
     def layer_bytes(self, index):
         """Checkpoint bytes of one layer by stored dtype, from the headers alone."""

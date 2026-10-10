@@ -29,7 +29,7 @@ style.textContent = `
 .fv-panel .fv-stats[hidden]{display:none}
 .fv-panel .fv-connected{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:10px 0}.fv-panel .fv-connection{border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);padding:5px 9px;background:var(--fv-selected);color:var(--fv-accent);font-size:var(--fv-micro,12px)}
 .fv-panel :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
-.fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
+.fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result]:has(>.fv-generation-progress:not([hidden])){justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
 .fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}
@@ -305,23 +305,32 @@ function resultPanel(node) {
     node.addDOMWidget('freevideo_prompt_guide', 'freevideo_prompt_guide', promptGuide(),
         {serialize: false, getMinHeight: () => 58, getMaxHeight: () => 76});
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "result";
-    const progress = createGenerationProgress(text, undefined, {api}); panel.append(progress.element, progress.report);
+    // Grow the node for the panel's new height. A node that is already tall
+    // enough keeps its size, so lay its widgets out again; otherwise the result
+    // panel keeps its earlier height and clips the progress area.
+    const fitPanel = () => {
+        node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
+        node.arrange?.(); node.setDirtyCanvas?.(true, true);
+    };
+    const progress = createGenerationProgress(text, undefined, {api, onLayout: fitPanel});
+    panel.append(progress.element, progress.stall, progress.report);
     let showingResult = false;
     node.freevideoReportProgress = message => {
         node.freevideoReportId = progress.updateReport(message);
     };
     node.freevideoShowProgress = message => {
         if (showingResult) {
-            panel.replaceChildren(progress.element, progress.report);
+            panel.replaceChildren(progress.element, progress.stall, progress.report);
             panel.title = ''; node.freevideoPrewarm = '';
             showingResult = false; warn();
         }
         node.freevideoReportProgress(message);
-        const retry = message.reset ? undefined : message.retry || node.freevideoProgress?.retry;
+        const fresh = message.reset || message.new_request || message.overall?.reset;
+        const retry = message.retry || (fresh ? undefined : node.freevideoProgress?.retry);
         node.freevideoProgress = {...message, retry, received_at: message.received_at ?? Date.now()}; progress.update(node.freevideoProgress);
         if (panel.firstElementChild !== progress.element) panel.prepend(progress.element);
-        if (progress.report.parentNode !== panel) panel.append(progress.report);
-        node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
+        if (progress.report.parentNode !== panel) panel.append(progress.stall, progress.report);
+        fitPanel();
     };
     node.freevideoStopProgress = () => { node.freevideoProgress = null; progress.hide(); };
     const removed = node.onRemoved;
@@ -332,7 +341,7 @@ function resultPanel(node) {
         node.freevideoStopProgress();
         node.freevideoFailureReport = failure.show(detail, true, context);
         node.freevideoFailure = errorText(node.freevideoFailureReport);
-        panel.append(failure.element); node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
+        panel.append(failure.element); fitPanel();
     };
     node.freevideoClearFailure = () => { node.freevideoFailure = ''; node.freevideoFailureReport = null; failure.clear(); };
     const warning = el('div', '', 'fv-note');
@@ -342,7 +351,10 @@ function resultPanel(node) {
         if (panel.lastElementChild !== warning) panel.append(warning);
     };
     panel.append(el("div", text("Video, audio and timings appear here after generation.", "生成后在这里查看视频、音频和耗时。"), "fv-note"));
-    const panelHeight = () => (hasLoRA() ? 240 : 140) + (node.freevideoFailure ? 280 : 0) + (node.freevideoProgress ? 190 + 40 * progress.noticeCount() : 0)
+    // The 218-character English notice is 8 characters shorter than before.
+    // Reserve at least 90px; a narrow node or larger font may wrap further.
+    const panelHeight = () => (hasLoRA() ? 240 : 140) + (node.freevideoFailure ? 280 : 0) + (node.freevideoProgress ? (progress.percentShown?.() === false ? 142 : 190) + 40 * progress.noticeCount() : 0)
+        + (progress.stallShown() ? Math.max(90, (progress.stall.scrollHeight || 0) + 18) : 0)
         + (showingResult ? 40 * (node.freevideoLastResult?.reference_trims?.length || 0) : 0);
     node.addDOMWidget("freevideo_result", "freevideo_result", panel, {serialize: false, getMinHeight: panelHeight, getMaxHeight: panelHeight});
     const connected = node.onConnectionsChange, configured = node.onConfigure;
@@ -425,7 +437,7 @@ function resultPanel(node) {
             };
             links.append(again);
         }
-        panel.append(stats, links, progress.report);
+        panel.append(stats, links, progress.stall, progress.report);
         for (const row of value.reference_trims || []) panel.append(el("div", referenceTrimText(row, text), "fv-note fv-trim-note"));
         if (value.low_memory && !value.result_cache_hit) panel.append(el("div", text('This video used the low-memory mode for this GPU, so it took longer than usual. A lower resolution or a shorter video runs faster.', '这段视频使用了省显存方式，所以比平时慢。降低分辨率或缩短时长会更快。'), "fv-note"));
         if (value.thermal && !value.result_cache_hit) panel.append(el("div", thermalText(value.thermal, text), "fv-note"));

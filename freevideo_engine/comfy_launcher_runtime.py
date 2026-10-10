@@ -4,6 +4,7 @@ The existing Setup service owns the engine plan, approval, downloads and repair.
 Only our node entry point and our template are installed in the selected ComfyUI.
 An existing server is never stopped by this launcher.
 """
+import errno
 import hashlib
 import json
 import os
@@ -23,7 +24,7 @@ from .comfy_bridge import installation
 from . import disk_space
 from .comfy_environment import isolated_environment
 from .comfy_setup import Setup, SetupRunner
-from .comfy_source import SOURCE_DISK_BYTES, new_layout, validate_target
+from .comfy_source import RECEIPT, SOURCE_DISK_BYTES, new_layout, validate_target
 from .desktop_runtime import materialize_source
 from .monitoring import save
 from . import processes
@@ -44,7 +45,8 @@ def disk_review(plan, engine, comfy, *, separate, new_comfy):
     for disk in plan.get('disks', []):
         disks[disk_space.disk_key(disk['paths'][0])] = dict(disk, paths=list(disk['paths']))
     extra = 0
-    frontend_bytes = disk_space.frontend_gib(sys.platform == 'darwin') * 2**30
+    from .install_disk import frontend_gib
+    frontend_bytes = frontend_gib(engine, comfy, sys.platform == 'darwin') * 2**30
     for path, amount in ((engine, frontend_bytes if separate else 0), (comfy, SOURCE_DISK_BYTES if new_comfy else 0)):
         if not amount:
             continue
@@ -185,10 +187,73 @@ def server_info(url):
     try:
         value = get_json(url + '/system_stats')
         if isinstance(value, dict) and 'system' in value:
-            return dict(status='restart-required')
+            argv = value['system'].get('argv') if isinstance(value['system'], dict) else None
+            main = argv[0] if isinstance(argv, list) and argv and isinstance(argv[0], str) else ''
+            return dict(status='restart-required', main=main)
     except (OSError, ValueError):
         pass
     return dict(status='offline')
+
+
+def bind_check(hostname, port):
+    """Raise OSError unless a new server could listen on this local address now."""
+    hosts = ('127.0.0.1', '::1') if hostname == 'localhost' else (hostname,)
+    for host in hosts:
+        try:
+            with socket.socket(socket.AF_INET6 if host == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
+                if sys.platform != 'win32':
+                    # Tolerate TIME_WAIT, as ComfyUI does. On Windows this
+                    # option would let two servers share the port.
+                    check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                check.bind((host, port))
+        except OSError as error:
+            if hostname == 'localhost' and host == '::1' and error.errno in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL):
+                continue
+            raise
+
+
+def address(hostname, port):
+    return 'http://%s:%d' % ('[%s]' % hostname if ':' in hostname else hostname, port)
+
+
+def next_free_address(url, count=12):
+    """The next local address after this one that nothing listens or answers on, as setup.sh chooses."""
+    parsed = urlsplit(url)
+    for port in range((parsed.port or 80) + 1, min((parsed.port or 80) + 1 + count, 65536)):
+        try:
+            bind_check(parsed.hostname, port)
+        except OSError:
+            continue
+        candidate = address(parsed.hostname, port)
+        if server_info(candidate)['status'] == 'offline':
+            return candidate
+    return None
+
+
+def launcher_comfy(selected, info):
+    """Whether the launcher downloaded this ComfyUI and runs it in its own environment, and the
+    server at its address is not this ComfyUI. Such a server belongs to someone else, so this
+    ComfyUI can move to another port instead of asking for that server to be closed."""
+    root = Path(selected['root'])
+    if not (selected.get('python') and managed_frontend(selected) and (root / RECEIPT).is_file()):
+        return False
+    if info['status'] == 'freevideo':
+        return Path(info['comfy_root']).resolve() != root.resolve()
+    if info['status'] == 'offline':
+        return True
+    main = info.get('main') or ''
+    if Path(main).is_absolute():
+        return Path(main).resolve() != (root / 'main.py').resolve()
+    try:
+        # ComfyUI answers {kind: [absolute folders]}; its custom_nodes folder names its installation.
+        folders = get_json(selected['url'] + '/internal/folder_paths', timeout=1)
+        nodes = folders.get('custom_nodes') if isinstance(folders, dict) else None
+        if (not isinstance(nodes, list) or not nodes
+                or not all(isinstance(path, str) and Path(path).is_absolute() for path in nodes)):
+            return False
+        return all(Path(path).resolve() != (root / 'custom_nodes').resolve() for path in nodes)
+    except (OSError, ValueError):
+        return False
 
 
 def queue_busy(url):
@@ -331,6 +396,11 @@ class Controller:
         # this version; kept out of `state`, which the task thread replaces.
         self.old_versions = dict(released_bytes=0, download_bytes=0)
         self._old_versions_thread = None
+        # A ComfyUI the launcher downloaded moves to the next free port when
+        # another program holds its address. setup.sh's service keeps the port
+        # it was asked to serve.
+        self.move_when_taken = True
+        self.port_move = None
 
     def retire_old_versions(self, selected):
         """Once ComfyUI runs this version, earlier FreeVideo copies are no longer read."""
@@ -352,7 +422,7 @@ class Controller:
         self._old_versions_thread = threading.Thread(target=work, name='freevideo-old-versions', daemon=True)
         self._old_versions_thread.start()
 
-    def _prepare_frontend(self, selected, *, download=False):
+    def _prepare_frontend(self, selected, *, download=False, repair=False):
         """Bring the separate ComfyUI environment up to date with this ComfyUI.
 
         After ComfyUI itself is updated, its requirements change; the same
@@ -370,6 +440,8 @@ class Controller:
         arguments = ['comfy-host', '--comfy', selected['root']]
         if download:
             arguments.append('--download-comfy')
+        if repair:
+            arguments.append('--repair')
         self.setup.runner.start('comfy-host', selected['engine'], arguments)
         self._wait_setup()
         descriptor = json.loads((Path(selected['engine']) / 'launcher' / 'comfy-host.json').read_text(encoding='utf-8'))
@@ -564,6 +636,10 @@ class Controller:
         host = (dict(ready=False, python=None, libraries=[str(Path(descriptor['root']) / 'models')])
                 if fresh and not cached_python else probe_host(descriptor, values.get('python') or descriptor.get('python') or cached_python))
         descriptor.update(python=host.get('python'), separate=values.get('separate', False) or not host.get('ready'))
+        # A repair also reinstalls the packages of the ComfyUI environment this
+        # launcher made, in place; a user's own ComfyUI Python is never changed.
+        repair_comfy = bool(values.get('repair') and cached_python and host.get('python')
+                            and Path(host['python']) == Path(cached_python))
         # Validate before copying even the small launcher payload.
         folders = SimpleNamespace(base_path=descriptor['root'], models_dir=str(Path(descriptor['root']) / 'models'),
                                   get_folder_paths=lambda _: host.get('libraries', []))
@@ -583,7 +659,7 @@ class Controller:
                 ready = not values.get('sampling_caches') or sampling_installed(machine)
             except (OSError, ValueError, KeyError):
                 pass
-        self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready)
+        self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready, repair_comfy=repair_comfy)
         self.state = dict(self.state, selection=dict(self.selection), host=host)
         if not ready:
             extra = values.get('model_dirs', [])
@@ -608,8 +684,9 @@ class Controller:
         if not accepted or not self.selection:
             raise ValueError('Review and accept the current installation plan first')
         selected = dict(self.selection)
+        frontend = selected['separate'] or selected.get('repair_comfy')
         self.sections = ([('engine', 8)] if not selected['ready'] else []) + (
-            [('comfy', 6 if selected.get('new_comfy') else 5)] if selected['separate'] else []) + [('nodes', 1), ('open', 1)]
+            [('comfy', 6 if selected.get('new_comfy') else 5)] if frontend else []) + [('nodes', 1), ('open', 1)]
         if self.cancelled.is_set():
             raise RuntimeError('Stopped; files retained')
         if selected.get('new_comfy'):
@@ -620,11 +697,11 @@ class Controller:
             current = self.setup.status()
             self.setup.install(dict(plan_id=current.get('plan_id'), accept_licenses=True))
             self._wait_setup()
-        if selected['separate']:
+        if frontend:
             if self.cancelled.is_set():
                 raise RuntimeError('Stopped; files retained')
             self.stage('comfy', label='Prepare ComfyUI')
-            self._prepare_frontend(selected, download=bool(selected.get('new_comfy')))
+            self._prepare_frontend(selected, download=bool(selected.get('new_comfy')), repair=bool(selected.get('repair_comfy')))
         if self.cancelled.is_set():
             raise RuntimeError('Stopped; files retained')
         self.stage('nodes', label='Install FreeVideo workflow')
@@ -633,6 +710,17 @@ class Controller:
         self.selection = selected
         self.state = dict(self.state, selection=dict(selected), deployed=deployed)
         self._connect()
+
+    def _move_address(self, selected):
+        """Take the next free port for this ComfyUI and keep it in the selection the launcher saves."""
+        url = next_free_address(selected['url'])
+        if url is None:
+            raise ValueError('Other programs use this port and the next ones. Set a different local ComfyUI address.')
+        if self.port_move is None:
+            self.port_move = urlsplit(selected['url']).port or 80
+        selected = self.selection = dict(selected, url=url)
+        self.state = dict(self.state, selection=dict(selected))
+        return url, selected
 
     def _stop_server_for_setup(self, url):
         """Setup reinstalls engine packages that our ComfyUI's resident worker
@@ -658,6 +746,7 @@ class Controller:
         self.state = dict(self.state, status='open' if previous_status == 'open' else 'ready')
 
     def _connect(self):
+        self.state = {key: value for key, value in self.state.items() if key != 'moved_from'}
         if not self.selection or not self.selection['ready']:
             raise ValueError('Choose and inspect ComfyUI first')
         selected = self.selection
@@ -687,9 +776,18 @@ class Controller:
             self.attach_console(info)
             self.stage('open', done=1, label='Ready')
             self.state = dict(self.state, status='open', url=url + '/?freevideo=launch')
+            if self.port_move is not None:
+                self.state = dict(self.state, moved_from=self.port_move)
+                self.port_move = None
             return
+        movable = self.move_when_taken and not self.owns_server() and launcher_comfy(selected, info)
+        moves = 0
         if info['status'] != 'offline':
-            if not self.owns_server():
+            if movable:
+                url, selected = self._move_address(selected)
+                moves += 1
+                info = dict(status='offline')
+            elif not self.owns_server():
                 self.state = dict(self.state, status='restart-required', url=url,
                     error='ComfyUI is already running. Restart it once to load the installed FreeVideo nodes, then click Connect. Existing jobs are left running.')
                 return
@@ -703,22 +801,21 @@ class Controller:
         parsed = urlsplit(url)
         deadline = time.monotonic() + 10
         while True:
-            with socket.socket(socket.AF_INET6 if parsed.hostname == '::1' else socket.AF_INET, socket.SOCK_STREAM) as check:
-                if sys.platform != 'win32':
-                    # Reopening a server that just stopped must tolerate its
-                    # connections in TIME_WAIT, as ComfyUI's own bind does. A
-                    # listening socket still refuses the bind. (On Windows the
-                    # option would let two servers share the port.)
-                    check.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    check.bind((parsed.hostname, parsed.port or 80))
-                    break
-                except OSError as error:
-                    # A server this launcher just stopped can hold the port briefly.
-                    if info['status'] != 'offline' and time.monotonic() < deadline:
-                        self.cancelled.wait(.5)
-                        continue
-                    raise ValueError('This port is in use by another application. Set a different local ComfyUI address.') from error
+            try:
+                bind_check(parsed.hostname, parsed.port or 80)
+                break
+            except OSError as error:
+                # A server this launcher just stopped can hold the port briefly.
+                if info['status'] != 'offline' and time.monotonic() < deadline:
+                    self.cancelled.wait(.5)
+                    continue
+                if movable and moves < 12:
+                    # A program that is not ComfyUI holds the address.
+                    url, selected = self._move_address(selected)
+                    moves += 1
+                    parsed = urlsplit(url)
+                    continue
+                raise ValueError('This port is in use by another application. Set a different local ComfyUI address.') from error
         if not selected.get('python') or not Path(selected['python']).is_file():
             raise ValueError('ComfyUI Python is missing. Inspect again to prepare a separate environment.')
         directory = Path(selected['engine']) / 'launcher' / 'comfy-runs' / (time.strftime('%Y%m%dT%H%M%S') + '-' + secrets.token_hex(4))
@@ -781,6 +878,9 @@ class Controller:
             if matches_server(info, selected['root'], selected['engine'], selected['source']):
                 self.stage('open', done=1, label='Ready')
                 self.state = dict(self.state, status='open', url=url + '/?freevideo=launch')
+                if self.port_move is not None:
+                    self.state = dict(self.state, moved_from=self.port_move)
+                    self.port_move = None
                 return
             self.cancelled.wait(.5)
         from .failure_details import startup_failure

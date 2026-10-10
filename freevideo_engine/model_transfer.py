@@ -507,7 +507,9 @@ def run_sdk(source, row, path, plan, progress_callback, networking, transfer_com
                                   file=path.name, action='backend', method=current['backend'])
                     prior_backend = current['backend']
                 if current['phase'] == 'verify' and prior_phase != 'verify':
-                    sys.stdout.write(json.dumps(dict(event='verify_model', file=str(path), bytes=row['bytes'])) + '\n')
+                    from .model_status import NAMES, family
+                    sys.stdout.write(json.dumps(dict(event='verify_model', file=str(path), bytes=row['bytes'],
+                                                     name=NAMES[family(row)][0])) + '\n')
                     sys.stdout.flush()
                 elif current['phase'] == 'reconstruct' and prior_phase != 'reconstruct':
                     sys.stdout.write(json.dumps(dict(event='assemble_model', file=str(path), bytes=row['bytes'])) + '\n')

@@ -102,6 +102,15 @@ class WholeVideoProgress:
         done, total = message.get('done'), message.get('total')
         if estimate is None or type(done) is not int or type(total) is not int or not 0 <= done <= total:
             return
+        # Within a pass's first step, a layer event extrapolates the whole step
+        # from the first layers, which can include compilation and read-ahead
+        # (one slow layer once became a 142-minute estimate). With an estimate
+        # already in hand, use layer-based step times only after the pass has
+        # completed a step; a first run without one still gets its first number.
+        base = self.sampling_plan.get('base_steps')
+        if (self.forecast_ready and message.get('stage') == 'layers'
+                and (done == 0 or type(base) is int and 0 < base == done < total)):
+            return
         full_step = estimate
         remaining = (total - done) * estimate
         if message.get('uniform_remaining_steps') is False:
@@ -253,21 +262,21 @@ def installation_root(source=None, environ=None):
 
 
 def installation(source=None, environ=None):
+    from .comfy_launcher_api import repair_hint
     root = installation_root(source, environ)
     try:
         machine = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
     except FileNotFoundError as error:
-        raise ValueError('FreeVideo setup is missing. Open FreeVideo Settings and click "Install / repair", '
-                         'or run setup.cmd (Windows) or setup.sh (Linux) '
+        raise ValueError('FreeVideo setup is missing. ' + repair_hint() + ' Or run setup.cmd (Windows) or setup.sh (Linux) '
                          'in the FreeVideo folder, or set FREEVIDEO_HOME to your existing installation. '
                          'A prepared engine installation is required.') from error
     required = ('root', 'python', 'cache', 'base', 'checkpoint', 'comfy_python',
                 'comfy_root', 'vdn_root', 'model_paths', 'model_root', 'encoder')
     if not isinstance(machine, dict) or not machine.get('ready') or any(not machine.get(k) for k in required):
-        raise ValueError('FreeVideo setup is incomplete. Open FreeVideo Settings and click "Install / repair" to repair %s; existing files are reused.' % root)
+        raise ValueError('FreeVideo setup is incomplete in %s. %s Existing files are reused.' % (root, repair_hint()))
     identity = 'device_identity' if machine.get('device_backend') == 'mps' else 'gpu_uuid'
     if not machine.get(identity):
-        raise ValueError('FreeVideo device configuration is missing. Open Settings and click "Install / repair".')
+        raise ValueError('FreeVideo device configuration is missing. ' + repair_hint())
     if Path(machine['root']).expanduser().resolve() != root:
         raise ValueError('The FreeVideo installation was moved. Rerun setup in the selected folder.')
     if not Path(machine['python']).is_file():
@@ -349,14 +358,14 @@ def progress_message(event):
             'encoder_load': 'Loading text encoder',
             'encoder_checkpoint_map': 'Reading text encoder weights',
             'encoder_construct': 'Preparing text encoder model',
-            'encoder_tokenize': 'Preparing text and image tokens',
+            'encoder_tokenize': 'Preparing the prompt and images',
             'encoder_device_load': 'Loading text encoder onto GPU',
             'encoder_page_release': 'Preparing text encoding',
             'encoder_compute': 'Encoding text and images',
             'encoder_oom': 'Releasing encoder weights after insufficient GPU memory',
             'encoder_retry': 'Retrying text encoding with more GPU workspace',
             'encoder_spill': 'Leaving more GPU memory for text encoding',
-            'encoder_low_memory': 'Encoding long references in smaller blocks',
+            'encoder_low_memory': 'Encoding long references',
             'encoder_conditioning_pack': 'Preparing prompt data',
             'keyframe_vae': 'Encoding reference media',
             'media_vae': 'Encoding reference media',
@@ -389,6 +398,14 @@ def progress_message(event):
     if name == 'low_memory_mode':
         return dict(label='Low-memory mode for this GPU', timing_phase='load',
                     low_memory=dict(staging=bool(event.get('staging')), host_outputs=bool(event.get('host_outputs'))))
+    if name == 'unified_memory_tight':
+        # Mac, before encoding: other applications leave less unified memory
+        # than the largest sampling pass needs. Closing them during the first
+        # pass can still let it fit, so the page says so for the whole request.
+        return dict(label='Preparing video', timing_phase='load',
+                    memory_tight=dict(phase=event.get('phase'), needed_bytes=event.get('needed_bytes'),
+                                      allowance_bytes=event.get('allowance_bytes'),
+                                      first_pass_steps=event.get('first_pass_steps')))
     if name == 'latent_upscale':
         done, total = event.get('completed_steps', 8), event.get('total', 10)
         return dict(label='Upscaling before the second pass', phase='sampling', stage='latent_upscale',
@@ -400,8 +417,13 @@ def progress_message(event):
         # crossing a soft estimate while memory is available needs no action.
         return None
     if name == 'compatibility':
-        return {'label': 'Compatibility level %s · smaller work groups' % event.get('level'),
-                'compatibility': event}
+        from .compatibility import LEVELS
+        level = event.get('level')
+        if type(level) is not int or not 1 <= level <= 3:
+            return None
+        return {'compatibility': dict(level=level,
+                                      name_en=LEVELS[level]['en'].split(' · ', 1)[0],
+                                      name_zh=LEVELS[level]['zh'].split(' · ', 1)[0])}
     if name == 'compute_device':
         return {'label': 'Compute device · %s · %s' % (event.get('backend', ''), event.get('name', '')),
                 'device': event}
@@ -412,21 +434,21 @@ def progress_message(event):
               'encoder_cache_lookup': 'Checking text encoder cache',
               'encoder_cache_hit': 'Reusing text encoder',
               'release_idle_cache': 'Releasing idle models and checking available memory again',
-              'encoder_tokenize_start': 'Preparing text and image tokens',
+              'encoder_tokenize_start': 'Preparing the prompt and images',
               'encoder_device_load_start': 'Loading text encoder onto GPU',
               'encoder_device_reuse': 'Using text encoder already on GPU',
               'encoder_compute_start': 'Encoding text and images',
               'encoder_oom': 'Releasing encoder weights after insufficient GPU memory',
               'encoder_retry': 'Retrying text encoding with more GPU workspace',
               'conditioning_cache_hit': 'Reusing prompt cache', 'encoder_complete': 'Prompt ready',
-              'video_start': 'Loading video model',
+              'video_start': 'Loading the video model',
               'decode_resume': 'Reusing completed sampling · retrying video and audio decoding',
               'lora_prepare_start': 'Loading LoRAs',
               'resource_retry': 'Adjusting memory placement and retrying'}
     if name == 'decode_phase':
         return {'label': str(event.get('phase', 'Decoding video and audio')), 'timing_phase': 'decode'}
     if name == 'decode_progress':
-        return dict(label='Decoding video tiles', timing_phase='decode', phase='decode', stage='video',
+        return dict(label='Decoding the video', timing_phase='decode', phase='decode', stage='video',
                     done=event.get('done'), total=event.get('total'), unit='frames',
                     elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
@@ -435,12 +457,20 @@ def progress_message(event):
         return {'label': 'Preparing reference media', 'timing_phase': 'encoding',
                 'reference_trimmed': {key: event.get(key) for key in ('kind', 'number', 'seconds', 'used_seconds')}}
     if name == 'prepared_blocks':
-        return {'label': 'Loading cached video model · %s / 50 blocks' % event.get('blocks', '?'),
-                'timing_phase': 'load'}
+        # The cached video model has 50 blocks, as in the former label.
+        return {'label': 'Loading the video model',
+                'timing_phase': 'load', 'done': event.get('blocks'), 'total': 50}
     if name in ('sampling_preset_download', 'reference_assets_download'):
         reference = name == 'reference_assets_download'
         return dict(label='Preparing reference media resources' if reference else 'Preparing sampling preset',
                     timing_phase='load', phase='load', stage='reference_download' if reference else 'preset_download',
+                    done=event.get('done_bytes'), total=event.get('total_bytes'),
+                    bytes_per_second=event.get('bytes_per_second'), unit='bytes')
+    if name == 'adaln_sources_download':
+        # A step count without published tables, or an FP8 LoRA that changes
+        # modulation: the original modulation weights, downloaded once.
+        return dict(label='Downloading extra model weights (one-time download)',
+                    timing_phase='load', phase='load', stage='sources_download',
                     done=event.get('done_bytes'), total=event.get('total_bytes'),
                     bytes_per_second=event.get('bytes_per_second'), unit='bytes')
     if name == 'loaded':
@@ -449,13 +479,11 @@ def progress_message(event):
         return {'label': 'Reusing completed sampling · retrying video and audio decoding',
                 'timing_phase': 'decode'}
     if name == 'model_load_phase':
-        label = str(event.get('phase', 'Loading video model'))
-        if event.get('total'):
-            label += ' · %s / %s blocks' % (event.get('done', 0), event['total'])
-        return {'label': label, 'timing_phase': 'load'}
+        return {'label': str(event.get('phase', 'Loading the video model')), 'timing_phase': 'load',
+                **{key: event[key] for key in ('done', 'total') if key in event}}
     if name == 'lora_prepare':
-        return {'label': 'Loading LoRAs · %s / %s' % (event.get('done', '?'), event.get('total', '?')),
-                'timing_phase': 'load'}
+        return {'label': 'Loading LoRAs', 'timing_phase': 'load',
+                **{key: event[key] for key in ('done', 'total') if key in event}}
     if name in labels:
         phase = ('encoding' if name.startswith('encoding') or name.startswith('encoder_')
                  or name in ('conditioning_cache_hit', 'release_idle_cache') else
@@ -661,6 +689,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     save(media_path, extra['media'])
                     command += ['--media', str(media_path)]
             state['command'] = command
+            # The progress area names reference media only when the request has them.
+            media = extra.get('media') or {}
+            send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding',
+                           'references': any(media.get(key) for key in ('first', 'last', 'references'))})
         from .media_request import task_for
         from .two_pass import plan
         planned = plan(canvas, two_pass, task_for(extra.get('media', {})), base_steps=base_steps, refine_steps=refine_steps)
@@ -736,8 +768,14 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     pass
             poll()
             if process.returncode:
-                from .failure_details import generation_failure
-                raise RuntimeError(generation_failure(run, process.returncode))
+                from .comfy_launcher_api import repair_hint, request_repair
+                from .failure_details import generation_failure, runtime_explanation
+                hint = repair_hint()
+                changed = runtime_explanation(run, hint)
+                if changed:
+                    # The launcher shows its Repair card when it next reads the page check.
+                    request_repair(changed)
+                raise RuntimeError(generation_failure(run, process.returncode, repair=hint))
         report = json.loads(output.with_suffix('.request.json').read_text(encoding='utf-8'))
         engine = json.loads(output.with_suffix('.engine.json').read_text(encoding='utf-8'))
         from .two_pass import steps, plan
@@ -756,13 +794,22 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 or report.get('sampling_plan') != expected_plan
                 or bool(report.get('preview')) != preview or bool(report.get('upscaled_preview')) != bool(upscale)
                 or any(engine.get('geometry', {}).get(k) != shown[k] for k in ('width', 'height', 'frames'))):
+            from .comfy_launcher_api import repair_hint
             from .failure_details import generation_failure
-            raise RuntimeError('FreeVideo did not complete the requested video.\n' + generation_failure(run))
+            raise RuntimeError('FreeVideo did not complete the requested video.\n' + generation_failure(run, repair=repair_hint()))
         if comfy_metadata:
             # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
             # Written before the result cache records the file's size and hash.
             from .comfy_metadata import embed_comfy_metadata
             state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
+        # The MP4 is saved and checked; its uncompressed frames and audio are no longer read.
+        from .comfy_library import release_decoded, release_later
+        state['decoded_release'] = release_decoded(run)
+        if state['decoded_release']['left']:
+            try:
+                release_later(output_directory)
+            except OSError:
+                pass  # The video is complete; a later release only frees space.
         state.update(status='complete', request_seconds=report.get('request_seconds'),
                      engine_report=str(output.with_suffix('.engine.json')))
         # Do not index a result against inputs/models that changed while it ran.

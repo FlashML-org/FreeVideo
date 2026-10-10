@@ -299,6 +299,7 @@ def serve(root, *, port=DEFAULT_PORT, listen='127.0.0.1', tls=None):
             proxied = not loopback(listen)
             internal = free_port() if proxied else port
             controller = Controller(Path(record['source']))
+            controller.move_when_taken = False  # Serve the port that was asked for, or say it is taken.
             for name in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                 previous[name] = signal.signal(name, lambda *_: (stopping.set(), controller.cancelled.set()))
             if not controller.restore({'installation': dict(record, url='http://127.0.0.1:%d' % internal)}):
@@ -680,13 +681,26 @@ def tls_pair(cert, key):
     return cert, key
 
 
+def systemd_quote(value):
+    """One ExecStart= word: double quotes with C escapes, and %% and $$ for a literal % and $."""
+    value = str(value)
+    if value and all(c.isascii() and (c.isalnum() or c in '_@+=:,./-') for c in value):
+        return value
+    value = value.replace('%', '%%').replace('$', '$$')
+    return '"%s"' % ''.join('\\' + c if c in '"\\' else '\\x%02x' % ord(c) if c < ' ' or c == '\x7f' else c
+                            for c in value)
+
+
 def unit_text(root, source, listen, port, tls):
-    command = command_line(root, source) + ['server', '--foreground', '--listen', listen, '--port', str(port)]
+    # Run the script the way its #!/usr/bin/env bash line does: systemd refuses quotes and backslashes
+    # in the program path, but an argument can hold any path.
+    command = ['/usr/bin/env', 'bash'] + command_line(root, source) + [
+        'server', '--foreground', '--listen', listen, '--port', str(port)]
     if tls:
         command += ['--tls-cert', str(tls[0]), '--tls-key', str(tls[1])]
     return ('[Unit]\nDescription=FreeVideo (ComfyUI with FreeVideo)\nAfter=network-online.target\n\n'
             '[Service]\nType=simple\nExecStart=%s\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=60\n\n'
-            '[Install]\nWantedBy=default.target\n') % ' '.join(shlex.quote(p) for p in command)
+            '[Install]\nWantedBy=default.target\n') % ' '.join(systemd_quote(p) for p in command)
 
 
 def unit_path():

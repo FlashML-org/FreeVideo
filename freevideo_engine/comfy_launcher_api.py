@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -26,9 +27,58 @@ def page_report(value):
 PAGE_SCRIPTS_MISSING = (
     'FreeVideo’s page scripts have not run in this browser, so the creative workspace is missing. '
     'Press Ctrl+F5 to reload the page. If it stays missing, open the FreeVideo launcher, '
-    'click Settings › Install / repair, and open FreeVideo again. '
+    'click Settings › Repair, and open FreeVideo again. '
     '浏览器没有运行 FreeVideo 的页面脚本，所以看不到创作面板。请按 Ctrl+F5 强制刷新页面；'
-    '仍然没有时，请在 FreeVideo 启动器的“设置”里点击“安装 / 修复”，然后重新打开 FreeVideo。')
+    '仍然没有时，请在 FreeVideo 启动器的“设置”里点击“修复”，然后重新打开 FreeVideo。')
+# Without the launcher, the page's own Settings cannot open either.
+PAGE_SCRIPTS_MISSING_NODE = (
+    'FreeVideo’s page scripts have not run in this browser, so the creative workspace is missing. '
+    'Press Ctrl+F5 to reload the page. If it stays missing, update the FreeVideo node and restart ComfyUI. '
+    '浏览器没有运行 FreeVideo 的页面脚本，所以看不到创作面板。请按 Ctrl+F5 强制刷新页面；'
+    '仍然没有时，请更新 FreeVideo 节点并重启 ComfyUI。')
+
+# Where a node message sends the user to repair. The launcher has its own
+# Repair; a ComfyUI started without it has the page's Settings › Install / repair.
+LAUNCHER_REPAIR = 'In the FreeVideo launcher, open Settings and click Repair.'
+PAGE_REPAIR = 'Open FreeVideo Settings in ComfyUI and click "Install / repair".'
+# The launcher reads /freevideo/launcher/ui every 3 s while this ComfyUI is open.
+LAUNCHER_SEEN = 30
+
+
+def launcher_watching(server, now=None):
+    """True while a FreeVideo launcher is reading this server's page check."""
+    seen = getattr(server, '_freevideo_launcher_seen', None)
+    now = time.monotonic() if now is None else now
+    return isinstance(seen, float) and 0 <= now - seen < LAUNCHER_SEEN
+
+
+def repair_hint(server=None):
+    """The repair sentence for messages shown in this ComfyUI."""
+    server = comfy_server() if server is None else server
+    return LAUNCHER_REPAIR if launcher_watching(server) else PAGE_REPAIR
+
+
+def comfy_server():
+    """ComfyUI's PromptServer when this process is ComfyUI; its module is never imported here."""
+    module = sys.modules.get('server')
+    return getattr(getattr(module, 'PromptServer', None), 'instance', None)
+
+
+def request_repair(text, server=None):
+    """Ask the launcher reading this server for its Repair card, until ComfyUI restarts."""
+    server = comfy_server() if server is None else server
+    if server is not None and text:
+        server._freevideo_repair = dict(kind='runtime-libraries', text=str(text)[:2000], at=time.time())
+
+
+def launcher_view(page, server, now=None):
+    """What the launcher reads: the page check and any repair a failed run asked for."""
+    server._freevideo_launcher_seen = time.monotonic() if now is None else now
+    value = dict(page)
+    repair = getattr(server, '_freevideo_repair', None)
+    if isinstance(repair, dict):
+        value['repair'] = repair
+    return value
 
 
 def page_notice(server):
@@ -41,7 +91,9 @@ def page_notice(server):
     """
     if server is None or getattr(server, '_freevideo_launcher', None) is None:
         return ''
-    return '' if getattr(server, '_freevideo_page_reported', None) else PAGE_SCRIPTS_MISSING
+    if getattr(server, '_freevideo_page_reported', None):
+        return ''
+    return PAGE_SCRIPTS_MISSING if launcher_watching(server) else PAGE_SCRIPTS_MISSING_NODE
 
 
 def save_page_report(engine_root, report):
@@ -113,4 +165,4 @@ def register():
 
     @server.routes.get('/freevideo/launcher/ui')
     async def page_state(request):
-        return web.json_response(page)
+        return web.json_response(launcher_view(page, server))

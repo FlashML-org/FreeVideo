@@ -112,7 +112,7 @@ def models(plan):
             sys.stdout.write(json.dumps(dict(event=event, **details)) + '\n')
             sys.stdout.flush()
 
-    from .model_status import ModelProgress
+    from .model_status import ModelProgress, NAMES, family
     model_progress = ModelProgress([(entry[0], 'found') for entry in local_files] +
                                    [(entry[0], 'download') for entry in missing], emit)
     model_progress.update()
@@ -140,6 +140,7 @@ def models(plan):
                     now = time.monotonic()
                     if done == 0 or done == total or now - last[0] >= .5:
                         emit('model_verification_progress', file=path.name, done_bytes=done,
+                             name=NAMES[family(row)][0],
                              total_bytes=total, bytes_per_second=done / max(.001, now-started),
                              files_done=index, files_total=len(local_files), state='running')
                         model_progress.update(row, phase='verifying')
@@ -197,13 +198,14 @@ def models(plan):
                     raise ValueError('Model destination appeared with unexpected content: ' + str(path))
                 complete(row, path, prior[str(path)], 'verify')
                 return
-            emit('download_model', file=str(path), bytes=row['bytes'])
+            emit('download_model', file=str(path), bytes=row['bytes'], name=NAMES[family(row)][0])
             model_progress.update(row, phase='downloading')
             last_progress = [0.]
             def progress(done, total, speed, **extra):
                 check()
                 if time.monotonic() - last_progress[0] >= 1:
                     emit('download_progress', description=path.name, done_bytes=done,
+                         name=NAMES[family(row)][0],
                          total_bytes=total, bytes_per_second=speed, **extra)
                     model_progress.update(row, phase='verifying' if done == row['bytes'] else 'downloading', done=done, rate=speed)
                     last_progress[0] = time.monotonic()
@@ -245,7 +247,7 @@ def models(plan):
                         raise ValueError('Model destination appeared with unexpected content: ' + str(path))
                     complete(row, path, prior[str(path)], 'verify')
                     return
-                emit('download_model', file=str(path), bytes=row['bytes'])
+                emit('download_model', file=str(path), bytes=row['bytes'], name=NAMES[family(row)][0])
                 model_progress.update(row, phase='downloading')
                 path.parent.mkdir(parents=True, exist_ok=True)
                 last = [0.]
