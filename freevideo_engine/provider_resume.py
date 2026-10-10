@@ -172,7 +172,10 @@ def hf_download(request, module, progress, *, incomplete_path, destination_path,
         # pinned digest and never appends an ignored Range response.
         network.download([(request['source'], url_to_download)], destination, row.get('sha256') or row['git_blob'],
             lambda done, total, rate: progress(done, total, rate), size=row['bytes'],
-            network={'allow_model_restart': request.get('allow_model_restart', False)},
+            # The parent tries routes in separate supervised workers. Keep the
+            # HTTP fallback on this worker's selected route as well.
+            network={'allow_model_restart': request.get('allow_model_restart', False),
+                     'proxy_mode': 'direct' if request.get('proxy_route') == 'direct' else 'proxy'},
             headers_for=lambda _: [key + ': ' + value for key, value in headers.items()],
             algorithm='sha256' if row.get('sha256') else 'sha1', git_blob=not row.get('sha256'),
             category=network.model_family(row))
