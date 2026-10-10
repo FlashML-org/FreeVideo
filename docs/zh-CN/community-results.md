@@ -12,7 +12,7 @@
 | PRO&nbsp;5000 | 72&nbsp;GB | 128&nbsp;GB | 768×1344 | 10&nbsp;s | 精⁠细 | 0.3.4 | 552&nbsp;s | 0.3.4 | 已⁠是⁠最⁠优 |
 | 4070&nbsp;笔⁠记⁠本 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 8&nbsp;s | 轻⁠量 | 0.3.5 | 1031&nbsp;s | 0.3.21 | 830&nbsp;s⁠（−200&nbsp;s⁠） |
 | 3070&nbsp;笔⁠记⁠本 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 5&nbsp;s | 轻⁠量 | 0.3.8 | 3821&nbsp;s | 0.3.8 | 散⁠热⁠受⁠限¹ |
-| 5080&nbsp;笔⁠记⁠本 | 16&nbsp;GB | 32&nbsp;GB | 1184×672 | 10&nbsp;s | 轻⁠量 | 0.3.8 | 416&nbsp;s | 0.3.8 | 已⁠是⁠最⁠优 |
+| 5080&nbsp;笔⁠记⁠本 | 16&nbsp;GB | 32&nbsp;GB | 1184×672 | 10&nbsp;s | 轻⁠量 | 0.3.8 | 416&nbsp;s | 0.3.21 | 385&nbsp;s⁠（−30&nbsp;s⁠） |
 | 5090 | 32&nbsp;GB | 32&nbsp;GB | 1344×768 | 6.6&nbsp;s | 极⁠致 | 0.3.8 | 336&nbsp;s | 0.3.8 | 无⁠诊⁠断⁠数⁠据 |
 | 5070&nbsp;Ti | 16&nbsp;GB | 48&nbsp;GB | 576×928 | 12.3&nbsp;s | 标⁠准 | 0.3.8 | 472&nbsp;s | int8&nbsp;模⁠型² | 420&nbsp;s⁠（−50&nbsp;s⁠） |
 | A5000&nbsp;笔⁠记⁠本 | 16&nbsp;GB | 128&nbsp;GB | 1344×768 | 10&nbsp;s | 轻⁠量 | 0.3.8 | 1108&nbsp;s | 0.3.8 | 散⁠热⁠受⁠限¹ |
