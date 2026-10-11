@@ -6,7 +6,7 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 |---|---:|---:|---:|---:|:---:|:---:|---:|:---:|---:|
 | 4060&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 1920×1088 | 15&nbsp;s | Light | 0.3.0 | 3306&nbsp;s | 0.3.6 | 2730&nbsp;s&nbsp;(−580&nbsp;s) |
 | 5060 | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 15&nbsp;s | Light | 0.3.1 | 1367&nbsp;s | 0.3.6 | 1160&nbsp;s&nbsp;(−210&nbsp;s) |
-| 3070&nbsp;Ti | 8&nbsp;GB | 96&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.1 | 749&nbsp;s | 0.3.6 | 690&nbsp;s&nbsp;(−60&nbsp;s) |
+| 3070&nbsp;Ti | 8&nbsp;GB | 96&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.1 | 749&nbsp;s | 0.3.22 | 665&nbsp;s&nbsp;(−80&nbsp;s)⁶ |
 | 4060 | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 15&nbsp;s | Light | 0.3.4 | 1592&nbsp;s | 0.3.10 | 1450&nbsp;s&nbsp;(−140&nbsp;s) |
 | 5070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 5&nbsp;s | Light | 0.3.4 | 555&nbsp;s | 0.3.10 | 485&nbsp;s&nbsp;(−70&nbsp;s) |
 | PRO&nbsp;5000 | 72&nbsp;GB | 128&nbsp;GB | 768×1344 | 10&nbsp;s | High | 0.3.4 | 552&nbsp;s | 0.3.4 | Already&nbsp;optimal |
@@ -29,6 +29,16 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5070&nbsp;Ti&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | High | 0.3.20 | 1545&nbsp;s | 0.3.21 | 1310&nbsp;s&nbsp;(−240&nbsp;s) |
 | 5060&nbsp;Ti | 16&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.20 | 471&nbsp;s | 0.3.21 | 465&nbsp;s&nbsp;(−10&nbsp;s) |
 | 4070&nbsp;SUPER | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 15&nbsp;s | High | 0.3.20 | 2966&nbsp;s | 0.3.21 | 2050&nbsp;s&nbsp;(−920&nbsp;s) |
+| 4070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 544×960 | 3&nbsp;s | Light⁵ | 0.3.22 | 133&nbsp;s | 0.3.22 | Already&nbsp;optimal |
+| M4&nbsp;Pro | Unified | 24&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.3.8 | 3457&nbsp;s | 0.3.8 | Already&nbsp;optimal |
+| 5090 | 32&nbsp;GB | 64&nbsp;GB | 1376×768 | 10&nbsp;s | Light | 0.3.20 | 294&nbsp;s | 0.3.23 | 265&nbsp;s&nbsp;(−30&nbsp;s) |
+| 5060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 960×544 | 3&nbsp;s | Light | 0.3.21 | 908&nbsp;s | 0.3.23 | 820&nbsp;s&nbsp;(−90&nbsp;s) |
+| 3060 | 12&nbsp;GB | 64&nbsp;GB | 1184×672 | 10&nbsp;s | Light⁵ | 0.3.22 | 604&nbsp;s | 0.3.23 | 565&nbsp;s&nbsp;(−40&nbsp;s) |
+| 4070 | 12&nbsp;GB | 32&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.3.22 | 340&nbsp;s | 0.3.22 | Already&nbsp;optimal |
+| 5090 | 32&nbsp;GB | 64&nbsp;GB | 1344×768 | 10.8&nbsp;s | Light | 0.3.22 | 249&nbsp;s | 0.3.22 | Already&nbsp;optimal |
+| 3090 | 24&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.23 | 704&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| 5060&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 1344×768 | 12.3&nbsp;s | Light | 0.3.23 | 573&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| 5080 | 16&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.23 | 240&nbsp;s | 0.3.23 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -37,3 +47,5 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ² This machine still runs the FP8 model; the estimate is for the int8 model, a one-click upgrade in the launcher since 0.3.0.
 - ³ Preview: only the first pass, at half resolution. With 16 GB of RAM most of the model is read from the drive at every step (about 80 MB/s on this machine), which takes most of the time.
 - ⁴ The report had no diagnostic file; the estimate replays the plan for this machine's configuration and measures the same request on our test machines.
+- ⁵ Second pass after a preview: the time covers the latent upscale, the three second-pass steps and decoding, not the first pass, which made the preview in an earlier request.
+- ⁶ Measured on the same machine with 0.3.22.
