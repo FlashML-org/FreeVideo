@@ -42,6 +42,8 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 3060&nbsp;Ti | 8&nbsp;GB | 48&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.3.22 | 508&nbsp;s | 0.3.24 | 490&nbsp;s&nbsp;(−20&nbsp;s) |
 | 3070&nbsp;Laptop | 8&nbsp;GB | 24&nbsp;GB | 864×480 | 5&nbsp;s | Light | 0.3.22 | 677&nbsp;s | 0.3.24 | 645&nbsp;s&nbsp;(−30&nbsp;s) |
 | 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1312×768 | 10&nbsp;s | Light | 0.3.23 | 1024&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 96&nbsp;GB | 768×1344 | 5&nbsp;s | Light | 0.3.23 | 493&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| M5&nbsp;Pro | Unified | 48&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.3.23 | 527&nbsp;s | 0.3.23 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
