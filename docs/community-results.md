@@ -48,6 +48,9 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5060 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.23 | 1279&nbsp;s | 0.3.25 | 1150&nbsp;s&nbsp;(−130&nbsp;s) |
 | 3060 | 12&nbsp;GB | 32&nbsp;GB | 832×1248 | 10&nbsp;s | Light | 0.3.24 | 1668&nbsp;s | 0.3.24 | GPU&nbsp;shared⁷ |
 | 5080 | 16&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.24 | 312&nbsp;s | 0.3.24 | 278&nbsp;s&nbsp;(−34&nbsp;s) |
+| 4070&nbsp;Ti&nbsp;SUPER | 16&nbsp;GB | 96&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.24 | 575&nbsp;s | 0.3.24 | Already&nbsp;optimal |
+| 4080&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.24 | 970&nbsp;s | 0.3.24 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 6.6&nbsp;s | Light⁵ | 0.3.24 | 386&nbsp;s | 0.3.24 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
