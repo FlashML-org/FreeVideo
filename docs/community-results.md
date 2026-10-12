@@ -44,6 +44,9 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1312×768 | 10&nbsp;s | Light | 0.3.23 | 1024&nbsp;s | 0.3.23 | Already&nbsp;optimal |
 | 3060 | 12&nbsp;GB | 96&nbsp;GB | 768×1344 | 5&nbsp;s | Light | 0.3.23 | 493&nbsp;s | 0.3.23 | Already&nbsp;optimal |
 | M5&nbsp;Pro | Unified | 48&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.3.23 | 527&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| 4090 | 24&nbsp;GB | 64&nbsp;GB | 1344×768 | 30.7&nbsp;s | Max | 0.3.23 | 5829&nbsp;s | 0.3.25 | 4850&nbsp;s&nbsp;(−980&nbsp;s) |
+| 5060 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.23 | 1279&nbsp;s | 0.3.25 | 1150&nbsp;s&nbsp;(−130&nbsp;s) |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 832×1248 | 10&nbsp;s | Light | 0.3.24 | 1668&nbsp;s | 0.3.24 | GPU&nbsp;shared⁷ |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -54,3 +57,4 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ⁴ The report had no diagnostic file; the estimate replays the plan for this machine's configuration and measures the same request on our test machines.
 - ⁵ Second pass after a preview: the time covers the latent upscale, the three second-pass steps and decoding, not the first pass, which made the preview in an earlier request.
 - ⁶ Measured on the same machine with 0.3.22.
+- ⁷ GPU shared: the graphics card never became idle during the run (23% utilization and 74 W at its lowest), so it was also doing other work and FreeVideo's steps ran at a little over half their usual speed. With the card free, the same request takes about 1000 s.
