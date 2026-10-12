@@ -61,14 +61,21 @@ def request(path, action='update'):
 
 def take_request(path):
     file = Path(path) / 'request.json'
+    claimed = file.with_name('.request-' + secrets.token_hex(8) + '.json')
     try:
-        value = json.loads(file.read_text(encoding='utf-8'))
+        # Claim one receipt before reading it. A browser action written while
+        # it is consumed stays at request.json for the next launcher tick.
+        file.rename(claimed)
+    except OSError:
+        return None
+    try:
+        value = json.loads(claimed.read_text(encoding='utf-8'))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
         value = None
     try:
-        file.unlink()
+        claimed.unlink()
     except OSError:
         pass
     return value if isinstance(value, dict) and value.get('action') in ('update', 'cancel') else None
