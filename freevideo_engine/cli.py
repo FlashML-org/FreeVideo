@@ -128,6 +128,15 @@ def main():
                                help='Measure the placement questions this machine can settle')
     calibrate.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.command == 'generate':
+        # Check the input before detection and planning. A mistyped or empty prompt
+        # file failed only after <out>.artifacts was created, and every retry with
+        # the same --out then stopped at FileExistsError.
+        if args.prompt_file:
+            if not args.prompt_file.read_text(encoding='utf-8').strip():
+                raise ValueError('A nonempty prompt is required')
+        elif not args.conditioning.is_file():
+            raise FileNotFoundError(f'Conditioning file not found: {args.conditioning}')
     if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):
         from .macos_generate import dispatch
         return dispatch(args)
