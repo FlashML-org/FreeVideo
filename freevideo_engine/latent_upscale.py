@@ -33,8 +33,17 @@ def upscale(video, checkpoint, width, height, *, memory_saving=False):
     if (not isinstance(video, torch.Tensor) or video.ndim != 5 or tuple(video.shape[:2]) != (1,24)
             or not video.is_floating_point() or not bool(torch.isfinite(video).all())):
         raise ValueError('Latent upscaling requires finite batch-one, 24-channel video latents')
-    if any(type(value) is not int or value % 32 for value in (width,height)):
-        raise ValueError('Upscale target dimensions must be multiples of 32')
+    _dims = []
+    for value in (width, height):
+        try:
+            _f = float(value)
+        except (TypeError, ValueError):
+            raise ValueError('Upscale target dimensions must be multiples of 32')
+        _iv = int(_f)
+        if _f != _iv or _iv % 32:
+            raise ValueError('Upscale target dimensions must be multiples of 32')
+        _dims.append(_iv)
+    width, height = _dims
     source_h, source_w = video.shape[-2:]
     target_h, target_w = height//16, width//16
     if target_h < source_h or target_w < source_w or target_h*source_w != target_w*source_h:
