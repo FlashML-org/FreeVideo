@@ -54,6 +54,15 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5060&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 768×1344 | 15.1&nbsp;s | Light | 0.3.24 | 847&nbsp;s | 0.3.24 | Already&nbsp;optimal |
 | 5060 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 4.5&nbsp;s | Light | 0.3.25 | 390&nbsp;s | 0.3.25 | Already&nbsp;optimal |
 | M4&nbsp;Pro | Unified | 48&nbsp;GB | 1120×928 | 10&nbsp;s | Light⁵ | 0.3.20 | 5197&nbsp;s | 0.3.20 | Already&nbsp;optimal |
+| 3080 | 20&nbsp;GB | 64&nbsp;GB | 1344×768 | 20&nbsp;s | High | 0.3.20 | 2526&nbsp;s | 0.4.0 | 2335&nbsp;s&nbsp;(−191&nbsp;s) |
+| 5070&nbsp;Ti&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 960×544 | 6.6&nbsp;s | Medium | 0.3.23 | 291&nbsp;s | 0.3.23 | Already&nbsp;optimal |
+| 3090 | 24&nbsp;GB | 32&nbsp;GB | 1024×576 | 15&nbsp;s | Light | 0.3.23 | 1504&nbsp;s⁸ | 0.4.0 | 1455&nbsp;s&nbsp;(−50&nbsp;s) |
+| 3060 | 12&nbsp;GB | 40&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.24 | 1676&nbsp;s⁹ | 0.4.0 | 1660&nbsp;s&nbsp;(−20&nbsp;s) |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.3.25 | 769&nbsp;s | 0.4.0 | 755&nbsp;s&nbsp;(−15&nbsp;s) |
+| 3070&nbsp;Laptop | 16&nbsp;GB | 32&nbsp;GB | 960×544 | 15&nbsp;s | Light | 0.3.25 | 1539&nbsp;s | 0.4.0 | 1520&nbsp;s&nbsp;(−20&nbsp;s) |
+| 3070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 5&nbsp;s | Light | 0.3.25 | 513&nbsp;s | 0.4.0 | 500&nbsp;s&nbsp;(−13&nbsp;s) |
+| 3070&nbsp;Ti | 8&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Max | 0.3.25 | 8501&nbsp;s | 0.4.0 | 8490&nbsp;s&nbsp;(−11&nbsp;s) |
+| 3060 | 12&nbsp;GB | 128&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.3.25 | 1074&nbsp;s | 0.4.0 | 1055&nbsp;s&nbsp;(−19&nbsp;s) |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -65,3 +74,5 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ⁵ Second pass after a preview: the time covers the latent upscale, the three second-pass steps and decoding, not the first pass, which made the preview in an earlier request.
 - ⁶ Measured on the same machine with 0.3.22.
 - ⁷ GPU shared: the graphics card never became idle during the run (23% utilization and 74 W at its lowest), so it was also doing other work and FreeVideo's steps ran at a little over half their usual speed. With the card free, the same request takes about 1000 s.
+- ⁸ The drive holding the model files reads at about 60 MB/s; reading them took about 900 s of the 1504 s.
+- ⁹ The drive holding the model files reads at about 80 MB/s; reading them took about 570 s of the 1676 s.
