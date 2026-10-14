@@ -67,6 +67,7 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 4070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light⁵ | 0.4.1 | 1297&nbsp;s | 0.4.1 | 585&nbsp;s&nbsp;(−710&nbsp;s) |
 | 3070 | 16&nbsp;GB | 32&nbsp;GB | 1344×768 | 12.3&nbsp;s | Max | 0.4.0 | 10090&nbsp;s | 0.4.0 | GPU&nbsp;shared¹⁰ |
 | 3060 | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.3 | 1297&nbsp;s | 0.4.3 | Already&nbsp;optimal |
+| 4060&nbsp;Ti | 8&nbsp;GB | 16&nbsp;GB | 672×1184 | 6.6&nbsp;s | Light | 0.4.0 | 887&nbsp;s¹¹ | 0.4.0 | 887&nbsp;s |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -81,3 +82,4 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ⁸ The drive holding the model files reads at about 60 MB/s; reading them took about 900 s of the 1504 s.
 - ⁹ The drive holding the model files reads at about 80 MB/s; reading them took about 570 s of the 1676 s.
 - ¹⁰ GPU shared: other programs were using about 29% of the graphics card during the run, so FreeVideo's steps ran at a little over 70% of their usual speed. With the card free, the same request takes about 7200 s.
+- ¹¹ With 16 GB of RAM, the text encoder and part of the video model cannot stay in memory and are read from the drive; text encoding and the first pass, which wait on these reads, took about 460 s of the 887 s.
