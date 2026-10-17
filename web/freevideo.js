@@ -51,7 +51,7 @@ style.textContent = `
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
-.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}
+.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-depth-only{display:flex;align-items:center;gap:8px;margin:8px 0 0;white-space:nowrap;font-size:var(--fv-small,13px);cursor:pointer}.fv-depth-only input{margin:0}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel[data-freevideo=media]>.fv-mode{display:inline-block;margin:4px 0 2px;padding:2px 8px;border-radius:var(--fv-r-xs,3px);background:var(--fv-selected);font-weight:var(--fv-medium,500)}.fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
 .fv-card[data-enabled=false]{opacity:.5}.fv-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:60px}
@@ -354,6 +354,15 @@ function mediaPanel(node, mount = null) {
                 };
                 preview.onloadedmetadata = () => showLength();
             }
+            if (kind === "video" && row.role === "reference") {
+                // Off by default: the video itself is the reference. On: its depth picture is, and the picture and colours are not asked for.
+                const depth = el("label", undefined, "fv-depth-only"), box = el("input");
+                box.type = "checkbox"; box.checked = row.depth === true;
+                box.onchange = () => { if (box.checked) rows[index].depth = true; else delete rows[index].depth; update(rows); };
+                depth.append(box, el("span", text("Depth only", "仅参考深度")));
+                depth.title = text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。");
+                card.append(depth);
+            }
             const controls = el("div", undefined, "fv-row");
             const move = delta => { const target = index + delta; if (target < 0 || target >= rows.length) return; [rows[index], rows[target]] = [rows[target], rows[index]]; update(rows); };
             if (kind === "image") {
@@ -375,7 +384,7 @@ function mediaPanel(node, mount = null) {
             return JSON.stringify(requestRows(swapState(node)));
         }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;

@@ -20,6 +20,7 @@ const SUBACTIVITY = {
     gpu: ['Loading the prompt model', '正在加载提示词模型'],
     prompt: ['Processing the prompt', '正在处理提示词'],
     reference: ['Processing reference images and videos', '正在处理参考图片和视频'],
+    depth: ['Extracting depth from the reference video', '正在提取参考视频的深度'],
     load: ['Loading the video model', '正在载入视频模型'],
     first: ['Running the first step (it takes longer the first time a size is used or after an update)',
         '正在进行第一步（首次使用这个尺寸或更新后，第一步要多花一些时间）'],
@@ -38,6 +39,7 @@ const SAMPLING_NAME = {
 };
 const SAMPLING_PASS = {first: ['first pass', '一采'], pass2: ['second pass', '二采'], preview: ['preview', '预览']};
 const SUBACTIVITY_LABELS = {
+    'Extracting depth from the reference video': 'depth',
     'Starting generation process': 'start', 'Starting text encoder': 'libraries',
     'Loading text encoder': 'libraries', 'Preparing text encoder GPU': 'gpu',
     'Reading text encoder weights': 'weights', 'Preparing text encoder model': 'weights',
@@ -122,7 +124,7 @@ const LABEL_ACTIVITY = {
         'Preparing prompt data', 'Saving prompt cache', 'Reusing prompt cache', 'Prompt ready',
         'Releasing idle models and checking available memory again'],
     combined: ['Encoding text and images', 'Preparing the prompt and images', 'Preparing text and image tokens'],
-    reference: ['Preparing reference media', 'Retaining and checking input media', 'Encoding input media',
+    reference: ['Extracting depth from the reference video', 'Preparing reference media', 'Retaining and checking input media', 'Encoding input media',
         'Encoding reference media', 'Encoding image/video references', 'Encoding reference audio',
         'Encoding long references', 'Encoding long references in smaller blocks'],
     load: ['Loading the video model', 'Loading video model', 'Loading native MPS model', 'Loading cached video model',
