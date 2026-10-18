@@ -17,7 +17,7 @@ import uuid
 from . import processes
 from .paths import data_root
 
-PREPROCESSING_VERSION = 'dav2-small-pyav-torch-bgr-imagenet-lower-bound-14-v2'
+PREPROCESSING_VERSION = 'dav2-small-pyav-torch-bgr-imagenet-lower-bound-14-clay-relief-v1'
 CODE_VERSION = 'freevideo-depth-reference-v1'
 STAGE = 'depth_reference'
 
@@ -121,7 +121,6 @@ def _upright_bgr(frame):
 def inspect_video(path, check=lambda: None, *, depth=False):
     """Decode every frame, rather than trusting container frame-count headers."""
     import av
-    import numpy as np
     pts, dimensions, rotation = [], None, None
     with av.open(str(path)) as container:
         if not container.streams.video:
@@ -144,10 +143,6 @@ def inspect_video(path, check=lambda: None, *, depth=False):
                 raise ValueError('Depth reference video changes dimensions')
             dimensions = size
             pts.append(frame.pts)
-            if depth:
-                rgb = frame.to_ndarray(format='rgb24')
-                if not (np.array_equal(rgb[..., 0], rgb[..., 1]) and np.array_equal(rgb[..., 1], rgb[..., 2])):
-                    raise ValueError('Depth reference cache is not grayscale')
     if not pts:
         raise ValueError('Depth reference video has no decodable frames')
     if depth and rotation:
@@ -172,7 +167,8 @@ def identity(source, video, device, check=lambda: None):
                 output_spec=output,
                 inference_spec=dict(input_size=518, precision='fp16' if device == 'cuda' else 'fp32',
                     normalization='whole_clip_p1_p99_from_240x136_near_white_v1',
-                    encoder='gray-to-'+pix_fmt+'/libx264/crf16/threads2', runtime_backend='torch-'+device))
+                    render='clay-relief-v1',
+                    encoder='rgb-to-'+pix_fmt+'/libx264/crf16/threads2', runtime_backend='torch-'+device))
 
 
 def cache_key(config):
@@ -207,6 +203,45 @@ def _load_model(weights, device):
     model = DepthAnythingV2()
     model.load_state_dict(torch.load(weights, map_location='cpu', weights_only=True), strict=True)
     return model.to(device).eval()
+
+
+def _clay_relief(gray):
+    """Render quantized, near-bright depth with Quinn's fixed shade.py recipe.
+
+    SciPy's default Gaussian uses sigma=3, radius=12 and half-sample symmetric
+    reflection (including the edge pixel). Torch's reflect pad excludes that
+    pixel, so use reflected indices; this also works on frames below 13 pixels.
+    """
+    import numpy as np
+    import torch
+    from torch.nn.functional import conv2d
+
+    d = torch.from_numpy(gray.astype(np.float32) / 255)[None, None]
+    offsets = torch.arange(-12, 13, dtype=torch.float64)
+    kernel = torch.exp(-0.5 * offsets.square() / 3.0**2)
+    kernel = (kernel / kernel.sum()).float()
+    # Match gaussian_filter's axis order and float32 intermediate images.
+    for axis in (2, 3):
+        size = d.shape[axis]
+        indices = torch.arange(-12, size + 12) % (2 * size)
+        indices = torch.where(indices < size, indices, 2 * size - 1 - indices)
+        weight = kernel.reshape(1, 1, 25, 1) if axis == 2 else kernel.reshape(1, 1, 1, 25)
+        d = conv2d(d.index_select(axis, indices), weight)
+    d = d[0, 0].numpy()
+    height, width = d.shape
+    # numpy.gradient uses central differences inside and one-sided edges.
+    gy = np.gradient(d, axis=0) if height > 1 else np.zeros_like(d)
+    gx = np.gradient(d, axis=1) if width > 1 else np.zeros_like(d)
+    k = 5.0
+    nx, ny, nz = -gx*k*width/64, -gy*k*height/64, np.ones_like(d)
+    n = np.sqrt(nx**2 + ny**2 + nz**2)
+    nx, ny, nz = nx/n, ny/n, nz/n
+    light = np.array([-0.5, -0.6, 0.62])
+    light /= np.linalg.norm(light)
+    lam = np.clip(nx*light[0] + ny*light[1] + nz*light[2], 0, 1)
+    shade = (0.25 + 0.75*lam) * (0.75 + 0.25*d)
+    base = np.array([0.82, 0.80, 0.77])
+    return (np.clip(shade, 0, 1)[..., None] * base * 255).astype(np.uint8)
 
 
 def _infer(source, stage, video, weights, device, emit, check):
@@ -270,7 +305,7 @@ def _infer(source, stage, video, weights, device, emit, check):
             for index, depth in enumerate(depths):
                 check()
                 gray = (np.clip((depth - lo) / span, 0, 1) * 255).round().astype(np.uint8)
-                frame = av.VideoFrame.from_ndarray(gray, format='gray')
+                frame = av.VideoFrame.from_ndarray(_clay_relief(gray), format='rgb24')
                 frame.pts, frame.time_base = index, Fraction(video['fps_den'], video['fps_num'])
                 for packet in stream.encode(frame):
                     container.mux(packet)
@@ -325,7 +360,7 @@ def _convert(request, emit, check):
             raise ValueError('Source video changed during depth conversion')
         manifest = dict(config=config, source_pts=video['pts'], source_time_base=video['time_base'], output=observed,
                         output_sha256=digest(stage / 'depth.mp4', check), output_bytes=(stage / 'depth.mp4').stat().st_size,
-                        normalization=metrics, license='Apache-2.0',
+                        normalization=metrics, render='clay-relief-v1', license='Apache-2.0',
                         license_sources=['https://github.com/DepthAnything/Depth-Anything-V2/tree/'+catalog()['source_commit'],
                                          'https://huggingface.co/'+catalog()['repo']+'/tree/'+catalog()['revision']])
         (stage / 'manifest.json').write_text(canonical_json(manifest), encoding='utf-8')
