@@ -445,6 +445,9 @@ def downloading(root=None, engine_root=None) -> bool:
         return False
 
 
+LEASE_WAIT_SECONDS = 1.0
+
+
 @contextmanager
 def _lease(root, engine_root=None, destructive=False):
     if root is None and engine_root is None:
@@ -457,14 +460,26 @@ def _lease(root, engine_root=None, destructive=False):
     worker = _RECHECKS.get(folder)
     if worker is not None and worker is not threading.current_thread():
         worker.join()
-    with ExitStack() as stack:
-        if engine_root is not None:
-            engine = Path(engine_root)
-            stack.enter_context(runtime_lock(engine / 'setup.lock', inherit=False))
-            if destructive:
-                stack.enter_context(runtime_lock(engine / 'engine.lock', inherit=False))
-                stack.enter_context(runtime_lock(engine / 'launcher/host-setup.lock', inherit=False))
-        stack.enter_context(runtime_lock(folder / 'pack.lock', inherit=False))
+    # The status probe in downloading() takes the same lease for an instant; a holder that short is waited out,
+    # a real one still ends in 'busy' after LEASE_WAIT_SECONDS.
+    deadline = time.monotonic() + LEASE_WAIT_SECONDS
+    while True:
+        stack = ExitStack()
+        try:
+            if engine_root is not None:
+                engine = Path(engine_root)
+                stack.enter_context(runtime_lock(engine / 'setup.lock', inherit=False))
+                if destructive:
+                    stack.enter_context(runtime_lock(engine / 'engine.lock', inherit=False))
+                    stack.enter_context(runtime_lock(engine / 'launcher/host-setup.lock', inherit=False))
+            stack.enter_context(runtime_lock(folder / 'pack.lock', inherit=False))
+            break
+        except BlockingIOError:
+            stack.close()
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+    with stack:
         yield folder
 
 
