@@ -873,6 +873,14 @@ def register():
         progress = view.get('progress') or {}
         value['progress'] = {k: progress[k] for k in ('phase', 'step', 'fraction', 'remaining_seconds',
                              'queue_position') + (('block',) if card else ()) if progress.get(k) is not None}
+        if 'fraction' not in value['progress'] and view.get('kind') in ('export', 'listen'):
+            # An export or a subtitle job reports its share of the work as a small JSON detail.
+            try:
+                share = float(json.loads(progress.get('detail') or '{}').get('fraction'))
+            except (TypeError, ValueError, AttributeError):
+                share = None
+            if share is not None and 0 <= share <= 1:
+                value['progress']['fraction'] = share
         if view.get('waiting_for'):
             value['waiting_for'] = len(view['waiting_for'])
         if view.get('error'):

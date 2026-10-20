@@ -1760,12 +1760,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
         generate.disabled = submitting || chainWait || lengthControl.blocked || (runMode === 'loop' && queueState?.looping);
-        generate.textContent = submitting ? t('Adding…', '正在添加…')
+        // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
+        const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
+            `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
+            : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
+        generate.textContent = submitting ? adding
             : chainReason || (runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
-        generate.title = (lengthControl.blocked ? lengthControl.message : submitting ? t('Adding…', '正在添加…') : '');
+        generate.title = (lengthControl.blocked ? lengthControl.message : '');
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         for (const b of modeButtons) if (b.dataset.mode !== 'single') b.disabled = multiple;
         countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';

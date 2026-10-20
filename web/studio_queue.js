@@ -129,7 +129,7 @@ export function seededPrompt(snapshot, nodeId, seedIndex, seed) {
 export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 2000, onResult = () => {},
     formatError = error => error} = {}) {
     nodeId = String(nodeId);
-    let running = null, pending = [], submitting = false, loop = null, timer = null;
+    let running = null, pending = [], submitting = false, loop = null, timer = null, batch = null;
     let runningAll = [], pooled = false;
     let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null, submitError = null;
     const listeners = new Set();
@@ -139,7 +139,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (!owned.has(id) || delivered.has(id) || !output?.freevideo_summary?.[0]) return;
         delivered.add(id); onResult(output, id);
     }
-    const state = () => ({running, pending, submitting, looping: Boolean(loop?.active),
+    const state = () => ({running, pending, submitting, batch, looping: Boolean(loop?.active),
         loopCompleted: loop?.completed || 0, error: lastError, ...(pooled ? {running_all: runningAll} : {})});
     const publish = () => { for (const listener of listeners) listener(state()); };
     function schedule() {
@@ -278,9 +278,14 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (repeat) loop = session;
         submitting = true; lastError = null; publish();
         try {
-            for (let i = 0; i < (repeat ? 1 : count); i++) await submit(session, repeat || count > 1);
+            // Several requests added one after another say how far they are; one request has no count to show.
+            if (!repeat && count > 1) { batch = {done: 0, total: count}; publish(); }
+            for (let i = 0; i < (repeat ? 1 : count); i++) {
+                await submit(session, repeat || count > 1);
+                if (batch) { batch = {done: i + 1, total: count}; publish(); }
+            }
         } catch (error) { fail(error); throw error; }
-        finally { session.sending = false; submitting = false; publish(); await refresh().catch(() => {}); }
+        finally { session.sending = false; submitting = false; batch = null; publish(); await refresh().catch(() => {}); }
     }
     async function stopLoop() {
         const session = loop;

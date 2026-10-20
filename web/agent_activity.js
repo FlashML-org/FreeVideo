@@ -8,9 +8,11 @@ const KINDS = {
     generate: ['Generating', '生成中', 'M4 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm13 4 5-3v8l-5-3'],
     assemble: ['Assembling', '拼接中', 'M3 6h7v12H3zM14 6h7v12h-7zM10 12h4'],
     vlm: ['Checking', '检查中', 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'],
+    export: ['Exporting', '导出中', 'M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3'],
+    listen: ['Transcribing', '识别中', 'M4 6h16M4 12h10M4 18h13'],
     enhance: ['Enhancing prompt', '增强提示词', 'M4 20l4-1 10-10-3-3L5 16zM14 7l3 3M18 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z'],
 };
-const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], vlm: ['Check', '检查'], enhance: ['Prompt', '提示词']};
+const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], vlm: ['Check', '检查'], enhance: ['Prompt', '提示词'], export: ['Export', '导出'], listen: ['Subtitles', '字幕']};
 
 // Short reasons for the failures people can act on; the engine's own message stays in the tooltip.
 const REASONS = {
