@@ -402,6 +402,9 @@ class Service:
                 OWNER.stop_prewarm()
                 from ..encoder_prewarm import IDLE
                 IDLE.stop()
+                from ..comfy_residency import release_native
+                from ..image_gen.service import comfy_server
+                release_native(comfy_server())
             with runtime_lock(Path(root) / 'engine.lock', inherit=False) as descriptor:
                 self.check()
                 if action == 'install':

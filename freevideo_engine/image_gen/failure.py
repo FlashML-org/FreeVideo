@@ -199,6 +199,8 @@ class Context:
         self.plan = None
         self.pack = None
         self.start_memory = None
+        # ComfyUI's own models this request unloaded before its worker started (comfy_residency.release_native).
+        self.native_release = None
         self.update_request(value)
 
     def note_start(self):
@@ -301,6 +303,10 @@ class Context:
         service = dict(video_busy=bool(video_busy), worker_restarts=worker_restarts)
         if self.start_memory:
             service['memory_at_request_start'] = clean_sample(self.start_memory)
+        released = self.native_release
+        if isinstance(released, dict):
+            service['comfy_models_released'] = {key: released[key] for key in
+                ('models', 'reserved_bytes', 'reserved_after_bytes', 'released') if type(released.get(key)) in (int, bool)}
         # Numbers and fixed words only, taken by the service when it saw the worker end.
         reading = clean_reading(getattr(error, 'exit_reading', None))
         if reading:
