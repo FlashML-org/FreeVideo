@@ -383,6 +383,43 @@ def _low_page_priority(enabled):
             swap(previous)
 
 
+# Converted decoder layers are private copies and charge commit, but they stand
+# in for the clean file pages the streamed reads would otherwise keep cycling
+# through the standby list, so the floor left to the rest of the system is
+# smaller than for views. Admission is re-checked at every layer.
+CONVERTED_RESERVE = int(1.5 * 2**30)
+
+
+def _cgroup_headroom(mount='/sys/fs/cgroup', membership='/proc/self/cgroup'):
+    """Room left under this process's cgroup v2 memory limit, or None without one.
+
+    Private copies count against the limit while clean file pages do not, so
+    only anonymous, shared and kernel memory is taken as used.
+    """
+    try:
+        root = Path(mount)
+        for line in Path(membership).read_text(encoding='utf-8').splitlines():
+            if line.startswith('0::'):
+                root = root / line[3:].lstrip('/')
+        limit = (root / 'memory.max').read_text(encoding='utf-8').strip()
+        if limit == 'max':
+            return None
+        stat = dict(row.split() for row in (root / 'memory.stat').read_text(encoding='utf-8').splitlines())
+        return int(limit) - sum(int(stat.get(name, 0)) for name in ('anon', 'shmem', 'kernel'))
+    except (OSError, ValueError):
+        return None
+
+
+def converted_fits(size, reserve=CONVERTED_RESERVE):
+    """Whether one more converted layer may stay in RAM as a private copy."""
+    from .system import system_memory
+    available = system_memory()['available_bytes']
+    headroom = _cgroup_headroom()
+    if headroom is not None:
+        available = min(available, headroom)
+    return available - size >= reserve
+
+
 def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
     """Whether one more layer may stay in RAM as a read-only file view.
 
@@ -399,11 +436,20 @@ def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
 
 class SafetensorLayers:
     def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None, host_views=False,
-                 host_view_reserve=HOST_VIEW_RESERVE):
+                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False):
         from .system import windows
         self.direct_read = windows() if direct_read is None else direct_read
         self.prefixes = tuple(prefixes)
         self.intermediate_dtype = intermediate_dtype
+        # Layers converted from their checkpoint dtype (the decoder's FP16
+        # Linear values) kept for the layers' next uses. A tile decode streams
+        # the same layers once per clip; converting reads the whole FP32 layer
+        # each time, from disk once the file cache cannot hold them.
+        self.keep_converted = keep_converted and intermediate_dtype is not None
+        self.converted = {}
+        self.converted_bytes = 0
+        self.converted_hits = 0
+        self.converted_refused = 0
         self.files = {}
         self.handle_files = {}
         self.keys = {}
@@ -701,6 +747,25 @@ class SafetensorLayers:
                             else torch.empty(shape, dtype=dtype))
         return tensors
 
+    def _keep_converted(self, index, tensors, shared):
+        """Keep this layer's converted tensors if RAM has room, as private copies."""
+        size = sum(value.numel() * value.element_size() for value in tensors.values())
+        with self.cache_lock:
+            if index in self.converted:
+                return
+            if not converted_fits(size):
+                self.converted_refused += 1
+                return
+            # A tensor that needed no conversion may still map the checkpoint.
+            self.converted[index] = {name: value.clone() if name in shared else value
+                                     for name, value in tensors.items()}
+            self.converted_bytes += size
+
+    def release_converted(self):
+        with self.cache_lock:
+            self.converted.clear()
+            self.converted_bytes = 0
+
     def adopt(self, index):
         """Keep a layer that loading just read as views, so its first pass reads no disk.
 
@@ -812,8 +877,16 @@ class SafetensorLayers:
     @contextmanager
     def layer(self, index, layout):
         from contextlib import ExitStack
+        with self.cache_lock:
+            kept = self.converted.get(index)
+            if kept is not None:
+                self.converted_hits += 1
+        if kept is not None:
+            yield dict(kept)
+            return
         prefix = self.prefixes[index]
         tensors = {}
+        shared = set()
         paths = {self.keys[prefix + name] for _, name, *_ in layout}
         for path in paths:
             self.check(path)
@@ -831,6 +904,10 @@ class SafetensorLayers:
                     if self.intermediate_dtype is not None:
                         tensor = tensor.to(dtype=self.intermediate_dtype)
                     tensors[name] = tensor.to(dtype=dtype)
+                    if tensors[name] is tensor:
+                        shared.add(name)
+                if self.keep_converted:
+                    self._keep_converted(index, tensors, shared)
                 yield tensors
         finally:
             tensors.clear()

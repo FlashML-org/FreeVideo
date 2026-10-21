@@ -72,7 +72,8 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             from .streamed_weights import SafetensorLayers
             weight_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
                 [f'decoder.transformer_blocks.{index}.' for index in range(count, layers)],
-                intermediate_dtype=torch.float32 if linear_compute_cache else None)
+                intermediate_dtype=torch.float32 if linear_compute_cache else None,
+                keep_converted=True)
         vae, compute_cache_metrics = load_video_decoder(base, resident_blocks=count, weight_source=weight_source,
                                                        linear_fp16=linear_compute_cache)
     vae.eval().requires_grad_(False)
