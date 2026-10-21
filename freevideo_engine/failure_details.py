@@ -375,6 +375,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
         return dict(title='', detail='', action='', kind='')
     text = _without_ready_curl_diagnostics(str(value))
     # Match only the cause position, never an echoed input or a log line below it.
+    # Holder diagnostics follow this exact cause; they are not part of its signature.
     causes = [line.strip() for line in text.splitlines() if line.strip()]
     index = 1 if causes and re.fullmatch(r'FreeVideo generation failed(?: \(exit -?\d+\))?', causes[0]) else 0
     cause = re.sub(r'^(?:[A-Za-z_][\w.]*(?:Error|Exception)):\s*', '', causes[index]) if len(causes) > index else ''
@@ -897,10 +898,12 @@ def generation_failure(run, exit_code=None, *, repair=None):
     report = _report(run)
     redactor.structured(report)  # Collect prompt values without showing the request.
     # Read the whole bounded log, not a tail that could hide other output.
-    # A legacy managed failure has exactly this one nonempty line and exit 1.
-    if exit_code == 1 and [line for line in _read(run / 'generate.log', 8192).splitlines()
-                           if line.strip()] == [ENGINE_BUSY]:
-        lines.append(ENGINE_BUSY)
+    # Managed failures contain only the exact busy sentence and optional holder
+    # diagnostics. Other output must never acquire a busy classification.
+    busy_lines = [line for line in _read(run / 'generate.log', 8192).splitlines() if line.strip()]
+    if exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
+            and all(line.startswith('Lock holder:') for line in busy_lines[1:]):
+        lines.extend(busy_lines)
     # What the worker found when cuDNN refused its own files, ahead of the trace.
     explained = _runtime_explanation(report, REPAIR_MARK)
     if explained:

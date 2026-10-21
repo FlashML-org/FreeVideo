@@ -9,7 +9,7 @@ import sys
 from .agent import enabled as agent_enabled
 from .bootstrap import DEFAULT_ROOT
 from . import __version__
-from .locking import runtime_lock, LOCK_ENV, ENGINE_BUSY
+from .locking import runtime_lock, describe_lock_holders, LOCK_ENV, ENGINE_BUSY
 from . import processes
 from .system import windows
 
@@ -39,7 +39,7 @@ def command_for(machine, command, arguments):
     return [machine['python'], '-m', 'freevideo_engine', command, *extra, *arguments]
 
 
-def _main(argv=None):
+def _main(argv=None, *, lock_paths=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(prog='./freevideo', add_help=False)
     parser.add_argument('--root', type=Path, default=Path(os.environ.get('FREEVIDEO_HOME', DEFAULT_ROOT)))
@@ -117,6 +117,8 @@ def _main(argv=None):
                 or (command == 'doctor' and '--probe' not in tail) or '--help' in tail or '-h' in tail)
     snapshot = json.loads(config.read_text(encoding='utf-8'))
     lock_path = os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(snapshot['root']) / 'engine.lock'))
+    if lock_paths is not None:
+        lock_paths.append(lock_path)
     with nullcontext() if readonly else runtime_lock(lock_path, wait_seconds=3 if command == 'generate' else 0) as descriptor:
         machine = json.loads(config.read_text(encoding='utf-8'))
         if machine != snapshot:
@@ -137,10 +139,31 @@ def _main(argv=None):
 
 
 def main(argv=None):
+    lock_paths = []
     try:
-        return _main(argv)
+        return _main(argv, lock_paths=lock_paths)
     except BlockingIOError:
         print(ENGINE_BUSY, file=sys.stderr)
+        try:
+            if not lock_paths:
+                # Normally _main supplies the configured path. Keep failures
+                # before that point best-effort, without reading configuration.
+                path = os.environ.get('FREEVIDEO_LOCK_PATH')
+                if path:
+                    lock_paths.append(path)
+                else:
+                    arguments = list(sys.argv[1:] if argv is None else argv)
+                    root = os.environ.get('FREEVIDEO_HOME', DEFAULT_ROOT)
+                    for index, argument in enumerate(arguments):
+                        if argument == '--root':
+                            root = arguments[index + 1]
+                        elif argument.startswith('--root='):
+                            root = argument.partition('=')[2]
+                    lock_paths.append(Path(root) / 'engine.lock')
+            for line in describe_lock_holders(lock_paths):
+                print(line, file=sys.stderr)
+        except Exception:
+            pass
         return 1
     except KeyboardInterrupt:
         print('Cancelled. Workers stopped; existing outputs and reports retained.', file=sys.stderr)
