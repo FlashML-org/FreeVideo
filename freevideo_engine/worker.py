@@ -130,7 +130,7 @@ def generate(request, resident=None):
             live_budget = LiveGPUBudget(torch, metrics['device_memory'],
                 request.get('gpu_capacity_bytes', metrics['device_memory']['device_total_bytes']) - reserve, reserve)
 
-        def refresh_budget(stage, reclaim=None, workspace=None):
+        def refresh_budget(stage, reclaim=None, workspace=None, confirm=False):
             def release(target):
                 if reclaim is not None:
                     reclaim(target)
@@ -140,7 +140,7 @@ def generate(request, resident=None):
                             break
                         if role != 'engine' or stage == 'decode':
                             resident.drop(role, 'Live GPU budget decreased')
-            limit = live_budget.refresh(stage, release, workspace=workspace)
+            limit = live_budget.refresh(stage, release, workspace=workspace, confirm=confirm)
             if resident is not None:
                 resident.gpu_budget = limit
             return limit
@@ -443,7 +443,7 @@ def generate(request, resident=None):
                                                       total=sampling_plan['total_steps'])):
                                 tick = time.perf_counter()
                                 if live_budget is not None:
-                                    refresh_budget('upscale')
+                                    refresh_budget('upscale', confirm=True)
                                 need = upscale_workspace(sampling_plan['upscale_target']) if sampling_plan['upscaler_sha256'] else 0
                                 # Its weights go straight to the GPU. Charging 2 GiB of
                                 # host RAM evicted the second pass's own engine on
@@ -565,9 +565,9 @@ def generate(request, resident=None):
                                      lora=bool(manifest.get('online_lora')))
                         head_need = windows_int8_refinement_head_need(engine.config, canvas, **guard)
                         second_compute = None
+                        if live_budget is not None:
+                            refresh_budget('refine', confirm=True)
                         if head_need is not None:
-                            if live_budget is not None:
-                                refresh_budget('refine')
                             limit = metrics['device_memory'].get('effective_allocator_limit_bytes')
                             second_compute = windows_int8_refinement_heads(engine.config, canvas, limit, **guard)
                             if second_compute:
@@ -627,7 +627,7 @@ def generate(request, resident=None):
             metrics['decode_phase'] = 'decoder_admission'
         metrics['phase'] = 'decode'
         if live_budget is not None:
-            refresh_budget('decode')
+            refresh_budget('decode', confirm=True)
             if engine is not None:
                 metrics['transformer_released_before_decode'] = released(engine)
         if resident is not None:
