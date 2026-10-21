@@ -98,6 +98,12 @@ SMALL_ACTIVATION_RESERVES = ((8, int(8.2 * GiB)), (4, int(7.6 * GiB)))
 # allocator retry and no sample over the local budget.
 WINDOWS_SMALL_HEAD8_TOKENS = 18144 + 4 * 1008
 WINDOWS_SMALL_HEAD8_FRAMES = 243
+# The same interval for Ada and Blackwell reaches 12.25 s (294 frames): the
+# 672x384x277 first pass of a 1344x768 11.5 s request measured head 4/8 at
+# 22.3/15.5, 19.7/17.6 and 21.6/17.4 s per warm step on an RTX PRO 6000 held to
+# an 8 GB laptop's 6.96 GB budget, 3.50 and 3.87 GiB reserved, no allocator
+# retry. Ampere and the int8 paths keep 243.
+WINDOWS_SMALL_HEAD8_LONG_FRAMES = 294
 # Int8 without LoRA reaches full resolution at the same frame count. With the
 # Windows allocator (no expandable segments; its four-head workspace measured
 # 6.15 GiB against 6.18 natively on Windows at the same placement),
@@ -1208,7 +1214,7 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
         # by moving attention outputs to the host just to widen the group.
         windows_small_head8 = (desktop and not ampere and legs == ['sage2', 'sage2']
                               and effective_tokens is not None
-                              and canvas['frames'] <= WINDOWS_SMALL_HEAD8_FRAMES
+                              and canvas['frames'] <= WINDOWS_SMALL_HEAD8_LONG_FRAMES
                               and effective_tokens <= WINDOWS_SMALL_HEAD8_TOKENS)
         windows_int8_full = (desktop and not lora and legs == ['sage2', 'sage2']
                              and effective_tokens is not None
