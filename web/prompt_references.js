@@ -1,6 +1,7 @@
 // H3 numbers each reference kind separately, in the order of comfy_media.export.
 import {caretRect} from './caret_rect.js';
 import {listenDialogKey} from './dialog_keys.js';
+import {effectiveRows} from './replace_state.js';
 const titles = {image: 'Picture', video: 'Video', audio: 'Audio'};
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
 const linkFor = (node, name) => node?.graph?.links?.[node.inputs?.find(i => i.name === name)?.link];
@@ -14,8 +15,9 @@ export function referenceKind(file) {
 }
 
 // The raw media list a generate node reads, [] when there is none or it cannot be read.
+export const mediaNodeOf = node => sourceFor(node, 'media');
 export function mediaRows(node) {
-    try { const rows = JSON.parse(widget(sourceFor(node, 'media'), 'assets')?.value || '[]'); return Array.isArray(rows) ? rows : []; } catch { return []; }
+    try { const owner = sourceFor(node, 'media'), rows = effectiveRows(owner, widget(owner, 'assets')); return Array.isArray(rows) ? rows : []; } catch { return []; }
 }
 
 export function referenceItems(node) {
@@ -31,14 +33,14 @@ export function referenceItems(node) {
         if (['first','last','references'].some(name => linkFor(node, name))) throw new Error('invalid_media');
         const serialized = widget(media, 'assets');
         if (!serialized) throw new Error('unknown_references');
-        const rows = JSON.parse(serialized.value || '[]'), counts = new Map();
+        const rows = effectiveRows(media, serialized), counts = new Map();
         if (!Array.isArray(rows)) throw new Error('invalid_media');
         for (const row of rows) {
             const occurrence = counts.get(row.file) || 0; counts.set(row.file, occurrence + 1);
             if (row.enabled === false) continue;
             const kind = referenceKind(row.file);
             if (!kind) throw new Error('invalid_media');
-            const item = {key: `file:${media.id}:${row.file}:${occurrence}`, kind, file: row.file,
+            const item = {key: row.slot ? `swap:${media.id}:${row.slot}` : `file:${media.id}:${row.file}:${occurrence}`, kind, file: row.file,
                 name: row.cast?.name || row.file.split('/').pop(), assetIndex: rows.indexOf(row),
                 ...(row.sound === false && kind === 'video' ? {sound: false} : {})};
             if (row.role === 'reference') refs.push(item);

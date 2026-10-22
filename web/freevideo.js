@@ -6,7 +6,7 @@ import { api } from "../../scripts/api.js";
 import { openEditorView } from './editor_loader.js';
 import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';
 import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { startUpdateChecks } from './updates.js';
@@ -16,7 +16,7 @@ import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces
 import { isLaunchVisit } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
-import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows } from './prompt_references.js';
+import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
@@ -29,6 +29,8 @@ import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
 import { uploadMedia } from './media_upload.js';
+import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
+import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -366,6 +368,12 @@ function mediaPanel(node, mount = null) {
     let uploading = false;
     serialized.serializeValue = () => {
         if (node.isUploading) throw new Error(text("Wait for media uploads to finish before running", "请等待素材上传完成后再生成"));
+        // Replace person: the two slots are the media, and both are needed.
+        if (swapState(node)) {
+            const missing = swapMissing(swapState(node));
+            if (missing) throw new Error(swapMissingText(missing, text));
+            return JSON.stringify(requestRows(swapState(node)));
+        }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
         try { return JSON.stringify(read().map(({file, role, enabled, cast, sound}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
     };
@@ -578,6 +586,7 @@ function resultPanel(node) {
         if (value.thermal && !value.result_cache_hit) resultNotes.push(el("div", thermalText(value.thermal, text), "fv-note"));
         const shared = value.shared_gpu && !value.result_cache_hit ? sharedGpuText(value.shared_gpu, text) : '';
         if (shared) resultNotes.push(el("div", shared, "fv-note"));
+        if (value.keep_source_audio_failed) resultNotes.push(el("div", keepSoundText(text), "fv-note"));
         if (value.encoder_file) {
             const note = el("div", encoderFileText(value.encoder_file, text), "fv-note");
             const path = encoderFilePath(value.encoder_file);
@@ -754,7 +763,14 @@ app.registerExtension({
                 }
                 // Characters mentioned with @ travel as <Subject N> plus their definitions; the draft keeps the typed names.
                 const prompt = this.widgets?.find(w => w.name === 'text');
-                if (prompt) { const owner = this; prompt.serializeValue = () => expandCast(prompt.value, mediaRows(owner), {continued: Boolean(owner.freevideoContinues?.())}).text; }
+                if (prompt) {
+                    const owner = this;
+                    // Replace person asks for its prefix here, where every way of running the node reads the text.
+                    prompt.serializeValue = () => {
+                        const body = expandCast(prompt.value, mediaRows(owner), {continued: Boolean(owner.freevideoContinues?.())}).text;
+                        return swapState(mediaNodeOf(owner)) ? withPrefix(body) : body;
+                    };
+                }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
                     quality.label = text('Two-pass acceleration', '二次采样加速');

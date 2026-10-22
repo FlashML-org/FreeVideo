@@ -55,7 +55,15 @@ async def receive(reader, input_directory):
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
-    return {'file': destination.relative_to(base).as_posix(), 'bytes': size}
+    result = {'file': destination.relative_to(base).as_posix(), 'bytes': size}
+    if media_kind(name) == 'video':
+        # Whether the clip has a sound track; the Replace person option is greyed out without one.
+        try:
+            from .guide_audio import has_audio
+            result['audio'] = await asyncio.to_thread(has_audio, destination)
+        except Exception:
+            pass
+    return result
 
 
 def register():

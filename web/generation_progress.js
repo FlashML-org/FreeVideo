@@ -270,6 +270,11 @@ export function sharedGpuText(shared, t) {
         `其他程序占用了约 ${percent}% 的显卡。`);
 }
 
+// Replace person: the source video's sound was asked for and could not be put into the video.
+export function keepSoundText(t) {
+    return t('The source video sound could not be kept. The video uses generated sound.', '未能保留源视频声音，成片使用生成的声音。');
+}
+
 export function encoderFilePath(file) {
     return file?.offline_installation === true && typeof file.path === 'string' ? file.path : '';
 }
