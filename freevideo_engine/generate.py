@@ -668,6 +668,8 @@ def _run(args):
                                    else canvas['frames'] - hide_tail_frames)
     from .support_report import code_identity, write as write_debug
     report['runtime_hardware'] = hardware.to_dict()
+    from .device_index import card_report
+    report['gpu_card'] = card_report(hardware)
     report['runtime_code'] = code_identity()
     started = time.perf_counter()
     applied = None

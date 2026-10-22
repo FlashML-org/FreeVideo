@@ -7,6 +7,7 @@ import time
 
 import torch
 from .torch_compat import empty_host_cache, host_cache_release_supported
+from .device_index import device_properties
 
 GiB = 1 << 30
 # Where a preview's sampling peak is kept, apart from its complete request's.
@@ -506,7 +507,7 @@ class ModelBank:
     def snapshot(self):
         if not torch.cuda.is_initialized():
             return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
-        uuid = str(getattr(torch.cuda.get_device_properties(0), 'uuid', ''))
+        uuid = str(getattr(device_properties(torch), 'uuid', ''))
         if uuid and not uuid.startswith(('GPU-', 'MIG-')):
             uuid = 'GPU-' + uuid
         host, committed = {}, {}

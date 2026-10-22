@@ -1330,6 +1330,7 @@ class Installer:
         from .triton_compat import environment
         return environment(self.root, dict(env,
             CUDA_VISIBLE_DEVICES=self.plan['inventory']['selected_gpu']['uuid'],
+            CUDA_DEVICE_ORDER='PCI_BUS_ID',
             TRITON_CACHE_DIR=str(self.root / 'kernel-cache' / 'triton'),
             CUDA_CACHE_PATH=str(self.root / 'kernel-cache' / 'cuda'),
             TORCHINDUCTOR_CACHE_DIR=str(self.root / 'kernel-cache' / 'inductor')))
