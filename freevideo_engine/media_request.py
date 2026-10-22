@@ -55,7 +55,7 @@ def read(path):
                 raise ValueError('Invalid ' + field + ' entry')
             if field != 'references' and 'early_steps' in entry:
                 raise ValueError('early_steps is only allowed on video references')
-            allowed = {'path', 'kind', 'early_steps', 'sound', 'guide'} if field == 'references' else {'path', 'strength', 'alpha'}
+            allowed = {'path', 'kind', 'early_steps', 'sound', 'guide', 'keep_source_audio'} if field == 'references' else {'path', 'strength', 'alpha'}
             if set(entry) - allowed:
                 raise ValueError('Unknown ' + field + ' fields')
             row = file_info(entry.get('path'))
@@ -76,6 +76,10 @@ def read(path):
                     # keep exactly the same rows and cache key as before.
                     if entry['guide']:
                         row['guide'] = True
+                if 'keep_source_audio' in entry:
+                    validate_keep_source_audio(entry, row['path'])
+                    if entry['keep_source_audio']:
+                        row['keep_source_audio'] = True
             else:
                 if Path(row['path']).suffix.lower() != '.safetensors':
                     raise ValueError('LoRA requires safetensors; pickle adapters are not loaded')
@@ -140,6 +144,19 @@ def validate_guide(row):
         raise ValueError('A guide clip cannot use early_steps')
 
 
+def validate_keep_source_audio(row, path):
+    """Keeping the guide's sound needs a guide clip that has an audio stream."""
+    if type(row['keep_source_audio']) is not bool:
+        raise ValueError('keep_source_audio must be true or false')
+    if not row['keep_source_audio']:
+        return
+    if row.get('guide') is not True:
+        raise ValueError('keep_source_audio is only allowed on a guide clip')
+    from .guide_audio import has_audio
+    if not has_audio(path):
+        raise ValueError('keep_source_audio needs a guide clip with an audio stream')
+
+
 def reference_stages(media):
     """Active references at each boundary; zero-step inputs never reach an encoder."""
     refs = media.get('references', [])
@@ -160,7 +177,7 @@ def cache_key(prompt, media, canvas):
     for key in ('first', 'last', 'references'):
         value = media.get(key)
         if value:
-            identity[key] = [{k: v for k, v in row.items() if k != 'path'}
+            identity[key] = [{k: v for k, v in row.items() if k not in ('path', 'keep_source_audio')}
                              for row in value] if isinstance(value, list) else value['sha256']
     return 'multimodal:' + json.dumps(identity, sort_keys=True, ensure_ascii=False)
 
