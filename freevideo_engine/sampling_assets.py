@@ -187,7 +187,7 @@ def engine_task(media, base=None):
     for ref in media.get('references', []):
         visual |= ref['kind'] in ('image', 'video')
         audio |= ref['kind'] == 'audio'
-        if ref['kind'] == 'video' and not audio and ref.get('sound') is not False:
+        if ref['kind'] == 'video' and not audio and ref.get('sound') is not False and not ref.get('guide'):
             path = Path(ref['path'])
             if base is not None and not path.is_absolute():
                 path = Path(base) / path

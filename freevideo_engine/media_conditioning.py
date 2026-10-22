@@ -98,9 +98,22 @@ def _describe(value, width, height, frames):
         raise ValueError('Ref2VA needs reference latents and no keyframe anchors')
     # Reuse the shared prompt/token validation without pretending references are anchors.
     to_cache([[prompt[None], {'minimax_token_tags': tags}]], task='ref2va')
-    video_rows = audio_rows = 0
+    video_rows = audio_rows = seen_rows = 0
+    guides = 0
     for ref in refs:
         kind = ref.get('kind')
+        if ref.get('guide'):
+            # A guide is an ordinary silent video latent whose rows only differ in
+            # time coordinates (guide_layout), so the shape checks below apply
+            # unchanged. It must come after the other references and has no audio.
+            if kind not in ('image', 'video') or ref.get('audio_latent') is not None or 'early_steps' in ref:
+                raise ValueError('A guide must be a silent video or still with no early_steps')
+            guides += 1
+            index = ref.get('guide_index', 0)
+            if type(index) is not int or not 0 <= index < frames:
+                raise ValueError('Guide frame index is outside the clip')
+        elif guides:
+            raise ValueError('Guide references must come after all other references')
         if 'early_steps' in ref:
             from .media_request import validate_early_steps
             validate_early_steps(ref)
@@ -111,12 +124,16 @@ def _describe(value, width, height, frames):
             if latent.shape[2] < 1 or any(n < 2 or n % 2 for n in latent.shape[-2:]):
                 raise ValueError('Reference latent dimensions must fit H3 patches')
             video_rows += math.prod(latent.shape[2:]) // 4
+            if not ref.get('guide'):
+                seen_rows += math.prod(latent.shape[2:]) // 4
         if kind == 'audio' or ref.get('audio_latent') is not None:
             audio = _tensor(ref.get('audio_latent'), (None, 32), 'reference audio rows')
             if audio.shape[0] % 2:
                 raise ValueError('Reference audio must contain both channels')
             audio_rows += audio.shape[0]
-    if video_rows and not bool((tags == 0).any()):
+    # Guide rows are never shown to the vision-language encoder, so only the
+    # other visual references need jointly encoded vision tokens.
+    if seen_rows and not bool((tags == 0).any()):
         raise ValueError('Visual references need jointly encoded vision tokens')
     task = 'ref2va_av' if video_rows and audio_rows else 'ref2va_audio' if audio_rows else 'ref2va'
     value['task'] = task
@@ -134,11 +151,19 @@ def from_comfy(conditioning, width, height, frames):
     if unknown:
         raise ValueError('Unsupported conditioning modifiers: ' + ', '.join(sorted(unknown)))
     keyframes, refs = extra.get('minimax_keyframes', []), extra.get('minimax_refs', [])
-    if keyframes and refs:
-        raise ValueError('Combined keyframe/reference conditioning is not an official VDN layout')
     anchors = []
+    guides = []
     for item in keyframes:
         index = item.get('resolved_frame_index')
+        if refs:
+            # Keyframes next to references are packed as guides that share the clip's
+            # time origin (same as the native AddGuide node), so any in-clip index
+            # is a valid position; the latent shape guard in describe() still applies.
+            if type(index) is not int or not 0 <= index < frames:
+                raise ValueError('Guide frame index is outside the clip')
+            guides.append(dict(kind='video', guide=True, guide_index=index,
+                               latent=_tensor(item.get('latent'), (1, 24, None, None, None), 'guide video')))
+            continue
         if index not in (0, frames - 1):
             raise ValueError('Only first and last keyframe anchors are supported')
         anchors.append('first' if index == 0 else 'last')
@@ -160,4 +185,5 @@ def from_comfy(conditioning, width, height, frames):
                 audio = _tensor(row.get('audio_latent'), (1, 32, 2, None), 'native reference audio')
                 ref['audio_latent'] = audio[0].permute(1, 2, 0).reshape(-1, 32).contiguous()
             value['references'].append(ref)
+        value['references'].extend(guides)
     return value, describe(value, width, height, frames)

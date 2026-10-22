@@ -135,6 +135,8 @@ def prepare(media, canvas, directory):
         ref = {'kind': kind}
         if 'early_steps' in row:
             ref['early_steps'] = row['early_steps']
+        if row.get('guide'):
+            ref['guide'] = True
         numbers[kind] += 1
         longer, length, used = False, None, limit / 24.
         target = directory / ('reference-%02d.npy' % index)
@@ -183,7 +185,7 @@ def prepare(media, canvas, directory):
                 ref.update(pixels=str(target), frames=count, normalized_fps=24)
                 used = count / 24.
                 # The clip's own sound is a reference too, unless the request turned it off.
-                soundtrack, longer_audio, _ = (None, False, None) if row.get('sound') is False else \
+                soundtrack, longer_audio, _ = (None, False, None) if row.get('sound') is False or row.get('guide') else \
                     _audio(path, directory / ('reference-%02d-audio.npy' % index), limit / 24.)
                 longer = longer or longer_audio
                 if soundtrack:
@@ -191,7 +193,10 @@ def prepare(media, canvas, directory):
                     ref_items.append({'type': 'audio'})
                 selected = list(range(0, count, 12))
                 sampled = torch.from_numpy(np.array(pixels[selected])).float().div_(255)
-                ref_items.append({'type': 'video', 'data': sampled, 'timestamps': [i / 2. for i in range(len(selected))]})
+                if not row.get('guide'):
+                    # A guide only supplies motion latents; it is not described to the
+                    # vision-language encoder, like the native AddGuide node.
+                    ref_items.append({'type': 'video', 'data': sampled, 'timestamps': [i / 2. for i in range(len(selected))]})
                 del pixels
         else:
             ref['audio'], longer, length = _audio(path, target, limit / 24.)
@@ -212,7 +217,7 @@ def reference_options(normalized, options, step):
     """Filter whole references, including a video's optional audio presentation."""
     items, offset = [], 0
     for row in normalized:
-        count = 1 + int(row['kind'] == 'video' and bool(row.get('audio')))
+        count = 0 if row.get('guide') else 1 + int(row['kind'] == 'video' and bool(row.get('audio')))
         if 'early_steps' not in row or step < row['early_steps']:
             items.extend(options['minimax_ref_items'][offset:offset + count])
         offset += count
@@ -289,7 +294,7 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
     if torch.device(device).type not in ('cuda', 'mps'):
         raise ValueError('Media encoding requires a CUDA or MPS device')
     empty_cache = torch.mps.empty_cache if torch.device(device).type == 'mps' else torch.cuda.empty_cache
-    refs = [{key: row[key] for key in ('kind', 'early_steps') if key in row} for row in normalized]
+    refs = [{key: row[key] for key in ('kind', 'early_steps', 'guide') if key in row} for row in normalized]
     keys, cache, hits = {}, None, set()
     if cache_root and any(row.get('pixels') for row in normalized):
         # The same picture or clip with another prompt reuses its latent and may skip loading the encoder.

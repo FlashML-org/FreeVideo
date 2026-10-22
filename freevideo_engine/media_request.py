@@ -55,7 +55,7 @@ def read(path):
                 raise ValueError('Invalid ' + field + ' entry')
             if field != 'references' and 'early_steps' in entry:
                 raise ValueError('early_steps is only allowed on video references')
-            allowed = {'path', 'kind', 'early_steps', 'sound'} if field == 'references' else {'path', 'strength', 'alpha'}
+            allowed = {'path', 'kind', 'early_steps', 'sound', 'guide'} if field == 'references' else {'path', 'strength', 'alpha'}
             if set(entry) - allowed:
                 raise ValueError('Unknown ' + field + ' fields')
             row = file_info(entry.get('path'))
@@ -70,6 +70,12 @@ def read(path):
                     validate_sound(entry)
                     if not entry['sound']:
                         row['sound'] = False
+                if 'guide' in entry:
+                    validate_guide(entry)
+                    # A false marker is not stored, so requests without a guide
+                    # keep exactly the same rows and cache key as before.
+                    if entry['guide']:
+                        row['guide'] = True
             else:
                 if Path(row['path']).suffix.lower() != '.safetensors':
                     raise ValueError('LoRA requires safetensors; pickle adapters are not loaded')
@@ -81,7 +87,13 @@ def read(path):
                     row[name] = number
             result[field].append(row)
     if result['references'] and any(result.get(k) for k in ('first', 'last')):
-        raise ValueError('Reference and keyframe layouts cannot be mixed; use separate requests')
+        raise ValueError('Reference and first/last keyframe layouts cannot be mixed in one request; '
+                         'mark the clip that carries the motion with "guide": true instead')
+    guides = [row for row in result['references'] if row.get('guide')]
+    if len(guides) > 1:
+        raise ValueError('At most one guide clip per request')
+    # The packed layout needs the guide after the other references.
+    result['references'].sort(key=lambda row: bool(row.get('guide')))
     if value.get('conditioning_info') is not None:
         info = value['conditioning_info']
         if not isinstance(info, dict) or info.get('task') not in TASKS:
@@ -112,6 +124,20 @@ def validate_sound(row):
         raise ValueError('sound is only allowed on video references')
     if type(row['sound']) is not bool:
         raise ValueError('Video reference sound must be true or false')
+
+
+def validate_guide(row):
+    """A guide is a video reference that shares the generated clip's time origin.
+
+    It is encoded like a silent video reference, so it cannot carry its own
+    audio or a delayed start.
+    """
+    if row.get('kind') != 'video':
+        raise ValueError('guide is only allowed on video references')
+    if type(row['guide']) is not bool:
+        raise ValueError('Video reference guide must be true or false')
+    if row['guide'] and 'early_steps' in row:
+        raise ValueError('A guide clip cannot use early_steps')
 
 
 def reference_stages(media):

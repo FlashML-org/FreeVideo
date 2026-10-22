@@ -75,7 +75,7 @@ def resolve_assets(serialized, input_directory):
     root = Path(input_directory).resolve()
     result = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound'}:
+        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide'}:
             raise ValueError('Invalid media item')
         # The character an @ mention added the row for; a continued part keeps one picture per character.
         if 'cast' in row and (set(row['cast'] if isinstance(row['cast'], dict) else ('?',)) != {'id'}
@@ -117,6 +117,11 @@ def resolve_assets(serialized, input_directory):
                 validate_sound(dict(row, kind=kind))
                 if not row['sound']:
                     reference['sound'] = False
+            if 'guide' in row:
+                from .media_request import validate_guide
+                validate_guide(dict(row, kind=kind))
+                if row['guide']:
+                    reference['guide'] = True
             result.setdefault('references', []).append(reference)
         else:
             raise ValueError('Media role must be first, last or reference')
