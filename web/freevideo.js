@@ -51,7 +51,7 @@ style.textContent = `
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
-.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
+.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:auto}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel[data-freevideo=media]>.fv-mode{display:inline-block;margin:4px 0 2px;padding:2px 8px;border-radius:var(--fv-r-xs,3px);background:var(--fv-selected);font-weight:var(--fv-medium,500)}.fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
 .fv-card[data-enabled=false]{opacity:.5}.fv-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:60px}
@@ -337,6 +337,15 @@ function mediaPanel(node, mount = null) {
                 card.append(preview);
             }
             let showLength = () => {};
+            if (kind === "video" && row.role === "reference") {
+                // Off by default: the video itself is the reference. On: its depth picture is, and the picture and colours are not asked for.
+                const depth = el("label", undefined, "fv-depth-only"), box = el("input");
+                box.type = "checkbox"; box.checked = row.depth === true;
+                box.onchange = () => { if (box.checked) rows[index].depth = true; else delete rows[index].depth; update(rows); };
+                depth.append(box, el("span", text("Depth only", "仅参考深度")));
+                depth.title = text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。");
+                card.append(depth);
+            }
             if (kind === "video") {
                 const sound = el("label", undefined, "fv-sound"); const box = el("input"); box.type = "checkbox"; box.checked = row.sound !== false;
                 box.onchange = () => { if (box.checked) delete rows[index].sound; else rows[index].sound = false; showLength(); update(rows); };
@@ -353,15 +362,6 @@ function mediaPanel(node, mount = null) {
                         `音频长 ${preview.duration.toFixed(1)} 秒，最多取前 15 秒且不超过视频时长。`);
                 };
                 preview.onloadedmetadata = () => showLength();
-            }
-            if (kind === "video" && row.role === "reference") {
-                // Off by default: the video itself is the reference. On: its depth picture is, and the picture and colours are not asked for.
-                const depth = el("label", undefined, "fv-depth-only"), box = el("input");
-                box.type = "checkbox"; box.checked = row.depth === true;
-                box.onchange = () => { if (box.checked) rows[index].depth = true; else delete rows[index].depth; update(rows); };
-                depth.append(box, el("span", text("Depth only", "仅参考深度")));
-                depth.title = text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。");
-                card.append(depth);
             }
             const controls = el("div", undefined, "fv-row");
             const move = delta => { const target = index + delta; if (target < 0 || target >= rows.length) return; [rows[index], rows[target]] = [rows[target], rows[index]]; update(rows); };
