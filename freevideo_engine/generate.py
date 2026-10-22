@@ -1165,8 +1165,8 @@ def _run(args):
                 from .preview import upscale_reads
                 report['preview']['upscale_reads'] = upscale_reads(request['cache'], report['video'], upscaler_checkpoint)
             if not preview and any(row.get('keep_source_audio') for row in media.get('references', [])):
-                from .guide_audio import apply as keep_source_audio
-                report['keep_source_audio'] = keep_source_audio(destination, media)
+                from .guide_audio import apply_to_report as keep_source_audio
+                keep_source_audio(destination, media, report)
             report['success'] = True
     except BaseException as error:
         from .diagnostic_resources import exception_details

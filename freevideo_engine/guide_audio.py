@@ -93,3 +93,16 @@ def apply(video, media):
     finally:
         temporary.unlink(missing_ok=True)
     return True
+
+
+def apply_to_report(video, media, report):
+    """Run ``apply`` after a successful generation; a failed remux leaves the finished video as it is.
+
+    The result is recorded in ``report``: ``keep_source_audio`` is True when the audio was replaced,
+    and ``keep_source_audio_failed`` holds a short reason when it could not be.
+    """
+    try:
+        report['keep_source_audio'] = apply(video, media)
+    except Exception as error:  # the video is already complete and valid; only the audio swap failed
+        report['keep_source_audio'] = False
+        report['keep_source_audio_failed'] = ('%s: %s' % (type(error).__name__, error))[:300]
