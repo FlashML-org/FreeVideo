@@ -5,6 +5,14 @@ from pathlib import Path
 import sys
 
 
+def with_private_compiler(root, env):
+    """Without a system compiler, tools that build at run time (Triton) use the one FreeVideo installed."""
+    private = Path(root) / 'tools' / 'gcc-bin' / 'gcc'
+    if os.name != 'nt' and 'CC' not in env and private.exists() and not shutil.which('gcc', path=env.get('PATH')):
+        env['CC'] = str(private)
+    return env
+
+
 def isolated_environment(root, source, environ=None):
     """Remove inherited Python/package targets only in the engine's child."""
     from .proxy import inherited
@@ -35,10 +43,7 @@ def isolated_environment(root, source, environ=None):
             env.pop(name, None)
     env.update(FREEVIDEO_HOME=str(root), FREEVIDEO_PROXY_MODE=proxy_mode, PYTHONPATH=str(source), PYTHONNOUSERSITE='1',
                PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
-    # Without a system compiler, tools that build at run time (Triton) use the one FreeVideo installed.
-    private = Path(root) / 'tools' / 'gcc-bin' / 'gcc'
-    if os.name != 'nt' and 'CC' not in env and private.exists() and not shutil.which('gcc', path=env.get('PATH')):
-        env['CC'] = str(private)
+    with_private_compiler(root, env)
     from .triton_compat import temporary_environment
     # Pruning sys.prefix above also prunes the frozen launcher's static curl.
     # Restore its fallback for managed Python after isolating Python packages.

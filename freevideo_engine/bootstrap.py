@@ -35,6 +35,7 @@ from .environments import (ENVIRONMENTS, environment_names, select_layout, role_
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
 from . import network
+from .comfy_environment import with_private_compiler
 from . import processes
 from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
 from .system import inference_headroom
@@ -1471,6 +1472,7 @@ class Installer:
         from .triton_compat import temporary_environment
         env = temporary_environment(self.root, env or self.env)
         env = dict(env, FREEVIDEO_INSTALL_PROGRESS='1')
+        env = with_private_compiler(self.root, env)
         args, cwd = uv_file_arguments(args, cwd)
         env = uv_build_environment(args, self.root, env)
         with self.state_lock:
