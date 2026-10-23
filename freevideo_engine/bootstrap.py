@@ -362,7 +362,6 @@ def inventory(gpu=None):
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
             'swap_free_bytes': ram.get('swap_free_bytes'), 'system_memory': ram,
             'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': usable_git(),
-            **({} if platform.system() == 'Windows' else {'make': shutil.which('make')}),
             'git_found': shutil.which('git'), **detection}
 
 
@@ -523,10 +522,6 @@ def prepare_end(ui, success=True):
             ui.end(PREPARE_KEY, success=success)
 
 
-def missing_sage_tools(snapshot):
-    return ([] if snapshot.get('compiler') else ['g++']) + ([] if snapshot.get('make', True) else ['make'])
-
-
 def plan(args, *, local_progress=None, stage=None):
     root = args.root.expanduser().resolve()
     warnings = []
@@ -579,17 +574,6 @@ def plan(args, *, local_progress=None, stage=None):
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
         # A missing or too old Git is replaced by FreeVideo's own.
-        if not windows_target:
-            # ./setup.sh installs these before planning; the desktop launcher names the command instead.
-            missing = missing_sage_tools(snapshot)
-            if missing:
-                from .system import linux_tools_command
-                command = linux_tools_command(missing)
-                warnings.append('Missing %s, needed to build GPU acceleration for this GPU. %s, then check again.' % (
-                    ' and '.join(missing), 'In a terminal, run: ' + command if command else
-                    'Ask your administrator to install them'))
-                logging.getLogger(__name__).warning('%s Skipping Sage2 source compilation; '
-                    'continuing with cudnn/torch-flash attention.', warnings[-1])
         if offline_installation(root):
             # Its sources carry no Git history and its Python is the package's.
             errors.append('This folder holds an installation from offline packages; automatic installation does not change it. '
@@ -1797,11 +1781,6 @@ class Installer:
     def install_sage(self, uv, python):
         if self.system == 'Windows':
             return self.install_sage_windows(uv, python)
-        missing = missing_sage_tools(self.plan['inventory'])
-        if missing:
-            self.ui.write('Missing %s; skipping Sage2 source compilation and continuing with '
-                          'cudnn/torch-flash attention.\n' % ' and '.join(missing))
-            return None
         code = ('import json,platform,sys,torch; print(json.dumps(dict('
                 'python="cp"+str(sys.version_info.major)+str(sys.version_info.minor), '
                 'torch=str(torch.__version__),cuda=torch.version.cuda,cxx11_abi=torch.compiled_with_cxx11_abi(), '
@@ -1866,7 +1845,11 @@ class Installer:
         """
         spec = json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8'))
         below = spec['host_compiler_below'].get(cuda)
-        choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
+        # Without any system g++, FreeVideo's own compiler builds Sage2.
+        if not shutil.which('g++', path=self.env['PATH']):
+            choice = None
+        else:
+            choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
         if choice is None:
             return {'env': None, 'identity': 'conda-forge gcc ' + spec['version']}
         cxx = choice.get('CXX', 'g++')
@@ -1897,6 +1880,13 @@ class Installer:
             shutil.rmtree(explicit.parent, ignore_errors=True)
             micromamba.unlink(missing_ok=True)
         self.command('portable-gcc-check', [compilers['CXX'], '--version'])
+        # The same compiler under its plain names, for tools that look for gcc (Triton builds its launcher with it).
+        links = self.root / 'tools' / 'gcc-bin'
+        links.mkdir(parents=True, exist_ok=True)
+        for name, target in (('gcc', compilers['CC']), ('cc', compilers['CC']), ('g++', compilers['CXX'])):
+            if not (links / name).is_symlink() or Path(os.readlink(links / name)) != target:
+                (links / name).unlink(missing_ok=True)
+                (links / name).symlink_to(target)
         return {key: str(path) for key, path in compilers.items()}
 
     def install_sage_windows(self, uv, python):

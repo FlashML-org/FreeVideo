@@ -130,13 +130,17 @@ fv_system_deps() {
     fv_note 'System package step (existing Python and drivers are not replaced):'
     ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
     { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
+    local command_line
+    command_line="$(printf '%q ' "${privilege[@]}" "${install[@]}")"
     if (( fv_readonly )); then
         fv_fail 'Check only: no system packages installed. Run ./setup.sh to install the missing tools.'
         return 1
     fi
     if (( ! fv_allow_system )); then
         if [[ ! -t 0 ]]; then
-            fv_fail 'System packages need approval. Run interactively, or add --install-system-deps to a reviewed unattended setup.'
+            # A desktop launcher has no terminal to ask in, so name the command to run by hand.
+            fv_fail "缺少基础工具：${fv_missing[*]}。请在终端运行以下命令，然后重新安装：${command_line% }"
+            fv_note "Missing basic tools: ${fv_missing[*]}. Run this in a terminal, then install again: ${command_line% }"
             return 1
         fi
         printf 'Install these missing system packages? [Y/n] / 回车安装以上基础工具，n 取消： ' >&2
@@ -375,7 +379,8 @@ freevideo_bootstrap_linux() {
     [[ -n "${all_proxy:-}" || -z "${ALL_PROXY:-}" ]] || export all_proxy="$ALL_PROXY"
     [[ -n "${no_proxy:-}" || -z "${NO_PROXY:-}" ]] || export no_proxy="$NO_PROXY"
     if [[ "$mode" == setup ]] && (( ! fv_readonly )); then
-        fv_missing_tools git curl g++ make tar gzip sha256sum flock
+        # Git and a C++ compiler are downloaded privately by the installer when the machine has none.
+        fv_missing_tools curl tar gzip sha256sum flock
         fv_system_deps || return 1
     fi
     if (( found )); then
