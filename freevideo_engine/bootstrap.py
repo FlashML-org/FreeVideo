@@ -1821,6 +1821,9 @@ class Installer:
                 CPATH=headers, TORCH_CUDA_ARCH_LIST=identity['arch'], MAX_JOBS=str(build['jobs']),
                 EXT_PARALLEL='1', NVCC_APPEND_FLAGS='--threads=' + str(build['nvcc_threads']))
             build_env.update(compiler['env'] if compiler['env'] is not None else self.install_compiler_linux())
+            if compiler['env'] is None:
+                # The private compiler is newer than an older system's libstdc++, which the Python process loads first.
+                build_env['LDFLAGS'] = (build_env.get('LDFLAGS', '') + ' -static-libstdc++ -static-libgcc').strip()
             self.command('sage2-toolchain-check', [python, '-c',
                 'from torch.utils.cpp_extension import is_ninja_available; '
                 'assert is_ninja_available(), "Ninja must be visible in the build PATH; serial fallback is refused"'], env=build_env)
@@ -1853,7 +1856,7 @@ class Installer:
         else:
             choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
         if choice is None:
-            return {'env': None, 'identity': 'conda-forge gcc ' + spec['version']}
+            return {'env': None, 'identity': 'conda-forge gcc ' + spec['version'] + ' static-libstdc++'}
         cxx = choice.get('CXX', 'g++')
         return {'env': choice, 'identity': subprocess_output.output_external([cxx, '--version']).splitlines()[0]}
 
