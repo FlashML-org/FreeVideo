@@ -939,9 +939,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Returns '' when all is well, else the line to show; runs one at a time.
     let swapLoraBusy = Promise.resolve('');
     const swapLoraText = reason => reason === 'missing'
-        ? t(`Replace person needs the ${SWAP_LORA} LoRA in the models/loras folder.`, `替换人物需要把 ${SWAP_LORA} 放进 models/loras 文件夹。`)
-        : reason === 'ambiguous' ? t(`More than one ${SWAP_LORA} was found in models/loras. Add the one to use in LoRA.`, `models/loras 中有多个 ${SWAP_LORA}，请在 LoRA 中添加要使用的那个。`)
-        : t('Could not read the LoRA list. Try again.', '没能读取 LoRA 列表，请重试。');
+        ? t(`"Replace person" needs the ${SWAP_LORA} LoRA in the models/loras folder.`, `“替换人物”需要把 ${SWAP_LORA} 放进 models/loras 文件夹。`)
+        : reason === 'ambiguous' ? t(`More than one ${SWAP_LORA} was found in models/loras. Add the one to use under "LoRA".`, `models/loras 中有多个 ${SWAP_LORA}，请在“LoRA”一栏添加要使用的那个。`)
+        : t('Could not read the LoRA list. Try again.', '无法读取 LoRA 列表，请重试。');
     async function applySwapLora() {
         const state = mediaNode?.properties?.freevideo_replace_person;
         if (!state || !loraNode || !widget(loraNode, 'adapters')) return '';
