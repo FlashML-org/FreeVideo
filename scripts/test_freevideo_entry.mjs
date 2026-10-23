@@ -524,7 +524,9 @@ test('main browser entry registers both views and preserves node hooks', async t
         await extension.beforeRegisterNodeDef(MediaNode, {name: 'FreeVideoMedia'});
         const media = new MediaNode(); media.onNodeCreated();
         const panel = media.dom.find(row => row.name === 'freevideo_media').element;
-        const [castRow, sceneRow, propRow, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [libraries, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [castRow, sceneRow, propRow] = libraries.children;
+        assert.equal(libraries.className, 'fv-cast-libraries');
         assert.equal(castRow, casts[0].element);
         assert.equal(sceneRow, casts[1].element);
         assert.equal(propRow, casts[2].element);
@@ -568,9 +570,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         media.onRemoved();
         assert.equal(casts[0].destroyed, true); assert.equal(casts[1].destroyed, true); assert.equal(casts[2].destroyed, true);
         const mounted = new Element('mount'), disposeMedia = media.freevideoCreateMediaEditor(mounted);
-        assert.equal(mounted.children[0].children[0], casts[3].element);
-        assert.equal(mounted.children[0].children[1], casts[4].element);
-        assert.equal(mounted.children[0].children[2], casts[5].element);
+        assert.equal(mounted.children[0].children[0].className, 'fv-cast-libraries');
+        assert.equal(mounted.children[0].children[0].children[0], casts[3].element);
+        assert.equal(mounted.children[0].children[0].children[1], casts[4].element);
+        assert.equal(mounted.children[0].children[0].children[2], casts[5].element);
         disposeMedia(); assert.equal(casts[3].destroyed, true); assert.equal(casts[4].destroyed, true); assert.equal(casts[5].destroyed, true);
 
         await t.test('Generate node removal preserves the original hook when setSize throws', async () => {
