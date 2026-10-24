@@ -20,6 +20,7 @@ from contextlib import nullcontext
 from .locking import runtime_lock, LOCK_ENV
 from .paths import vdn_root, comfy_root
 from .monitoring import save
+from .encoder_checkpoint import preflight_encoder
 from . import tuning
 from . import processes
 from .system import (inference_headroom, inference_memory_sample, inference_environment, memory_sample,
@@ -800,6 +801,13 @@ def _run(args):
                     for trimmed in cached.get('reference_trims') or []:
                         print(json.dumps(dict(event='reference_trimmed', **trimmed)), flush=True)
                 else:
+                    try:
+                        preflight_encoder(args.comfy_root or comfy_root(), args.encoder, encoding['model_paths'])
+                    except Exception as error:
+                        # Only a missing encoder stops the run; the worker stays the judge of anything else.
+                        if str(error).startswith('ENCODER_MODEL_MISSING:'):
+                            raise
+                        print(json.dumps(dict(event='encoder_preflight_skipped', error=repr(error)[:300])), flush=True)
                     encoder_env = dict(env, PYTHONPATH=str(repo))
                     print(json.dumps({'event': 'encoding_start'}), flush=True)
                     encoder_attempt = history.begin(resource_identity, {'encoder': args.encoder},

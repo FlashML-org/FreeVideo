@@ -878,6 +878,11 @@ def _mac_run(report, run, redactor):
     return 'Run: ' + '; '.join(parts)
 
 
+def missing_encoder(text):
+    return re.search(r"ENCODER_MODEL_MISSING:|Model in folder ['\"]text_encoders['\"] "
+                     r"with filename ['\"][^\r\n]+?['\"] not found\.", text, re.I) is not None
+
+
 def generation_failure(run, exit_code=None, *, repair=None):
     """Surface the cause, including a child traceback, even without a report.
 
@@ -967,11 +972,14 @@ def generation_failure(run, exit_code=None, *, repair=None):
     promoted = bool(causes) and causes[-1] not in known
     if promoted:
         lines.insert(1, 'Cause: ' + causes[-1][:300])
+    encoder_missing = missing_encoder('\n'.join(lines))
+    if encoder_missing:
+        lines.insert(1, 'ENCODER_MODEL_MISSING: The encoder model file is missing. ' + REPAIR_MARK)
     if len(lines) == 1:
         lines.append('The worker ended without a readable error report.')
     summary = _mac_run(report, run, redactor)
     if summary:
-        lines.insert(2 if promoted else 1, summary)
+        lines.insert(1 + bool(promoted) + bool(encoder_missing), summary)
     lines.append('\nRetained outputs: ' + str(run))
     # The table failure can be in a retained child log rather than the report.
     # Keep its numeric metadata ahead of technical output for all interactive callers.
@@ -983,9 +991,9 @@ def generation_failure(run, exit_code=None, *, repair=None):
         card = sampling_table_failure(marker)
         first, _, rest = value.partition('\n')
         value = '\n'.join((first, marker, card['title'], card['detail'], rest))
-    if explained:
+    if explained or encoder_missing:
         from .runtime_libraries import REINSTALL
-        value = value.replace(REPAIR_MARK, repair or REINSTALL, 1)
+        value = value.replace(REPAIR_MARK, repair or REINSTALL)
     value = re.sub(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))', '', value)
     value = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', value)
     return value

@@ -415,7 +415,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('output-folder', ['The output folder cannot be written to', '输出目录不可写'],
             ['The video could not be saved.', '视频没能保存。'],
             ['Check that the output folder can be written to, then retry.', '请检查输出文件夹的写入权限后重试。']);
-    if (/manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
+    if (/ENCODER_MODEL_MISSING:|Model in folder ['"]text_encoders['"] with filename ['"][^\r\n]+?['"] not found\./i.test(text)
+            || /manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
         return row('model-files', ['The model is not fully installed', '模型没有装全'],
             ['Some of the model files FreeVideo needs are missing.', 'FreeVideo 需要的部分模型文件缺失。'],
             repairAction());
