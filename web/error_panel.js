@@ -422,6 +422,11 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('model-files', ['The model is not fully installed', '模型没有装全'],
             ['Some of the model files FreeVideo needs are missing.', 'FreeVideo 需要的部分模型文件缺失。'],
             repairAction());
+    // The second form is the tokenizers library's own error when its vocab or merges file is gone.
+    if (/FreeVideo text encoder files are missing|`vocab` and `merges` must be both be from memory/i.test(text))
+        return row('encoder-files', ['The text encoder is not fully installed', '文本编码器没有装全'],
+            ['Some of the text encoder files FreeVideo needs are missing.', 'FreeVideo 需要的部分文本编码器文件缺失。'],
+            repairAction());
     if (/No space left on device|WinError 112|disk (?:is )?full/i.test(text))
         return row('disk', ['Disk space is insufficient', '磁盘空间不足'],
             ['FreeVideo could not write a required file.', 'FreeVideo 无法写入所需文件。'],

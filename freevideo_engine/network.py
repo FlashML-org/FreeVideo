@@ -1607,6 +1607,11 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             head, dirty = repository_state(target, git, env)
         except (subprocess.CalledProcessError, OSError):
             head, dirty = None, ''  # Git cannot read it as a repository of its own.
+        if head == commit and dirty and all(line[:2] == ' D' for line in dirty.splitlines()):
+            # Files deleted after installation: the same commit's objects are still local, nothing is downloaded.
+            from . import encoder_source
+            if encoder_source.restore(target, encoder_source.deleted(target, env), env):
+                head, dirty = repository_state(target, git, env)
         if head == commit and not dirty:
             return target
         if target.parent.name == 'vendor' and git_settings_out_of_reach(target):

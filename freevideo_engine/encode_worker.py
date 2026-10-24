@@ -263,6 +263,8 @@ def _encode(args, request, resident, trace):
             return dict(state='skipped', resource_decision=decision,
                         reason='Foreground work or insufficient live memory for idle preloading')
     phase('encoder_options')
+    from .encoder_source import ensure
+    ensure(args.comfy_root)
     sys.path.insert(0, str(args.comfy_root.resolve()))
     import comfy.options
     comfy.options.enable_args_parsing()
