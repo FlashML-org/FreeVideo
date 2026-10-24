@@ -375,7 +375,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             apply(); show('');
         };
         running = Promise.resolve().then(execute).catch(error => {
-            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : 'error');
+            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : error?.message === 'stale' ? 'note' : 'error');
             throw error;
         }).finally(() => { running = null; cancelling = false; install.hidden = true; render(); });
         render();
