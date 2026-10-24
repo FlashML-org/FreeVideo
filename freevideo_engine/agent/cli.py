@@ -47,6 +47,8 @@ def build_parser():
     commands.add_parser('status', help='Readiness, limits, LoRAs, VLM and queue')
     commands.add_parser('guide', help='How to write H3 prompts')
     commands.add_parser('schema', help='JSON Schemas of jobs')
+    command = commands.add_parser('install-skill', help='Copy the FreeVideo skill where Codex, Gemini CLI, Cursor and Claude Code read skills')
+    command.add_argument('--target', choices=('agents', 'claude'), action='append', help='Default: both')
     command = commands.add_parser('capabilities', help='Read the studio capability cache')
     schema.cli_arguments(command, schema.contracts()['GET', '/capabilities']['query'])
     command = commands.add_parser('asset', help='Download a saved library video or thumbnail over HTTP')
@@ -178,6 +180,11 @@ def main(argv=None):
         from .spec import JOB_ID, LIBRARY_ID
         return {'from_job': value} if JOB_ID.fullmatch(value) else {'library': value} if LIBRARY_ID.fullmatch(value) \
             else {'path': str(Path(value).resolve())} if Path(value).exists() else {'file': value}
+
+    if args.command == 'install-skill':
+        from . import skill_install
+        print(json.dumps({'installed': skill_install.install(tuple(args.target or ('agents', 'claude')))}, indent=2))
+        return 0
 
     try:
         client = Client(args.url, root=args.root, name='freevideo-cli')

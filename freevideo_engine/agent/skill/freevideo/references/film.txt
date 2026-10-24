@@ -1,0 +1,12 @@
+# Films of several shots
+
+Use this only when the film needs separately chosen shots. A single video of up to 60 seconds is one `freevideo_generate` job.
+
+1. Reuse or make cast cards: `freevideo_cast_list` first (reuse a matching card), then `freevideo_cast_create`; `freevideo_cast_generate` makes reference pictures when the user gave none.
+2. `freevideo_drama_plan` previews the shots without starting.
+3. `freevideo_drama_start` creates the durable film. Read it with `freevideo_drama_get` (use `since` and `wait`).
+4. For each shot whose takes are done: `freevideo_drama_sheet` shows timed frames and the previous chosen last frame. Look, then `freevideo_drama_choose`. A continuation can only start after the previous shot is chosen.
+5. A take that missed: `freevideo_drama_reshoot` with a short note on what to change, then review the sheet again.
+6. When every shot is chosen: `freevideo_drama_finish`, then read the film until its output is ready.
+
+Only the user may pause or resume a film. If it is paused, stop acting and long-wait.

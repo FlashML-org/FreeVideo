@@ -1,0 +1,38 @@
+---
+name: freevideo
+description: Make videos with the user's local FreeVideo through its MCP tools or the `freevideo agent` command line. Use when the user asks to generate or continue a video, edit a picture, cut a timeline or make a multi-shot film in FreeVideo.
+---
+
+# FreeVideo
+
+FreeVideo runs on the user's own computer. Everything below goes through its MCP server (tools named `freevideo_*`) or the same operations from a shell: `./freevideo agent <command>` (Windows: `freevideo.cmd agent`).
+
+## Before anything else
+
+1. Call `freevideo_status`. If it is not ready, tell the user what is missing; do not retry in a loop.
+2. Read `freevideo_prompt_guide` once before writing a prompt. Prompts are English sections; dialogue and on-screen text stay in the user's language.
+3. Call `freevideo_plan` with the job you intend to run. It returns the real frame count, the number of parts and a time estimate for this computer. Tell the user the estimate before a long run.
+4. The user sees the same work in the FreeVideo window. A tool may answer `needs_confirmation`: wait for the user (`freevideo_wait` without an id), then repeat the identical call once approved. If the user declines, stop and say so; do not retry with a changed reference.
+
+## Pick the right task
+
+- One video, up to 60 seconds: `freevideo_generate`. Longer than the device can do in one run is cut into parts and joined automatically.
+- Start from or end on a picture: pass it as first or last frame. Make the picture first with `freevideo_generate_image`.
+- A film of several shots to choose between: the `freevideo_drama_*` tools. See `references/film.md`.
+- Existing footage on a timeline: the editing project tools. See `references/edit.md`.
+- A picture to change: `freevideo_edit_image` for a quick change, the `freevideo_image_*` tools for layered edits. See `references/image.md`.
+- Several independent jobs: `freevideo_submit_batch`.
+
+## Running jobs
+
+- A job takes minutes. Call `freevideo_wait` with the job id; it returns after at most 25 seconds. If the job is still active, call it again with the same id. Never submit the same job twice.
+- A failed or interrupted generation is continued with `freevideo_resume`; only unfinished parts run.
+- `freevideo_cancel` only for a job you started and the user wants stopped.
+- Look at a result before reporting it: `freevideo_look` (a frame or a contact sheet).
+- Report what you made with the saved-video id (`freevideo_library`), not a local path.
+
+## Rules
+
+- Do not start a second generation while one for the same request is running; the computer has one GPU.
+- Never claim a video is good without looking at it.
+- Keep your own chat short; the user is watching progress in FreeVideo.

@@ -1,0 +1,11 @@
+# Editing projects
+
+Projects are the timelines shared with the FreeVideo editor page.
+
+1. `freevideo_projects` lists them; `freevideo_project_create` starts an empty one.
+2. Footage from the user's disk: `freevideo_import_media`, then poll `freevideo_imports` until `ready` (`failed` is final). Insert the returned `import:<id>` source.
+3. Always `freevideo_project_read` first. Edits carry the revision and clip ids you just read. On a `project_changed` error, read again and recompute; do not retry the old edit.
+4. `freevideo_editor_operations` applies 1 to 64 edits atomically. Prefer it to `freevideo_project_write`, which replaces the whole timeline.
+5. `freevideo_project_generate` makes new picture and sound for selected clips or a frame range, as the Generate button does.
+6. Subtitles: `freevideo_project_listen` with mode `align` times lines you give, `transcribe` writes down what is said.
+7. `freevideo_export` renders one saved revision to MP4 in the saved videos. Wait for the returned job.

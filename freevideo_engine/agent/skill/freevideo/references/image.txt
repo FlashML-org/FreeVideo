@@ -1,0 +1,6 @@
+# Pictures
+
+- Quick change (crop, rotate, flip, pad, adjust, text, shapes, overlays, remove burned-in captions): `freevideo_edit_image`. The result is a new input file usable as a first frame or reference.
+- Layered edits like the image editor page: `freevideo_image_create` opens a session, `freevideo_image_read` gives the document and revision, `freevideo_image_operations` applies 1 to 64 edits atomically, `freevideo_image_render` makes a PNG input file. Read the revision and layer ids before each edit; on `image_changed` read again.
+- A new picture from a prompt, or combining input pictures, or a first frame with cast members: `freevideo_generate_image`.
+- Check the result with `freevideo_look` before using it.
