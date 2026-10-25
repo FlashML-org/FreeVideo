@@ -750,6 +750,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
         } else fault(t('Could not complete. Try again.', '没有完成，请重试'));
         return result;
     };
+    // A start clip goes onto the editor timeline, where it can be continued; nothing is placed unless the file loaded.
+    const tryStartClip = async entry => {
+        if (busy || queued || capturing) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        let file;
+        try { file = await (await import('./tour_try.js')).fetchStartClip(entry); } catch (error) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'asset', error}; }
+        const handle = await openEditorView(node, {studio: dialog});
+        await handle?.ready;
+        if (!handle?.actions?.importFiles) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'no_editor'}; }
+        await handle.actions.importFiles([file], {at: 0});
+        await handle.actions.continueStart?.();
+        return {ok: true};
+    };
     function castChoices() {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
@@ -2240,7 +2252,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }, onGenerate: () => { if (generate.disabled) return false; generate.click(); return true; }, onEdit: () => openEditorView(node, {studio: dialog}),
         isBusy: () => busy || queued || capturing});
     cleanup.push(() => firstStart.dispose());
-    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, canTry: canTryTour, isBusy: () => busy || queued || capturing};
+    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
     cleanup.push(registerTourWorkspace(tourContext));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));

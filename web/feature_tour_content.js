@@ -42,7 +42,7 @@ export const FEATURE_TOUR = [
     card('library-reuse', copy('Reuse settings', '复用设置'), copy('Fill the prompt, size, duration and seed of an earlier video back in.', '把以前一条视频的描述、尺寸、时长和种子填回来。'),
         [{text: copy(...CASTLE_PROMPT)}], clip('c1-s2'), {status: 'pending-assets'}, {added: '0.5.0', goto: ['library-reuse', 'works-entry']}),
     card('extend', copy('Extend', '接着生成'), copy('Continue from where the last clip ends.', '从上一段的结尾接着生成下一段。'),
-        [{src: 'c6-s1.webp'}], clip('c6-s1'), {status: 'pending-assets', view: 'editor'}, {trigger: 'editor', previewRange: [2, 8]}),
+        [{src: 'c6-s1.webp'}], clip('c6-s1'), {startClip: {file: 'c1-s2.mp4'}, view: 'editor'}, {trigger: 'editor', previewRange: [2, 8]}),
     card('two-pass', copy('Two-pass', '二次采样'), copy('The first pass sets the composition; the second adds detail.', '第一遍定构图，第二遍补细节。'),
         [{...clip('c7-src-s1')}], clip('c7-s1'), {assets: [], prompt: ['A dark castle emerges from the mist as the camera slowly moves closer.', '深色城堡从薄雾中显现，镜头缓缓推近。'], settings: {two_pass: true}}),
     card('edit-image', copy('Edit image', '编辑图片'), copy('Change only the selected area and keep the rest.', '只改选中的区域，其余保持不变。'),

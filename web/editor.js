@@ -271,6 +271,24 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
+    // Selects the clip and, when nothing follows it yet, adds one minimum draft. Returns false while the generation probe has not said yes.
+    function enterClip(match, epoch, select = true, settled = () => {}) {
+        if (closing || disposed || epoch !== projectEpoch) return true;
+        const clip = state.record.tracks[0].clips.findLast(match);
+        if (!clip) return true;
+        // Coming back to a clip that already has parts after it selects the waiting draft instead of adding another.
+        const edge = clip.start + clip.frames;
+        const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
+        const waiting = after.find(other => other.pending === 'draft');
+        if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
+        if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { settled(); return true; }
+        if (!store.generationAvailable) return false;
+        const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
+        tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
+            {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
+        settled();
+        return true;
+    }
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
@@ -962,6 +980,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The server was asked and has not said yes: Generate is greyed until it does.
         generationWaiting: () => generationAsked && !store.generationAvailable,
         importFiles: (files, options) => library?.importFiles(files, options),
+        // The first imported clip on the timeline start is selected and followed by one draft once it is placed.
+        async continueStart() {
+            const epoch = projectEpoch, match = clip => clip.source?.kind === 'import' && clip.start === 0;
+            for (let waited = 0; waited < 120 && !state.record.tracks[0]?.clips.some(match); waited++) {
+                if (closing || disposed || epoch !== projectEpoch) return false;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (!state.record.tracks[0]?.clips.some(match)) return false;
+            await store.generationReady();
+            if (!enterClip(match, epoch) && !closing && !disposed) extendEntry = () => { if (enterClip(match, epoch, false) || closing || disposed) extendEntry = null; };
+            return true;
+        },
         gestureStart({selectionGesture = false} = {}) {
             // A description being typed is written to its part before the gesture, which a later edit would stop.
             genbar?.commit();
@@ -1932,23 +1962,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             };
             // Selects the work and, when nothing follows it yet, adds one minimum draft. Runs once; when the
             // generation probe failed this time it runs after a later probe succeeds.
-            const enter = (select = true) => {
-                if (closing || disposed || epoch !== projectEpoch) return true;
-                const clip = state.record.tracks[0].clips.findLast(clip => clip.source?.kind === 'work' && clip.source.id === id);
-                if (!clip) return true;
-                // Coming back to a work that already has parts after it selects the waiting draft instead of adding another.
-                const edge = clip.start + clip.frames;
-                const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
-                const waiting = after.find(other => other.pending === 'draft');
-                if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
-                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { showFullSourceHint(); return true; }
-                if (!store.generationAvailable) return false;
-                const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
-                tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
-                    {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
-                showFullSourceHint();
-                return true;
-            };
+            const enter = select => enterClip(clip => clip.source?.kind === 'work' && clip.source.id === id, epoch, select, showFullSourceHint);
             await store.generationReady();
             if (!enter() && !closing && !disposed) extendEntry = () => { if (enter(false) || closing || disposed) extendEntry = null; };
         }

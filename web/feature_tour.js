@@ -21,8 +21,8 @@ const contextFor = () => [...contexts.values()].filter(c => c.dialog.isConnected
 export async function tryIt(example, options = {}) {
     try {
         const {TOUR_EXAMPLES} = await import('./tour_try.js');
-        // A tutorial chapter passes its example itself; a start clip is not supported yet, so such a chapter fills the prompt only.
-        const given = example && typeof example === 'object' ? {assets: example.assets || [], prompt: example.prompt, settings: example.settings || {}} : null;
+        // A tutorial chapter passes its example itself; a start clip goes onto the editor timeline.
+        const given = example && typeof example === 'object' ? {assets: example.assets || [], prompt: example.prompt, settings: example.settings || {}, startClip: example.startClip} : null;
         const card = given ? null : FEATURE_TOUR.find(c => c.id === example);
         const choice = given || (card ? card.tryit : TOUR_EXAMPLES[example]);
         const entry = choice?.example && choice.status !== 'pending-assets' ? TOUR_EXAMPLES[choice.example] : choice;
@@ -35,6 +35,7 @@ export async function tryIt(example, options = {}) {
             context = contextFor();
         }
         if (!context) return {ok: false, reason: 'no_workspace'};
+        if (entry.startClip) { if (active) await active.close(); return await context.onStartClip(entry); }
         if (context.canTry?.(entry) === false) return context.onTry(entry, options);
         if (active) await active.close();
         return await context.onTry(entry, options);
