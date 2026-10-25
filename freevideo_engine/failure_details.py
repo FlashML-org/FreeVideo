@@ -902,7 +902,7 @@ def generation_failure(run, exit_code=None, *, repair=None):
     # diagnostics. Other output must never acquire a busy classification.
     busy_lines = [line for line in _read(run / 'generate.log', 8192).splitlines() if line.strip()]
     if exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
-            and all(line.startswith('Lock holder:') for line in busy_lines[1:]):
+            and all(line.startswith('Lock file open:') for line in busy_lines[1:]):
         lines.extend(busy_lines)
     # What the worker found when cuDNN refused its own files, ahead of the trace.
     explained = _runtime_explanation(report, REPAIR_MARK)

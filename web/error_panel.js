@@ -89,7 +89,7 @@ const PLAIN_ERRORS = [
 // line counts (after an optional "ValueError: "), or the line right under the
 // worker's "FreeVideo generation failed" header, so an input echoed inside or
 // below another error, even one line of a longer prompt, never turns into this advice.
-// Optional "Lock holder:" diagnostic lines follow the engine-busy cause; keep
+// Optional "Lock file open:" diagnostic lines follow the engine-busy cause; keep
 // matching its exact first line, so those details cannot become a new signature.
 function knownError(text) {
     const lines = String(text).slice(0, 65536).split(/\r?\n/).map(line => line.trim()).filter(Boolean);

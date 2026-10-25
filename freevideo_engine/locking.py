@@ -82,7 +82,10 @@ def _lock_command(cmdline):
         index += 1
     words = []
     if index < len(arguments) and arguments[index] == '-m':
-        for word in arguments[index + 1:index + 4]:
+        # Words after the module are that program's own arguments. Only our own
+        # modules have subcommands known not to carry private values.
+        own = arguments[index + 1].startswith('freevideo_engine') if index + 1 < len(arguments) else False
+        for word in arguments[index + 1:index + (4 if own else 2)]:
             if not _COMMAND_WORD.fullmatch(word):
                 break  # Never skip an option/path to expose its value as a word.
             words.append(word)
@@ -90,7 +93,7 @@ def _lock_command(cmdline):
 
 
 def _holder_line(pid, executable, command='', seconds=None):
-    line = f'Lock holder: pid {int(pid)}, {_executable_basename(executable)}'
+    line = f'Lock file open: pid {int(pid)}, {_executable_basename(executable)}'
     if command:
         line += f' ({command})'
     if seconds is not None and math.isfinite(seconds) and seconds >= 0:
@@ -203,7 +206,7 @@ def _windows_lock_holders(paths, deadline, lines):
                 if handle:
                     kernel.CloseHandle(handle)
         if len(holders) > 5:
-            lines.append(f'Lock holder: and {len(holders) - 5} more')
+            lines.append(f'Lock file open: and {len(holders) - 5} more')
     finally:
         manager.RmEndSession(session)
 
@@ -228,7 +231,7 @@ def describe_lock_holders(paths) -> list[str]:
                         return
                     lines.append(_linux_holder(pid))
                 if len(holders) > 5:
-                    lines.append(f'Lock holder: and {len(holders) - 5} more')
+                    lines.append(f'Lock file open: and {len(holders) - 5} more')
         except Exception:
             pass
         finally:
