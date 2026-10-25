@@ -18,8 +18,7 @@ import uuid
 
 from . import image_pack
 from ..download_settings import observed_speed
-from ..diagnostic_resources import commit_exhausted
-from .failure import (COMMIT_MESSAGE_ZH, Context, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
+from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
 
 BODY_LIMIT = 64 * 1024
@@ -749,8 +748,9 @@ class Service:
             result['message_zh'] = MESSAGE_ZH[code]
             if context.machine.get('device_backend') == 'mps' and code in UNIFIED_MESSAGE_ZH:
                 result['message_zh'] = UNIFIED_MESSAGE_ZH[code]
-            if code == 'no_memory' and error is not None and commit_exhausted(error):
-                result['message_zh'] = COMMIT_MESSAGE_ZH
+            if code == 'no_memory' and (isinstance(row, dict) and row.get('memory') == 'host'
+                                        or error is not None and host_memory_shortage(error)):
+                result.update(memory='host', message_zh=HOST_MESSAGE_ZH)
         if code not in NO_REPORT:
             if video_busy is None:
                 try:

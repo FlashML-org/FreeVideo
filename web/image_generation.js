@@ -176,6 +176,9 @@ export function imageGenError(code, info, t) {
     };
     const say = (en, zh) => t(...memoryWords([en, zh], info?.unified));
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
+    if (code === 'no_memory' && info?.memory === 'host')
+        return t('Not enough system memory or virtual memory to load the model. Close other programs, or enlarge the system virtual memory, then try again.',
+            '电脑内存或虚拟内存不够，模型没能载入。关掉其他程序，或调大系统的虚拟内存后再试。');
     if (code === 'no_memory') {
         // Where it ran out decides what helps: the reference pictures are read at a fixed size,
         // so a smaller canvas does not change that stage.
@@ -211,7 +214,7 @@ export const REPORT_LABELS = Object.freeze({
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, fitted, info} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis)} = {}) {
     host.replaceChildren();
     if (!error || error === 'cancelled') return null;
@@ -222,7 +225,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info}
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, unified: info?.unified_memory}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory}, t);
     card.append(reason); host.append(card);
     if (!report_id) return card;
     const fetchReport = async () => {

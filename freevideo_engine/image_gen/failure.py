@@ -56,7 +56,12 @@ _MPS_MEMORY = re.compile(r'MPS backend out of memory', re.I)
 _LIMIT = 16 * 1024
 # On a Mac the GPU's memory is the machine's: the same failure, in its words.
 UNIFIED_MESSAGE_ZH = {'no_memory': '内存不够，最小尺寸也没能生成。关掉其他程序后再试。'}
-COMMIT_MESSAGE_ZH = '系统的虚拟内存不够，图像生成没能载入模型。关掉其他程序，或在系统设置里调大虚拟内存后再试。'
+HOST_MESSAGE_ZH = '电脑内存或虚拟内存不够，模型没能载入。关掉其他程序，或调大系统的虚拟内存后再试。'
+
+
+def host_memory_shortage(error):
+    """The machine's own memory ran out, not the card's."""
+    return commit_exhausted(error)
 
 
 class FailureError(ValueError):
@@ -77,7 +82,7 @@ def classify_exception(error, *, stage='start', cancelled=False):
         seen.add(id(error))
         chain.append(error)
         error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
-    if commit_exhausted(chain[0]) if chain else False:
+    if chain and commit_exhausted(chain[0]):
         return 'no_memory'
     for item in chain:
         names = {cls.__name__ for cls in type(item).__mro__}

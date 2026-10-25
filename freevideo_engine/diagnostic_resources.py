@@ -52,13 +52,17 @@ def commit_exhausted(error):
 
     Rust-backed file readers raise a plain OSError carrying only the localized
     system message plus "(os error 1455)", so the numeric attributes are unset.
+    A different numeric code wins over the text, which may be a file name.
     """
     seen = set()
     while isinstance(error, BaseException) and id(error) not in seen:
         seen.add(id(error))
-        if getattr(error, 'winerror', None) == 1455 or re.search(r'(?:os error|winerror)\s*1455\b', str(error), re.I):
+        code = getattr(error, 'winerror', None)
+        if code == 1455:
             return True
-        error = error.__cause__ or error.__context__
+        if code is None and re.search(r'(?:os error|winerror)\s*1455\b', str(error), re.I):
+            return True
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
     return False
 
 
