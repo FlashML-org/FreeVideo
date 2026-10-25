@@ -1551,8 +1551,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 OWNER.close()
                 environment.pop(ENV, None)
             else:
-                environment[ENV] = OWNER.start(root, source, machine['python'], environment)
-                OWNER.active = True
+                environment[ENV] = OWNER.start(root, source, machine['python'], environment, busy=True)
         with (run / 'generate.log').open('wb') as log:
             process = processes.popen(command, env=environment, cwd=source, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)

@@ -394,6 +394,8 @@ class SessionOwner:
             hold = min(HOLD_SECONDS, AGENT_HOLD_SECONDS) if agent else HOLD_SECONDS
             if not next_part and warm and gpu_used(gpu) is not None:
                 hold, next_part = KEEP_IDLE_SECONDS, 'warm'
+            else:
+                warm = False
             if not next_part or hold <= 0:
                 return self.release('finished' if not next_part else 'no_hold')
             reason = pressure(gpu, None) or self._tight()
@@ -402,6 +404,8 @@ class SessionOwner:
             self.generation += 1
             self.idle_since = time.monotonic()
             baseline = gpu_used(gpu)
+            if warm and baseline is None:
+                return self.release('gpu_unreadable')
             threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu, baseline),
                              name='freevideo-resident-hold', daemon=True).start()
             return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid)
@@ -459,11 +463,15 @@ class SessionOwner:
             self.close()
             return self.record(**row)
 
-    def start(self, root, source, python, environment):
+    def start(self, root, source, python, environment, busy=False):
         with self.mutex:
             self.generation += 1
             self.idle_since = None
-            return self._start(root, source, python, environment)
+            endpoint = self._start(root, source, python, environment)
+            # Marked under the same lock, so a release cannot land between starting and using the worker.
+            if busy:
+                self.active = True
+            return endpoint
 
     def _start(self, root, source, python, environment):
         import hashlib
@@ -567,7 +575,9 @@ def pressure(gpu, baseline):
     if baseline is not None:
         # The idle worker does not allocate, so growth on the card is another program's.
         used = gpu_used(gpu)
-        if used is not None and used - baseline >= OTHER_GPU_GROWTH:
+        if used is None:
+            return 'gpu_unreadable'
+        if used - baseline >= OTHER_GPU_GROWTH:
             return 'other_program_gpu'
     return None
 
