@@ -571,8 +571,9 @@ def plan(args, *, local_progress=None, stage=None):
         if cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580):
             # The card names the graphics card too; brackets would end its pattern early.
             model = re.sub(r'[()\r\n]', '', str(snapshot['selected_gpu'].get('name') or '')).strip()
-            errors.append('NVIDIA driver %s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
-                          % (driver, ' (%s)' % model if model else ''))
+            # The CUDA fallback reads no driver version; leave it out instead of printing a gap.
+            errors.append('NVIDIA driver%s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
+                          % (' ' + driver if driver else '', ' (%s)' % model if model else ''))
         compatibility = hardware.cuda_compatibility()
         if compatibility['error']:
             errors.append(compatibility['error'])

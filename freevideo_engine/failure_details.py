@@ -558,7 +558,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
          ('If this computer has an NVIDIA graphics card, install NVIDIA driver 580 or newer, '
           'restart the computer, then click Retry installation.',
           '如果这台电脑有 NVIDIA 显卡，请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。')),
-        (r'NVIDIA driver [\w.]+(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
+        (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
           '请将 NVIDIA 显卡驱动更新到 580 或更新版本，重启电脑后点击“重试安装”。')),
@@ -664,14 +664,19 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
                 action = WITHOUT_REPAIR[kind].get(unavailable) or WITHOUT_REPAIR[kind].get('none', WITHOUT_REPAIR_NONE)
             detail = ''
             if kind == 'gpu-driver-old':
-                version, model = re.search(r'NVIDIA driver ([\w.]+)(?: \(([^)]*)\))? is older than 580', text, re.I).groups()
-                if model:
+                version, model = re.search(r'NVIDIA driver(?: ([\w.]+))?(?: \(([^)]*)\))? is older than 580', text, re.I).groups()
+                if model and version:
                     detail = ('检测到：%s，驱动 %s' if zh else 'Detected: %s, driver %s') % (model, version)
-                else:
+                elif model:
+                    # The CUDA fallback names the card but reads no driver version.
+                    detail = ('检测到：%s' if zh else 'Detected: %s') % model
+                elif version:
                     detail = ('当前驱动版本：' if zh else 'Installed driver: ') + version
+                else:
+                    detail = ''
                 # The launcher's failure card shows the action only when there is no detail, so the
                 # instruction goes under the detected driver instead of being hidden by it.
-                return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+                return dict(title=title[zh], detail=(detail + '\n' if detail else '') + action[zh], action='', kind=kind)
             if kind == 'gpu-architecture':
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SM\w+; compute capability ([\d.]+);', text)
                 if found:
