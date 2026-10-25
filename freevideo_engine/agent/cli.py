@@ -16,10 +16,11 @@ from pathlib import Path
 import sys
 
 from .client import ApiError, Client
-from . import schema, spec, errors
+from . import errors
 
 
 def read(path):
+    from . import schema
     text = sys.stdin.read() if path == '-' else Path(path).read_text(encoding='utf-8')
     value = json.loads(text)
     schema.validate({'type': 'object'}, value)
@@ -40,6 +41,7 @@ class Parser(argparse.ArgumentParser):
 
 
 def build_parser():
+    from . import schema
     parser = Parser(prog='./freevideo agent', description='Drive FreeVideo through its agent API.')
     parser.add_argument('--root', type=Path)
     parser.add_argument('--url')
@@ -161,10 +163,39 @@ def build_parser():
     return parser
 
 
+def install_skill(argv):
+    """Run `install-skill` without the job schemas, whose import loads the image libraries (numpy, Pillow).
+
+    A deep installation folder on Windows cannot load those libraries by their full path, and copying
+    the skill needs none of them. None where the command line is anything else."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--root', type=Path)
+    parser.add_argument('--url')
+    parser.add_argument('command', nargs='?')
+    known, rest = parser.parse_known_args(argv)
+    if known.command != 'install-skill':
+        return None
+    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    parser.add_argument('--target', choices=('agents', 'claude'), action='append')
+    try:
+        args, extra = parser.parse_known_args(rest)
+    except argparse.ArgumentError:
+        return None
+    if extra:
+        return None
+    from . import skill_install
+    print(json.dumps({'installed': skill_install.install(tuple(args.target or ('agents', 'claude')))}, indent=2))
+    return 0
+
+
 def main(argv=None):
     for stream in (sys.stdin, sys.stdout):
         if hasattr(stream, 'reconfigure'):
             stream.reconfigure(encoding='utf-8')
+    done = install_skill(sys.argv[1:] if argv is None else argv)
+    if done is not None:
+        return done
+    from . import schema, spec
     parser = build_parser()
     args = parser.parse_args(argv)
     values = vars(args)
@@ -180,11 +211,6 @@ def main(argv=None):
         from .spec import JOB_ID, LIBRARY_ID
         return {'from_job': value} if JOB_ID.fullmatch(value) else {'library': value} if LIBRARY_ID.fullmatch(value) \
             else {'path': str(Path(value).resolve())} if Path(value).exists() else {'file': value}
-
-    if args.command == 'install-skill':
-        from . import skill_install
-        print(json.dumps({'installed': skill_install.install(tuple(args.target or ('agents', 'claude')))}, indent=2))
-        return 0
 
     try:
         client = Client(args.url, root=args.root, name='freevideo-cli')
