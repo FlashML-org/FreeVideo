@@ -659,7 +659,8 @@ def generate(request, resident=None):
                                      **({'continuation': continuation} if continuation is not None else {}),
                                      **({'audio_lead_in_callback': keep_audio_lead_in}
                                         if continuation is not None and continuation_data is not None else {}),
-                                     model_cache=resident, phase_callback=decode_phase, output_size=output_size, **decoder))
+                                     model_cache=resident, phase_callback=decode_phase, output_size=output_size,
+                                     ram_budget_bytes=request.get('ram_budget_bytes'), **decoder))
         if continuable and continuation_data is not None:
             if continuation is not None:
                 # Every continuation of a film carries its first frame on, used or not: a later

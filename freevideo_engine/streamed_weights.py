@@ -390,31 +390,17 @@ def _low_page_priority(enabled):
 CONVERTED_RESERVE = int(1.5 * 2**30)
 
 
-def _cgroup_headroom(mount='/sys/fs/cgroup', membership='/proc/self/cgroup'):
-    """Room left under this process's cgroup v2 memory limit, or None without one.
+def converted_fits(size, reserve=CONVERTED_RESERVE, room=None):
+    """Whether one more converted layer may stay in RAM as a private copy.
 
-    Private copies count against the limit while clean file pages do not, so
-    only anonymous, shared and kernel memory is taken as used.
+    ``room`` is what the request's own RAM budget still allows, when it has one.
     """
-    try:
-        root = Path(mount)
-        for line in Path(membership).read_text(encoding='utf-8').splitlines():
-            if line.startswith('0::'):
-                root = root / line[3:].lstrip('/')
-        limit = (root / 'memory.max').read_text(encoding='utf-8').strip()
-        if limit == 'max':
-            return None
-        stat = dict(row.split() for row in (root / 'memory.stat').read_text(encoding='utf-8').splitlines())
-        return int(limit) - sum(int(stat.get(name, 0)) for name in ('anon', 'shmem', 'kernel'))
-    except (OSError, ValueError):
-        return None
-
-
-def converted_fits(size, reserve=CONVERTED_RESERVE):
-    """Whether one more converted layer may stay in RAM as a private copy."""
+    from .hardware import cgroup_memory
     from .system import system_memory
+    if room is not None and room < size:
+        return False
     available = system_memory()['available_bytes']
-    headroom = _cgroup_headroom()
+    headroom = cgroup_memory()['reclaimable_available_bytes']
     if headroom is not None:
         available = min(available, headroom)
     return available - size >= reserve
@@ -436,7 +422,7 @@ def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
 
 class SafetensorLayers:
     def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None, host_views=False,
-                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False):
+                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False, converted_room=None):
         from .system import windows
         self.direct_read = windows() if direct_read is None else direct_read
         self.prefixes = tuple(prefixes)
@@ -446,6 +432,7 @@ class SafetensorLayers:
         # the same layers once per clip; converting reads the whole FP32 layer
         # each time, from disk once the file cache cannot hold them.
         self.keep_converted = keep_converted and intermediate_dtype is not None
+        self.converted_room = converted_room
         self.converted = {}
         self.converted_bytes = 0
         self.converted_hits = 0
@@ -753,7 +740,8 @@ class SafetensorLayers:
         with self.cache_lock:
             if index in self.converted:
                 return
-            if not converted_fits(size):
+            room = self.converted_room() if self.converted_room is not None else None
+            if (self.converted_room is not None and room is None) or not converted_fits(size, room=room):
                 self.converted_refused += 1
                 return
             # A tensor that needed no conversion may still map the checkpoint.

@@ -26,7 +26,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                    preload=False, pin_weights=False, artifacts_dir=None, phase_callback=None,
                    stream_output=False, stream_weights=False, resident_blocks=0, model_cache=None,
                    linear_compute_cache=False, continuation=None, audio_lead_in_callback=None, output_size=None,
-                   hide_tail_frames=0):
+                   hide_tail_frames=0, ram_budget_bytes=None):
     from .continuation import validate_hide_tail
     validate_hide_tail(hide_tail_frames)
     def phase(name):
@@ -70,10 +70,21 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         count = resident_blocks if offload else layers
         if stream_weights:
             from .streamed_weights import SafetensorLayers
+            room = None
+            if ram_budget_bytes is not None:
+                # Converted layers are private memory: keep them inside the request's own
+                # working-memory budget, so they can neither trip an explicit budget nor
+                # lift the peak that later plans take as demonstrated.
+                def room():
+                    import os
+                    from .ram import ProcessMemory
+                    from .system import memory_sample
+                    used = memory_sample(ProcessMemory().sample(os.getpid()))
+                    return ram_budget_bytes - used if type(used) is int and used >= 0 else None
             weight_source = SafetensorLayers((Path(base)/'vae').glob('*.safetensors'),
                 [f'decoder.transformer_blocks.{index}.' for index in range(count, layers)],
                 intermediate_dtype=torch.float32 if linear_compute_cache else None,
-                keep_converted=True)
+                keep_converted=True, converted_room=room)
         vae, compute_cache_metrics = load_video_decoder(base, resident_blocks=count, weight_source=weight_source,
                                                        linear_fp16=linear_compute_cache)
     vae.eval().requires_grad_(False)
