@@ -226,6 +226,8 @@ def normalize(value, *, port=None):
     result = dict(kind=kind, **_common(value))
     if kind == 'generate':
         result['force_regenerate'] = value['force_regenerate']
+        if value.get('release_gpu_after'):
+            result['release_gpu_after'] = True
         if value.get('refine_from'):
             ref = value['refine_from']
             result['refine_from'] = {'from_job' if JOB_ID.fullmatch(ref) else 'library': ref}

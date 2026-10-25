@@ -714,6 +714,10 @@ class Jobs:
                 self.retry_pending()
             return
         row.update(status=status, finished_at=self.clock(), updated_at=self.clock())
+        if row['kind'] == 'generate' and row.get('spec', {}).get('release_gpu_after') is True:
+            # The agent runs another model on this card next. Off the lock: stopping the worker takes a moment.
+            from ..resident_process import OWNER
+            threading.Thread(target=OWNER.release_idle, args=('agent_requested',), name='freevideo-release-gpu', daemon=True).start()
         if result is not None:
             row['result'] = result
         if error is not None:

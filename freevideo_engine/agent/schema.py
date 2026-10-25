@@ -186,6 +186,7 @@ def generate(*, local=False):
                     obj(dict(name=string(512, pattern=r'^.+\.[sS][aA][fF][eE][tT][eE][nN][sS][oO][rR][sS]$'),
                              strength=number(-4, 4, default=1)), ('name',))]}, default=[]),
         preview={'type': 'boolean', 'default': False},
+        release_gpu_after={'type': 'boolean', 'default': False},
         refine_from=nullable({'oneOf': [JOB, SAVED]}), force_regenerate={'type': 'boolean', 'default': False},
         continue_from={'oneOf': [obj({'from_job': JOB}, ('from_job',)), obj({'library': SAVED}, ('library',))]},
         first_frame_reference={'type': 'boolean', 'default': False, 'description':
@@ -382,6 +383,8 @@ def contracts(*, local=False):
         ('GET', '/jobs/{id}'): route('Read job progress and result', query=obj({'wait': WAIT})),
         ('GET', '/jobs/{id}/events'): route('Watch job progress'),
         ('POST', '/jobs/{id}/cancel'): route('Cancel a job', body=EMPTY, optional_body=True),
+        ('POST', '/gpu/release'): route('Release the video model from the graphics card and memory when idle',
+            body=EMPTY, optional_body=True),
         ('POST', '/jobs/{id}/resume'): route('Resume unfinished generation blocks', body=obj({'ref': REF}),
             optional_body=True, idempotent=True),
         ('POST', '/media'): route('Upload image, video or audio content',
@@ -1503,6 +1506,7 @@ TOOL_ENDPOINTS = {
     'freevideo_resume': ('POST', '/jobs/{id}/resume'), 'freevideo_add_media': ('POST', '/media'),
     'freevideo_import_media': ('POST', '/imports'), 'freevideo_imports': ('GET', '/imports'),
     'freevideo_edit_image': ('POST', '/media/edit'), 'freevideo_library': ('GET', '/library'),
+    'freevideo_release_gpu': ('POST', '/gpu/release'),
 }
 TOOL_ENDPOINTS.update({'freevideo_drama_' + name: (method, suffix)
     for name, (method, suffix, _) in DRAMA_OPERATIONS.items()})
@@ -1521,7 +1525,7 @@ TOOL_KINDS = dict(freevideo_generate='generate', freevideo_assemble='assemble',
 
 
 SESSION_ARGUMENT = dict(type='string', pattern='^s[0-9a-f]{12}$',
-    description='Work session; omit for your latest.')
+    description='Work session; omit for latest.')
 
 
 SHAPE_MIN_BYTES = 400

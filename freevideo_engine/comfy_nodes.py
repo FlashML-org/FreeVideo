@@ -364,8 +364,8 @@ class FreeVideoGenerate(io.ComfyNode):
         server = PromptServer.instance
         def busy():
             return server is not None and server.prompt_queue.get_tasks_remaining() > 0
-        # Keep the models only while the next part is on its way; otherwise give
-        # the memory back now and let the file cache make the next load quick.
+        # A finished request keeps the models for the next one while memory is ample;
+        # a failed one, a tight host or another program's growth gives it back at once.
         try:
             # The running prompt is this one; only prompts still waiting are a next part.
             queued = server is not None and bool(server.prompt_queue.get_current_queue()[1])
@@ -383,7 +383,7 @@ class FreeVideoGenerate(io.ComfyNode):
             gpu = comfy_bridge.installation()[1].get('gpu_uuid')
         except (OSError, ValueError, KeyError, TypeError):
             gpu = None
-        OWNER.finished(next_part=next_part, gpu=gpu,
+        OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
                        agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
         if target and not result_reused[0]:
             client = server.client_id if server is not None else None
