@@ -1569,5 +1569,6 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         onShowcaseTry: async () => { if (await handle.close() !== false) await onView('autopilot', {initialScene: SHOWCASE_SCENE}); },
         isBusy: () => initializing || !tracks || genHost.inert || pointerEditing || jobActive() || ['running', 'queued'].includes(exportStatus?.state),
         targets: {'editor-trim': () => tracks?.guideTarget('trim'), 'editor-empty': () => tracks?.guideTarget('empty')}});
+    element.freevideoSwitchView = view => handle.switchView(view);
     updateTop(); return handle;
 }

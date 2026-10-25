@@ -39,8 +39,9 @@ import { canvasDimensions, imageSizeSelection } from './studio_size.js';
 import { createCapabilityView } from './capability_view.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
-import { createFirstRunGuide } from './first_run_guide.js';
+import { createFirstRunGuide, createFirstStart } from './first_run_guide.js';
 import { SHOWCASE_SCENE } from './entry_showcase.js';
+import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './feature_tour.js';
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
@@ -652,6 +653,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // modal is above them and must remain interactive when the launcher reopens it.
     dialog.style.pointerEvents = 'auto';
     current = {node, dialog}; const cleanup = [];
+    let firstStart = null, exampleFocused = false;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
@@ -662,7 +664,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The Agent's page is the fourth tab, shown where the Agent interface is on; the guide's last step circles it.
     agentTabReady(agentInterfaceState(api), () => agentInterfaceState(api));
     // The length hint links to the same two views, through the same actions.
-    const toEditor = () => openEditorView(node, {studio: dialog}), toAutopilot = () => openAutopilot(node, {studio: dialog});
+    const toEditor = () => { firstStart?.dismiss(); return openEditorView(node, {studio: dialog}); };
+    const toAutopilot = () => { firstStart?.dismiss(); return openAutopilot(node, {studio: dialog}); };
     const navigation = viewSwitch('studio', () => {}, () => showNodes(node, dialog), toEditor, toAutopilot);
     const autopilotTab = navigation.querySelector('[data-view="autopilot"]');
     // The guide starts after the tab settles: it fixes its steps from the anchors present at that moment.
@@ -698,6 +701,44 @@ export function openStudio(node, {extendFrom = null} = {}) {
         people: t('Up to 3 characters', '最多 3 个角色'), full: t('Up to 32 references', '参考素材最多 32 个'),
         continued: t('Up to 3 images when continuing', '接续时最多 3\u00a0张')}[reason] || '');
     const castPending = new Map();
+    // The feature tour's "try it": one example into this panel's media list, prompt and settings.
+    const canTryTour = entry => !busy && !queued && !capturing && (!entry.prompt || !linked(node, 'text'))
+        && (!entry.assets?.length || Boolean(castAssets()))
+        && Object.keys(entry.settings || {}).every(name => name === 'quality'
+            ? Boolean(effort.levels().find(tier => tier.name === entry.settings.quality)) && !baseSteps.disabled && ['base_steps', 'two_pass', 'step_cache', 'upscale_factor'].every(key => widget(node, key) && !linked(node, key))
+            : Boolean(widget(node, name)) && !linked(node, name))
+        && (entry.settings?.two_pass !== true || !twoPass.disabled);
+    const tryTourExample = async example => {
+        if (!canTryTour(example)) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        const {applyTourExample} = await import('./tour_try.js');
+        const target = castAssets();
+        const result = await applyTourExample({node, api, cn, rows: () => mediaRows(node), canApply: canTryTour,
+            setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); },
+            setSetting: (name, input) => {
+                if (name === 'quality') {
+                    const tier = effort.levels().find(tier => tier.name === input);
+                    baseSteps.value = tier.steps; twoPass.checked = tier.twoPass; refineSteps.value = 3;
+                    set(node, 'two_pass', tier.twoPass); set(node, 'step_cache', tier.stepCache || 'none'); setUpscale(tier.upscale);
+                } else if (name === 'two_pass') { choosePassMode(input ? 'on' : 'off'); }
+                else { set(node, name, input); if (name === 'width') width.value = input; if (name === 'height') height.value = input; if (name === 'seconds') seconds.value = input; }
+            },
+            write: rows => { if (!target) return false; target.field.value = JSON.stringify(rows); target.owner.graph?.change?.();
+                window.dispatchEvent(new CustomEvent('freevideo-media', {detail: target.owner.id})); return true; }}, example);
+        if (result.ok) {
+            firstStart?.dismiss();
+            if (example.settings?.width && example.settings?.height) {
+                pixels = Number(example.settings.width) * Number(example.settings.height) / 1024 ** 2;
+                ratio = Number(example.settings.width) / Number(example.settings.height);
+                selected = frameShapes(t).find(([, , aspect]) => Math.abs(aspect - ratio) < .01)?.[0] || 'custom'; node.properties.freevideo_pixels = pixels; node.properties.freevideo_aspect = selected;
+            }
+            syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input')); updateRunButton();
+            if (example.assets?.length) mediaDetails.open = true;
+            // The lazy entry switches back through the editor before applying an example.
+            if (topDialog() !== dialog) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'workspace_changed'}; }
+            exampleFocused = true; generate.focus({preventScroll: true});
+        } else fault(t('Could not complete. Try again.', '没有完成，请重试'));
+        return result;
+    };
     function castChoices() {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
@@ -727,7 +768,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const references = attachReferencePicker(prompt, {items: () => referenceItems(node), t, view, host: dialog,
         characters: castChoices, onCharacter: mentionCharacter,
-        addMedia: () => { mediaDetails.open = true; mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
+        addMedia: () => { firstStart?.dismiss(); mediaDetails.open = true; triggerFeatureTour('media'); mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
     const mention = button('@', () => references.open(), 'fv-reference-trigger');
     mention.setAttribute('aria-label', t('Reference media (@)', '引用素材（@）'));
     mention.title = mention.getAttribute('aria-label');
@@ -932,6 +973,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = mediaFilled(); }
     else mediaMount.append(el('p', t('Connect a FreeVideo Media panel in node view to upload here.', '在节点视图连接 FreeVideo 素材面板，可在这里上传。'), 'fv-legacy'));
     paintMediaHint(); mediaDetails.addEventListener('toggle', paintMediaHint);
+    mediaTitle.addEventListener('click', () => {
+        queueMicrotask(() => { if (mediaDetails.open && mediaDetails.dataset.expanded !== 'false') { firstStart?.dismiss(); triggerFeatureTour('media'); } });
+    });
     controls.addEventListener('change', paintMediaHint, true); controls.addEventListener('input', paintMediaHint, true);
     const connectedLora = upstream(node, 'loras');
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
@@ -1537,6 +1581,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             updateRunButton();
         },
         onResult: (result, outcome) => { node.freevideoLastResult = result; showResult(result, {chosen: outcome.partial});
+            if (!outcome.partial) firstStart?.complete(result);
             // A part that failed keeps its sentence; the part list already marks which ones finished.
             if (outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
         onError: showPartError});
@@ -1939,7 +1984,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
-    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
+    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));
@@ -2059,8 +2104,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => { closed = true; guide?.dispose(); });
     agentDiscovery.then(() => {
         if (!closed) guide = createFirstRunGuide({dialog, api, cn, isBusy: () => busy || queued || capturing, targets: {media: mediaGuideTarget},
-            onShowcaseTry: () => openAutopilot(node, {studio: dialog, initialScene: SHOWCASE_SCENE})});
+            onShowcaseTry: () => openAutopilot(node, {studio: dialog, initialScene: SHOWCASE_SCENE}), onTry: tryTourExample});
     });
+    firstStart = createFirstStart({dialog, api, cn, prompt,
+        onPrefill: text => {
+            if (linked(node, 'text') || extension.source || prompt.value.trim()) return false;
+            set(node, 'text', text); prompt.value = text; placeholder(); updateRunButton(); return true;
+        }, onGenerate: () => { if (generate.disabled) return false; generate.click(); return true; }, onEdit: () => openEditorView(node, {studio: dialog}),
+        isBusy: () => busy || queued || capturing});
+    cleanup.push(() => firstStart.dispose());
+    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, canTry: canTryTour, isBusy: () => busy || queued || capturing};
+    cleanup.push(registerTourWorkspace(tourContext));
+    const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
+    cleanup.push(() => clearTimeout(tourTimer));
     const recentLoad = recent.refresh();
     if (node.freevideoProgress && !node.freevideoProgress.chain) showProgress(node.freevideoProgress);
     else if (result) showResult(result);
@@ -2075,7 +2131,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }).catch(() => {});
     // Opening leaves focus on the panel itself, not on the main button with a ring as if already pressed; Tab still reaches it.
     dialog.tabIndex = -1;
-    requestAnimationFrame(() => { if (dialog.open && !dialog.querySelector('.fv-guide-layer') && !document.querySelector('dialog.fv-editor[open]')) (extension.source ? prompt : dialog).focus({preventScroll: true}); });
+    requestAnimationFrame(() => { if (dialog.open && !exampleFocused && !dialog.querySelector('.fv-guide-layer') && !document.querySelector('dialog.fv-editor[open]')) (extension.source ? prompt : dialog).focus({preventScroll: true}); });
     // Establish the baseline after UI initialization; opening a panel is not an edit.
     trackPromptDraft(node);
     return dialog;

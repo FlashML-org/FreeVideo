@@ -67,9 +67,49 @@ def root():
     return io_path(Path(os.environ.get('LOCALAPPDATA') or Path.home()) / 'FreeVideo-launcher')
 
 
+TOUR_FILES = frozenset((
+    'web/assets/tour/anime-first.webp',
+    'web/assets/tour/anime-last.webp',
+    'web/assets/tour/c1-s2.mp4',
+    'web/assets/tour/c1-s2.webp',
+    'web/assets/tour/c2-product.webp',
+    'web/assets/tour/c2-whitemodel.webp',
+    'web/assets/tour/c2g-s3.mp4',
+    'web/assets/tour/c2g-s3.webp',
+    'web/assets/tour/c3-s1.mp4',
+    'web/assets/tour/c3-s1.webp',
+    'web/assets/tour/c4-high.mp4',
+    'web/assets/tour/c4-high.webp',
+    'web/assets/tour/c4-light.mp4',
+    'web/assets/tour/c4-light.webp',
+    'web/assets/tour/c4-max.mp4',
+    'web/assets/tour/c4-max.webp',
+    'web/assets/tour/c4-medium.mp4',
+    'web/assets/tour/c4-medium.webp',
+    'web/assets/tour/c5-forest-s1.mp4',
+    'web/assets/tour/c5-forest-s1.webp',
+    'web/assets/tour/c5-snow-s1.mp4',
+    'web/assets/tour/c5-snow-s1.webp',
+    'web/assets/tour/c6-s1.mp4',
+    'web/assets/tour/c6-s1.webp',
+    'web/assets/tour/c7-s1.mp4',
+    'web/assets/tour/c7-s1.webp',
+    'web/assets/tour/c7-src-s1.mp4',
+    'web/assets/tour/c7-src-s1.webp',
+    'web/assets/tour/c8-original.webp',
+    'web/assets/tour/c8-s1.mp4',
+    'web/assets/tour/c8-s1.webp',
+    'web/assets/tour/c9-s1.mp4',
+    'web/assets/tour/c9-s1.webp',
+    'web/assets/tour/fox-sheet.webp',
+))
+
+
 def safe_name(name):
     if not isinstance(name, str) or not 1 <= len(name) <= 240 or '\\' in name or ':' in name:
         raise ValueError('Invalid source path')
+    if name.startswith('web/assets/tour/') and name not in TOUR_FILES:
+        raise ValueError('Unregistered tour asset')
     parts = name.split('/')
     for part in parts:
         if (part in ('', '.', '..') or part.endswith((' ', '.')) or
@@ -78,7 +118,7 @@ def safe_name(name):
             raise ValueError('Invalid source path')
     if any(part == '__pycache__' for part in parts):
         raise ValueError('Bytecode caches are not source')
-    if name not in TOP_FILES and name != 'web/vendor/three/LICENSE' and not (
+    if name not in TOP_FILES and name not in TOUR_FILES and name != 'web/vendor/three/LICENSE' and not (
             parts[0] == 'web' and len(parts) > 2 and parts[-2] == 'tutorial' and Path(name).suffix == '.mp4') and not (len(parts) > 1 and parts[0] in
             ('freevideo_engine', 'web', 'constraints', 'example_workflows', 'scripts') and
             Path(name).suffix in EXTENSIONS):

@@ -5,7 +5,7 @@ include NOTICE THIRD_PARTY_NOTICES.md CONTRIBUTING.md SECURITY.md CITATION.cff
 recursive-include example_workflows *.json
 recursive-include web *.js *.css
 include web/vendor/three/LICENSE
-recursive-include web/assets *.svg *.png *.webp
+include web/assets/*.svg web/assets/*.png web/assets/*.webp
 recursive-include web/howto *.png
 recursive-include web/fonts *.woff2
 recursive-include web/tutorial *.webp *.mp4
@@ -30,3 +30,39 @@ prune .github
 exclude AGENTS.md CHANGELOG.md
 
 include freevideo_source_bootstrap.py freevideo_ed25519.py freevideo_update_keys.py
+
+# Bundled feature examples; every file is registered explicitly.
+include web/assets/tour/anime-first.webp
+include web/assets/tour/anime-last.webp
+include web/assets/tour/c1-s2.mp4
+include web/assets/tour/c1-s2.webp
+include web/assets/tour/c2-product.webp
+include web/assets/tour/c2-whitemodel.webp
+include web/assets/tour/c2g-s3.mp4
+include web/assets/tour/c2g-s3.webp
+include web/assets/tour/c3-s1.mp4
+include web/assets/tour/c3-s1.webp
+include web/assets/tour/c4-high.mp4
+include web/assets/tour/c4-high.webp
+include web/assets/tour/c4-light.mp4
+include web/assets/tour/c4-light.webp
+include web/assets/tour/c4-max.mp4
+include web/assets/tour/c4-max.webp
+include web/assets/tour/c4-medium.mp4
+include web/assets/tour/c4-medium.webp
+include web/assets/tour/c5-forest-s1.mp4
+include web/assets/tour/c5-forest-s1.webp
+include web/assets/tour/c5-snow-s1.mp4
+include web/assets/tour/c5-snow-s1.webp
+include web/assets/tour/c6-s1.mp4
+include web/assets/tour/c6-s1.webp
+include web/assets/tour/c7-s1.mp4
+include web/assets/tour/c7-s1.webp
+include web/assets/tour/c7-src-s1.mp4
+include web/assets/tour/c7-src-s1.webp
+include web/assets/tour/c8-original.webp
+include web/assets/tour/c8-s1.mp4
+include web/assets/tour/c8-s1.webp
+include web/assets/tour/c9-s1.mp4
+include web/assets/tour/c9-s1.webp
+include web/assets/tour/fox-sheet.webp

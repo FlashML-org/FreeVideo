@@ -137,10 +137,14 @@ const visible = e => {
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 
 // The tutorial book's "walk me through it" buttons call this; the how-tos load only when one is asked for.
-if (typeof window !== 'undefined') window.freevideoHowTo = {start: id => import('./howto.js').then(({startHowTo}) => startHowTo(id)),
-    available: id => import('./howto.js').then(({howToAvailable}) => howToAvailable(id))};
+if (typeof window !== 'undefined') {
+    const howto = window.freevideoHowTo ||= {};
+    howto.start ||= id => import('./howto.js').then(({startHowTo}) => startHowTo(id));
+    howto.available ||= id => import('./howto.js').then(({howToAvailable}) => howToAvailable(id));
+    howto.tryIt = (example, options) => import('./feature_tour.js').then(({tryIt}) => tryIt(example, options));
+}
 
-export function createGuideReplayEntry({dialog, cn, openWorkspace, replay = showGuide}) {
+export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay = () => import('./tutorial_book.js').then(({openTutorialBook}) => openTutorialBook({chapter: 'quick-start'}))}) {
     const text = key => REPLAY_TEXT[key][cn ? 1 : 0];
     const section = el('section', null, 'fv-guide-replay'), row = el('div', null, 'fv-guide-replay-row');
     const button = el('button', text('again')); button.type = 'button';
@@ -180,7 +184,13 @@ export function createGuideReplayEntry({dialog, cn, openWorkspace, replay = show
         } catch { status.textContent = text('unavailable'); status.hidden = false; }
     };
     section.addEventListener('keydown', event => { if (event.key === 'Escape' && !menu.hidden) { event.stopPropagation(); closeMenu(); manual.focus(); } });
-    actions.append(manual, button);
+    const examples = el('button', cn ? '功能示例' : 'Feature examples'); examples.type = 'button';
+    examples.onclick = async () => {
+        const {openFeatureTour} = await import('./feature_tour.js');
+        await new Promise(resolve => { dialog.addEventListener('close', resolve, {once: true}); dialog.close(); });
+        await openFeatureTour({grid: true, cn, api, owner: null});
+    };
+    actions.append(manual, button, examples);
     row.append(el('h3', text('title')), actions); section.append(row, menu, status);
     button.onclick = async () => {
         button.disabled = true;
@@ -225,7 +235,6 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
     let waiting = null, replayTimer = null, touring = false;
     let showcase = null;
     const heldKeys = new Set();
-    const target = chapter => dialog.querySelector(chapter.anchor);
     const resolved = chapter => {
         const value = guideTarget(dialog, chapter, targets);
         return value && visible(value.node) && value.rect.width > 0 && value.rect.height > 0 ? value : null;
@@ -519,29 +528,116 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
     guides.set(dialog, handle);
     const foreground = [...document.querySelectorAll('dialog[open]')].at(-1);
     if (!foreground || foreground === dialog) { current?.suspend(); current = handle; }
-    // Steps are fixed when the guide starts, so give an anchor that is still waiting for its data up to 5 s.
-    // The Agent tab is not waited for: its discovery has already finished when the guide is created.
-    const pending = () => chapters.some(c => c.id !== 'agent' && target(c) && !visible(target(c)));
-    function begin(waited = 0) {
-        startTimer = setTimeout(() => {
-            if (!automatic || attempted.has(group) || manual || layer || disposed || touched) return;
-            if (editor) {
-                if (!dialog.open || !dialog.isConnected) return;
-                serverBlocked = false;
-                if (blocked() || pending()) { begin(250); return; }
-                show().then(shown => {
-                    if (disposed || touched) return;
-                    if (!shown && (serverBlocked || blocked())) begin(250);
-                    else { attempted.add(group); if (!shown) stopped = true; }
-                });
-                return;
-            }
-            if (pending() && waited < 5000) { begin(waited + 250); return; }
-            attempted.add(group);
-            show().then(shown => { if (!shown) stopped = true; });
-        }, waited ? 250 : 1000);
-    }
     let startTimer = null;
-    begin();
+    // Automatic rings and the legacy showcase are retired; tutorials call tour/replay explicitly.
     return handle;
+}
+
+// First-run copy stays together for editorial review. The old rings above are only explicit walkthroughs.
+export const FIRST_RUN_TEXT = {
+    prompt: ['A fox walks through a sunlit forest.', '一只狐狸走过洒满阳光的森林。'],
+    describe: ['Describe the scene', '描述画面'],
+    generate: ['Generate video', '生成视频'],
+    hint: ['Click "Generate video" to get your first video.', '点“生成视频”，得到第一段视频。'],
+    close: ['Close', '关闭'],
+    next: ['Continue this video', '接着生成这条视频'],
+    longer: ['Extend', '接着生成'],
+    edit: ['Edit', '剪辑'],
+};
+export const FIRST_START = 'first-run:started:0.4.21';
+export const FIRST_NEXT = 'first-run:next:0.4.21';
+
+export async function prepareFirstStart(api) {
+    const loaded = await readGuideRecord(api);
+    if (!loaded.ok) return null;
+    if (loaded.record) return {firstRun: loaded.record.seen.includes(FIRST_START) && !loaded.record.seen.includes(FIRST_NEXT), bubble: false};
+    try {
+        const reply = await api.fetchApi('/freevideo/library?limit=1');
+        if (!reply.ok) return null;
+        const data = await reply.json();
+        if (!Array.isArray(data.items) || data.items.length) return null;
+    } catch { return null; }
+    if (!await saveGuideRecord(api, guideRecord(null, [FIRST_START]))) return null;
+    return {firstRun: true, bubble: true};
+}
+
+export async function openFirstNextLonger() {
+    const tutorial = window.freevideoTutorial;
+    if (typeof tutorial === 'function') return tutorial({chapter: 'long-video'});
+    if (typeof tutorial?.open === 'function') return tutorial.open({chapter: 'long-video'});
+    try {
+        const {openTutorialBook} = await import('./tutorial_book.js');
+        return openTutorialBook({chapter: 'long-video'});
+    } catch {
+        return (await import('./feature_tour.js')).openFeatureTour({start: 'extend'});
+    }
+}
+
+export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate, onEdit,
+    onLonger = openFirstNextLonger, isBusy = () => false}) {
+    const text = key => FIRST_RUN_TEXT[key][cn ? 1 : 0];
+    if (!document.querySelector('link[data-fv-first-run-guide]')) {
+        const css = el('link'); css.rel = 'stylesheet'; css.dataset.fvFirstRunGuide = '';
+        css.href = new URL('./first_run_guide.css', import.meta.url).href; document.head.append(css);
+    }
+    let disposed = false, bubble = null, next = null, timer = null, pending = null, showing = false;
+    const hideBubble = () => { bubble?.remove(); bubble = null; };
+    const position = () => {
+        if (!bubble) return;
+        const target = dialog.querySelector('[data-fv-guide="generate"]') || prompt, r = target.getBoundingClientRect(), b = bubble.getBoundingClientRect();
+        // Above the primary button, so neither the prompt nor the button itself is covered.
+        // On a narrow screen the button is below the fold; the hint then waits at the bottom edge until it scrolls into view.
+        const visible = r.bottom > 0 && r.top < innerHeight - 12, above = visible && r.top - b.height - 12 >= 12;
+        bubble.classList.toggle('fv-first-start-above', above);
+        bubble.classList.toggle('fv-first-start-dock', !visible);
+        bubble.style.left = `${clamp(r.left + r.width / 2 - b.width / 2, 12, innerWidth - b.width - 12)}px`;
+        bubble.style.top = `${!visible ? innerHeight - b.height - 12 : above ? r.top - b.height - 12 : Math.min(r.bottom + 12, innerHeight - b.height - 12)}px`;
+    };
+    const ready = prepareFirstStart(api).then(state => {
+        if (disposed || !state?.bubble || !dialog.open || isBusy()) return state;
+        // Never overwrite a draft that was typed while the record/library reads were in flight.
+        if (!onPrefill(text('prompt'))) return state;
+        bubble = el('aside', null, 'fv-first-start'); bubble.setAttribute('aria-label', text('describe'));
+        const arrow = el('span', null, 'fv-first-start-arrow'); arrow.setAttribute('aria-hidden', 'true');
+        bubble.append(arrow, el('p', text('hint'))); dialog.append(bubble); position();
+        // The stylesheet and the dialog's opening motion settle after this first measurement.
+        globalThis.requestAnimationFrame?.(() => requestAnimationFrame(position)); document.querySelector('link[data-fv-first-run-guide]')?.addEventListener?.('load', position, {once: true});
+        prompt.focus({preventScroll: true}); return state;
+    });
+    async function checkNext() {
+        clearTimeout(timer); timer = null;
+        const state = await ready;
+        if (disposed || showing || !pending || !state?.firstRun) return;
+        const top = [...document.querySelectorAll('dialog[open]')].at(-1);
+        if (!dialog.open || top !== dialog || isBusy()) { timer = setTimeout(checkNext, 250); return; }
+        showing = true; hideBubble();
+        const loaded = await readGuideRecord(api);
+        if (disposed || !loaded.ok || loaded.record?.seen.includes(FIRST_NEXT)) return;
+        if (!await saveGuideRecord(api, guideRecord(loaded.record, [FIRST_NEXT])) || disposed) return;
+        next = el('aside', null, 'fv-next-step'); next.setAttribute('aria-label', text('next'));
+        const actions = el('div', null, 'fv-next-actions'), close = el('button', null, 'fv-next-close'); close.type = 'button'; close.textContent = '✕'; close.setAttribute('aria-label', text('close'));
+        const longer = el('button', text('longer'), 'fv-primary'), edit = el('button', text('edit')); longer.type = edit.type = 'button';
+        const leave = async action => { next?.remove(); next = null; await action(); };
+        // The real result button continues the clip directly; the tutorial is the fallback when it is not on screen.
+        longer.onclick = () => leave(() => { const real = dialog.querySelector('.fv-action-extend'); return real && !real.disabled ? real.click() : onLonger(); });
+        edit.onclick = () => leave(onEdit); close.onclick = () => { next?.remove(); next = null; };
+        actions.append(longer, edit); next.append(close, actions); dialog.append(next); placeNext();
+        window.addEventListener('resize', placeNext); longer.focus({preventScroll: true});
+    }
+    function placeNext() {
+        if (!next) return;
+        const anchor = dialog.querySelector('.fv-action-extend'), b = next.getBoundingClientRect(), r = anchor?.getBoundingClientRect();
+        const left = r ? r.left + r.width / 2 - b.width / 2 : (innerWidth - b.width) / 2, top = r ? r.top - b.height - 12 : innerHeight - b.height - 24;
+        next.style.left = `${clamp(left, 12, innerWidth - b.width - 12)}px`; next.style.top = `${clamp(top, 12, innerHeight - b.height - 12)}px`;
+    }
+    const dismiss = event => { if (event.key === 'Escape' || event.target?.closest?.('[data-fv-guide="generate"]')) hideBubble(); };
+    dialog.addEventListener('click', dismiss); dialog.addEventListener('keydown', dismiss);
+    window.addEventListener('resize', position); dialog.addEventListener('scroll', position, true);
+    return {ready, dismiss: hideBubble,
+        complete(result) { if (!result?.video || result.preview || result.partial || disposed) return; pending = result; void checkNext(); },
+        dispose() {
+            disposed = true; clearTimeout(timer); hideBubble(); next?.remove(); window.removeEventListener('resize', placeNext);
+            dialog.removeEventListener('click', dismiss); dialog.removeEventListener('keydown', dismiss);
+            window.removeEventListener('resize', position); dialog.removeEventListener('scroll', position, true);
+        }};
 }
