@@ -286,10 +286,12 @@ class ImageRunner:
             held = self.dit_stack.host_bytes + self.te_stack.host_bytes
             host_available = free + held
             # Windows charges every committed page to the paging file, so free RAM alone
-            # can promise more than the commit limit leaves.
+            # can promise more than the commit limit leaves. A system-managed paging file
+            # also grows on demand, so the working margin is not held against the headroom:
+            # only a request whose unpinned weights cannot fit in it is refused early.
             commit = memory.get('commit_available_bytes')
             if commit is not None:
-                host_available = min(host_available, commit + held)
+                host_available = min(host_available, commit + held + image_policy.MIN_HOST_WORKING)
             if self.full_card or self.mapped:
                 host_available = None
         except Exception:
