@@ -152,6 +152,9 @@ class ModelBank:
         self.gpu_reserve = 0
         self.ram_budget = None
         self.decisions = []
+        from .streamed_weights import ConvertedStore
+        # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
+        self.converted_store = ConvertedStore()
         # Set by a request that can read the whole device: bytes no process
         # holds, and the growth reserve that request keeps out of them. The
         # planning budget already excludes that reserve; the device reading
@@ -241,6 +244,7 @@ class ModelBank:
         return True
 
     def clear(self, reason='Request failed or session configuration changed'):
+        self.converted_store.clear()
         for role in list(self.entries):
             self.drop(role, reason)
         gc.collect()
@@ -271,6 +275,8 @@ class ModelBank:
         a retained copy left no room to pin and sampling took 95 s instead of
         38 s. Otherwise the engine goes as it did with one worker per request.
         """
+        if not self.ram_fits(8*GiB + int(pinned)):
+            self.converted_store.clear()
         for role in ('engine', 'encoder'):
             if role in self.entries and not self.ram_fits(8*GiB + int(pinned)):
                 self.drop(role, 'Retained weights leave no host room for the next request')
@@ -331,6 +337,8 @@ class ModelBank:
                 room = min(room, max(0, ceiling - torch.cuda.memory_allocated() - reserve))
             return room
         before = available()
+        if not self.ram_fits(ram_need):
+            self.converted_store.clear()
         # Once conditioning is ready the current video cannot use the encoder
         # again. Reclaim its speculative weights before a VAE needed later in
         # this very request, regardless of how recently preloading touched it.

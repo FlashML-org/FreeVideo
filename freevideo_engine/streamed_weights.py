@@ -420,10 +420,41 @@ def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
     return available - size >= reserve
 
 
+class ConvertedStore:
+    """Converted decoder layers that outlive one decode, for a resident process.
+
+    Entries belong to one checkpoint identity; a different one empties the store.
+    """
+
+    def __init__(self):
+        self.identity = None
+        self.layers = {}
+        self.lock = threading.Lock()
+
+    def bind(self, identity):
+        with self.lock:
+            if identity != self.identity:
+                self.layers = {}
+                self.identity = identity
+            return self.layers
+
+    def size(self):
+        with self.lock:
+            return sum(value.numel() * value.element_size()
+                       for tensors in list(self.layers.values()) for value in tensors.values())
+
+    def clear(self):
+        with self.lock:
+            self.layers.clear()
+            self.identity = None
+
+
 class SafetensorLayers:
     def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None, host_views=False,
-                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False, converted_room=None):
+                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False, converted_room=None,
+                 converted_store=None):
         from .system import windows
+        self.converted_store = None
         self.direct_read = windows() if direct_read is None else direct_read
         self.prefixes = tuple(prefixes)
         self.intermediate_dtype = intermediate_dtype
@@ -494,6 +525,14 @@ class SafetensorLayers:
                         self.byte_ranges[key] = (8 + length + start, end - start,
                                                 spec['dtype'], tuple(spec['shape']))
             self.check(path)
+        if converted_store is not None and self.keep_converted:
+            # A resident process keeps the layers for its next request; they are
+            # served only while the checkpoint files, layers and dtype are unchanged.
+            self.converted = converted_store.bind(
+                (tuple(sorted((str(path), identity) for path, identity in self.files.items())),
+                 self.prefixes, str(self.intermediate_dtype)))
+            self.converted_bytes = converted_store.size()
+            self.converted_store = converted_store
 
     @staticmethod
     def identity(path):
@@ -750,6 +789,8 @@ class SafetensorLayers:
             self.converted_bytes += size
 
     def release_converted(self):
+        if self.converted_store is not None:
+            return  # owned by the resident process, which releases it under memory pressure
         with self.cache_lock:
             self.converted.clear()
             self.converted_bytes = 0
