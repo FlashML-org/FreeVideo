@@ -121,7 +121,13 @@ class InputCache:
             if digest(temporary) != checksum:
                 raise ValueError('Input changed during cache copy; partial retained')
             from .file_ops import publish
-            publish(temporary, target)
+            try:
+                publish(temporary, target)
+            except FileExistsError:
+                if not target.exists() or digest(target) != checksum:
+                    raise
+                if not move:
+                    temporary.unlink(missing_ok=True)
         receipt = self.receipt(key)
         if receipt.exists():
             # Keep old receipts too, including malformed ones, for diagnostics.

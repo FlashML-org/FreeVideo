@@ -568,25 +568,65 @@ def _encode(args, request, resident, trace):
             comfy.model_management.unload_all_models()
         gc.collect()
         comfy.model_management.soft_empty_cache()
-        from diffusers.modular_pipelines.minimax_h3.encoders import encode_vae_condition
-        from .vae_weights import load_video_encoder
-        from src.inference.render import PIXEL_MEAN, PIXEL_STD
-        vae_started = time.perf_counter()
-        if request.get('metrics'):
-            save(request['metrics'], {**loading, 'success': False, 'phase': 'keyframe_vae',
-                                     'load_seconds': load_seconds, 'prompt_encode_seconds': prompt_encode_seconds})
-        # Only the encoder is read; the decoder in the shared shards is skipped.
-        vae = (resident.input_video_encoder(request['base'], dict(width=width, height=height))
-               if resident is not None else load_video_encoder(request['base'])[0])
-        torch.cuda.synchronize()
-        keyframe_metrics['keyframe_vae_load_seconds'] = time.perf_counter() - vae_started
-        vae_started = time.perf_counter()
-        with torch.no_grad():
-            conditions = [encode_vae_condition(vae,
-                torch.from_numpy(np.array(image)).to('cuda').permute(2, 0, 1)[None, :, None],
-                PIXEL_MEAN, PIXEL_STD, 42).cpu() for image in images]
-        torch.cuda.synchronize()
-        keyframe_metrics['keyframe_vae_encode_seconds'] = time.perf_counter() - vae_started
+        from .paths import data_root
+        from .input_cache import digest
+        from .media_encoding import _latent_cache, _cached_latent, _remember_latent, make_latent_cache_key
+        cache_root = request.get('reference_latent_cache') or (data_root() / 'input-cache')
+        cache = _latent_cache(cache_root, request['base'], 'cuda')
+        conditions = [None, None]
+        keys = []
+        files = [keyframes['first'], keyframes['last']]
+        working_dir = Path(request['output']).parent / 'media'
+        working_dir.mkdir(parents=True, exist_ok=True)
+        for idx, img_file in enumerate(files):
+            c_hash = digest(img_file)
+            k = make_latent_cache_key(
+                content_hash=c_hash,
+                width=width,
+                height=height,
+                frames=1,
+                crop_mode='put_on_canvas',
+                base=request['base'],
+                device='cuda',
+                dtype='float32',
+            )
+            keys.append(k)
+            if cache is not None:
+                latent = _cached_latent(cache, k, working_dir)
+                if latent is not None:
+                    conditions[idx] = latent
+        if any(c is None for c in conditions):
+            from diffusers.modular_pipelines.minimax_h3.encoders import encode_vae_condition
+            from .vae_weights import load_video_encoder
+            from src.inference.render import PIXEL_MEAN, PIXEL_STD
+            vae_started = time.perf_counter()
+            if request.get('metrics'):
+                save(request['metrics'], {**loading, 'success': False, 'phase': 'keyframe_vae',
+                                         'load_seconds': load_seconds, 'prompt_encode_seconds': prompt_encode_seconds})
+            # Only the encoder is read; the decoder in the shared shards is skipped.
+            vae = (resident.input_video_encoder(request['base'], dict(width=width, height=height))
+                   if resident is not None else load_video_encoder(request['base'])[0])
+            torch.cuda.synchronize()
+            keyframe_metrics['keyframe_vae_load_seconds'] = time.perf_counter() - vae_started
+            vae_started = time.perf_counter()
+            with torch.no_grad():
+                for idx, (img, cond) in enumerate(zip(images, conditions)):
+                    if cond is None:
+                        cond = encode_vae_condition(vae,
+                            torch.from_numpy(np.array(img)).to('cuda').permute(2, 0, 1)[None, :, None],
+                            PIXEL_MEAN, PIXEL_STD, 42).cpu()
+                        conditions[idx] = cond
+                        if cache is not None:
+                            _remember_latent(cache, keys[idx], cond, working_dir)
+            torch.cuda.synchronize()
+            keyframe_metrics['keyframe_vae_encode_seconds'] = time.perf_counter() - vae_started
+            del vae
+            gc.collect()
+            comfy.model_management.soft_empty_cache()
+        else:
+            print(json.dumps({'event': 'keyframe_vae_cache_hit'}), flush=True)
+            keyframe_metrics['keyframe_vae_load_seconds'] = 0.
+            keyframe_metrics['keyframe_vae_encode_seconds'] = 0.
         value.update(keyframe_anchors=['first', 'last'], condition_latents=conditions,
                      keyframe_files=[keyframes['first'], keyframes['last']], width=width, height=height)
         from .keyframes import validate_conditioning
