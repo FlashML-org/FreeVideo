@@ -128,7 +128,7 @@ GUIDE = {
         'without studio prompts. POST /jobs/{id}/cancel cancels only this job.',
         'POST /jobs/{id}/resume continues failed, interrupted or cancelled generation; successful blocks stay. '
         'refine_from is the separate preview second pass. Active or succeeded jobs cannot resume.',
-        'After a video the model stays on the graphics card and in memory for up to ten minutes, so the next '
+        'After a video the model stays on the graphics card and in memory, so the next '
         'video starts quickly; it goes at once when another program needs the memory. An agent that runs its own '
         'model on the same card between videos (for example to check a result) calls POST /gpu/release (MCP freevideo_release_gpu) first '
         '(it answers released=false while a video is running), or sets release_gpu_after=true on the generate job.',

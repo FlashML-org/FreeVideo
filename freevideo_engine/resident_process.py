@@ -24,7 +24,7 @@ from .monitoring import save
 ENV = 'FREEVIDEO_RESIDENT_SESSION'
 GiB = 2**30
 # A finished request keeps the worker for the next one while host memory is ample
-# (KEEP_IDLE_SECONDS idle at most), and it is given up at once when anything else
+# (for as long as nothing needs the memory, unless KEEP_IDLE_SECONDS sets a limit), and it is given up at once when anything else
 # needs the memory: another program's GPU use grows, host memory runs low, an
 # image or prompt model starts (those release it themselves), or the agent asks
 # for the card back. A request that is not followed by a queued part and fails,
@@ -32,7 +32,7 @@ GiB = 2**30
 # its way is held for HOLD_SECONDS.
 HOLD_SECONDS = 90.
 AGENT_HOLD_SECONDS = 30.
-KEEP_IDLE_SECONDS = 600.
+KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
 HOST_FLOOR = 4 * GiB
 # Below this much host memory (free plus the idle worker's own), a kept worker's
@@ -396,7 +396,7 @@ class SessionOwner:
                 hold, next_part = KEEP_IDLE_SECONDS, 'warm'
             else:
                 warm = False
-            if not next_part or hold <= 0:
+            if not next_part or (hold is not None and hold <= 0):
                 return self.release('finished' if not next_part else 'no_hold')
             reason = pressure(gpu, None) or self._tight()
             if reason:
@@ -439,7 +439,7 @@ class SessionOwner:
     def _watch(self, generation, since, hold, gpu, baseline):
         while True:
             time.sleep(.5)
-            reason = ('idle' if time.monotonic() - since >= hold
+            reason = ('idle' if hold is not None and time.monotonic() - since >= hold
                       else pressure(gpu, baseline))
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
