@@ -8,9 +8,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 
 from . import subprocess_output
+from .long_paths import io_path
 from .paths import data_root
 from .windows_ux import hidden_console
 
@@ -41,9 +43,32 @@ def executable(env=None):
         return found
     try:
         recorded = json.loads((data_root() / 'machine.json').read_text(encoding='utf-8')).get('git')
+        if isinstance(recorded, str) and recorded.strip() and Path(recorded).is_file():
+            return recorded
     except (OSError, ValueError, AttributeError):
-        return None
-    return recorded if recorded and Path(recorded).is_file() else None
+        pass
+    return None
+
+
+def managed(root, env=None):
+    """Only the installer's vendor checkout, with no linked path or Git directory."""
+    environ = os.environ if env is None else env
+    home = Path(environ['FREEVIDEO_HOME']).expanduser() if environ.get('FREEVIDEO_HOME') else data_root()
+    root = Path(root).expanduser().absolute()
+    expected = (home / 'vendor' / 'h3-text-encoder').absolute()
+    if root != expected or '..' in root.parts:
+        return False
+    try:
+        # Do not resolve first: that would hide symlinks, junctions and other
+        # reparse points, including one in an ancestor of the installation.
+        for path in (root / '.git', root, *root.parents):
+            info = io_path(path).lstat()
+            if (not stat.S_ISDIR(info.st_mode) or
+                    getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                return False
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def missing(root):
@@ -56,7 +81,8 @@ def deleted(root, env=None):
     if not git or not (Path(root) / '.git').exists():
         return None
     try:
-        result = subprocess_output.run_external([git, '-C', str(root), 'ls-files', '-d', '-z'],
+        result = subprocess_output.run_external([git, '--literal-pathspecs', '-c', 'core.longpaths=true',
+            '-C', str(root), 'ls-files', '-d', '-z'],
             env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60, **hidden_console())
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
@@ -79,7 +105,8 @@ def restore(root, names, env=None):
         used += len(name) + 1
     for batch in batches:
         try:
-            result = subprocess_output.run_external([git, '-C', str(root), 'checkout', '--', *batch],
+            result = subprocess_output.run_external([git, '--literal-pathspecs', '-c', 'core.longpaths=true',
+                '-C', str(root), 'checkout', '--', *batch],
                 env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120, **hidden_console())
         except (OSError, ValueError, subprocess.SubprocessError):
             return False
@@ -89,17 +116,17 @@ def restore(root, names, env=None):
 
 
 def ensure(root, env=None):
-    """Restore the tokenizer files if they are gone; the usual case reads three paths only."""
+    """Restore missing vendor files; custom ComfyUI checkouts stay read-only."""
     absent = missing(root)
-    if not absent:
+    if not absent or not managed(root, env):
         return []
     gone = deleted(root, env)
     # Another ComfyUI layout, or no Git to ask: leave it to the library.
     lost = [name for name in absent if name in (gone or ())]
     if not lost:
         return []
-    restore(root, gone, env)
-    lost = missing(root)
-    if lost:
-        raise EncoderSourceError('FreeVideo text encoder files are missing: %s' % ', '.join(lost))
+    restored = restore(root, gone, env)
+    lost = missing(root) if restored else [name for name in gone if not io_path(Path(root) / name).exists()]
+    if not restored or lost:
+        raise EncoderSourceError('FreeVideo text encoder files are missing: %s' % ', '.join(lost[:10]))
     return gone

@@ -1610,7 +1610,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         if head == commit and dirty and all(line[:2] == ' D' for line in dirty.splitlines()):
             # Files deleted after installation: the same commit's objects are still local, nothing is downloaded.
             from . import encoder_source
-            if encoder_source.restore(target, encoder_source.deleted(target, env), env):
+            if encoder_source.managed(target, env) and encoder_source.restore(target, encoder_source.deleted(target, env), env):
                 head, dirty = repository_state(target, git, env)
         if head == commit and not dirty:
             return target
