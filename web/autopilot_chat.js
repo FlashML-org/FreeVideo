@@ -2,7 +2,7 @@
 // cards at the place they happened. Reads and sends use the page session; the agent's token never enters the page.
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {ATTACH, attachmentURL, pickPictures, thumbnail, uploadPicture} from './chat_attachments.js';
-import {SCENE_TEXT, sceneList, startScene, watchScene} from './whitebox_scenes.js';
+import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
 import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError} from './chat_data.js';
 export {emptyChat, chatMerge, chatEntries, canSend} from './chat_data.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
@@ -279,6 +279,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     function setWhiteboxPreview(enabled) {
         whiteboxPreview = enabled; whiteboxButton.setAttribute('aria-pressed', String(enabled));
         try { localStorage.setItem(WHITEBOX_PREVIEW.storageKey, String(enabled)); } catch {}
+        queueMicrotask(() => { if (!stopped) render(); });
     }
     whiteboxButton.setAttribute('aria-pressed', String(whiteboxPreview));
     if (initialWhiteboxPreview) setWhiteboxPreview(true);
@@ -304,11 +305,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             }));
         }).catch(() => { sceneRows = null; toggleScenes(false); say(t(...SCENE_TEXT.failed) + t('Connection lost. Try again.', '连接中断，请重试。')); });
     }
-    async function runScene(preset, session = state.session) {
-        if (!session || stopped || sceneWaiting) return;
+    // `start` resolves with the scene's id; false means the video is made as usual (no ready-made scene fits).
+    async function runScene(preset, session = state.session, start = () => startScene(api, preset, session)) {
+        if (!session || stopped || sceneWaiting) return null;
         say(t(...SCENE_TEXT.preparing)); sceneWaiting = true;
         try {
-            const id = await startScene(api, preset, session);
+            const id = await start();
+            if (id === false) { sceneWaiting = false; say(''); return false; }
             const result = id ? await watchScene(api, id, {stopped: () => stopped, onState: value => { if (value.status === 'rendering') say(t(...SCENE_TEXT.rendering)); }}) : {status: 'ready'};
             if (result.status === 'failed') {
                 sceneWaiting = false; const why = (result.error || '').replace(/[.。]+$/, '');
@@ -319,6 +322,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 say(t(...(result.last === 'rendering' ? SCENE_TEXT.timeout : result.page_open ? SCENE_TEXT.notStarted : SCENE_TEXT.noPage)));
             }
         } catch (failure) { sceneWaiting = false; say(t(...SCENE_TEXT.failed) + reason(failure)); }
+        return true;
     }
     // Pictures waiting to be sent, per conversation draft: {key, url, attachment|null}. A picture is uploaded the moment it is added.
     const attachButton = press('fv-chat-attach', null, () => fileInput.click()), fileInput = el('input'), strip = el('ul', 'fv-chat-attached');
@@ -367,7 +371,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     }
     function addPictures(files) {
         files = [...files || []];
-        if (!files.length || !composeAllowed()) return;
+        if (!files.length || !composeAllowed() || builtinScene()) return;
         const session = draftSession, list = stagedList(session), {accepted, problem} = pickPictures(files, ATTACH.count - list.length);
         say(problem ? t(...ATTACH[problem]) : '');
         for (const file of accepted) {
@@ -751,7 +755,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // A hidden page keeps reading, slowly, so that its title can tell what happened.
     const reading = () => !stopped && element.isConnected && shown();
     const inSelectedChat = () => !creating && (!selectedSession || selectedSession === state.session);
-    const composeAllowed = () => inSelectedChat() && state.agent.connected === true;
+    const builtinScene = () => whiteboxPreview && state.agent.connected !== true;
+    const composeAllowed = () => inSelectedChat() && (state.agent.connected === true || builtinScene() && !!state.session);
     const sendingAllowed = () => inSelectedChat() && canSend(state);
 
     const draftSending = () => pending.some(entry => entry.sending && entry.draft && entry.draft === drafts.get(draftSession));
@@ -1145,9 +1150,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const MAKE = {hello, examples, dots, user: () => message('user'), agent: () => message('agent'), job: jobCard, confirm: confirmCard};
 
     function render(follow = false) {
-        const builtin = state.agent?.builtin === true;
-        whiteboxButton.disabled = builtin;
-        whiteboxButton.title = builtin ? t('Not available with the built-in AI', '内置 AI 不支持白模') : t(...WHITEBOX_PREVIEW.name);
+        whiteboxButton.title = t(...WHITEBOX_PREVIEW.name);
         whiteboxButton.setAttribute('aria-label', whiteboxButton.title);
         const entries = chatEntries(state), ids = new Set(entries.map(entry => entry.id).filter(Boolean));
         for (const entry of pending) if (entry.session === state.session && ids.has(entry.id)) acknowledge(entry);
@@ -1193,8 +1196,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (log.children[index] !== node.element) log.insertBefore(node.element, log.children[index] || null);
         });
         const sendable = sendingAllowed();
-        input.disabled = state.agent.connected !== true || creating || !!selectedSession && selectedSession !== state.session;
-        input.placeholder = state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Message the agent…', '对 Agent 说…');
+        input.disabled = !(state.agent.connected === true || builtinScene() && !!state.session) || creating || !!selectedSession && selectedSession !== state.session;
+        input.placeholder = builtinScene() ? t(...SCENE_TEXT.describe)
+            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Message the agent…', '对 Agent 说…');
         refreshSend();
         if (focusSession === state.session && focusSession && !input.disabled && active()) { focusSession = null; input.focus(); }
         if (stick) { pinned = true; scroller.scrollTop = scroller.scrollHeight; down.hidden = true; }
@@ -1251,7 +1255,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             say(creating ? t('Creating a new chat…', '正在新建对话…') : t('Loading this chat. Please send again shortly.', '正在读取对话，请稍后再发一次'));
             return false;
         }
-        const entry = original || {id: newId(), text, attachments: attachments || [], session: state.session ?? null, draft, whiteboxPreview: whiteboxPreview && state.agent?.builtin !== true};
+        // With no Agent connected the white-model button is the way in: the sentence goes to the built-in AI, which
+        // picks a ready-made scene or says that none fits. It is never queued for an Agent.
+        if (builtinScene()) {
+            if (attachments?.length || original || !state.session) return false;
+            const made = await runScene(null, state.session, () => pickScene(api, text, state.session));
+            if (made === false) say(t(...SCENE_TEXT.failed) + t(...SCENE_TEXT.noFit));
+            else if (made === true) { input.value = ''; grow(); }
+            return made === true;
+        }
+        const entry = original || {id: newId(), text, attachments: attachments || [], session: state.session ?? null, draft, whiteboxPreview};
         if (draft) entry.draft = draft;
         if (!original) pending.push(entry);
         if (!automatic) entry.attempts = 0;

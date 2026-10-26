@@ -57,7 +57,7 @@ APPLY = """function applyParameters(base, p) {
   return {scene, camera, update(t) {
     if (typeof t !== 'number' || !Number.isFinite(t)) throw new Error('invalid_time');
     camera.position.y -= previousOffset;
-    base.update(Math.min(5, Math.max(0, t * p.speed)));
+    base.update(Math.min(p.seconds, Math.max(0, t * p.speed)));
     camera.position.y += p.camera_height;
     previousOffset = p.camera_height;
   }};
@@ -111,25 +111,34 @@ def compile_scene(value):
     params = effective(value)
     if params['template'] == 'none':
         return None
-    source = preset(params['template'])['code']
+    row = preset(params['template'])
+    if row is None:
+        raise ValueError('template_invalid')
+    source = row['code']
+    seconds = row['seconds']
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not 0 < seconds <= 12:
+        raise ValueError('template_invalid')
     head = 'export function build(THREE)'
     if source.count(head) != 1:
         raise ValueError('template_invalid')
     return (source.replace(head, 'function buildTemplate(THREE)') + '\n' + APPLY + '\nexport function build(THREE) {\n'
-            '  return applyParameters(buildTemplate(THREE), ' + json.dumps(params) + ');\n}\n')
+            '  return applyParameters(buildTemplate(THREE), ' + json.dumps(dict(params, seconds=seconds)) + ');\n}\n')
 
 
 def pick(shot, ask):
     """Choose a scene for the shot. `ask(question, system, answer_format, max_tokens)` returns the model's answer
     row (`text`, and `json` for the JSON format). The result always has `params`; `code` is None, and `reason`
-    says why, whenever no white model should be made."""
+    says why, whenever no white model should be made. A failure to ask at all (timeout, connection) is one of those."""
     try:
         if not gate_allows(ask(gate_question(shot), SYSTEM, 'text', GATE_TOKENS).get('text')):
             return dict(params=dict(NONE), code=None, reason='gate_no')
         row = ask(pick_question(shot), SYSTEM, 'json', PICK_TOKENS)
         params = effective(row.get('json'))
         code = compile_scene(params)
-    except (ValueError, AttributeError, TypeError) as error:
+    except (OSError, TimeoutError):
+        # The model could not be asked (timeout, connection): the video is made without a white model.
+        return dict(params=dict(NONE), code=None, reason='ask_failed')
+    except (ValueError, AttributeError, TypeError, KeyError) as error:
         reason = str(error)
         return dict(params=dict(NONE), code=None, reason=reason if reason in ('gate_invalid', 'params_invalid') else 'params_invalid')
     return dict(params=params, code=code, reason='none' if code is None else 'template')
