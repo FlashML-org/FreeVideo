@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 from . import subprocess_output
+from .environments import uv_build_environment
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_text, plain_errors
 from .runtime_alias import checked_real_path
@@ -182,18 +183,28 @@ def rebind(engine_root, machine, source, *, uv=None, run=subprocess.run, restore
                 raise RuntimeError('The engine\'s uv is missing: ' + str(uv))
         except RuntimeError as error:
             raise RuntimeError('%s\nEnvironments: %s' % (error, ', '.join(str(py) for py, _ in environments))) from error
-    shown = str
+    from . import launch_view, processes
+    shown, view = str, None
     if windows():
-        from . import launch_view, processes
         view = launch_view.for_engine(engine_root)
         if view.used:
-            runner = processes.run if run is subprocess.run else run
-            def viewed_run(command, **kwargs):
-                command, environment, _ = launch_view.execution(command, os.environ, None, view)
-                return runner(command, env=environment, **kwargs)
-            run = viewed_run
             # A failure quotes what the tools printed: the same files, in the folder the user knows.
             shown = lambda text: launch_view.text_back(text, view)
+    runner = processes.run if view is not None and view.used and run is subprocess.run else run
+
+    def prepared_run(command, **kwargs):
+        inherited = kwargs.get('env', os.environ)
+        # This engine's view, not one inherited from another installation; a uv build may shorten it.
+        marked = launch_view.environment_view(inherited, view) if view is not None else inherited
+        environment = uv_build_environment(command, engine_root, marked)
+        if environment is not inherited:
+            child_view = launch_view.current(environment)
+            if child_view is not None and child_view.used:
+                command, environment, _ = launch_view.execution(command, environment, None, child_view)
+            kwargs['env'] = environment
+        return runner(command, **kwargs)
+
+    run = prepared_run
     updated = dict(machine, source=str(source), engine_version=version)
     attempted = []
     try:

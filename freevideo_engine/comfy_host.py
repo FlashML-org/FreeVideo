@@ -14,7 +14,7 @@ from . import network, processes
 from .comfy_bridge import installation
 from .comfy_environment import isolated_environment
 from .comfy_requirements import managed_requirements
-from .environments import uv_file_arguments
+from .environments import uv_build_environment, uv_file_arguments
 from .locking import runtime_lock
 from .monitoring import save
 from .package_progress import PackageOutput
@@ -96,6 +96,7 @@ def _prepare(root, comfy, machine, run, download, repair=False):
 
     def execute(command, environment, label='Prepare ComfyUI environment'):
         nonlocal count
+        environment = uv_build_environment(command, root, environment)
         if run:
             return run(command, environment)
         count += 1
