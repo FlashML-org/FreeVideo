@@ -380,7 +380,9 @@ class Engine:
         set_softmax_backend(model, 'flex')
         if inference_kernels:
             from .row_kernels import install as install_row_kernels
+            from .linear_kernels import install as install_linear_kernels
             install_row_kernels()
+            install_linear_kernels()
         set_inference_mode(model, inference_kernels)
         self.attention.install(model)
         if head_chunk:
