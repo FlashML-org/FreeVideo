@@ -66,10 +66,53 @@ def _agent(folder):
     return {key: str(value[key])[:120] for key in ('job', 'label', 'project', 'client') if value.get(key)}
 
 
-def list_videos(output_directory, *, before=None, limit=24):
+def _favorite(path):
+    """A missing or damaged optional sidecar does not hide a saved video."""
+    saved = path.with_suffix('.favorite.json')
+    try:
+        if not _plain(saved):
+            return False
+        with os.fdopen(os.open(saved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+                                | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
+            data = stream.read(1025)
+        value = json.loads(data) if len(data) <= 1024 else None
+        return isinstance(value, dict) and value.get('favorite') is True
+    except (OSError, ValueError):
+        return False
+
+
+def set_favorite(output_directory, identity, favorite):
+    """Change only a completed creation's favorite sidecar, under the delete locks."""
+    if type(favorite) is not bool:
+        raise ValueError('Invalid favorite state')
+    output_directory = checked_real_path(output_directory)
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    with _PENDING, _RELEASING:
+        path = _video(output_directory, identity)
+        expected = root / identity / 'video.mp4'
+        if path != expected or not all(_plain(p) for p in (root, path.parent.parent, path.parent, path)) or not path.is_file():
+            raise ValueError('Saved video is not a regular library creation')
+        report = path.with_suffix('.request.json')
+        saved = path.with_suffix('.favorite.json')
+        if not _plain(report) or saved.is_symlink() or (saved.exists() and (not _plain(saved) or not saved.is_file())):
+            raise ValueError('Saved video sidecar is not a regular file')
+        _report(path)
+        if not path.stat().st_size:
+            raise ValueError('Video is empty')
+        if favorite:
+            from .monitoring import save
+            save(saved, dict(favorite=True))
+        else:
+            saved.unlink(missing_ok=True)
+    return dict(id=identity, favorite=favorite)
+
+
+def list_videos(output_directory, *, before=None, limit=24, favorite=None):
     """Return a stable newest-first page, with only relative output paths."""
     if not 1 <= limit <= 48:
         raise ValueError('Invalid page size')
+    if favorite is not None and type(favorite) is not bool:
+        raise ValueError('Invalid favorite filter')
     cursor = None
     if before:
         stamp, identity = before.split(':', 1)
@@ -94,6 +137,9 @@ def list_videos(output_directory, *, before=None, limit=24):
     for key, path, info in sorted(candidates, key=lambda item: item[0], reverse=True):
         relative = Path('FreeVideo') / key[1] / 'video.mp4'
         if relative.as_posix() in hidden:
+            continue
+        is_favorite = _favorite(path)
+        if favorite is not None and is_favorite != favorite:
             continue
         try:
             try:
@@ -125,7 +171,7 @@ def list_videos(output_directory, *, before=None, limit=24):
                 agent = None
             if agent:
                 summary['agent'] = agent
-            rows.append(dict(summary, id=key[1], bytes=info.st_size,
+            rows.append(dict(summary, id=key[1], bytes=info.st_size, favorite=is_favorite,
                              created_at=datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),
                              cursor=str(key[0]) + ':' + key[1]))
         except (OSError, ValueError, TypeError, AttributeError):
@@ -1174,9 +1220,14 @@ def register():
     @server.routes.get('/freevideo/library')
     async def library(request):
         try:
+            favorite = request.query.get('favorite')
+            if favorite is not None:
+                if favorite not in ('true', 'false', '1', '0'):
+                    raise ValueError('Invalid favorite filter')
+                favorite = favorite in ('true', '1')
             rows = await asyncio.to_thread(list_videos, folder_paths.get_output_directory(),
                                            before=request.query.get('before'),
-                                           limit=int(request.query.get('limit', '24')))
+                                           limit=int(request.query.get('limit', '24')), favorite=favorite)
             return web.json_response(rows, headers={'Cache-Control': 'no-store'})
         except ValueError as error:
             raise web.HTTPBadRequest(text=str(error)) from error
@@ -1188,6 +1239,20 @@ def register():
         except (OSError, ValueError, UnicodeDecodeError):
             raise web.HTTPNotFound(text='Prompt unavailable') from None
         return web.json_response(dict(prompt=text), headers={'Cache-Control': 'no-store'})
+
+    @server.routes.post('/freevideo/library/favorite')
+    async def favorite(request):
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or type(body.get('favorite')) is not bool:
+                raise ValueError('Invalid favorite state')
+            result = await asyncio.to_thread(set_favorite, folder_paths.get_output_directory(),
+                                             body.get('id'), body['favorite'])
+        except (ValueError, TypeError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+        except OSError:
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/library/thumbnail')
     async def preview(request):

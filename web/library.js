@@ -19,6 +19,7 @@ let opened;
 // Batches that can still be undone live outside the dialog: closing and reopening it, a
 // page reload, a second delete within the undo time and other tabs all see the same list.
 const UNDO_KEY = 'freevideo.library.undo';
+const FILTER_KEY = 'freevideo.library.filter';
 let undoMemory = [];
 // Batches this page dropped: a store that cannot be written must not bring them back.
 const forgotten = new Set();
@@ -89,9 +90,10 @@ const newBatchName = () => {
     return `${Date.now()}${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}-${[...random].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
 };
 
-export async function libraryPage(t, {limit = 24, before = null, signal} = {}) {
+export async function libraryPage(t, {limit = 24, before = null, favorite = null, signal} = {}) {
     const query = new URLSearchParams({limit: String(limit)});
     if (before) query.set('before', before);
+    if (favorite !== null) query.set('favorite', String(favorite));
     const response = await api.fetchApi('/freevideo/library?' + query, {signal});
     if (response.status === 404) throw Object.assign(new Error(t('Restart ComfyUI to open your creations after updating.', '更新后重启 ComfyUI，可打开作品。')), {restart: true});
     if (!response.ok) throw new Error(t('Could not load your creations. Try Refresh.', '作品暂时无法读取，请点击刷新。'));
@@ -194,6 +196,28 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     headerObserver.observe(header); headerObserver.observe(tools);
     const body = el('div', null, 'fv-library-body');
     const collection = el('section', null, 'fv-library-collection'); collection.setAttribute('aria-label', t('Saved videos', '已保存的视频'));
+    let favoritesOnly = false;
+    try { favoritesOnly = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
+    const filters = el('div', null, 'fv-library-filter');
+    filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', t('Creations filter', '作品筛选'));
+    const filterAll = button(t('All', '全部'), () => changeFilter(false), 'fv-quiet');
+    const filterFavorites = button(t('Favorites', '收藏'), () => changeFilter(true), 'fv-quiet');
+    filters.append(filterAll, filterFavorites);
+    function syncFilter() {
+        filterAll.setAttribute('aria-pressed', String(!favoritesOnly));
+        filterFavorites.setAttribute('aria-pressed', String(favoritesOnly));
+    }
+    function changeFilter(value) {
+        if (deleting || favoritesOnly === value) return;
+        favoritesOnly = value;
+        try { localStorage.setItem(FILTER_KEY, value ? 'favorites' : 'all'); } catch { /* This view still works. */ }
+        syncFilter(); setSelecting(false); next = null; more.hidden = true;
+        thumbnails.disconnect(); grid.replaceChildren(); cards.clear(); rows.clear(); unread = 0; unreadable.textContent = '';
+        releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
+        stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; dialog.dataset.detail = 'false';
+        load(false);
+    }
+    syncFilter();
     const grid = el('div', null, 'fv-library-grid');
     const message = el('p', '', 'fv-library-message'); message.setAttribute('role', 'status');
     const more = button(t('Show more', '加载更多'), () => load(true), 'fv-quiet'); more.hidden = true;
@@ -213,7 +237,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     bar.append(barLabel, barText, barActions);
     // The undo note and the delete bar share one sticky dock so they stack instead of covering each other.
     const dock = el('div', null, 'fv-library-dock'); dock.append(undoBar, bar);
-    collection.append(picking, grid, message, more, unreadable, dock);
+    collection.append(filters, picking, grid, message, more, unreadable, dock);
     workflowBackfill(collection, t);
     const detail = el('section', null, 'fv-library-detail');
     const all = button(t('All creations', '全部作品'), () => {
@@ -230,6 +254,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     detail.append(all, frame, caption, links, notice, stats, budget);
     body.append(collection, detail); dialog.append(header, body);
     let disposed = false, loading = false, next = null, selected = null, player = null, arrivals = [];
+    let listAbort = null, loadRound = 0;
     let selecting = false, confirming = false, deleting = false, anchor = null, undoTimer = null, sizeTimer = null, sizeRound = 0;
     const picked = new Set(), sizes = new Map();
     const rows = new Map(), cards = new Map();
@@ -268,9 +293,11 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         }, {once: true});
     }
     function select(row, reveal = true) {
-        if (selected !== row.video) {
+        if (selected !== row.video || links.dataset.favorite !== String(!!row.favorite)) {
+            const changedVideo = selected !== row.video;
             selected = row.video;
-            mountPlayer(row);
+            if (changedVideo) mountPlayer(row);
+            links.dataset.favorite = String(!!row.favorite);
             date.textContent = timestamp(row); geometry.textContent = dimensions(row);
             links.replaceChildren(resultActions(row, t, {
                 extend: async saved => {
@@ -287,6 +314,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
                     catch (error) { fault(notice, error.message, ['Continue video', '延长视频']); }
                 },
                 secondPass: row.preview && upscale ? () => secondPass(row) : null,
+                favorite: value => saveFavorite(row, value),
                 remove: () => remove(row)}));
             notice.textContent = '';
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(selecting ? picked.has(file) : file === selected));
@@ -310,6 +338,33 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         budget.textContent = !row.preview && measured(row.gpu_budget_bytes)
             ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
         if (reveal) dialog.dataset.detail = 'true';
+    }
+    function syncFavorite(row) {
+        const badge = cards.get(row.video)?.querySelector('.fv-library-favorite');
+        if (badge) badge.hidden = !row.favorite;
+    }
+    async function saveFavorite(row, favorite) {
+        const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
+        const response = await api.fetchApi('/freevideo/library/favorite', {method: 'POST',
+            headers: jsonHeaders, body: JSON.stringify({id, favorite}), signal: abort.signal});
+        if (!response.ok) throw new Error('Favorite unavailable');
+        const value = await response.json();
+        if (value.favorite !== favorite) throw new Error('Invalid favorite response');
+        row.favorite = favorite;
+        if (disposed) return;
+        const current = rows.get(row.video);
+        if (current) current.favorite = favorite;
+        syncFavorite(row);
+        if (selected === row.video) links.dataset.favorite = String(favorite);
+        if (favoritesOnly && !favorite) {
+            rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video); picked.delete(row.video);
+            if (selected === row.video) {
+                releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
+                stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; dialog.dataset.detail = 'false';
+            }
+            regroup();
+            await load(false);
+        } else if (loading || (favoritesOnly && !current)) await load(false);
     }
     async function secondPass(row) {
         notice.textContent = '';
@@ -645,9 +700,9 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         }
     }, {root: collection, rootMargin: '80px'});
     function append(row, first = false) {
-        if (!row?.video) return;
+        if (!row?.video || (favoritesOnly && !row.favorite)) return;
         rows.set(row.video, row);
-        if (cards.has(row.video)) return;
+        if (cards.has(row.video)) { syncFavorite(row); return; }
         const card = button('', event => selecting ? pick(row.video, event.shiftKey) : select(rows.get(row.video)), 'fv-library-card');
         card.dataset.video = row.video;
         card.setAttribute('aria-label', `${timestamp(row)} · ${dimensions(row)}`);
@@ -658,6 +713,9 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         image.dataset.src = videoThumbnailURL(row);
         image.onerror = () => { image.hidden = true; };
         picture.append(image, el('span', '✓', 'fv-library-check'));
+        const favorite = el('span', null, 'fv-library-favorite'); favorite.append(icon('heart'));
+        favorite.setAttribute('role', 'img'); favorite.setAttribute('aria-label', t('Favorite', '已收藏'));
+        favorite.hidden = !row.favorite; picture.append(favorite);
         if (row.preview) picture.append(el('span', t('First-pass preview', '一采预览'), 'fv-preview-badge'));
         // Made by an AI agent: say so, with the name the agent gave the shot.
         if (row.agent) {
@@ -670,18 +728,21 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         if (selecting) regroup();
     }
     async function load(appendPage) {
-        if (loading || disposed) return false;
+        if (disposed || (loading && appendPage)) return false;
+        listAbort?.abort(); listAbort = new AbortController();
+        const round = ++loadRound;
         loading = true; arrivals = []; refresh.disabled = more.disabled = true; let ok = false;
         message.textContent = rows.size ? '' : t('Loading your creations…', '正在读取作品…');
         try {
-            const data = await libraryPage(t, {before: appendPage ? next : null, signal: abort.signal}); if (disposed) return;
+            const data = await libraryPage(t, {before: appendPage ? next : null, favorite: favoritesOnly ? true : null,
+                signal: listAbort.signal}); if (disposed || round !== loadRound) return false;
             if (!appendPage) { thumbnails.disconnect(); grid.replaceChildren(); cards.clear(); rows.clear(); unread = 0; }
             unread += Number.isSafeInteger(data.unreadable) && data.unreadable > 0 ? data.unreadable : 0;
             unreadable.textContent = unread ? t(`${unread} ${unread === 1 ? 'creation' : 'creations'} could not be read`, `另有 ${unread}\u00a0个作品无法读取`) : '';
             for (const row of data.items || []) append(row);
             for (const row of arrivals) append(row, true);
             next = data.next; more.hidden = !next;
-            message.textContent = rows.size ? '' : t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
+            message.textContent = rows.size ? '' : favoritesOnly ? t('No favorites yet.', '暂无收藏。') : t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
             if (!rows.has(selected)) {
                 releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
                 stats.hidden = true; stats.replaceChildren(); budget.textContent = '';
@@ -691,18 +752,20 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
             ok = true; regroup();
             if (selectedWork) { const row = [...rows.values()].find(row => row.id === selectedWork || row.video === selectedWork); if (row) { select(row); selectedWork = null; } else if (next) queueMicrotask(() => load(true)); }
         } catch (error) {
-            if (!disposed && error.name !== 'AbortError') {
+            if (!disposed && round === loadRound && error.name !== 'AbortError') {
                 if (error.restart) message.textContent = error.message;
                 else fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message);
             }
         }
-        finally { if (!disposed) { loading = false; refresh.disabled = more.disabled = false; } }
+        finally { if (!disposed && round === loadRound) { loading = false; refresh.disabled = more.disabled = false; } }
         return ok;
     }
     const completed = event => {
         const row = event.detail?.value;
         if (!row?.video || disposed) return;
-        const saved = {...row, created_at: row.created_at || rows.get(row.video)?.created_at || new Date().toISOString()};
+        const saved = {...row, favorite: row.favorite ?? rows.get(row.video)?.favorite ?? false,
+            created_at: row.created_at || rows.get(row.video)?.created_at || new Date().toISOString()};
+        if (favoritesOnly && !saved.favorite) return;
         if (loading) arrivals.push(saved);
         append(saved, true);
         message.textContent = '';
@@ -713,7 +776,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     dialog.addEventListener('cancel', event => { event.preventDefault(); if (selecting && !deleting) setSelecting(false); else closeDialog(dialog); });
     dialog.onclose = () => {
         headerObserver.disconnect();
-        disposed = true; abort.abort(); thumbnails.disconnect(); releasePlayer(); clearTimeout(undoTimer); clearTimeout(sizeTimer); clearTimeout(syncTimer);
+        disposed = true; abort.abort(); listAbort?.abort(); thumbnails.disconnect(); releasePlayer(); clearTimeout(undoTimer); clearTimeout(sizeTimer); clearTimeout(syncTimer);
         window.removeEventListener('freevideo-result', completed); window.removeEventListener('storage', undoChanged); window.removeEventListener('freevideo-library-undo', showUndo); window.removeEventListener('freevideo-library-deleted', deletedElsewhere); dialog.remove();
         if (opened === dialog) opened = null;
     };
