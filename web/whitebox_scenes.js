@@ -7,7 +7,7 @@ export const SCENE_TEXT = Object.freeze({
     label: ['Ready-made', '现成场景'], name: ['Start from a ready-made white-model scene', '用现成的白模场景开始'],
     preparing: ['Preparing the white model…', '正在准备白模…'], failed: ['The white model could not be made: ', '白模没有做成：'],
     rendering: ['Rendering the white model…', '正在渲染白模…'], retry: ['. Try again.', '。请重试。'],
-    noFit: ['no ready-made scene fits this sentence. Describe the shot another way.', '没有适合这句话的现成场景。请换一种说法描述镜头。'],
+    noFit: ['no ready-made scene fits this sentence. Describe the shot another way.', '没有适合这句话的现成场景。请换一种说\u2060法描述镜头。'],
     describe: ['Describe the shot…', '描述一个镜头…'],
     bare: ['The white model could not be made. Try again.', '白模没有做成。请重试。'],
     noPage: ['The white model could not be made: the renderer is not running in this page. Reload the page and try again.', '白模没有做成：这个页面里的渲染没有运行。请刷新页面后重试。'],
