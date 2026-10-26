@@ -97,15 +97,18 @@ fv_missing_tools() {
 
 fv_system_deps() {
     ((${#fv_missing[@]})) || return 0
-    fv_note "Missing basic tools: ${fv_missing[*]}"
-    local manager name package reply
+    local manager name package reply listed
     local -a packages=() privilege=() install=() refresh=()
+    printf -v listed '%s, ' "${fv_missing[@]}"; listed="${listed%, }"
+    # Without a terminal (a desktop launcher) the failure text below names the tools instead.
+    if (( fv_allow_system )) || [[ -t 0 ]]; then fv_note "Missing basic tools: ${listed}"; fi
     if command -v apt-get >/dev/null 2>&1; then manager=apt-get
     elif command -v dnf >/dev/null 2>&1; then manager=dnf
     elif command -v yum >/dev/null 2>&1; then manager=yum
     elif command -v zypper >/dev/null 2>&1; then manager=zypper
     else
-        fv_fail 'No supported package manager found (apt-get/dnf/yum/zypper). Ask your administrator to install the listed tools, then rerun this command.'
+        fv_fail "缺少基础工具：${listed}。找不到可用的软件包管理器（apt-get、dnf、yum、zypper），请联系系统管理员安装这些工具后重新开始安装。"
+        fv_fail "Missing basic tools: ${listed}. No supported package manager was found (apt-get, dnf, yum, zypper). Ask your administrator to install them, then start the installation again."
         return 1
     fi
     for name in "${fv_missing[@]}"; do
@@ -127,22 +130,36 @@ fv_system_deps() {
         zypper) install=(zypper --non-interactive install --no-recommends "${packages[@]}") ;;
     esac
     if (( EUID != 0 )); then privilege=(sudo); fi
-    fv_note 'System package step (existing Python and drivers are not replaced):'
-    ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
-    { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
-    local command_line
-    command_line="$(printf '%q ' "${privilege[@]}" "${install[@]}")"
     if (( fv_readonly )); then
+        fv_note 'System package step (existing Python and drivers are not replaced):'
+        ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
+        { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
         fv_fail 'Check only: no system packages installed. Run ./setup.sh to install the missing tools.'
         return 1
     fi
-    if (( ! fv_allow_system )); then
-        if [[ ! -t 0 ]]; then
-            # A desktop launcher has no terminal to ask in, so name the command to run by hand.
-            fv_fail "缺少基础工具：${fv_missing[*]}。请在终端运行以下命令，然后重新安装：${command_line% }"
-            fv_note "Missing basic tools: ${fv_missing[*]}. Run this in a terminal, then install again: ${command_line% }"
+    if (( ! fv_allow_system )) && [[ ! -t 0 ]]; then
+        # What a person types by hand: no unattended-run options, and the package list refreshed first
+        # because a minimal system often has an empty one.
+        local manual
+        manual="${privilege[*]:+sudo }$manager install ${packages[*]}"
+        [[ "$manager" != apt-get ]] || manual="${privilege[*]:+sudo }apt-get update && ${privilege[*]:+sudo }apt-get install ${packages[*]}"
+        if (( EUID != 0 )) && ! command -v sudo >/dev/null 2>&1; then
+            fv_fail "缺少基础工具：${listed}。这台电脑没有 sudo，请联系系统管理员运行以下命令，完成后重新开始安装："
+            printf '%s\n' "  ${manual//sudo /}" >&2
+            fv_fail "Missing basic tools: ${listed}. sudo is unavailable. Ask your administrator to run the following command, then start the installation again:"
+            printf '%s\n' "  ${manual//sudo /}" >&2
             return 1
         fi
+        fv_fail "缺少基础工具：${listed}。请在终端中运行以下命令，完成后重新开始安装："
+        printf '%s\n' "  ${manual}" >&2
+        fv_fail "Missing basic tools: ${listed}. Run the following command in a terminal, then start the installation again:"
+        printf '%s\n' "  ${manual}" >&2
+        return 1
+    fi
+    fv_note 'System package step (existing Python and drivers are not replaced):'
+    ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
+    { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
+    if (( ! fv_allow_system )); then
         printf 'Install these missing system packages? [Y/n] / 回车安装以上基础工具，n 取消： ' >&2
         read -r reply || reply=n
         case "$reply" in ''|y|Y|yes|YES) ;; *) fv_fail 'Cancelled. No system packages installed.'; return 1 ;; esac

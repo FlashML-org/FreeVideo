@@ -1672,7 +1672,7 @@ class Installer:
                 'print("Windows runtime imports passed; GPU kernel probes follow")']), ('runtime',), ('environment:' + name,))
         overlap = (self.plan.get('model_transfer') or {}).get('overlap_build', True)
         # Linux builds SageAttention from a Git checkout.
-        task('sage', lambda: self.install_sage(uv, python), ('runtime', 'git') if overlap else ('runtime', 'git', 'models'),
+        task('sage', lambda: self.install_sage_optional(uv, python), ('runtime', 'git') if overlap else ('runtime', 'git', 'models'),
              ('environment:' + name,))
         if self.plan.get('disk_mode') == 'extreme':
             # Finish all environments before models occupy most of the disk.
@@ -1779,6 +1779,17 @@ class Installer:
             failure = RuntimeError('Python download failed on every route; see retained logs')
             failure.package_attempts = error.attempts
             raise failure from error
+
+    def install_sage_optional(self, uv, python):
+        """Sage2 is an optional speed-up: where FreeVideo's own compiler builds it, a failure leaves it out."""
+        try:
+            return self.install_sage(uv, python)
+        except Exception as error:
+            if (self.system == 'Windows' or self.cancel.is_set()
+                    or shutil.which('g++', path=self.env['PATH'])):
+                raise
+            self.ui.write('Sage2 could not be built (%s); continuing without it.\n' % type(error).__name__)
+            return None
 
     def install_sage(self, uv, python):
         if self.system == 'Windows':
