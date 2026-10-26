@@ -321,7 +321,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 sceneWaiting = false;
                 say(t(...(result.last === 'rendering' ? SCENE_TEXT.timeout : result.page_open ? SCENE_TEXT.notStarted : SCENE_TEXT.noPage)));
             }
-        } catch (failure) { sceneWaiting = false; say(t(...SCENE_TEXT.failed) + reason(failure)); }
+        } catch (failure) { sceneWaiting = false; say(t(...SCENE_TEXT.failed) + reason(failure)); return 'error'; }
         return true;
     }
     // Pictures waiting to be sent, per conversation draft: {key, url, attachment|null}. A picture is uploaded the moment it is added.
