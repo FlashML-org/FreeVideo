@@ -1531,6 +1531,23 @@ def mismatch_message(target, git, env, head, commit, dirty):
             % (target, ' '.join(details)))
 
 
+# Git reads a checkout's settings from .git\config by its ordinary path, even in
+# the deep-folder branch above. Past the path limit it cannot tell whether
+# FreeVideo made the folder, and a new copy in the same place could not be read
+# either, so such a folder is reported before anything is renamed.
+GIT_SETTINGS_SUFFIX = '\\.git\\config'
+
+
+def git_settings_out_of_reach(path):
+    return is_windows() and path_chars(plain(path)) + len(GIT_SETTINGS_SUFFIX) > GIT_PATH_LIMIT
+
+
+def path_too_long_message(target):
+    return ('The path of the dependency folder %s is too long for Git to read. Install FreeVideo in a folder '
+            'with a shorter path, such as D:\\FreeVideo, then click "Retry installation". '
+            'The folder was left unchanged.' % plain(target))
+
+
 REPLACED_MARKER = 'freevideo-replaced'
 
 
@@ -1592,6 +1609,8 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             head, dirty = None, ''  # Git cannot read it as a repository of its own.
         if head == commit and not dirty:
             return target
+        if target.parent.name == 'vendor' and git_settings_out_of_reach(target):
+            raise ValueError(path_too_long_message(target))
         if not owned_checkout(target, url, sparse, git, env):
             raise ValueError(mismatch_message(target, git, env, head, commit, dirty))
         replacing = True

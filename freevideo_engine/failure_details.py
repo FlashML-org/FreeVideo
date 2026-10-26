@@ -586,7 +586,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
          ('A video is still generating', '还有视频正在生成'),
          ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
           '更新已装好。等当前任务完成后点“重新连接”，ComfyUI 会重启并使用新版。')),
-        (r'WinError 206|The filename or extension is too long', 'path-too-long',
+        (r'WinError 206|The filename or extension is too long|is too long for Git to read', 'path-too-long',
          ("The installation folder's path is too long", '安装文件夹的路径太长'),
          ('Install FreeVideo in a folder with a shorter path, such as D:\\FreeVideo, then click "Retry installation".',
           '请把 FreeVideo 安装到路径较短的文件夹，例如 D:\\FreeVideo，然后点击“重试安装”。')),
@@ -676,6 +676,12 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
                 if found:
                     model, capability = found.groups()
                     detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'path-too-long':
+                # A dependency folder Git cannot read is named, above the same next step.
+                found = re.search(r'The path of the dependency folder (.+?) is too long for Git to read', text)
+                if found:
+                    detail = ('文件夹：%s' if zh else 'Folder: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             return dict(title=title[zh], detail=detail, action=action[zh], kind=kind)
     # Validation messages are already actionable. Show the cause, not a stack
