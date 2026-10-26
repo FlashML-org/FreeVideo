@@ -13,6 +13,7 @@ import time
 from . import network, processes
 from .comfy_bridge import installation
 from .comfy_environment import isolated_environment
+from .comfy_requirements import managed_requirements
 from .environments import uv_file_arguments
 from .locking import runtime_lock
 from .monitoring import save
@@ -154,8 +155,9 @@ def _prepare(root, comfy, machine, run, download, repair=False):
     requirements = comfy / 'requirements.txt'
     if not requirements.is_file():
         raise ValueError('ComfyUI requirements.txt is missing')
-    # An environment is reused only for this exact ComfyUI dependency contract.
-    identity = dict(comfy=str(comfy), requirements=hashlib.sha256(requirements.read_bytes()).hexdigest(),
+    requirements, content = managed_requirements(requirements, directory)
+    # Installation, repair, and reuse all use the same filtered contract.
+    identity = dict(comfy=str(comfy), requirements=hashlib.sha256(content).hexdigest(),
                     engine_python=machine['python'], python=sys.version.split()[0], nodes=list(NODE_PACKAGES))
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
     env_root = root / 'envs' / ('comfyui-' + key)

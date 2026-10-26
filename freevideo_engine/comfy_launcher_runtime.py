@@ -209,6 +209,7 @@ def host_repair_pending(python):
 
 def _managed_environment(engine, comfy):
     """(python, recorded identity) of our previously completed frontend, or None."""
+    from .comfy_requirements import requirements_content
     engine, comfy = io_path(engine), io_path(comfy)
     try:
         record = json.loads((engine / 'launcher/comfy-host.json').read_text(encoding='utf-8'))
@@ -216,7 +217,7 @@ def _managed_environment(engine, comfy):
         environment, python = io_path(record['environment']), io_path(record['python'])
         machine = json.loads((engine / 'machine.json').read_text(encoding='utf-8'))
         if (identity['comfy'] != plain(comfy) or identity['engine_python'] != machine['python']
-                or identity['requirements'] != hashlib.sha256((comfy / 'requirements.txt').read_bytes()).hexdigest()
+                or identity['requirements'] != hashlib.sha256(requirements_content(comfy / 'requirements.txt')).hexdigest()
                 or environment.resolve().parent != (engine / 'envs').resolve()
                 or python != environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
                 or json.loads((environment / 'freevideo-host.json').read_text(encoding='utf-8')) != identity
@@ -1480,6 +1481,12 @@ class Controller:
         command = [selected['python'], '-u', '-B', str(Path(selected['root']) / 'main.py'), '--listen', ','.join(listen_hosts(parsed.hostname)),
                    '--port', str(parsed.port or 80), '--disable-auto-launch']
         managed = managed_frontend(selected)
+        from .comfy_logging import MANAGED_HOST_ENV
+        # Set only for our host Python, including service launches through this Controller.
+        # An inherited marker must never silence logs in a user's own ComfyUI.
+        env.pop(MANAGED_HOST_ENV, None)
+        if managed:
+            env[MANAGED_HOST_ENV] = '1'
         # Only the ComfyUI this launcher downloaded loads FreeVideo alone. The user's own ComfyUI keeps
         # every plugin, unless they stopped FreeVideo from loading (retry below, or remembered).
         ours = launcher_downloaded(selected['root'])
