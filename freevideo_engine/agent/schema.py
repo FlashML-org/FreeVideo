@@ -468,6 +468,7 @@ def contracts(*, local=False):
             ('/connect/reset', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
             ('/chat/video', 'GET', None), ('/chat/list', 'GET', None), ('/chat/new', 'POST', EMPTY),
             ('/chat/delete', 'POST', obj({'session': SESSION, 'stop': {'type': 'boolean'}}, ('session',))),
+            ('/chat/rename', 'POST', obj({'session': SESSION, 'title': {'type': 'string', 'maxLength': 60}}, ('session', 'title'))),
             ('/chat', 'POST', chat_request()),
             ('/chat/abandon', 'POST', obj({'session': SESSION})),
             ('/chat/confirm', 'POST', obj({'id': string(12, pattern=r'^cf[0-9a-f]{10}$'), 'approve': {'type': 'boolean'},

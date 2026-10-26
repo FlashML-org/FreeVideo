@@ -9,7 +9,7 @@ import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.
 import {closeDialog} from './motion.js';
 import { estimatedFraction, remainingAbove, remainingShown, createDiagnosticReportControl } from './generation_progress.js';
 import {createErrorReport} from './error_panel.js';
-import {canDeleteConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
+import {canDeleteConversation, canRenameConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
 import {renderImageFailure} from './image_generation.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
@@ -440,7 +440,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const reason = error => error?.message || t('Connection lost. Try again.', '连接中断，请重试。');
     async function requestError(response) {
         const data = await response.json().catch(() => ({}));
-        return new Error(data.error?.message || data.error?.code || `HTTP ${response.status}`);
+        return Object.assign(new Error(data.error?.message || data.error?.code || `HTTP ${response.status}`), {code: data.error?.code});
     }
     // Work under way in another conversation while this one has none: {session, job, ids}. The page's header keeps it in sight.
     let away = null;
@@ -473,14 +473,15 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // One overlay outside the scrolling list, positioned in the sidebar's own coordinates.
     const menu = el('div', 'fv-chat-menu'), first = el('div', 'fv-chat-menu-layer'), confirmation = el('div', 'fv-chat-menu-layer fv-chat-menu-confirm');
     menu.id = `${sidebar.id}-menu`; menu.setAttribute('role', 'menu'); menu.hidden = true;
+    const rename = press('fv-chat-menu-item', t('Rename', '重命名'), () => { const session = menuState?.session; closeMenu(); if (session) startRename(session); });
     const remove = press('fv-chat-menu-item', t('Delete', '删除'), () => {
         menuState = conversationMenu(conversations, menuState, 'confirm');
         updateMenu(true);
     });
     const yes = press('fv-chat-menu-item fv-chat-menu-delete', t('Delete', '删除'), () => void deleteChat(menuState?.session));
     const cancel = press('fv-chat-menu-item', t('Cancel', '取消'), () => closeMenu(true));
-    for (const button of [remove, yes, cancel]) button.setAttribute('role', 'menuitem');
-    first.append(remove); confirmation.append(yes, cancel); menu.append(first, confirmation); sidebar.append(menu);
+    for (const button of [rename, remove, yes, cancel]) button.setAttribute('role', 'menuitem');
+    first.append(rename, remove); confirmation.append(yes, cancel); menu.append(first, confirmation); sidebar.append(menu);
     const menuOrigin = () => listNodes.get(menuState?.session)?.more;
     const inMenu = target => menu.contains(target) || menuOrigin()?.contains(target);
     const leaveMenu = event => { if (menuState && !changingMenu && !inMenu(event.relatedTarget)) closeMenu(); };
@@ -515,7 +516,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const confirming = menuState?.stage === 'confirm';
             first.dataset.active = String(!confirming); confirmation.dataset.active = String(confirming);
             first.inert = !!confirming; confirmation.inert = !confirming;
-            remove.tabIndex = confirming ? -1 : 0; yes.tabIndex = cancel.tabIndex = confirming ? 0 : -1;
+            const target = conversations.conversations.find(row => row.id === menuState?.session);
+            rename.hidden = !canRenameConversation(target); remove.hidden = !canDeleteConversation(target);
+            rename.tabIndex = remove.tabIndex = confirming ? -1 : 0; yes.tabIndex = cancel.tabIndex = confirming ? 0 : -1;
             yes.disabled = cancel.disabled = deleting.has(menuState?.session);
             for (const [id, node] of listNodes) {
                 const opened = menuState?.session === id;
@@ -523,7 +526,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             }
             if (menuState) {
                 positionMenu();
-                if (focus) (confirming ? cancel : remove).focus({preventScroll: true});
+                if (focus) (confirming ? cancel : rename.hidden ? remove : rename).focus({preventScroll: true});
             }
         } finally { changingMenu = false; }
     }
@@ -559,7 +562,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (!visible) drawer(false);
         newChat.disabled = creating; chatsDot.hidden = !conversations.conversations.some(row => row.running > 0);
         const keep = new Set(conversations.conversations.map(row => row.id));
-        for (const [id, node] of listNodes) if (!keep.has(id)) { node.row.remove(); listNodes.delete(id); }
+        for (const [id, node] of listNodes) if (!keep.has(id)) { if (naming?.session === id) naming.finish(false); node.row.remove(); listNodes.delete(id); }
         conversations.conversations.forEach((row, index) => {
             let node = listNodes.get(row.id);
             if (!node) {
@@ -592,12 +595,49 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             node.row.dataset.temporary = String(!!row.temporary);
             node.title.textContent = row.title; node.button.title = row.title; node.dot.hidden = row.running <= 0;
             node.more.setAttribute('aria-label', t(`More: ${row.title}`, `更多：${row.title}`));
-            node.more.hidden = !canDeleteConversation(row);
+            node.more.hidden = !canDeleteConversation(row) && !canRenameConversation(row) || naming?.session === row.id;
             if (row.id === conversations.current) node.button.setAttribute('aria-current', 'true'); else node.button.removeAttribute('aria-current');
             if (list.children[index] !== node.row) list.insertBefore(node.row, list.children[index] || null);
         });
         updateMenu();
         if (lostFocus && !menuState) (listNodes.get(previous.session)?.button || (visible ? newChat : input)).focus({preventScroll: true});
+    }
+    const renameFailure = error => error?.code === 'not_found' ? t('Could not rename: this chat no longer exists.', '没有重命名成功：这个对话已不存在。')
+        : error?.code ? t('Could not rename.', '没有重命名成功。') : t('Could not rename: ', '没有重命名成功：') + t('Connection lost. Try again.', '连接中断，请重试。');
+    // The row's name becomes a box: Enter keeps the new name, Escape leaves it as it was, an empty name gives back the first sentence.
+    let naming = null;
+    function startRename(session) {
+        const node = listNodes.get(session), row = conversations.conversations.find(item => item.id === session);
+        if (!node || !row || !canRenameConversation(row) || !active()) return;
+        naming?.finish(false);
+        newError.hidden = newIssue.hidden = true;
+        const box = el('input', 'fv-chat-rename'); box.type = 'text'; box.maxLength = 60; box.value = row.title;
+        box.setAttribute('aria-label', t('Chat name', '对话名称'));
+        let over = false;
+        const finish = async keep => {
+            if (over) return; over = true; naming = null;
+            const name = box.value.trim();
+            box.remove(); node.button.hidden = false; node.more.hidden = false;
+            if (!keep || name === row.title) { if (!keep) node.button.focus({preventScroll: true}); return; }
+            try {
+                const response = await dataLayer.rename(session, name);
+                if (stopped) return;
+                if (!response.ok) throw await requestError(response);
+                void readConversations(true);
+            } catch (error) {
+                if (stopped) return;
+                newError.textContent = renameFailure(error); newError.hidden = newIssue.hidden = false;
+            }
+            node.button.focus({preventScroll: true});
+        };
+        listenDialogKey(box, 'keydown', event => {
+            if (event.key === 'Enter') { event.preventDefault(); void finish(true); }
+            else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void finish(false); }
+        });
+        box.addEventListener('blur', () => void finish(true));
+        naming = {session, finish};
+        node.button.hidden = true; node.more.hidden = true; node.row.prepend(box);
+        box.focus(); box.select();
     }
     async function deleteChat(session, stop = false, again = false) {
         if (!again && (!menuState || deleting.has(session) || menuState.session !== session || menuState.stage !== 'confirm') || deleting.has(session) || !active()) return;
@@ -698,6 +738,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (chats.getAttribute('aria-expanded') === 'true' && !sidebar.contains(event.target) && !chats.contains(event.target)) drawer(false, true);
     };
     const keys = event => {
+        // The name box owns its own Enter and Escape, so Escape here does not also close the drawer.
+        if (String(event.target?.className || '').split(' ').includes('fv-chat-rename')) return;
         if (event.key === 'Escape' && menuState) {
             event.preventDefault(); event.stopImmediatePropagation(); closeMenu(true); return;
         }
@@ -705,7 +747,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (menuState && (event.key === 'Tab' && (narrow() || menuState.stage === 'confirm')
             || menuState.stage === 'confirm' && ['ArrowLeft', 'ArrowRight'].includes(event.key))) {
             event.preventDefault(); event.stopPropagation();
-            const buttons = (menuState.stage === 'confirm' ? [yes, cancel] : [remove]).filter(button => !button.disabled);
+            const buttons = (menuState.stage === 'confirm' ? [yes, cancel] : [rename, remove]).filter(button => !button.disabled && !button.hidden);
             const at = buttons.indexOf(document.activeElement), back = event.shiftKey || event.key === 'ArrowLeft';
             buttons[(at + (back ? -1 : 1) + buttons.length) % buttons.length]?.focus({preventScroll: true}); return;
         }
@@ -721,7 +763,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const resize = () => { closeMenu(); if (!narrow()) drawer(false); };
     const listScroll = () => closeMenu();
     list.addEventListener('scroll', listScroll);
-    document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', keys, true);
+    document.addEventListener('pointerdown', outside, true);
+    // Through the dialog-key route: a modal beneath this one (the editor) takes document-level keys and hands them on only to local listeners.
+    const stopMenuKeys = listenDialogKey(element, 'keydown', keys, true);
     window.addEventListener('resize', resize);
     // Whether the reader is at the newest entry. It holds while the conversation is out of sight, which forgets where it was scrolled.
     let pinned = true;
@@ -1469,6 +1513,6 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         },
         stop() { closeMenu(); stopped = true; tab(); dismissImage?.(); closed.abort(); clearInterval(moving); clearTimeout(timer); timer = null;
             document.removeEventListener('visibilitychange', visible); document.removeEventListener('pointerdown', outside, true);
-            document.removeEventListener('keydown', keys, true); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
+            stopMenuKeys(); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
             log.querySelectorAll('video').forEach(video => video.pause()); }};
 }

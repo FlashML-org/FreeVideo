@@ -92,6 +92,7 @@ export function chatData(api) {
         list: options => read('/freevideo/agent/chat/list', options),
         create: () => agentPost(api, '/freevideo/agent/chat/new', {}),
         remove: (session, stop = false) => agentPost(api, '/freevideo/agent/chat/delete', stop ? {session, stop: true} : {session}),
+        rename: (session, title) => agentPost(api, '/freevideo/agent/chat/rename', {session, title}),
         confirm: body => agentPost(api, '/freevideo/agent/chat/confirm', body),
         abandon: session => agentPost(api, '/freevideo/agent/chat/abandon', session ? {session} : {}),
         cancel: id => retryAgentPost(api, '/freevideo/agent/activity/cancel', {id}),

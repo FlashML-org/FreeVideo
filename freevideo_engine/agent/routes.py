@@ -1221,6 +1221,20 @@ def register():
                                         request_id=errors.request_id())}, 409)
         return reply(done[1], done[0])
 
+    @routes.post('/freevideo/agent/chat/rename')
+    @guarded
+    async def chat_rename(request):
+        value = await body(request)
+        def write():
+            store = work_sessions()
+            sid = chat_session(store, value['session'])
+            if sid is None:
+                raise JobError('not_found', 'No conversation')
+            # An empty name gives the conversation back the first thing the user said.
+            store.append(sid, dict(type='control', action='renamed', title=value['title'].strip()), by='user')
+            return dict(session=sid, title=next((r['title'] for r in store.history(chat['client'], limit=None) if r['id'] == sid), None))
+        return reply(await asyncio.to_thread(write))
+
     @routes.post('/freevideo/agent/chat/delete')
     @guarded
     async def chat_delete(request):

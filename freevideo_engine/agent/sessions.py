@@ -71,6 +71,7 @@ class Sessions:
         # there: the conversation the user is in, and what the page calls each one in its history.
         self._acted = {}
         self._said = {}
+        self._titles = {}  # What the user named a conversation, over the first thing they said.
         self._chosen = set()
         self._waiters = {}
         self._partial = set()
@@ -151,6 +152,15 @@ class Sessions:
 
     def _fold(self, sid, event):
         meta = self._meta[sid]
+        if event['type'] == 'control' and event['action'] == 'renamed' and event['by'] == 'user':
+            # Naming a conversation is not activity in it: it keeps its place in the list and gives the agent nothing to read.
+            meta['last_seq'] = event['seq']
+            if event['title'].strip():
+                meta['title'] = event['title']
+                self._titles[sid] = event['title'].strip()[:60]
+            else:
+                self._titles.pop(sid, None)
+            return
         meta.update(last_seq=event['seq'], updated_at=event['at'])
         turn = self._turn.setdefault(sid, [0, 0])
         if event['by'] == 'user' and event['type'] == 'message':
@@ -233,7 +243,7 @@ class Sessions:
             self._path(sid).unlink(missing_ok=True)
             self._closing.discard(sid)
             waiters = self._waiters.pop(sid, ())
-            for kept in (self._meta, self._ids, self._clients, self._initial_seq, self._user_seq, self._turn, self._stage, self._acted, self._said):
+            for kept in (self._meta, self._ids, self._clients, self._initial_seq, self._user_seq, self._turn, self._stage, self._acted, self._said, self._titles):
                 kept.pop(sid, None)
             self._chosen.discard(sid)
             self._partial.discard(sid)
@@ -455,7 +465,7 @@ class Sessions:
         with self.lock:
             rows = sorted((row for sid, row in self._meta.items() if client in self._clients[sid] and sid in self._said),
                           key=lambda r: (r['updated_at'], r['id']), reverse=True)
-            return [dict(id=r['id'], title=self._said[r['id']], updated_at=r['updated_at'], current=r['id'] == current)
+            return [dict(id=r['id'], title=self._titles.get(r['id']) or self._said[r['id']], updated_at=r['updated_at'], current=r['id'] == current)
                     for r in rows[:limit]]
 
     def read_until(self, sid, reader) -> int:
