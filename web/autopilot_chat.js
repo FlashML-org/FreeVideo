@@ -1196,6 +1196,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (log.children[index] !== node.element) log.insertBefore(node.element, log.children[index] || null);
         });
         const sendable = sendingAllowed();
+        attachButton.disabled = builtinScene();
         input.disabled = !(state.agent.connected === true || builtinScene() && !!state.session) || creating || !!selectedSession && selectedSession !== state.session;
         input.placeholder = builtinScene() ? t(...SCENE_TEXT.describe)
             : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Message the agent…', '对 Agent 说…');
