@@ -32,7 +32,7 @@ export function readLengthPlan(reply) {
 
 export function classifyPlanError(reply) {
     if (reply?.code === 'device_limit') return 'continuation_unavailable';
-    if (reply?.code === 'too_long' || reply?.code === 'too_many_parts') return 'too_long';
+    if (reply?.code === 'too_long' || ['too_many_parts', 'too_many_short_parts'].includes(reply?.code)) return 'too_long';
     if (['block_too_long', 'block_too_short', 'too_short', 'invalid'].includes(reply?.code)) return 'other';
     const value = reply?.error;
     const message = reply?.code || (typeof value === 'string' ? value : value?.code || value?.message || '');

@@ -4,12 +4,18 @@ import {pictureFields, pictureEditor} from './editor_picture_fields.js';
 import {markerFields} from './editor_transport_model.js';
 import {audioClipFields, audioTrackFields, normalizeAudioEdits, splitAudioFields} from './editor_audio_model.js';
 import {speedRange, parseSpeedData, validateSpeedPair, sourceFrame, speedEdited, trimSpeed, splitSpeed, connectSpeedOperations} from './editor_speed_model.js';
+import {CHAIN_RULES} from './chain_rules.js';
 export const VERSION = 1;
 export const FPS = 24;
-// followSeconds mirrors chain_plan.MIN_PART_SECONDS: a part that continues another is at least this long.
-export const RULES = Object.freeze({maxSeconds: 15, singleSeconds: 30, minSeconds: 2, tailSeconds: 5, followSeconds: 10,
+// The continuing-part limits are chain_plan's (web/chain_rules.js): a part that continues another is at least
+// followSeconds long; a video with a continuing part shorter than fullSeconds has at most shortMaxParts parts unless
+// every part sees the first frame, any other at most maxParts. A new continuation starts at continueSeconds, or at
+// shortContinueSeconds where a full part is too much for the device.
+export const RULES = Object.freeze({maxSeconds: 15, singleSeconds: 30, minSeconds: 2, tailSeconds: 5,
+    followSeconds: CHAIN_RULES.min_part_seconds, fullSeconds: CHAIN_RULES.full_part_seconds,
+    continueSeconds: CHAIN_RULES.continue_seconds, shortContinueSeconds: CHAIN_RULES.short_continue_seconds,
     step: 17, first: 5, overlap: 22,
-    maxTracks: 3, maxClips: 500, maxText: 8000, maxParts: 8});
+    maxTracks: 3, maxClips: 500, maxText: 8000, maxParts: CHAIN_RULES.max_parts, shortMaxParts: CHAIN_RULES.short_max_parts});
 // Slice and bound user text by Unicode code points, never UTF-16 halves.
 export const truncateText = (text, limit) => Array.from(text).slice(0, limit).join('');
 export const copyName = (name, suffix) => truncateText(name, RULES.maxText - Array.from(suffix).length) + suffix;
@@ -634,6 +640,12 @@ export const setPictureSize = (record, width, height, size_mode = 'fixed') => fi
 export const setPicture = pictureEditor({copy, trackBy, check, pictureFit, finish});
 export const setPictureFit = (record, id, fit) => setPicture(record, id, {fit: pictureFit(fit)});
 
+// The fewest frames a continuing part of `seconds` whole seconds asks for (chain_plan.part_frames): below
+// MIN_PART_FRAMES a continuing part is too short, below FULL_PART_FRAMES it is a short part.
+const partFrames = seconds => RULES.overlap + RULES.step * Math.ceil((FPS * seconds - (RULES.step - 1)) / RULES.step);
+export const MIN_PART_FRAMES = partFrames(RULES.followSeconds), FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
+// The most parts one video may have (chain_plan.parts_limit).
+export const partsLimit = (short, firstFrame = false) => short && !firstFrame ? Math.min(RULES.maxParts, RULES.shortMaxParts) : RULES.maxParts;
 // The shortest a part that continues another may be; a device that cannot make a part that long keeps the general minimum.
 const followLeast = maxFollowSeconds => maxFollowSeconds >= RULES.followSeconds ? RULES.followSeconds : RULES.minSeconds;
 // A length to continue by, in whole seconds, raised to one that parts of followSeconds..maxFollowSeconds can add up to.
@@ -642,6 +654,12 @@ export function continuedSeconds(seconds, maxFollowSeconds = RULES.maxSeconds) {
     const least = followLeast(maxFollowSeconds), follow = Math.max(least, Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)));
     const length = Math.max(least, Math.round(seconds));
     return Math.max(length, Math.ceil(length / follow) * least);
+}
+// The length a new continuation starts with: a full part, or a short one where the device cannot make a full part
+// or `short` asks for it.
+export function defaultContinueSeconds(maxFollowSeconds = RULES.maxSeconds, {short = false} = {}) {
+    const full = !short && maxFollowSeconds >= RULES.fullSeconds;
+    return continuedSeconds(full ? RULES.continueSeconds : RULES.shortContinueSeconds, maxFollowSeconds);
 }
 function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false) {
     check(typeof maxSeconds === 'number' && Number.isFinite(maxSeconds) && maxSeconds >= RULES.minSeconds, 'range');
@@ -652,13 +670,15 @@ function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds 
     // half a minute or more, or beyond the device, goes in parts of a quarter minute.
     if (!continues && left < RULES.singleSeconds * FPS && left <= Math.floor(maxSeconds) * FPS) return [left];
     check(left <= RULES.maxClips * max, 'range');
-    // Every part after the first continues the one before it and is at least followSeconds long, as chain_plan lays
-    // them out: the parts after the first share what is left evenly, and a rest too short for them comes off the first.
-    if (follow >= RULES.followSeconds * FPS) {
-        const seconds = continues ? continuedSeconds(left / FPS, follow / FPS) : left / FPS;
+    // Every part after the first continues the one before it, as chain_plan lays them out: the parts after the first
+    // share what is left evenly, and a rest too short for them comes off the first. They are fullSeconds or longer
+    // whenever the length allows it, else at least followSeconds.
+    const seconds = continues && follow >= RULES.followSeconds * FPS ? continuedSeconds(left / FPS, follow / FPS) : left / FPS;
+    for (const least of [RULES.fullSeconds, RULES.followSeconds]) {
+        if (follow < least * FPS) continue;
         const head = continues ? 0 : Math.min(max / FPS, seconds), rest = seconds - head, count = Math.ceil(rest / (follow / FPS));
-        const shared = Math.max(rest, RULES.followSeconds * count);
-        if (continues || seconds - shared >= RULES.minSeconds) {
+        const shared = Math.max(rest, least * count);
+        if (continues ? shared === rest : seconds - shared >= RULES.minSeconds) {
             check(count <= RULES.maxClips, 'range');
             const result = continues ? [] : [(seconds - shared) * FPS];
             for (let i = 0; i < count; i++) result.push((Math.floor(shared / count) + (i < shared % count ? 1 : 0)) * FPS);
@@ -718,12 +738,14 @@ export function continuesBefore(record, id) {
 }
 // The lengths one range is generated in, as planRange lays them out on empty tracks.
 export const partLengths = (frames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false} = {}) => segmentLengths(frames, maxSeconds, maxFollowSeconds, continues);
-// One video is generated in at most RULES.maxParts parts: the longest range that still fits.
-export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds}) {
+// One video is generated in at most partsLimit parts: the longest range that still fits. A device whose continuing
+// parts are all short has the short-part limit.
+export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame = false}) {
     const before = continues;
     const follow = Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)) * FPS;
+    const parts = partsLimit(follow < RULES.fullSeconds * FPS, firstFrame);
     // The part being continued is the first of them.
-    return before ? (RULES.maxParts - 1) * follow : Math.floor(Math.min(RULES.maxSeconds, maxSeconds)) * FPS + (RULES.maxParts - 1) * follow;
+    return before ? (parts - 1) * follow : Math.floor(Math.min(RULES.maxSeconds, maxSeconds)) * FPS + (parts - 1) * follow;
 }
 // Manual boundaries use device limits, not the automatic fifteen-second preference.
 export function rangeParts(record, {start, frames, parts, continues, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds}) {
@@ -1040,6 +1062,68 @@ export function generationRequest(record, ids, {text, paths = {}, queue = false}
         plan[row.clip.id] = {target_frames: row.target_frames, net_frames: row.net_frames, request_frames: row.request_frames, audio: row.clip.link};
     }
     return frozen({blocks, plan});
+}
+// Whether a part made before a request is a short continuing part: what the engine kept of it is its new frames.
+const madeShort = clip => (clip.source ? clip.length : clip.frames) + RULES.overlap < FULL_PART_FRAMES;
+// The parts the finished or queued part `clip` was continued through on the timeline, itself included, and whether
+// a continuing part among them is short.
+function madeLineage(record, clip) {
+    let parts = 1, short = false;
+    for (let before = partBefore(record, clip), seen = new Set([clip.id]); before && !seen.has(before.id); before = partBefore(record, before)) {
+        short = short || madeShort(clip); parts += 1; seen.add(before.id); clip = before;
+    }
+    return {parts, short};
+}
+// What the engine refuses in a generation request (chain_runner checks the same before anything runs): a continuing
+// part shorter than followSeconds, a video continued through more than maxParts parts, or one with a short
+// continuing part through more than partsLimit allows. Parts made before the request count as the timeline shows
+// them. Returns {code, parts, limit} for the first problem, or null.
+export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true} = {}) {
+    const rows = generationPlan(record, generationClips(record, ids));
+    if (rows.some(row => row.before && row.request_frames < MIN_PART_FRAMES)) return {code: 'chain_part_too_short', parts: null, limit: RULES.followSeconds};
+    const lineage = new Map();
+    for (const row of rows) {
+        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id) ?? madeLineage(record, row.before);
+        lineage.set(row.clip.id, {parts: previous.parts + 1, short: previous.short || !!row.before && row.request_frames < FULL_PART_FRAMES});
+    }
+    const values = [...lineage.values()], parts = Math.max(...values.map(value => value.parts));
+    if (parts > RULES.maxParts) return {code: 'chain_too_long', parts, limit: RULES.maxParts};
+    const limit = partsLimit(true, firstFrame), short = Math.max(0, ...values.filter(value => value.short).map(value => value.parts));
+    return short > limit ? {code: 'chain_short_parts', parts: short, limit} : null;
+}
+// Sets the continuation draft `id` (a planned part that continues the one before it) to `seconds` whole seconds,
+// keeping its start; the drafts that continue it move with its end. Refused with 'range' for a length a continuing
+// part cannot have on this device or where there is no room, and with the engine's code (partsProblem) where the
+// new length would make the video one the engine refuses.
+export function setContinuationSeconds(record, id, seconds, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame} = {}) {
+    const members = pair(record, id); check(members.length, 'missing'); busy(members);
+    check(members.every(clip => clip.pending && !clip.source), 'unsupported');
+    const video = members.find(clip => trackOf(record, clip.id).id === 'v1');
+    check(!!video && !!partBefore(record, video), 'unsupported');
+    check(Number.isInteger(seconds) && seconds >= followLeast(maxFollowSeconds)
+        && seconds <= Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)), 'range');
+    const delta = seconds * FPS - video.frames;
+    if (!delta) return record;
+    const run = [video];
+    for (let next; (next = trackBy(record, 'v1').clips.find(clip => clip.pending && !clip.source && continuing(clip, run.at(-1)))); ) run.push(next);
+    const moving = run.flatMap(clip => pair(record, clip.id)); busy(moving);
+    const moved = new Set(moving.map(clip => clip.id));
+    let next = copy(record); detachAttempt(next, [...moved]);
+    for (const clip of moving) {
+        const changed = find(next, clip.id);
+        if (pair(record, video.id).some(member => member.id === clip.id)) { changed.frames = changed.length = seconds * FPS; clearPlan(changed); }
+        else { changed.start += delta; clearPlan(changed); }
+        // Nothing else on the track may be under the part's new span.
+        check(!trackOf(next, clip.id).clips.some(other => !moved.has(other.id) && overlaps(other, changed.start, changed.frames)), 'range');
+    }
+    next = finish(next);
+    // The drafts it continues are generated with it, so the whole video is checked.
+    const earlier = [];
+    for (let before = partBefore(record, video); before && before.pending === 'draft' && !before.source && !earlier.includes(before); before = partBefore(record, before)) earlier.unshift(before);
+    const ids = [...earlier, ...run].map(clip => clip.id), options = firstFrame === undefined ? {} : {firstFrame};
+    const problem = partsProblem(next, ids, options);
+    if (problem && problem.code !== partsProblem(record, ids, options)?.code) throw Object.assign(new EditError(problem.code), {parts: problem.parts, limit: problem.limit});
+    return next;
 }
 function update(record, ids, change) {
     const next = copy(record), selected = linkedIds(next, ids);

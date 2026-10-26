@@ -347,7 +347,7 @@ class Productions:
                 continue
             if continued or shot['continues']:
                 # The same length rule as at submission, with this computer's single-run limit rather than the
-                # 15 s default: a shot that cannot be cut into parts of at least 10 s is refused here instead of
+                # 15 s default: a shot that cannot be cut into parts of at least 5 s is refused here instead of
                 # starting a film in which that shot never gets a job. A shot not yet submitted carries no parent.
                 try:
                     pinned = spec.normalize(dict(item, continue_from=dict(from_job=placeholder)), port=self.jobs.port)

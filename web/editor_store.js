@@ -176,6 +176,8 @@ export function mediaURL(api, value) {
 export function createEditorStore(api, {t = en => en, notify = () => {}, onGenerationReady = () => {}, onGenerationChecking = () => {}, clock = clockDefault, pollMs = 2000, standIn: injected = null} = {}) {
     const sources = new Map(), sourceReads = new Map(), watchers = new Set(), pollers = new Set(), once = new Set();
     let recovered = null, capabilityPoll = null;
+    // The length a new continuation starts with where the engine names one (a device that continues in short parts).
+    let continueSeconds = null;
     let generationAvailable = false, generationGone = false, generationProbe = null, generationRetry = null, generationAttempts = 0, generationStalled = false, generationAsking = false;
     let disposed = false; const uploads = new Set();
     const session = holdSession();
@@ -260,6 +262,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             memoryProjects.delete(id);
             if (activeProject === id) { activeProject = null; clock.clearTimeout(sessionTimer); sessionTimer = null; }
         },
+        get continueSeconds() { return standIn ? standIn.continueSeconds ?? null : continueSeconds; },
         get generationAvailable() { return standIn ? standIn.generationAvailable ?? true : generationAvailable; },
         // The server said for certain it cannot generate (not just a missed answer that is asked again).
         get generationGone() { return !standIn && generationGone; },
@@ -292,8 +295,13 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                 try {
                     // true: present; false: no such route; null: no usable answer.
                     answer = await Promise.race([Promise.resolve().then(() => request('/freevideo/chains', {signal: controller.signal}))
-                        .then(async response => response.status === 404 ? false
-                            : response.ok && Array.isArray((await response.json())?.chains) ? true : null)
+                        .then(async response => {
+                            if (response.status === 404) return false;
+                            if (!response.ok) return null;
+                            const body = await response.json();
+                            if (Number.isInteger(body?.continue_seconds) && body.continue_seconds > 0) continueSeconds = body.continue_seconds;
+                            return Array.isArray(body?.chains) ? true : null;
+                        })
                         .catch(() => null), timeout]);
                 } finally { probe.dispose(); generationProbe = null; generationAsking = false; }
                 if (disposed || generationGone) return false;
@@ -473,7 +481,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             if (!response.ok) {
                 // The server's own sentence for a video with too many parts, or a continued part too short, is shown as it is.
                 const body = await response.json().catch(() => null);
-                if (['chain_too_long', 'chain_part_too_short'].includes(body?.code)) throw Object.assign(new Error(body.code), {code: body.code, said: [body.error, body.error_zh]});
+                if (['chain_too_long', 'chain_part_too_short', 'chain_short_parts'].includes(body?.code)) throw Object.assign(new Error(body.code), {code: body.code, said: [body.error, body.error_zh]});
                 throw Object.assign(new Error(typeof body?.error === 'string' ? body.error : body?.message || `HTTP ${response.status}`),
                     {status: response.status, reason: body?.reason || body?.code, response: body});
             }

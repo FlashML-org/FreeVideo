@@ -43,6 +43,15 @@ const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_ex
 }));
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const language = () => new URLSearchParams(location.search).get('freevideo_lang') || navigator.language;
+// The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
+export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts'];
+export function partsLimitText(code, t = en => en, limit = null) {
+    const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
+    if (code === 'chain_part_too_short') return t(`Each continued part must be at least ${least} seconds. Make it longer.`, `接着生成的每一段至少 ${least} 秒，请加长这一段。`);
+    if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, this video can have up to ${most} parts. Make each part at least ${full} seconds long, or use fewer parts.`,
+        `有短于 ${full} 秒的段时，这条视频最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
+    return t(`One continuous shot can have up to ${limit ?? maxParts} parts. Make it shorter.`, `一个连续镜头最多 ${limit ?? maxParts} 段，请缩短。`);
+}
 // Shared by error() and actions.reasonText: one sentence naming the failed step.
 export function editorErrorText(value, t = en => en) {
     if (isNetworkTypeError(value) || isNetworkTypeError(value?.detail)) return connectionLostText(t);
@@ -61,8 +70,10 @@ export function editorErrorText(value, t = en => en) {
     if (code === 'gpu_memory' || /out of memory|cuda.*memory|显存不足|显存不够/i.test(raw))
         return t(`${stage}: not enough GPU memory.`, `${stage}时显存不足。`);
     const known = {
-        chain_part_too_short: t('Each continued part needs at least 10 seconds.', '接续的每段至少 10 秒。'),
-        chain_too_long: t('One continuous shot can have up to 8 parts.', '一个连续镜头最多 8 段。'),
+        chain_part_too_short: t(`Each continued part needs at least ${model.RULES.followSeconds} seconds.`, `接续的每段至少 ${model.RULES.followSeconds} 秒。`),
+        chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one video can have up to ${model.RULES.shortMaxParts} parts.`,
+            `有短于 ${model.RULES.fullSeconds} 秒的段时，一条视频最多 ${model.RULES.shortMaxParts} 段。`),
+        chain_too_long: t(`One continuous shot can have up to ${model.RULES.maxParts} parts.`, `一个连续镜头最多 ${model.RULES.maxParts} 段。`),
         too_long: t('This part is longer than the maximum length. Shorten it and try again.', '这一段超过了最长时长，请缩短后再试。'),
         missing_node: t('Generation is not ready. Restart FreeVideo.', '生成功能没有就绪，请重新启动 FreeVideo。'),
         chain_missing: t('Generation could not start. Choose "Generate" again.', '生成没能开始，请再点“生成”。'),
@@ -305,10 +316,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         if (['audio_prepare', 'speed_pending', 'speed_locked', 'speed'].includes(code)) return {ok: false, reason: code};
         if (code === 'unsupported') { genbar?.update(null); return; }
-        if (['chain_too_long', 'chain_part_too_short'].includes(code)) {
+        if (PARTS_LIMIT_CODES.includes(code)) {
             const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
-            const text = code === 'chain_too_long' ? t(en || 'One continuous shot can have up to 8 parts. Make it shorter.', zh || '一个连续镜头最多 8 段，请缩短。')
-                : t(en || 'Each continued part must be at least 10 seconds. Make it longer.', zh || '接着生成的每一段至少 10 秒，请加长一些。');
+            const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
             out(text); return {ok: false, reason: code, say: text};
         }
         if (['busy', 'locked', 'text', 'audio_full', 'overlap', 'range', 'no_audio'].includes(code)) {
@@ -490,7 +500,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 // Each part goes with its own description, as written while it waited.
                 const texts = Object.fromEntries(clips.map(clip => [clip.id, clip.text.trim() || entry.text]));
                 try { await actions.generate({text: texts[clips[0].id], texts, selection}); }
-                catch (value) { const reason = error(value, 'generate'); if (reason && !['chain_too_long', 'chain_part_too_short'].includes(reason.reason)) genbar?.say(reason.say); }
+                catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason)) genbar?.say(reason.say); }
             }
         } finally { startingHeld = false; }
     }
@@ -929,6 +939,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 submittedSelection = shown && state.selection === chosen ? state.select({kind: 'clip', ids}) : state.selection; await completeSources();
                 const paths = Object.fromEntries([...store.sources].map(([key, value]) => [key, value.path]));
                 const request = model.generationRequest(prepared, ids, {text: texts ? undefined : text, paths, queue: true});
+                // What the engine would refuse for its continuing parts is said here, before anything is sent.
+                const problem = model.partsProblem(prepared, ids);
+                if (problem) throw Object.assign(new Error(problem.code), {code: problem.code, limit: problem.limit});
                 const beforeKeys = model.generationBefore(prepared, ids), sizes = new Map(store.sources);
                 for (const key of beforeKeys.filter(key => key?.startsWith('chain:'))) {
                     const job = await store.chain(key.split(':')[1]);
@@ -973,7 +986,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (epoch === projectEpoch) {
                     if (ids.length) state.settle(record => model.settle(record, ids, 'draft'));
                     // A length limit is the user's to change and is said once in the notice; there is nothing to report.
-                    if (!['chain_too_long', 'chain_part_too_short'].includes(value?.code)) {
+                    if (!PARTS_LIMIT_CODES.includes(value?.code)) {
                         failures.submission(value, frozen, text); submissionFailure = JSON.stringify(state.selection);
                     }
                     genbar?.update(null);
@@ -1523,7 +1536,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) return true;
                 if (!store.generationAvailable) return false;
                 const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
-                tracks.extendClip(clip.id, spare + model.continuedSeconds(0, capability.maxFollowSeconds) * model.FPS, {silent: true});
+                tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
+                    {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
                 return true;
             };
             await store.generationReady();

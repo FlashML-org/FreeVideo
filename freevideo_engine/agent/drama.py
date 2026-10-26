@@ -20,7 +20,7 @@ import re
 import time
 
 from . import spec as specs
-from ..chain_plan import MIN_PART_SECONDS
+from ..chain_plan import CONTINUE_SECONDS
 
 EXAMPLE = {
     'title': '末班车', 'name': 'the-last-train', 'aspect': '9:16', 'quality': 'light',
@@ -451,9 +451,9 @@ def intent(play, shot):
 
 
 def shot_seconds(play, shot):
-    """A shot says its length; else the film does; else 6 s, and 10 s for a shot that continues the one before
-    (a part that continues another video is at least 10 s)."""
-    return shot.get('seconds', play.get('seconds', MIN_PART_SECONDS if shot.get('continue') else 6))
+    """A shot says its length; else the film does; else 6 s, and CONTINUE_SECONDS for a shot that continues the
+    one before (a full continuing part, which keeps the video to the full number of parts)."""
+    return shot.get('seconds', play.get('seconds', CONTINUE_SECONDS if shot.get('continue') else 6))
 
 
 def shot_job(play, shot, index, ref):

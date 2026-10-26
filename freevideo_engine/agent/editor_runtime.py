@@ -16,7 +16,7 @@ WEB = Path(__file__).resolve().parents[2] / 'web'
 # Definition order only; evaluation starts at editor_actions like the page's
 # import does. editor_model and editor_text_model import each other: the
 # module still loading is reached only through a namespace import.
-MODULES = ('editor_picture_fields', 'editor_transport_model', 'editor_audio_model', 'editor_speed_model',
+MODULES = ('chain_rules', 'editor_picture_fields', 'editor_transport_model', 'editor_audio_model', 'editor_speed_model',
            'editor_text_model', 'editor_model', 'editor_room', 'editor_actions', 'editor_generation', 'sampling_effort',
            'chain_support', 'editor_store')
 TIME_LIMIT = 5.0

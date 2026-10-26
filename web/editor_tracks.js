@@ -85,7 +85,8 @@ export function edgeParameters(clip, edge, frame, points, zoom, {canExtend = tru
     if (edge === 'end' && canExtend && clip.extend && snapped.frame > sourceEnd) {
         // What continues a video is at least followSeconds long; the preview already shows the raised length.
         const wanted = Math.round((snapped.frame - sourceEnd) / model.FPS), seconds = model.continuedSeconds(wanted, maxFollowSeconds);
-        return {kind: 'extend', frame: sourceEnd, frames: seconds * model.FPS, guide: snapped.guide, raised: seconds !== wanted};
+        return {kind: 'extend', frame: sourceEnd, frames: seconds * model.FPS, guide: snapped.guide, raised: seconds !== wanted,
+            least: wanted < model.RULES.followSeconds && seconds >= model.RULES.followSeconds};
     }
     return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
 }
@@ -959,7 +960,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else if (result.kind === 'extend') {
             const frames = result.frame - finished.clip.start - finished.clip.frames + result.frames;
             if (extendClip(finished.id, frames) && result.raised) {
-                actions.notify?.(t(`Extended to ${result.frames / model.FPS} s.`, `已补到 ${result.frames / model.FPS} 秒。`));
+                const least = model.RULES.followSeconds;
+                actions.notify?.(result.least ? t(`Each continued part needs at least ${least} seconds.`, `接着生成的每一段至少 ${least} 秒。`)
+                    : t(`Extended to ${result.frames / model.FPS} s.`, `已补到 ${result.frames / model.FPS} 秒。`));
             }
         } else attempt(t('Trim', '裁短'), record => model.trim(record, finished.id, finished.edge, result.frame));
         renderSelection();

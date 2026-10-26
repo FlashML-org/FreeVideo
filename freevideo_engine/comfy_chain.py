@@ -5,6 +5,7 @@ import logging
 import math
 import os
 from pathlib import Path, PurePosixPath
+import platform
 import ssl
 import time
 from urllib import error, request
@@ -248,6 +249,14 @@ def continuation_supported():
     return supported()[0]
 
 
+def continue_seconds():
+    """The length a new continuation starts with where this device sets it: short parts on Apple silicon, where
+    a full part takes long and often does not fit; None elsewhere, where the page goes by the measured limits."""
+    if platform.system() == 'Darwin' and platform.machine().lower() in ('arm64', 'aarch64'):
+        return chain_plan.SHORT_CONTINUE_SECONDS
+    return None
+
+
 def continuation_available():
     return 'after' in continuation_directions() and continuation_supported()
 
@@ -333,7 +342,8 @@ def register(host_factory=None):
             value = await body(request)
             result = chain_plan.plan(
                 value.get('seconds'), value.get('single', False), value.get('max_frames'),
-                value.get('single_limit_seconds'), value.get('block_seconds'), max_parts=runner.max_parts)
+                value.get('single_limit_seconds'), value.get('block_seconds'), max_parts=runner.max_parts,
+                first_frame=value.get('first_frame_reference') is True)
             if not result['single'] and not continuation_supported():
                 # A device that cannot continue a video has one block to give: never a plan in parts.
                 raise chain_plan.PlanError('device_limit', 'This device cannot generate this length at this size')
@@ -376,7 +386,8 @@ def register(host_factory=None):
 
     @server.routes.get('/freevideo/chains')
     async def listing(request):
-        value = {'chains': runner.list(asking(request)), 'continuation': continuation_available()}
+        value = {'chains': runner.list(asking(request)), 'continuation': continuation_available(),
+                 'continue_seconds': continue_seconds()}
         if fake:
             value['fake'] = True
         return response(value)
