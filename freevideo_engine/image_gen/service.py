@@ -353,9 +353,9 @@ class Service:
             if failure:
                 raise failure[0]
         else:
-            from .. import processes
-            processes.popen(['xdg-open', folder], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, start_new_session=True)
+            from ..windows_ux import open_folder
+            if not open_folder(folder):
+                raise OSError('No file manager is available to open the folder.')
         return dict(opened=True)
 
     def close_segment_worker(self):

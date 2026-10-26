@@ -314,6 +314,12 @@ def create_ui(session, *, show=True):
             if folder and Path(folder).is_dir():
                 if session.action_notice == 'download_missing':
                     session.action_notice = ''
+                if sys.platform.startswith('linux'):
+                    from .windows_ux import open_folder
+                    if not open_folder(Path(folder).resolve()):
+                        session.action_notice = 'folder_open_failed'
+                        self.refresh()
+                    return
                 self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(Path(folder).resolve())))
             else:
                 session.action_notice = 'download_missing'
