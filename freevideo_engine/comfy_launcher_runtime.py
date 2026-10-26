@@ -687,6 +687,8 @@ class Controller:
         self.server_address = None
         self.access_proxy = None
         self.access_configuration = None
+        # Shared only by the ComfyUI this controller starts and the access proxy in front of it.
+        self.hop_secret = secrets.token_urlsafe(32)
         self.access_links = []
         self.access_polled = 0
         self._server_lock = threading.RLock()
@@ -1242,7 +1244,8 @@ class Controller:
                 if self._closed or self.cancelled.is_set():
                     raise RuntimeError('LAN access startup cancelled')
                 self.access_proxy = start_proxy(selected, listen='0.0.0.0', port=port,
-                    upstream=loopback_url(selected['url']), token_file=folder(selected['engine']) / TOKEN, tls=None)
+                    upstream=loopback_url(selected['url']), token_file=folder(selected['engine']) / TOKEN, tls=None,
+                    hop_secret=self.hop_secret if self.owns_server() else None)
             try:
                 check_proxy(self.access_proxy, scheme='http', port=port, secret=secret)
                 if self._closed or self.cancelled.is_set():
@@ -1372,6 +1375,9 @@ class Controller:
         if not loopback_host(parsed.hostname):
             env = bypass_local(env, parsed.hostname)
         env['FREEVIDEO_COMFY_LOG'] = str(self.server_log)
+        from .proxy_identity import ENV as HOP
+        self.hop_secret = env.get(HOP) or self.hop_secret
+        env[HOP] = self.hop_secret
         from .launcher_bridge import ENV as BRIDGE
         env.pop(BRIDGE, None)
         if self.update_bridge:
