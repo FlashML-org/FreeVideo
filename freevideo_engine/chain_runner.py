@@ -33,10 +33,10 @@ class ChainShortPartsTooMany(ChainTooLong):
 
     def __init__(self, parts, limit):
         full = chain_plan.FULL_PART_SECONDS
-        ValueError.__init__(self, 'With a part shorter than %d seconds, this video can have up to %d parts. '
-                            'Make each part at least %d seconds long, or use fewer parts.' % (full, limit, full))
+        ValueError.__init__(self, 'With a part shorter than %d seconds, one continuous shot can have up to %d parts. '
+                            'Make every part at least %d seconds long, or use fewer parts.' % (full, limit, full))
         self.parts, self.limit = parts, limit
-        self.message_zh = '有短于 %d 秒的段时，这条视频最多 %d 段。请把每段加长到至少 %d 秒，或减少段数。' % (full, limit, full)
+        self.message_zh = '有短于 %d 秒的段时，一个连续镜头最多 %d 段。请把每段加长到至少 %d 秒，或减少段数。' % (full, limit, full)
 
 
 class ChainPartTooShort(ValueError):

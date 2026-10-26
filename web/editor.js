@@ -48,8 +48,8 @@ export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'cha
 export function partsLimitText(code, t = en => en, limit = null) {
     const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
     if (code === 'chain_part_too_short') return t(`Each continued part must be at least ${least} seconds. Make it longer.`, `接着生成的每一段至少 ${least} 秒，请加长这一段。`);
-    if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, this video can have up to ${most} parts. Make each part at least ${full} seconds long, or use fewer parts.`,
-        `有短于 ${full} 秒的段时，这条视频最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
+    if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, one continuous shot can have up to ${most} parts. Make every part at least ${full} seconds long, or use fewer parts.`,
+        `有短于 ${full} 秒的段时，一个连续镜头最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
     return t(`One continuous shot can have up to ${limit ?? maxParts} parts. Make it shorter.`, `一个连续镜头最多 ${limit ?? maxParts} 段，请缩短。`);
 }
 // Shared by error() and actions.reasonText: one sentence naming the failed step.
@@ -70,9 +70,9 @@ export function editorErrorText(value, t = en => en) {
     if (code === 'gpu_memory' || /out of memory|cuda.*memory|显存不足|显存不够/i.test(raw))
         return t(`${stage}: not enough GPU memory.`, `${stage}时显存不足。`);
     const known = {
-        chain_part_too_short: t(`Each continued part needs at least ${model.RULES.followSeconds} seconds.`, `接续的每段至少 ${model.RULES.followSeconds} 秒。`),
-        chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one video can have up to ${model.RULES.shortMaxParts} parts.`,
-            `有短于 ${model.RULES.fullSeconds} 秒的段时，一条视频最多 ${model.RULES.shortMaxParts} 段。`),
+        chain_part_too_short: t(`Each continued part must be at least ${model.RULES.followSeconds} seconds.`, `接着生成的每一段至少 ${model.RULES.followSeconds} 秒。`),
+        chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one continuous shot can have up to ${model.RULES.shortMaxParts} parts.`,
+            `有短于 ${model.RULES.fullSeconds} 秒的段时，一个连续镜头最多 ${model.RULES.shortMaxParts} 段。`),
         chain_too_long: t(`One continuous shot can have up to ${model.RULES.maxParts} parts.`, `一个连续镜头最多 ${model.RULES.maxParts} 段。`),
         too_long: t('This part is longer than the maximum length. Shorten it and try again.', '这一段超过了最长时长，请缩短后再试。'),
         missing_node: t('Generation is not ready. Restart FreeVideo.', '生成功能没有就绪，请重新启动 FreeVideo。'),

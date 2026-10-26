@@ -10,6 +10,7 @@ import {createSelectionGestures, isMultiple, isTyping} from './editor_select.js'
 import {createTrackMenu} from './editor_menu.js';
 import {transportSnapPoints, setSnapping as setTransportSnapping} from './editor_transport_model.js';
 import {attachAudioTracks} from './editor_audio.js';
+import {seconds as secondsText} from './editor_audio_notes.js';
 import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
 
@@ -960,9 +961,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else if (result.kind === 'extend') {
             const frames = result.frame - finished.clip.start - finished.clip.frames + result.frames;
             if (extendClip(finished.id, frames) && result.raised) {
-                const least = model.RULES.followSeconds;
-                actions.notify?.(result.least ? t(`Each continued part needs at least ${least} seconds.`, `接着生成的每一段至少 ${least} 秒。`)
-                    : t(`Extended to ${result.frames / model.FPS} s.`, `已补到 ${result.frames / model.FPS} 秒。`));
+                // Say the new length (tenths, rounded down like other durations) so the change is visible.
+                const least = model.RULES.followSeconds, length = secondsText(result.frames, model.FPS);
+                actions.notify?.(result.least ? t(`Lengthened to ${length} s. Each continued part must be at least ${least} seconds.`, `已加长到 ${length} 秒。接着生成的每一段至少 ${least} 秒。`)
+                    : t(`Lengthened to ${length} s.`, `已加长到 ${length} 秒。`));
             }
         } else attempt(t('Trim', '裁短'), record => model.trim(record, finished.id, finished.edge, result.frame));
         renderSelection();

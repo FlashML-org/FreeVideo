@@ -162,8 +162,8 @@ def plan(seconds, single=False, max_frames=None, single_limit_seconds=None, bloc
         short = any(length < FULL_PART_SECONDS for length in lengths[0 if continued else 1:])
         allowed = parts_limit(short, first_frame, max_parts)
         if parts > allowed and allowed < max_parts:
-            raise PlanError('too_many_short_parts', 'With a part shorter than %d seconds, this video can have up to '
-                            '%d parts. Make each part at least %d seconds long, or use fewer parts.'
+            raise PlanError('too_many_short_parts', 'With a part shorter than %d seconds, one continuous shot can have up to '
+                            '%d parts. Make every part at least %d seconds long, or use fewer parts.'
                             % (FULL_PART_SECONDS, allowed, FULL_PART_SECONDS))
         if parts > allowed:
             raise PlanError('too_many_parts', 'One continuous shot can have up to %d parts. Make it shorter.' % max_parts)
