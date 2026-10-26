@@ -1523,9 +1523,11 @@ def mismatch_message(target, git, env, head, commit, dirty):
             with_modes = []
         modes = [name for name in with_modes if name not in set(changed)]
         if modes:
-            details.append('%d other file(s) differ only in permissions, which is accepted.' % len(modes))
+            details.append('1 other file differs only in permissions, which does not block installation.'
+                           if len(modes) == 1 else
+                           '%d other files differ only in permissions, which do not block installation.' % len(modes))
     return ('A dependency folder differs from the version FreeVideo needs: %s. %s '
-            'Rename or move this folder, then retry installation; FreeVideo then downloads a fresh copy.'
+            'Rename or move this folder, then retry installation. FreeVideo will download a fresh copy.'
             % (target, ' '.join(details)))
 
 
@@ -1540,9 +1542,8 @@ def set_aside(target):
     try:
         io_path(target).rename(io_path(old))
     except OSError as error:
-        raise ValueError('FreeVideo could not update the dependency folder %s because another program is using '
-                         'files in it. Close programs that use this folder, then retry installation. '
-                         'The folder was left unchanged.' % target) from error
+        raise ValueError('FreeVideo could not rename the dependency folder %s to replace it. Close programs that '
+                         'use this folder, then retry installation. The folder was left unchanged.' % target) from error
     try:
         io_path(old / '.git' / REPLACED_MARKER).write_text(target.name + '\n', encoding='utf-8')
     except OSError:
@@ -1553,7 +1554,11 @@ def set_aside(target):
 def remove_earlier_replaced(target, keep):
     """Remove older folders set_aside() made for `target`; never another folder."""
     pattern = re.compile(re.escape(target.name) + r'\.replaced-\d{8}-\d{6}(-\d+)?')
-    for path in io_path(target.parent).glob(target.name + '.replaced-*'):
+    try:
+        candidates = list(io_path(target.parent).glob(target.name + '.replaced-*'))
+    except OSError:
+        return  # The folder cannot be listed now; a later replacement tries again.
+    for path in candidates:
         if (path.name == keep.name or not pattern.fullmatch(path.name) or path.is_symlink()
                 or not (path / '.git' / REPLACED_MARKER).is_file()):
             continue
@@ -1658,7 +1663,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
                     io_path(old).rename(io_path(target))
                 except OSError:
                     raise ValueError('FreeVideo could not put the new copy of %s in place, and the previous files '
-                                     'are kept in %s. Close programs that use these folders, then retry '
+                                     'are now in %s. Close programs that use these folders, then retry '
                                      'installation.' % (target, old)) from error
                 try:
                     io_path(target / '.git' / REPLACED_MARKER).unlink()
