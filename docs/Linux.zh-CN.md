@@ -10,7 +10,7 @@ FreeVideo 支持 x86_64 Linux，需要 NVIDIA 显卡和 580 及以上版本的�
 2. 在文件属性中勾选**允许作为程序执行**，或运行 `chmod +x FreeVideo-Linux-x86_64.AppImage`，然后打开它。
 3. 选择新安装的文件夹或已有的 ComfyUI，点击**安装并启动**。ComfyUI 会在浏览器中打开，并进入 FreeVideo 创作面板。
 
-安装完成后，应用菜单和桌面上会出现 FreeVideo，启动器也会像 Windows 版一样自动更新。AppImage 需要 2022 年以后的发行版（Ubuntu 22.04、Debian 12、Fedora 36、RHEL 9 或更新版本）；更老的系统请使用下面的终端安装方式。如果系统缺少编译 GPU 加速所需的编译器，安装计划会给出安装它的命令。
+安装完成后，应用菜单和桌面上会出现 FreeVideo，启动器也会像 Windows 版一样自动更新。AppImage 需要 2022 年以后的发行版（Ubuntu 22.04、Debian 12、Fedora 36、RHEL 9 或更新版本）；更老的系统请使用下面的终端安装方式。如果系统缺少 Git 或 C++ 编译器，FreeVideo 会在安装时自行下载，不需要管理员权限。
 
 ## 终端：一条命令
 

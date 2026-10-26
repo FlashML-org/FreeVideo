@@ -10,7 +10,7 @@ FreeVideo runs on x86_64 Linux with an NVIDIA GPU and driver 580 or newer. On a 
 2. Make it executable, either in the file's properties (**Allow executing file as program**) or with `chmod +x FreeVideo-Linux-x86_64.AppImage`, then open it.
 3. Choose a folder for a new installation, or an existing ComfyUI, and click **Install & launch**. ComfyUI opens in the browser with the FreeVideo workspace.
 
-FreeVideo then appears in the application menu and on the desktop, and later versions update the launcher by themselves, as on Windows. The AppImage needs a distribution from 2022 or newer (Ubuntu 22.04, Debian 12, Fedora 36, RHEL 9 or later); on older systems, use the terminal installation below. If the computer lacks the compiler FreeVideo builds its GPU acceleration with, the installation plan shows the command that installs it.
+FreeVideo then appears in the application menu and on the desktop, and later versions update the launcher by themselves, as on Windows. The AppImage needs a distribution from 2022 or newer (Ubuntu 22.04, Debian 12, Fedora 36, RHEL 9 or later); on older systems, use the terminal installation below. If the computer lacks Git or a C++ compiler, FreeVideo downloads its own copies during the installation, without administrator rights.
 
 ## Terminal: one command
 
