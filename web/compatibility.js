@@ -110,8 +110,11 @@ export async function notifyCompatibility() {
         const panel = dialog(t('Compatibility enabled', '已开启兼容性设置'));
         const message = element('p', value.recovery_disabled
             ? t('Generation is slowed automatically for stability; you can change this in Settings.', '为了稳定，生成已自动放慢；可在设置里调整。')
-            : t('Generation is slowed automatically for stability; it speeds up after 3 successful generations in a row, or you can change this in Settings.',
-                '为了稳定，生成已自动放慢；连续完成 3 次后会加快一些，也可在设置里调整。'));
+            : value.recovery_successes_required === 1
+                ? t('Generation is slowed automatically for stability; it speeds up after the next successful generation, or you can change this in Settings.',
+                    '为了稳定，生成已自动放慢；下一次生成完成后会加快一些，也可在设置里调整。')
+                : t('Generation is slowed automatically for stability; it speeds up after 3 successful generations in a row, or you can change this in Settings.',
+                    '为了稳定，生成已自动放慢；连续完成 3 次后会加快一些，也可在设置里调整。'));
         panel.actions.before(message);
         const finish = async (settings) => {
             try { await request('ack', {notice_id: value.notice.id}); panel.close(); if (settings) await openCompatibility(); }
