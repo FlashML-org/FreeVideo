@@ -56,6 +56,8 @@ def policy_revision():
 
 
 def recovery_required(state):
+    if state.get('recovery_required') in (1, RECOVERY_SUCCESSES):
+        return state['recovery_required']
     reason = (state.get('trigger') or state.get('notice') or {}).get('reason')
     return 1 if reason in UNEXPLAINED_INTERRUPTIONS else RECOVERY_SUCCESSES
 
@@ -77,7 +79,8 @@ def current_settings(value):
         value['notice'] = None
         value.pop('trigger', None)
         for field in ('unknown_interruptions', 'consecutive_successes', 'recovery_disabled',
-                      'last_counted_interruption', 'last_counted_batch', 'last_escalation', 'recovery'):
+                      'last_counted_interruption', 'last_counted_batch', 'last_escalation', 'recovery',
+                      'recovery_required'):
             value.pop(field, None)
     value.setdefault('unknown_interruptions', 0)
     value.setdefault('consecutive_successes', 0)
@@ -271,6 +274,10 @@ class Store:
                     value['consecutive_successes'] = 0
             if escalate:
                 previous = value['level']
+                # A level raised by a GPU error keeps its full streak when unexplained events raise it further.
+                carried = previous > 0 and value['origin'] == 'automatic' and recovery_required(value) == RECOVERY_SUCCESSES
+                value['recovery_required'] = (1 if reason in UNEXPLAINED_INTERRUPTIONS and not carried
+                                              else RECOVERY_SUCCESSES)
                 value['level'] = min(3, max(2, value['level'] + 1))
                 incident['level_changed'] = value['level'] != previous
                 value['origin'] = 'automatic'
