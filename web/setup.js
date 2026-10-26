@@ -254,7 +254,7 @@ export async function openSetup() {
         table.append(header);
         for (const [family, rows] of Object.entries(measured.sources)) for (const row of rows) {
             const tr = node('tr');
-            const names = {'edge-models':t('Video model','视频模型'),'vdn-models':t('Decoder','解码器'),models:t('Prompt model','提示词模型'),pypi:t('Python packages','Python 依赖'),github:t('Tools','安装工具'),git:'Git',cuda:'CUDA'};
+            const names = {'edge-models':t('Video model','视频模型'),'vdn-models':t('Decoder','解码器'),'encoder-models':t('Text encoder','文本编码器'),models:t('Prompt model','提示词模型'),pypi:t('Python packages','Python 依赖'),github:t('Tools','安装工具'),git:'Git',cuda:'CUDA'};
             if (family.startsWith('torch-')) names[family] = t('GPU packages','GPU 依赖');
             const rate = row.bytes_per_second / 2**20;
             const speed = !row.ok ? t('Unavailable','未连通') : row.speed_measured === false || !Number.isFinite(rate) || rate <= 0 ?

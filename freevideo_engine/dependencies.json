@@ -36,6 +36,13 @@
     "encoder_revision": "d6aa5dfc669a749dc9364a36f3b6d4d1545a53e8",
     "encoder_file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "encoder_sha256": "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6",
+    "encoder_modelscope": {
+      "repo": "LAAASSS/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "revision": "526349f8fbb32e5fcb0cb5e9235b30f45f1e1482",
+      "hf_revision": "d6aa5dfc669a749dc9364a36f3b6d4d1545a53e8",
+      "file": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "probe_file": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+    },
     "edge_modelscope": {
       "repo": "OpenVDN/vdn-minimax-h3-edge",
       "revision": "c247caf6f9f54fab9240e78fc7e0ec233016e47a",

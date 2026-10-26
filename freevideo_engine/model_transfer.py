@@ -255,8 +255,11 @@ def sdk_worker(request):
                     ms_parallel(_download,network.model_url(row,source),target,row['bytes'],headers,None,
                                 [Callback(row['file'],row['bytes'])])
                 else:
+                    remote_file = mirror.get('file', row['file'])
+                    local_dir = (stage / Path(row['file']).parent
+                                 if Path(remote_file).parent != Path(row['file']).parent else stage)
                     HubApi(endpoint=network.source_url(mirror['family'], source), token='').downloader.download_file(
-                        mirror['repo'], 'model', row['file'], revision=mirror['revision'], local_dir=stage,
+                        mirror['repo'], 'model', remote_file, revision=mirror['revision'], local_dir=local_dir,
                         file_size=row['bytes'], expected_sha256=None, progress_callbacks=[Callback])
             finally:
                 _download.requests.get = original_get

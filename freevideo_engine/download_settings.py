@@ -12,7 +12,7 @@ from .proxy import MODES
 CHOICES = ('auto', 'official', 'hf-mirror', 'modelscope')
 # Shown as is by the Tk window and mapped to Chinese by the setup page.
 SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".'
-FAMILIES = ('edge-models', 'vdn-models', 'models', 'image-models')
+FAMILIES = ('edge-models', 'vdn-models', 'encoder-models', 'models', 'image-models')
 
 
 def speed_text(row, zh=False):
@@ -117,8 +117,8 @@ def order(network, family, names):
         measured=list(dict.fromkeys(r['id'] for r in rows if r.get('ok') and r.get('id') in names))
         names=measured+[n for n in names if n not in measured]
     selected=value['source']
-    # ModelScope has no verified encoder mapping. That family retains its
-    # supported HF sources instead of constructing an invalid download URL.
+    # A source selection only applies to families with a supported route; the
+    # remaining families keep their measured and configured HF source order.
     return [selected]+[n for n in names if n!=selected] if family in FAMILIES and selected in names else names
 
 

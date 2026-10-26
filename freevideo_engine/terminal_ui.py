@@ -530,7 +530,7 @@ class LogProgress:
                               name=event.get('name') or model_download_name(event['file']).split(' · ')[0],
                               detail={'verify_model': 'Verify ', 'download_model': 'Download ',
                                       'assemble_model': 'Assemble downloaded parts · '}[kind] + model_download_name(event['file']))
-            elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models') and event.get('action') == 'attempt':
+            elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models', 'encoder-models') and event.get('action') == 'attempt':
                 self.model_backend = ''
                 self.model_source = {'modelscope': 'ModelScope', 'official': 'Hugging Face',
                                      'hf-mirror': 'HF Mirror', 'user': 'Custom source'}.get(event['source'], 'Model source')
@@ -566,7 +566,7 @@ class LogProgress:
                 update(done=0, total=0, rate=None, scope=action, unit='bytes', detail=detail)
                 if action in ('retry', 'route-retry'):
                     update(activity='resume', name='')
-            elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models') and event.get('action') in ('fallback', 'verifying'):
+            elif kind == 'network' and event.get('category') in ('models', 'vdn-models', 'edge-models', 'encoder-models') and event.get('action') in ('fallback', 'verifying'):
                 action = event['action']
                 self.model_backend = ''
                 detail = ('Verify %s · ' % event.get('algorithm', 'integrity').upper() if action == 'verifying'

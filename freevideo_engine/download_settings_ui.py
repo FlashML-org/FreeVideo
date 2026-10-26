@@ -129,6 +129,7 @@ class DownloadSettings:
             self.rendered = measured
             self.speeds.delete(*self.speeds.get_children())
             families = {'edge-models': self.t('Video model', '视频模型'), 'vdn-models': self.t('Decoder', '解码器'),
+                        'encoder-models': self.t('Text encoder', '文本编码器'),
                         'models': self.t('Prompt model', '提示词模型'), 'pypi': self.t('Python packages', 'Python 依赖'),
                         'github': self.t('Tools', '安装工具'), 'git': 'Git', 'cuda': 'CUDA'}
             for family, rows in (measured or {}).get('sources', {}).items():

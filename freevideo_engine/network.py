@@ -36,6 +36,8 @@ SOURCES = {
                    'modelscope': 'https://www.modelscope.cn'},
     'edge-models': {'official': 'https://huggingface.co', 'hf-mirror': 'https://hf-mirror.com',
                     'modelscope': 'https://www.modelscope.cn'},
+    'encoder-models': {'official': 'https://huggingface.co', 'hf-mirror': 'https://hf-mirror.com',
+                       'modelscope': 'https://www.modelscope.cn'},
     'image-models': {'official': 'https://huggingface.co', 'hf-mirror': 'https://hf-mirror.com',
                      'modelscope': 'https://www.modelscope.cn'},
     'github': {'official': 'https://github.com', 'ghfast': 'https://ghfast.top/https://github.com'},
@@ -69,6 +71,7 @@ def proxy_environment(environ=None):
 def configured_source(family, env):
     names = {'pypi': ('UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'PIP_INDEX_URL'),
              'models': ('HF_ENDPOINT',), 'vdn-models': ('HF_ENDPOINT',), 'edge-models': ('HF_ENDPOINT',),
+             'encoder-models': ('HF_ENDPOINT',),
              'github': ('FREEVIDEO_GITHUB_MIRROR',)}.get(family, ())
     return next((env[k].rstrip('/') for k in names if env.get(k)), None)
 
@@ -94,7 +97,12 @@ def modelscope_mapping(row, spec=None):
     """Return only a published, verified HF-to-ModelScope revision pair."""
     settings = model_spec(spec)
     # A ModelScope commit is not a Hugging Face commit. Only the verified pair
-    # shares paths/content; an encoder or a future HF pin needs its own route.
+    # shares content; unrelated or newer HF pins must keep using Hugging Face.
+    encoder = settings.get('encoder_modelscope', {})
+    if (encoder and row['repo'] == settings.get('encoder_repo') and
+            row['revision'] == settings.get('encoder_revision') == encoder.get('hf_revision') and
+            row.get('file') == settings.get('encoder_file')):
+        return dict(encoder, family='encoder-models')
     for prefix in ('vdn', 'edge'):
         mirror = settings.get(prefix + '_modelscope', {})
         if (mirror and row['repo'] == settings.get(prefix + '_repo', mirror['repo']) and
@@ -123,7 +131,7 @@ def model_url(row, name, env=None, *, spec=None):
         if not mirror:
             raise ValueError('No verified ModelScope mapping for this model revision')
         return (source_url(mirror['family'], name, env) + '/api/v1/models/' + quote(mirror['repo'], safe='/') +
-                '/repo?' + urlencode({'Revision': mirror['revision'], 'FilePath': row['file']}))
+                '/repo?' + urlencode({'Revision': mirror['revision'], 'FilePath': mirror.get('file', row['file'])}))
     return (source_url('models', name, env) + '/' + quote(row['repo'], safe='/') +
             '/resolve/' + quote(row['revision'], safe='') + '/' + quote(row['file'], safe='/'))
 
@@ -309,11 +317,15 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
         elif family == 'image-models':
             from .image_gen.image_pack import rows
             url = model_url(rows()[0], name, env)
-        elif family in ('vdn-models', 'edge-models'):
+        elif family in ('vdn-models', 'edge-models', 'encoder-models'):
             settings = spec['models']
-            mirror = settings[family.split('-')[0] + '_modelscope']
-            url = model_url({'repo': mirror['repo'], 'revision': mirror['hf_revision'],
-                             'file': mirror['probe_file']}, name, env, spec=spec)
+            if family == 'encoder-models':
+                url = model_url({'repo': settings['encoder_repo'], 'revision': settings['encoder_revision'],
+                                 'file': settings['encoder_file']}, name, env, spec=spec)
+            else:
+                mirror = settings[family.split('-')[0] + '_modelscope']
+                url = model_url({'repo': mirror['repo'], 'revision': mirror['hf_revision'],
+                                 'file': mirror['probe_file']}, name, env, spec=spec)
         elif family == 'github':
             url = versions.get('github_probe_url', versions['uv']['url']).replace(SOURCES['github']['official'], base, 1)
         elif family == 'git':
@@ -347,7 +359,7 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             component = versions['cuda_toolkits']['13.0']['components']['cuda_cudart']
             url = base + '/' + component['relative_path']
         headers = ()
-        if (family in ('models', 'vdn-models', 'edge-models', 'image-models') and name == 'official'
+        if (family in ('models', 'vdn-models', 'edge-models', 'encoder-models', 'image-models') and name == 'official'
                 and urlsplit(url).scheme == 'https' and urlsplit(url).netloc == 'huggingface.co'):
             token = env.get('HF_TOKEN') or env.get('HUGGING_FACE_HUB_TOKEN')
             if token:
@@ -404,6 +416,8 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
     proxy_configured = proxy.configured(env)
     git_keys = [] if offline or model_only or not git_available else proxy.git_proxy_keys(env)
     families = ['pypi', 'models', 'vdn-models', 'image-models', 'github', 'git', 'cuda']
+    if spec['models'].get('encoder_modelscope'):
+        families.insert(2, 'encoder-models')
     if spec['models'].get('edge_modelscope'):
         families.insert(3, 'edge-models')
     if versions.get('target_system') in ('Windows', 'Darwin'):
@@ -414,7 +428,7 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
         if family not in families:
             families.append(family)
     if model_only:
-        families=[family for family in families if family in ('models','vdn-models','edge-models','image-models')]
+        families=[family for family in families if family in ('models','encoder-models','vdn-models','edge-models','image-models')]
     selections, jobs = {}, []
     for family in families:
         group = 'torch' if family.startswith('torch-') else 'github' if family == 'git' else family
@@ -1073,7 +1087,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         if updating and progress:
             progress(path.stat().st_size, size or 0, last_rate)
 
-    model = category in ('models', 'vdn-models', 'edge-models', 'image-models')
+    model = category in ('models', 'vdn-models', 'edge-models', 'encoder-models', 'image-models')
     stall_seconds = stall_seconds if stall_seconds is not None else 120 if model else 20
 
     def matches(candidate, source='local'):
@@ -1089,7 +1103,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                 check()
             if model:
                 report(done, total)
-        matched = hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'image-models'),
+        matched = hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'encoder-models', 'image-models'),
                             progress=verification if model or check else None) == expected
         if matched and verify is not None:
             matched = verify(candidate)
