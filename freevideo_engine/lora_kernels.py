@@ -4,7 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _up_add(Z, B, Y, M: tl.constexpr, N: tl.constexpr, R: tl.constexpr,
+def _up_add(Z, B, Y, M, N: tl.constexpr, R: tl.constexpr,
             SCALE: tl.constexpr, BM: tl.constexpr, BN: tl.constexpr, BR: tl.constexpr):
     m = tl.program_id(0) * BM + tl.arange(0, BM)
     n = tl.program_id(1) * BN + tl.arange(0, BN)

@@ -9,6 +9,7 @@ import gc
 import types
 import torch
 import torch.nn.functional as F
+from .lora_online import shared_down
 
 
 # Sequence lengths whose first attention call has run. That call compiles, and
@@ -255,11 +256,12 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                     tensor.record_stream(stream)
         try:
             fresh = not streams and len(x) not in COLLECTED_LENGTHS
-            for index, start in enumerate(range(0, attn.num_heads, chunk)):
-                with torch.cuda.stream(streams[index % len(streams)]) if streams else nullcontext():
-                    group(start)
-                if fresh:
-                    gc.collect()
+            with shared_down() if not streams else nullcontext():
+                for index, start in enumerate(range(0, attn.num_heads, chunk)):
+                    with torch.cuda.stream(streams[index % len(streams)]) if streams else nullcontext():
+                        group(start)
+                    if fresh:
+                        gc.collect()
             COLLECTED_LENGTHS.add(len(x))
         finally:
             # Output projection, offload cleanup and the next block cannot
