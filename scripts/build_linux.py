@@ -88,8 +88,8 @@ case "$major$minor" in
     ''|*[!0-9]*) ;;
     *)
         if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 34 ]; }; then
-            zh="此系统过旧，无法运行 FreeVideo 桌面版。请使用 2022 年及以后的发行版，或在终端中运行 setup.sh 安装。"
-            en="This system is too old to run the FreeVideo desktop app. Use a distribution from 2022 or later, or install from a terminal with setup.sh."
+            zh="此系统版本过旧，无法运行 FreeVideo 桌面版。请使用 2022 年及以后发布的 Linux 发行版，或按 Linux 安装说明在终端中运行 setup.sh 安装。"
+            en="This system is too old to run the FreeVideo desktop app. Use a Linux distribution released in 2022 or later, or follow the Linux installation guide to install with setup.sh in a terminal."
             printf '%s\\n%s\\n' "$zh" "$en" >&2
             if command -v zenity >/dev/null 2>&1; then zenity --error --title=FreeVideo --text="$zh\\n$en"
             elif command -v kdialog >/dev/null 2>&1; then kdialog --title FreeVideo --error "$zh
