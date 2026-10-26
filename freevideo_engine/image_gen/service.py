@@ -892,7 +892,11 @@ class Service:
             resident_process.OWNER.stop_prewarm()
             IDLE.stop()
             from ..comfy_residency import release_native
-            released = release_native(comfy_server())
+            try:
+                released = release_native(comfy_server())
+            except Exception:  # only frees memory early; the picture's own budget still decides
+                logging.warning('[FreeVideo] Could not unload ComfyUI models before the picture', exc_info=True)
+                released = None
             if released is not None:
                 logging.info('[FreeVideo] Unloaded ComfyUI models before the picture: %s', released)
                 with self.mutex:
