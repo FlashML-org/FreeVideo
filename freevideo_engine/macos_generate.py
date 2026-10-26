@@ -46,7 +46,12 @@ def policy(args, memory=None):
     capacity = min(memory['total_bytes'], amount('ram_gib', memory['total_bytes']))
     working = min(capacity, memory['available_bytes']) - reserve
     if working < 2 * GiB:
-        raise MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve')
+        error = MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve')
+        # What the system reported at this moment, so the report shows whether the Mac is small or busy.
+        error.memory_record = dict(total_bytes=memory['total_bytes'], available_bytes=memory['available_bytes'], reserve_bytes=reserve)
+        if getattr(args, 'ram_gib', None) is not None:
+            error.memory_record['launcher_limit_bytes'] = amount('ram_gib', None)
+        raise error
     # The original 4 GiB cap was a small-workload trial, not a device capacity.
     # Use the live unified allowance. The native backend additionally clamps it
     # to Metal's recommendation and rechecks availability when the worker starts.
@@ -364,6 +369,8 @@ def run(args):
     except BaseException as error:
         report.update(error_type=type(error).__name__, error_message=str(error), exception=traceback.format_exc(),
                       cancelled=isinstance(error, KeyboardInterrupt))
+        if getattr(error, 'memory_record', None):
+            report['preflight_memory'] = error.memory_record
         raise
     finally:
         processes.restore_handlers(previous)
