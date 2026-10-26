@@ -237,6 +237,12 @@ PLACE_RULES = (
       'Choose a folder on an APFS or Mac OS Extended disk.',
       '它不能安装 FreeVideo。'
       '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk that does not support file links', 'disk-format',
+     ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
+     ("It does not support the file operations that FreeVideo's Python environment needs. "
+      "Choose a folder on the Mac's built-in disk.",
+      '它不能安装 FreeVideo。'
+      '请选择 Mac 内置硬盘上的文件夹。')),
     (r'The installation folder is on a disk that is not connected', 'disk-missing',
      ('The disk is not connected', '这块硬盘没有连接'),
      ('Connect the disk that holds the installation folder, then check again, or choose another folder.',

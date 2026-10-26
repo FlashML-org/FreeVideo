@@ -4,6 +4,7 @@ The caller supplies the shared installer's fetch/progress/cancellation service.
 This prepares one tool; it does not declare a model installation ready.
 """
 from pathlib import Path
+import errno
 import json
 import math
 import os
@@ -36,6 +37,40 @@ def versions(value):
     # The native executable is always obtained from the verified PyPI wheel.
     return dict(value, target_system='Darwin', python=PYTHON_VERSION,
         uv=dict(UV, url=UV['sources']['official']), github_probe_url=value['uv']['url'])
+
+
+LOCATION_UNSUPPORTED = 'The installation folder is on a disk that does not support file links'
+# What a volume answers when it lacks the operation, as opposed to a permission or space problem.
+UNSUPPORTED = (errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS, errno.EPERM, errno.EXDEV, errno.EINVAL)
+
+
+def probe_links(root):
+    """'ok', 'copy' (no hard links) or 'blocked' (no symbolic links or renames) for a folder.
+
+    Any other failure, such as a missing permission, says nothing about the volume and counts as 'ok'."""
+    folder = Path(root) / ('.freevideo-link-probe-%d' % os.getpid())
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        source = folder / 'source'
+        source.write_bytes(b'x')
+        result = 'ok'
+        for name, make in (('symlink', lambda: os.symlink(source.name, folder / 'symbolic')),
+                           ('rename', lambda: os.rename(source, folder / 'renamed'))):
+            try:
+                make()
+            except OSError as error:
+                if error.errno in UNSUPPORTED:
+                    return 'blocked'
+                return 'ok'
+        try:
+            os.link(folder / 'renamed', folder / 'hard')
+        except OSError as error:
+            result = 'copy' if error.errno in UNSUPPORTED else 'ok'
+        return result
+    except OSError:
+        return 'ok'
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 GIT_UNAVAILABLE = 'Git is unavailable. Check the network connection, or install Git (Apple Command Line Tools), then retry.'
