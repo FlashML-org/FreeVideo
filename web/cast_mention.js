@@ -94,7 +94,8 @@ export function mentionRanges(text, people) {
 // pictures are gone is written as a plain name. `active: false` (first/last frames) leaves every name plain too, since
 // pictures of people cannot go with those. `continued` (the part continues a video) lets the characters stay: the part
 // keeps three reference pictures (see pictureNumbers) and its frames come after them, so a character whose pictures are
-// not among those three is written as a plain name.
+// not among those three is written as a plain name. A rewritten prompt already opens with its own subject definitions
+// (the rewrite writes them in H3's ref2va form); only its names become <Subject N> then.
 export function expandCast(text, rows, {active = true, continued = false} = {}) {
     text = String(text ?? '');
     const list = Array.isArray(rows) ? rows : [];
@@ -125,9 +126,20 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
             const last = ranges[ranges.length - 1];
             if (last && number === last[1] + 1) last[1] = number; else ranges.push([number, number]);
         }
-        return {name: person.name, description: person.description, pictures: ranges, audio: null};
+        return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: null};
     });
+    if (/^\s*subject_definitions:/.test(text)) return {text: result, subjects};
     return {text: subjectDefinitions(subjects) + '\n\n' + result, subjects};
+}
+
+// The rewrite of an expanded prompt, written back with the names the box had: <Subject N> becomes "@handle" of the
+// subject expandCast gave that number. A rewrite with a number that stands for no one is kept as it came.
+export function restoreCast(text, subjects) {
+    text = String(text ?? '');
+    const handles = (Array.isArray(subjects) ? subjects : []).map(subject => subject.handle ?? subject.name);
+    const numbers = [...text.matchAll(/<Subject (\d+)>/g)].map(match => Number(match[1]));
+    if (!numbers.length || numbers.some(number => !handles[number - 1])) return text;
+    return text.replace(/<Subject (\d+)>/g, (_, number) => '@' + handles[number - 1]);
 }
 
 // The pictures of a card to put in the media list, as the Agent carries them (agent/drama.py person_pictures): the sheet of
