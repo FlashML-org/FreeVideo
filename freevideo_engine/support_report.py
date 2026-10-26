@@ -308,8 +308,11 @@ def write_encoder_retry(output, encoding, *, index):
     return write(output, _retry=dict(stage='encoding', index=index, encoding=encoding))
 
 
-def write(output, report=None, bridge=None, *, _retry=None, live=False):
-    """Bounded JSON/log reads only. Failure to write must not fail generation."""
+def write(output, report=None, bridge=None, *, _retry=None, live=False, restarted=False):
+    """Bounded JSON/log reads only. Failure to write must not fail generation.
+
+    restarted: a live report of a run that an earlier ComfyUI process started; nothing is still running it.
+    """
     output = Path(output)
     notes = []
     def read_json(suffix, path=None):
@@ -454,7 +457,7 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         if not request.get('encoding_resources'):
             request['encoding_resources'] = dict(ram=read_json('.encoding.memory.json'))
         summary = summarize(request, engine, encoding)
-        if live and bridge.get('status') in ('starting', 'running'):
+        if live and not restarted and bridge.get('status') in ('starting', 'running'):
             summary['status'] = 'running'
         if bridge.get('status') == 'reused':
             summary['status'] = 'reused'
@@ -535,6 +538,8 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False):
         payload = redactor.structured(payload)
         if live:
             payload['snapshot'] = dict(collected_at=time.time(), running=summary['status'] == 'running')
+            if restarted:
+                payload['snapshot']['restarted_since_run'] = True
         # The generic secret redactor matches "token_summary" as a token key.
         # Restore only its fixed numeric counts, never token IDs or text.
         from .diagnostic_resources import token_summary

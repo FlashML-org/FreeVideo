@@ -236,6 +236,8 @@ class ReportDownloads:
         return None
 
     def snapshot(self, token):
+        with self.lock:
+            restarted = token not in self.runs
         output = self._lookup(token)
         if output is None:
             raise KeyError('Unknown report')
@@ -244,7 +246,7 @@ class ReportDownloads:
         target = output.with_suffix('.live.debug.json')
         if is_link(output.parent) or target.is_symlink() or target.exists() and is_link(target):
             raise KeyError('Report unavailable')
-        path = write(output, live=True)
+        path = write(output, live=True, restarted=restarted)
         if path is None:
             raise RuntimeError('Report not available yet')
         return path.read_bytes()

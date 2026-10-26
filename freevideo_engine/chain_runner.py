@@ -5,12 +5,15 @@ import logging
 import math
 from pathlib import Path, PurePosixPath
 import random
+import re
 import threading
 import time
 import uuid
 
 from . import chain_leads, chain_plan
 from . import chain_store as store
+
+REPORT_ID = re.compile(r'[a-f0-9]{32}')
 
 
 def _split_value(record, text):
@@ -959,6 +962,12 @@ class ChainRunner:
             block = self._current(record)
             if block is None or block['state'] != 'running':
                 return None
+            token = message.get('report_id')
+            if isinstance(token, str) and REPORT_ID.fullmatch(token) and block['report_id'] != token:
+                # A restart ends this block before `finished` stores its report, and the
+                # report of the interrupted run is the one a failure needs.
+                block['report_id'] = record['last_report_id'] = token
+                self._save(record)
             overall = message.get('overall') or {}
             used = _number(overall.get('elapsed_seconds'))
             used = self._elapsed(block) if used is None else used
