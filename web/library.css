@@ -38,14 +38,22 @@
 .fv-library .fv-backfill-actions{display:flex;justify-content:center;gap:8px;margin-top:6px}
 .fv-library .fv-backfill-actions button{min-height:30px;padding:4px 12px;font-size:12px}
 .fv-library-picture{position:relative}
-.fv-library-filter{display:flex;justify-content:center;gap:4px;margin:0 0 14px}
-.fv-library .fv-library-filter button[aria-pressed=true]{color:var(--fv-accent);background:var(--fv-selected);border-color:var(--fv-accent)}
-.fv-library-favorite{position:absolute;left:6px;bottom:6px;display:inline-flex;padding:4px;border-radius:50%;color:var(--fv-danger,#f09aa2);background:#0009}
+/* All / Favorites: the same segmented control as the studio's pass mode. */
+.fv-library .fv-pass-mode{display:inline-flex;flex:none;gap:2px;padding:2px;margin:0 0 12px;border:1px solid var(--fv-border);border-radius:calc(var(--fv-r-sm) + 2px);background:var(--fv-bg)}
+.fv-library .fv-pass-mode button{min-height:24px;height:24px;padding:0 10px;border:1px solid transparent;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);font-size:12px;font-weight:var(--fv-medium);white-space:nowrap;box-shadow:none;cursor:pointer;transition:background .2s,color .2s}
+.fv-library .fv-pass-mode button[aria-checked=true]{background:var(--fv-raised);color:var(--fv-ink);font-weight:var(--fv-semibold);box-shadow:0 1px 3px #0006}
+.fv-library .fv-pass-mode button:not(:disabled):hover{color:var(--fv-ink)}
+.fv-library .fv-pass-mode button:focus-visible{outline:2px solid var(--fv-accent);outline-offset:1px}
+.fv-library[data-selecting=true] .fv-library-filter{display:none}
+.fv-library-favorite{position:absolute;left:6px;bottom:6px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;color:var(--fv-accent);background:#0008;pointer-events:none}
 .fv-library-favorite[hidden]{display:none}
+.fv-library-favorite svg{width:12px;height:12px}
 .fv-library-favorite svg,.fv-library .fv-action-favorite[aria-pressed=true] svg{fill:currentColor}
 .fv-library .fv-action-favorite{width:38px;padding:0}
 .fv-library .fv-action-favorite>span:last-child{display:none}
-.fv-library .fv-action-favorite[aria-pressed=true]{color:var(--fv-danger,#f09aa2)}
+.fv-library .fv-action-favorite[aria-pressed=true]{color:var(--fv-accent)}
+.fv-library .fv-action-favorite svg{transition:fill .15s}
+@media (prefers-reduced-motion:reduce){.fv-library .fv-action-favorite svg,.fv-library .fv-pass-mode button{transition:none}}
 /* The picture, its caption and actions form one block, centred in the detail. */
 .fv-library-detail{container-type:inline-size}.fv-library-detail::after{content:'';margin-top:auto}
 .fv-library-frame{position:relative;container-type:size;max-height:max(160px,calc(100cqw / var(--fv-ratio,1.7778)));margin-top:auto;background:none;box-shadow:none}

@@ -198,14 +198,15 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     const collection = el('section', null, 'fv-library-collection'); collection.setAttribute('aria-label', t('Saved videos', '已保存的视频'));
     let favoritesOnly = false;
     try { favoritesOnly = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
-    const filters = el('div', null, 'fv-library-filter');
-    filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', t('Creations filter', '作品筛选'));
-    const filterAll = button(t('All', '全部'), () => changeFilter(false), 'fv-quiet');
-    const filterFavorites = button(t('Favorites', '收藏'), () => changeFilter(true), 'fv-quiet');
+    const filters = el('div', null, 'fv-pass-mode fv-library-filter');
+    filters.setAttribute('role', 'radiogroup'); filters.setAttribute('aria-label', t('Show', '显示'));
+    const filterAll = button(t('All', '全部'), () => changeFilter(false));
+    const filterFavorites = button(t('Favorites', '收藏'), () => changeFilter(true));
+    for (const option of [filterAll, filterFavorites]) option.setAttribute('role', 'radio');
     filters.append(filterAll, filterFavorites);
     function syncFilter() {
-        filterAll.setAttribute('aria-pressed', String(!favoritesOnly));
-        filterFavorites.setAttribute('aria-pressed', String(favoritesOnly));
+        filterAll.setAttribute('aria-checked', String(!favoritesOnly));
+        filterFavorites.setAttribute('aria-checked', String(favoritesOnly));
     }
     function changeFilter(value) {
         if (deleting || favoritesOnly === value) return;
@@ -339,32 +340,39 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
             ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
         if (reveal) dialog.dataset.detail = 'true';
     }
+    const cardLabel = row => `${timestamp(row)} · ${dimensions(row)}${row.favorite ? ` · ${t('Favorite', '已收藏')}` : ''}`;
     function syncFavorite(row) {
-        const badge = cards.get(row.video)?.querySelector('.fv-library-favorite');
+        const card = cards.get(row.video), badge = card?.querySelector('.fv-library-favorite');
         if (badge) badge.hidden = !row.favorite;
+        card?.setAttribute('aria-label', cardLabel(row));
     }
     async function saveFavorite(row, favorite) {
         const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
-        const response = await api.fetchApi('/freevideo/library/favorite', {method: 'POST',
-            headers: jsonHeaders, body: JSON.stringify({id, favorite}), signal: abort.signal});
-        if (!response.ok) throw new Error('Favorite unavailable');
-        const value = await response.json();
-        if (value.favorite !== favorite) throw new Error('Invalid favorite response');
+        notice.textContent = '';
+        try {
+            const response = await api.fetchApi('/freevideo/library/favorite', {method: 'POST',
+                headers: jsonHeaders, body: JSON.stringify({id, favorite}), signal: abort.signal});
+            if (!response.ok) throw new Error('Favorite unavailable');
+            const value = await response.json();
+            if (value.favorite !== favorite) throw new Error('Invalid favorite response');
+        } catch (error) {
+            if (!disposed && error.name !== 'AbortError') {
+                const text = isNetworkTypeError(error) ? connectionLostText(t)
+                    : favorite ? t('Could not save the favorite. Try again.', '无法保存收藏，请重试。')
+                    : t('Could not remove the favorite. Try again.', '无法取消收藏，请重试。');
+                fault(notice, text, ['Favorites', '收藏']);
+            }
+            throw error;
+        }
         row.favorite = favorite;
         if (disposed) return;
         const current = rows.get(row.video);
         if (current) current.favorite = favorite;
         syncFavorite(row);
         if (selected === row.video) links.dataset.favorite = String(favorite);
-        if (favoritesOnly && !favorite) {
-            rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video); picked.delete(row.video);
-            if (selected === row.video) {
-                releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
-                stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; dialog.dataset.detail = 'false';
-            }
-            regroup();
-            await load(false);
-        } else if (loading || (favoritesOnly && !current)) await load(false);
+        // Under Favorites an un-favorited card stays until the filter changes or the list is refreshed,
+        // so the creation being viewed does not vanish and one more click restores it.
+        if (loading || (favoritesOnly && favorite && !current)) await load(false);
     }
     async function secondPass(row) {
         notice.textContent = '';
@@ -705,7 +713,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         if (cards.has(row.video)) { syncFavorite(row); return; }
         const card = button('', event => selecting ? pick(row.video, event.shiftKey) : select(rows.get(row.video)), 'fv-library-card');
         card.dataset.video = row.video;
-        card.setAttribute('aria-label', `${timestamp(row)} · ${dimensions(row)}`);
+        card.setAttribute('aria-label', cardLabel(row));
         card.setAttribute('aria-pressed', String(selecting ? picked.has(row.video) : row.video === selected));
         card.classList.toggle('fv-picked', selecting && picked.has(row.video));
         const picture = el('div', null, 'fv-library-picture');
@@ -714,7 +722,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         image.onerror = () => { image.hidden = true; };
         picture.append(image, el('span', '✓', 'fv-library-check'));
         const favorite = el('span', null, 'fv-library-favorite'); favorite.append(icon('heart'));
-        favorite.setAttribute('role', 'img'); favorite.setAttribute('aria-label', t('Favorite', '已收藏'));
+        favorite.setAttribute('aria-hidden', 'true');
         favorite.hidden = !row.favorite; picture.append(favorite);
         if (row.preview) picture.append(el('span', t('First-pass preview', '一采预览'), 'fv-preview-badge'));
         // Made by an AI agent: say so, with the name the agent gave the shot.
@@ -742,7 +750,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
             for (const row of data.items || []) append(row);
             for (const row of arrivals) append(row, true);
             next = data.next; more.hidden = !next;
-            message.textContent = rows.size ? '' : favoritesOnly ? t('No favorites yet.', '暂无收藏。') : t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
+            message.textContent = rows.size ? '' : favoritesOnly ? t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。') : t('Your finished videos will appear here.', '生成完成的视频会保存在这里。');
             if (!rows.has(selected)) {
                 releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
                 stats.hidden = true; stats.replaceChildren(); budget.textContent = '';

@@ -207,20 +207,18 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         const sync = () => {
             button.setAttribute('aria-pressed', String(!!record.favorite));
             button.lastElementChild.textContent = button.title = record.favorite
-                ? t('Remove from favorites', '取消收藏') : t('Favorite', '收藏');
+                ? t('Remove from favorites', '取消收藏') : t('Add to favorites', '收藏');
             button.setAttribute('aria-label', button.title);
         };
         sync();
+        // The caller reports a failure next to the video; the heart keeps its previous state.
         button.onclick = async () => {
             if (button.disabled) return;
             button.disabled = true; button.setAttribute('aria-busy', 'true');
             const value = !record.favorite;
-            try { await favorite(value); record.favorite = value; sync(); }
-            catch {
-                button.lastElementChild.textContent = button.title = t('Could not save favorite · retry', '无法保存收藏 · 重试');
-                button.setAttribute('aria-label', button.title);
-            }
-            finally { button.disabled = false; button.removeAttribute('aria-busy'); }
+            try { await favorite(value); record.favorite = value; }
+            catch { /* Shown by the caller. */ }
+            finally { sync(); button.disabled = false; button.removeAttribute('aria-busy'); }
         };
         bar.append(button);
     }
