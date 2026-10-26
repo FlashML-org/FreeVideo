@@ -1323,22 +1323,90 @@ def relocate(source, destination):
     remove_tree(source)
 
 
+# Checks compare content only: a copy, restore or drive that changes permission
+# bits, or a global line-ending setting, must not make a pinned checkout look
+# edited. These settings apply to that one Git command and are never stored.
+CONTENT_ONLY = ('-c', 'core.filemode=false', '-c', 'core.autocrlf=false')
+
+
+def checkout_environment(path, env):
+    """Git environment that reads the repository at `path` itself, never one around it."""
+    env = dict(os.environ if env is None else env)
+    for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY'):
+        env.pop(name, None)
+    # Without its own .git/refs (a backup that drops empty folders), Git would
+    # otherwise climb to an enclosing repository and report that one's HEAD.
+    env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.abspath(str(path)))
+    return env
+
+
+def sparse_pathspecs(patterns):
+    """Pathspecs equal to anchored, literal sparse patterns, or None when they cannot be expressed."""
+    specs = []
+    for pattern in patterns:
+        pattern = pattern.strip()
+        if not pattern or pattern.startswith('#'):
+            continue
+        if not pattern.startswith('/') or any(c in pattern for c in '!*?[\\'):
+            return None
+        name = pattern.strip('/')
+        if not name:
+            return None
+        specs.append(':(top,literal)' + name)
+    return specs or None
+
+
+def sparse_enabled(path, git, env):
+    value = config_value(path, 'core.sparseCheckout', git, env) or ''
+    return value.lower() in ('true', 'yes', 'on', '1')
+
+
+def sparse_patterns(path, git, env):
+    """The sparse checkout patterns the checkout at `path` uses, or None."""
+    if not sparse_enabled(path, git, env):
+        return None
+    try:
+        text = io_path(Path(path) / '.git' / 'info' / 'sparse-checkout').read_text(encoding='utf-8')
+    except OSError:
+        return None
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def checkout_status(path, git, env, hidden, *, filemode=False):
+    """`git status` lines for tracked files, limited to the sparse checkout when there is one.
+
+    Git 2.37 and newer report a file that appears at a path outside the sparse
+    patterns; such a file is not part of what FreeVideo uses.
+    """
+    specs = sparse_pathspecs(sparse_patterns(path, git, env) or [])
+    settings = CONTENT_ONLY if not filemode else ('-c', 'core.filemode=true', '-c', 'core.autocrlf=false')
+    return subprocess_output.output_external([git, '-c', 'core.longpaths=true', '-C', str(path), *settings,
+                                              'status', '--porcelain', '--untracked-files=no',
+                                              *(['--', *specs] if specs else [])], env=env, **hidden)
+
+
 def repository_state(path, git, env, revision='HEAD', **options):
-    """What `revision` is and what local changes the checkout at `path` has."""
+    """What `revision` is and what content changes the checkout at `path` has."""
     path = Path(path)
     prefix = [git, '-c', 'core.longpaths=true']
     hidden = dict(hidden_console(), **options)
     if not git_folder_too_deep(path):
-        head = subprocess_output.output_external([*prefix, '-C', str(path), 'rev-parse', revision], env=env, **hidden).strip()
-        dirty = subprocess_output.output_external([*prefix, '-C', str(path), 'status', '--porcelain', '--untracked-files=no'], env=env, **hidden)
+        env = checkout_environment(path, env)
+        # A folder Git cannot read is reported by the caller, not as Git's own message in the log.
+        hidden.setdefault('stderr', subprocess.PIPE)
+        head = subprocess_output.output_external([*prefix, '-C', str(path), *CONTENT_ONLY, 'rev-parse', revision],
+                                                 env=env, **hidden).strip()
+        dirty = checkout_status(path, git, env, hidden)
         return head, dirty
     # Name the repository instead of entering it. If Git cannot read it this
     # way, HEAD is read from the file and local changes cannot be checked.
     git_dir = '--git-dir=' + str(path / '.git')
     folder = tempfile.gettempdir()
     try:
-        head = subprocess_output.output_external([*prefix, git_dir, 'rev-parse', revision], cwd=folder, env=env, **hidden).strip()
-        dirty = subprocess_output.output_external([*prefix, git_dir, 'diff-index', '--cached', '--name-only', 'HEAD'], cwd=folder, env=env, **hidden)
+        head = subprocess_output.output_external([*prefix, git_dir, *CONTENT_ONLY, 'rev-parse', revision],
+                                                 cwd=folder, env=env, **hidden).strip()
+        dirty = subprocess_output.output_external([*prefix, git_dir, *CONTENT_ONLY, 'diff-index', '--cached',
+                                                   '--name-only', 'HEAD'], cwd=folder, env=env, **hidden)
     except (subprocess.CalledProcessError, OSError):
         # Git also refuses a --git-dir this long, so read what is asked from the files.
         head = stored_head(path)
@@ -1351,8 +1419,29 @@ def repository_state(path, git, env, revision='HEAD', **options):
     return head, dirty
 
 
+def stored_reference(path, name):
+    """The commit a reference such as refs/heads/main names, from its file or packed-refs, or None."""
+    try:
+        return io_path(path / '.git' / name).read_text(encoding='utf-8').strip()
+    except OSError:
+        pass
+    try:
+        packed = io_path(path / '.git' / 'packed-refs').read_text(encoding='utf-8')
+    except OSError:
+        return None
+    for line in packed.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == name and not line.startswith(('#', '^')):
+            return parts[0]
+    return None
+
+
 def stored_head(path):
-    return io_path(path / '.git' / 'HEAD').read_text(encoding='utf-8').strip()
+    """The commit .git/HEAD names, following a symbolic reference such as `ref: refs/heads/main`."""
+    head = io_path(path / '.git' / 'HEAD').read_text(encoding='utf-8').strip()
+    if head.startswith('ref:'):
+        return stored_reference(path, head.split(None, 1)[1].strip()) or head
+    return head
 
 
 def stored_tree(path, commit):
@@ -1360,10 +1449,9 @@ def stored_tree(path, commit):
     import zlib
     try:
         if commit.startswith('ref:'):
-            name = commit.split(None, 1)[1]
-            commit = io_path(path / '.git' / name).read_text(encoding='utf-8').strip()
+            commit = stored_reference(path, commit.split(None, 1)[1].strip())
         raw = zlib.decompress(io_path(path / '.git' / 'objects' / commit[:2] / commit[2:]).read_bytes())
-    except (OSError, ValueError, IndexError, zlib.error):
+    except (OSError, ValueError, IndexError, TypeError, zlib.error):
         return None
     header, _, body = raw.partition(b'\0')
     first = body.split(b'\n', 1)[0]
@@ -1372,14 +1460,140 @@ def stored_tree(path, commit):
     return None
 
 
+def status_paths(lines):
+    return [line[3:].split(' -> ')[-1] for line in (lines or '').splitlines() if len(line) > 3]
+
+
+def config_value(path, key, git, env):
+    """A value from the checkout's own config file (readable even where Git cannot open the repository)."""
+    try:
+        result = subprocess_output.run_external(
+            [git, 'config', '--file', str(Path(path) / '.git' / 'config'), '--get', key], env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30, **hidden_console())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def same_source(first, second):
+    def normal(url):
+        url = url.strip().rstrip('/')
+        return url[:-4] if url.endswith('.git') else url
+    return normal(first) == normal(second)
+
+
+def owned_checkout(target, url, sparse, git, env):
+    """Whether `target` is a checkout FreeVideo made itself and may set aside.
+
+    Only dependency folders directly in a FreeVideo `vendor` folder qualify, and
+    only when the checkout is set up as clone() leaves it: the same sparse
+    patterns, or (without them) no origin or the same origin. A ComfyUI the user
+    works in is never replaced: its custom nodes and models live inside it.
+    """
+    target = Path(target)
+    if target.parent.name != 'vendor' or not io_path(target / '.git').is_dir():
+        return False
+    enabled = sparse_enabled(target, git, env)
+    if sparse:
+        try:
+            patterns = io_path(target / '.git' / 'info' / 'sparse-checkout').read_text(encoding='utf-8').split()
+        except OSError:
+            return False
+        return enabled and patterns == [p.strip() for p in sparse]
+    origin = config_value(target, 'remote.origin.url', git, env)
+    return not enabled and (origin is None or same_source(origin, url))
+
+
+def mismatch_message(target, git, env, head, commit, dirty):
+    """A specific description of how an existing checkout differs, naming only its folder and files."""
+    details = []
+    if head is None:
+        details.append('Its version could not be read.')
+    elif head != commit:
+        details.append('It holds a different version.')
+    changed = status_paths(dirty)
+    if changed:
+        shown = ', '.join(changed[:8]) + (' and %d more' % (len(changed) - 8) if len(changed) > 8 else '')
+        details.append('Files with changed content (%d): %s.' % (len(changed), shown))
+    if head is not None:
+        try:
+            with_modes = status_paths(checkout_status(target, git, checkout_environment(target, env),
+                                                      dict(hidden_console(), timeout=60), filemode=True))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            with_modes = []
+        modes = [name for name in with_modes if name not in set(changed)]
+        if modes:
+            details.append('%d other file(s) differ only in permissions, which is accepted.' % len(modes))
+    return ('A dependency folder differs from the version FreeVideo needs: %s. %s '
+            'Rename or move this folder, then retry installation; FreeVideo then downloads a fresh copy.'
+            % (target, ' '.join(details)))
+
+
+REPLACED_MARKER = 'freevideo-replaced'
+
+
+def set_aside(target):
+    """Rename an outdated checkout to `<name>.replaced-<time>` beside it; return the new path."""
+    old = target.with_name('%s.replaced-%s' % (target.name, time.strftime('%Y%m%d-%H%M%S')))
+    if io_path(old).exists():
+        old = old.with_name('%s-%d' % (old.name, time.time_ns()))
+    try:
+        io_path(target).rename(io_path(old))
+    except OSError as error:
+        raise ValueError('FreeVideo could not update the dependency folder %s because another program is using '
+                         'files in it. Close programs that use this folder, then retry installation. '
+                         'The folder was left unchanged.' % target) from error
+    try:
+        io_path(old / '.git' / REPLACED_MARKER).write_text(target.name + '\n', encoding='utf-8')
+    except OSError:
+        pass  # Without the marker the folder is never removed automatically.
+    return old
+
+
+def remove_earlier_replaced(target, keep):
+    """Remove older folders set_aside() made for `target`; never another folder."""
+    pattern = re.compile(re.escape(target.name) + r'\.replaced-\d{8}-\d{6}(-\d+)?')
+    for path in io_path(target.parent).glob(target.name + '.replaced-*'):
+        if (path.name == keep.name or not pattern.fullmatch(path.name) or path.is_symlink()
+                or not (path / '.git' / REPLACED_MARKER).is_file()):
+            continue
+        try:
+            remove_tree(path)
+        except OSError:
+            pass  # Held by another program; a later replacement tries again.
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
-    """Fetch only the pinned commit, atomically; never reset existing checkouts."""
+    """Fetch only the pinned commit, atomically; never reset existing checkouts.
+
+    An existing checkout at the pinned commit with unchanged content is used
+    as it is. One FreeVideo made itself in its `vendor` folder that holds
+    another version or changed content is replaced by a fresh verified
+    download; the old folder is kept beside it as `<name>.replaced-<time>`.
+    Any other differing folder is reported, never changed.
+    """
     target = Path(target)
     network = installed_plan(env) if network is None else network
     env = proxy_environment(env)
     env.update(GIT_TERMINAL_PROMPT='0', GIT_HTTP_LOW_SPEED_LIMIT='1024', GIT_HTTP_LOW_SPEED_TIME='20')
     git = env.get('FREEVIDEO_GIT') or 'git'
-    version = git_version(git, env) if not io_path(target).exists() else None
+    replacing = False
+    if io_path(target).exists():
+        if not io_path(target / '.git').exists():
+            raise ValueError('Existing dependency is not a Git checkout of the pinned source: ' + str(target))
+        try:
+            head, dirty = repository_state(target, git, env)
+        except (subprocess.CalledProcessError, OSError):
+            head, dirty = None, ''  # Git cannot read it as a repository of its own.
+        if head == commit and not dirty:
+            return target
+        if not owned_checkout(target, url, sparse, git, env):
+            raise ValueError(mismatch_message(target, git, env, head, commit, dirty))
+        replacing = True
+        event(network, category='git', file=target.name, action='replace-planned', commit=commit,
+              reason='unreadable' if head is None else 'other-version' if head != commit else 'changed-content',
+              changed_files=len(status_paths(dirty)))
+    version = git_version(git, env) if replacing or not io_path(target).exists() else None
     if version and version < MIN_GIT:
         raise RuntimeError(old_git_message(version))
     def execute(label, command):
@@ -1389,13 +1603,6 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         result = subprocess_output.run_external(list(map(str, command)), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **hidden_console())
         if result.returncode:
             raise RuntimeError(result.stdout[-2500:])
-    if io_path(target).exists():
-        if not io_path(target / '.git').exists():
-            raise ValueError('Existing dependency is not a Git checkout of the pinned source: ' + str(target))
-        head, dirty = repository_state(target, git, env)
-        if head != commit or dirty:
-            raise ValueError('Existing dependency differs from the pinned clean source: ' + str(target))
-        return target
     io_path(target.parent).mkdir(parents=True, exist_ok=True)
     candidates = urls(dict(network, sources=dict(network.get('sources', {}), github=network.get('sources', {}).get('git', [{'id': 'official'}]))), 'github', url, env)
     configured_env = env
@@ -1441,7 +1648,27 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
                 raise ValueError('Downloaded source did not match its pinned commit')
             if scratch:
                 relocate(work, temporary)
-            io_path(temporary).rename(io_path(target))
+            old = set_aside(target) if replacing else None
+            try:
+                io_path(temporary).rename(io_path(target))
+            except OSError as error:
+                if old is None:
+                    raise
+                try:
+                    io_path(old).rename(io_path(target))
+                except OSError:
+                    raise ValueError('FreeVideo could not put the new copy of %s in place, and the previous files '
+                                     'are kept in %s. Close programs that use these folders, then retry '
+                                     'installation.' % (target, old)) from error
+                try:
+                    io_path(target / '.git' / REPLACED_MARKER).unlink()
+                except OSError:
+                    pass
+                raise ValueError('FreeVideo could not put the new copy of %s in place. Close programs that use '
+                                 'this folder, then retry installation. The folder was left unchanged.' % target) from error
+            if old is not None:
+                event(network, category='git', file=target.name, action='replaced', commit=commit, kept=old.name)
+                remove_earlier_replaced(target, old)
             source_health(network, 'git', name, True)
             route_health(network, 'git', name, route)
             event(network, category='git', source=name, route=route, file=target.name, action='verified', commit=commit)
