@@ -30,6 +30,7 @@ def install(targets=('agents', 'claude'), home=None):
                 destination.unlink()
             elif destination.exists():
                 shutil.rmtree(destination)
+            staging.chmod(0o755)  # mkdtemp creates 0700; the installed folder keeps the usual readable mode
             staging.rename(destination)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
