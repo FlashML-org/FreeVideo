@@ -79,6 +79,29 @@ StartupWMClass=FreeVideo
 APP_RUN = '''#!/bin/sh
 # The AppImage runtime sets APPDIR; resolve it here for extracted runs too.
 HERE="$(dirname "$(readlink -f "$0")")"
+# The launcher needs glibc 2.34; on an older system it fails with a message on a terminal nobody sees.
+glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^[^0-9]*//')"
+major="${glibc%%.*}"
+minor="${glibc#*.}"
+minor="${minor%%.*}"
+case "$major$minor" in
+    ''|*[!0-9]*) ;;
+    *)
+        if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 34 ]; }; then
+            zh="此系统过旧，无法运行 FreeVideo 桌面版。请使用 2022 年及以后的发行版，或在终端中运行 setup.sh 安装。"
+            en="This system is too old to run the FreeVideo desktop app. Use a distribution from 2022 or later, or install from a terminal with setup.sh."
+            printf '%s\\n%s\\n' "$zh" "$en" >&2
+            if command -v zenity >/dev/null 2>&1; then zenity --error --title=FreeVideo --text="$zh\\n$en"
+            elif command -v kdialog >/dev/null 2>&1; then kdialog --title FreeVideo --error "$zh
+$en"
+            elif command -v notify-send >/dev/null 2>&1; then notify-send FreeVideo "$zh $en"
+            elif command -v xmessage >/dev/null 2>&1; then xmessage -center "$zh
+$en"
+            fi
+            exit 1
+        fi
+        ;;
+esac
 exec "$HERE/usr/lib/FreeVideo/FreeVideo" "$@"
 '''
 
