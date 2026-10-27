@@ -13,6 +13,28 @@ from . import chain_leads, chain_plan
 from . import chain_store as store
 
 
+def _split_value(record, text):
+    """What the prompt model sorts into parts: the whole description and each part's new seconds."""
+    first = next(row for row in record['blocks'] if row['index'] == 0)
+    return dict(text=text, continued=first['after'] is not None,
+                seconds=[row['new_frames'] / chain_plan.FPS for row in record['blocks']])
+
+
+def _ordered_texts(record, value):
+    """Part texts when the description could not be split: its sentences in order, with the LoRA trigger
+    words every part carries, or None for a description without sentences."""
+    from .lora_triggers import apply_chain_triggers
+    from .prompt_vlm.rules import order_split
+    if not isinstance(value['text'], str):
+        return None
+    try:
+        probe = dict(snapshot=deepcopy(record['snapshot']), node=record['node'],
+                     blocks=[dict(inputs=dict(text=text)) for text in order_split(value)])
+        apply_chain_triggers(probe)
+    except Exception:
+        return None
+    return [row['inputs']['text'] for row in probe['blocks']]
+
 class ChainBusy(ValueError):
     pass
 
@@ -373,10 +395,14 @@ class ChainRunner:
                                  fraction=0., remaining_seconds=None, continuation=None,
                                  skip_frames=0, skip_audio_samples=0)
             split = record.get('split')
+            whole = record['snapshot']['prompt'][record['node']]['inputs'].get('text')
             if (split is not None and split['state'] == 'failed' and split['reason'] in ('busy', 'memory')
                     and all(row['state'] != 'done' for row in record['blocks'])
-                    and len({row['inputs']['text'] for row in record['blocks']}) == 1):
+                    and [row['inputs']['text'] for row in record['blocks']] in (
+                        [whole] * len(record['blocks']), _ordered_texts(record, _split_value(record, whole)))):
                 # Busy and memory pass; nothing has started and no part was rewritten, so split again.
+                for row in record['blocks']:
+                    row['inputs']['text'] = whole
                 split.update(state='pending', reason=None)
             if client_id is not None:
                 record['client_id'] = client_id
@@ -722,8 +748,7 @@ class ChainRunner:
                 split['state'] = 'running'
                 record['state'] = 'running'
                 self._save(record)
-                value = dict(text=block['inputs']['text'], continued=block['after'] is not None,
-                             seconds=[row['new_frames'] / chain_plan.FPS for row in record['blocks']])
+                value = _split_value(record, block['inputs']['text'])
                 action = 'split'
             elif prompt_id is None:
                 self.progress_messages.pop(identity, None)
@@ -851,9 +876,13 @@ class ChainRunner:
                         row['inputs']['text'] = value['text']
                     record['split'].update(state='failed', reason='failed')
             else:
-                # The whole description goes to every part, as before; the page says why.
+                # Without the prompt model the sentences go to the parts in order, so no part plays the whole
+                # story again; the page says why. A description without sentences goes to every part.
                 if parts is not None:
                     reason = 'unusable'
+                texts = _ordered_texts(record, value)
+                for row, text in zip(record['blocks'], texts or [value['text']] * len(record['blocks'])):
+                    row['inputs']['text'] = text
                 record['split'].update(state='failed', reason=reason if reason in store.SPLIT_REASONS else 'failed')
             self._save(record)
 

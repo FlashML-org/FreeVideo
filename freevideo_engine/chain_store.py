@@ -19,12 +19,12 @@ OUTPUT_STATES = ('none', 'pending', 'joining', 'done', 'failed')
 # pending: split before the first part; given: the request gave one text per part; none: nothing to split.
 SPLIT_STATES = ('pending', 'running', 'done', 'failed', 'given', 'none')
 SPLIT_REASONS = {
-    'model_missing': 'The prompt model is not installed, so every part used the whole description.',
-    'busy': 'The prompt model was busy, so every part used the whole description.',
-    'memory': 'There was not enough memory to split the description, so every part used the whole description.',
-    'unusable': 'The description could not be split into parts, so every part used the whole description.',
-    'unavailable': 'Splitting is not available here, so every part used the whole description.',
-    'failed': 'Splitting the description failed, so every part used the whole description.',
+    'model_missing': 'The prompt model is not installed, so the parts took the sentences of the description in order.',
+    'busy': 'The prompt model was busy, so the parts took the sentences of the description in order.',
+    'memory': 'There was not enough memory to split the description, so the parts took the sentences of the description in order.',
+    'unusable': 'The description could not be split into parts, so the parts took the sentences of the description in order.',
+    'unavailable': 'Splitting is not available here, so the parts took the sentences of the description in order.',
+    'failed': 'Splitting the description failed, so the parts took the sentences of the description in order.',
 }
 # Parts one video may be continued through: the first part and seven continuations (fewer with a short part).
 MAX_PARTS = chain_plan.MAX_PARTS
