@@ -1,7 +1,8 @@
 import {createLanAccess} from './lan_access.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import {createExpandButton} from './editor_expand.js';
-import {cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
+import {allowEmptyPrompt, cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
+import {showEmptyPrompt, dismissEmptyPrompt} from './empty_prompt_notice.js';
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
@@ -1602,7 +1603,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             return removed?.apply(this, args);
         };
     }
-    const runrow = el('div', null, 'fv-runrow');
+    const runrow = el('div', null, 'fv-runrow'); cleanup.push(dismissEmptyPrompt);
     const runOptions = el('details', null, 'fv-run-options');
     const optionsToggle = el('summary'); optionsToggle.title = t('Generation mode', '生成方式');
     optionsToggle.setAttribute('aria-label', optionsToggle.title);
@@ -1840,7 +1841,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             status.textContent = reply.status === 'cancelling' ? t('Stopping generation…', '正在停止生成…') : '';
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
-    async function submitDraft() {
+    async function submitDraft(options) {
+        const emptyAllowed = options?.allowEmpty === true;
         if (capturing || queueState?.submitting) return;
         // Ctrl+Enter leaves focus in a field: commit its edit (change fires on blur) first.
         const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
@@ -1858,7 +1860,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             invalid.focus(); invalid.reportValidity(); return;
         }
-        if (!extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
+            showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
+        }
         if (swapState(mediaNode)) {
             const missing = swapMissing(swapState(mediaNode));
             if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
@@ -1891,7 +1895,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // and all GPU execution leave the next draft fully editable.
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = true;
             held = turnNodeOn(node);
-            const snapshot = singleRunSnapshot(extendSnapshot(cleanOptionalPrompt(clonePrompt(await app.graphToPrompt())), node.id, source,
+            const graph = cleanOptionalPrompt(clonePrompt(await app.graphToPrompt()));
+            if (emptyAllowed && !prompt.value.trim() && !extension.source) allowEmptyPrompt(graph, node.id);
+            const snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');

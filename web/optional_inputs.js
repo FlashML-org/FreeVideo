@@ -69,6 +69,13 @@ export function cleanOptionalWidgets(node) {
     }
 }
 
+// The user chose to generate without a description: this request alone says so; the node's own widgets never keep it.
+export function allowEmptyPrompt(prompt, nodeId) {
+    const inputs = prompt?.output?.[String(nodeId)]?.inputs;
+    if (inputs) inputs.allow_empty_prompt = true;
+    return prompt;
+}
+
 export function cleanOptionalPrompt(prompt) {
     for (const entry of Object.values(prompt?.output || {})) {
         if (entry?.class_type !== 'FreeVideoGenerate' || !entry.inputs) continue;

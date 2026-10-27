@@ -784,6 +784,9 @@ def _run(args):
                 shutil.copyfile(args.conditioning, condition)
             if args.prompt_file and not refine_source:
                 prompt_text = args.prompt_file.read_text(encoding='utf-8')
+                # Checked before any cache lookup: a cached conditioning never stands in for the explicit permission.
+                if not prompt_text.strip() and getattr(args, 'allow_empty_prompt', False) is not True:
+                    raise ValueError('A nonempty prompt is required')
                 if first_frame is not None and first_frame['used']:
                     # The saved prompt stays the user's own; the model is also told what the picture is.
                     from .continuation import first_frame_prompt
@@ -795,6 +798,8 @@ def _run(args):
                             'ram_budget_bytes': round(profile['inference_ram_budget_gb'] * 1e9),
                             'metrics': str(destination.with_suffix('.encoding.json')),
                             'diagnostic_output': str(destination)}
+                if getattr(args, 'allow_empty_prompt', False):
+                    encoding['allow_empty_prompt'] = True
                 if media:
                     from .paths import base_path
                     encoding.update(media=media, geometry=canvas, base=profile['engine'].get('base') or str(base_path()),

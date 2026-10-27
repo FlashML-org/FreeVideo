@@ -239,7 +239,7 @@ def _encode(args, request, resident, trace):
     if idle and resident is None:
         raise ValueError('GPU preloading requires the managed resident worker')
     prompt = request.get('prompt', 'library check')
-    if not isinstance(prompt, str) or not prompt.strip():
+    if not isinstance(prompt, str) or not (prompt.strip() or request.get('allow_empty_prompt') is True):
         raise ValueError('A nonempty prompt is required')
     started = time.perf_counter()
     import torch

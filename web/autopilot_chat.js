@@ -13,6 +13,7 @@ import {canDeleteConversation, conversationMenu, emptyConversations, hasConversa
 import {renderImageFailure} from './image_generation.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
+import {showEmptyPrompt} from './empty_prompt_notice.js';
 
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./autopilot_chat.css', import.meta.url).href; document.head.append(css);
 
@@ -1039,8 +1040,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         status.setAttribute('role', 'status');
         const error = el('p', 'fv-chat-error'); error.setAttribute('role', 'alert');
         const write = (node, text) => { if (node.textContent !== text) node.textContent = text; node.hidden = !text; };
-        const answer = approve => async () => {
+        const answer = (approve, allowEmpty = false) => async () => {
             if (disabled || confirming.has(key) || !inSelectedChat() || state.session !== session || whiteboxState(entry) !== 'asked') return;
+            // A card with no description at all: say so, and start only when the user chooses to go on.
+            if (approve && !allowEmpty && !(entry.whitebox.summary || entry.whitebox.scene_summary || '').trim()) {
+                const notice = showEmptyPrompt({t, anchor: buttons, field: input, onContinue: answer(true, true)});
+                // Where Skip has wrapped to its own row, the notice sits right under the button row, before Skip.
+                const skip = buttons.querySelector('.fv-chat-no'), first = buttons.firstElementChild;
+                if (skip && first !== skip && skip.offsetTop > first.offsetTop + 4) { notice.classList.add('fv-empty-prompt-inline'); skip.before(notice); }
+                return;
+            }
             const requestKey = key, requestSession = session, id = entry.id;
             confirming.add(requestKey); confirmErrors.delete(requestKey); render();
             try {

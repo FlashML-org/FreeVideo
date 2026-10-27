@@ -136,6 +136,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.Combo.Input('upscale_factor', display_name='Upscale factor', options=list(UPSCALE_OPTIONS), default='2',
                     optional=True, advanced=True,
                     tooltip='Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
+                io.Boolean.Input('allow_empty_prompt', display_name='Allow empty prompt', default=False,
+                    optional=True, advanced=True, tooltip='Generates from an empty prompt instead of asking for one.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -145,7 +147,7 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, continue_from='', frames=0, two_pass=True,
                         preview=False, refine_from='', base_steps=8, refine_steps=3, step_cache='none',
-                        upscale_factor='2'):
+                        upscale_factor='2', allow_empty_prompt=False):
         # ComfyUI marks every input named here when a check fails, so only the checked widgets are
         # listed. Linked pictures, media and conditioning have no value before the run anyway.
         # step_cache and upscale_factor are named so ComfyUI skips their option lists: an older saved
@@ -159,7 +161,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 base_steps, refine_steps = part_steps(base_steps, refine_steps, step_cache)[:2]
                 options.update(two_pass=True, preview=False, refine_from=refine_from or None,
                                media=dict(first=False, last=False, conditioning_info=False))
-            comfy_bridge.validate_request(text, width, height, seconds, seed, **options)
+            comfy_bridge.validate_request(text, width, height, seconds, seed, **options,
+                                          allow_empty_prompt=allow_empty_prompt is True)
             if not refine_from:
                 from .two_pass import validate_steps
                 validate_steps(base_steps, refine_steps, two_pass)
@@ -186,7 +189,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
-                step_cache='none', upscale_factor='2'):
+                step_cache='none', upscale_factor='2', allow_empty_prompt=False):
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
@@ -334,6 +337,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'first_frame_reference': True} if first_frame_reference is True and options.get('continue_from') else {}),
                 **({'voice_reference': True} if voice_reference is True and options.get('continue_from') else {}),
                 **({'hide_tail': True} if hide_tail is True else {}),
+                **({'allow_empty_prompt': True} if allow_empty_prompt is True else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
                 **({'report_extra': {'chain': report_fields(chain)}} if chain is not None else {}))

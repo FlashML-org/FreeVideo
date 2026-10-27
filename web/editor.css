@@ -103,6 +103,8 @@
 .fv-ed-first-frame:has(input:disabled){opacity:.4}
 .fv-ed-description:disabled{opacity:.4}
 .fv-ed-genbar{position:relative}
+.fv-ed-genbar:has(.fv-empty-prompt){flex-wrap:wrap}
+.fv-ed-genbar .fv-empty-prompt{margin:0 0 0 auto;flex:0 1 auto}
 .fv-ed-refs{display:flex;align-items:center;gap:6px;flex:none}
 .fv-ed-refs[hidden],.fv-ed-ref-menu[hidden]{display:none}
 .fv-ed-ref-notice{position:absolute;bottom:calc(100% + 8px);max-width:min(560px,calc(100% - 24px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:8px;z-index:9;color:var(--fv-ink);pointer-events:none}
@@ -207,6 +209,7 @@
  .fv-ed-gen-note{order:-1;flex:1 1 100%;white-space:normal}
  .fv-editor .fv-ed-genbar>button{margin-left:auto;max-width:100%;height:36px;min-height:36px;font-size:12px}
  .fv-editor .fv-ed-genbar>button:not([hidden]) ~ button:not([hidden]){margin-left:0}
+ .fv-ed-genbar .fv-empty-prompt{flex:0 0 100%;justify-content:flex-end;margin:0}
  .fv-ed-name-menu{position:fixed;top:120px;left:8px}
  /* Beside the view switch it covered "Editor"; here it sits at the foot of the picture area, in the grid. */
  .fv-ed-notice{position:relative;grid-column:1;grid-row:2;align-self:end;justify-self:end;margin:0 16px 8px;bottom:auto;right:auto;pointer-events:none}

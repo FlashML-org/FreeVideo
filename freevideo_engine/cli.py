@@ -96,6 +96,7 @@ def main():
     source = generate.add_mutually_exclusive_group(required=True)
     source.add_argument('--prompt-file', type=Path)
     source.add_argument('--conditioning', type=Path)
+    generate.add_argument('--allow-empty-prompt', action='store_true', help='Generate from an empty prompt file')
     generate.add_argument('--cache', type=Path, required=True)
     generate.add_argument('--base', type=Path)
     generate.add_argument('--checkpoint', type=Path)

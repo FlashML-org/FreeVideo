@@ -275,7 +275,7 @@ def run(args):
                 report['phase'] = 'encoding'
                 save(output.with_suffix('.request.json'), report)
                 prompt = Path(args.prompt_file).read_text(encoding='utf-8')
-                if not prompt.strip():
+                if not prompt.strip() and not getattr(args, 'allow_empty_prompt', False):
                     raise ValueError('A nonempty prompt is required')
                 prompt_file = Path(args.prompt_file).resolve()
                 if report.get('first_frame_reference', {}).get('used'):
@@ -292,7 +292,8 @@ def run(args):
                     report['encoding_resources'] = execute(dict(phase='encoding', root=str(data_root()),
                         prompt_file=str(prompt_file), output=str(conditioning),
                         report=str(output.with_suffix('.encoding.json')), checkpoint=str(checkpoint),
-                        library=str(library), resources=resource, media=media, canvas=canvas, base=base), 'encoding')
+                        library=str(library), resources=resource, media=media, canvas=canvas, base=base,
+                        **({'allow_empty_prompt': True} if getattr(args, 'allow_empty_prompt', False) else {})), 'encoding')
                     metrics = json.loads(output.with_suffix('.encoding.json').read_text())
                     if cache:
                         try:
@@ -411,6 +412,7 @@ def worker(value):
             budget_bytes=resource['encoder_bytes'], reserve_bytes=resource['reserve_bytes'],
             media_budget_bytes=resource.get('allocator_capacity_bytes', resource['encoder_bytes']),
             weight_decoder=resource.get('encoder_weight_decoder', 'cpu'),
+            allow_empty_prompt=value.get('allow_empty_prompt') is True,
             media=value.get('media'), canvas=value.get('canvas'), base=value.get('base')))
         result['work_seconds'] = time.monotonic() - started
     except BaseException as error:

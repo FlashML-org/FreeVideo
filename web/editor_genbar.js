@@ -5,6 +5,7 @@ import {createExpandButton} from './editor_expand.js';
 import {createRequestAssets} from './request_assets.js';
 import {issueButton} from './issue_button.js';
 import {waitingText} from './chain_support.js';
+import {showEmptyPrompt} from './empty_prompt_notice.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
@@ -229,7 +230,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // The former text input did not submit or insert a line on Enter.
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) event.preventDefault();
     };
-    generate.onclick = async () => {
+    const press = async (allowEmpty = false) => {
         const key = JSON.stringify(state.selection ?? null);
         if (pressing.has(key)) return;
         pressing.add(key); say(''); render();
@@ -239,10 +240,11 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         try {
             // The press shows before any planning, however long that takes.
             await painted();
-            const result = actions.press ? await actions.press(input.value) : await actions.generate({target: 'both', text: input.value});
+            const result = actions.press ? await actions.press(input.value, allowEmpty ? {allowEmpty} : undefined) : await actions.generate({target: 'both', text: input.value});
             // Never over what the user typed meanwhile, for another part.
             if (result?.text != null && result.text !== input.value && input.value === shown) input.value = result.text;
             if (result?.say) { say(result.say, !!result.queued); reason = result.say; }
+            if (result?.empty) showEmptyPrompt({t, anchor: generate, field: input, onContinue: () => press(true)});
             if (result?.focus) { pressing.delete(key); render(); input.disabled = false; input.focus(); }
         }
         // A specific reason is said once; the planning limits are already shown above.
@@ -252,6 +254,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         finally { pressing.delete(key); render(); }
         return reason;
     };
+    generate.onclick = () => press();
     const expand = createExpandButton({t, textarea: input, onGenerate: () => generate.onclick(), canGenerate: () => !generate.disabled, onDraft: text => typed(text)});
     description.append(expand.element);
     cancel.onclick = () => (!previewSelection && actions.selectionHeld?.() ? Promise.resolve(actions.unhold()).then(render) : actions.cancel()).catch(actions.error);

@@ -32,7 +32,7 @@ import {createFirstRunGuide} from './first_run_guide.js';
 import {SHOWCASE_SCENE} from './entry_showcase.js';
 import {createEditorFailures} from './editor_failure.js';
 import {fitEditorHeader} from './editor_header_fit.js';
-import {optionalText, clonePrompt} from './optional_inputs.js';
+import {optionalText, clonePrompt, allowEmptyPrompt} from './optional_inputs.js';
 import {outputNotWritable} from './error_panel.js';
 import {repairAction} from './repair_hint.js';
 import {expandCast} from './cast_mention.js';
@@ -472,7 +472,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         progress.set(id, value); tracks?.setProgress(id, value);
     } };
     const queuedReady = () => t('Queued. It starts once generation is ready.', '已排队，准备好后自动开始。');
-    function hold(selection, text, job = null, {texts = null, shown = selection === state.selection} = {}) {
+    function hold(selection, text, job = null, {texts = null, shown = selection === state.selection, allowEmpty = false} = {}) {
         const range = selectionRange(selection), selectedIds = selectionClips(selection).map(clip => clip.id);
         let ids = [];
         if (job) ids = selectedIds;
@@ -482,7 +482,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             ids = next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames && clip.pending && !generating(clip)).map(clip => clip.id);
             return next;
         }, {checkpoint: true});
-        if (!ids.every(isHeld)) held.push({ids, text, job});
+        if (!ids.every(isHeld)) held.push({ids, text, job, allowEmpty});
         markHeld(ids, true);
         if (shown) state.select({kind: 'clip', ids});
         rememberView();
@@ -507,7 +507,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (before && !before.source && before.pending && !before.job) { genbar?.say(t('The part before did not finish, so this one did not start.', '上一段没有完成，这一段没有开始。')); continue; }
                 // Each part goes with its own description, as written while it waited.
                 const texts = Object.fromEntries(clips.map(clip => [clip.id, clip.text.trim() || entry.text]));
-                try { await actions.generate({text: texts[clips[0].id], texts, selection}); }
+                try { await actions.generate({text: texts[clips[0].id], texts, selection, allowEmpty: entry.allowEmpty === true}); }
                 catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason)) genbar?.say(reason.say); }
             }
         } finally { startingHeld = false; }
@@ -633,7 +633,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         editorViews.set(key, value);
         try {
             // Queued parts stay queued across a reload; they are only planned drafts until sent.
-            const waiting = held.map(entry => ({ids: entry.ids, text: entry.text}));
+            const waiting = held.map(entry => ({ids: entry.ids, text: entry.text, ...(entry.allowEmpty === true ? {allowEmpty: true} : {})}));
             value.held = waiting;
             localStorage.setItem(viewPrefix + key, JSON.stringify({selection: value.selection, text: value.text, ...(waiting.length ? {held: waiting} : {})}));
             if (state.record.id) localStorage.setItem('fv-editor-last', key);
@@ -701,7 +701,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (!Array.isArray(entry?.ids) || typeof entry.text !== 'string') continue;
             const clips = entry.ids.map(id => model.find(state.record, id));
             if (!clips.length || clips.some(clip => !clip || clip.source || clip.pending !== 'draft' || clip.job) || entry.ids.some(isHeld)) continue;
-            held.push({ids: [...entry.ids], text: entry.text}); markHeld(entry.ids, true);
+            held.push({ids: [...entry.ids], text: entry.text, allowEmpty: entry.allowEmpty === true}); markHeld(entry.ids, true);
         }
         viewReady = true;
         if (record.id) try { localStorage.setItem('fv-editor-last', record.id); localStorage.setItem(usedPrefix + record.id, String(Date.now())); } catch {}
@@ -921,11 +921,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return seconds;
         },
         // texts: a description for each planned part, by the part's picture; otherwise text is every part's.
-        async generate({target = 'both', text = '', texts = null, label = t('Generate', '生成'), selection = state.selection, shown = selection === state.selection} = {}) {
+        async generate({target = 'both', text = '', texts = null, label = t('Generate', '生成'), selection = state.selection, shown = selection === state.selection, allowEmpty = false} = {}) {
             if (target !== 'both' || !actions.supportedSelection(selection)) throw new model.EditError('unsupported');
             // A half of a pair left by a cut or a paste is dropped; a description over the limit is said before anything is sent.
             text = wellFormed(text);
-            if (!actions.canGenerate(text, selection)) throw new model.EditError('text');
+            // Only the user's own choice to go on without a description lets an empty one through.
+            if (!(allowEmpty === true && !text.trim() && store.generationAvailable && actions.needsText(selection)) && !actions.canGenerate(text, selection)) throw new model.EditError('text');
             if (characters(text) > model.RULES.maxText) throw Object.assign(new model.EditError('text_long'), {limit: model.RULES.maxText});
             submissionFailure = null; genbar?.update(null);
             const chosen = state.selection;
@@ -961,6 +962,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const follow = continuedSize(beforeKeys, sizes), edit = capability.generationSize || generationSize(state.record);
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
+                if (allowEmpty === true && [text, ...Object.values(texts ?? {})].some(value => !value.trim())) allowEmptyPrompt({output: frozen.prompt}, frozen.node);
                 // Parts made at another size than the edit's have that size's limit.
                 const limit = (follow && (follow.width !== edit.width || follow.height !== edit.height)
                     ? await store.requestFrames(follow, state.record.settings) : null) ?? capability.maxRequestFrames;
@@ -1007,7 +1009,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             } finally { sendingRanges.delete(range); for (const id of ids) sending.delete(id); if (disposed && ids.length) queue.enqueue(state.record); generationBusy = false; finishGeneration?.(); generationDone = null; finishGeneration = null; updateTop(); updateTransport(); startHeld(); }
         },
         // A press on Generate always answers: what can be done for the user is done, then said in one line.
-        async press(text) {
+        async press(text, {allowEmpty = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
             let selection = state.selection, said = null;
@@ -1047,8 +1049,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     if (!value && i && attached(clip, run[i - 1])) { value = texts[run[i - 1].id]; used ??= before; }
                     else if (!value) {
                         const found = nearbyText(clip.start);
-                        if (!found) return {say: [said, t('Write a description first.', '先写一句描述。')].filter(Boolean).join(' '), focus: true};
-                        value = found.text; used ??= found.before ? before : latest;
+                        if (!found && !allowEmpty) return {say: said, empty: true, focus: true};
+                        if (found) { value = found.text; used ??= found.before ? before : latest; }
                     }
                     texts[clip.id] = value;
                 }
@@ -1056,8 +1058,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 selection = clipChoice(run);
             } else if (!text.trim() && actions.needsText(selection)) {
                 const found = nearbyText(selectionRange(selection).start);
-                if (!found) return {say: [said, t('Write a description first.', '先写一句描述。')].filter(Boolean).join(' '), focus: true};
-                text = found.text; used = found.before ? before : latest;
+                if (!found && !allowEmpty) return {say: said, empty: true, focus: true};
+                if (found) { text = found.text; used = found.before ? before : latest; }
                 state.setRangeText(text); genbar?.setText(text);
             } else if (!text.trim()) {
                 // The box was emptied; the part keeps the description it took over, as an empty one cannot be generated.
@@ -1066,12 +1068,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
             const waiting = waitingFor(selection);
             if (waiting) {
-                hold(selection, texts ? texts[run[0].id] : text, null, {texts, shown});
+                hold(selection, texts ? texts[run[0].id] : text, null, {texts, shown, allowEmpty});
                 return {text, say: [said, used, waiting === 'ready' ? queuedReady()
                     : t('Queued. It starts after the previous part finishes.', '已排队，上一段完成后自动开始。')].filter(Boolean).join(' '), queued: true};
             }
             const busyBefore = jobActive();
-            await actions.generate({text: texts ? texts[run[0].id] : text, texts, selection, shown});
+            await actions.generate({text: texts ? texts[run[0].id] : text, texts, selection, shown, allowEmpty});
             return {text, say: [said, used, busyBefore ? t('Queued. It starts after the part now generating.', '已排队，正在生成的那段完成后自动开始。') : null].filter(Boolean).join(' ') || null, queued: busyBefore};
         },
         selectionRunning: () => busySelection(state.selection),

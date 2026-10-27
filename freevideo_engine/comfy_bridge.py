@@ -856,8 +856,10 @@ def installation(source=None, environ=None):
 
 
 def validate_request(prompt, width, height, seconds, seed, *, continue_from=None, frames=None,
-                     two_pass=True, preview=False, refine_from=None, media=None, original_audio=False):
-    if not isinstance(prompt, str) or not prompt.strip():
+                     two_pass=True, preview=False, refine_from=None, media=None, original_audio=False,
+                     allow_empty_prompt=False):
+    # Only a request the user sent on purpose without a description may leave it empty.
+    if not isinstance(prompt, str) or not (prompt.strip() or allow_empty_prompt is True):
         raise ValueError('Enter a prompt describing the video and its audio.')
     if type(seed) is not int or not 0 <= seed <= 2**53 - 1:
         raise ValueError('Seed must be an integer between 0 and 9007199254740991.')
@@ -1181,7 +1183,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
-             step_cache=None, upscale_factor=2):
+             step_cache=None, upscale_factor=2, allow_empty_prompt=False):
     from .tiers import STEP_CACHES
     from .two_pass import SCALES
     if upscale_factor not in SCALES:
@@ -1223,6 +1225,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         refine_steps = int(argument(arguments, '--refine-steps', 3))
         # The second pass never uses a step cache; the preview's own command keeps its flag.
         step_cache = argument(arguments, '--step-cache')
+        # The preview's own permission for an empty prompt travels with its saved request.
+        allow_empty_prompt = allow_empty_prompt or '--allow-empty-prompt' in arguments
     if preview or upscale:
         # A preview stays the quick half-size first pass, and its upscale continues that same pass.
         upscale_factor = 2
@@ -1230,7 +1234,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     validate_flags(preview, upscale, two_pass, base_steps)
     from .two_pass import validate_steps
     validate_steps(base_steps, refine_steps, two_pass)
-    canvas = validate_request(prompt, width, height, seconds, seed, continue_from=continue_from, frames=frames)
+    canvas = validate_request(prompt, width, height, seconds, seed, continue_from=continue_from, frames=frames,
+                              allow_empty_prompt=allow_empty_prompt)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
     continuation = None
@@ -1292,6 +1297,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
                '--two-pass' if two_pass else '--no-two-pass',
                '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
+    if allow_empty_prompt is True:
+        command.append('--allow-empty-prompt')
     if step_cache is not None:
         command += ['--step-cache', step_cache]
     if two_pass and upscale_factor != 2:

@@ -1,0 +1,4 @@
+.fv-empty-prompt{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:6px 12px;margin:8px 0;font-size:var(--fv-body,14px);color:var(--fv-ink,#e8ecf3)}
+.fv-empty-prompt>span:first-child{white-space:nowrap}
+.fv-empty-prompt.fv-actions{justify-content:flex-start}
+.fv-empty-prompt.fv-empty-prompt-inline{flex:0 0 100%;margin:0}
