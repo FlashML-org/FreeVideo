@@ -21,7 +21,7 @@
 
 .fv-reference-group{padding:6px 8px 3px;font-size:11px;color:var(--fv-muted,#a9b3c4)}
 .fv-reference-person{min-height:36px;padding:5px 8px;gap:10px}
-.fv-reference-face{width:24px;height:24px;flex:none;border-radius:50%;object-fit:cover;background:var(--fv-raised,#252e39)}
+.fv-reference-face{width:24px;height:24px;flex:none;border-radius:50%;object-fit:cover;object-position:50% 15%;background:var(--fv-raised,#252e39)}
 .fv-reference-person strong{font-size:13px;font-weight:550;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-reference-person[aria-disabled=true]{opacity:.5;cursor:not-allowed}
 .fv-mention-mirror{position:absolute;box-sizing:border-box;overflow:hidden;pointer-events:none;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;color:var(--fv-ink,#eee);z-index:1}

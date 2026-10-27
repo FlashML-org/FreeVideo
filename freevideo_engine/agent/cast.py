@@ -118,7 +118,8 @@ def view(card):
 
 def thumbnail(card):
     images = card['images']
-    chosen = next((row for row in images if row['label'] == 'front'), images[0] if images else None)
+    # The close-up when the card has one, else the front picture; shown small, a full-length picture is only a coat.
+    chosen = next((row for label in ('face', 'front') for row in images if row['label'] == label), images[0] if images else None)
     return media_view(chosen['media']) if chosen else None
 
 
