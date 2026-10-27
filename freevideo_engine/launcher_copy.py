@@ -9,8 +9,8 @@ from .model_status import NAMES
 ACTION_COPY = {
     'download_missing': ('The download folder no longer exists. Export the list again.',
                          '下载目录已不存在，请重新导出清单'),
-    'folder_open_failed': ('This system has no file manager to open the folder. Open it from your own file manager.',
-                           '此系统没有可用的文件管理器来打开该文件夹，请在自己的文件管理器中打开'),
+    'folder_open_failed': ('The folder could not be opened automatically. Open it in a file manager.',
+                           '无法自动打开该文件夹，请在文件管理器中手动打开'),
     'installation_missing': ('There is no installation information yet. Complete installation first.',
                              '还没有安装信息，请先完成安装'),
     'installation_unavailable': ('The saved ComfyUI folder could not be opened. It may have been moved or renamed, or its drive may be disconnected. Choose its current location below, or install ComfyUI.',

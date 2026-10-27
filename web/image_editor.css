@@ -87,6 +87,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-gen-history .fv-ie-menu-list{top:calc(100% + 6px);right:0;bottom:auto;left:auto;width:min(320px,calc(100vw - 16px));max-height:min(420px,70vh)}
 .fv-ie-gen-history .fv-ie-menu-list.fv-ie-gen-history-up{top:auto;bottom:calc(100% + 6px)}
 .fv-ie-gen-history-confirm{opacity:1!important;width:auto!important;padding:0 6px;background:#c0392b!important;color:#fff!important;font-size:var(--fv-micro)}
+.fv-ie-gen-history-path{overflow-wrap:anywhere;user-select:text}
 .fv-ie-gen-history-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
 .fv-ie-gen-history-tile{position:relative}
 .fv-ie-gen-history-pick{display:block;width:100%;padding:0;border:0;background:none;cursor:pointer}

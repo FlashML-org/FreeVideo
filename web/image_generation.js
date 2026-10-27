@@ -652,13 +652,17 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const list = el('div', null, 'fv-ie-menu-list');
         menu.append(summary, list);
         // Choosing several: the ticked files, the reason each one that stayed gives, and the two-step confirm of the delete button.
-        let selecting = false, armed = null, failed = false;
+        let selecting = false, armed = null, failed = false, unopened = null;
         const chosen = new Set(), stayed = new Map();
         const reasons = {busy: t('In use', '被占用'), missing: t('Already gone', '已不存在'), invalid: t('Not deleted', '未删除')};
         const disarm = () => { clearTimeout(armed); armed = null; };
         const draw = () => {
             list.replaceChildren();
             if (failed) list.append(el('div', t('Could not delete this image', '无法删除这张图片'), 'fv-ie-menu-label'));
+            if (unopened) {
+                list.append(el('div', t('The folder could not be opened automatically. Open it in a file manager.', '无法自动打开该文件夹，请在文件管理器中手动打开'), 'fv-ie-menu-label'));
+                if (unopened.folder) list.append(el('div', unopened.folder, 'fv-ie-menu-label fv-ie-gen-history-path'));
+            }
             if (!past.length) { list.append(el('div', t('No images generated yet', '还没有生成过图片'), 'fv-ie-menu-label')); return; }
             const grid = el('div', null, 'fv-ie-gen-history-grid');
             for (const item of past) {
@@ -732,14 +736,17 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             } else {
                 foot.append(button(t('Select', '选择'), null, () => { selecting = true; failed = false; draw(); }, 'fv-ie-menu-item'));
                 if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname))
-                    foot.append(button(t('Open folder', '打开文件夹'), null, () => { void client.historyOpen().catch(() => {}); }, 'fv-ie-menu-item'));
+                    foot.append(button(t('Open folder', '打开文件夹'), null, async () => {
+                        let answer; try { answer = await client.historyOpen(); } catch { answer = {opened: false}; }
+                        unopened = answer.opened === false ? {folder: answer.folder || ''} : null; draw();
+                    }, 'fv-ie-menu-item'));
             }
             list.append(foot);
         };
         menu.ontoggle = async () => {
             if (!menu.open) return;
             try { past = await client.history(); } catch { past = []; }
-            selecting = false; chosen.clear(); stayed.clear(); disarm(); failed = false;
+            selecting = false; chosen.clear(); stayed.clear(); disarm(); failed = false; unopened = null;
             draw();
             // Open upward when the list does not fit below, and keep it inside the window.
             list.classList.remove('fv-ie-gen-history-up'); list.style.right = '';

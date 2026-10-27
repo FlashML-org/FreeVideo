@@ -355,7 +355,7 @@ class Service:
         else:
             from ..windows_ux import open_folder
             if not open_folder(folder):
-                raise OSError('No file manager is available to open the folder.')
+                return dict(opened=False, folder=folder)  # the page tells the user where the images are
         return dict(opened=True)
 
     def close_segment_worker(self):
