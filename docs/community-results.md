@@ -90,6 +90,29 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5080 | 16&nbsp;GB | 64&nbsp;GB | 768×1344 | 3&nbsp;s | Max | 0.3.20 | 216&nbsp;s | 0.3.20 | Already&nbsp;optimal |
 | 4060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.4.12 | 333&nbsp;s | 0.4.12 | Already&nbsp;optimal |
 | 5070&nbsp;Ti | 16&nbsp;GB | 64&nbsp;GB | 1184×672 | 15&nbsp;s | Medium | 0.4.13 | 487&nbsp;s | 0.4.13 | Already&nbsp;optimal |
+| 3070 | 16&nbsp;GB | 32&nbsp;GB | 768×1344 | 5&nbsp;s | Light | 0.4.14 | 2380&nbsp;s | 0.4.14 | Already&nbsp;optimal |
+| M4&nbsp;Max | Unified | 128&nbsp;GB | 768×1344 | 10&nbsp;s | Light | 0.4.14 | 3444&nbsp;s | 0.4.14 | Already&nbsp;optimal |
+| 4060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 672×1184 | 10&nbsp;s | Light | 0.4.14 | 936&nbsp;s | 0.4.14 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.15 | 1147&nbsp;s | 0.4.15 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 24&nbsp;GB | 1344×768 | 14&nbsp;s | Light | 0.4.15 | 1747&nbsp;s | 0.4.20 | ≈1700&nbsp;s |
+| 5070&nbsp;Laptop | 8&nbsp;GB | 64&nbsp;GB | 1184×672 | 10&nbsp;s | Light | 0.4.15 | 822&nbsp;s | 0.4.20 | ≈720&nbsp;s |
+| 5080 | 16&nbsp;GB | 64&nbsp;GB | 1024×1024 | 15&nbsp;s | Light | 0.4.16 | 412&nbsp;s | 0.4.16 | Already&nbsp;optimal |
+| M1&nbsp;Max | Unified | 64&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.4.16 | 1816&nbsp;s | 0.4.16 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 5&nbsp;s | Light⁵ | 0.4.17 | 470&nbsp;s | 0.4.17 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10.8&nbsp;s | Light⁵ | 0.4.17 | 967&nbsp;s | 0.4.19 | 880&nbsp;s&nbsp;(−90&nbsp;s) |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Max | 0.4.17 | 2311&nbsp;s | 0.4.17 | Already&nbsp;optimal |
+| 5080 | 16&nbsp;GB | 48&nbsp;GB | 768×1344 | 12.3&nbsp;s | Light | 0.4.17 | 293&nbsp;s | 0.4.17 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 64&nbsp;GB | 960×544 | 9.4&nbsp;s | Light | 0.4.17 | 743&nbsp;s | 0.4.17 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 768×1344 | 5&nbsp;s | Light | 0.4.17 | 811&nbsp;s | 0.4.17 | Already&nbsp;optimal |
+| 5070&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 1184×672 | 15&nbsp;s | Light | 0.4.19 | 447&nbsp;s | 0.4.19 | Already&nbsp;optimal |
+| 4060 | 8&nbsp;GB | 32&nbsp;GB | 960×544 | 15&nbsp;s | Light | 0.4.19 | 1311&nbsp;s | 0.4.19 | Already&nbsp;optimal |
+| M5 | Unified | 24&nbsp;GB | 1344×768 | 10&nbsp;s | Max | 0.4.12 | 30509&nbsp;s | 0.4.14 | 27000&nbsp;s&nbsp;(−3500&nbsp;s) |
+| 4070&nbsp;Ti | 12&nbsp;GB | 64&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.4.19 | 236&nbsp;s | 0.4.19 | Already&nbsp;optimal |
+| 3090 | 24&nbsp;GB | 128&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.19 | 377&nbsp;s | 0.4.19 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 672×1184 | 15&nbsp;s | Light | 0.4.20 | 1608&nbsp;s | 0.4.20 | Already&nbsp;optimal |
+| M5&nbsp;Max | Unified | 128&nbsp;GB | 1664×960 | 3&nbsp;s | Light | 0.4.18 | 755&nbsp;s | 0.4.18 | Already&nbsp;optimal |
+| 5050&nbsp;Laptop | 8&nbsp;GB | 24&nbsp;GB | 960×544 | 8&nbsp;s | Light | 0.4.21 | 534&nbsp;s | 0.4.21 | Already&nbsp;optimal |
+| 3080 | 10&nbsp;GB | 32&nbsp;GB | 768×1344 | 15&nbsp;s | Max | 0.4.22 | 1965&nbsp;s | 0.4.22 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
