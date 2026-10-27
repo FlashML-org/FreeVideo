@@ -663,7 +663,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
     tools = (re.search(r'^FreeVideo: (缺少基础工具：[^\r\n]*)(?:\r?\n  ([^\r\n]+))?', text, re.M) if zh else None) \
         or re.search(r'^FreeVideo: (Missing basic tools: [^\r\n]*)(?:\r?\n  ([^\r\n]+))?', text, re.M)
     if tools and tools.group(1).endswith((':', '：', '.', '。')):
-        return dict(title=('缺少基础系统工具' if zh else 'Basic system tools are missing'),
+        return dict(title=('缺少基础工具' if zh else 'Basic tools are missing'),
                     detail='\n'.join(part for part in tools.groups() if part), action='', kind='system-tools')
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
