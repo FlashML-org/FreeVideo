@@ -24,6 +24,7 @@ def main():
     spec = importlib.util.spec_from_file_location('freevideo_install_check', ROOT / '__init__.py',
                                                 submodule_search_locations=[str(ROOT)])
     entry = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = entry
     spec.loader.exec_module(entry)
     assert callable(entry.comfy_entrypoint)
     assert (ROOT / entry.WEB_DIRECTORY).is_dir()
