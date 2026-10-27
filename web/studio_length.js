@@ -28,7 +28,7 @@ export async function readLengthCapability(api, context, signal, onReply = () =>
 // onEditor and onAutopilot are the creation panel's own view-switch actions; autopilot says whether that tab shows.
 export function createStudioLength({api, node, seconds, advanced, fields, t, field, setSeconds,
     onChange = () => {}, capability = readLengthCapability, delay = 220, capabilityTimeout = 10000,
-    onEditor = () => {}, onAutopilot = () => {}, autopilot = false}) {
+    onEditor = () => {}, onAutopilot = () => {}, autopilot = false, promptModel = null}) {
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
     const controls = el('div', 'fv-length-controls'); controls.style.marginTop = '14px';
     const single = el('input'); single.type = 'checkbox'; single.dataset.fvLength = 'single';
@@ -64,6 +64,13 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         : hint.replaceChildren(t('Each run makes one continuous shot, split into up to 8 parts when longer. ', '每次生成一个连续镜头，较长时自动分段，最多 8 段。'), ...storyboard());
     writeHint();
     fields.after(hint);
+    const modelNotice = el('div', 'fv-muted fv-length-model'); modelNotice.hidden = true; modelNotice.setAttribute('role', 'status');
+    const modelText = el('span');
+    const download = el('button', 'fv-quiet', t('Download prompt model', '下载提示词模型')); download.type = 'button';
+    modelNotice.append(modelText, download); hint.after(modelNotice);
+    download.onclick = () => { void promptModel?.download(); };
+    let modelState = {}, modelChecked = false;
+
     let limits = null, planLimits = null, contextKey = '', revision = 0, timer = null, request = null, capabilityRequest = null, capabilityRevision = 0;
     let capabilityState = 'idle', waiting = false, waitingTimer = null, timeoutTimer = null, submitted = false;
     let plan = null, error = null, absent = false, disposed = false, pending = null, edited = false, blockEdited = false, plannedSeconds = null;
@@ -77,6 +84,20 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             blockSeconds: blockEdited || Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block) ? Number(block.value)
                 : !planLimits && total() > 15 && total() <= 30 ? defaultBlockSeconds(null) : null};
     }
+    function paintModel() {
+        const multiple = !absent && !error && plan?.count >= 2;
+        modelNotice.hidden = !multiple || modelState.info?.ready !== false;
+        modelText.textContent = modelState.text || t('The prompt model is not installed, so the description will be split across the parts by sentence.', '未安装提示词模型，描述将按句子顺序分到各段。');
+        download.hidden = Boolean(modelState.busy); download.disabled = Boolean(modelState.busy);
+        // Pending plans do not reset the check on every keystroke. A known single part does.
+        if (plan?.count === 1 || (!plan && !effectiveSingle() && total() <= singleLimitSeconds(planLimits?.maximum)
+            && !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block))) modelChecked = false;
+        if (multiple && !modelChecked && promptModel) {
+            modelChecked = true;
+            promptModel.read().catch(() => {});
+        }
+    }
+    const unsubscribeModel = promptModel?.subscribe(state => { modelState = state; if (!disposed) paintModel(); });
     function paint() {
         const maximum = planLimits?.maximum, forcedMaximum = planLimits?.singleMaximum;
         const clamped = positive(maximum) && node.properties?.[LENGTH_PROPERTIES.block] > maximum;
@@ -103,6 +124,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         if (error === 'too_long') note.replaceChildren(TOO_LONG(), ...storyboard());
         else note.textContent = error ? errorMessage(error) : '';
         if (error === 'other') note.append(issueButton(t, () => ({where: ['Video length planning', '视频分段规划'], message: errorMessage('other')})));
+        paintModel();
         note.style.margin = noParts && error === 'continuation_unavailable' ? '12px 0' : ''; // as spaced as the line it replaces
     }
     function errorMessage(kind) {
@@ -215,6 +237,6 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
                 catch { settle(null); }
             })();
         },
-        dispose() { disposed = true; clearTimeout(timer); clearTimeout(waitingTimer); clearTimeout(timeoutTimer); request?.abort(); capabilityRequest?.abort(); seconds.removeEventListener('input', input); },
+        dispose() { disposed = true; unsubscribeModel?.(); clearTimeout(timer); clearTimeout(waitingTimer); clearTimeout(timeoutTimer); request?.abort(); capabilityRequest?.abort(); seconds.removeEventListener('input', input); },
     };
 }

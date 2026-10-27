@@ -1006,7 +1006,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         };
     }
     advanced.append(custom);
-    lengthControl = createStudioLength({api, node, seconds, advanced, fields, t, field,
+    lengthControl = createStudioLength({api, node, seconds, advanced, fields, t, field, promptModel: enhancer.model,
         setSeconds: seconds => set(node, 'seconds', seconds), onChange: () => { if (runButtonReady) { updateRunButton(); showEffortEstimate(); updateDuration(); } },
         onEditor: toEditor, onAutopilot: toAutopilot, autopilot: !autopilotTab.hidden});
     cleanup.push(() => lengthControl.dispose());

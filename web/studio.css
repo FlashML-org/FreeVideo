@@ -35,6 +35,9 @@
 .fv-studio .fv-length-link{display:inline;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--fv-accent);font:inherit;vertical-align:baseline;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 .fv-studio .fv-length-link:hover{background:transparent;color:var(--fv-ink)}
 .fv-studio .fv-length-link:focus-visible{outline:2px solid var(--fv-accent);outline-offset:3px}
+.fv-studio .fv-length-model{margin:12px 0;line-height:1.6}
+.fv-studio .fv-length-model .fv-quiet{min-height:28px;padding:3px 8px;margin-left:4px;font:inherit;white-space:nowrap}
+@media(max-width:480px){.fv-studio .fv-length-model .fv-quiet{display:flex;width:max-content;margin:6px 0 0}}
 .fv-studio .fv-resolution-select{position:relative;min-width:0}
 .fv-studio .fv-resolution-select select{appearance:none;-webkit-appearance:none;color:transparent;padding-right:36px}
 .fv-studio .fv-resolution-select option{color:var(--fv-ink)}
