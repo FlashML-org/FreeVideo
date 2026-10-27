@@ -161,7 +161,7 @@ def display_launcher_error(value, *, zh=False, replacements=()):
     return text
 
 
-def setup_command_failure(label, log, exit_code):
+def setup_command_failure(label, log, exit_code, report=None):
     """Keep the complete failed step, with required GPU failures before metadata."""
     log = Path(log)
     try:
@@ -171,7 +171,7 @@ def setup_command_failure(label, log, exit_code):
     lines = ['Failed step: %s (exit code %s)' % (label, exit_code)]
     if label == 'kernels':
         try:
-            report = json.loads((log.parent / 'kernel-capabilities.json').read_text(encoding='utf-8'))
+            report = json.loads(Path(report or log.parent / 'kernel-capabilities.json').read_text(encoding='utf-8'))
         except (OSError, ValueError):
             report = {}
         if isinstance(report, dict):
