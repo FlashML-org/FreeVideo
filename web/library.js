@@ -169,9 +169,10 @@ async function workflowBackfill(collection, t) {
 export function openLibrary(t, {upscale = null, selectedWork = null, extend = null, back: backLabel = null} = {}) {
     if (opened?.open) { if (selectedWork) opened.close(); else { opened.focus(); return; } }
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
-    const fault = (target, text, where = ['Creations', '作品库']) => {
+    // `kind` (text, or a function read when the button is clicked) tells the feedback what the sentence alone cannot.
+    const fault = (target, text, where = ['Creations', '作品库'], kind = null) => {
         target.textContent = text;
-        target.append(issueButton(t, () => ({where, message: text})));
+        target.append(issueButton(t, () => ({where, message: text, kind: typeof kind === 'function' ? kind() : kind})));
     };
     dialog.setAttribute('aria-label', t('Your creations', '我的作品'));
     const header = el('header', null, 'fv-library-header');
@@ -253,8 +254,16 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         player.addEventListener('error', event => {
             if (!disposed && selected === row.video && event.currentTarget === player) {
                 const note = el('p', videoUnavailableText(t), 'fv-library-message');
-                fault(note, videoUnavailableText(t));
+                // The player only says it failed: its error code and what the file's address answers tell a moved or
+                // empty file from an unsupported encoding, and travel with the feedback.
+                let detail = 'media-error-' + (player.error?.code ?? 'none');
+                const source = player.currentSrc || player.src;
+                fault(note, videoUnavailableText(t), undefined, () => detail);
                 frame.replaceChildren(note);
+                fetch(source, {method: 'HEAD', signal: AbortSignal.timeout(5000)}).then(response => {
+                    const type = (response.headers.get('content-type') || '').replace(/[^\w./+-]/g, '').slice(0, 40);
+                    detail += ` http-${response.status} length-${response.headers.get('content-length') ?? 'none'} type-${type || 'none'}`;
+                }, () => { detail += ' head-failed'; });
             }
         }, {once: true});
     }
