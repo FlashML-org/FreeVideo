@@ -14,16 +14,18 @@ export class PromptVersions {
     edit(text, restart = false) {
         this.value.edits = (this.value.edits || 0) + 1;
         if (restart && this.value.selected === 'rewritten') {
-            Object.assign(this.value, {original: text, rewritten: '', selected: 'original', context: '', useOriginal: false});
+            Object.assign(this.value, {original: text, rewritten: '', model: '', selected: 'original', context: '', useOriginal: false});
             return;
         }
         this.value[this.value.selected] = text;
         if (this.value.selected === 'original') this.value.context = '';
     }
     key(context) { return JSON.stringify({text: this.value.original, ...context}); }
-    accept(key, context, text) {
+    // `model` is the rewrite as the model wrote it, kept when the box shows it in a shorter form.
+    accept(key, context, text, model = text) {
         if (this.key(context) !== key || !this.value.enabled || this.value.useOriginal) return false;
-        this.value.rewritten = text; this.value.selected = 'rewritten'; this.value.context = key;
+        this.value.rewritten = text; this.value.model = model === text ? '' : model;
+        this.value.selected = 'rewritten'; this.value.context = key;
         return true;
     }
     fresh(context) { return Boolean(this.value.rewritten && this.value.context === this.key(context)); }
@@ -67,8 +69,9 @@ export function promptPrestart(api, nodeId, enabled, alive = () => true) {
 // An empty box is never rewritten, the untouched starter prompt included:
 // enhancement waits for the user's own scene.
 // `prepare` turns the user's text into what the model reads (character mentions written out with their pictures);
-// `restore` turns the rewrite back into what the box shows (the mentions written as the user wrote them).
-export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, restore = text => text, onReport = () => {}, onChange = () => {}, issueButton = null}) {
+// `restore` turns the rewrite back into the user's terms (the mentions written as the user wrote them), and `display`
+// into what the box shows; the restored rewrite is kept for the request (see prompt_sections.js).
+export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, restore = text => text, display = text => text, onReport = () => {}, onChange = () => {}, issueButton = null}) {
     const saved = node.properties?.freevideo_prompt_versions;
     // Drafts saved before the starter became a placeholder hold it as the original.
     const versions = new PromptVersions(starter && saved?.original === starter ? {...saved, original: ''} : saved, input.value);
@@ -355,7 +358,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             }
             const result = await poll('rewrite', {text: prepare(original), ...scene});
             if (disposed || cancelling) throw new Error('cancelled');
-            if (edits !== versions.value.edits || !versions.accept(key, context(), restore(result.text))) throw new Error('stale');
+            const restored = restore(result.text);
+            if (edits !== versions.value.edits || !versions.accept(key, context(), display(restored), restored)) throw new Error('stale');
             apply(); show('');
         };
         running = Promise.resolve().then(execute).catch(error => {

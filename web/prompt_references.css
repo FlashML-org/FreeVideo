@@ -1,5 +1,5 @@
 .fv-prompt-editor{position:relative;display:flex;flex-direction:column;height:170px;min-height:148px;max-height:340px;resize:vertical;overflow:hidden;background:var(--fv-card)}
-.fv-studio .fv-prompt-editor textarea{flex:1;min-height:0;height:0;max-height:none;resize:none;padding-bottom:8px;outline:none}
+.fv-studio .fv-prompt-editor textarea{flex:1;min-height:0;height:0;max-height:none;resize:none;padding-bottom:14px;outline:none}
 .fv-prompt-tools{display:flex;flex:none;align-items:center;justify-content:flex-end;height:36px;padding-right:9px}
 .fv-studio .fv-prompt-draft-note{min-height:27px;height:27px;margin:0 auto 0 9px;padding:0 9px;border:0;background:transparent;color:var(--fv-warning);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-studio .fv-prompt-draft-note[hidden]{display:none}

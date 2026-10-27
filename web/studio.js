@@ -34,6 +34,7 @@ import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, pass
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
 import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
+import { shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
@@ -821,7 +822,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
         prepare: text => { const out = expandCast(text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
-        restore: text => restoreCast(text, rewriteSubjects),
+        restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
         onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); },

@@ -201,10 +201,12 @@ function reportRedactor(detail, context) {
     for (const node of list(context.graph?._nodes)) {
         remember(node.properties?.freevideo_prompt_versions?.original);
         remember(node.properties?.freevideo_prompt_versions?.rewritten);
+        remember(node.properties?.freevideo_prompt_versions?.model);
         for (const widget of list(node.widgets)) remember(widget.value);
     }
     remember(context.node?.properties?.freevideo_prompt_versions?.original);
     remember(context.node?.properties?.freevideo_prompt_versions?.rewritten);
+    remember(context.node?.properties?.freevideo_prompt_versions?.model);
     for (const widget of list(context.node?.widgets)) remember(widget.value);
     for (const node of Object.values(record(detail?.response?.node_errors ?? detail?.node_errors)))
         for (const reason of list(node?.errors)) remember(reason?.extra_info?.received_value);
