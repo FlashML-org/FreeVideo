@@ -16,8 +16,10 @@ export async function savedSettings(api, record) {
         if (!reply.ok) return null;
         const {prompt} = await reply.json();
         if (typeof prompt !== 'string' || !prompt) return null;
-        const frames = Number(g.frames) > 0 ? Number(g.frames) : framesOf(g.seconds);
-        return {text: prompt, width: Number(g.width), height: Number(g.height), frames: Number.isFinite(frames) ? frames : null};
+        // The panel keeps seconds to three decimals, so the frames it will ask for are those of that rounded duration.
+        const raw = Number(g.frames) > 0 ? Number(g.frames) / 24 : Number(g.seconds);
+        const seconds = raw > 0 ? Math.floor(raw * 1000) / 1000 : null;
+        return {text: prompt, width: Number(g.width), height: Number(g.height), seconds, frames: seconds === null ? null : framesOf(seconds)};
     } catch { return null; }
 }
 
