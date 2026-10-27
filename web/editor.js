@@ -43,6 +43,10 @@ const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_ex
 }));
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const language = () => new URLSearchParams(location.search).get('freevideo_lang') || navigator.language;
+// A half of a surrogate pair left by a cut or a paste is dropped; the description limit counts characters, not code units.
+export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, pair => pair.length === 2 ? pair : '') : text;
+export const characters = text => Array.from(text).length;
+export const textLongText = (t, limit) => t('The description is too long. Shorten it to %d characters or fewer.', '描述过长，请缩短到 %d 字以内。').replace('%d', limit);
 // The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
 export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts'];
 export function partsLimitText(code, t = en => en, limit = null) {
@@ -316,6 +320,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         if (['audio_prepare', 'speed_pending', 'speed_locked', 'speed'].includes(code)) return {ok: false, reason: code};
         if (code === 'unsupported') { genbar?.update(null); return; }
+        if (code === 'text_long') {
+            const text = textLongText(t, Number.isInteger(value.limit) ? value.limit : 8000);
+            out(text); return {ok: false, reason: code, say: text};
+        }
         if (PARTS_LIMIT_CODES.includes(code)) {
             const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
             const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
@@ -914,7 +922,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // texts: a description for each planned part, by the part's picture; otherwise text is every part's.
         async generate({target = 'both', text = '', texts = null, label = t('Generate', '生成'), selection = state.selection, shown = selection === state.selection} = {}) {
             if (target !== 'both' || !actions.supportedSelection(selection)) throw new model.EditError('unsupported');
+            // A half of a pair left by a cut or a paste is dropped; a description over the limit is said before anything is sent.
+            text = wellFormed(text);
             if (!actions.canGenerate(text, selection)) throw new model.EditError('text');
+            if (characters(text) > model.RULES.maxText) throw Object.assign(new model.EditError('text_long'), {limit: model.RULES.maxText});
             submissionFailure = null; genbar?.update(null);
             const chosen = state.selection;
             generationBusy = true; updateTop(); updateTransport();
@@ -1010,6 +1021,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
             if (disposed || closing || epoch !== projectEpoch) return;
             if (!selectionRange(selection)) return {say: t('Drag on the timeline to choose a part first.', '先在时间线上拖出一段。')};
+            if (characters(wellFormed(text)) > model.RULES.maxText) return {say: textLongText(t, model.RULES.maxText), focus: true};
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
             const flush = flushSpot(selection);
