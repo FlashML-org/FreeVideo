@@ -115,7 +115,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     install.append(detail, actions);
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
     let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
-    let downloadOnly = false, modelReading = null;
+    let downloadOnly = false, pausing = false, modelReading = null;
     const modelState = {info: null, text: '', busy: false}, modelListeners = new Set();
     function publishModel(change) {
         Object.assign(modelState, change);
@@ -288,7 +288,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             publishModel({info: {...info, ready: true}, text: ''});
             await readModel().catch(() => {});
         } catch (error) {
-            publishModel({text: errorText(error)});
+            publishModel({text: errorText(pausing ? {message: 'download_failed'} : error)});
             throw error;
         } finally { publishModel({busy: false}); }
         return true;
@@ -299,11 +299,19 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         running = Promise.resolve().then(async () => {
             const info = await readModel();
             if (!disposed && !cancelling) await installModel(info);
-        }).catch(error => { if (!disposed) show(errorText(error)); }).finally(() => {
-            running = null; downloadOnly = false; cancelling = false; install.hidden = true; render();
+        }).catch(error => { if (!disposed) show(errorText(pausing ? {message: 'download_failed'} : error)); }).finally(() => {
+            running = null; downloadOnly = false; cancelling = false; pausing = false; install.hidden = true; render();
         });
         render();
         return running;
+    }
+    async function stopped(id) {
+        // The engine is free again once the server reports the download job ended (at most 10 s).
+        for (let i = 0; id && !disposed && i < 40; i++) {
+            const row = await post('status', {job: id}).catch(() => null);
+            if (!row || ['complete', 'failed', 'cancelled'].includes(row.phase)) return;
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
     }
     async function enhance() {
         if (running) return running;
@@ -351,6 +359,15 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
     }}, async beforeGenerate() {
+        if (running && downloadOnly) {
+            // The download holds the engine the video needs: pause it (Retry resumes) instead of waiting for it.
+            const request = running, downloading = consent ? '' : job;
+            pausing = true;
+            await cancelJob().catch(() => {});
+            await request;
+            await stopped(downloading);
+            return;
+        }
         if (running) {
             try { await running; }
             catch (error) {
