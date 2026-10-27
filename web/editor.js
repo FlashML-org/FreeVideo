@@ -879,6 +879,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return clips.length && clips.every(editablePart) ? {ids: clips.map(clip => clip.id), text: clips[0].text} : null;
         },
         describeParts(ids, text) {
+            text = wellFormed(text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
             try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
@@ -1008,6 +1009,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // A press on Generate always answers: what can be done for the user is done, then said in one line.
         async press(text) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
+            text = wellFormed(text);
             let selection = state.selection, said = null;
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
@@ -1021,7 +1023,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
             if (disposed || closing || epoch !== projectEpoch) return;
             if (!selectionRange(selection)) return {say: t('Drag on the timeline to choose a part first.', '先在时间线上拖出一段。')};
-            if (characters(wellFormed(text)) > model.RULES.maxText) return {say: textLongText(t, model.RULES.maxText), focus: true};
+            if (characters(text) > model.RULES.maxText) return {say: textLongText(t, model.RULES.maxText), focus: true};
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
             const flush = flushSpot(selection);
@@ -1109,7 +1111,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             state.select({kind: 'clip', ids: [id]}); const clip = model.find(state.record, id); if (!clip) return;
             if (clip.job) { mostRecentJob = clip.job; await actions.resume(); }
             else if (!store.generationAvailable) {
-                if (!actions.selectionHeld()) hold(state.selection, clip.text || panel.text || '');
+                const text = wellFormed(clip.text || panel.text || '');
+                if (characters(text) > model.RULES.maxText) { error(Object.assign(new model.EditError('text_long'), {limit: model.RULES.maxText}), 'generate'); return; }
+                if (!actions.selectionHeld()) hold(state.selection, text);
                 genbar?.say(queuedReady()); if (genHost.hidden) notify(queuedReady()); void startHeld();
             } else await actions.generate({text: clip.text || panel.text || ''});
         },
