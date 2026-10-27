@@ -31,6 +31,7 @@ import { reconcileLoraTriggers } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
+import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
@@ -1371,6 +1372,41 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => recent.dispose());
     // A run this window watched. Its result can arrive before or after the
     // final progress message, and more than once; the tip stays with that video.
+    // "Reuse settings" in the result bar: what the panel holds now, filling an earlier video's settings back,
+    // and the edits that withdraw the offer. A field the panel cannot change counts as already matching.
+    let reuseApplying = false;
+    function setSize(w, h) {
+        set(node, 'width', w); set(node, 'height', h);
+        ratio = w / h; pixels = w * h / 1024 ** 2;
+        selected = [['16:9', 16 / 9], ['9:16', 9 / 16], ['1:1', 1]].find(([, r]) => Math.abs(Math.log(ratio / r)) < .035)?.[0] || 'custom';
+        node.properties.freevideo_aspect = selected; node.properties.freevideo_pixels = pixels;
+        if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
+        mp.value = String(pixels); syncCanvasSize();
+    }
+    const reuse = {
+        now: saved => {
+            const sizeLocked = dimensionsLinked || Boolean(extension.source), lengthLocked = linked(node, 'seconds') || Boolean(extension.source);
+            return {text: prompt.disabled ? saved.text : prompt.value, width: sizeLocked ? saved.width : Number(value(node, 'width')),
+                height: sizeLocked ? saved.height : Number(value(node, 'height')),
+                frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value)};
+        },
+        apply: saved => {
+            reuseApplying = true;
+            try {
+                if (!prompt.disabled) { set(node, 'text', saved.text); window.dispatchEvent(new CustomEvent('freevideo-reference-prompt', {detail: node.id})); }
+                if (!dimensionsLinked && !extension.source) setSize(saved.width, saved.height);
+                if (!linked(node, 'seconds') && !extension.source) {
+                    seconds.value = String(saved.seconds ?? Math.floor(saved.frames / 24 * 1000) / 1000);
+                    seconds.dispatchEvent(new Event('input')); seconds.dispatchEvent(new Event('change'));
+                }
+            } finally { reuseApplying = false; }
+        },
+        onEdit: listener => {
+            const heard = () => { if (!reuseApplying) listener(); };
+            controls.addEventListener('input', heard, true); controls.addEventListener('change', heard, true);
+            return () => { controls.removeEventListener('input', heard, true); controls.removeEventListener('change', heard, true); };
+        },
+    };
     let reportTipTimer = null, watchedRun = false, reportTipFor = null, shownReport = null;
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
@@ -1429,7 +1465,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
-                                                   secondPass: r.preview ? secondPass(r) : null}));
+                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse}));
         if (runButtonReady) updateExtendButton();
         // After a video finished just now, point at the report menu until the
         // user closes the tip once, whichever version they first saw it in.

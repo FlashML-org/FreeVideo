@@ -19,6 +19,8 @@ from .long_paths import io_path, plain
 from .system import windows
 
 _ID = re.compile(r'\d{4}-\d{2}-\d{2}/[0-9a-f]{32}')
+# The prompt box takes 20000 characters; a character is at most 4 bytes.
+_PROMPT_BYTES = 4 * 20000
 
 
 def _video(root, identity):
@@ -140,6 +142,23 @@ def list_videos(output_directory, *, before=None, limit=24):
     # Each page counts the damaged summaries in its own range, so the pages add up.
     last = (int(next_cursor.split(':', 1)[0]), next_cursor.split(':', 1)[1]) if next_cursor else None
     return dict(items=rows, next=next_cursor, unreadable=sum(last is None or key > last for key in unreadable))
+
+
+def prompt_text(output_directory, identity):
+    """The text a saved video was made from, or None for a run that kept none."""
+    path = _video(output_directory, identity)
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    saved = path.with_name('prompt.txt')
+    if saved.is_symlink() or not saved.resolve().is_relative_to(root):
+        raise ValueError('Saved prompt is outside the library or is a symbolic link')
+    _report(path)
+    try:
+        with os.fdopen(os.open(saved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
+            data = stream.read(_PROMPT_BYTES + 1)
+    except FileNotFoundError:
+        return None
+    # Longer than the prompt box takes: its beginning alone is not the prompt.
+    return data.decode('utf-8').strip() if len(data) <= _PROMPT_BYTES else None
 
 
 def thumbnail(output_directory, identity):
@@ -1161,6 +1180,14 @@ def register():
             return web.json_response(rows, headers={'Cache-Control': 'no-store'})
         except ValueError as error:
             raise web.HTTPBadRequest(text=str(error)) from error
+
+    @server.routes.get('/freevideo/library/prompt')
+    async def prompt(request):
+        try:
+            text = await asyncio.to_thread(prompt_text, folder_paths.get_output_directory(), request.query.get('id'))
+        except (OSError, ValueError, UnicodeDecodeError):
+            raise web.HTTPNotFound(text='Prompt unavailable') from None
+        return web.json_response(dict(prompt=text), headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/library/thumbnail')
     async def preview(request):

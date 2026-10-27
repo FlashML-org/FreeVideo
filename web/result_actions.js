@@ -3,6 +3,7 @@ import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { canExtend, extendText, extendSourceProblem, extendSourceState } from './studio_extend.js';
 import { issueButton } from './issue_button.js';
+import { savedSettings, differs } from './result_reuse.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./result_actions.css', import.meta.url).href; document.head.append(css);
@@ -140,12 +141,64 @@ export async function copyText(text) {
     try { return document.execCommand('copy'); } catch { return false; } finally { area.remove(); }
 }
 
+// Fills the prompt, size and duration of an earlier video back into the panel. It is offered only when
+// the video kept its prompt and the panel does not already hold the same settings. Resolves to the button or null.
+// `reuse`: {now(saved), apply(saved), onEdit(listener) -> stop}
+async function reuseAction(record, t, reuse) {
+    const saved = await savedSettings(api, record);
+    if (!saved) return null;
+    const label = t('Reuse settings', '复用设置'), filled = t('Filled in', '已填入'), undoLabel = t('Undo', '撤销');
+    const widest = [label, `${filled} · ${undoLabel}`, filled].sort((a, b) => b.length - a.length)[0];
+    // The label sits over an invisible copy of the longest state, so the bar does not shift when it changes.
+    const make = (...parts) => {
+        const text = document.createElement('span'); text.className = 'fv-reuse-text'; text.dataset.widest = widest;
+        const inner = document.createElement('span'); inner.append(...parts); text.append(inner);
+        return text;
+    };
+    let timer = 0, stop = () => {}, current = null;
+    const offered = () => differs(saved, reuse.now(saved));
+    const idle = () => {
+        clearTimeout(timer); stop();
+        const button = action('button', '', 'back', 'fv-action-secondary fv-action-reuse');
+        button.lastElementChild.replaceWith(make(label));
+        button.hidden = !offered();
+        button.onclick = () => {
+            const before = reuse.now(saved), hadContent = Boolean(before.text.trim()) && differs(saved, before);
+            reuse.apply(saved); show(hadContent ? before : null);
+        };
+        stop = reuse.onEdit(() => {
+            if (!button.isConnected) { stop(); return; }
+            button.hidden = !offered();
+        });
+        swap(button);
+    };
+    // A later state takes the place of the button in the bar.
+    const swap = next => { if (current?.parentNode) current.replaceWith(next); current = next; };
+    const show = before => {
+        clearTimeout(timer); stop();
+        const chip = document.createElement('span'); chip.className = 'fv-action fv-action-secondary fv-action-reuse fv-reuse-done';
+        chip.setAttribute('role', 'status');
+        chip.append(icon('back'));
+        const parts = [before ? `${filled} · ` : filled];
+        if (before) {
+            const undo = document.createElement('button'); undo.type = 'button'; undo.className = 'fv-reuse-undo'; undo.textContent = undoLabel;
+            undo.onclick = () => { reuse.apply(before); idle(); };
+            parts.push(undo);
+        }
+        chip.append(make(...parts)); swap(chip);
+        timer = setTimeout(idle, before ? 10000 : 1800);
+        if (before) stop = reuse.onEdit(() => { if (!chip.isConnected) stop(); else idle(); });
+    };
+    idle();
+    return current;
+}
+
 // Download the video first; share and the report follow. A first-pass preview
 // leads with `secondPass` instead, and saved creations end with `remove`.
 // `diagnostic` downloads the redacted report (and may offer to send it); a
 // result without one shows no report entry, because the full generation
 // record keeps local paths and is not meant to be shared.
-export function resultActions(record, t, {diagnostic = null, secondPass = null, remove = null, extend = null} = {}) {
+export function resultActions(record, t, {diagnostic = null, secondPass = null, remove = null, extend = null, reuse = null} = {}) {
     const bar = document.createElement('div'); bar.className = 'fv-actions';
     if (secondPass) bar.append(secondPassAction(t, secondPass));
     if (record.video) {
@@ -163,6 +216,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
             timer = setTimeout(() => { text.textContent = t('Copy path', '复制路径'); }, 1800);
         };
         bar.append(copy);
+        if (reuse) reuseAction(record, t, reuse).then(button => { if (button && bar.isConnected) copy.after(button); });
     }
     if (extend && canExtend(record)) {
         const button = action('button', extendText(t, 'action'), 'extend', 'fv-action-secondary fv-action-extend');
