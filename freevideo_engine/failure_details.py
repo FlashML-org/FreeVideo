@@ -653,7 +653,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请将 NVIDIA 显卡驱动更新到 580 或更新版本，重启电脑后点击“重试安装”。')),
         (r"GPU detection failed\. nvidia-smi: .*(?:exit status 9|couldn.t communicate)|cuInit failed", 'gpu-driver-not-loaded',
          ('The NVIDIA driver is installed but not running', 'NVIDIA 显卡驱动已安装但未运行'),
-         ('Restart the computer, then click Retry installation. If it still fails after the restart, reinstall the NVIDIA driver.',
+         ('Restart the computer, then click "Retry installation". If it still fails after the restart, reinstall the NVIDIA driver.',
           '请重启电脑后点击“重试安装”。重启后仍然失败时，请重新安装 NVIDIA 显卡驱动。')),
         (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
          ('This GPU is not supported', '这张显卡不受支持'),
