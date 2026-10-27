@@ -243,6 +243,28 @@ def restore_handlers(previous):
         signal.signal(name, handler)
 
 
+def pin_attention_priority():
+    """Fix the order in which native attention tries its kernels.
+
+    The text encoder's attention changes this process-wide order and never
+    restores it, so the text refiner picked flash attention after an encode in
+    the same process but cuDNN attention in a fresh one on Blackwell, with
+    different bf16 results for the same input. Call it once CUDA is
+    initialized, before native attention runs: flash, memory-efficient, math,
+    cuDNN. The first kernel selection on a device installs the default order
+    and overrides an earlier setting, so one selection is made first.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            probe = torch.empty(1, 1, 16, 64, device='cuda', dtype=torch.bfloat16)
+            torch._fused_sdp_choice(probe, probe, probe)
+        torch._C._set_sdp_priority_order([2, 1, 0, 3, 4])
+        torch._C._set_sdp_priority_order([1, 2, 0, 3, 4])
+    except (ImportError, AttributeError, RuntimeError, TypeError):
+        pass
+
+
 @contextmanager
 def worker_signals():
     """Let Windows workers finalize stage reports before the Job timeout."""
