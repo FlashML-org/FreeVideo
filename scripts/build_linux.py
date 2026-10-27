@@ -82,13 +82,13 @@ HERE="$(dirname "$(readlink -f "$0")")"
 # A launcher that cannot start leaves its message on a terminal nobody sees: show it in a dialog too.
 fv_stop() {
     printf '%s\\n%s\\n' "$1" "$2" >&2
-    if command -v zenity >/dev/null 2>&1; then zenity --error --title=FreeVideo --text="$1\\n$2"
-    elif command -v kdialog >/dev/null 2>&1; then kdialog --title FreeVideo --error "$1
-$2"
-    elif command -v notify-send >/dev/null 2>&1; then notify-send FreeVideo "$1 $2"
-    elif command -v xmessage >/dev/null 2>&1; then xmessage -center "$1
-$2"
-    fi
+    # xmessage draws no CJK and does not wrap, so it gets the English text wrapped.
+    # Exit 127 means the tool itself could not load (its own libraries may be the missing ones): try the next.
+    if command -v zenity >/dev/null 2>&1; then zenity --error --title=FreeVideo --text="$1\\n$2" 2>/dev/null; [ $? -ne 127 ] && exit 1; fi
+    if command -v kdialog >/dev/null 2>&1; then kdialog --title FreeVideo --error "$1
+$2" 2>/dev/null; [ $? -ne 127 ] && exit 1; fi
+    if command -v notify-send >/dev/null 2>&1; then notify-send FreeVideo "$1 $2" 2>/dev/null; [ $? -ne 127 ] && exit 1; fi
+    if command -v xmessage >/dev/null 2>&1; then xmessage -center "$(printf '%s' "$2" | fold -s -w 72)" 2>/dev/null; [ $? -ne 127 ] && exit 1; fi
     exit 1
 }
 # The launcher needs glibc 2.34; on an older system it fails with a message on a terminal nobody sees.
@@ -106,14 +106,15 @@ case "$major$minor" in
         ;;
 esac
 # The window needs the system's graphics libraries (OpenGL, EGL, ...); a minimal system lacks them and the launcher
-# would end with a Python traceback instead.
-if command -v ldd >/dev/null 2>&1; then
+# would end with a Python traceback instead. Headless runs (offscreen, minimal) never load the xcb plugin.
+if command -v ldd >/dev/null 2>&1 && [ "${QT_QPA_PLATFORM:-}" != offscreen ] && [ "${QT_QPA_PLATFORM:-}" != minimal ] \\
+        && [ "${1:-}" != --smoke-test ]; then
     libs="$HERE/usr/lib/FreeVideo/_internal"
     missing="$(LD_LIBRARY_PATH="$libs:$libs/PySide6/Qt/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$libs/PySide6/Qt/plugins/platforms/libqxcb.so" 2>/dev/null \\
         | sed -n 's/^[[:space:]]*\\(lib[^ ]*\\) => not found.*/\\1/p' | sort -u | tr '\\n' ' ' | sed 's/ $//; s/ /, /g')"
     if [ -n "$missing" ]; then
-        fv_stop "缺少系统图形库：$missing。请联系系统管理员安装提供这些库的软件包（例如 Ubuntu、Debian 上的 libgl1、libegl1，Fedora 上的 mesa-libGL、mesa-libEGL），完成后重新打开 FreeVideo。" \\
-            "Missing system graphics libraries: $missing. Ask your administrator to install the packages that provide them (for example libgl1 and libegl1 on Ubuntu and Debian, mesa-libGL and mesa-libEGL on Fedora), then open FreeVideo again."
+        fv_stop "缺少系统图形库：$missing。请联系系统管理员安装提供这些库的软件包，完成后重新打开 FreeVideo。" \\
+            "Missing system graphics libraries: $missing. Ask your administrator to install the packages that provide them, then open FreeVideo again."
     fi
 fi
 exec "$HERE/usr/lib/FreeVideo/FreeVideo" "$@"
