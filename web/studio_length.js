@@ -1,6 +1,6 @@
 import {capabilityPoints, interpolate} from './chain_support.js';
 import {issueButton} from './issue_button.js';
-import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds, defaultBlockSeconds} from './length_plan.js?v=20261011-length';
+import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds, defaultBlockSeconds} from './length_plan.js?v=20261027-length';
 
 export const LENGTH_PROPERTIES = Object.freeze({seconds: 'freevideo_seconds', single: 'freevideo_single', block: 'freevideo_block_seconds'});
 const positive = value => typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -133,6 +133,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             continuation_unavailable: noParts ? NO_PARTS
                 : t('Choose a smaller picture size to make a longer video.', '如需生成更长的视频，请选择更小的画面大小。'),
             too_long: TOO_LONG() + storyboardText(),
+            block_too_short: t('This part length is too short. Lengthen the part length.', '每段时长过短，请加长每段时长。'),
+            block_too_long: t('One run cannot make a part this long at this size. Shorten the part length.', '当前画面大小下单次生成不了这么长的分段，请缩短每段时长。'),
             other: t('Could not plan this video. Try again.', '暂时无法安排这条视频的分段，请重试。')}[kind];
     }
     function invalidate() {

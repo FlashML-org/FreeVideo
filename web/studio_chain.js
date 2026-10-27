@@ -1,5 +1,5 @@
 import {chainRoute, createPoller} from './chain_support.js';
-import {buildChainRequest} from './length_plan.js?v=20261011-length';
+import {buildChainRequest} from './length_plan.js?v=20261027-length';
 
 export const CHAIN_PROPERTY = 'freevideo_chain';
 const activeStates = new Set(['queued', 'running', 'cancelling']);
