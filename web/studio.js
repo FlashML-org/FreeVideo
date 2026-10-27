@@ -1395,8 +1395,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             try {
                 if (!prompt.disabled) { set(node, 'text', saved.text); window.dispatchEvent(new CustomEvent('freevideo-reference-prompt', {detail: node.id})); }
                 if (!dimensionsLinked && !extension.source) setSize(saved.width, saved.height);
-                if (!linked(node, 'seconds') && !extension.source) {
-                    seconds.value = String(saved.seconds ?? Math.floor(saved.frames / 24 * 1000) / 1000);
+                if (saved.seconds !== null && !linked(node, 'seconds') && !extension.source) {
+                    seconds.value = String(saved.seconds);
                     seconds.dispatchEvent(new Event('input')); seconds.dispatchEvent(new Event('change'));
                 }
             } finally { reuseApplying = false; }
