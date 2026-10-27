@@ -15,6 +15,7 @@ if __name__ == '__main__':
 
 import torch
 
+from .device_index import observed_card
 from .policy import memory_fraction
 from .runtime import Engine
 from .decode import decode_to_file
@@ -140,6 +141,7 @@ def generate(request, resident=None):
                             else ANCHOR_ADALN_TASK if continuation.get('anchor') else ADALN_TASK))
             metrics['continuation'] = summary(continuation, hide_tail_frames=hide_tail_frames)
             metrics['audio_context'] = continuation['audio_context']
+        metrics['gpu_card'] = observed_card(torch)
         metrics['device_memory'] = device_memory_report(request['gpu_budget_bytes'], request.get('allocator_limit_bytes'),
             reserve_bytes=request.get('gpu_reserve_bytes', 0), capacity_trial=request.get('capacity_trial', False))
         if request.get('dynamic_gpu_budget') and metrics['device_memory'].get('windows_allocator_limit_enforced'):

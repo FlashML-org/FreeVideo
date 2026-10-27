@@ -1190,6 +1190,7 @@ def _run(args):
                 archive=archive, report=report, persist=persist, on_retry=retry,
                 automatic=not args.profile or getattr(args, 'recover_placement', False),
                 max_retries=getattr(args, 'resource_retries', 2))
+            report['gpu_card'] = {**report['gpu_card'], **(report['video'].get('gpu_card') or {})}
             if continuation is not None:
                 report['continuation']['audio_lead_in_samples'] = report['video'].get('continuation', {}).get(
                     'audio_lead_in_samples', 0)

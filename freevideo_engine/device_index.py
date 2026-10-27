@@ -36,3 +36,11 @@ def card_report(hardware):
     except Exception:
         pass
     return result
+
+
+def observed_card(torch):
+    """The card index and visible count as the process that runs the model sees them."""
+    try:
+        return dict(device_index=active_index(torch), visible_device_count=torch.cuda.device_count())
+    except Exception:
+        return {}
