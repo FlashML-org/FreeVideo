@@ -152,7 +152,11 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             const reply = response.status === 404 ? null : await response.json();
             if (disposed || controller.signal.aborted || version !== revision) return null;
             if (response.status === 404) { absent = true; plan = null; error = null; }
-            else if (response.status === 400) error = classifyPlanError(reply);
+            else if (response.status === 400) {
+                error = classifyPlanError(reply);
+                // A part length the user cannot edit is not the cause: the device limit is.
+                if (block.disabled && (error === 'block_too_short' || error === 'block_too_long')) error = 'continuation_unavailable';
+            }
             else if (response.ok) { plan = readLengthPlan(reply); if (!plan) error = 'other'; }
             else error = 'other';
         } catch { if (!controller.signal.aborted && version === revision) error = 'other'; }
