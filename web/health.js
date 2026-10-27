@@ -527,8 +527,22 @@ async function reloadOnce(problems) {
     return true;
 }
 
+// Curly single quotes from a Latin face where Segoe UI is missing, as theme.css does: the CJK faces after it draw
+// them full width. Added from here because theme.css may be one of the files that failed.
+let quoteFaces = false;
+function addQuoteFaces() {
+    if (quoteFaces || !globalThis.FontFace || !document.fonts) return;
+    quoteFaces = true;
+    for (const [weight, names] of [['100 500', ['Noto Sans Regular', 'NotoSans-Regular', 'DejaVu Sans', 'Liberation Sans']],
+        ['600 900', ['Noto Sans Bold', 'NotoSans-Bold', 'DejaVu Sans Bold', 'Liberation Sans Bold']]]) {
+        try { document.fonts.add(new FontFace('FreeVideo Quotes', names.map(name => `local("${name}")`).join(), {weight, unicodeRange: 'U+2018-2019'})); }
+        catch { /* The card still shows in the fonts the browser has. */ }
+    }
+}
+
 function show(problems) {
     lastProblems = problems;
+    addQuoteFaces();
     card?.remove();
     card = document.createElement('section');
     card.setAttribute('role', 'alert'); card.className = 'fv-health';
@@ -536,7 +550,7 @@ function show(problems) {
         width: 'min(600px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', boxSizing: 'border-box',
         padding: '18px 20px 16px', borderRadius: '12px', background: '#1a222e', color: '#e7edf7',
         border: '1px solid #5a3440', boxShadow: '0 18px 48px rgba(0,0,0,.45)',
-        font: '13px/1.55 "Segoe UI","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
+        font: '13px/1.55 "Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
     const title = document.createElement('div');
     const extension = problems.map(extensionProblem).find(Boolean);
     const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, t,
