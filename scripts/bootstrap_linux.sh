@@ -107,8 +107,8 @@ fv_system_deps() {
     elif command -v yum >/dev/null 2>&1; then manager=yum
     elif command -v zypper >/dev/null 2>&1; then manager=zypper
     else
-        fv_fail "缺少基础工具：${listed}。找不到可用的软件包管理器（apt-get、dnf、yum、zypper），请联系系统管理员安装这些工具后重新开始安装。"
-        fv_fail "Missing basic tools: ${listed}. No supported package manager was found (apt-get, dnf, yum, zypper). Ask your administrator to install them, then start the installation again."
+        fv_fail "缺少基础工具：${listed}。无法自动安装，请联系系统管理员安装以上工具，完成后重新开始安装。"
+        fv_fail "Missing basic tools: ${listed}. They cannot be installed automatically. Ask your administrator to install them, then start the installation again."
         return 1
     fi
     for name in "${fv_missing[@]}"; do
@@ -144,9 +144,9 @@ fv_system_deps() {
         manual="${privilege[*]:+sudo }$manager install ${packages[*]}"
         [[ "$manager" != apt-get ]] || manual="${privilege[*]:+sudo }apt-get update && ${privilege[*]:+sudo }apt-get install ${packages[*]}"
         if (( EUID != 0 )) && ! command -v sudo >/dev/null 2>&1; then
-            fv_fail "缺少基础工具：${listed}。这台电脑没有 sudo，请联系系统管理员运行以下命令，完成后重新开始安装："
+            fv_fail "缺少基础工具：${listed}。此系统未安装 sudo，请联系系统管理员运行以下命令，完成后重新开始安装："
             printf '%s\n' "  ${manual//sudo /}" >&2
-            fv_fail "Missing basic tools: ${listed}. sudo is unavailable. Ask your administrator to run the following command, then start the installation again:"
+            fv_fail "Missing basic tools: ${listed}. sudo is not installed. Ask your administrator to run the following command, then start the installation again:"
             printf '%s\n' "  ${manual//sudo /}" >&2
             return 1
         fi
