@@ -21,11 +21,12 @@ import time
 
 from .client import ApiError, Client, DONE
 
+JOB_WAIT = 45.  # freevideo_wait only; the other waits keep 25 s. Fewer empty turns, each of which carries the whole context again.
 PROTOCOLS = ('2025-06-18', '2025-03-26', '2024-11-05')
 INSTRUCTIONS = """FreeVideo generates videos (MiniMax H3) on this computer's GPU.
-Start with freevideo_status and freevideo_capabilities. Write prompts as the guide says (freevideo_prompt_guide): English sections
+Start with freevideo_status and freevideo_capabilities. Picture editing, storyboards (submit_batch), editor operations and plan are not listed in full: freevideo_tool_help {name} gives the schema, freevideo_call runs them. Write prompts as the guide says (freevideo_prompt_guide): English sections
 integrated_multimodal_description / overall_soundscape / non_diegetic_music, [Shot N] cuts, (S1) <d>[Language] ...</d>
-dialogue. Generation uses continuous chains and takes minutes: submit, then call freevideo_wait (at most 25 seconds)
+dialogue. Generation uses continuous chains and takes minutes: submit, then call freevideo_wait (up to 45 seconds; it returns as soon as the job ends)
 or freevideo_job. Interrupted/failed/cancelled generation can continue with freevideo_resume; completed blocks stay.
 Chain shots by starting the next shot from the previous one's last frame (media.first = {"from_job": id,
 "frame": "last"}), look at results with freevideo_look, ask the local VLM with freevideo_ask, and join clips
@@ -53,7 +54,7 @@ def tool_list():
         dict(name='freevideo_generate_image', title='Generate a picture', description='Generate a picture from a prompt; with images, change or combine input pictures; with people, make a first frame with them near the places you say, in the scene from scene_image or the prompt. The result is an input file to use as a first frame, as a reference, or in images again.', annotations=write),
         dict(name='freevideo_submit_batch', title='Submit a storyboard', description='Submit several jobs at once. Each row is a job object with "kind" (generate default, assemble, vlm, enhance, image) and an optional "ref"; later rows use "@ref" wherever a job id is expected (from_job, after, clips, refine_from). FreeVideo runs them in dependency order.', annotations=write),
         dict(name='freevideo_job', title='Job status', description='Status, progress, result or error of a job.', annotations=read),
-        dict(name='freevideo_wait', title='Wait for a job or the user', description="Wait at most 25 seconds for a job (with id) or, without id, at most 50 seconds for what the user says in FreeVideo (inbox). again=true means nothing new yet: call it again. A job wait returns early when the user says something. If the job is still active, call it again with the same ID; do not resubmit.", annotations=read),
+        dict(name='freevideo_wait', title='Wait for a job or the user', description="Wait up to 45 seconds for a job (with id) or, without id, at most 50 seconds for what the user says in FreeVideo (inbox). again=true means nothing new yet: call it again. A job wait returns early when the user says something. If the job is still active, call it again with the same ID; do not resubmit.", annotations=read),
         dict(name='freevideo_jobs', title='List jobs', description='Recent agent jobs, optionally by status (comma-separated), project or kind.', annotations=read),
         dict(name='freevideo_cancel', title='Cancel a job', description='Cancel a waiting, queued or running job.', annotations={'readOnlyHint': False, 'destructiveHint': True, 'openWorldHint': False}),
         dict(name='freevideo_resume', title='Resume generation', description='Resume a failed, interrupted or cancelled generation; only unfinished blocks run. Poll the same job ID.', annotations=write),
@@ -95,6 +96,34 @@ def tool_list():
     return rows
 
 
+GATEWAY_TOOLS = ('freevideo_tool_help', 'freevideo_call')
+
+
+def hidden_tools():
+    """Tools whose full schemas stay out of tools/list: every client sends the whole list with every request,
+    and these are the largest and the least often used. They are described by name and listed in the help tool."""
+    from .schema import IMAGE_TOOLS
+    return frozenset(IMAGE_TOOLS.values()) | {'freevideo_submit_batch', 'freevideo_edit_image', 'freevideo_editor_operations', 'freevideo_plan'}
+
+
+def listed_tools(rows=None):
+    """What tools/list returns: the common tools in full, the rest through freevideo_tool_help and freevideo_call."""
+    rows = rows if rows is not None else tool_list()
+    hidden = hidden_tools()
+    brief = '; '.join('%s (%s)' % (r['name'], r['description'].split('. ')[0].rstrip('.')[:90]) for r in rows if r['name'] in hidden)
+    read = {'readOnlyHint': True, 'openWorldHint': False}
+    visible = [r for r in rows if r['name'] not in hidden]
+    visible.append(dict(name='freevideo_tool_help', title='Schema of a tool not listed', annotations=read,
+        description='Full description and input schema of one of the tools not listed here: ' + brief + '. Call it once before the first use, then call the tool through freevideo_call.',
+        inputSchema=dict(type='object', properties=dict(name=dict(type='string', enum=sorted(hidden))), required=['name'], additionalProperties=False)))
+    visible.append(dict(name='freevideo_call', title='Call a tool not listed',
+        annotations={'readOnlyHint': False, 'destructiveHint': False, 'openWorldHint': False},
+        description='Call one of the tools that freevideo_tool_help describes with its arguments; the result is the tool\'s own result.',
+        inputSchema=dict(type='object', properties=dict(tool=dict(type='string', enum=sorted(hidden)), arguments=dict(type='object')),
+                         required=['tool'], additionalProperties=False)))
+    return visible
+
+
 PROMPTS = [
     dict(name='short_drama', title='Make a short drama',
          description='Plan and produce a short drama: script, consistent characters, chained shots, review, assembly.',
@@ -116,7 +145,7 @@ def short_drama(arguments):
 4. Follow todo: freevideo_drama_sheet shows each take, then freevideo_drama_choose or freevideo_drama_reshoot
    with a concrete note. Continuations wait for the previous chosen take. Prefer aspect "{aspect}" and quality light.
 5. When every shot is chosen, freevideo_drama_finish accepts assembly; get until the output library_id is ready.
-Use ref to replay writes safely. Ordinary job batches remain available through freevideo_submit_batch."""
+Use ref to replay writes safely. Ordinary job batches go through freevideo_call with tool freevideo_submit_batch."""
 
 
 def preload():
@@ -218,7 +247,7 @@ class Server:
             return {}
         if method == 'tools/list':
             if self.tools is None:
-                self.tools = tool_list()
+                self.tools = listed_tools()
             return dict(tools=self.tools)
         if method == 'tools/call':
             return self.call(identity, params.get('name'), params.get('arguments') or {},
@@ -245,6 +274,19 @@ class Server:
     # Tools -----------------------------------------------------------------------------------------------
     def call(self, identity, name, arguments, progress_token):
         from . import schema, spec, errors
+        if name == 'freevideo_tool_help':
+            row = next((r for r in tool_list() if r['name'] == arguments.get('name') and r['name'] in hidden_tools()), None)
+            if row is None:
+                problem = errors.build('invalid_request', validation=True, details=[dict(field='name', allowed=sorted(hidden_tools()))])
+                return dict(content=[dict(type='text', text=errors.text(problem))], structuredContent={'error': problem}, isError=True)
+            return dict(content=[dict(type='text', text=json.dumps(row, ensure_ascii=False))], structuredContent=row, isError=False)
+        if name == 'freevideo_call':
+            target, inner = arguments.get('tool'), arguments.get('arguments') or {}
+            if target not in hidden_tools() or not isinstance(inner, dict):
+                problem = errors.build('invalid_request', validation=True, details=[dict(field='tool' if target not in hidden_tools() else 'arguments',
+                                       allowed=sorted(hidden_tools()) if target not in hidden_tools() else 'object')])
+                return dict(content=[dict(type='text', text=errors.text(problem))], structuredContent={'error': problem}, isError=True)
+            return self.call(identity, target, inner, progress_token)
         try:
             schema.validate(schema.tool_schema(name), arguments)
             arguments = dict(arguments)
@@ -357,7 +399,7 @@ class Server:
         if name == 'freevideo_wait':
             if not args.get('id'):
                 return c.get('/inbox', wait=min(50., float(args.get('timeout', 50)))), []
-            return self.wait(identity, args['id'], min(25., float(args.get('timeout', 25))), token), []
+            return self.wait(identity, args['id'], min(JOB_WAIT, float(args.get('timeout', JOB_WAIT))), token), []
         if name == 'freevideo_jobs':
             return dict(jobs=c.jobs(**args)), []
         if name == 'freevideo_cancel':
@@ -380,7 +422,7 @@ class Server:
         raise LookupError('Unknown tool: %s' % name)
 
     def wait(self, identity, job, timeout, token):
-        deadline = time.monotonic() + max(0., min(25., float(timeout)))
+        deadline = time.monotonic() + max(0., min(JOB_WAIT, float(timeout)))
         last = None
         while True:
             left = max(0., deadline - time.monotonic())

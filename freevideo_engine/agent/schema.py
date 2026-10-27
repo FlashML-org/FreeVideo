@@ -1648,7 +1648,7 @@ def _tool_schema(name):
             value['required'].append('shot')
         if name == 'freevideo_wait':
             value['properties'].pop('wait')
-            value['properties']['timeout'] = number(0, 50, default=25, description='With id at most 25 seconds; without id (the user) up to 50, default 50.')
+            value['properties']['timeout'] = number(0, 50, default=45, description='With id up to 45 seconds; without id (the user) up to 50, default 50.')
             value['required'] = [k for k in value['required'] if k != 'id']
         return value
     if name == 'freevideo_asset':
