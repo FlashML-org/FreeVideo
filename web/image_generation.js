@@ -1,7 +1,7 @@
 // Image generation's wire adapter, cancellable session and options UI. The editor
 // owns its document/history; this module inserts a result through its commands.
 import * as commands from './image_commands.js';
-import {orientMatrix, rasterKinds, scaleSelection} from './image_editor_engine.js';
+import {blankDocument, orientMatrix, rasterKinds, scaleSelection} from './image_editor_engine.js';
 import {saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError} from './report_issue.js';
 import {issueButton} from './issue_button.js';
 import {skinSelect} from './fv_select.js';
@@ -30,6 +30,13 @@ export function imageGenerationSupported() {
 function memoryWords([en, zh], unified) {
     return unified ? [en.replace('GPU memory', 'memory').replace(' using the GPU', ''),
         zh.replace('显存', '内存').replace('占用显卡的程序', '程序')] : [en, zh];
+}
+// The preset a canvas of this size has exactly, or null.
+export function presetRatio(width, height) {
+    return BLANK_CANVAS_RATIOS.find(ratio => {
+        const [w, h] = ratio.split(':').map(Number);
+        return width > 0 && height > 0 && width * h === height * w;
+    }) || null;
 }
 export function blankCanvasRatio(target) {
     return BLANK_CANVAS_RATIOS.find(ratio => {
@@ -342,7 +349,12 @@ export function fitGenerationSize(width, height) {
     return {width: side(width), height: side(height)};
 }
 
-export function generationContext(doc, selection, mode) {
+// A picture of another shape than the canvas (canvas: {width, height, ratio}) is made for a new, empty canvas.
+export function generationContext(doc, selection, mode, canvas = null) {
+    if (canvas && mode === 'new') {
+        return {doc: blankDocument(canvas, canvas.ratio), selection: null, layer: null, mode, canvas,
+            ...fitGenerationSize(canvas.width, canvas.height)};
+    }
     const layer = mode === 'edit' ? doc.layers.find(l => l.id === doc.active && rasterKinds.has(l.kind)) : null;
     return {doc, selection, layer, mode, ...fitGenerationSize(doc.crop.w, doc.crop.h)};
 }
@@ -598,7 +610,7 @@ export function imageJobStore(key, storage = globalThis.sessionStorage, now = Da
                 rotation: layer.rotation, flipX: layer.flipX, flipY: layer.flipY};
             storage.setItem(name, JSON.stringify({key, job, withImages: !!withImages, at: now(), context: {
                 mode: context.mode, doc: {width: context.doc.width, height: context.doc.height},
-                layer: keep || null, selection: selection || null}}));
+                layer: keep || null, selection: selection || null, canvas: context.canvas || null}}));
         },
         load() {
             try {
@@ -620,8 +632,8 @@ export function imageJobStore(key, storage = globalThis.sessionStorage, now = Da
 }
 
 export function createImageGeneration({client, renderer, t, getDoc, getSelection, commit, el, button, segmented,
-    library = [], resolve = file => file, icon = () => '', onRatioChange, onPlace, productVersion, fetchApi, resumeKey = null}) {
-    let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', past = [];
+    library = [], resolve = file => file, icon = () => '', onRatioChange, onNewCanvas, onPlace, productVersion, fetchApi, resumeKey = null}) {
+    let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', past = [], pendingRatio = null;
     let promptRequired = false, attentionTimer = null;
     // A reference is sent no larger than the largest picture the service makes.
     async function referencePNG(file) {
@@ -636,7 +648,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     const session = createImageGenSession({client, store,
         beforeGenerate: query => mounted?.otherUsage.check(query),
         prepare: async (request, alive) => {
-            const context = generationContext(getDoc(), getSelection(), request.mode);
+            const context = generationContext(getDoc(), getSelection(), request.mode, request.canvas);
             const images = request.mode === 'edit' ? [await uploadGenerationReference(renderer, client, context, alive),
                 ...await uploadExtraReferences(client, request.references || [], referencePNG, alive)] : [];
             // Only the selected part of the edited picture (the first) is changed.
@@ -647,7 +659,10 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             const image = await renderer.image(result.file);
             if (!alive()) return;
             renderer.images.get(result.file).value = image;
-            commit(insertGenerationResult(getDoc(), {src: result.file, nw: image.naturalWidth, nh: image.naturalHeight}, context, t));
+            // One step: undo brings back the old canvas with its pictures.
+            const base = context.canvas && onNewCanvas ? onNewCanvas(context.canvas) : getDoc();
+            pendingRatio = null;
+            commit(insertGenerationResult(base, {src: result.file, nw: image.naturalWidth, nh: image.naturalHeight}, context, t));
         }, onChange: update,
     });
     const saved = store?.load();
@@ -657,6 +672,13 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     function clearAttention() {
         clearTimeout(attentionTimer); attentionTimer = null;
         mounted?.input.classList.remove('fv-ie-active');
+    }
+    const crop = () => getDoc().crop;
+    const currentRatio = () => presetRatio(Math.round(crop().w), Math.round(crop().h));
+    // Another shape chosen for a new picture on a canvas that already has pictures.
+    function newCanvas() {
+        if (mode !== 'new' || !getDoc().layers.length || !pendingRatio || pendingRatio === currentRatio()) return null;
+        return {...blankCanvasSize(pendingRatio), ratio: pendingRatio};
     }
     function start() {
         // The button is only marked unavailable, so a click while the service is being checked is turned away here.
@@ -674,7 +696,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             return;
         }
         const chosenLoras = loras?.value() || [];
-        return session.start({mode, prompt, references: chosen(), ...(chosenLoras.length ? {loras: chosenLoras} : {})});
+        return session.start({mode, prompt, references: chosen(), canvas: newCanvas(), ...(chosenLoras.length ? {loras: chosenLoras} : {})});
     }
     function drawEdited(canvas) {
         try {
@@ -835,15 +857,25 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     }
     function update() {
         if (!mounted?.bar.isConnected) return;
-        const {input, action, note, meter, fill, group, bar, refs, ratio, size} = mounted, state = session.state();
+        const {input, action, note, meter, fill, group, bar, refs, ratio, size, shape} = mounted, state = session.state();
         const missing = !state.running && state.info && !state.info.installed;
         const disabled = state.running || state.checking || !state.info?.installed;
         const empty = !getDoc().layers.length;
         if (empty) mode = 'new';
         bar.dataset.empty = String(empty);
         if (ratio) {
-            ratio.hidden = !empty; ratio.disabled = state.running;
-            ratio.value = BLANK_CANVAS_RATIOS.includes(getDoc().ratio) ? getDoc().ratio : blankCanvasRatio(getDoc());
+            if (empty || mode === 'edit') pendingRatio = null;
+            const shown = empty || mode === 'new', current = currentRatio();
+            shape.hidden = !shown; ratio.hidden = !shown; ratio.disabled = state.running;
+            // A canvas of no preset shape is listed first, with its size.
+            const own = !empty && !current ? `${Math.round(crop().w)}\u00a0×\u00a0${Math.round(crop().h)}` : '';
+            if (mounted.listed !== own) {
+                mounted.own.textContent = own;
+                ratio.replaceChildren(...(own ? [mounted.own] : []), ...mounted.presets); mounted.listed = own;
+            }
+            ratio.value = empty ? BLANK_CANVAS_RATIOS.includes(getDoc().ratio) ? getDoc().ratio : blankCanvasRatio(getDoc())
+                : pendingRatio || current || 'own';
+            bar.dataset.shape = String(shown);
             const tiers = state.info?.sizes?.includes('high') ? ['standard', 'high'] : ['standard'];
             if (!tiers.includes(tier)) tier = 'standard';
             size.hidden = !empty || tiers.length < 2; size.set(tier);
@@ -896,20 +928,21 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     function mount(bar) {
         bar.classList.add('fv-ie-generation');
         const group = segmented([['edit', t('Edit this', '改这张')], ['new', t('New image', '生成一张')]], mode,
-            value => { mode = value; update(); }, t('Generate with AI', 'AI 生成')).group;
-        let ratio = null, size = null, shape = null;
-        if (!getDoc().layers.length) {
+            value => { mode = value; update(); mounted?.grow(); }, t('Generate with AI', 'AI 生成')).group;
+        let ratio = null, size = null, shape = null, own = null, presets = [];
+        {
             shape = el('div', null, 'fv-ie-gen-shape');
             ratio = el('select', null, 'fv-ie-select'); ratio.id = 'fv-ie-gen-ratio';
             ratio.setAttribute('aria-label', t('Shape', '比例'));
-            for (const value of BLANK_CANVAS_RATIOS) {
-                const option = el('option', value); option.value = value; ratio.append(option);
-            }
+            presets = BLANK_CANVAS_RATIOS.map(value => { const option = el('option', value); option.value = value; return option; });
+            ratio.append(...presets);
             const seg = segmented([['standard', t('Standard', '标准')], ['high', t('HD', '高清')]], tier,
                 value => { tier = value; changed(); }, t('Size', '尺寸'));
             size = seg.group; size.id = 'fv-ie-gen-size'; size.set = seg.set;
+            own = el('option'); own.value = 'own';
             const changed = () => {
-                if (!getDoc().layers.length && !session.state().running) onRatioChange?.(ratio.value, tier);
+                if (!getDoc().layers.length) { if (!session.state().running) onRatioChange?.(ratio.value, tier); }
+                else pendingRatio = ratio.value === 'own' ? null : ratio.value;
                 update();
             };
             ratio.onchange = changed;
@@ -935,7 +968,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', t('Generate with AI', 'AI 生成'));
         meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
         bar.append(group);
-        if (shape) bar.append(shape);
+        bar.append(shape);
         bar.append(field, note, action, meter);
         const otherUsage = createOtherUsageNotice(bar, t, fetchApi);
         const grow = () => {
@@ -959,7 +992,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 event.preventDefault(); void start();
             }
         };
-        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size, otherUsage, grow};
+        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size, shape, own, presets, listed: '', otherUsage, grow};
         grow(); update();
     }
     return {mount, drawsSelection: () => mode === 'edit' && getDoc().layers.length > 0, unmount() { clearAttention(); promptRequired = false; mounted?.otherUsage.dispose(); mounted = null; },
