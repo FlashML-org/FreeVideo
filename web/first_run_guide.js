@@ -11,16 +11,17 @@ export const REPLAY_TEXT = {
 
 export const CHAPTERS = [
     {id: 'describe', anchor: '[data-fv-guide="describe"]', added: false,
-        en: 'Type your prompt here. You can have an agent follow the Skill at the top right, or turn on FreeToken enhancement.',
-        zh: '在这里输入提示词。可以让 Agent 参考右⁠上⁠角的 Skill，或开启 FreeToken 提示词增强。'},
+        en: 'Type your prompt here. Open Director checklist under the box to fill H3 syntax yourself, ask an agent via Autopilot, or turn on FreeToken enhancement.',
+        zh: '在这里输入提示词。框下的导演清单可自己填 H3 句法；也可走 Autopilot，或开启 FreeToken 提示词增强。'},
     {id: 'range', anchor: '[data-fv-guide="range"]', added: true,
         en: 'See the available sizes and lengths here, and how long each takes.', zh: '在这里查看可生成的尺\u2060寸、时长和预计用时。'},
     {id: 'generate', anchor: '[data-fv-guide="generate"]', added: false,
-        en: 'Choose "Generate video". Progress and the time left appear in the preview.', zh: '点“生成视频”，进度和剩\u2060余\u2060时\u2060间会显示在预览区。'},
+        en: 'Choose "Generate video". Progress and the time left appear in the preview. After a clip you like, Upscale 2× enlarges it and keeps the audio without re-sampling.',
+        zh: '点“生成视频”，进度和剩\u2060余\u2060时\u2060间会显示在预览区。满意后可用 2× 放大，保留音频且不再采样。'},
     {id: 'longer', anchor: '[data-fv-guide="longer"]', added: true,
         en: 'For a longer video, or to change part of one, choose "Edit".', zh: '要做更长的视频，或者修\u2060改\u2060其\u2060中\u2060一\u2060段，点“剪辑视图”。'},
     {id: 'agent', anchor: '[data-fv-guide="agent"]', added: true,
-        en: 'To have an AI agent such as Claude Code or Codex make videos for you, choose "Autopilot".', zh: '要让 Claude Code、Codex 等 Agent 替你生\u2060成\u2060视\u2060频，点“AI 全自动”。'},
+        en: 'To have an AI agent such as Claude Code, Codex, or a local LM Studio model make videos for you, choose "Autopilot". There you can copy MCP JSON for both freevideo and comfyui-expert.', zh: '要让 Claude Code、Codex 或本机 LM Studio 模型替你生\u2060成\u2060视\u2060频，点“AI 全自动”。那里可以复制 freevideo 与 comfyui-expert 的 MCP JSON。'},
 ];
 
 export function guideSteps({record, available = [], returning = false, blockers = {}, all = false}) {

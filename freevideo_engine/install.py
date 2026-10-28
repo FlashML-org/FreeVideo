@@ -57,6 +57,11 @@ def prepare_diffusers(root, dependencies):
         if len(patches) != 2:
             raise RuntimeError('Expected the two pinned VDN Diffusers patches')
         for path in patches:
+            # A Windows checkout of VDN can leave CRLF in these patches; git apply
+            # then looks for CR in the LF-only Diffusers tree and fails.
+            text = path.read_bytes().replace(b'\r\n', b'\n')
+            if text != path.read_bytes():
+                path.write_bytes(text)
             execution_paths.run(['git', 'apply', '--index', str(path)], cwd=checkout, check=True)
         tree = subprocess_output.output_external(['git', 'write-tree'], cwd=checkout).strip()
         if tree != spec['patched_tree']:

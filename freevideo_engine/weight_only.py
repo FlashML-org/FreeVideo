@@ -1,62 +1,101 @@
-"""FP8 storage with BF16 tensor-core compute for Ampere (W8A16).
+"""FP8 storage with BF16/FP16 compute (W8A16).
 
 This is a separately reported arithmetic policy, not native FP8 GEMM. Decode
 E4M3 bytes inside each GEMM tile instead of materializing a BF16 weight copy.
 No FP8 tensor-core instruction or native float8 conversion is required.
+
+Pascal (SM60/61) and other pre-Ampere GPUs use a PyTorch dequant + matmul
+fallback because Triton does not target those architectures on Windows.
 """
 import torch
-import triton
-import triton.language as tl
-
-from .triton_compat import activate
-activate()
 
 
-@triton.jit
-def _decode_e4m3(bits):
-    bits = bits.to(tl.uint32)
+def _use_torch_linear():
+    return not torch.cuda.is_available() or torch.cuda.get_device_capability() < (8, 0)
+
+
+def decode_e4m3(weight_fp8):
+    """Match the Triton E4M3 decode used on Ampere (including subnormals and NaN)."""
+    bits = weight_fp8.view(torch.uint8).to(torch.int32)
     exponent = (bits >> 3) & 15
     mantissa = bits & 7
-    # Reconstruct normal IEEE float bits; this avoids an exp2 per weight in
-    # every K tile while remaining usable before native FP8 hardware.
     normal = ((exponent + 120) << 23) | (mantissa << 20)
-    value = tl.where(exponent == 0, mantissa.to(tl.float32) * (1. / 512.),
-                     normal.to(tl.float32, bitcast=True))
-    value = tl.where((bits & 128) != 0, -value, value)
-    return tl.where((bits & 127) == 127, float('nan'), value)
+    value = torch.where(exponent == 0, mantissa.to(torch.float32) * (1. / 512.),
+                        normal.view(torch.float32))
+    value = torch.where((bits & 128) != 0, -value, value)
+    return torch.where((bits & 127) == 127, torch.full_like(value, float('nan')), value)
 
 
-@triton.autotune(configs=[
-    triton.Config({'BM': 32, 'BN': 64, 'BK': 32}, num_warps=4, num_stages=3),
-    triton.Config({'BM': 64, 'BN': 64, 'BK': 32}, num_warps=4, num_stages=3),
-    triton.Config({'BM': 32, 'BN': 128, 'BK': 32}, num_warps=4, num_stages=3),
-], key=['M', 'N', 'K'])
-@triton.jit
-def _matmul(A, W, S, O, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-            SA: tl.constexpr, SW: tl.constexpr, COLUMNWISE: tl.constexpr,
-            BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
-    # Reuse an eight-tile band of activations across output columns in L2.
-    # A full M sweep per column tile rereads the large packed input repeatedly.
-    blocks_m, blocks_n = triton.cdiv(M, BM), triton.cdiv(N, BN)
-    group = tl.program_id(0) // (8 * blocks_n)
-    first_m = group * 8
-    group_m = tl.minimum(blocks_m - first_m, 8)
-    within = tl.program_id(0) % (8 * blocks_n)
-    rows = (first_m + within % group_m) * BM + tl.arange(0, BM)
-    cols = (within // group_m) * BN + tl.arange(0, BN)
-    inner = tl.arange(0, BK)
-    scale = tl.load(S + cols, cols < N, other=1.) if COLUMNWISE else tl.load(S)
-    acc = tl.zeros((BM, BN), tl.float32)
-    for begin in range(triton.cdiv(K, BK)):
-        kk = begin * BK + inner
-        a = tl.load(A + rows[:, None] * SA + kk[None, :],
-                    (rows[:, None] < M) & (kk[None, :] < K), other=0.)
-        bits = tl.load(W + cols[None, :] * SW + kk[:, None],
-                       (cols[None, :] < N) & (kk[:, None] < K), other=0)
-        weight = _decode_e4m3(bits) * scale
-        acc += tl.dot(a, weight.to(a.dtype))
-    tl.store(O + rows[:, None] * N + cols[None, :], acc,
-             (rows[:, None] < M) & (cols[None, :] < N))
+def _linear_torch(value, weight_fp8, weight_scale, bias=None):
+    rows = value.reshape(-1, value.shape[-1]).contiguous()
+    weight = decode_e4m3(weight_fp8)
+    if weight_scale.numel() == 1:
+        weight = weight * weight_scale.to(dtype=torch.float32, device=weight.device)
+    else:
+        weight = weight * weight_scale.reshape(-1, 1).to(dtype=torch.float32, device=weight.device)
+    output = torch.nn.functional.linear(
+        rows.float(), weight,
+        None if bias is None else bias.float())
+    return output.to(rows.dtype).reshape(*value.shape[:-1], output.shape[-1])
+
+
+def _linear_triton(value, weight_fp8, weight_scale, bias=None):
+    import triton
+    import triton.language as tl
+    from .triton_compat import activate
+    activate()
+
+    @triton.jit
+    def _decode_e4m3(bits):
+        bits = bits.to(tl.uint32)
+        exponent = (bits >> 3) & 15
+        mantissa = bits & 7
+        normal = ((exponent + 120) << 23) | (mantissa << 20)
+        decoded = tl.where(exponent == 0, mantissa.to(tl.float32) * (1. / 512.),
+                           normal.to(tl.float32, bitcast=True))
+        decoded = tl.where((bits & 128) != 0, -decoded, decoded)
+        return tl.where((bits & 127) == 127, float('nan'), decoded)
+
+    @triton.autotune(configs=[
+        triton.Config({'BM': 32, 'BN': 64, 'BK': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BM': 64, 'BN': 64, 'BK': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BM': 32, 'BN': 128, 'BK': 32}, num_warps=4, num_stages=3),
+    ], key=['M', 'N', 'K'])
+    @triton.jit
+    def _matmul(A, W, S, O, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
+                SA: tl.constexpr, SW: tl.constexpr, COLUMNWISE: tl.constexpr,
+                BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+        blocks_m, blocks_n = triton.cdiv(M, BM), triton.cdiv(N, BN)
+        group = tl.program_id(0) // (8 * blocks_n)
+        first_m = group * 8
+        group_m = tl.minimum(blocks_m - first_m, 8)
+        within = tl.program_id(0) % (8 * blocks_n)
+        rows = (first_m + within % group_m) * BM + tl.arange(0, BM)
+        cols = (within // group_m) * BN + tl.arange(0, BN)
+        inner = tl.arange(0, BK)
+        scale = tl.load(S + cols, cols < N, other=1.) if COLUMNWISE else tl.load(S)
+        acc = tl.zeros((BM, BN), tl.float32)
+        for begin in range(triton.cdiv(K, BK)):
+            kk = begin * BK + inner
+            a = tl.load(A + rows[:, None] * SA + kk[None, :],
+                        (rows[:, None] < M) & (kk[None, :] < K), other=0.)
+            bits = tl.load(W + cols[None, :] * SW + kk[:, None],
+                           (cols[None, :] < N) & (kk[:, None] < K), other=0)
+            weight = _decode_e4m3(bits) * scale
+            acc += tl.dot(a, weight.to(a.dtype))
+        tl.store(O + rows[:, None] * N + cols[None, :], acc,
+                 (rows[:, None] < M) & (cols[None, :] < N))
+
+    rows = value.reshape(-1, value.shape[-1]).contiguous()
+    m, k = rows.shape
+    n = weight_fp8.shape[0]
+    output = torch.empty((m, n), device=rows.device, dtype=rows.dtype)
+    _matmul[lambda meta: (triton.cdiv(m, meta['BM']) * triton.cdiv(n, meta['BN']),)](
+        rows, weight_fp8.view(torch.uint8), weight_scale.contiguous(), output,
+        m, n, k, rows.stride(0), weight_fp8.stride(0), weight_scale.numel() != 1)
+    if bias is not None:
+        output.add_(bias)
+    return output.reshape(*value.shape[:-1], n)
 
 
 def linear(value, weight_fp8, weight_scale, bias=None):
@@ -67,17 +106,11 @@ def linear(value, weight_fp8, weight_scale, bias=None):
         raise ValueError('Expected contiguous E4M3 weights')
     if weight_scale.numel() not in (1, weight_fp8.shape[0]):
         raise ValueError('Expected scalar or per-output-channel weight scales')
-    m, k = rows.shape
-    n, weight_k = weight_fp8.shape
-    if k != weight_k:
+    if rows.shape[-1] != weight_fp8.shape[1]:
         raise ValueError('Projection input width differs from the weight')
-    output = torch.empty((m, n), device=rows.device, dtype=rows.dtype)
-    _matmul[lambda meta: (triton.cdiv(m, meta['BM']) * triton.cdiv(n, meta['BN']),)](
-        rows, weight_fp8.view(torch.uint8), weight_scale.contiguous(), output,
-        m, n, k, rows.stride(0), weight_fp8.stride(0), weight_scale.numel() != 1)
-    if bias is not None:
-        output.add_(bias)
-    return output.reshape(*value.shape[:-1], n)
+    if _use_torch_linear():
+        return _linear_torch(value, weight_fp8, weight_scale, bias)
+    return _linear_triton(value, weight_fp8, weight_scale, bias)
 
 
 class WeightOnlyLinear(torch.nn.Module):

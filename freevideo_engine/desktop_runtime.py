@@ -24,9 +24,9 @@ def launcher_root():
     if os.environ.get('FREEVIDEO_LAUNCHER_HOME'):
         return Path(os.environ['FREEVIDEO_LAUNCHER_HOME'])
     if sys.platform == 'darwin':
-        return Path.home() / 'Library/Application Support/FreeVideo/launcher'
+        return Path.home() / 'Library/Application Support/FreeVideo-Pascal/launcher'
     home = os.environ.get('LOCALAPPDATA') or str(Path.home())
-    return Path(home) / 'FreeVideo-launcher'
+    return Path(home) / 'FreeVideo-Pascal-launcher'
 
 
 def source_files(root):

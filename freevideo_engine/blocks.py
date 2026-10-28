@@ -35,8 +35,12 @@ def install_bounded_blocks(model, residual_offload=False):
     # ~758 MiB copy defeats reuse under small memory limits. This elementwise
     # kernel needs no shape search or reduction; use the fixed launch policy.
     # One graph for every row count, like the kernels in row_kernels.
-    post = dynamic_rows(torch.compile(_post_into_branch, dynamic=False,
-                                      options={'triton.autotune_pointwise': False}), POST_ROWS)
+    # torch.compile / inductor Triton does not target Pascal (SM61) on Windows.
+    if torch.cuda.is_available() and torch.cuda.get_device_capability() < (8, 0):
+        post = _post_into_branch
+    else:
+        post = dynamic_rows(torch.compile(_post_into_branch, dynamic=False,
+                                          options={'triton.autotune_pointwise': False}), POST_ROWS)
 
     def forward(self, hidden_states, temb, adaln_indices, rotary_emb, attention_mask=None):
         if torch.is_grad_enabled():

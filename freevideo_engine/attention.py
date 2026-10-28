@@ -12,8 +12,9 @@ from src.models.softmax_attention.decomposed import _plan
 
 ALIASES = {'original': 'cudnn/fa4', 'dense': 'cudnn/cudnn',
            'sage2': 'sage2/sage2', 'sage2-window': 'cudnn/sage2',
-           'fa2-window': 'cudnn/fa2', 'sdpa': 'torch-flash/torch-flash'}
-BACKENDS = ('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4')
+           'fa2-window': 'cudnn/fa2', 'sdpa': 'torch-flash/torch-flash',
+           'torch-sdpa': 'torch-sdpa/torch-sdpa'}
+BACKENDS = ('cudnn', 'torch-flash', 'torch-sdpa', 'sage2', 'fa2', 'fa4')
 
 
 def split_backend(backend, allowed=BACKENDS):

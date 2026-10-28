@@ -123,6 +123,9 @@ def decode_to_file(latents, audio_latents, output, *, base, artifacts_dir,
             del mean, std
             gc.collect()
             backend.empty_cache()
+            phase('Polishing soundtrack')
+            from .audio_polish import polish as polish_audio
+            audio, audio_polish = polish_audio(audio, rate)
             phase('Saving MP4 and audio')
             output.parent.mkdir(parents=True, exist_ok=True)
             temporary = output.with_name(output.stem + '.partial' + output.suffix)
@@ -135,7 +138,8 @@ def decode_to_file(latents, audio_latents, output, *, base, artifacts_dir,
                 encode_video(frames, fps=FPS, output_path=str(temporary), audio=audio, audio_sample_rate=rate)
             temporary.replace(output)
             return dict(device_backend='mps', output=str(output), frames=len(frames),
-                audio_sample_rate=rate, audio_shape=list(audio.shape), elapsed_seconds=time.monotonic()-started,
+                audio_sample_rate=rate, audio_shape=list(audio.shape), audio_polish=audio_polish,
+                elapsed_seconds=time.monotonic()-started,
                 policy=policy, video_residency=video_residency, audio_loading=audio_loading, timings=timings,
                 precision='FP32 checkpoint; FP16 video autocast; FP32 audio decoder',
                 mlx_attention_modules=mlx_attention)

@@ -220,6 +220,10 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                 wav.setframerate(rate)
                 wav.writeframes(pcm.tobytes())
             artifact_seconds += time.perf_counter() - tick
+        phase('audio_polish')
+        print(json.dumps({'event': 'decode_phase', 'phase': 'Polishing soundtrack'}), flush=True)
+        from .audio_polish import polish as polish_audio
+        audio, audio_polish = polish_audio(audio, rate)
         destination = Path(out_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.stem + '.partial' + destination.suffix)
@@ -245,7 +249,8 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             'vae_linear_compute_cache': linear_compute_cache, 'vae_compute_cache_preparation': compute_cache_metrics,
             'resident_vae_cache_hit': vae_cache_hit, 'resident_audio_vae_cache_hit': audio_cache_hit,
             'vae_preload_seconds': preload_seconds,
-            'audio_load_decode_seconds': audio_seconds, 'encode_seconds': time.perf_counter() - encode_started,
+            'audio_load_decode_seconds': audio_seconds, 'audio_polish': audio_polish,
+            'encode_seconds': time.perf_counter() - encode_started,
             'decoded_artifact_save_seconds': artifact_seconds,
             'streamed_video_output': stream_output, 'streamed_vae_weights': stream_weights,
             'vae_resident_blocks': resident_blocks,

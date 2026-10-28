@@ -29,6 +29,36 @@ FIRST_FRAME_REFERENCE_SHORT = 384
 VERSION = 1
 
 MISSING = 'The previous video has no usable continuation data. Generate it again with this version of FreeVideo.'
+
+
+def missing_message(video_path):
+    """Keep MISSING as the leading sentence so the error panel still matches it."""
+    hint = _missing_hint(video_path)
+    return MISSING if not hint else MISSING + ' ' + hint
+
+
+def _missing_hint(video_path):
+    report = Path(video_path).with_suffix('.request.json')
+    try:
+        data = json.loads(report.read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return ''
+    if not isinstance(data, dict):
+        return ''
+    if data.get('preview') or data.get('early_stop'):
+        return ('That clip was a preview (or kept mid-sampling). Use Continue remaining steps on a first-pass preview, '
+                'or generate again with Preview first off before extending.')
+    task = ((data.get('profile') or {}).get('engine') or {}).get('task') or (data.get('engine_options') or {}).get('task')
+    if task and task != 't2va':
+        return 'Only a finished two-pass text-to-video can be continued, not image, last-frame or reference mode.'
+    store = data.get('continuation_store')
+    if not isinstance(store, dict):
+        metrics = data.get('metrics') if isinstance(data.get('metrics'), dict) else {}
+        store = metrics.get('continuation_store') if isinstance(metrics.get('continuation_store'), dict) else {}
+    if store.get('saved') is False:
+        return ('The previous run did not save continuation data (Draft / single-pass). '
+                'Generate with Light: two-pass on, Preview first off.')
+    return ''
 SIZE_MISMATCH = 'Use the same width and height as the previous video.'
 UNSUPPORTED = 'Video continuation requires full two-pass text generation on an NVIDIA GPU, without first frames, last frames or reference media.'
 INVALID_FRAMES = 'Frame count must be 5 + 17n and at least 39 (39, 56, 73, 90, ...).'
@@ -225,7 +255,7 @@ def prepare(video_path, canvas, manifest=None, sampling_plan=None, *, directory=
     from safetensors.numpy import save
     value = load(validate_path(video_path), directory=directory)
     if value is None:
-        raise ValueError(MISSING)
+        raise ValueError(missing_message(video_path))
     from .continuation_store import TAG
     metadata = dict(value['metadata'], source_id=value['id'])
     metadata.pop('audio_lead_in', None)

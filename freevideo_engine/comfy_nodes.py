@@ -5,7 +5,7 @@ from pathlib import Path
 from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 
 from . import comfy_bridge
-from .comfy_continuation import request_options
+from .comfy_continuation import continuation_notice, request_options
 from .default_prompt import DEFAULT_PROMPT
 
 References = io.Custom('FREEVIDEO_REFERENCES')
@@ -24,11 +24,12 @@ class FreeVideoGenerate(io.ComfyNode):
             inputs=[
                 io.String.Input('text', display_name='Prompt', multiline=True, default=DEFAULT_PROMPT,
                     tooltip='Describe the scene, motion, dialogue, sound and music.'),
-                io.Int.Input('width', default=1344, min=256, max=4096, step=32),
-                io.Int.Input('height', default=768, min=256, max=4096, step=32),
-                io.Float.Input('seconds', display_name='Duration (s)', default=10., min=1.625, max=60., step=.1,
-                    tooltip='24 fps. The length is rounded up slightly to a length the model can generate; '
-                            'for example, 10 s becomes 10.125 s. Videos longer than 15 s are experimental.'),
+                io.Int.Input('width', default=448, min=256, max=4096, step=32),
+                io.Int.Input('height', default=320, min=256, max=4096, step=32),
+                io.Float.Input('seconds', display_name='Duration (s)', default=2., min=1.625, max=60., step=.1,
+                    tooltip='Pascal: 1.625 s is the model minimum; 2 s is the usual start. 5 s is only the default '
+                            'part length when splitting a long video. 24 fps; length rounds up slightly '
+                            '(10 s becomes 10.125 s). Videos longer than 15 s are experimental.'),
                 io.Int.Input('seed', default=2026090903, min=0, max=2**53-1, control_after_generate=True),
                 io.Image.Input('first', display_name='First frame', optional=True,
                     tooltip='One image. Center-cropped to the selected canvas; enables I2VA.'),
@@ -43,19 +44,25 @@ class FreeVideoGenerate(io.ComfyNode):
                             'Conditioning from generic CLIP nodes is rejected.'),
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
                 io.Boolean.Input('two_pass', display_name='Two-pass acceleration', default=True, optional=True,
-                    tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.'),
+                    tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size. '
+                            'On Pascal, combine with Preview first to stop after a watchable video with audio.'),
                 io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=32, optional=True,
                     tooltip='Default: 8. Changing sampling steps may reduce generation quality.'),
                 io.Int.Input('refine_steps', display_name='Second-pass steps', default=3, min=1, max=31, optional=True,
                     tooltip='Default: 3. Three steps use the independent refinement schedule. Changing sampling steps may reduce generation quality.'),
                 io.Boolean.Input('force_regenerate', display_name='Force regeneration', default=False, optional=True,
                     tooltip='Generate again even when an identical completed video is saved locally.'),
-                io.Boolean.Input('preview', display_name='Two-pass: preview first pass', default=False, optional=True,
-                    tooltip='Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. '
-                            'Run the second pass from the result when it looks right; it continues from the same latents.'),
+                io.Boolean.Input('preview', display_name='Two-pass: preview first pass', default=True, optional=True,
+                    tooltip='Stop after the first pass and save a watchable video with audio. Continue remaining steps from the result when you want more quality.'),
                 io.String.Input('refine_from', display_name='Second pass of preview', default='', optional=True, advanced=True,
                     socketless=True, tooltip='Set by the Run second pass button: the preview video to continue. '
                                              "The second pass uses the preview's own prompt, seed, size and inputs."),
+                io.Int.Input('quality_ceiling', display_name='Quality ceiling', default=0, min=0, max=32, optional=True, advanced=True,
+                    tooltip='When set above First-pass steps, Medium/High share a longer schedule so Continue remaining steps can finish High/Max without restarting. 0 means no climb.'),
+                io.String.Input('resume_from', display_name='Resume checkpoint', default='', optional=True, advanced=True,
+                    socketless=True, tooltip='Set by Continue remaining steps on a Medium/High checkpoint or Keep this preview.'),
+                io.String.Input('pixel_upscale_from', display_name='Pixel upscale of video', default='', optional=True, advanced=True,
+                    socketless=True, tooltip='Set by Upscale 2×: RealESRGAN on the finished MP4. Original audio is kept. MiniMax is not sampled again.'),
                 io.String.Input('continue_from', display_name='Continue from video', default='', optional=True, advanced=True,
                     tooltip='For long videos generated in segments: continue after this MP4. Use its ComfyUI output '
                             'subfolder/filename or an absolute path inside ComfyUI output or input.'),
@@ -88,6 +95,11 @@ class FreeVideoGenerate(io.ComfyNode):
                         media[key] = media[key] or bool(assets.get(key))
                 options.update(two_pass=kwargs.get('two_pass', True), preview=kwargs.get('preview', False),
                                refine_from=kwargs.get('refine_from'), media=media)
+            if kwargs.get('pixel_upscale_from'):
+                from .pixel_upscale import resolve_video
+                import folder_paths
+                resolve_video(folder_paths.get_output_directory(), kwargs['pixel_upscale_from'])
+                return True
             comfy_bridge.validate_request(text, width, height, seconds, seed, **options)
             if not kwargs.get('refine_from'):
                 from .two_pass import validate_steps
@@ -109,14 +121,19 @@ class FreeVideoGenerate(io.ComfyNode):
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
-                continue_from='', frames=0, first_frame_reference=False):
+                continue_from='', frames=0, first_frame_reference=False, quality_ceiling=0, resume_from='',
+                pixel_upscale_from=''):
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         node_id = cls.hidden.unique_id
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, frames)
+        # Checked before background work stops or the GPU is touched, so the session stays usable.
+        skipped = None if refine_from or pixel_upscale_from else continuation_notice(options.get('continue_from'))
+        if skipped:
+            return cls.skipped(node_id, skipped)
         from .two_pass import validate_steps
-        if not refine_from:
+        if not refine_from and not pixel_upscale_from:
             validate_steps(base_steps, refine_steps, two_pass)
         from .background_compile import COMPILE
         # Returns once the idle compile released the GPU and the engine lease.
@@ -133,8 +150,8 @@ class FreeVideoGenerate(io.ComfyNode):
         prewarm = {}
         result_reused = [False]
         result_report = [None]
-        total_steps = base_steps + (refine_steps if two_pass and not preview else 0)
-        if two_pass and not preview and not refine_from:
+        total_steps = 1 if pixel_upscale_from else base_steps + (refine_steps if two_pass and not preview else 0)
+        if two_pass and not preview and not refine_from and not pixel_upscale_from:
             # A small canvas runs in one pass even with two-pass on.
             from .geometry import geometry
             from .two_pass import plan, sampling_canvas
@@ -197,10 +214,10 @@ class FreeVideoGenerate(io.ComfyNode):
         except (ImportError, AttributeError):
             embed = True
         graph = dict(prompt=getattr(cls.hidden, 'prompt', None), workflow=metadata.get('workflow')) if embed else None
-        if graph and refine_from:
-            # The upscaled video is the full request's result: embed that
-            # workflow, not one that points at this machine's preview file.
-            graph = comfy_bridge.without_upscale(graph, node_id, refine_from)
+        if graph and (refine_from or resume_from or pixel_upscale_from):
+            # The continued video is the full request's result: embed that
+            # workflow, not one that points at this machine's checkpoint file.
+            graph = comfy_bridge.without_upscale(graph, node_id, refine_from or resume_from or pixel_upscale_from)
         output_root = Path(folder_paths.get_output_directory()).resolve()
         publish(PromptServer.instance, node_id, {'label': 'Preparing video', 'new_request': True})
         try:
@@ -209,7 +226,9 @@ class FreeVideoGenerate(io.ComfyNode):
                 prompt_rewrite_report=rewrite_report,
                 encoder_prewarm=prewarm, force_regenerate=force_regenerate,
                 base_steps=base_steps, refine_steps=refine_steps, comfy_metadata=graph,
-                preview=bool(preview), refine_from=refine_from or None,
+                preview=bool(preview), refine_from=refine_from or None, node_id=node_id,
+                quality_ceiling=int(quality_ceiling or 0), resume_from=resume_from or None,
+                pixel_upscale_from=pixel_upscale_from or None,
                 interrupted=memory.throw_exception_if_processing_interrupted, release_models=release,
                 export_inputs=lambda run, canvas: export(run, canvas, first=first, last=last,
                     references=references, loras=loras, conditioning=conditioning, assets=media),
@@ -265,6 +284,25 @@ class FreeVideoGenerate(io.ComfyNode):
             except (OSError, RuntimeError):
                 pass  # A saved video remains successful if idle warming cannot start.
         return io.NodeOutput(InputImpl.VideoFromFile(str(output)), report, ui=preview)
+
+    @classmethod
+    def skipped(cls, node_id, message):
+        """End this request with a notice instead of an execution error.
+
+        The video output is an ExecutionBlocker without a message, so nodes that
+        depend on it are skipped quietly and the rest of the queue keeps running.
+        """
+        import json
+        from server import PromptServer
+        from comfy_execution.graph import ExecutionBlocker
+        from .comfy_progress import publish
+        logging.warning('[FreeVideo] Continuation skipped: %s', message)
+        server = PromptServer.instance
+        publish(server, node_id, {'label': 'Continuation skipped', 'detail': message, 'phase': 'skipped'})
+        if server is not None:
+            server.send_progress_text('Continuation skipped · ' + message, node_id)
+        report = json.dumps({'status': 'skipped', 'reason': 'continuation_unavailable', 'message': message})
+        return io.NodeOutput(ExecutionBlocker(None), report, ui={'freevideo_notice': [message]})
 
 
 class FreeVideoMedia(io.ComfyNode):

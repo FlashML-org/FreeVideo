@@ -57,6 +57,10 @@ GUIDE = {
         'For keyframes the first frame is <Picture 1> and the last frame the next picture.',
         'Name subjects <Subject 1>, <Subject 2> in subject_definitions and reuse those labels in every section.',
         'Clips are cut to the generated length (at most 15 s); the job result lists any cut.',
+        'A reference video can supply motion, camera, or acting. Assign jobs in the prompt: '
+        '"<Picture 1> is identity; <Video 1> is walking motion and timing only — do not copy the person, '
+        'clothes, or room in <Video 1>." This is prompt-assigned Ref2V, not skeletal motion control. '
+        'Trim the clip to the useful 2-15 s. Identity can leak from the video; say what to ignore.',
     ],
     'timing': [
         'Single-block frames are 24 fps on a 17n+5 grid (6 s -> 6.583 s, 10 s -> 10.125 s). '
@@ -72,7 +76,10 @@ GUIDE = {
         'parts and framing, colour or the person may wander. Leave it off for camera moves, big action or a '
         'scene that should change: it holds framing and motion close to the first frame. Continuing parts take '
         'somewhat longer with it; a single-part video is unaffected.',
-        'Keep the described timeline inside the duration. 4-15 s is the tested range; longer is experimental.',
+        'Keep the described timeline inside the duration. 4-15 s is the tested range; longer is experimental. '
+        'Spoken lines need time: about 2.4 English words per second at a film pace, plus a beat of action '
+        'before they speak. One word ("Hi") fits a 1.625 s clip; a long greeting needs about 5 s. '
+        'Studio Spoken dialog estimate is only a guess.',
         'Width and height are multiples of 32. For a size the user names that is not, use the nearest multiple '
         'on each side (1000x560 -> 992x544 or 992x576); a rejected request names them.',
     ],
@@ -449,8 +456,22 @@ def connection_text(value):
         '连接这台电脑上的 FreeVideo' if zh else 'Connect to FreeVideo on this computer',
         value['api'], '', value['authentication'],
         ('令牌文件：' if zh else 'Token file: ') + value['token_file'], '', 'Claude Code:', value['claude_code'], '',
-        'Codex:', value['codex'], '', '其他 MCP 客户端：' if zh else 'Other MCP clients:',
+        'Codex:', value['codex'], '', '其他 MCP 客户端（Claude Desktop / Cursor / LM Studio）：' if zh else
+        'Other MCP clients (Claude Desktop / Cursor / LM Studio):',
         json.dumps(value['mcp_json'], indent=2), '',
+        '在 LM Studio 安装这两个 MCP：先启动 FreeVideo；把上面的 mcpServers JSON 贴进 '
+        '%USERPROFILE%\\.lmstudio\\mcp.json（已有其他服务则只新增 freevideo 与 comfyui-expert 两键）；'
+        '完全退出并重开 LM Studio，确认两个服务都在运行；加载支持工具调用的模型并开新对话、开启 MCP。'
+        '试一下：问 FreeVideo 状态，再搜索本机 FreeVideo/MiniMax 节点。'
+        '仅当本机 LLM 与 FreeVideo 争用显存时才在生成前卸载；云端 Claude / Gemini / Cursor 不必卸载。'
+        if zh else
+        'Install both MCPs in LM Studio: start FreeVideo first; paste the mcpServers JSON above into '
+        '%USERPROFILE%\\.lmstudio\\mcp.json (if that file already has servers, keep them and add only the '
+        'freevideo and comfyui-expert keys); quit LM Studio fully and reopen so both servers run; load a '
+        'tool-capable model, start a new chat, and turn MCP / tools on. Smoke test: ask FreeVideo status, '
+        'then search this ComfyUI for FreeVideo or MiniMax nodes. Unload a local GPU LLM before Generate '
+        'only when it shares this computer and VRAM is tight; cloud Claude / Gemini / Cursor skip unload.',
+        '',
         value['session'], '', '本机 HTTP（Python）：' if zh else 'Local HTTP (Python):', value['http_example'], '',
         '当前版本可用的功能：' if zh else 'Available in this version:',
         *['- ' + row['description'] for row in value['capabilities']], '',

@@ -1,11 +1,13 @@
 // One editor control. The queued request remains an immutable graph snapshot.
-// Each level is a complete plan: Light is two-pass 8 + 3; the others sample once.
+// Draft is 2 steps, one pass — the Pascal starting point. Light is two-pass 8 + 3.
 export const SAMPLING_EFFORTS = Object.freeze([
-    {name: 'Light', zh: '轻量', steps: 8, twoPass: true, color: '#3dd6b5'},
-    {name: 'Medium', zh: '标准', steps: 12, twoPass: false, color: '#4ea8ff'},
-    {name: 'High', zh: '精细', steps: 16, twoPass: false, color: '#9d7bff'},
-    {name: 'Max', zh: '极致', steps: 20, twoPass: false, color: '#ffa94d'},
+    {name: 'Draft', zh: '草稿', steps: 2, twoPass: false, ceiling: 0, color: '#8aa0b5'},
+    {name: 'Light', zh: '轻量', steps: 8, twoPass: true, ceiling: 0, color: '#3dd6b5'},
+    {name: 'Medium', zh: '标准', steps: 12, twoPass: false, ceiling: 20, color: '#4ea8ff'},
+    {name: 'High', zh: '精细', steps: 16, twoPass: false, ceiling: 20, color: '#9d7bff'},
+    {name: 'Max', zh: '极致', steps: 20, twoPass: false, ceiling: 20, color: '#ffa94d'},
 ].map(Object.freeze));
+const LAST = SAMPLING_EFFORTS.length - 1;
 
 export const effortName = (t, tier) => t(tier.name, tier.zh);
 
@@ -24,18 +26,18 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     header.append(label, estimate);
     const rail = el('div', 'fv-effort-rail'); rail.tabIndex = 0;
     rail.setAttribute('role', 'slider'); rail.setAttribute('aria-label', label.textContent);
-    rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', '3');
+    rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', String(LAST));
     rail.setAttribute('aria-orientation', 'horizontal');
     // A thick track with the knob inside it; stops sit at the knob's centers.
     const track = el('span', 'fv-effort-track'); track.setAttribute('aria-hidden', 'true');
     const fill = el('span', 'fv-effort-fill'); track.append(fill);
-    const stops = [0, 1, 2, 3].map(i => { const stop=el('span','fv-effort-stop'); stop.style.setProperty('--fv-stop', i / 3); track.append(stop); return stop; });
+    const stops = SAMPLING_EFFORTS.map((_, i) => { const stop=el('span','fv-effort-stop'); stop.style.setProperty('--fv-stop', i / LAST); track.append(stop); return stop; });
     const knob = el('span', 'fv-effort-knob'); track.append(knob); rail.append(track);
     knob.addEventListener('animationend', () => knob.classList.remove('fv-effort-pop'));
     const names = el('div', 'fv-effort-names');
     const nameButtons = SAMPLING_EFFORTS.map((tier, i) => {
         const b = el('button', 'fv-effort-name', effortName(t, tier)); b.type = 'button'; b.tabIndex = -1;
-        b.style.setProperty('--fv-stop', i / 3);
+        b.style.setProperty('--fv-stop', i / LAST);
         b.onclick = () => { if (!disabled && pointer === null) commit(i); };
         names.append(b); return b;
     });
@@ -43,7 +45,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     element.append(header, rail, names, custom);
     let selected = 0, disabled = false, pointer = null, draft = 0, currentSteps = 8, currentRefine = 3, twoPass = true;
     function paint(position) {
-        element.style.setProperty('--fv-position', position / 3);
+        element.style.setProperty('--fv-position', position / LAST);
         const index = Math.round(position), tier = SAMPLING_EFFORTS[index];
         nameButtons.forEach((b, i) => b.toggleAttribute('data-active', i === index));
         stops.forEach((stop, i) => stop.toggleAttribute('data-filled', i <= position + .01));
@@ -53,7 +55,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
     function position(event) {
         const box = rail.getBoundingClientRect();
         // The knob's center travels between 18 px from either end (4 px inset, 28 px knob).
-        return Math.max(0, Math.min(3, (event.clientX - box.left - 18) / (box.width - 36) * 3));
+        return Math.max(0, Math.min(LAST, (event.clientX - box.left - 18) / (box.width - 36) * LAST));
     }
     function commit(index) {
         selected = index; custom.hidden = true; delete element.dataset.custom;
@@ -89,9 +91,9 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         rail.dataset.keyboard = 'true';
         if (event.key === 'Escape' && pointer !== null) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
         if (disabled || pointer !== null) return;
-        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: 3}[event.key];
+        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: LAST}[event.key];
         if (next === undefined) return;
-        event.preventDefault(); commit(Math.max(0, Math.min(3, next)));
+        event.preventDefault(); commit(Math.max(0, Math.min(LAST, next)));
     };
     function update(state) {
         currentSteps = Number(state.baseSteps); currentRefine = Number(state.refineSteps);
@@ -108,7 +110,8 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}}) {
         paint(selected);
         if (isCustom) rail.setAttribute('aria-valuetext', custom.textContent);
         rail.title = disabled ? state.reason || t('Controlled by connected nodes.', '由连接的节点控制。')
-            : t('Same model. Higher effort uses more sampling steps; results vary by scene.', '使用同一模型，提高档位会增加采样步数；效果因场景而异。');
+            : t('Same model. Medium and High stop on a 20-step Max schedule so you can Continue remaining steps without restarting. Draft and Light are separate recipes.',
+                '同一模型。标准/精细停在 20 步极致日程上，之后可“继续剩余步数”而不用重来。草稿和轻量是另一套配方。');
     }
     return {element, update, setEstimate(text, title = '') { estimate.textContent = text; estimate.title = title; }, dispose: cancel};
 }

@@ -46,6 +46,20 @@ class ComfyHost:
     def inputs(self, block_inputs):
         schema = _generate_inputs()
         values = {key: block_inputs[key] for key in ('text', 'seed')}
+        # Parts of one video must save a continuation tail. Preview / Draft / a
+        # leftover refine_from on the node would make the next part fail.
+        if 'preview' in schema:
+            values['preview'] = False
+        if 'refine_from' in schema:
+            values['refine_from'] = ''
+        if 'resume_from' in schema:
+            values['resume_from'] = ''
+        if 'pixel_upscale_from' in schema:
+            values['pixel_upscale_from'] = ''
+        if 'quality_ceiling' in schema:
+            values['quality_ceiling'] = 0
+        if 'two_pass' in schema:
+            values['two_pass'] = True
         if 'frames' in schema:
             values['frames'] = block_inputs['frames']
         else:
@@ -315,3 +329,7 @@ def register(host_factory=None):
             return response({'error': 'Unknown chain'}, 404)
         except ValueError as failure:
             return response({'error': str(failure)}, 409)
+
+    from .chain_review import register_review_routes
+    register_review_routes(server, runner)
+

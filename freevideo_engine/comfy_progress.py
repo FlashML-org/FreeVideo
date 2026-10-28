@@ -262,3 +262,14 @@ def register():
         import nodes
         return web.json_response({'status': cancel_request(server.prompt_queue, prompt_id,
             node_id, nodes.interrupt_processing)})
+
+    @server.routes.post('/freevideo/keep-preview')
+    async def keep_preview(request):
+        value = await request.json()
+        node_id = value.get('node_id')
+        if not isinstance(node_id, str) or not node_id:
+            return web.json_response({'error': 'A node ID is required'}, status=400)
+        from .keep_preview import request as keep
+        if not keep(node_id):
+            return web.json_response({'error': 'No running generation'}, status=409)
+        return web.json_response({'status': 'keeping'})

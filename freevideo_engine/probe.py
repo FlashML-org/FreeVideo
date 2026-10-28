@@ -22,8 +22,9 @@ def main():
             from .kernel_capabilities import fp8_implementation
             # Wide output and a tail tile exercise the bounded compatibility
             # epilogue on the user's real GPU without loading any model.
-            x = torch.randn(701, 512, device='cuda', dtype=torch.bfloat16)
-            weight = torch.randn(12288, 512, device='cuda', dtype=torch.bfloat16)
+            act = torch.float16 if torch.cuda.get_device_capability() < (8, 0) else torch.bfloat16
+            x = torch.randn(701, 512, device='cuda', dtype=act)
+            weight = torch.randn(12288, 512, device='cuda', dtype=act)
             shapes = {'activation': list(x.shape), 'weight': list(weight.shape), 'output_dtype': str(x.dtype)}
             if torch.cuda.get_device_capability() < (8, 9):
                 from .weight_only import linear
@@ -48,7 +49,8 @@ def main():
             # The prepared int8 path on the user's GPU: ConvRot rotation and
             # per-row quantization, then the int8 GEMM against the same rows
             # dequantized in FP32. A tail row block is included; no model loads.
-            x = torch.randn(701, 2 * GROUP, device='cuda', dtype=torch.bfloat16)
+            act = torch.float16 if torch.cuda.get_device_capability() < (8, 0) else torch.bfloat16
+            x = torch.randn(701, 2 * GROUP, device='cuda', dtype=act)
             weight = torch.randint(-127, 128, (1024, 2 * GROUP), device='cuda', dtype=torch.int8)
             weight_scale = torch.rand(1024, device='cuda') / 64 + 1e-3
             values, scales = rotate_quantize(x)
@@ -66,12 +68,17 @@ def main():
         else:
             if backend == 'torch-flash' and not torch.backends.cuda.is_flash_attention_available():
                 raise RuntimeError('This PyTorch wheel was built without CUDA Flash Attention. '
-                                   'Automatic selection can use cuDNN or Sage2 if their probes pass.')
+                                   'Automatic selection can use torch-sdpa or cuDNN if their probes pass.')
+            if backend == 'torch-sdpa':
+                torch.backends.cuda.enable_mem_efficient_sdp(True)
+                if not torch.backends.cuda.mem_efficient_sdp_enabled():
+                    raise RuntimeError('PyTorch memory-efficient SDPA is not available on this GPU.')
             from .attention import WindowAttention
             from src.models.sequence_layout import SequenceLayout
             from src.models.softmax_attention.window import window_bounds, window_softmax_reference
             layout = SequenceLayout(seq_len=487, video_start=3, num_frames=15, tokens_per_frame=32)
-            q, k, v = [torch.randn(487, 4, 128, device='cuda', dtype=torch.bfloat16) for _ in range(3)]
+            act = torch.float16 if torch.cuda.get_device_capability() < (8, 0) else torch.bfloat16
+            q, k, v = [torch.randn(487, 4, 128, device='cuda', dtype=act) for _ in range(3)]
             shapes = {'qkv': list(q.shape), 'dtype': str(q.dtype), 'stride': list(q.stride())}
             attention = WindowAttention(backend, window_batch=2)
             value = attention(q, k, v, layout, window_bounds(15, radius=2, chunk=3), 128 ** -.5, 'both')

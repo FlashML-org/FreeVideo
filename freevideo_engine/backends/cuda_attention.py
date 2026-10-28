@@ -4,7 +4,7 @@ import importlib.metadata
 
 class CUDAAttentionKernels:
     def __init__(self, global_backend, window_backend, *, query_chunk=0, window_varlen=False):
-        choices = ('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4')
+        choices = ('cudnn', 'torch-flash', 'torch-sdpa', 'sage2', 'fa2', 'fa4')
         if global_backend not in choices or window_backend not in choices:
             raise ValueError('Unknown CUDA attention backend')
         if 'fa4' in (global_backend, window_backend):
@@ -39,15 +39,25 @@ class CUDAAttentionKernels:
             from flash_attn.cute import flash_attn_func
             result = flash_attn_func(q, k, v, softmax_scale=scale, causal=False)
             return result[0] if isinstance(result, tuple) else result
-        if leg not in ('cudnn', 'torch-flash'):
+        if leg not in ('cudnn', 'torch-flash', 'torch-sdpa'):
             raise ValueError('Unknown CUDA attention backend: ' + str(leg))
+        import torch
         import torch.nn.functional as F
         from torch.nn.attention import SDPBackend, sdpa_kernel
-        backend = SDPBackend.CUDNN_ATTENTION if leg == 'cudnn' else SDPBackend.FLASH_ATTENTION
-        with sdpa_kernel(backend):
-            result = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2),
-                                                    v.transpose(1, 2), scale=scale)
-        return result.transpose(1, 2)
+        qt, kt, vt = q.transpose(1, 2).contiguous(), k.transpose(1, 2).contiguous(), v.transpose(1, 2).contiguous()
+        backend = (SDPBackend.CUDNN_ATTENTION if leg == 'cudnn' else
+                   SDPBackend.FLASH_ATTENTION if leg == 'torch-flash' else
+                   SDPBackend.EFFICIENT_ATTENTION)
+        backends = [backend]
+        # Pascal/Volta: no BF16 tensor cores; mem-efficient SDPA only accepts FP16/FP32.
+        if qt.is_cuda and torch.cuda.get_device_capability() < (8, 0):
+            if qt.dtype == torch.bfloat16:
+                qt, kt, vt = qt.to(torch.float16), kt.to(torch.float16), vt.to(torch.float16)
+            if leg == 'torch-sdpa':
+                backends.append(SDPBackend.MATH)
+        with sdpa_kernel(backends):
+            result = F.scaled_dot_product_attention(qt, kt, vt, scale=scale)
+        return result.to(dtype=q.dtype).transpose(1, 2)
 
     def varlen(self, leg, q, k, v, plan, scale, *, smooth_k=True):
         if leg == 'sage2':

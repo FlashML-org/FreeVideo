@@ -20,7 +20,8 @@ def to_cache(conditioning, prompt=None, task='t2va'):
         raise ValueError('Unexpected H3 modality tags for ' + task)
     if task in ('i2va', 'l2va', 'fl2va') and not bool((tags == 0).any()):
         raise ValueError('Keyframe tasks require vision conditioning')
-    result = {'prompt_embeds': embeds[0].detach().to('cpu', torch.bfloat16),
+    from .hardware import activation_dtype
+    result = {'prompt_embeds': embeds[0].detach().to('cpu', activation_dtype()),
               'text_token_tags': tags.detach().to('cpu', torch.long)}
     if prompt is not None:
         result['prompt'] = prompt

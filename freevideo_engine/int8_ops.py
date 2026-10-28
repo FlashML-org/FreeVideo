@@ -8,11 +8,32 @@ int32 and the epilogue applies both scales. Because H256 is symmetric and
 orthogonal, x W^T = (x H)(W H)^T.
 """
 import torch
-import triton
-import triton.language as tl
 
-from .triton_compat import activate
-activate()
+try:
+    import triton
+    import triton.language as tl
+    from .triton_compat import activate
+    activate()
+except (ImportError, AttributeError):  # Pascal stub / no Triton; kernels are unused.
+    class _TritonStub:
+        class Config:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        def jit(self, fn=None, **kwargs):
+            return fn if callable(fn) else (lambda f: f)
+
+        def autotune(self, *args, **kwargs):
+            return lambda fn: fn
+
+        def cdiv(self, a, b):
+            return (a + b - 1) // b
+
+    class _TLStub:
+        constexpr = int
+
+    triton = _TritonStub()
+    tl = _TLStub()
 
 GROUP = 256
 _H16 = {}
@@ -56,8 +77,38 @@ def _rotate_quantize(X, Q, S, H, M, K: tl.constexpr, SX, BM: tl.constexpr):
         tl.store(Q + rows[:, None] * K + group * 256 + lane[None, :], value.to(tl.int8), live[:, None])
 
 
+def _use_torch_int8():
+    return not torch.cuda.is_available() or torch.cuda.get_device_capability() < (8, 0)
+
+
+def _rotate_quantize_torch(value):
+    rows = value.reshape(-1, value.shape[-1])
+    if rows.stride(-1) != 1:
+        rows = rows.contiguous()
+    m, k = rows.shape
+    if k % GROUP:
+        raise ValueError('ConvRot activations need a multiple of 256 channels')
+    h16 = hadamard16(rows.device)
+    rotated = (h16 @ rows.float().reshape(m, -1, 16, 16) @ h16).reshape(m, k)
+    scale = rotated.abs().amax(1).clamp_min(1e-12) / 127.
+    quantized = (rotated / scale[:, None]).round().clamp(-127, 127).to(torch.int8)
+    return quantized, scale
+
+
+def _matmul_torch(quantized, weight, weight_scale, bias=None, out_dtype=torch.bfloat16):
+    values, scales = quantized
+    dequantized = values.float() * scales.reshape(-1, 1)
+    weight_f = weight.float() * weight_scale.reshape(-1, 1)
+    output = dequantized @ weight_f.t()
+    if bias is not None:
+        output = output + bias.float()
+    return output.to(out_dtype)
+
+
 def rotate_quantize(value):
     """[..., K] BF16/FP16 -> (int8 [M, K], FP32 [M] row scales) after the ConvRot rotation."""
+    if _use_torch_int8():
+        return _rotate_quantize_torch(value)
     rows = value.reshape(-1, value.shape[-1])
     if rows.stride(-1) != 1:
         rows = rows.contiguous()
@@ -112,6 +163,13 @@ def _matmul(A, W, SA, SW, B, O, M, N, K: tl.constexpr, SAM, SWN, SOM, ROWS,
 
 def matmul(quantized, weight, weight_scale, bias=None, out_dtype=torch.bfloat16):
     """(int8 [M, K], FP32 [M]) x int8 [N, K] rows with FP32 [N] scales -> out_dtype [M, N]."""
+    if _use_torch_int8():
+        values, scales = quantized
+        m, k = values.shape
+        n, weight_k = weight.shape
+        if k != weight_k or k % 128:
+            raise ValueError('Int8 projection widths differ or are not multiples of 128')
+        return _matmul_torch(quantized, weight, weight_scale, bias, out_dtype)
     values, scales = quantized
     m, k = values.shape
     n, weight_k = weight.shape

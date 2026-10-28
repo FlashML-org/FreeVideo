@@ -1,0 +1,36 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       Primordial Stone Colossus in Misty Redwood Valley
+Category:    Giant Creatures
+Identifier:  04_giant_colossus_forest
+File:        04_giant_colossus_forest.mp4 (0.30 MB)
+Timestamp:   2026-10-26 05:51:33
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Low-angle hero view of a mountain-sized ancient titan wading through a dense redwood forest.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] An awe-inspiring extreme low-angle shot from the forest floor looking up through towering ancient redwood trees. A colossal mountain-sized stone colossus, overgrown with centuries of moss, lichen, and clinging vines, strides majestically through the foggy valley. Dense morning mist swirls around its stone limbs, and shafts of golden sunlight pierce through the forest canopy. Each deliberate step shakes the camera subtly and flushes a flock of startled birds into the misty dawn. The camera tilts slowly upward, accentuating the staggering monumental scale.
+
+overall_soundscape: Sub-bass seismic earth vibrations, splintering of fallen branches, echoing bird cries, and a deep resonant groan of ancient grinding stone.
+
+non_diegetic_music: Epic cinematic percussion, heavy taiko drums, solemn low cellos, and deep brass brass swells.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320
+- Aspect Ratio:        448:320
+- Duration (seconds):  2.5s
+- Random Seed:         550312
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

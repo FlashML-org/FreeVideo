@@ -1,0 +1,37 @@
+======================================================================
+FreeVideo & MiniMax H3 Multi-Tier Reference Showcase
+======================================================================
+Title:          Forbidden Moonlight Confession: Harry Potter and Female Malfoy (5s Extended Run)
+Category:       Multi-Scene Storyboard
+Identifier:     07_multiscene_harry_and_fem_malfoy_5s
+File:           07_multiscene_harry_and_fem_malfoy_5s.mp4 (0.35 MB)
+Generated At:   2026-10-26 10:10:55
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Multi-shot dramatic romance storyboard in the Hogwarts Astronomy Tower.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] At 00:00.000, midnight in the Hogwarts Astronomy Tower during a storm. Lightning illuminates Female Malfoy (Lyra Malfoy) in emerald Slytherin robes standing near the stone balustrade facing Harry Potter in his Gryffindor coat.
+[Shot 2] At 00:02.000, medium close-up as tears spill from her silver eyes and she whispers desperately: "I hate how much I love you, Potter..."
+[Shot 3] At 00:03.500, she faints gracefully and Harry catches her securely in his arms against his chest under soft moonlight.
+
+overall_soundscape: Heavy rain hammering the stone roof, distant rolling thunder, soft ragged gasp, rustling robes.
+
+non_diegetic_music: A sorrowful solo piano melody swelling during the confession, then resolving into a resonant quiet chord.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          512 x 288 (Aligned 32px Grid)
+- Target Duration:     5.0s
+- Random Seed:         1944988579
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

@@ -1,0 +1,36 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       Post-Apocalyptic Zombie in Urban Fog
+Category:    Zombies
+Identifier:  06_zombie_apocalypse_encounter
+File:        06_zombie_apocalypse_encounter.mp4 (0.15 MB)
+Timestamp:   2026-10-26 05:51:33
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Atmospheric tracking push-in through ruined street fog as a flashlight illuminates a walking shadow.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] A cinematic, tense horror sequence set on a crumbling post-apocalyptic city highway overpass shrouded in thick cold fog. Overturned rusted vehicles and scattered debris line the cracked asphalt. In the distance, a solitary zombie figure with tattered dark clothes and hollow, vacant eyes limps forward through the mist. A harsh conical beam from a survivor's trembling flashlight cuts through the gloom, casting elongated eerie shadows against concrete barriers. The camera moves in a slow, suspenseful forward tracking shot, low to the ground, maintaining steady forward momentum.
+
+overall_soundscape: Distant mournful wind howling through deserted skyscrapers, scraping of dragging boots on wet pavement, ragged raspy breath, and the intermittent click of an electric flashlight.
+
+non_diegetic_music: Dark cinematic tension strings with dissonant cello scrapes and deep, heartbeat-like sub-bass thumps.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320
+- Aspect Ratio:        448:320
+- Duration (seconds):  2.5s
+- Random Seed:         638201
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

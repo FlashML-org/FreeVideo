@@ -1,0 +1,35 @@
+======================================================================
+FreeVideo & MiniMax H3 Multi-Tier Reference Showcase
+======================================================================
+Title:          Playful Tabby Kitten in Golden Sunbeam (5s Extended Run)
+Category:       Pets
+Identifier:     01_pet_cat_sunlight_5s
+File:           01_pet_cat_sunlight_5s.mp4 (0.39 MB)
+Generated At:   2026-10-26 07:02:25
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Close-up macro of an inquisitive kitten batting at floating golden dust motes with soft depth-of-field.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] A cinematic macro shot at ground level of an adorable, playful ginger tabby kitten in a sunlit living room. Golden hour sunlight filters through sheer white curtains, illuminating shimmering dust motes floating in the air. The kitten rolls playfully onto its back on a plush cream-colored rug, batting up at the light with soft white paws, its amber eyes sparkling with curiosity. The camera glides forward in a smooth low tracking motion, keeping razor-sharp focus on the soft fur and whisker details with creamy, cinematic background blur.
+
+overall_soundscape: Soft rhythmic purring, delicate rustle of carpet fibers, gentle kitten breathing, and faint melodious birdsong chirping softly outside the window.
+
+non_diegetic_music: Warm and cheerful acoustic fingerstyle guitar with gentle upright bass and subtle glockenspiel accents.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320 (Aligned 32px Grid)
+- Target Duration:     5.0s
+- Random Seed:         4213062072
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

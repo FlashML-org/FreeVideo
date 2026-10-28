@@ -13,7 +13,7 @@ import uuid
 from . import chain_plan
 
 ACTIVE = ('queued', 'running', 'cancelling')
-CHAIN_STATES = (*ACTIVE, 'cancelled', 'failed', 'interrupted', 'done')
+CHAIN_STATES = (*ACTIVE, 'cancelled', 'failed', 'interrupted', 'done', 'awaiting_review')
 BLOCK_STATES = ('pending', 'queued', 'running', 'done', 'cancelled', 'failed', 'interrupted')
 OUTPUT_STATES = ('none', 'pending', 'joining', 'done', 'failed')
 # Parts one video may be continued through: the first part and four continuations.
@@ -67,6 +67,9 @@ def validate(payload):
     join = payload.get('join', 'seconds' in payload)
     if type(join) is not bool:
         raise ValueError('Join must be a bool')
+    review = payload.get('review', False)
+    if type(review) is not bool:
+        raise ValueError('Review must be a bool')
     if 'seconds' in payload:
         # 'after' continues a saved video: the plan then counts the first block as a continuation too.
         source = payload.get('after')
@@ -142,7 +145,8 @@ def validate(payload):
     record = dict(version=1, id='c-' + uuid.uuid4().hex[:12], node=node, created=now,
                   updated=now, state='queued', client_id=client,
                   snapshot=dict(prompt=deepcopy(prompt), extra_data=deepcopy(extra)), blocks=blocks,
-                  plan=planned, join=join, output=None, output_state='pending' if join else 'none',
+                  plan=planned, join=join, review=review, current_review=None, output=None,
+                  output_state='pending' if join else 'none',
                   output_error=None, output_blocks=0)
     try:
         json.dumps(record, allow_nan=False)
@@ -165,7 +169,8 @@ def summary(record):
     current = next((row['id'] for row in blocks if row['state'] in ('queued', 'running')), None)
     return dict({key: deepcopy(record[key]) for key in
                  ('version', 'id', 'node', 'created', 'updated', 'state',
-                  'join', 'output', 'output_state', 'output_error', 'output_blocks')},
+                  'join', 'review', 'current_review', 'output', 'output_state', 'output_error', 'output_blocks')
+                 if key in record},
                 output_seams=deepcopy(record.get('output_seams')),
                 count=len(blocks), done=sum(row['state'] == 'done' for row in blocks),
                 current=current, elapsed_seconds=sum(row['seconds'] or 0 for row in blocks if row['state'] == 'done'),
@@ -214,7 +219,8 @@ def load_all(directory, limit=200, *, identity=None):
             identity = record.get('id')
             if not isinstance(identity, str) or not re.fullmatch(r'c-[0-9a-f]{12}', identity) or path.stem != identity:
                 raise ValueError('Invalid chain ID')
-            for key, value in dict(plan=None, join=False, output=None, output_state='none', output_error=None).items():
+            for key, value in dict(plan=None, join=False, review=False, current_review=None,
+                                   output=None, output_state='none', output_error=None).items():
                 record.setdefault(key, value)
             if type(record['join']) is not bool or record['output_state'] not in OUTPUT_STATES:
                 raise ValueError('Invalid chain output state')

@@ -1,4 +1,4 @@
-# Shared Engine and native H3 encoder; Torch wheels come from the cu130 index.
+# Shared Engine and native H3 encoder; Pascal wheels come from the cu126 index.
 # Measured together; native source, Diffusers and Sage2 are pinned separately.
 accelerate==1.14.0
 annotated-doc==0.0.5
@@ -70,10 +70,10 @@ shellingham==1.5.4
 sympy==1.14.0
 socksio==1.0.0
 tokenizers==0.23.0rc0
-torch==2.13.0+cu130
-torchaudio==2.11.0+cu130
+torch==2.13.0+cu126
+torchaudio==2.11.0+cu126
 torchsde==0.2.6
-torchvision==0.28.0+cu130
+torchvision==0.28.0+cu126
 tqdm==4.70.0
 trampoline==0.1.2
 transformers==5.15.0

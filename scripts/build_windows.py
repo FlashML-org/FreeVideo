@@ -18,6 +18,46 @@ from freevideo_engine.release_notes import catalog, markdown
 from scripts.build_launcher_notices import collect as collect_notices
 
 
+def pyinstaller_environment():
+    """Keep Analysis off conda/PATH copies of icuuc.dll and ucrtbase.dll.
+
+    Qt 6.11's Windows wheel imports icuuc.dll from System32 (the OS ICU
+    forwarder). If Miniconda is on PATH, PyInstaller packs that tree's ICU 73
+    and UCRT instead; the frozen process then fails with
+    'DLL load failed while importing QtCore: The specified procedure could not
+    be found.'
+    """
+    import PySide6
+    import shiboken6
+    windir = os.environ.get('SystemRoot', r'C:\Windows')
+    path = [
+        str(Path(sys.executable).parent),
+        sys.base_prefix,
+        str(Path(sys.executable).parent / 'Library' / 'bin'),
+        str(Path(PySide6.__file__).resolve().parent),
+        str(Path(shiboken6.__file__).resolve().parent),
+        str(Path(windir) / 'System32'),
+        str(Path(windir) / 'SysWOW64') if (Path(windir) / 'SysWOW64').is_dir() else None,
+        windir,
+    ]
+    env = dict(os.environ)
+    env['PATH'] = os.pathsep.join(item for item in path if item)
+    env.pop('CONDA_PREFIX', None)
+    env.pop('CONDA_DEFAULT_ENV', None)
+    return env
+
+
+def assert_clean_bundle(workpath):
+    toc = workpath / 'FreeVideo' / 'PKG-00.toc'
+    if not toc.is_file():
+        toc = workpath / 'FreeVideo' / 'Analysis-00.toc'
+    text = toc.read_text(encoding='utf-8', errors='replace').lower()
+    for marker in ('miniconda', 'anaconda', 'library\\\\bin\\\\icu', 'library/bin/icu'):
+        if marker in text:
+            raise SystemExit('PyInstaller collected a conda/Anaconda binary (%s). '
+                             'Rebuild with a PATH that does not include that environment.' % marker)
+
+
 def release_track():
     """Nightly builds are made with FREEVIDEO_RELEASE_TRACK=nightly; stable identities stay unchanged."""
     track = os.environ.get('FREEVIDEO_RELEASE_TRACK') or 'stable'
@@ -78,14 +118,14 @@ VSVersionInfo(
                    OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([
     StringTable('040904B0', [
-      StringStruct('CompanyName', 'FlashML'),
-      StringStruct('FileDescription', 'FreeVideo launcher'),
+      StringStruct('CompanyName', 'SrCodeGorilla'),
+      StringStruct('FileDescription', 'FreeVideo-Pascal launcher'),
       StringStruct('FileVersion', '%s'),
-      StringStruct('InternalName', 'FreeVideo'),
+      StringStruct('InternalName', 'FreeVideo-Pascal'),
       StringStruct('OriginalFilename', 'FreeVideo.exe'),
-      StringStruct('ProductName', 'FreeVideo'),
+      StringStruct('ProductName', 'FreeVideo-Pascal'),
       StringStruct('ProductVersion', '%s'),
-      StringStruct('LegalCopyright', 'Copyright (c) FlashML'),
+      StringStruct('LegalCopyright', 'Apache-2.0 community fork of FlashML FreeVideo'),
     ])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
@@ -139,10 +179,16 @@ def main():
         '--add-data', str(notices) + os.pathsep + 'freevideo_engine/launcher/licenses/bundled',
         *bundle_data_args(ROOT),
         '--hidden-import', 'psutil',
+        '--hidden-import', 'PySide6.QtCore', '--hidden-import', 'PySide6.QtGui',
+        '--hidden-import', 'PySide6.QtWidgets', '--hidden-import', 'PySide6.QtQml',
+        '--hidden-import', 'PySide6.QtQuick', '--hidden-import', 'PySide6.QtQuickControls2',
+        '--hidden-import', 'PySide6.QtNetwork',
         '--exclude-module', 'torch', '--exclude-module', 'triton', '--exclude-module', 'numpy',
         '--exclude-module', 'transformers', '--exclude-module', 'tkinter',
+        '--exclude-module', 'scipy', '--exclude-module', 'pandas', '--exclude-module', 'numba',
         str(ROOT / 'scripts/windows_app.py')]
-    subprocess.run(command, cwd=ROOT, check=True)
+    subprocess.run(command, cwd=ROOT, check=True, env=pyinstaller_environment())
+    assert_clean_bundle(out / 'build')
     executable = out / 'dist' / ('FreeVideo/FreeVideo.exe' if args.onefolder else 'FreeVideo.exe')
     digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     (executable.parent / 'SHA256SUMS.txt').write_text(digest + '  FreeVideo.exe\n', encoding='utf-8')

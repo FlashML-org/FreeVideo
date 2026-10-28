@@ -1,0 +1,36 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       The Phoenix Rebirth from Obsidian Embers
+Category:    Mythical Creatures
+Identifier:  03_mythical_phoenix_rebirth
+File:        03_mythical_phoenix_rebirth.mp4 (0.46 MB)
+Timestamp:   2026-10-26 05:51:33
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Epic aerial pan of a legendary firebird bursting from embers and ascending into the twilight sky.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] An epic, cinematic wide shot of an ancient volcanic crater at twilight. Deep within a nest of glowing obsidian coals and smoldering embers, a majestic mythical Phoenix with incandescent gold, scarlet, and ruby feathers unfurls its monumental fiery wings. Bursts of golden sparks and trails of liquid starlight swirl upwards as it beats its wings with immense power. The camera orbits rapidly in a sweeping upward spiral, tracking the firebird as it leaps skyward, trailing ribbons of radiant aurora flame against dark indigo storm clouds.
+
+overall_soundscape: Deep volcanic rumble, resonant rhythmic whoosh of colossal fiery wings, crackling embers, and a piercing, celestial cry echoing across the mountain peaks.
+
+non_diegetic_music: A soaring orchestral crescendo featuring sweeping strings, triumphant French horns, and ethereal choral harmonies.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320
+- Aspect Ratio:        448:320
+- Duration (seconds):  2.5s
+- Random Seed:         991203
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

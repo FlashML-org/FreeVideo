@@ -1,0 +1,36 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       Cyberpunk Detective in Rain-Slicked Neon Alley
+Category:    Humans
+Identifier:  02_human_cyberpunk_detective
+File:        02_human_cyberpunk_detective.mp4 (0.22 MB)
+Timestamp:   2026-10-26 05:51:33
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Atmospheric tracking shot of a cyber-augmented investigator in a rainy futuristic metropolis.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] Cinematic medium close-up of a weary cybernetic detective standing in a rain-slicked alleyway in a dense cyberpunk city. He wears a dark, wet trench coat with subtle cyan fiber-optic seams. Pours of rain splash off his shoulders as he exhales a breath of mist into the chilly air. Massive holographic advertisements in vibrant magenta and electric blue cast sharp neon reflections across dark water puddles. His left eye, a glowing brass-and-sapphire cybernetic ocular implant, whirs and shifts focus with miniature optical rings. The camera executes a slow, dramatic dolly track from side to front at eye level.
+
+overall_soundscape: Heavy rhythmic rain clattering against asphalt, subtle hum of high-voltage neon, distant drone of flying aerocars, and the tiny mechanical click-whir of the cybernetic lens adjusting.
+
+non_diegetic_music: Atmospheric analog synthwave drone with slow, pulsating low bass and melancholic synthesizer pads.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320
+- Aspect Ratio:        448:320
+- Duration (seconds):  2.5s
+- Random Seed:         832044
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

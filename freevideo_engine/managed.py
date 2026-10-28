@@ -59,6 +59,7 @@ def _main(argv=None):
               '  test       Run full video/audio tests with a live dashboard\n'
               '  optimize   Reuse test results and validate lightweight local tuning\n'
               '  generate   Generate from --prompt-file or --conditioning\n'
+              '  pixel-upscale  2× RealESRGAN upscale of a finished MP4 (keeps audio)\n'
               '  encode     Save reusable text conditioning\n'
               '  plan       Show current inference resource policy\n'
               '  predict    Forecast time and memory for another resolution or length\n'
@@ -69,7 +70,8 @@ def _main(argv=None):
               + ('  agent      Drive a running FreeVideo through its agent API (JSON)\n'
                  '  projects   Read and edit shared editor timelines (JSON)\n'
                  '  sessions   Share work messages and plans with the user (JSON)\n'
-                 '  mcp        Serve FreeVideo to AI agents over MCP (stdio); --print-config for setup\n'
+                 '  mcp        Serve FreeVideo Autopilot MCP (stdio); --print-config for LM Studio; --expert for ComfyUI expert\n'
+                 '  comfy-expert  Serve the ComfyUI expert MCP (node index, errors, tech support)\n'
                  if agent_enabled() else '') + '\n'
               'Examples:\n  ./freevideo\n  ./freevideo server --listen 0.0.0.0\n  ./freevideo setup --plan\n'
               '  ./freevideo test --suite quick\n  ./freevideo generate --prompt-file prompt.txt --out video.mp4\n\n'
@@ -88,10 +90,13 @@ def _main(argv=None):
     if command == 'diagnose':
         from .diagnostics import main as diagnose
         return diagnose(['--root', str(args.root), *(['--config', str(args.config)] if args.config else []), *tail])
-    if command in ('agent', 'mcp', 'projects', 'sessions') and agent_enabled():
+    if command in ('agent', 'mcp', 'projects', 'sessions', 'comfy-expert') and agent_enabled():
         # Clients of the running ComfyUI: no engine lock, no engine environment.
         from .agent.cli import main as agent
         from .agent.mcp import main as mcp
+        from .agent.comfy_expert import main as expert
+        if command == 'comfy-expert':
+            return expert(['--root', str(args.root), *tail])
         return (mcp if command == 'mcp' else agent)(['--root', str(args.root),
             *([command] if command in ('projects', 'sessions') else []), *tail])
     if command == 'resource-history':
@@ -100,7 +105,7 @@ def _main(argv=None):
             tail += ['--history', str(args.root / 'resource-history.sqlite3')]
         return history(tail)
     if command not in ('test', 'optimize', 'generate', 'encode', 'plan', 'doctor', 'bench',
-                       'prepare', 'predict', 'calibrate'):
+                       'prepare', 'predict', 'calibrate', 'pixel-upscale'):
         parser.error('Unknown command: ' + command)
     if command == 'test' and any(flag in tail for flag in ('-h', '--help')):
         from .testing import main as testing

@@ -1,6 +1,12 @@
 FreeVideo
 Copyright 2026 FreeVideo contributors.
 
+FreeVideo-Pascal
+A community fork for NVIDIA Pascal (SM60/SM61) GPUs.
+Copyright 2026 FreeVideo-Pascal contributors.
+Based on https://github.com/FlashML-org/FreeVideo (Apache License 2.0).
+Not affiliated with FlashML. Modified files are listed in git history and carry change notices.
+
 FreeVideo is licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components are listed in THIRD_PARTY_NOTICES.md.
 

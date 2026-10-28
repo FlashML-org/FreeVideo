@@ -4,6 +4,27 @@
 
 FreeVideo 支持 MiniMax H3 社区 LoRA。每组对照使用相同的提示词和 seed。
 
+## LoRA 放置路径（安装方法）
+
+> [!IMPORTANT]
+> 社区 LoRA 模型文件（`.safetensors`）必须放置在 **ComfyUI** 安装根目录下的 **`models/loras/`** 文件夹中：
+> ```
+> ComfyUI/
+> └── models/
+>     └── loras/
+>         ├── vh5tape-vhs-lora-minimax-h3.safetensors
+>         └── my_custom_h3_lora.safetensors
+> ```
+> **请勿将 LoRA 文件放在 FreeVideo 自身文件夹中。** FreeVideo 会直接读取 ComfyUI 主程序的 `/models/loras` 目录。
+
+### 如何在 FreeVideo Studio 中使用 LoRA：
+1. 将 `.safetensors` 格式的 LoRA 放入 `ComfyUI/models/loras/` 文件夹。
+2. 打开 FreeVideo 工作台，找到 **LoRAs** 控制区域。
+3. 点击 **+ 添加 (Add)** 按钮。
+4. 从下拉菜单选择已检测到的 LoRA，并拖动调节权重强度（0.1 ~ 2.0）。
+5. 支持最多叠加并排序 32 个 LoRA。
+
+
 ## [VHS 录像带](https://huggingface.co/KennethFal/vh5tape-vhs-lora-minimax-h3)
 
 | 无 LoRA | 有 LoRA |

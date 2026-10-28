@@ -2,7 +2,7 @@ import { createErrorPanel, errorText } from './error_panel.js';
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { openEditorView } from './editor_loader.js';
-import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
+import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js?v=20261026-plus";
 import { createGenerationProgress, referenceTrimText, thermalText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
@@ -14,7 +14,7 @@ import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft } from './prompt_draft.js';
-import { regenerateResult, upscaleResult } from './studio_queue.js';
+import { regenerateResult, resumeQualityResult, upscaleResult, pixelUpscaleResult } from './studio_queue.js';
 import { openImageEditor, icon } from './image_editor.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -481,6 +481,17 @@ function resultPanel(node) {
         }
         links.append(shareButton(value, text));
         links.append(el("span", value.result_cache_hit ? text("Reused previous result", "已复用上次结果") : value.conditioning_cache_hit ? text("Input cache reused", "已复用输入缓存") : text("Inputs encoded", "已编码输入"), "fv-mode"));
+        if (value.video && !value.pixel_upscale) {
+            const pixel = el('button', text('Upscale 2×', '2× 放大')); pixel.type = 'button';
+            pixel.title = text('Enlarge this finished video with RealESRGAN. Original audio is kept.',
+                '用 RealESRGAN 放大这段成片，保留原音频。');
+            pixel.onclick = async () => {
+                pixel.disabled = true;
+                try { await node.freevideoPixelUpscale(value); pixel.textContent = text('Queued', '已加入队列'); }
+                catch (error) { pixel.disabled = false; node.freevideoShowFailure(error); }
+            };
+            links.append(pixel);
+        }
         if (value.preview) {
             const upscale = el('button', text('Run second pass', '继续二采')); upscale.type = 'button';
             upscale.title = text('Continue from this preview: latent upscale, the second pass and a full-resolution decode.', '从这个预览接着跑：潜空间放大、二采，再以全分辨率解码。');
@@ -522,6 +533,18 @@ function resultPanel(node) {
         node.freevideoUpscaling = true;
         try { return await upscaleResult(api, node.id, value, () => app.graphToPrompt()); }
         finally { node.freevideoUpscaling = false; }
+    };
+    node.freevideoResumeQuality = async value => {
+        if (node.freevideoResumingQuality) return;
+        node.freevideoResumingQuality = true;
+        try { return await resumeQualityResult(api, node.id, value, () => app.graphToPrompt()); }
+        finally { node.freevideoResumingQuality = false; }
+    };
+    node.freevideoPixelUpscale = async value => {
+        if (node.freevideoPixelUpscaling) return;
+        node.freevideoPixelUpscaling = true;
+        try { return await pixelUpscaleResult(api, node.id, value, () => app.graphToPrompt()); }
+        finally { node.freevideoPixelUpscaling = false; }
     };
     node.freevideoRegenerateResult = async value => {
         if (node.freevideoRegenerating) return;

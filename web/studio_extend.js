@@ -13,6 +13,7 @@ export const extendText = (t, key) => t(...EXTEND_TEXT[key]);
 export const EXTEND_ENTRY_OPEN = false;
 export function canExtend(record) {
     return Boolean(record?.video && /\.mp4$/i.test(record.video) && !record.preview
+        && !record.early_stop && record.continuation
         && record.has_video !== false && !['image', 'audio'].includes(record.kind)
         && record.exists !== false && record.missing !== true);
 }

@@ -13,6 +13,7 @@ import types
 import torch
 
 from .encoder_lowmem import language_model
+from .hardware import activation_dtype
 
 
 def vision_model(model):
@@ -50,7 +51,7 @@ def single_concat_image_inputs(wrapper):
         for layer in range(len(images[0]["extra"]["deepstack"])):
             parts = [row["extra"]["deepstack"][layer] for row in images]
             joined = torch.empty((sum(part.shape[0] for part in parts),) + tuple(parts[0].shape[1:]),
-                                 device=device, dtype=torch.bfloat16)
+                                 device=device, dtype=activation_dtype())
             start = 0
             for index, part in enumerate(parts):
                 joined[start:start + part.shape[0]] = part
@@ -81,7 +82,7 @@ def compact_vision_outputs(wrapper):
         if merged is None or not merged.is_cuda:
             return merged, extra
         if extra and extra.get('deepstack') is not None:
-            extra = dict(extra, deepstack=[value.to(torch.bfloat16) for value in extra['deepstack']])
+            extra = dict(extra, deepstack=[value.to(activation_dtype()) for value in extra['deepstack']])
         torch.cuda.empty_cache()
         return merged, extra
     return types.MethodType(preprocess_embed, wrapper)
@@ -102,15 +103,16 @@ def bf16_language_model(model):
     def forward(self, x, attention_mask=None, embeds=None, num_tokens=None, intermediate_output=None,
                 final_layer_norm_intermediate=True, dtype=None, position_ids=None, embeds_info=[],
                 past_key_values=None, input_ids=None, deepstack_embeds=None, visual_pos_masks=None):
+        dtype = activation_dtype()
         if embeds is not None:
-            embeds = embeds.to(torch.bfloat16)
+            embeds = embeds.to(dtype)
         if deepstack_embeds is not None:
-            deepstack_embeds = [value.to(torch.bfloat16) for value in deepstack_embeds]
+            deepstack_embeds = [value.to(dtype) for value in deepstack_embeds]
         if attention_mask is not None and attention_mask.is_floating_point():
-            attention_mask = attention_mask.to(torch.bfloat16)
+            attention_mask = attention_mask.to(dtype)
         result = current(x, attention_mask=attention_mask, embeds=embeds, num_tokens=num_tokens,
                          intermediate_output=intermediate_output,
-                         final_layer_norm_intermediate=final_layer_norm_intermediate, dtype=torch.bfloat16,
+                         final_layer_norm_intermediate=final_layer_norm_intermediate, dtype=dtype,
                          position_ids=position_ids, embeds_info=embeds_info, past_key_values=past_key_values,
                          input_ids=input_ids, deepstack_embeds=deepstack_embeds, visual_pos_masks=visual_pos_masks)
         return result

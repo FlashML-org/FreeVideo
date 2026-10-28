@@ -132,7 +132,8 @@ def install(model, *, stats=None):
     from src.models.linear_attention.delta_rule import VdnDelta
 
     def apply(backend, alpha, A_raw, B_raw):
-        if A_raw.device.type != 'mps' or torch.is_grad_enabled():
+        pascal = (A_raw.device.type == 'cuda' and torch.cuda.get_device_capability() < (8, 0))
+        if (A_raw.device.type != 'mps' and not pascal) or torch.is_grad_enabled():
             if stats is not None:
                 stats['reference_calls'] = stats.get('reference_calls', 0) + 1
             return backend._freevideo_cholesky(alpha, A_raw, B_raw)

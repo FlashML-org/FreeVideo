@@ -23,7 +23,7 @@ def resource_arguments(parser):
     parser.add_argument('--gpu-reserve-gib', type=float,
                         help='Explicit foreground VRAM growth reserve (minimum 0.2 GiB); automatic planning may shrink its default reserve for a tight request')
     parser.add_argument('--ram-reserve-gib', type=float, help='Override headroom kept beyond current system RAM usage')
-    parser.add_argument('--attention', default='auto', help='auto, sage2, cudnn, torch-flash, fa2, fa4, or global/window')
+    parser.add_argument('--attention', default='auto', help='auto, sage2, cudnn, torch-flash, torch-sdpa, fa2, fa4, or global/window')
 
 
 def main():
@@ -120,6 +120,15 @@ def main():
     upscale.add_argument('--refine-from', type=Path, metavar='PREVIEW.mp4',
                          help="Upscale a finished preview: reuse its first pass, then the latent upscale, the refinement "
                               "steps and a full-resolution decode. Use the preview's own prompt, seed, size and inputs")
+    generate.add_argument('--stop-after-steps', type=int, choices=range(1, 33), metavar='1..32',
+                          help='Decode after this many steps of the --base-steps schedule so later steps can resume')
+    generate.add_argument('--resume-from', type=Path, metavar='CHECKPOINT.mp4',
+                          help='Continue remaining steps of a Medium/High checkpoint or Keep this preview (same schedule)')
+    pixel = sub.add_parser('pixel-upscale', help='2× RealESRGAN upscale of a finished MP4; keeps the original audio')
+    pixel.add_argument('--in', dest='source', type=Path, required=True)
+    pixel.add_argument('--out', type=Path, required=True)
+    pixel.add_argument('--scale', type=int, default=2, choices=(2,))
+    pixel.add_argument('--checkpoint', type=Path)
     generate.add_argument('--out', type=Path, required=True)
     generate.add_argument('--width', type=int, default=1344)
     generate.add_argument('--height', type=int, default=768)
@@ -191,9 +200,16 @@ def main():
     elif args.command == 'generate':
         from .generate import run
         run(args)
+    elif args.command == 'pixel-upscale':
+        from .pixel_upscale import run as pixel_upscale
+        pixel_upscale(args.source, args.out, scale=args.scale, checkpoint=args.checkpoint)
     elif args.command == 'encode':
         from .encode import run
         run(args)
     else:
         from .benchmark import main as benchmark
         benchmark(args.arguments)
+
+
+if __name__ == '__main__':
+    main()

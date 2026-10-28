@@ -36,6 +36,66 @@
         "official": "https://download.pytorch.org/whl/cu130/torchaudio-2.11.0%2Bcu130-cp312-cp312-win_amd64.whl",
         "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu130/torchaudio-2.11.0%2Bcu130-cp312-cp312-win_amd64.whl"
       }
+    },
+    {
+      "cuda": "cu126",
+      "package": "torch",
+      "version": "2.13.0+cu126",
+      "filename": "torch-2.13.0+cu126-cp312-cp312-win_amd64.whl",
+      "sha256": "380081ea098bf2b9e727aa85205d94790d884d17c62df3bb00a4f6a1047010a2",
+      "bytes": 2594590371,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu126/torch-2.13.0%2Bcu126-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu126/torch-2.13.0%2Bcu126-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu126",
+      "package": "torchvision",
+      "version": "0.28.0+cu126",
+      "filename": "torchvision-0.28.0+cu126-cp312-cp312-win_amd64.whl",
+      "sha256": "4a82a21e12ef9025ec37d1bab065bfb4c56815290861d3ac4bfc10b0d745e919",
+      "bytes": 8791813,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu126/torchvision-0.28.0%2Bcu126-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu126/torchvision-0.28.0%2Bcu126-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu126",
+      "package": "torchaudio",
+      "version": "2.11.0+cu126",
+      "filename": "torchaudio-2.11.0+cu126-cp312-cp312-win_amd64.whl",
+      "sha256": "ca5b7815c6952c79c65dce9a78eb96be8b73a8b291f82ca473812a910cdc9fbc",
+      "bytes": 1519626,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu126/torchaudio-2.11.0%2Bcu126-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu126/torchaudio-2.11.0%2Bcu126-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu126",
+      "package": "torch",
+      "version": "2.14.0+cu126",
+      "filename": "torch-2.14.0+cu126-cp312-cp312-win_amd64.whl",
+      "sha256": "11a492e40dfd18597fdb8271879a3a09496a23140deb81a6b5a005d9cff7312b",
+      "bytes": 2602771598,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu126/torch-2.14.0%2Bcu126-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu126/torch-2.14.0%2Bcu126-cp312-cp312-win_amd64.whl"
+      }
+    },
+    {
+      "cuda": "cu126",
+      "package": "torchvision",
+      "version": "0.29.0+cu126",
+      "filename": "torchvision-0.29.0+cu126-cp312-cp312-win_amd64.whl",
+      "sha256": "31b3c9353f18d31a1140a332893c09bfd47ad1664af4fc956068a25c5107d2f6",
+      "bytes": 6111826,
+      "sources": {
+        "official": "https://download.pytorch.org/whl/cu126/torchvision-0.29.0%2Bcu126-cp312-cp312-win_amd64.whl",
+        "nju": "https://mirrors.nju.edu.cn/pytorch/whl/cu126/torchvision-0.29.0%2Bcu126-cp312-cp312-win_amd64.whl"
+      }
     }
   ]
 }

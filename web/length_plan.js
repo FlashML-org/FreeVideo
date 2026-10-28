@@ -14,11 +14,14 @@ export function buildPlanRequest({seconds, single = false, singleLimit = null, m
 }
 
 export function buildChainRequest(options, {node, prompt, extra_data, client_id, text, seed}) {
-    const body = {...buildPlanRequest(options), node: String(node), prompt};
+    const body = options.blocks ? {node: String(node), prompt, blocks: options.blocks}
+        : {...buildPlanRequest(options), node: String(node), prompt};
     for (const [key, value] of Object.entries({extra_data, client_id, text, seed})) {
         if (value !== undefined) body[key] = value;
     }
     if (options.after) body.after = options.after;
+    if (options.review !== undefined) body.review = Boolean(options.review);
+    if (options.join !== undefined) body.join = Boolean(options.join);
     return body;
 }
 

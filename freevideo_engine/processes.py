@@ -228,7 +228,11 @@ def termination_handler(handler):
 
 
 def restore_handlers(previous):
+    if not isinstance(previous, dict):
+        return
     for name, handler in previous.items():
+        if not isinstance(name, int):
+            continue
         signal.signal(name, handler)
 
 

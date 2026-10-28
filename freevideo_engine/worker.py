@@ -84,6 +84,9 @@ def generate(request, resident=None):
                    'MKL_NUM_THREADS': os.environ.get('MKL_NUM_THREADS'),
                    'torch_num_threads': torch.get_num_threads()}}}
     save(request['metrics'], metrics)
+    def stop_check():
+        from .keep_preview import requested
+        return requested(request['output'])
     try:
         if 'sampling_plan' in request:
             from .two_pass import plan
@@ -385,9 +388,13 @@ def generate(request, resident=None):
                                 pass_cache_budget_bytes=pass_budget, gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
                                 compute_options=first_options,
                                 pass_resident_blocks=first_options.get('resident_blocks') if first_options else None,
-                                step_callback=memory_diagnostics.complete,
+                                step_callback=memory_diagnostics.complete, stop_check=stop_check,
                                 progress_total=sampling_plan['base_steps'] if preview else sampling_plan['total_steps'],
                                 budget_refresh=refresh_budget if live_budget is not None else None)
+                            if first.get('early_stop'):
+                                preview = True
+                                print(json.dumps(dict(event='early_stop', completed_steps=first.get('completed_steps'),
+                                                      planned_steps=first.get('planned_steps'))), flush=True)
                         metrics['sampling_passes'] = [first]
                         capture_first(latents)
                         if preview:
@@ -540,13 +547,27 @@ def generate(request, resident=None):
                     if continuation is not None:
                         from .continuation import load
                         single_context = load(continuation, 'final')
+                    draft = request.get('resume_draft')
+                    start_latents = start_step = None
+                    if isinstance(draft, dict) and draft.get('latents'):
+                        blob = torch.load(draft['latents'], map_location='cuda', weights_only=True)
+                        start_latents = (blob['video'].to('cuda'), blob['audio'].to('cuda'))
+                        start_step = int(draft.get('completed_steps') or 0)
+                    halt = request.get('stop_after_steps')
                     latents, audio, sampled = engine.sample(request['conditioning'], request['seed'],
                         **({'continuation': single_context} if single_context is not None else {}),
                         frames=canvas.get('frames', 243), width=canvas.get('width', 1344), height=canvas.get('height', 768),
                         final_step_callback=None if decoder_cached else read_decoder_ahead,
                         step_callback=memory_diagnostics.complete, sampling_complete_callback=sampling_complete,
                         gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
-                        budget_refresh=refresh_budget if live_budget is not None else None)
+                        budget_refresh=refresh_budget if live_budget is not None else None,
+                        stop_check=stop_check, start_step=start_step or 0, start_latents=start_latents,
+                        stop_after_steps=halt,
+                        progress_offset=start_step or 0,
+                        progress_total=halt if type(halt) is int and halt > 0 else engine.steps)
+                    if sampled.get('early_stop'):
+                        print(json.dumps(dict(event='early_stop', completed_steps=sampled.get('completed_steps'),
+                                              planned_steps=sampled.get('planned_steps'))), flush=True)
             finally:
                 metrics['sampling_memory'] = memory_diagnostics.close()
             metrics.update(sampled)

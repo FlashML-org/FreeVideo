@@ -12,7 +12,7 @@ def taskbar_identity():
         function = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
         function.argtypes = [ctypes.c_wchar_p]
         function.restype = ctypes.c_long
-        function('FlashML.FreeVideo.Launcher')
+        function('SrCodeGorilla.FreeVideoPascal.Launcher')
 
 
 def open_browser(url):

@@ -13,8 +13,8 @@ https://code.qt.io/cgit/qt/qtdeclarative.git/tree/?h=v6.11.2
 https://code.qt.io/cgit/qt/qtshadertools.git/tree/?h=v6.11.2
 https://code.qt.io/cgit/pyside/pyside-setup.git/tree/?h=v6.11.2
 
-FreeVideo source and build instructions:
-https://github.com/FlashML-org/FreeVideo
+FreeVideo-Pascal source and build instructions:
+https://github.com/SrCodeGorilla/FreeVideo-Pascal
 Install constraints/windows-launcher.txt and run scripts/build_windows.py
 with --onefolder to build a distribution with replaceable Qt libraries.
 FreeVideo does not restrict modification of these libraries or reverse

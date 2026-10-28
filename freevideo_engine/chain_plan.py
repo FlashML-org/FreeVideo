@@ -10,7 +10,7 @@ import math
 from .geometry import geometry
 
 FPS, UNIT, OVERLAP = 24, 17, 22
-SINGLE_SECONDS, BLOCK_SECONDS, SHORTEST_BLOCK = 30, 15, 5
+SINGLE_SECONDS, BLOCK_SECONDS, SHORTEST_BLOCK = 30, 15, 2
 MAX_SECONDS = 7200
 MAX_BLOCKS = MAX_SECONDS // SHORTEST_BLOCK
 
@@ -90,7 +90,7 @@ def plan(seconds, single=False, max_frames=None, single_limit_seconds=None, bloc
         pair = lengths[-2] + lengths[-1]
         lengths[-2:] = [pair - pair // 2, pair // 2]
     if fits and block_seconds is not None and total < SINGLE_SECONDS and min(lengths) < SHORTEST_BLOCK:
-        return alone  # a requested block length never makes a part under 5 s
+        return alone  # a requested block length never makes a part under SHORTEST_BLOCK
     blocks, shown = [], 0
     for index, length in enumerate(lengths):
         target = FPS * sum(lengths[:index + 1])

@@ -442,6 +442,7 @@ def client_config(root):
     except (OSError, ValueError, KeyError):
         python = sys.executable
     command = [python, '-B', '-m', 'freevideo_engine.agent.mcp', '--root', str(root)]
+    expert = [python, '-B', '-m', 'freevideo_engine.agent.comfy_expert', '--root', str(root)]
     env = {'PYTHONPATH': str(Path(__file__).resolve().parents[2])}
     shell_command = list(command)
     if sys.platform != 'win32' and not linux_wrapper_supported():
@@ -449,9 +450,12 @@ def client_config(root):
     # Keep JSON argv untouched. Windows command text targets Command Prompt.
     assignment = shell_quote('PYTHONPATH=' + env['PYTHONPATH']) if sys.platform == 'win32' else \
         'PYTHONPATH=' + shell_quote(env['PYTHONPATH'])
-    return dict(command=command, env=env, codex='codex mcp add freevideo --env %s -- %s' % (
-                    assignment, ' '.join(shell_quote(p) for p in shell_command)), mcp_json={'mcpServers': {'freevideo': {
-                    'command': command[0], 'args': command[1:], 'env': env}}},
+    servers = {
+        'freevideo': {'command': command[0], 'args': command[1:], 'env': env},
+        'comfyui-expert': {'command': expert[0], 'args': expert[1:], 'env': env},
+    }
+    return dict(command=command, expert_command=expert, env=env, codex='codex mcp add freevideo --env %s -- %s' % (
+                    assignment, ' '.join(shell_quote(p) for p in shell_command)), mcp_json={'mcpServers': servers},
                 claude_code='claude mcp add freevideo --env %s -- %s' % (
                     assignment, ' '.join(shell_quote(p) for p in shell_command)))
 
@@ -460,8 +464,18 @@ def print_config(root):
     config = client_config(root)
     print('Claude Code:\n  %s\n' % config['claude_code'])
     print('Codex:\n  %s\n' % config['codex'])
-    print('Claude Desktop / Cursor (mcpServers):')
+    print('Claude Desktop / Cursor / LM Studio (mcpServers: freevideo + comfyui-expert):')
     print(json.dumps(config['mcp_json'], indent=2))
+    print('\nInstall both in LM Studio:')
+    print('  1. Start FreeVideo and wait until the studio loads.')
+    print('  2. Paste the mcpServers JSON into %USERPROFILE%\\.lmstudio\\mcp.json')
+    print('     (keep any other servers; add keys freevideo and comfyui-expert).')
+    print('  3. Quit LM Studio fully and reopen. Both servers should show as running.')
+    print('  4. Load a tool-capable GGUF, new chat, turn MCP / tools on.')
+    print('  5. Test: FreeVideo status, then search this ComfyUI for FreeVideo/MiniMax nodes.')
+    print('Unload a local GPU LLM before generate only when that model shares this computer')
+    print('and VRAM is tight. Cloud agents (Claude, Gemini, Cursor) skip unload.')
+    print('Adult (+18) uncensored/abliterated GGUFs are listed in Autopilot help; suggestions only, not for minors.')
 
 
 def main(argv=None):
@@ -469,7 +483,18 @@ def main(argv=None):
     parser.add_argument('--root', type=Path, help='FreeVideo installation folder')
     parser.add_argument('--url', help='ComfyUI address (default: from the installation, else http://127.0.0.1:8188)')
     parser.add_argument('--print-config', action='store_true', help='Print client configuration and exit')
+    parser.add_argument('--expert', action='store_true', help='Serve the ComfyUI expert MCP instead of Autopilot')
     args = parser.parse_args(argv)
+    if args.expert:
+        from .comfy_expert import main as expert
+        tail = []
+        if args.root:
+            tail += ['--root', str(args.root)]
+        if args.url:
+            tail += ['--url', args.url]
+        if args.print_config:
+            tail.append('--print-config')
+        return expert(tail)
     client = Client(args.url, root=args.root, name='freevideo-mcp')
     if args.print_config:
         print_config(client.root)

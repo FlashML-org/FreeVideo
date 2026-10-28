@@ -4,9 +4,11 @@ from pathlib import Path
 import platform
 
 ENVIRONMENTS = {
-    'unified': {'cuda': 'cu130', 'torch': ['torch==2.13.0', 'torchvision==0.28.0', 'torchaudio==2.11.0']},
-    'engine': {'cuda': 'cu129', 'torch': ['torch==2.13.0', 'torchvision==0.28.0']},
-    'encoder': {'cuda': 'cu130', 'torch': ['torch==2.14.0', 'torchvision==0.29.0', 'torchaudio==2.11.0']},
+    # Pascal (SM61) needs cu126; cu130 wheels drop sm_61. Ampere+ still listed
+    # as cu130 in the catalog for anyone who rebases this fork onto newer GPUs.
+    'unified': {'cuda': 'cu126', 'torch': ['torch==2.13.0', 'torchvision==0.28.0', 'torchaudio==2.11.0']},
+    'engine': {'cuda': 'cu126', 'torch': ['torch==2.13.0', 'torchvision==0.28.0']},
+    'encoder': {'cuda': 'cu126', 'torch': ['torch==2.14.0', 'torchvision==0.29.0', 'torchaudio==2.11.0']},
 }
 
 

@@ -410,7 +410,7 @@ ApplicationWindow {
                             FButton { visible: s.failure.kind === "download"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
-                                      text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
+                                      text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/SrCodeGorilla/FreeVideo-Pascal/releases/latest") }
                             FButton { objectName: "copyError"; visible: !diskFailure; text: t("Copy full details", "复制完整详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
                             FButton { objectName: "exportError"; visible: !diskFailure; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }

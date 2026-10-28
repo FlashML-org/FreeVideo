@@ -78,7 +78,13 @@ class Engine:
         if type(residual_offload) is not bool:
             raise ValueError('Residual offload must be boolean')
         if residual_offload and (not projection_chunk or not inference_kernels):
-            raise ValueError('Residual offload requires bounded packing and fused inference blocks')
+            # Pascal/Volta/Turing keep inference_kernels off; fused residual
+            # staging is unavailable. Drop the flag instead of aborting after encode.
+            print(json.dumps({'event': 'residual_offload_disabled',
+                              'reason': 'requires bounded packing and fused inference kernels',
+                              'inference_kernels': bool(inference_kernels),
+                              'projection_chunk': projection_chunk}), flush=True)
+            residual_offload = False
         self.canvas = dict(canvas) if canvas is not None else None
         from .system import weight_cache_headroom, residual_host_headroom
         self.weight_cache_headroom_bytes = weight_cache_headroom(
@@ -378,8 +384,11 @@ class Engine:
             install_row_kernels()
         set_inference_mode(model, inference_kernels)
         self.attention.install(model)
-        if head_chunk:
-            if self.attention is None or not inference_kernels:
+        if self.device_backend.device == 'cuda' and self.device_backend.torch.cuda.get_device_capability() < (8, 0):
+            from .backends import mps_delta
+            mps_delta.install(model)
+        if head_chunk and inference_kernels:
+            if self.attention is None:
                 raise ValueError('Head chunks require a window policy and inference kernels')
             from .head_chunk import install_head_chunks
             install_head_chunks(model, self.attention, head_chunk, cpu_outputs=attention_cpu_outputs,
@@ -541,7 +550,8 @@ class Engine:
                step_callback=None, sampling_complete_callback=None, initial_latents=None, refine_steps=None, refine_schedule=None,
                allow_smaller_canvas=False, progress_offset=0, progress_total=None,
                pass_cache_budget_bytes=None, gpu_reserve_bytes=0, pass_resident_blocks=None,
-               budget_refresh=None, continuation=None):
+               budget_refresh=None, continuation=None, stop_check=None, start_step=0, start_latents=None,
+               stop_after_steps=None):
         from src.inference.render import load_prompt, generate_latents
         from .geometry import geometry, sampler_for_canvas
         refining = initial_latents is not None
@@ -596,7 +606,8 @@ class Engine:
                 # video rows in both passes. Their latents do not need the
                 # keyframe resize used by first/last-frame conditioning.
                 continuation_offset = info['reference_video_tokens']
-            prompt, tags = value['prompt_embeds'].to(self.device_backend.device, torch.bfloat16), value['text_token_tags']
+            from .hardware import activation_dtype
+            prompt, tags = value['prompt_embeds'].to(self.device_backend.device, activation_dtype()), value['text_token_tags']
         else:
             prompt, tags, conditions = load_prompt(str(conditioning), self.device_backend.device)
             if continuation is not None and conditions:
@@ -782,16 +793,29 @@ class Engine:
                     self.transformer, continuation, seed, self.device_backend.device,
                     **({'video_offset': continuation_offset} if continuation_offset else {})) as prefix, \
                     (watch.layers(self.transformer.transformer_blocks) if watch is not None else nullcontext()):
+                extra = {}
+                if not refining and not self.task.startswith('ref2va'):
+                    origin = start_step if type(start_step) is int and start_step > 0 else 0
+                    halt = stop_after_steps if type(stop_after_steps) is int and stop_after_steps > 0 else None
+                    def gated_stop():
+                        if halt is not None and origin + len(step_seconds) >= halt:
+                            return True
+                        return bool(stop_check and stop_check())
+                    extra.update(stop_check=gated_stop if halt is not None or stop_check else None,
+                                 start_step=start_step, start_latents=start_latents)
                 latents, audio = generate_latents(self.transformer, prompt, tags, frames,
                                                 self.steps, seed, self.device_backend.device, step_seconds=step_seconds,
-                                                conditions=conditions)
+                                                conditions=conditions, **extra)
                 if prefix is not None:
                     latents, audio = prefix.finish(latents, audio)
                 stats = offloader.stats()
                 # StepTimes.append closes over the live offloader. Retaining
                 # that list subclass in a receipt also retains its pinned
                 # weights through VAE loading. Reports own plain numbers only.
+                planned_steps = active_steps
                 sampled = {'sample_seconds': time.perf_counter() - started, 'step_seconds': list(step_seconds),
+                           'planned_steps': planned_steps, 'completed_steps': len(step_seconds),
+                           'early_stop': len(step_seconds) < planned_steps,
                            'offload': stats, 'residual_offload_steps': residual_steps,
                            'pass_cache_admission': pass_cache,
                            'compute_configuration': {key: planned.get(key) for key in

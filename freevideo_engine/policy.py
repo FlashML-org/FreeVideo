@@ -821,9 +821,12 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # recoverable failures. Strict estimates remain the default for callers;
     # installation may preview this candidate without claiming it fits.
     capacity_trial = bool(allow_capacity_trial and gpu_budget < residual_floor)
-    available = set(available_backends if available_backends is not None else {'cudnn', 'torch-flash'})
+    available = set(available_backends if available_backends is not None else {'cudnn', 'torch-flash', 'torch-sdpa'})
     if attention == 'auto':
-        attention = next((name for name in ('sage2', 'torch-flash', 'cudnn', 'fa2', 'fa4') if name in available), '')
+        order = (('torch-sdpa', 'torch-flash', 'cudnn')
+                 if hardware.architecture in ('pascal', 'volta', 'turing')
+                 else ('sage2', 'torch-sdpa', 'torch-flash', 'cudnn', 'fa2', 'fa4'))
+        attention = next((name for name in order if name in available), '')
     legs = attention.split('/')
     if len(legs) == 1:
         legs *= 2
@@ -1272,7 +1275,13 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             windows_activation_limited = True
     if capacity_trial:
         head, resident, prefetch = 4, 0, False
-        cpu_outputs = residual_offload = True
+        cpu_outputs = True
+        residual_offload = hardware.architecture not in ('pascal', 'volta', 'turing')
+    # Fused residual staging needs inference kernels. Those stay off on Pascal /
+    # Volta / Turing, so an 8 GB Windows plan must not request residual_offload.
+    inference_kernels = hardware.architecture not in ('pascal', 'volta', 'turing')
+    if not inference_kernels:
+        residual_offload = False
     pin = max(0, min(22_000_000_000, retention_budget - HOST_WEIGHT_HEADROOM)) / 1e9
     pin = min(pin, (50 - (resident if pinned_like is None else pinned_like)) * block_bytes / 1e9)
     if small:
@@ -1354,7 +1363,10 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         # being reread every step, which is the larger cost there.
         pin = 0.
     engine = dict(attention='/'.join(legs), prefetch=prefetch,
-                  adaln_cache=True, adaln_disk_cache=True, inference_kernels=True,
+                  adaln_cache=True, adaln_disk_cache=True,
+                  # torch.compile / Triton fused kernels do not target SM61 on Windows.
+                  inference_kernels=inference_kernels,
+                  # Head-chunk packing needs those kernels; torch-sdpa runs full heads.
                   # One chunk size for every band, on neutrality rather than
                   # speed. The small band's 512 measured 13.3% slower at a
                   # 10 GiB cap -- 32.95 against 28.58 s/step -- but only while
@@ -1369,7 +1381,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                   # whose other couplings proved mispriced. The head-dependent
                   # 1024 it replaces was unreachable: only the small band had a
                   # head group under 8, and it took the 512.
-                  ff_chunk=2048, head_chunk=head,
+                  ff_chunk=2048,
+                  head_chunk=0 if hardware.architecture in ('pascal', 'volta', 'turing') else head,
                   head_parallelism=1,  # Increased only by a locally validated tuning profile.
                   projection_chunk=1024, offload_refiner=True,
                   attention_cpu_outputs=cpu_outputs, grouped_attention_outputs=cpu_outputs,
@@ -1400,7 +1413,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
                   # unchanged at 15.83 and 18.09 GiB. Dropping to two at a
                   # 12 GiB cap cost 0.2%, so one rule covers every band.
                   window_batch=1 if ampere else 4,
-                  linear_compute='int8' if int8 else 'bf16-weight-only' if ampere else 'native-fp8')
+                  linear_compute='int8' if int8 else 'bf16-weight-only' if hardware.capability < (8, 9) else 'native-fp8')
     notes = ['Request resolution, frame count, steps and attention backend are preserved.',
              'Budgets use current free VRAM and available physical/commit RAM, with growth headroom; OS usage is already excluded.',
              'Automatic execution uses matching GPU kernel probes; read-only plans may use package discovery. Small probes do not prove full-video capacity.',
@@ -1436,6 +1449,8 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
         notes.append('Host weight cache keeps %.2f GiB for this path\'s working memory, inside the separate OS growth reserve; the runtime rechecks available RAM.' % (host_headroom / GiB))
     if ampere:
         notes.append('Ampere keeps FP8 weight storage and uses bounded BF16 compute; no native FP8 tensor-core claim.')
+    if hardware.architecture in ('pascal', 'volta', 'turing'):
+        notes.append('This GPU has no native BF16 or FP8 tensor cores. Stored weights dequantize to FP16/FP32 (same linear policy as Ampere W8A16). Fused inference kernels stay off; DeltaNet uses the eager PyTorch path.')
     if desktop:
         notes.append('Windows keeps %.2f GiB beyond current GPU usage and %.2f GiB beyond current available RAM/commit; pagefile capacity is not added to RAM.' % (reserve_gpu, reserve_ram))
     if retention_budget > ram_budget:
@@ -1483,7 +1498,7 @@ def choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
     # and decoded in 15.3 s instead of 24.6 s on the RTX PRO 6000, with peaks
     # of 4.65 and 4.67 GiB reserved.
     decoder_linear_cache = (hardware.system == 'Linux'
-                            or (hardware.architecture in ('ampere', 'ada', 'blackwell-rtx')
+                            or (hardware.architecture in ('pascal', 'volta', 'turing', 'ampere', 'ada', 'blackwell-rtx')
                                 and hardware.system == 'Windows'))
     # Temporal streaming bounds the live clip workspace, so use spare VRAM for
     # the repeatedly-read decoder blocks before spending RAM on host copies. At

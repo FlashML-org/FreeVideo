@@ -33,7 +33,8 @@ def skeleton(base, checkpoint):
     with torch.device('meta'):
         # Cast metadata only. Restore the official FP32 islands before reading
         # any weights; from_pretrained would unnecessarily load a full model.
-        model = MiniMaxH3Transformer3DModel.from_config(config).bfloat16()
+        from .hardware import activation_dtype
+        model = MiniMaxH3Transformer3DModel.from_config(config).to(dtype=activation_dtype())
         for name, module in model.named_modules():
             if any(key in name for key in model._keep_in_fp32_modules):
                 module.float()

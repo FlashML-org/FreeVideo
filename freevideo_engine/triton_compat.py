@@ -202,8 +202,14 @@ def activate():
     """
     if os.name != 'nt':
         return
-    from triton import knobs
-    native_getenv = knobs.getenv
+    try:
+        from triton import knobs
+    except ImportError:
+        return
+    native_getenv = getattr(knobs, 'getenv', None)
+    if native_getenv is None:
+        # Pascal stub / incomplete Triton: no CRT getenv to wrap.
+        return
     if getattr(native_getenv, '_freevideo_unicode_env', False):
         return
 

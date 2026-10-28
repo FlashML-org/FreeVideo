@@ -52,7 +52,7 @@ def preferred_format(hardware):
     PRO 6000). Returns None to keep the GPU's FP8 granularity.
     """
     architecture = hardware.architecture
-    if architecture == 'ampere':
+    if architecture in ('pascal', 'volta', 'turing', 'ampere'):
         return 'int8_convrot'
     if architecture in ('ada', 'blackwell-rtx') and 'geforce' in (hardware.gpu_name or '').lower():
         return 'int8_convrot'

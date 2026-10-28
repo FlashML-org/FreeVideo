@@ -424,6 +424,27 @@ def progress_message(event):
                     done=done, total=total, display_fraction=done / total, timing_phase='sampling',
                     estimated_step_seconds=None, step_elapsed_seconds=0., remaining_seconds=None,
                     uniform_remaining_steps=False)
+    if name == 'pixel_upscale_download':
+        return dict(label='Downloading RealESRGAN 2× (one-time)', timing_phase='load', phase='load',
+                    stage='pixel_upscale_download')
+    if name == 'pixel_upscale_prepare':
+        return dict(label='Loading the 2× upscaler', timing_phase='load', phase='load', stage='pixel_upscale_prepare')
+    if name == 'pixel_upscale_start':
+        return dict(label='Upscaling %d × %d → %d × %d' % (
+            event.get('width') or 0, event.get('height') or 0,
+            event.get('out_width') or 0, event.get('out_height') or 0),
+                    phase='sampling', stage='pixel_upscale', timing_phase='sampling',
+                    done=0, total=event.get('frames') or 1)
+    if name == 'pixel_upscale':
+        done, total = event.get('done') or 0, event.get('total') or 1
+        return dict(label='Upscaling frames', phase='sampling', stage='pixel_upscale',
+                    done=done, total=total, display_fraction=done / total if total else 0,
+                    timing_phase='sampling')
+    if name == 'pixel_upscale_encode':
+        return dict(label='Saving upscaled MP4 and audio', timing_phase='save', phase='save',
+                    stage='pixel_upscale_encode')
+    if name == 'pixel_upscale_done':
+        return dict(label='Upscaled video saved', phase='complete')
     if name == 'ram_budget_warning':
         # Kept in resource logs and diagnostics, not in generation progress:
         # crossing a soft estimate while memory is available needs no action.
@@ -558,12 +579,54 @@ def upscale_command(state, output, video, resources):
     return arguments + ['--refine-from', str(video)]
 
 
+def checkpoint_request(output_directory, relative):
+    if not isinstance(relative, str) or not relative.strip():
+        raise ValueError('Choose a checkpoint to continue')
+    output_root = Path(output_directory).resolve()
+    video = (output_root / relative).resolve()
+    try:
+        video.relative_to(output_root / 'FreeVideo')
+    except ValueError:
+        raise ValueError('Choose a FreeVideo checkpoint from this output folder') from None
+    from .quality_resume import source as quality_source
+    quality_source(video)
+    path = video.parent / 'comfy-request.json'
+    state = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    if (not isinstance(state, dict) or state.get('status') != 'complete'
+            or Path(state.get('output', '')).resolve() != video or not isinstance(state.get('command'), list)
+            or 'generate' not in state['command']):
+        raise ValueError('This video is not a finished FreeVideo checkpoint')
+    return video, state
+
+
+def resume_command(state, output, video, resources, planned_steps):
+    tail = state['command'][state['command'].index('generate') + 1:]
+    replaced = {'--' + field.replace('_', '-') for field in list(state.get('resources') or {}) + list(resources)}
+    arguments, index = [], 0
+    while index < len(tail):
+        flag = tail[index]
+        if flag in ('--preview', '--stop-after-steps', '--resume-from'):
+            index += 1 if flag == '--preview' else 2
+            continue
+        if flag in replaced or flag in ('--out', '--base-steps', '--two-pass', '--no-two-pass', '--refine-from'):
+            if flag == '--out':
+                arguments += ['--out', str(output)]
+            index += 1 if flag in ('--two-pass', '--no-two-pass') else 2
+            continue
+        arguments.append(flag)
+        index += 1
+    for field, reserve in resources.items():
+        if reserve is not None:
+            arguments += ['--' + field.replace('_', '-'), str(reserve)]
+    return arguments + ['--no-two-pass', '--base-steps', str(planned_steps), '--resume-from', str(video)]
+
+
 def without_upscale(graph, node_id, refine_from):
     import copy
     graph = copy.deepcopy(graph)
     inputs = ((graph.get('prompt') or {}).get(str(node_id)) or {}).get('inputs')
     if isinstance(inputs, dict):
-        inputs.update(refine_from='', preview=False)
+        inputs.update(refine_from='', resume_from='', pixel_upscale_from='', preview=False)
     for node in (graph.get('workflow') or {}).get('nodes') or []:
         values = node.get('widgets_values')
         if str(node.get('id')) == str(node_id) and isinstance(values, list) and values and values[-1] == refine_from:
@@ -586,12 +649,120 @@ def engine_environment(root, source, environ=None):
     return environment(root, isolated_environment(root, source, environ))
 
 
+def run_pixel_upscale(relative, output_directory, *, prompt='', source=None, environ=None, metadata=None,
+                      progress=None, interrupted=None, release_models=None, comfy_metadata=None,
+                      report_extra=None, node_id=None):
+    """2× RealESRGAN of a finished clip. Does not load MiniMax H3."""
+    from .pixel_upscale import resolve_video
+    from .comfy_progress import REPORTS
+    video, previous = resolve_video(output_directory, relative)
+    source = Path(source or source_root()).resolve()
+    root, machine = installation(source, environ)
+    environment = engine_environment(root, source, environ)
+    environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
+                       PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+    for key in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'):
+        environment.pop(key, None)
+    run = Path(output_directory).resolve() / 'FreeVideo' / time.strftime('%Y-%m-%d', time.gmtime()) / uuid.uuid4().hex
+    run.mkdir(parents=True, exist_ok=False)
+    output = run / 'video.mp4'
+    text = prompt.strip() if isinstance(prompt, str) else ''
+    inherited = video.parent / 'prompt.txt'
+    (run / 'prompt.txt').write_text(
+        inherited.read_text(encoding='utf-8') if inherited.is_file() else (text or '(pixel upscale)'),
+        encoding='utf-8')
+    if metadata is not None:
+        save(run / 'workflow.json', metadata)
+    command = [machine['python'], '-B', '-m', 'freevideo_engine.managed', '--root', str(root),
+               'pixel-upscale', '--in', str(video), '--out', str(output)]
+    state = {'status': 'starting', 'pixel_upscale_from': str(video), 'installation': str(root),
+             'command': command, 'output': str(output), 'source': str(source)}
+    save(run / 'comfy-request.json', state)
+    report_id = REPORTS.register(output)
+    def send_progress(message):
+        if progress:
+            progress(dict(message, report_id=report_id))
+    process = None
+    tails = [EventTail(run / name) for name in ('generate.log',)]
+    def poll():
+        if interrupted:
+            interrupted()
+        for tail in tails:
+            for event in tail.events():
+                message = progress_message(event)
+                if message:
+                    send_progress(message)
+    started = time.monotonic()
+    try:
+        if interrupted:
+            interrupted()
+        if release_models:
+            release_models()
+        send_progress({'label': 'Preparing 2× upscale'})
+        with (run / 'generate.log').open('wb') as log:
+            process = processes.popen(command, env=environment, cwd=source, stdin=subprocess.DEVNULL,
+                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
+            state.update(status='running', pid=process.pid)
+            save(run / 'comfy-request.json', state)
+            while process.poll() is None:
+                poll()
+                try:
+                    process.wait(timeout=.25)
+                except subprocess.TimeoutExpired:
+                    pass
+            poll()
+            if process.returncode:
+                from .comfy_launcher_api import repair_hint
+                from .failure_details import generation_failure
+                raise RuntimeError(generation_failure(run, process.returncode, repair=repair_hint()))
+        report = json.loads(output.with_suffix('.request.json').read_text(encoding='utf-8'))
+        if (report.get('success') is not True or not isinstance(report.get('pixel_upscale'), dict)
+                or not output.is_file() or not output.stat().st_size):
+            from .failure_details import generation_failure
+            raise RuntimeError('FreeVideo did not finish the 2× upscale.\n' + generation_failure(run))
+        if previous.get('geometry'):
+            report.setdefault('source_geometry', previous.get('geometry'))
+        if report_extra:
+            report.update(report_extra)
+            save(output.with_suffix('.request.json'), report)
+        if comfy_metadata:
+            from .comfy_metadata import embed_comfy_metadata
+            graph = without_upscale(comfy_metadata, node_id, relative) if node_id is not None else comfy_metadata
+            state['workflow_in_video'] = embed_comfy_metadata(output, **graph)
+        state.update(status='complete', request_seconds=report.get('request_seconds'))
+        send_progress({'label': 'Upscaled video saved', 'phase': 'complete', 'done': 1, 'total': 1})
+        return output
+    except BaseException as error:
+        cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in (
+            'InterruptProcessingException', 'CancelledError')
+        state.update(status='cancelled' if cancelled else 'failed', error=repr(error))
+        try:
+            if process is not None:
+                processes.stop(process)
+        finally:
+            raise
+    finally:
+        state['bridge_seconds'] = time.monotonic() - started
+        save(run / 'comfy-request.json', state)
+        from .support_report import write as write_debug
+        write_debug(output, bridge=state)
+
+
 def generate(prompt, width, height, seconds, seed, output_directory, *,
              source=None, environ=None, metadata=None, progress=None, interrupted=None,
              release_models=None, export_inputs=None, two_pass=True, encoder_prewarm=None,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
-             continue_from=None, frames=None, first_frame_reference=False):
+             continue_from=None, frames=None, first_frame_reference=False, node_id=None,
+             quality_ceiling=0, resume_from=None, pixel_upscale_from=None):
+    pixel_upscale_from = pixel_upscale_from if isinstance(pixel_upscale_from, str) and pixel_upscale_from.strip() else None
+    if pixel_upscale_from:
+        if preview or refine_from or resume_from or continue_from:
+            raise ValueError('Pixel upscale is a separate job from sampling continue/preview')
+        return run_pixel_upscale(pixel_upscale_from, output_directory, prompt=prompt,
+                                 source=source, environ=environ, metadata=metadata, progress=progress,
+                                 interrupted=interrupted, release_models=release_models,
+                                 comfy_metadata=comfy_metadata, report_extra=report_extra, node_id=node_id)
     if type(first_frame_reference) is not bool:
         raise ValueError('First-frame reference must be a boolean')
     if continue_from is not None:
@@ -604,6 +775,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     if type(preview) is not bool:
         raise ValueError('Preview must be a boolean')
     refine_from = refine_from if isinstance(refine_from, str) and refine_from.strip() else None
+    resume_from = resume_from if isinstance(resume_from, str) and resume_from.strip() else None
+    from .quality_resume import schedule_steps
+    schedule, stop_after = schedule_steps(base_steps, quality_ceiling, two_pass)
+    if resume_from and (preview or refine_from or two_pass):
+        raise ValueError('Continue remaining steps of a checkpoint is a single-pass resume')
     upscale = None
     if refine_from:
         # An upscale continues the preview's own request: its prompt, seed,
@@ -650,6 +826,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     resources = read_resources(root, backend=machine.get('device_backend', 'cuda'))
     run = Path(output_directory).resolve() / 'FreeVideo' / time.strftime('%Y-%m-%d', time.gmtime()) / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
+    from .keep_preview import register as register_keep, unregister as unregister_keep
+    register_keep(node_id, run)
     output = run / 'video.mp4'
     if prompt_rewrite_report:
         from .prompt_vlm.receipt import attach
@@ -661,7 +839,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                'generate', '--prompt-file', str(run / 'prompt.txt'), '--out', str(output),
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
                '--two-pass' if two_pass else '--no-two-pass',
-               '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
+               '--base-steps', str(schedule if not resume_from else base_steps), '--refine-steps', str(refine_steps)]
     if frames is not None:
         position = command.index('--seconds')
         command[position:position + 2] = ['--frames', str(frames)]
@@ -673,7 +851,15 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         continuation = persist_snapshot(continuation, run / 'continuation-source.safetensors')
         command += ['--continuation-snapshot', continuation['snapshot'],
                     '--continuation-snapshot-sha256', continuation['snapshot_sha256']]
-    if upscale:
+    climb = None
+    if resume_from:
+        from .quality_resume import source as quality_source
+        climb = checkpoint_request(output_directory, resume_from)
+        planned = quality_source(climb[0])['planned_steps']
+        command = command[:command.index('generate') + 1] + resume_command(climb[1], output, climb[0], resources, planned)
+        two_pass, preview, schedule, stop_after = False, False, planned, None
+        base_steps = planned
+    elif upscale:
         command = command[:command.index('generate') + 1] + upscale_command(upscale[1], output, upscale[0], resources)
     else:
         for field, reserve in resources.items():
@@ -681,12 +867,16 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
+        if stop_after:
+            command += ['--stop-after-steps', str(stop_after)]
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
     if preview:
         state['preview'] = True
     if upscale:
         state['upscaled_preview'] = str(upscale[0])
+    if climb:
+        state['quality_resume'] = str(climb[0])
     from .diagnostic_resources import encoder_prewarm as prewarm_summary
     state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
     save(run / 'comfy-request.json', state)
@@ -841,18 +1031,29 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .two_pass import steps, plan
         completed_steps = steps(report.get('sampling_plan'))
         expected_plan = plan(sampled, two_pass, report.get('profile', {}).get('engine', {}).get('task', 't2va'),
-                             base_steps=base_steps, refine_steps=refine_steps, staged=bool(preview or upscale))
+                             base_steps=schedule, refine_steps=refine_steps, staged=bool(preview or upscale))
         shown = sampled
+        early_stop = engine.get('early_stop') is True
         if preview:
             # A preview decodes its first pass at the planned smaller canvas.
             completed_steps = expected_plan['base_steps']
             shown = dict(canvas, width=expected_plan['first']['width'], height=expected_plan['first']['height'])
+        if early_stop and type(engine.get('completed_steps')) is int:
+            completed_steps = engine['completed_steps']
+            geometry = engine.get('geometry') or {}
+            shown = dict(canvas, width=geometry.get('width', canvas['width']),
+                         height=geometry.get('height', canvas['height']),
+                         frames=geometry.get('frames', canvas['frames']))
+            report['early_stop'] = dict(completed_steps=engine.get('completed_steps'),
+                                        planned_steps=engine.get('planned_steps'))
+            save(output.with_suffix('.request.json'), report)
         if (report.get('success') is not True or engine.get('success') is not True
                 or not output.is_file() or not output.stat().st_size
-                or len(engine.get('step_seconds', [])) != completed_steps
+                or (not early_stop and len(engine.get('step_seconds', [])) != completed_steps)
                 or engine.get('sampling_plan') != report.get('sampling_plan')
                 or report.get('sampling_plan') != expected_plan
-                or bool(report.get('preview')) != preview or bool(report.get('upscaled_preview')) != bool(upscale)
+                or (not early_stop and bool(report.get('preview')) != preview)
+                or (not early_stop and bool(report.get('upscaled_preview')) != bool(upscale))
                 or any(engine.get('geometry', {}).get(k) != shown[k] for k in ('width', 'height', 'frames'))
                 or (report.get('output_size') or None) != output_size):
             from .comfy_launcher_api import repair_hint
@@ -922,6 +1123,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     OWNER.close()
         raise
     finally:
+        unregister_keep(node_id)
         from .resident_process import OWNER
         OWNER.active = False
         state['bridge_seconds'] = time.monotonic() - started

@@ -1,4 +1,4 @@
-# Native launcher build dependencies; inference runs in its managed environment.
 pyinstaller==6.22.3
 psutil==7.2.2
 PySide6-Essentials==6.11.2
+tbb>=2023.2.0

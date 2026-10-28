@@ -60,6 +60,34 @@ def request_options(continue_from='', frames=0):
     return dict(continue_from=previous, frames=count) if previous or count else {}
 
 
+def continuation_notice(path):
+    """Return a user message when `path` has no saved continuation record, else None.
+
+    A cheap presence check run before the node stops background work or touches
+    the GPU, so an unusable source video becomes a notice instead of an
+    execution error. A record that exists but is damaged is still reported by
+    the bridge's full check, exactly as before.
+    """
+    if not path:
+        return None
+    try:
+        from av import FFmpegError
+        from .comfy_bridge import installation_root
+        from .continuation import missing_message
+        from .continuation_store import _path, video_id
+        directory = installation_root() / 'continuations'
+    except (OSError, ValueError, KeyError, ImportError):
+        return None  # Installation problems keep their existing error path.
+    try:
+        if _path(video_id(path), directory).is_file():
+            return None
+    except FFmpegError:
+        pass  # Unreadable media cannot select a record.
+    except (OSError, ValueError):
+        return None  # Keep the bridge's existing message for other file problems.
+    return missing_message(path)
+
+
 def audio_lead_in(video, previous=None):
     """Read a new segment's seam audio, optionally checking its predecessor.
 

@@ -183,7 +183,8 @@ def configuration(root, value, hardware):
     allowed = {'per_tensor' if hardware.capability[0] >= 10 else 'rowwise'}
     if preferred_format(hardware) == 'int8_convrot':
         allowed.add('int8_convrot')
-    if hardware.capability < (8, 0) or value['variant'] not in allowed:
+    from .hardware import MINIMUM_CUDA_CAPABILITY
+    if hardware.capability < MINIMUM_CUDA_CAPABILITY or value['variant'] not in allowed:
         raise ValueError('This GPU needs the %s bundle; this archive contains %s. No models were downloaded or changed.'
                          % (' or '.join(sorted(allowed)), value['variant']))
     from . import __version__

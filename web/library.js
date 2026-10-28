@@ -86,7 +86,7 @@ async function workflowBackfill(collection, t) {
 }
 
 // ``upscale`` queues the second pass of a first-pass preview (the studio's node).
-export function openLibrary(t, {upscale = null, selectedWork = null, extend = null, back: backLabel = null} = {}) {
+export function openLibrary(t, {upscale = null, pixelUpscale = null, selectedWork = null, extend = null, back: backLabel = null} = {}) {
     if (opened?.open) { if (selectedWork) opened.close(); else { opened.focus(); return; } }
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     dialog.setAttribute('aria-label', t('Your creations', '我的作品'));
@@ -135,7 +135,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         const g = row.geometry || {};
         if (g.width > 0 && g.height > 0) frame.style.setProperty('--fv-ratio', String(g.width / g.height));
         media.append(player);
-        if (row.preview) media.append(previewBadge(row, t));
+        if (row.preview || row.early_stop || row.pixel_upscale) media.append(previewBadge(row, t));
         frame.append(media);
         player.addEventListener('error', async () => {
             if (!disposed && selected === row.video) {
@@ -158,6 +158,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
                     catch (error) { notice.textContent = error.message; }
                 },
                 secondPass: row.preview && upscale ? () => secondPass(row) : null,
+                pixelUpscale: pixelUpscale ? () => queuePixel(row) : null,
                 remove: () => remove(row)}));
             notice.textContent = '';
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
@@ -189,6 +190,16 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
             notice.textContent = t('Queued. The finished video appears here when the second pass is done.', '已加入队列，二采完成后成片会出现在作品里。');
         } catch (error) {
             notice.textContent = t('Could not start the second pass: ', '无法开始二采：') + error.message;
+            throw error;
+        }
+    }
+    async function queuePixel(row) {
+        notice.textContent = '';
+        try {
+            await pixelUpscale(row);
+            notice.textContent = t('Queued. The 2× video appears here when upscale is done.', '已加入队列，2× 放大完成后会出现在作品里。');
+        } catch (error) {
+            notice.textContent = t('Could not start upscale: ', '无法开始放大：') + error.message;
             throw error;
         }
     }

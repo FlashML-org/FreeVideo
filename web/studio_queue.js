@@ -60,6 +60,62 @@ export async function upscaleResult(api, nodeId, result, currentPrompt) {
     return reply.prompt_id;
 }
 
+// 2× RealESRGAN of a finished clip. MiniMax is not sampled again.
+export async function pixelUpscaleResult(api, nodeId, result, currentPrompt) {
+    nodeId = String(nodeId);
+    if (!result?.video) throw new Error('not_video');
+    const path = result.request_id ? '/history/' + encodeURIComponent(result.request_id) : '/history?max_items=64';
+    let rows = [];
+    try {
+        const response = await fetchQueueRead(api, path);
+        if (response.ok) rows = Object.values(await response.json());
+    } catch (error) {
+        if (detectBrowserExtension(error)) throw error;
+    }
+    rows.sort((a, b) => (b.prompt?.[0] || 0) - (a.prompt?.[0] || 0));
+    const saved = rows.find(row => row.outputs?.[nodeId]?.freevideo_summary?.[0]?.video === result.video
+        && row.status?.status_str === 'success' && row.status?.completed
+        && row.prompt?.[2]?.[nodeId]?.class_type === 'FreeVideoGenerate');
+    const snapshot = saved
+        ? {output: clone(saved.prompt[2]), workflow: clone(saved.prompt[3]?.extra_pnginfo?.workflow || {})}
+        : clone(await currentPrompt());
+    if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
+    Object.assign(snapshot.output[nodeId].inputs, {preview: false, refine_from: '', resume_from: '',
+        pixel_upscale_from: result.video, force_regenerate: false});
+    const reply = await api.queuePrompt(0, snapshot);
+    if (!reply?.prompt_id) throw new Error('submit_failed');
+    api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
+    return reply.prompt_id;
+}
+
+// Finish remaining steps of a Medium/High checkpoint or Keep this preview.
+export async function resumeQualityResult(api, nodeId, result, currentPrompt) {
+    nodeId = String(nodeId);
+    if (!result?.early_stop || !result.video) throw new Error('not_checkpoint');
+    const path = result.request_id ? '/history/' + encodeURIComponent(result.request_id) : '/history?max_items=64';
+    let rows = [];
+    try {
+        const response = await fetchQueueRead(api, path);
+        if (response.ok) rows = Object.values(await response.json());
+    } catch (error) {
+        if (detectBrowserExtension(error)) throw error;
+    }
+    rows.sort((a, b) => (b.prompt?.[0] || 0) - (a.prompt?.[0] || 0));
+    const saved = rows.find(row => row.outputs?.[nodeId]?.freevideo_summary?.[0]?.video === result.video
+        && row.status?.status_str === 'success' && row.status?.completed
+        && row.prompt?.[2]?.[nodeId]?.class_type === 'FreeVideoGenerate');
+    const snapshot = saved
+        ? {output: clone(saved.prompt[2]), workflow: clone(saved.prompt[3]?.extra_pnginfo?.workflow || {})}
+        : clone(await currentPrompt());
+    if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
+    Object.assign(snapshot.output[nodeId].inputs, {preview: false, resume_from: result.video, refine_from: '',
+        two_pass: false, force_regenerate: false});
+    const reply = await api.queuePrompt(0, snapshot);
+    if (!reply?.prompt_id) throw new Error('submit_failed');
+    api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
+    return reply.prompt_id;
+}
+
 export function randomSeed() {
     const bytes = crypto.getRandomValues(new Uint32Array(2));
     return (bytes[0] & 0x1fffff) * 0x100000000 + bytes[1];

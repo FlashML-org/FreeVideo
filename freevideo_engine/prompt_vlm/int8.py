@@ -61,6 +61,10 @@ _kernel = None
 
 
 def _small(rows, quantized, scale):
+    if not torch.cuda.is_available() or torch.cuda.get_device_capability() < (8, 0):
+        weight = quantized.to(dtype=rows.dtype)
+        out = F.linear(rows.float(), weight.float())
+        return out.mul_(scale).to(rows.dtype)
     global _kernel
     if _kernel is None:
         _kernel = _build()

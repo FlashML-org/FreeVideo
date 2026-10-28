@@ -158,6 +158,8 @@ def output_summary(report, relative_video):
                 thermal=thermal_slowdown(((report.get('memory') or {}).get('video') or {}).get('gpu')),
                 reference_trims=report.get('encoding', {}).get('reference_trims') or [],
                 preview=bool(report.get('preview')), upscaled_preview=bool(report.get('upscaled_preview')),
+                early_stop=report.get('early_stop') or False,
+                pixel_upscale=bool(report.get('pixel_upscale')),
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
                     '.debug.json' if report.get('diagnostic_file') == relative_video.with_suffix('.debug.json').name
                     else '.request.json').as_posix())

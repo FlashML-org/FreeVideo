@@ -74,8 +74,8 @@ def install_root():
     if source is not None:
         return source
     if windows():
-        return Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'FreeVideo'
-    return Path.home() / '.local' / 'share' / 'freevideo'
+        return Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'FreeVideo-Pascal'
+    return Path.home() / '.local' / 'share' / 'freevideo-pascal'
 
 
 def bootstrap_root(root=None):

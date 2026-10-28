@@ -1,0 +1,38 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       Forbidden Moonlight Confession: Harry Potter and Female Malfoy
+Category:    Multi-Scene Storyboard
+Identifier:  07_multiscene_harry_and_fem_malfoy
+File:        07_multiscene_harry_and_fem_malfoy.mp4 (0.84 MB)
+Timestamp:   2026-10-26 06:36:37
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+3-shot emotional storyboard in Hogwarts Astronomy Tower: tense confrontation, tearful confession, and fainting into arms.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] Midnight in the Gothic Astronomy Tower of Hogwarts during a heavy thunderstorm. Cold moonlight and flashes of lightning spill through tall lancet arched windows onto wet flagstone floors. Female Malfoy (Lyra Malfoy) — aristocratic, with long sleek platinum-blonde hair tumbling over emerald green and silver Slytherin robes, stormy silver eyes filled with pain — stands trembling near the carved stone railing. A few paces away, Harry Potter stands in a dark Gryffindor wool coat, his messy black hair and round wire-rimmed glasses illuminated by a flash of lightning. The camera tracks slowly past Gothic arches in a dramatic cinematic wide two-shot.
+[Shot 2] At 00:03.000, the camera glides into an emotional medium close-up on Female Malfoy as she takes an unsteady step forward. Her breath shivers in the cold air, and tears brim in her silver eyes as her aristocratic facade completely shatters. Her lips tremble as she whispers desperately: "I've spent years hating everything about you, Potter... but God forgive me, I hate how much I love you even more." Outside, rain lashes violently against the stained glass windows.
+[Shot 3] At 00:07.000, completely overcome by exhaustion, sorrow, and raw emotion, her silver eyes flutter shut and her knees buckle. Harry instantly lunges forward and catches her securely in his arms before she touches the cold stone floor, pulling her frail frame tenderly against his chest. The camera completes a poignant, slow 360-degree orbit around them as moonlight softens through the clearing storm clouds, framing their forbidden embrace.
+
+overall_soundscape: Heavy rain hammering the stone roof, howling mountain wind through arched balconies, rolling distant thunder, soft ragged gasps, and the gentle rustle of heavy wool robes.
+
+non_diegetic_music: A deeply moving, melancholic solo piano piece with delicate high melodies and sorrowful lower chords, swelling tenderly during the confession, then resolving into a soft, resonant chord as she falls into his arms.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          512 x 288
+- Aspect Ratio:        512:288
+- Duration (seconds):  10.0s
+- Random Seed:         19980502
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

@@ -4,7 +4,7 @@ export function canvasDimensions(pixels, ratio) {
 }
 
 export function imageSizeSelection(pixels, ratio, width, height) {
-    const options = [.5, .75, .98, 1.5, 2];
+    const options = [.10, .14, .25, .5, .75, .98, 1.5, 2];
     const matches = target => {
         const [w, h] = canvasDimensions(target, ratio);
         return w === width && h === height;

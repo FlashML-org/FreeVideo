@@ -39,6 +39,23 @@
 .fv-studio .fv-shape[data-ratio='9:16'] .fv-shape-icon{width:15px;height:26px;margin:0}.fv-studio .fv-shape[data-ratio='1:1'] .fv-shape-icon{width:20px;height:20px;margin:3px 0}
 .fv-studio .fv-shape[data-ratio=input] .fv-shape-icon{border-style:dashed;width:22px;height:18px;margin:4px 0}
 .fv-studio .fv-canvas-note{margin-top:10px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--fv-muted);font-size:var(--fv-micro);font-variant-numeric:tabular-nums}
+.fv-studio .fv-pascal-length{margin:8px 0 0;line-height:1.55}
+.fv-studio .fv-dialog-length{margin:10px 0 0;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);padding:8px 10px}
+.fv-studio .fv-dialog-length>summary{cursor:pointer;list-style:none;color:var(--fv-ink);font-size:var(--fv-micro);font-weight:var(--fv-semibold)}
+.fv-studio .fv-dialog-length>summary::-webkit-details-marker{display:none}
+.fv-studio .fv-dialog-length-body{display:grid;gap:8px;margin-top:8px}
+.fv-studio .fv-dialog-length-body>p{margin:0;color:var(--fv-muted);font-size:var(--fv-micro);line-height:1.5}
+.fv-studio .fv-dialog-length-body textarea{min-height:52px;height:52px;max-height:120px;font-size:var(--fv-micro)}
+.fv-studio .fv-dialog-length-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fv-studio .fv-dialog-length-status{margin:0;color:var(--fv-ink);font-size:var(--fv-micro);line-height:1.45}
+.fv-studio .fv-dialog-length-status[data-fit=fits]{color:var(--fv-success)}
+.fv-studio .fv-dialog-length-status[data-fit=tight]{color:var(--fv-ink)}
+.fv-studio .fv-dialog-length-status[data-fit=over]{color:var(--fv-danger)}
+.fv-studio .fv-dialog-length .fv-quiet{justify-self:start;padding:4px 10px;min-height:0;font-size:var(--fv-micro)}
+.fv-studio .fv-size-presets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.fv-studio .fv-size-chip{min-height:32px;padding:4px 10px;font-size:11px;font-weight:var(--fv-medium);border-radius:999px;background:var(--fv-card);color:var(--fv-muted)}
+.fv-studio .fv-size-chip[aria-pressed=true]{color:var(--fv-accent);border-color:var(--fv-accent);background:var(--fv-selected)}
+.fv-studio .fv-keep-preview{border-color:var(--fv-accent);color:var(--fv-accent)}
 .fv-studio .fv-two-pass{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px;padding:12px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);color:var(--fv-ink);cursor:pointer;transition:background .2s,border-color .2s}
 .fv-studio .fv-two-pass:hover{background:var(--fv-raised)}
 .fv-studio .fv-two-pass>span{font-size:var(--fv-body);font-weight:var(--fv-medium)}
@@ -180,3 +197,75 @@
 .fv-studio .fv-first-frame input:checked{background:var(--fv-accent,#6db8fa)}
 .fv-studio .fv-first-frame input:checked::before{transform:translateX(10px)}
 .fv-studio .fv-first-frame:has(input:disabled){opacity:.4}
+
+/* Multi-Scene Storyboard & Title Row Button */
+.fv-studio .fv-scene-title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: var(--fv-semibold);
+    color: var(--fv-ink);
+    font-size: var(--fv-body);
+}
+
+.fv-studio .fv-add-scene-plus-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 20px !important;
+    height: 20px !important;
+    padding: 0 6px !important;
+    margin: 0 !important;
+    border-radius: 4px !important;
+    background: #6366f1 !important;
+    color: #ffffff !important;
+    border: 1px solid #818cf8 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    font-family: inherit !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4) !important;
+    transition: background 0.15s, transform 0.15s !important;
+}
+
+.fv-studio .fv-add-scene-plus-btn:hover {
+    background: #4f46e5 !important;
+    border-color: #a5b4fc !important;
+    color: #ffffff !important;
+    transform: scale(1.08) !important;
+}
+
+.fv-studio .fv-scenes-manager {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px 0 14px 0;
+    padding: 10px 12px;
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid rgba(129, 140, 248, 0.25);
+    border-radius: 10px;
+    box-sizing: border-box;
+}
+
+.fv-studio .fv-quick-add-scene-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    padding: 3px 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    background: rgba(99, 102, 241, 0.18) !important;
+    border: 1px solid rgba(129, 140, 248, 0.4) !important;
+    color: #e0e7ff !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.fv-studio .fv-quick-add-scene-btn:hover {
+    background: rgba(99, 102, 241, 0.35) !important;
+    border-color: #818cf8 !important;
+}

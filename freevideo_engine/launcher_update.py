@@ -22,7 +22,7 @@ from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_errors
 from . import disk_space
 
-REPOSITORY = 'FlashML-org/FreeVideo'
+REPOSITORY = 'SrCodeGorilla/FreeVideo-Pascal'
 # The channel names the platform; launchers from before combined releases read
 # these tags, which the release workflow keeps up to date for them.
 CHANNEL = 'windows-preview'

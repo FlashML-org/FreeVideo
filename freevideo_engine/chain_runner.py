@@ -400,8 +400,13 @@ class ChainRunner:
             block.update(fraction=1., remaining_seconds=0.)
             if block['output'] is None:
                 block['output'] = deepcopy(status.get('output'))
-            next_state = 'running' if self._current(record) is not None else (
-                'cancelled' if record['state'] == 'cancelling' else self._finish_blocks(record))
+            has_pending = any(row['state'] == 'pending' for row in record['blocks'])
+            if record.get('review') and has_pending and record['state'] != 'cancelling':
+                record['current_review'] = block['id']
+                next_state = 'awaiting_review'
+            else:
+                next_state = 'running' if self._current(record) is not None else (
+                    'cancelled' if record['state'] == 'cancelling' else self._finish_blocks(record))
         elif state in ('missing', 'interrupted'):
             block['state'], next_state = 'cancelled', 'cancelled'
         else:

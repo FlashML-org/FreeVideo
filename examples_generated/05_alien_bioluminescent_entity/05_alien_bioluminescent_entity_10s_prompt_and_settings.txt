@@ -1,0 +1,35 @@
+======================================================================
+FreeVideo & MiniMax H3 Multi-Tier Reference Showcase
+======================================================================
+Title:          Bioluminescent Xenofauna in Crystalline Cavern (10s Extended Run)
+Category:       Aliens
+Identifier:     05_alien_bioluminescent_entity_10s
+File:           05_alien_bioluminescent_entity_10s.mp4 (1.20 MB)
+Generated At:   2026-10-26 13:21:42
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Zero-gravity tracking shot of a glowing extraterrestrial creature gliding past floating crystals.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] A breathtaking, otherworldly sci-fi shot inside a vast subterranean alien cavern filled with giant, levitating purple and cyan amethyst crystals. A majestic, translucent extraterrestrial being with undulating ribbon-like fins and glowing bioluminescent tendrils glides weightlessly through the zero-gravity air. Pulsating waves of teal, violet, and aquamarine light wash across its pearlescent skin, casting iridescent reflections on the surrounding crystal facets. The camera glides effortlessly on a 3D arc, weaving smoothly between suspended crystals.
+
+overall_soundscape: Subaquatic crystalline chimes, harmonic alien reverberations, subtle air shimmers, and deep resonant pulses corresponding to the creature's bioluminescent flashes.
+
+non_diegetic_music: Ethereal ambient space music with shimmering modular synthesizer bells and warm deep sub-bass pads.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320 (Aligned 32px Grid)
+- Target Duration:     10.0s
+- Random Seed:         7154134444
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

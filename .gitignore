@@ -19,6 +19,7 @@ outputs/
 *.pt
 *.pth
 *.mp4
+!examples_generated/**/*.mp4
 *.wav
 *.whl
 *.zip
@@ -64,3 +65,16 @@ engine-gpu-*.lock
 /optional/
 *.gguf
 /out/
+
+# Local generation outputs, benchmarks & workspace caches
+!examples_generated/
+!examples_generated/**/
+!examples_generated/**/*.mp4
+examples_generated/08_malfoid_battle_story/scene*.mp4
+FreeVideo-engine/
+.snapshots/
+encoder-workspace.json
+scratch_test_frame.png
+*.error
+*.fixed
+_project/hardware_profile.json

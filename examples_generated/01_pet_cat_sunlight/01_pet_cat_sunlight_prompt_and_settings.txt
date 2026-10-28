@@ -1,0 +1,36 @@
+======================================================================
+FreeVideo & MiniMax H3 Community Showcase Reference
+======================================================================
+Title:       Playful Tabby Kitten in Golden Sunbeam
+Category:    Pets
+Identifier:  01_pet_cat_sunlight
+File:        01_pet_cat_sunlight.mp4 (0.22 MB)
+Timestamp:   2026-10-26 05:51:33
+
+----------------------------------------------------------------------
+[1] Narrative & Style Description
+----------------------------------------------------------------------
+Close-up macro of an inquisitive kitten batting at floating golden dust motes with soft depth-of-field.
+
+----------------------------------------------------------------------
+[2] Multimodal Prompt (Visual, Soundscape & Music)
+----------------------------------------------------------------------
+[Shot 1] A cinematic macro shot at ground level of an adorable, playful ginger tabby kitten in a sunlit living room. Golden hour sunlight filters through sheer white curtains, illuminating shimmering dust motes floating in the air. The kitten rolls playfully onto its back on a plush cream-colored rug, batting up at the light with soft white paws, its amber eyes sparkling with curiosity. The camera glides forward in a smooth low tracking motion, keeping razor-sharp focus on the soft fur and whisker details with creamy, cinematic background blur.
+
+overall_soundscape: Soft rhythmic purring, delicate rustle of carpet fibers, gentle kitten breathing, and faint melodious birdsong chirping softly outside the window.
+
+non_diegetic_music: Warm and cheerful acoustic fingerstyle guitar with gentle upright bass and subtle glockenspiel accents.
+
+----------------------------------------------------------------------
+[3] Generation Parameters & Settings
+----------------------------------------------------------------------
+- Architecture:        FreeVideo Pascal / MiniMax H3 (T2VA)
+- Resolution:          448 x 320
+- Aspect Ratio:        448:320
+- Duration (seconds):  2.5s
+- Random Seed:         421001
+- Two-Pass Mode:       True
+- First-Pass Steps:    8
+- Second-Pass Steps:   3
+- Preview Mode:        True
+======================================================================

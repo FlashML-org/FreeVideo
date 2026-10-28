@@ -7,7 +7,7 @@ class CUDABackend(DeviceBackend):
     capabilities = BackendCapabilities(
         name='cuda', memory_model='dedicated',
         linear_policies=('native-fp8', 'bf16-weight-only', 'int8'),
-        attention_candidates=('cudnn', 'torch-flash', 'sage2', 'fa2', 'fa4'),
+        attention_candidates=('cudnn', 'torch-flash', 'torch-sdpa', 'sage2', 'fa2', 'fa4'),
         pinned_host_weights=True, streamed_weights=True)
 
     def __init__(self, *, torch_module=None):
@@ -81,7 +81,7 @@ class CUDABackend(DeviceBackend):
             from ..fp8 import install_cached_linears
             expected = 'per_tensor' if per_tensor_gemm() else 'rowwise'
             if linear_compute == 'native-fp8' and self.torch.cuda.get_device_capability() < (8, 9):
-                raise ValueError('Native FP8 GEMM requires Ada or newer; choose bf16-weight-only on Ampere')
+                raise ValueError('Native FP8 GEMM requires Ada or newer; choose bf16-weight-only on Ampere or older')
             if linear_compute == 'native-fp8' and manifest['scale_granularity'] != expected:
                 raise ValueError('FP8 cache scale granularity does not match this GPU; prepare a separate cache')
             install_cached_linears(model, manifest['linears'], weight_only=linear_compute == 'bf16-weight-only')

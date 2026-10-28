@@ -2,7 +2,7 @@ import {chainRoute, createPoller} from './chain_support.js';
 import {buildChainRequest} from './length_plan.js?v=20261011-length';
 
 export const CHAIN_PROPERTY = 'freevideo_chain';
-const activeStates = new Set(['queued', 'running', 'cancelling']);
+const activeStates = new Set(['queued', 'running', 'cancelling', 'awaiting_review']);
 const finite = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const post = body => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 
@@ -22,10 +22,12 @@ export function readChainResult(chain) {
     const joining = chain.output_state === 'joining' || (chain.output_state == null && chain.joining === true);
     const failedJoin = chain.output_state === 'failed';
     const stopped = ['failed', 'cancelled', 'interrupted'].includes(chain.state);
+    const awaitingReview = chain.state === 'awaiting_review';
     const last = chain.blocks?.filter(block => block.state === 'done' && block.output).at(-1);
     const joined = chain.output_state === 'done' && typeof chain.output === 'string' && Boolean(chain.output);
-    const video = joined ? chain.output : !joining && (failedJoin || stopped) ? last?.output || null : null;
-    return {video, joined, joining, partial: Boolean(video) && (!joined || stopped),
+    const video = joined ? chain.output : awaitingReview || (!joining && (failedJoin || stopped)) ? last?.output || null : null;
+    return {video, joined, joining, awaitingReview, partial: Boolean(video) && (!joined || stopped || awaitingReview),
+        reviewBlock: awaitingReview ? last : null,
         error: failedJoin ? chain.output_error || 'join_failed' : chain.error || chain.blocks?.find(block => block.state === 'failed')?.error || null};
 }
 
@@ -162,6 +164,31 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
             const id = chain.id, version = epoch;
             const value = (await json(chainRoute(id, 'resume'), post({client_id: api.clientId})))?.chain;
             if (version === epoch && !disposed && value) { epoch++; poller?.dispose(); clearPolls(); previous = {}; corrected = false; etaAt = 0; delivered = errorShown = null; deliver(value, true); if (active()) watch(); }
+        },
+        async approve() {
+            if (!chain) return;
+            const id = chain.id, version = epoch;
+            const value = (await json(chainRoute(id, 'approve'), post({client_id: api.clientId})))?.chain;
+            if (version === epoch && !disposed && value) { epoch++; deliver(value, true); if (active()) watch(); }
+        },
+        async redo({seed, text} = {}) {
+            if (!chain) return;
+            const id = chain.id, version = epoch;
+            const body = {client_id: api.clientId};
+            if (seed !== undefined) body.seed = seed;
+            if (text !== undefined) body.text = text;
+            const value = (await json(chainRoute(id, 'redo'), post(body)))?.chain;
+            if (version === epoch && !disposed && value) { epoch++; poller?.dispose(); clearPolls(); previous = {}; corrected = false; etaAt = 0; delivered = errorShown = null; deliver(value, true); if (active()) watch(); }
+        },
+        async updateBlock(blockId, {text, seed} = {}) {
+            if (!chain) return;
+            const id = chain.id;
+            const body = {client_id: api.clientId};
+            if (text !== undefined) body.text = text;
+            if (seed !== undefined) body.seed = seed;
+            const value = (await json(chainRoute(id, `block/${encodeURIComponent(blockId)}`), post(body)))?.chain;
+            if (value && !disposed) deliver(value);
+            return value;
         },
         progress(message) { if (!chain || message.chain?.id !== chain.id) return false; progress(message);
             if (message.result || ['complete', 'failed', 'cancelled'].includes(message.phase)) refresh(); return true; },

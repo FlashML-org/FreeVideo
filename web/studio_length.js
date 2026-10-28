@@ -34,10 +34,13 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     const toggle = el('label'); toggle.append(single, document.createTextNode(t('Force a single run', '强制单次生成')));
     const explanation = el('p', 'fv-muted', t('Generate in one run, even beyond 30 seconds.', '超过 30 秒时也一次生成。'));
     const unavailable = el('p', 'fv-muted'); unavailable.hidden = true;
-    const block = el('input'); block.type = 'number'; block.min = '5'; block.step = '1'; block.required = true;
+    const block = el('input'); block.type = 'number'; block.min = '2'; block.step = '1'; block.required = true;
     block.dataset.fvLength = 'block'; block.setAttribute('aria-label', t('Part length · seconds', '每段时长 · 秒'));
+    const pascalNote = el('p', 'fv-muted fv-pascal-length', t(
+        'FreeVideo-Pascal: a clip can be as short as 1.625 s (2 s is the usual starting length). 5 s is only the default when splitting a long video into parts.',
+        'FreeVideo-Pascal：单段最短 1.625 秒（常用 2 秒起步）。5 秒只是把长视频切段时的默认每段时长。'));
     const reset = el('button', 'fv-quiet', t('Restore default', '恢复默认')); reset.type = 'button';
-    controls.append(toggle, explanation, unavailable, field(t('Part length · seconds', '每段时长 · 秒'), block), reset); advanced.append(controls);
+    controls.append(toggle, explanation, pascalNote, unavailable, field(t('Part length · seconds', '每段时长 · 秒'), block), reset); advanced.append(controls);
     const note = el('div', 'fv-muted fv-length-plan');
     note.hidden = true; fields.after(note); note.setAttribute('role', 'status');
     let limits = null, planLimits = null, contextKey = '', revision = 0, timer = null, request = null, capabilityRequest = null, capabilityRevision = 0;
@@ -64,7 +67,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         unavailable.textContent = planLimits ? t(`Up to ${Math.floor(clamped ? maximum : forcedMaximum)} s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(clamped ? maximum : forcedMaximum)} 秒。`) : '';
         if (positive(maximum)) block.max = String(maximum); else block.removeAttribute('max');
         if (!edited) block.value = Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(maximum), maximum || Infinity);
-        block.disabled = absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 5); controls.hidden = absent;
+        block.disabled = absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 2); controls.hidden = absent;
         reset.hidden = !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block); reset.disabled = block.disabled;
         note.hidden = absent || !error;
         note.textContent = error ? errorMessage(error) : '';

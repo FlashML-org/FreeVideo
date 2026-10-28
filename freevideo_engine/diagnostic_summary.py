@@ -100,7 +100,7 @@ def summary_report(report):
         if config.get(k) in allowed:
             result['config'][k] = config[k]
     attention = config.get('attention', '')
-    if isinstance(attention, str) and all(x in ('sage2','cudnn','torch-flash','fa2','fa4','dense') for x in attention.split('/')):
+    if isinstance(attention, str) and all(x in ('sage2','cudnn','torch-flash','torch-sdpa','fa2','fa4','dense') for x in attention.split('/')):
         result['config']['attention'] = attention
     if isinstance(report.get('runtime_code'), dict):
         result['build_id'] = hashlib.sha256(json.dumps(report['runtime_code'],sort_keys=True).encode()).hexdigest()

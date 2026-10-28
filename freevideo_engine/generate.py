@@ -17,7 +17,7 @@ import time
 from contextlib import nullcontext
 
 from .locking import runtime_lock, LOCK_ENV
-from .paths import vdn_root, comfy_root
+from .paths import vdn_root, comfy_root, base_path, checkpoint_path
 from .monitoring import save
 from . import tuning
 from . import processes
@@ -369,6 +369,16 @@ def _run(args):
     from .preview import validate_flags, source as preview_source
     validate_flags(preview, getattr(args, 'refine_from', None), two_pass)
     refine_source = preview_source(args.refine_from) if getattr(args, 'refine_from', None) else None
+    resume_source = None
+    if getattr(args, 'resume_from', None):
+        from .quality_resume import source as quality_source
+        if two_pass or preview or refine_source:
+            raise ValueError('A quality resume is a single-pass continuation of the same schedule')
+        resume_source = quality_source(args.resume_from)
+        requested_steps = resume_source['planned_steps']
+        if not args.conditioning and resume_source.get('conditioning'):
+            args.conditioning = Path(resume_source['conditioning'])
+            args.prompt_file = None
     if requested_steps is not None:
         validate_steps(requested_steps, refine_steps, two_pass)
         if requested_steps != 8:
@@ -450,10 +460,13 @@ def _run(args):
         profile['policy']['engine']['steps'] = base_steps
     if base_steps != 8:
         canvas['steps'] = base_steps
-    if args.base:
-        profile['engine']['base'] = str(args.base.resolve())
+    # CLI --base/--checkpoint are optional; media VAE encode needs the H3 base
+    # the same way decode and macos_generate already default it from model_root.
+    profile['engine']['base'] = str((args.base or base_path()).resolve())
     if args.checkpoint:
         profile['engine']['checkpoint'] = str(args.checkpoint.resolve())
+    elif 'checkpoint' not in profile['engine']:
+        profile['engine']['checkpoint'] = str(checkpoint_path().resolve())
     if getattr(args, 'task', None):
         profile['engine']['task'] = args.task
     if allocator_limit_bytes is not None:
@@ -473,7 +486,17 @@ def _run(args):
         raise FileExistsError(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     artifacts = destination.with_suffix('.artifacts')
-    artifacts.mkdir(exist_ok=False)
+    resume_metrics = artifacts / 'engine.json'
+    if not resume_metrics.is_file():
+        resume_metrics = destination.with_suffix('.engine.json')
+    reuse_sampling = False
+    if (artifacts / 'latents.pt').is_file() and resume_metrics.is_file():
+        try:
+            from .decode_resume import completed_sampling
+            reuse_sampling = completed_sampling(json.loads(resume_metrics.read_text(encoding='utf-8')))
+        except (OSError, ValueError, TypeError):
+            reuse_sampling = False
+    artifacts.mkdir(exist_ok=True)
     if continuation is not None and 'snapshot' not in continuation:
         continuation = persist_snapshot(continuation, artifacts / 'continuation-source.safetensors')
     if args.prompt_file:
@@ -604,7 +627,17 @@ def _run(args):
                 conditioning_key = cache_key(encoding['prompt'], media, canvas)
                 encode_request = temporary / 'encode.json'
                 encode_request.write_text(json.dumps(encoding) + '\n', encoding='utf-8')
-                cached = input_cache.get(conditioning_key, condition) if input_cache else None
+                cached = None
+                if reuse_sampling and condition.is_file():
+                    try:
+                        previous_encoding = json.loads(destination.with_suffix('.encoding.json').read_text(encoding='utf-8'))
+                        if previous_encoding.get('success') is True:
+                            cached = previous_encoding
+                            print(json.dumps({'event': 'decode_resume_conditioning'}), flush=True)
+                    except (OSError, ValueError):
+                        cached = None
+                if cached is None:
+                    cached = input_cache.get(conditioning_key, condition) if input_cache else None
                 if cached and encoder_size_mismatch(cached):
                     cached = None
                 elif cached and (cached.get('success') is not True or cached.get('conditioning_shape', [])[1:] != [5120]):
@@ -790,12 +823,25 @@ def _run(args):
                 request['continuation'] = continuation
             if preview:
                 request['preview'] = True
+            if resume_source:
+                request['resume_draft'] = dict(latents=resume_source['latents'],
+                                               completed_steps=resume_source['completed_steps'])
+            stop_after = getattr(args, 'stop_after_steps', None)
+            if type(stop_after) is int and 0 < stop_after < base_steps:
+                request['stop_after_steps'] = stop_after
             if allocator_limit_bytes is not None:
                 request['allocator_limit_bytes'] = allocator_limit_bytes
                 report['benchmark_limit'] = {'pytorch_allocator_bytes': request['allocator_limit_bytes'],
                     'scope': 'PyTorch CUDA allocator only; other CUDA allocations and whole-device usage are measured separately.'}
             request_path = temporary / 'video.json'
             resume_decode = resume_refine = None
+            if reuse_sampling:
+                bundled = artifacts / 'engine.json'
+                if resume_metrics.resolve() != bundled.resolve():
+                    shutil.copyfile(resume_metrics, bundled)
+                resume_decode = dict(latents=str(artifacts / 'latents.pt'),
+                                     metrics=str(bundled),
+                                     request=str(artifacts / 'video.json'))
             # An upscale reuses its preview's first pass unless a later attempt
             # retains a newer checkpoint, or the current inputs no longer match.
             preview_pass = ({key: refine_source[key] for key in ('input', 'metrics', 'request')}
@@ -972,6 +1018,9 @@ def _run(args):
                 shutil.copyfile(destination.with_suffix('.engine.json'), artifacts / 'first-pass.engine.json')
                 from .preview import upscale_reads
                 report['preview']['upscale_reads'] = upscale_reads(request['cache'], report['video'], upscaler_checkpoint)
+            if report.get('video', {}).get('early_stop'):
+                report['early_stop'] = dict(completed_steps=report['video'].get('completed_steps'),
+                                            planned_steps=report['video'].get('planned_steps'))
             report['success'] = True
     except BaseException as error:
         from .diagnostic_resources import exception_details

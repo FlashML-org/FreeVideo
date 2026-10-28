@@ -17,6 +17,17 @@ from .processes import worker_signals
 PACKAGE = Path(__file__).resolve().parent
 
 
+def _ensure_h3_base(request):
+    """Fill H3 base from FREEVIDEO_MODEL_ROOT when the CLI omitted --base."""
+    from .paths import base_path
+    base = request.get('base') or str(base_path())
+    request['base'] = base
+    vae = Path(base) / 'vae'
+    if not vae.is_dir():
+        raise ValueError('H3 base VAE is missing; set --base or FREEVIDEO_MODEL_ROOT. Looked in ' + str(vae))
+    return base
+
+
 def resolve_encoder(folder_paths, name):
     files = json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8'))
     expected = next((row['bytes'] for row in files if row['file'] == 'text_encoders/' + name), None)
@@ -275,7 +286,9 @@ def _encode(args, request, resident, trace):
     comfy.options.enable_args_parsing()
     # The child has no UI cache, custom-node initialization or HTTP server.
     sys.argv = [str(args.comfy_root / 'main.py'), '--cache-none', '--disable-all-custom-nodes',
-                '--disable-dynamic-vram', '--disable-comfy-compiler', '--disable-cuda-graphs']
+                '--disable-dynamic-vram', '--disable-cuda-graphs']
+    # ComfyUI 0.33.x has no --disable-comfy-compiler; skip it so this portable
+    # encoder child starts. Newer builds still default the compiler off here.
     budget = request.get('gpu_budget_gb')
     reserve_gib = None
     phase('encoder_cuda_setup')
@@ -324,8 +337,7 @@ def _encode(args, request, resident, trace):
     if keyframes is not None:
         if not isinstance(keyframes, dict) or set(keyframes) != {'first', 'last'}:
             raise ValueError('FL2VA encoding requires keyframes.first and keyframes.last')
-        if not request.get('base'):
-            raise ValueError('FL2VA encoding requires the H3 base for VAE conditioning')
+        _ensure_h3_base(request)
         from PIL import Image
         from .paths import vdn_root
         sys.path.insert(0, str(vdn_root()))
@@ -546,7 +558,7 @@ def _encode(args, request, resident, trace):
             save(request['metrics'], {**loading, 'success': False, 'phase': 'keyframe_vae',
                                      'load_seconds': load_seconds, 'prompt_encode_seconds': prompt_encode_seconds})
         # Only the encoder is read; the decoder in the shared shards is skipped.
-        vae, _ = load_video_encoder(request['base'], before_upload=None if resident is None else
+        vae, _ = load_video_encoder(_ensure_h3_base(request), before_upload=None if resident is None else
                                     lambda model: resident.input_vae_room(model, dict(width=width, height=height)))
         torch.cuda.synchronize()
         keyframe_metrics['keyframe_vae_load_seconds'] = time.perf_counter() - vae_started
@@ -575,7 +587,7 @@ def _encode(args, request, resident, trace):
         add_vdn()
         from .media_encoding import encode_latents
         tick = time.perf_counter()
-        info = encode_latents(normalized, value, request['base'], request['geometry'], resident=resident)
+        info = encode_latents(normalized, value, _ensure_h3_base(request), request['geometry'], resident=resident)
         keyframe_metrics.update(media_vae_encode_seconds=time.perf_counter() - tick, conditioning_info=info)
         task = info['task']
     phase('encoder_save')

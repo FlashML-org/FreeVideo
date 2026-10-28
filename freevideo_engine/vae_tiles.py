@@ -32,6 +32,9 @@ def compile_blocks(decoder):
     """
     if os.environ.get('FREEVIDEO_VAE_COMPILE', '1').lower() in ('0', 'off', 'false'):
         return False
+    if torch.cuda.is_available() and torch.cuda.get_device_capability() < (8, 0):
+        # torch.compile/Inductor imports Triton extras that Pascal never has.
+        return False
     for block in decoder.transformer_blocks:
         if not getattr(block, 'freevideo_compiled', False):
             block.forward = torch.compile(block.forward, dynamic=False)

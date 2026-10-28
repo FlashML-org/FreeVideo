@@ -1,5 +1,5 @@
 /* Connect an agent: one card, one action. The card carries its own layout wherever it is placed. */
-.fv-agent-connect-body{box-sizing:border-box;width:min(440px,100%);display:grid;justify-items:start;gap:16px;padding:28px;border:1px solid var(--fv-accent-dim);border-radius:14px;background:var(--fv-card);box-shadow:0 0 0 1px color-mix(in srgb,var(--fv-accent-dim) 35%,transparent),0 18px 40px -20px color-mix(in srgb,var(--fv-accent) 40%,transparent)}
+.fv-agent-connect-body{box-sizing:border-box;width:min(520px,100%);display:grid;justify-items:start;gap:16px;padding:28px;border:1px solid var(--fv-accent-dim);border-radius:14px;background:var(--fv-card);box-shadow:0 0 0 1px color-mix(in srgb,var(--fv-accent-dim) 35%,transparent),0 18px 40px -20px color-mix(in srgb,var(--fv-accent) 40%,transparent)}
 .fv-agent-connect-body[hidden],.fv-agent-connect-body [hidden]{display:none}
 .fv-agent-connect-body>*{margin:0;min-width:0}
 .fv-agent-connect-icon{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;background:var(--fv-selected);color:var(--fv-accent-hover)}
@@ -10,6 +10,20 @@
 .fv-studio .fv-agent-connect-actions button{padding:9px 20px;font-size:14px}.fv-agent-connect-actions button svg{width:16px;height:16px}
 .fv-agent-connect-arrow{color:var(--fv-disabled)}.fv-agent-connect-hint{color:var(--fv-muted);font-size:13.5px}
 .fv-agent-connect-body .fv-agent-sentence{justify-self:stretch;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);color:var(--fv-ink);font-size:var(--fv-body);overflow-wrap:anywhere;user-select:all}
+.fv-agent-local{justify-self:stretch;width:100%;border-top:1px solid var(--fv-border);padding-top:12px}
+.fv-agent-local>summary{cursor:pointer;list-style:none;color:var(--fv-ink);font-size:13.5px;font-weight:600;line-height:1.4}
+.fv-agent-local>summary::-webkit-details-marker{display:none}
+.fv-agent-local>summary::before{content:"";display:inline-block;width:0;height:0;margin-right:8px;border:5px solid transparent;border-left-color:var(--fv-muted);transform:translateY(-1px)}
+.fv-agent-local[open]>summary::before{transform:translate(2px,1px) rotate(90deg);border-left-color:var(--fv-ink)}
+.fv-agent-local-body{display:grid;gap:10px;margin-top:12px;font-size:13px;line-height:1.55;color:var(--fv-muted)}
+.fv-agent-local-body p,.fv-agent-local-body ul,.fv-agent-local-body ol{margin:0}
+.fv-agent-local-body ul,.fv-agent-local-body ol{padding-inline-start:1.2em}
+.fv-agent-local-label{color:var(--fv-ink);font-size:12.5px;font-weight:600}
+.fv-agent-adult{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg)}
+.fv-agent-adult>p{margin:0}
+.fv-agent-adult ul{margin:0}
+.fv-agent-mcp-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
+.fv-studio .fv-agent-mcp-row button{padding:7px 14px;font-size:13px}.fv-agent-mcp-row button svg{width:15px;height:15px}
 /* The Autopilot page: the card in the very middle, or one conversation column under the top bar. */
 .fv-studio.fv-autopilot{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
 .fv-studio.fv-autopilot .fv-header{position:relative}

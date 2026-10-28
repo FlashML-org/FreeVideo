@@ -324,7 +324,7 @@ def main():
     parser.add_argument('--macos', type=Path, required=True)
     parser.add_argument('--linux', type=Path, required=True)
     parser.add_argument('--sha', required=True)
-    parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'FlashML-org/FreeVideo'))
+    parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'SrCodeGorilla/FreeVideo-Pascal'))
     args = parser.parse_args()
     builds = load_builds(args.windows, args.macos, args.linux)
     if build_track(builds[CHANNEL]['identity']) != args.track:
