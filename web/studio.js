@@ -21,7 +21,7 @@ import { openLibrary } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
-import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
+import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
@@ -1706,7 +1706,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         lastQueueError = identity;
         const report = failure.show(error, error?.schema === 'freevideo.error-report', {stage: 'queue', node, graph: app.graph});
         node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
-        connectionNotice = isNetworkTypeError(error) && !report.browser_extension;
+        connectionNotice = isNetworkTypeError(error) && (!report.browser_extension || wrappedFetchOnly(report.browser_extension));
     }
     // The queue read works again: take the lost-connection notice down. A failure card for anything else stays.
     function clearConnectionNotice() {

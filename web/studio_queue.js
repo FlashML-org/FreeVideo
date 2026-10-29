@@ -1,6 +1,6 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
-import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError} from './browser_extension.js';
+import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
 import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
@@ -246,7 +246,9 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         refreshing = (async () => {
             do { refreshAgain = false; await readQueue(); } while (refreshAgain && !disposed);
         })().catch(error => {
-            if (!isNetworkTypeError(error) || detectBrowserExtension(error)) { fail(error); throw error; }
+            // Only a wrapped fetch is not proof of a blocking extension: it is counted as an outage like any other.
+            const extension = detectBrowserExtension(error);
+            if (!isNetworkTypeError(error) || (extension && !wrappedFetchOnly(extension))) { fail(error); throw error; }
             // A lost connection does not stop a loop at first: it only continues after a successful read.
             outage = {failures: (outage?.failures || 0) + 1, since: outage?.since ?? Date.now()};
             if (outage.failures < OUTAGE_POLLS) return;
