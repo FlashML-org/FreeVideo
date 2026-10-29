@@ -318,7 +318,8 @@ export function createErrorReport(detail, context = {}) {
 // known: a report's known_error. Pass null when the report has none, so an
 // echoed sentence in its redacted text is not taken for the engine's message.
 export function failureAdvice(value, t, known = knownError(value)) {
-    const text = String(value).slice(0, 65536);
+    // What each download source returned never changes which advice applies.
+    const text = String(value).slice(0, 65536).replace(/\nSources tried(?: for [^\n:]{1,80})?:\n(?:  - [^\n]*(?:\n|$))*/g, '\n');
     const row = (kind, title, summary, action) => ({kind, title: t(...title), summary: t(...summary), action: t(...action)});
     if (known?.kind === 'sampling-table') {
         // Names and plan matching follow sampling_effort.js; metadata carries no user text.

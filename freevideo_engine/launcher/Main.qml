@@ -426,6 +426,8 @@ ApplicationWindow {
                         id: failureBody; x: 18; y: 18; width: parent.width - 36; spacing: 10
                         FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
+                        // What each download source returned: one short line per source.
+                        FText { objectName: "failureSources"; visible: !!s.failure.sources; text: s.failure.sources || ""; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         TextEdit {
                             objectName: "failurePath"; visible: !!s.failure.path; text: s.failure.path || ""
                             readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText
@@ -1441,6 +1443,7 @@ ApplicationWindow {
                         ColumnLayout {
                             id: settingsError; x: 14; y: 14; width: parent.width - 28; spacing: 8
                             FText { text: s.failure.title + "\n" + (s.failure.action || s.failure.detail); color: theme.danger; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
+                            FText { objectName: "settingsFailureSources"; visible: !!s.failure.sources; text: s.failure.sources || ""; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             TextEdit {
                                 objectName: "settingsFailurePath"; visible: !!s.failure.path; text: s.failure.path || ""
                                 readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText

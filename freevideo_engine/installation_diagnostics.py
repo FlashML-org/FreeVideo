@@ -36,34 +36,50 @@ def collect(root, since):
                     pass
         except OSError:
             pass
-        # ComfyUI dependency preparation runs in launcher/host-runs rather
-        # than setup-runs. Keep only structured package failure events; the
-        # command output remains available in the local manual bundle.
+        # What each download source returned, from structured network events:
+        # Python and Git downloads in the setup run, and ComfyUI dependency
+        # preparation in launcher/host-runs. The command output remains in the
+        # local manual bundle.
         package_attempts = []
+        folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
-            candidates = sorted((path for path in host_root.iterdir() if path.is_dir()),
-                                key=lambda path: path.name)[-3:]
-            for host in candidates:
-                try:
-                    if host.stat().st_mtime < since - 1:
-                        continue
-                    with (host / 'network.jsonl').open('rb') as stream:
-                        lines = stream.read(256 * 1024).splitlines()[-64:]
-                    for line in lines:
-                        try:
-                            item = d.mapping(json.loads(line))
-                        except (ValueError, UnicodeError):
-                            continue
-                        if item.get('action') != 'package-failed':
-                            continue
-                        package_attempts.append({key: item[key] for key in
-                            ('source', 'route', 'error_type', 'returncode', 'summary') if key in item})
-                except OSError:
+            folders += sorted((path for path in host_root.iterdir() if path.is_dir()),
+                              key=lambda path: path.name)[-3:]
+        for folder in folders:
+            try:
+                if folder != run and folder.stat().st_mtime < since - 1:
                     continue
+                package_attempts += source_failures(folder / 'network.jsonl')
+            except OSError:
+                continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:]))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
+
+
+SOURCE_KEYS = ('category', 'source', 'route', 'host', 'error_class', 'message', 'elapsed_seconds',
+               'error_type', 'returncode', 'summary')
+
+
+def source_failures(path):
+    """The last failed download attempts in a network event log, one row per source and route tried."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    if size > 256 * 1024:
+        lines = lines[1:]
+    rows = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        if item.get('action') in ('package-failed', 'python-failed') or (
+                item.get('category') == 'git' and item.get('action') == 'fallback' and 'error_class' in item):
+            rows.append({key: item[key] for key in SOURCE_KEYS if key in item})
+    return rows[-16:]
 
 
 def _errors(rows):
@@ -141,7 +157,7 @@ def enrich(result, value):
     for row in d.sequence(value.get('package_attempts'))[-16:]:
         row = d.mapping(row)
         item = dict(kind='package_source_failure')
-        for key in ('source', 'route', 'error_type', 'returncode', 'summary'):
+        for key in SOURCE_KEYS:
             if key in row and (key == 'returncode' or isinstance(row[key], (str, int, float, bool))):
                 item[key] = row[key]
         result['errors'].append(item)

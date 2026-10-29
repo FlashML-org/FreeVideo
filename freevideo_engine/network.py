@@ -560,16 +560,33 @@ class PackageSourcesError(RuntimeError):
     def __init__(self, family, attempts):
         self.family = family
         self.attempts = [dict(row) for row in attempts]
-        summaries = []
-        for row in self.attempts:
-            detail = row.get('summary') or row.get('detail') or row.get('error_type') or 'unknown failure'
-            summaries.append('%s/%s: %s' % (row.get('source', 'unknown'),
-                                            row.get('route', 'unknown'), detail))
-        message = 'All package sources failed for %s. Check your network or connection mode in Downloads. Attempts: %s' % (family, '; '.join(summaries))
-        super().__init__(message)
+        self.package_attempts = self.attempts
+        message = 'All package sources failed for %s. Check your network or connection mode in Downloads.' % family
+        super().__init__(message + sources_text(self.attempts))
 
 
 _ANSI_ESCAPE = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+
+def _redact(value):
+    """Report-safe text: no credentials, URL parameters, tokens or local paths."""
+    if isinstance(value, bytes):
+        value = value.decode('utf-8', errors='replace')
+    value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
+    # User information in any URL (https, socks5, a token alone before @).
+    value = re.sub(r'(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@\x27\x22]+@', r'\1<REDACTED>@', value)
+    # Query strings routinely carry signed URLs and access tokens.
+    value = re.sub(r'(?i)(https?://[^\s?\x27\x22]+)\?[^\s\x27\x22]+', r'\1', value)
+    value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+', r'\1<REDACTED>', value)
+    value = re.sub(r'(?i)(\b[\w-]{0,64}(?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&]+',
+                   r'\1<REDACTED>', value)
+    # Keep a stable path marker without exposing usernames, drives or mounts.
+    # A marker already in place stays as it is, so redacting twice changes nothing.
+    return re.sub(r'(?<![A-Za-z0-9_:/>])(?:(?P<relative>\.{1,2}/[^\s"\'<>;,)\]}]*)|'
+                  r'(?:[A-Za-z]:[\\/]|/)([^\s"\'<>;,)\]}]*))',
+                  lambda match: match.group('relative') if match.group('relative') is not None
+                  and not re.search(r'[\\/]', match.group('relative').split('/', 1)[1]) else
+                  '<PATH>/' + re.split(r'[\\/]', match.group(0).rstrip('\\/'))[-1], value)
 
 
 def _package_failure(error):
@@ -580,30 +597,123 @@ def _package_failure(error):
     tokens and machine-specific absolute paths before it reaches events or a
     shared diagnostic report.
     """
-    value = getattr(error, 'stderr', None) or getattr(error, 'stdout', None) or str(error)
-    if isinstance(value, bytes):
-        value = value.decode('utf-8', errors='replace')
-    value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
-    value = re.sub(r'(?i)(https?://)[^\s/@]+:[^\s/@]+@', r'\1<REDACTED>@', value)
-    value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+', r'\1<REDACTED>', value)
-    value = re.sub(r'(?i)(\b[\w-]{0,64}(?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&]+',
-                   r'\1<REDACTED>', value)
-    # Keep a stable path marker without exposing usernames, drives or mounts.
-    value = re.sub(r'(?<![A-Za-z0-9_:/])(?:(?P<relative>\.{1,2}/[^\s"\'<>;,)\]}]*)|'
-                   r'(?:[A-Za-z]:[\\/]|/)([^\s"\'<>;,)\]}]*))',
-                   lambda match: match.group('relative') if match.group('relative') is not None
-                   and not re.search(r'[\\/]', match.group('relative').split('/', 1)[1]) else
-                   '<PATH>/' + re.split(r'[\\/]', match.group(0).rstrip('\\/'))[-1], value)
+    value = _redact(getattr(error, 'stderr', None) or getattr(error, 'stdout', None) or str(error))
     lines = [line.strip() for line in value.splitlines() if line.strip()]
     detail = '\n'.join(lines[-12:])[-4096:] if lines else 'no package-manager output'
     summary = next((line for line in lines if line), detail).strip()[:320]
     return detail, summary
 
 
-def _package_attempt(error, source, route):
+# What each source returned when a download fails on every source: Git sources,
+# the Python runtime, packages and files. One short, redacted line per source
+# and route keeps a report actionable (network, proxy, certificate, security
+# software or disk) without the full command output.
+SOURCE_LINES = 8
+SOURCES_TRIED = '\nSources tried:'
+# Checked in order on each output line; the last line that names a cause wins.
+FAILURE_CLASSES = (
+    ('disk-full', r'no space left on device|winerror 112\b|disk (?:is )?full|not enough space on the disk|errno 28\b'),
+    ('proxy', r'proxy|\b407\b'),
+    ('dns', r'could not resolve|name or service not known|nodename nor servname|getaddrinfo|dns error|'
+            r'failed to lookup address|name resolution|no such host|winerror 11001\b'),
+    ('timeout', r'timed out|timeout|operation too slow'),
+    ('refused', r'connection refused|actively refused|winerror 10061\b|econnrefused'),
+    ('unreachable', r'network is unreachable|no route to host|host is unreachable|winerror 1005[01]\b|winerror 10065\b'),
+    ('reset', r'connection reset|reset by peer|winerror 10054\b|forcibly closed|remote end hung up|early eof|'
+              r'unexpected eof|rpc failed|ssl_error_syscall|connection (?:was )?(?:closed|aborted)'),
+    ('tls', r'certificate|ssl|tls|schannel|secure channel|handshake|sec_e_|crypt_e_'),
+    ('connect', r"failed to connect|couldn't connect|could not connect|unable to connect|connect error|\(connect\)"),
+    ('access-denied', r'access is denied|permission denied|operation not permitted|winerror 5\b|winerror 225\b|virus'),
+    ('http', r'(?:returned error|status(?: code)?|http status [a-z ]+error)\D{0,4}\(?[1-5]\d\d\b'),
+)
+_CURL_CLASSES = dict([*((code, 'tls') for code in (35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91)),
+                      *((code, 'reset') for code in (16, 18, 52, 55, 56, 92, 95)),
+                      (5, 'proxy'), (97, 'proxy'), (6, 'dns'), (7, 'connect'), (28, 'timeout'), (22, 'http'),
+                      (23, 'write'), (47, 'redirect'), (63, 'size')])
+# download_here's own reasons for stopping a transfer.
+_REASON_CLASSES = {'no-progress': 'no-progress', 'slow-transfer': 'slow', 'faster-source': 'faster-source',
+                   'integrity-mismatch': 'integrity', 'response-size-exceeded': 'size',
+                   'source-does-not-support-range': 'no-resume', 'redirect-refused': 'redirect'}
+
+
+def _host(address):
+    """The host alone: never the user information, path or query of a URL."""
+    try:
+        return (urlsplit(str(address)).hostname or '')[:80]
+    except ValueError:
+        return ''
+
+
+def source_host(family, name, env=None):
+    try:
+        return _host(source_url(family, name, env))
+    except (KeyError, ValueError):
+        return ''
+
+
+def exit_code(error):
+    """A failed command's exit code: its own, or the one a failed setup step names."""
+    if not isinstance(error, str) and getattr(error, 'returncode', None) is not None:
+        return error.returncode
+    found = re.match(r'(?:[\w.]+: )?Failed step: [^\n]*\(exit code (-?\d+)\)', str(error))
+    return int(found[1]) if found else None
+
+
+def failure_reason(error):
+    """(class, one short redacted line) for a failed source attempt."""
+    text = error if isinstance(error, str) else (getattr(error, 'stderr', None) or getattr(error, 'stdout', None) or str(error))
+    head, _, output = str(text).partition('\n\nFull step output:\n')
+    lines = [line.strip() for line in _redact(output or head).splitlines() if line.strip()]
+    returncode = exit_code(error)
+    # A word that held a credential or a variable's value goes as a whole.
+    lines = [re.sub(r'\S*<REDACTED>\S*', '<REDACTED>', line) for line in lines]
+    for line in reversed(lines):
+        for name, pattern in FAILURE_CLASSES:
+            if re.search(pattern, line, re.I):
+                return name, line[:160]
+    plain_lines = [line for line in lines if not re.match(r'(?:Failed step|Retained step log|Full step output|Stopped):', line)]
+    return ('exit' if returncode not in (None, 0) else 'other'), (plain_lines[-1][:160] if plain_lines else '')
+
+
+def _source_row(source, route, host, error_class, message, seconds, code='', **extra):
+    row = dict(source=source, route=route, host=host, error_class=error_class, message=message,
+               elapsed_seconds=round(max(0., seconds), 1))
+    if code:
+        row['code'] = code
+    row.update(extra)
+    return row
+
+
+def sources_text(rows, item=''):
+    """The lines a copied error and a report carry: one per source and route tried.
+
+    item names what was downloaded (a dependency folder's name), never a path.
+    """
+    lines = []
+    for row in list(rows)[-SOURCE_LINES:]:
+        head = '%s/%s' % (row.get('source', 'unknown'), row.get('route', 'unknown'))
+        if row.get('host'):
+            head += ' (%s)' % row['host']
+        parts = [row.get('error_class') or 'other']
+        if row.get('code'):
+            parts.append(str(row['code']))
+        elif row.get('returncode') not in (None, 0):
+            parts.append('exit %s' % row['returncode'])
+        parts.append('%.1f s' % float(row.get('elapsed_seconds') or 0))
+        message = str(row.get('message') or '')
+        lines.append('  - %s: %s' % (head, ', '.join(parts)) + (': ' + message if message else ''))
+    if not lines:
+        return ''
+    return (SOURCES_TRIED[:-1] + (' for %s:' % item if item else ':')) + '\n' + '\n'.join(lines)
+
+
+def _package_attempt(error, source, route, host='', seconds=0.):
     detail, summary = _package_failure(error)
-    return dict(source=source, route=route, error_type=type(error).__name__,
-                returncode=getattr(error, 'returncode', None), detail=detail, summary=summary)
+    error_class, message = failure_reason(error)
+    returncode = getattr(error, 'returncode', None)
+    code = exit_code(error) if returncode is None else None
+    return _source_row(source, route, host, error_class, message, seconds, '' if code is None else 'exit %d' % code,
+                       error_type=type(error).__name__, returncode=returncode, detail=detail, summary=summary)
 
 
 def download_environment(environ, retry_mode='fast'):
@@ -691,6 +801,7 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                 if operation == 'package' or retry_mode == 'patient':
                     event(network, category=category, source=name, route=route,
                           action=operation + '-attempt', **retry_details)
+                started = time.monotonic()
                 try:
                     result = run(name, route, retry_mode)
                     source_health(network, family, name, True)
@@ -700,11 +811,14 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                               result='success', attempts=len(attempts)-round_start+1)
                     return result
                 except (RuntimeError, subprocess.CalledProcessError) as error:
-                    attempt = dict(_package_attempt(error, name, route), retry_mode=retry_mode)
+                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env),
+                                                    time.monotonic() - started), retry_mode=retry_mode)
                     attempts.append(attempt)
                     event(network, category=category, source=name, route=route, action=operation + '-failed',
                           error_type=attempt['error_type'], returncode=attempt['returncode'],
-                          detail=attempt['detail'], summary=attempt['summary'], **retry_details)
+                          detail=attempt['detail'], summary=attempt['summary'], host=attempt['host'],
+                          error_class=attempt['error_class'], message=attempt['message'],
+                          elapsed_seconds=attempt['elapsed_seconds'], **retry_details)
                     detail = attempt['detail']
                     if (not retryable(detail)
                             or (retry_mode == 'patient' and not slow_download_failure(detail))):
@@ -898,12 +1012,21 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     path = Path(path)
     updating = category == 'launcher-update'
     integrity_failed = False
-    attempts = {}
+    attempts, failures, spent = {}, {}, {}
 
-    def note_failure(source, route, reason, status=''):
+    def note_failure(source, route, reason, status='', address='', message=''):
         # The last reason each source and route gave, for the final error.
         attempts.pop((source, route), None)  # a repeat moves to the end, so the last 8 are the latest
-        attempts[source, route] = reason + (' (HTTP %s)' % status if str(status).isdigit() and status != '000' else '')
+        http = str(status).isdigit() and status != '000'
+        attempts[source, route] = reason + (' (HTTP %s)' % status if http else '')
+        code = int(reason[5:]) if re.fullmatch(r'curl-\d+', reason) else None
+        error_class = (_REASON_CLASSES.get(reason) or ('http' if http and code == 22 else _CURL_CLASSES.get(code))
+                       or (failure_reason(message)[0] if message else 'exit'))
+        failures.pop((source, route), None)
+        failures[source, route] = _source_row(source, route, _host(address), error_class,
+                                              failure_reason(message)[1] if message else '',
+                                              spent.get((source, route), 0.), attempts[source, route],
+                                              returncode=code, http_status=status if http else '')
 
     failed_sources = set()
     transferred, high_water, last_rate = 0, 0, 0.
@@ -1145,7 +1268,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     status = process.stdout.read(65536 if validate_url else 16).decode(errors='replace')
                     process.stdout.close()
                     # --silent --show-error keeps this to a line or two.
-                    curl_message = _package_failure(SimpleNamespace(stderr=process.stderr.read(2048)))[1] if process.returncode else ''
+                    stderr = process.stderr.read(2048) if process.returncode else b''
+                    curl_message = _package_failure(SimpleNamespace(stderr=stderr))[1] if stderr.strip() else ''
                     process.stderr.close()
                 if validate_url:
                     status, destination = _redirect_fields(status)
@@ -1157,6 +1281,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                         url = urljoin(url, destination)
                         continue
                 current_size = partial.stat().st_size if partial.exists() else 0
+                spent[name, route] = spent.get((name, route), 0.) + time.monotonic() - started
                 if slow_seconds is not None:
                     # A later failure at another address of the same source and
                     # route must not erase the rate it was measured at.
@@ -1177,7 +1302,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                         integrity_failed = True
                         failed_sources.add(name)
                     source_health(network, category, name, False)
-                    note_failure(name, route, 'response-size-exceeded')
+                    note_failure(name, route, 'response-size-exceeded', address=url)
                     event(network, category=category, source=name, file=path.name, action='fallback',
                           method='curl', reason='response-size-exceeded', observed_bytes=oversized,
                           expected_bytes=size, resume_bytes=offset)
@@ -1205,12 +1330,12 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                             continue
                         failed_sources.add(name)
                     source_health(network, category, name, False)
-                    note_failure(name, route, 'integrity-mismatch')
+                    note_failure(name, route, 'integrity-mismatch', address=url)
                     event(network, category=category, source=name, file=path.name, action='fallback', reason='integrity-mismatch')
                     break
                 if offset and (process.returncode == 33 or process.returncode == 22 and status == '416') and restart == 0:
                     if model or keep_partial:
-                        note_failure(name, route, 'source-does-not-support-range')
+                        note_failure(name, route, 'source-does-not-support-range', address=url)
                         event(network, category=category, source=name, file=path.name,
                               action='resume-refused', resume_bytes=offset, reason='source-does-not-support-range')
                         break
@@ -1231,7 +1356,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                 if updating and stalled:
                     failed_sources.add(name)
                 reason = 'no-progress' if stalled else 'slow-transfer' if slow else 'faster-source' if faster else 'curl-' + str(process.returncode)
-                note_failure(name, route, reason, status)
+                note_failure(name, route, reason, status, url, curl_message)
                 alternatives = route_order(network, category, name, env)
                 if alternatives.index(route) + 1 < len(alternatives):
                     event(network, category=category, source=name, route=alternatives[alternatives.index(route)+1],
@@ -1248,11 +1373,9 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                   retained_bytes=partial.stat().st_size, reason='resume-unavailable')
             retain_partial(partial, 'restart-approved')
     message = 'Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name
-    if attempts:
-        message += '. Attempts: ' + '; '.join('%s/%s: %s' % (source, route, reason)
-                                              for (source, route), reason in list(attempts.items())[-8:])
-    error = DownloadError(message)
+    error = DownloadError(message + sources_text(failures.values()))
     error.attempts = [dict(source=source, route=route, reason=reason) for (source, route), reason in attempts.items()]
+    error.package_attempts = list(failures.values())
     error.integrity = integrity_failed
     raise error
 
@@ -1647,7 +1770,9 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             return run(label, command, env=env)
         result = subprocess_output.run_external(list(map(str, command)), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **hidden_console())
         if result.returncode:
-            raise RuntimeError(result.stdout[-2500:])
+            failure = RuntimeError(result.stdout[-2500:])
+            failure.returncode = result.returncode
+            raise failure
     io_path(target.parent).mkdir(parents=True, exist_ok=True)
     candidates = urls(dict(network, sources=dict(network.get('sources', {}), github=network.get('sources', {}).get('git', [{'id': 'official'}]))), 'github', url, env)
     configured_env = env
@@ -1657,6 +1782,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             remove_tree(stale)
         except OSError:
             pass  # Held by another program; the download goes on and a later run tries again.
+    attempts = []
     for name, endpoint, route in [(name, endpoint, route) for name, endpoint in candidates
                                  for route in route_order(network, 'git', name, configured_env)]:
         env = route_environment(network, 'git', name, configured_env, route)
@@ -1664,6 +1790,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         event(network, category='git', source=name, route=route, file=target.name, action='attempt', commit=commit)
         scratch = git_scratch_folder() if git_folder_too_deep(temporary) else None
         work = scratch / 'repo' if scratch else temporary
+        started = time.monotonic()
         try:
             execute(target.name + '-init-' + name, ['git', 'init', '--quiet', work])
             # Never depend on a user's global CRLF conversion or long-path
@@ -1722,7 +1849,13 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             if not retryable(error):
                 raise
             source_health(network, 'git', name, False)
-            event(network, category='git', source=name, route=route, file=target.name, action='fallback', reason='network-fetch-failed')
+            error_class, message = failure_reason(error)
+            attempt = _source_row(name, route, _host(endpoint), error_class, message, time.monotonic() - started,
+                                  returncode=exit_code(error))
+            attempts.append(attempt)
+            event(network, category='git', source=name, route=route, file=target.name, action='fallback',
+                  reason='network-fetch-failed', host=attempt['host'], error_class=error_class, message=message,
+                  returncode=attempt['returncode'], elapsed_seconds=attempt['elapsed_seconds'])
         finally:
             # Best effort: a file still held by antivirus or git.exe must not replace the
             # error being handled or stop the fallback to the next source.
@@ -1732,4 +1865,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
                         remove_tree(leftover)
                 except OSError:
                     pass
-    raise RuntimeError('All Git sources failed. Check your network or connection mode in Downloads.')
+    failure = RuntimeError('All Git sources failed. Check your network or connection mode in Downloads.'
+                           + sources_text(attempts, target.name))
+    failure.package_attempts = attempts
+    raise failure

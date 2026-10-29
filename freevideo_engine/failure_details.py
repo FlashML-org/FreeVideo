@@ -361,8 +361,94 @@ def _without_ready_curl_diagnostics(text):
     return ''.join(lines)
 
 
-def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                     unavailable='none'):
+# What each download source returned, as one short line per host and route on
+# the failure card. The full lines stay in the copied error and the report.
+SOURCE_REASONS = {
+    'timeout': ('Connection timed out', '连接超时'),
+    'dns': ('Host name could not be resolved', '无法解析域名'),
+    'refused': ('Connection refused', '连接被拒绝'),
+    'connect': ('Could not connect', '无法连接'),
+    'reset': ('Connection interrupted', '连接中断'),
+    'unreachable': ('Network unreachable', '网络不可达'),
+    'proxy': ('Proxy connection failed', '代理连接失败'),
+    'tls': ('Secure connection (certificate) check failed', '安全连接（证书）验证失败'),
+    'http': ('Server returned HTTP {status}', '服务器返回 HTTP {status}'),
+    'disk-full': ('Not enough disk space', '磁盘空间不足'),
+    'write': ('Could not write the file', '无法写入文件'),
+    'access-denied': ('Access denied (possibly blocked by security software)', '访问被拒绝（可能被安全软件拦截）'),
+    'no-progress': ('No data received for a long time', '长时间没有收到数据'),
+    'slow': ('Transfer too slow', '速度过低'),
+    'integrity': ('File check did not match', '文件校验不一致'),
+    'size': ('Response size did not match', '返回的文件大小不符'),
+    'no-resume': ('Resume not supported', '不支持续传'),
+    'faster-source': ('Switched to a faster source', '已改用更快的下载源'),
+    'redirect': ('Redirect refused', '重定向被拒绝'),
+    'exit': ('Failed with exit code {code}', '失败，退出代码 {code}'),
+    'other': ('Other error', '其他错误'),
+}
+SOURCE_ROUTES = {'direct': ('direct', '直连'), 'inherited': ('current connection', '当前连接')}
+SOURCE_CUSTOM = ('custom source', '自定义源')
+SOURCE_CARD_LINES = 6
+_SOURCE_LINE = re.compile(r'^\s*- (?P<source>[^/\s]+)/(?P<route>[^\s:(]+)(?: \((?P<host>[^)\s]*)\))?: '
+                          r'(?P<cls>[\w-]+)(?P<rest>.*)$')
+
+
+def _sources_block(text):
+    """(text without the "Sources tried" block, its source lines)."""
+    found = re.search(r'\nSources tried(?: for [^\n:]{1,80})?:\n', text)
+    if not found:
+        return text, []
+    head, tail = text[:found.start()], text[found.end():]
+    lines = tail.split('\n')
+    count = next((i for i, line in enumerate(lines) if not line.startswith('  - ')), len(lines))
+    rest = '\n'.join(lines[count:])
+    return head + ('\n' + rest if rest.strip() else ''), lines[:count]
+
+
+def source_lines(lines, zh=False):
+    """One short line per host and route: what failed and how long it took."""
+    rows = {}
+    for line in lines:
+        found = _SOURCE_LINE.match(line)
+        if not found:
+            continue
+        rest = found['rest']
+        status = re.search(r'\bHTTP (\d{3})\b|\b(?:error|status)\D{0,4}([1-5]\d\d)\b', rest)
+        code = re.search(r'\bexit (-?\d+)\b|\(exit code (-?\d+)\)|\bcurl-(\d+)\b', rest)
+        seconds = re.search(r', (\d+(?:\.\d+)?) s(?::|$)', rest)
+        name = found['cls'] if found['cls'] in SOURCE_REASONS else 'other'
+        if name == 'http' and not status:
+            name = 'other'
+        if name == 'exit' and not code:
+            name = 'other'
+        reason = SOURCE_REASONS[name][zh].format(status=status and (status[1] or status[2]),
+                                                 code=code and next(filter(None, code.groups()), ''))
+        host = found['host'] or (SOURCE_CUSTOM[zh] if found['source'].startswith('user') else found['source'])
+        route = SOURCE_ROUTES.get(found['route'], (found['route'],) * 2)[zh]
+        if seconds:
+            value = float(seconds[1])
+            value = ('%.1f' % value) if value < 10 else '%d' % round(value)
+            reason += ('（%s 秒）' if zh else ' (%s s)') % value
+        rows.pop((host, route), None)
+        rows[host, route] = ('%s · %s：%s' if zh else '%s · %s: %s') % (host, route, reason)
+    return list(rows.values())[-SOURCE_CARD_LINES:]
+
+
+def launcher_failure(value, *, zh=False, **options):
+    """Short guidance; a download that failed on every source also lists what each source returned."""
+    text, lines = _sources_block(str(value)) if value else ('', [])
+    if not lines:
+        return _launcher_failure(value, zh=zh, **options)
+    # The source lines never change which guidance applies.
+    failure = _launcher_failure(text, zh=zh, **options)
+    sources = source_lines(lines, zh)
+    if sources:
+        failure['sources'] = '\n'.join(sources)
+    return failure
+
+
+def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
+                      unavailable='none'):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
