@@ -1250,8 +1250,11 @@ def register():
                                              body.get('id'), body['favorite'])
         except (ValueError, TypeError) as error:
             raise web.HTTPBadRequest(text=str(error)) from error
-        except OSError:
+        except FileNotFoundError:
             raise web.HTTPNotFound(text='Saved video unavailable') from None
+        except OSError:
+            # The creation is there but its favorite could not be written; another try may work.
+            raise web.HTTPInternalServerError(text='Could not save the favorite') from None
         return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/library/thumbnail')

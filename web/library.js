@@ -196,8 +196,10 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     headerObserver.observe(header); headerObserver.observe(tools);
     const body = el('div', null, 'fv-library-body');
     const collection = el('section', null, 'fv-library-collection'); collection.setAttribute('aria-label', t('Saved videos', '已保存的视频'));
+    // Opened to show one creation from elsewhere: list all of them this time, so that creation is found
+    // even when it is not a favorite; the saved choice is kept for the next opening.
     let favoritesOnly = false;
-    try { favoritesOnly = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
+    if (!selectedWork) try { favoritesOnly = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
     const filters = el('div', null, 'fv-pass-mode fv-library-filter');
     filters.setAttribute('role', 'radiogroup'); filters.setAttribute('aria-label', t('Show', '显示'));
     const filterAll = button(t('All', '全部'), () => changeFilter(false));
@@ -352,12 +354,14 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         try {
             const response = await api.fetchApi('/freevideo/library/favorite', {method: 'POST',
                 headers: jsonHeaders, body: JSON.stringify({id, favorite}), signal: abort.signal});
-            if (!response.ok) throw new Error('Favorite unavailable');
+            if (!response.ok) throw Object.assign(new Error('Favorite unavailable'), {status: response.status});
             const value = await response.json();
             if (value.favorite !== favorite) throw new Error('Invalid favorite response');
         } catch (error) {
             if (!disposed && error.name !== 'AbortError') {
+                // The creation is gone (deleted or moved): trying again cannot help.
                 const text = isNetworkTypeError(error) ? connectionLostText(t)
+                    : error.status === 404 ? videoUnavailableText(t)
                     : favorite ? t('Could not save the favorite. Try again.', '无法保存收藏，请重试。')
                     : t('Could not remove the favorite. Try again.', '无法取消收藏，请重试。');
                 fault(notice, text, ['Favorites', '收藏']);
