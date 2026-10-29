@@ -117,4 +117,17 @@ def register():
             return web.json_response({'error': str(error)}, status=400)
         return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
+    @server.routes.post('/freevideo/media/audio-use')
+    async def audio_use(request):
+        from .audio_use_request import selection
+        from .original_audio import AudioUseError
+        try:
+            value = await request.json()
+            result = await asyncio.to_thread(selection, value, folder_paths.get_input_directory())
+        except AudioUseError as error:
+            return web.json_response(error.as_dict(), status=400)
+        except (OSError, ValueError) as error:
+            return web.json_response({'error': str(error)}, status=400)
+        return web.json_response(result, headers={'Cache-Control': 'no-store'})
+
     server._freevideo_upload_registered = True

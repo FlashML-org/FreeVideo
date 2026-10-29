@@ -47,6 +47,7 @@ import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, SWAP_LORA } from './replace_state.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
+import { activeOriginal, checkOriginal, lockMark, blockOriginal } from './audio_original.js';
 import { waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
@@ -869,7 +870,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const legacyOption = [...mp.options].find(o => Number(o.value) === 1);
     mp.disabled = dimensionsLinked;
     const seconds = el('input'); seconds.type = 'number'; seconds.required = true; seconds.min = '1.625'; seconds.step = 'any'; seconds.value = savedSeconds(node, value(node, 'seconds')); seconds.disabled = linked(node, 'seconds'); seconds.setAttribute('aria-label', t('Duration in seconds', '时长（秒）')); seconds.dataset.fvGuide = 'seconds';
-    const fields = el('div', null, 'fv-fields'); fields.append(field(t('Resolution', '清晰度'), resolutionSelect), field(t('Duration · seconds', '时长 · 秒'), seconds)); canvas.append(fields);
+    const audioLock = lockMark(), durationField = field(t('Duration · seconds', '时长 · 秒'), seconds); durationField.firstChild.append(audioLock);
+    const fields = el('div', null, 'fv-fields'); fields.append(field(t('Resolution', '清晰度'), resolutionSelect), durationField); canvas.append(fields);
     const canvasNote = el('div', null, 'fv-canvas-note'), dimensions = el('span'), duration = el('span'); canvasNote.append(dimensions, duration); canvas.append(canvasNote);
     const rangeMount = el('div'); canvas.append(rangeMount);
     let capabilityView;
@@ -1064,13 +1066,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
     firstFrame.row.hidden = true; fields.after(firstFrame.row);
     firstFrame.input.checked = value(node, 'first_frame_reference') === true;
     firstFrame.input.onchange = () => { set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true; };
-    let manyParts = false;
+    let manyParts = false, originalOn = false;
     function updateFirstFrame() {
         // While a new plan is being worked out the row keeps its place.
         const plan = lengthControl.plan; if (plan || !lengthControl.needsPlan) manyParts = plan?.count > 1;
         firstFrame.row.hidden = !widget(node, 'first_frame_reference') || !(manyParts || extension.source);
-        firstFrame.input.checked = value(node, 'first_frame_reference') === true;
-        firstFrame.setDisabled(Boolean(capturing || queueState?.submitting || queueState?.running || chainController?.active));
+        // Audio used as is fixes the picture to the sound, so this switch is off while it applies.
+        firstFrame.input.checked = !originalOn && value(node, 'first_frame_reference') === true;
+        firstFrame.setDisabled(Boolean(originalOn || capturing || queueState?.submitting || queueState?.running || chainController?.active));
     }
     const samplingFields = el('div', null, 'fv-fields'); samplingFields.style.marginTop = '14px';
     const baseSteps = el('input'), refineSteps = el('input');
@@ -1123,6 +1126,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (runButtonReady) updateRunButton();
         }
         previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
+        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled);
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -1982,7 +1986,33 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const clearAddedNote = () => { if (status.textContent === addedNote) status.textContent = ''; };
     seconds.addEventListener('input', clearAddedNote); prompt.addEventListener('input', clearAddedNote);
     seconds.onchange = () => { if (lengthControl.commit({report: false})) updateCanvas(); };
-    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; refreshEffortEstimate(true); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    // Audio used as is fixes the duration; long selections use the background chain.
+    const SECONDS_BEFORE_AUDIO = 'freevideo_seconds_before_audio';
+    let audioRevision = 0;
+    async function syncOriginalAudio() {
+        const revision = ++audioRevision;
+        const row = activeOriginal(mediaNode ? JSON.parse(value(mediaNode, 'assets') || '[]') : []);
+        const result = row ? await checkOriginal(api, row) : null;
+        if (disposed || revision !== audioRevision || result?.code === 'unreachable') return;
+        originalOn = Boolean(result?.ok); updateFirstFrame();
+        if (result?.ok) {
+            lengthControl.forceSingle(result.seconds <= 30);
+            if (linked(node, 'seconds')) return;
+            node.properties ||= {};
+            if (!Object.hasOwn(node.properties, SECONDS_BEFORE_AUDIO)) { node.properties[SECONDS_BEFORE_AUDIO] = Number(seconds.value); node.graph?.change(); }
+            const length = Math.ceil(result.seconds * 1000) / 1000;
+            seconds.disabled = false; audioLock.hidden = false;
+            if (Number(seconds.value) !== length) { seconds.value = length; if (lengthControl.commit({exact: true})) updateCanvas(); }
+            seconds.disabled = true;
+            return;
+        }
+        lengthControl.forceSingle(false); audioLock.hidden = true; seconds.disabled = linked(node, 'seconds');
+        if (node.properties && Object.hasOwn(node.properties, SECONDS_BEFORE_AUDIO)) {
+            seconds.value = node.properties[SECONDS_BEFORE_AUDIO]; delete node.properties[SECONDS_BEFORE_AUDIO]; node.graph?.change();
+            if (lengthControl.commit()) updateCanvas();
+        }
+    }
+    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
@@ -1990,7 +2020,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));
-    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged);
+    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged); syncOriginalAudio();
     cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); });
     const listen = (type, handler) => { api.addEventListener(type, handler); cleanup.push(() => api.removeEventListener(type, handler)); };
     listen('status', () => { syncQueue().catch(() => {}); });
@@ -2045,7 +2075,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
-    dialog.onclose = () => { disposed = true; for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
+    dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
         refine: Number(refineSteps.value), stepCache: stepCacheNow(), upscale: upscaleNow(), disabled: Boolean(extension.source) || dimensionsLinked || seconds.disabled}),
@@ -2060,7 +2090,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source));
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source));
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;

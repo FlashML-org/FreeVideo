@@ -351,6 +351,8 @@ def run(args):
                 phase=planning[-1]['stage'] if planning else 'preflight', resource_planning=planning,
                 error_type=type(error).__name__, exception=exception_details(error),
                 error_message=str(error), resource_error=getattr(error, 'details', None), runtime_code=code_identity())
+            if getattr(error, 'code', None):
+                record['error_code'] = error.code
             _runtime_libraries(error, record)
             try:
                 save(output.with_suffix('.request.json'), record)
@@ -418,7 +420,8 @@ def _run(args):
                 raise
         # A record of another version, other weights or another first-pass size.
         value = dict(encoded_continuation(continue_from, canvas),
-                     **{key: value[key] for key in ('audio_context', 'source_video', 'anchor', 'pictures', 'sound') if key in value})
+                     **{key: value[key] for key in ('audio_context', 'source_video', 'anchor', 'pictures', 'sound', 'video_only')
+                        if key in value})
         return freeze_continuation(value) if continuation_directory is not None else value
 
     frames = getattr(args, 'frames', None)
@@ -434,15 +437,23 @@ def _run(args):
         if continue_anchor is not None:
             raise ValueError('Choose --first-frame-reference or --continue-anchor, not both')
         first_frame = dict(requested=True, used=False)
+    from .media_request import read as read_media, task_for, cache_key
+    from .original_audio import cli_media, prepare_request
+    media = cli_media(args, read_media(getattr(args, 'media', None)))
+    original_audio, original_canvas = prepare_request(media, getattr(args, 'width', 1344),
+        getattr(args, 'height', 768), continuation=continue_from is not None)
     if continue_from is not None and frames is not None:
         validate_frames(frames)
-    canvas = geometry(getattr(args, 'width', 1344), getattr(args, 'height', 768),
+    canvas = original_canvas or geometry(getattr(args, 'width', 1344), getattr(args, 'height', 768),
                       frames=frames, seconds=getattr(args, 'seconds', None))
     visible_canvas = canvas
     canvas, hide_tail = hide_tail_geometry(canvas,
         args.prompt_file.read_text(encoding='utf-8') if getattr(args, 'hide_tail', False) and args.prompt_file else None,
-        getattr(args, 'hide_tail', False),
+        getattr(args, 'hide_tail', False) and original_audio is None,
         preview=bool(getattr(args, 'preview', False) or getattr(args, 'refine_from', None)))
+    if original_audio is not None and getattr(args, 'hide_tail', False):
+        # The clip's samples set where the part ends; nothing is generated past them to hide.
+        hide_tail = dict(requested=True, used=False, reason='original_audio')
     hide_tail_frames = hide_tail['frames'] if hide_tail and hide_tail['used'] else 0
     continuation = None
     from .two_pass import validate_steps
@@ -457,16 +468,16 @@ def _run(args):
         validate_steps(requested_steps, refine_steps, two_pass)
         if requested_steps != 8:
             canvas['steps'] = requested_steps
-    from .media_request import read as read_media, task_for, cache_key
-    media = read_media(getattr(args, 'media', None))
     if continue_anchor is not None:
         from .continuation import anchor_media
         media = anchor_media(media, continue_anchor)
     # The cast's pictures, sent with a continued part like with a part that starts fresh.
+    # A clip used as is is the part's sound, not one of its pictures.
     pictures = []
     if continue_from is not None and continue_anchor is None and media.get('references'):
         from .continuation import continuation_pictures
-        pictures = continuation_pictures(media)
+        pictures = continuation_pictures(dict(media, references=[
+            row for row in media['references'] if row.get('use') != 'original']))
     anchored = continue_anchor is not None or bool(pictures)
     # Too small to sample cleanly: render larger, scale the picture down. Decided before anything
     # compares or stores the canvas, so every later check sees the size that is sampled.
@@ -476,7 +487,8 @@ def _run(args):
     if continue_from is not None:
         validate_route(task=getattr(args, 'task', None) or ('ref2va' if anchored else 't2va'),
                        anchor=anchored, two_pass=two_pass,
-                       preview=preview, refine_from=getattr(args, 'refine_from', None), media=media)
+                       preview=preview, refine_from=getattr(args, 'refine_from', None), media=media,
+                       original_audio=original_audio is not None and 'segment' in original_audio)
         # Reject absent/mismatched context before text encoding or model loading.
         if getattr(args, 'continuation_snapshot', None):
             continuation = restore_snapshot(args.continuation_snapshot,
@@ -490,7 +502,14 @@ def _run(args):
                 # Nothing was stored for this file: its own ending is encoded when the run starts.
                 continuation = encoded_continuation(continue_from, canvas)
         continuation = dict(continuation, audio_context=audio_context(), source_video=str(continue_from))
-        if first_frame is not None and pictures:
+        if original_audio is not None:
+            from .original_audio_chain import validate_continuation
+            validate_continuation(original_audio, continuation)
+            continuation.update(video_only=True, audio_context='clean')
+        if first_frame is not None and original_audio is not None:
+            # The clip used as is is the part's only audio row; no first-frame picture is added beside it.
+            first_frame['reason'] = 'original_audio'
+        elif first_frame is not None and pictures:
             # The cast's pictures already hold the people; the film's first frame is not added to them.
             first_frame['reason'] = 'pictures'
         elif first_frame is not None:
@@ -521,7 +540,9 @@ def _run(args):
         if pictures:
             continuation['pictures'] = len(pictures)
         if voice_reference is not None:
-            if first_frame is not None and not pictures:
+            if original_audio is not None:
+                voice_reference['reason'] = 'original_audio'
+            elif first_frame is not None and not pictures:
                 voice_reference['reason'] = 'first_frame'
             elif continue_anchor is not None:
                 voice_reference['reason'] = 'anchor'
@@ -593,7 +614,8 @@ def _run(args):
     manifest = json.loads((args.cache / 'manifest.json').read_text(encoding='utf-8'))
     if continuation is not None:
         from .two_pass import plan as continuation_plan
-        validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored)
+        validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored,
+                       original_audio=original_audio is not None)
         planned = continuation_plan(canvas, two_pass, base_steps=base_steps, refine_steps=refine_steps,
                                     scale=upscale_factor(args))
         if two_pass and not planned['enabled'] and base_steps != 8:
@@ -870,6 +892,10 @@ def _run(args):
                 if 'early_reference' in info:
                     canvas['early_reference'] = info['early_reference']
                 profile['engine']['task'] = info['task']
+                if original_audio is not None:
+                    # Include all clean clock constants in live re-planning;
+                    # the original track adds no reference audio rows.
+                    args.task = info['task']
             if not condition.is_file():
                 raise FileNotFoundError(condition)
             from .two_pass import plan as plan_sampling, ensure_checkpoint
@@ -879,6 +905,7 @@ def _run(args):
             report['sampling_plan'] = sampling_plan
             if continuation is not None:
                 validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored,
+                               original_audio=original_audio is not None,
                                **(dict(sound=True, media=media) if voice_reference and voice_reference['used'] else {}))
                 continuation = usable_continuation(continuation, canvas,
                     json.loads((args.cache / 'manifest.json').read_text(encoding='utf-8')), sampling_plan)
@@ -981,6 +1008,9 @@ def _run(args):
                 request['continuation'] = continuation
             if hide_tail_frames:
                 request['hide_tail_frames'] = hide_tail_frames
+            if original_audio is not None:
+                request['original_audio'] = original_audio
+                report['original_audio'] = original_audio
             if preview:
                 request['preview'] = True
             if allocator_limit_bytes is not None:
@@ -1004,7 +1034,8 @@ def _run(args):
                 if continuation is not None:
                     from .continuation import ADALN_TASK, ANCHOR_ADALN_TASK
                     selected['engine'] = dict(selected['engine'],
-                        adaln_task=ANCHOR_ADALN_TASK if anchored else ADALN_TASK)
+                        adaln_task=(selected['engine']['task'] if original_audio is not None
+                                    else ANCHOR_ADALN_TASK if anchored else ADALN_TASK))
                 request.update(engine_options=selected['engine'], decoder_options=selected['decoder'],
                                ram_budget_bytes=round(selected['inference_ram_budget_gb'] * 1e9),
                                ram_budget_is_estimate=ram_budget_is_estimate(args),

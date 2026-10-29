@@ -425,7 +425,8 @@ class FreeVideoMedia(io.ComfyNode):
                     io.Audio.Input('reference_audio', display_name='Reference audio', optional=True,
                         tooltip='Voice, music or rhythm reference, up to 15 seconds. Connect a Load Audio '
                                 'or other AUDIO output. Describe its role using <Audio 1> in the prompt. '
-                                'Experimental; does not lock the output soundtrack or lip sync.')],
+                                'Experimental; does not guarantee lip sync.'),
+                    io.Combo.Input('audio_use', options=['reference', 'original'], default='reference', optional=True)],
             outputs=[Media.Output('media')])
 
     @classmethod
@@ -444,12 +445,13 @@ class FreeVideoMedia(io.ComfyNode):
         return float('nan')
 
     @classmethod
-    def execute(cls, assets, first=None, last=None, reference=None, reference_audio=None, **images):
+    def execute(cls, assets, first=None, last=None, reference=None, reference_audio=None, audio_use='reference',
+                **images):
         from .comfy_assets import resolve_assets, connect_assets
         import folder_paths
         return io.NodeOutput(connect_assets(resolve_assets(assets, folder_paths.get_input_directory()),
                                             first=first, last=last, reference=reference,
-                                            reference_audio=reference_audio, **images))
+                                            reference_audio=reference_audio, audio_use=audio_use, **images))
 
 
 class FreeVideoReference(io.ComfyNode):
@@ -460,11 +462,12 @@ class FreeVideoReference(io.ComfyNode):
             description='Append one image, video or audio reference in order. A clip is cut to the generated length, at most 15 s, and the cut is reported. '
                         'Connect the stack to Generate. VDN reference quality is experimental.',
             inputs=[io.Image.Input('image', optional=True), io.Video.Input('video', optional=True),
-                    io.Audio.Input('audio', optional=True), References.Input('previous', optional=True)],
+                    io.Audio.Input('audio', optional=True), References.Input('previous', optional=True),
+                    io.Combo.Input('use', options=['reference', 'original'], default='reference', optional=True)],
             outputs=[References.Output('references')])
 
     @classmethod
-    def execute(cls, image=None, video=None, audio=None, previous=None):
+    def execute(cls, image=None, video=None, audio=None, previous=None, use='reference'):
         values = [(kind, value) for kind, value in (('image', image), ('video', video), ('audio', audio)) if value is not None]
         if len(values) != 1:
             raise ValueError('Connect exactly one image, video or audio to each Reference node')
@@ -472,7 +475,11 @@ class FreeVideoReference(io.ComfyNode):
         if len(result) >= 32:
             raise ValueError('At most 32 ordered references; memory is checked against the actual request')
         kind, value = values[0]
-        return io.NodeOutput(result + [{'kind': kind, 'value': value}])
+        from .original_audio import fields, original
+        options = fields(dict(kind=kind, **({'use': use} if use != 'reference' or kind == 'audio' else {})))
+        result.append({'kind': kind, 'value': value, **options})
+        original(dict(references=result))
+        return io.NodeOutput(result)
 
 
 class FreeVideoLoRA(io.ComfyNode):

@@ -76,7 +76,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     let plan = null, error = null, absent = false, disposed = false, pending = null, edited = false, blockEdited = false, plannedSeconds = null;
     const remember = (key, value) => { node.properties ||= {}; node.properties[key] = value; node.graph?.change(); node.setDirtyCanvas?.(true, true); };
     const total = () => Number(seconds.value);
-    const effectiveSingle = () => node.properties?.[LENGTH_PROPERTIES.single] === true && total() <= (planLimits?.singleMaximum ?? 15);
+    let forced = false;
+    const effectiveSingle = () => forced || (node.properties?.[LENGTH_PROPERTIES.single] === true && total() <= (planLimits?.singleMaximum ?? 15));
     function options() {
         // Pin short fallback plans that would otherwise qualify for a single run.
         return {seconds: total(), single: effectiveSingle(), singleLimit: planLimits ? effectiveSingle() ? planLimits.singleMaximum : planLimits.maximum : null,
@@ -102,7 +103,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         const maximum = planLimits?.maximum, forcedMaximum = planLimits?.singleMaximum;
         const clamped = positive(maximum) && node.properties?.[LENGTH_PROPERTIES.block] > maximum;
         const cannot = total() > (forcedMaximum ?? 15);
-        single.disabled = absent || seconds.disabled || cannot; single.checked = !absent && effectiveSingle();
+        single.disabled = absent || seconds.disabled || cannot || forced; single.checked = !absent && effectiveSingle();
         if (absent) seconds.max = '60';
         const reason = cannot ? positive(forcedMaximum)
             ? t(`Up to ${Math.floor(forcedMaximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(forcedMaximum)}\u00a0秒。`)
@@ -167,10 +168,10 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     };
     const input = () => { submitted = false; planLimits = limits; edited = false; invalidate(); schedule(); };
     seconds.addEventListener('input', input);
-    function commit({report = true} = {}) {
+    function commit({report = true, exact = false} = {}) {
         const valid = report ? seconds.reportValidity() : seconds.checkValidity();
         if (!seconds.value || !valid) return false;
-        const value = total() > 30 ? Math.round(total()) : total(); seconds.value = value;
+        const value = !exact && total() > 30 ? Math.round(total()) : total(); seconds.value = value;
         if (value > 60) remember(LENGTH_PROPERTIES.seconds, value);
         else if (node.properties && Object.hasOwn(node.properties, LENGTH_PROPERTIES.seconds)) { delete node.properties[LENGTH_PROPERTIES.seconds]; node.graph?.change(); }
         setSeconds(Math.min(60, value));
@@ -185,6 +186,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         noParts = true; writeHint(); invalidate(); schedule();
     }).catch(() => {});
     return {
+        // Short original audio keeps its single run; long selections can use parts.
+        forceSingle(on) { if (forced === on) return; forced = on; submitted = false; invalidate(); schedule(); },
         commit, options, get plan() { return plan; }, get absent() { return absent; },
         get needsPlan() { return !absent && !effectiveSingle() && (total() > singleLimitSeconds(planLimits?.maximum)
             || Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block)); },

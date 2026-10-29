@@ -55,7 +55,8 @@ def read(path):
                 raise ValueError('Invalid ' + field + ' entry')
             if field != 'references' and 'early_steps' in entry:
                 raise ValueError('early_steps is only allowed on video references')
-            allowed = {'path', 'kind', 'early_steps', 'sound', 'guide', 'keep_source_audio'} if field == 'references' else {'path', 'strength', 'alpha'}
+            allowed = ({'path', 'kind', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'use', 'range', 'segment'} if field == 'references'
+                       else {'path', 'strength', 'alpha'})
             if set(entry) - allowed:
                 raise ValueError('Unknown ' + field + ' fields')
             row = file_info(entry.get('path'))
@@ -80,6 +81,8 @@ def read(path):
                     validate_keep_source_audio(entry, row['path'])
                     if entry['keep_source_audio']:
                         row['keep_source_audio'] = True
+                from .original_audio import fields
+                row.update(fields(entry))
             else:
                 if Path(row['path']).suffix.lower() != '.safetensors':
                     raise ValueError('LoRA requires safetensors; pickle adapters are not loaded')
@@ -90,6 +93,8 @@ def read(path):
                         raise ValueError('LoRA ' + name + ' must be finite')
                     row[name] = number
             result[field].append(row)
+    from .original_audio import original
+    original(result)
     if result['references'] and any(result.get(k) for k in ('first', 'last')):
         raise ValueError('Reference and first/last keyframe layouts cannot be mixed in one request; '
                          'mark the clip that carries the motion with "guide": true instead')
@@ -179,6 +184,11 @@ def cache_key(prompt, media, canvas):
         if value:
             identity[key] = [{k: v for k, v in row.items() if k not in ('path', 'keep_source_audio')}
                              for row in value] if isinstance(value, list) else value['sha256']
+            if key == 'references':
+                from .original_audio import identity as audio_identity
+                for row in identity[key]:
+                    if row.get('original_audio'):
+                        row['original_audio'] = audio_identity(row['original_audio'])
     return 'multimodal:' + json.dumps(identity, sort_keys=True, ensure_ascii=False)
 
 

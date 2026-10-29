@@ -56,9 +56,12 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             raise ValueError(f'Initial {name} latent must be finite floating point')
 
     audio_conditions = []
+    fixed_audio = None
     if conditions and isinstance(conditions[0], dict):
         from types import SimpleNamespace
         refs = conditions
+        from .fixed_track import split, timesteps as fixed_timesteps
+        refs, fixed_audio = split(refs, frames, device)
         condition_latents = [row['latent'].to(device) for row in refs if row['kind'] in ('image', 'video')]
         audio_conditions = [row['audio_latent'].to(device) for row in refs if row.get('audio_latent') is not None]
         references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None,
@@ -114,23 +117,31 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         raise ValueError('Refinement video conditioning disagrees with the packed layout')
     del fixed_video
     audio_clean = source_audio.permute(0, 2, 1).reshape(-1, 32).contiguous()
-    audio_noise = torch.randn(audio_clean.shape, generator=generator, device=device, dtype=torch.float32)
+    if fixed_audio is not None and not torch.equal(audio_clean, fixed_audio):
+        raise ValueError('First-pass original audio differs from its clean conditioning')
+    audio_noise = (None if fixed_audio is not None else
+                   torch.randn(audio_clean.shape, generator=generator, device=device, dtype=torch.float32))
     del source_video, video_noise
     for video_t, audio_t in zip(video_scheduler.timesteps[start:], audio_scheduler.timesteps[start:]):
         tick = time.perf_counter()
-        audio_rows = audio_scheduler.scale_noise(audio_clean, audio_t, audio_noise)
+        audio_rows = (fixed_audio.clone() if fixed_audio is not None else
+                      audio_scheduler.scale_noise(audio_clean, audio_t, audio_noise))
         if audio_conditions:
             audio_rows = torch.cat(audio_conditions + [audio_rows])
         if audio_rows.shape[0] != audio_ids.numel():
             raise ValueError('Refinement audio conditioning disagrees with the packed layout')
         row_times = torch.full((positions.shape[0],), float(video_t), dtype=torch.float32, device=device)
         row_times[video_ids[:condition_rows]] = max(float(video_t), KEYFRAME_NOISE_AUG)
-        row_times[audio_ids[audio_condition_rows:]] = float(audio_t)
+        row_times[audio_ids[audio_condition_rows:]] = 1.0 if fixed_audio is not None else float(audio_t)
         row_times[audio_ids[:audio_condition_rows]] = 1.
         times, time_ids = torch.unique(row_times, sorted=True, return_inverse=True)
+        if fixed_audio is not None:
+            times, time_ids = fixed_timesteps(row_times, video_t, audio_t)
         if timestep_task is not None:
             from .adaln import modality_timesteps
             times = modality_timesteps(video_t[None], audio_t[None], timestep_task)[0]
+            if fixed_audio is not None:
+                times = torch.unique(torch.cat((times, times.new_ones(1))), sorted=True)
             time_ids = torch.searchsorted(times, row_times)
         prediction, _ = transformer(hidden_states=video_rows[None], audio_hidden_states=audio_rows[None],
             encoder_hidden_states=prompt_embeds[None], timestep=times, timestep_indices=time_ids,

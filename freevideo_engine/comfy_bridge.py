@@ -856,7 +856,7 @@ def installation(source=None, environ=None):
 
 
 def validate_request(prompt, width, height, seconds, seed, *, continue_from=None, frames=None,
-                     two_pass=True, preview=False, refine_from=None, media=None):
+                     two_pass=True, preview=False, refine_from=None, media=None, original_audio=False):
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError('Enter a prompt describing the video and its audio.')
     if type(seed) is not int or not 0 <= seed <= 2**53 - 1:
@@ -869,7 +869,8 @@ def validate_request(prompt, width, height, seconds, seed, *, continue_from=None
     canvas = geometry(width, height, frames=frames, seconds=None if frames is not None else seconds)
     if continue_from is not None:
         from .continuation import validate_path, validate_route
-        validate_route(two_pass=two_pass, preview=preview, refine_from=refine_from, media=media)
+        validate_route(two_pass=two_pass, preview=preview, refine_from=refine_from, media=media,
+                       original_audio=original_audio)
         validate_path(continue_from)
     return canvas
 
@@ -1426,6 +1427,24 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .media_request import task_for
         from .two_pass import plan, sampling_canvas
         from .generate import hide_tail_geometry
+        from .original_audio import prepare_request
+        from copy import deepcopy
+        original_audio, audio_canvas = prepare_request(deepcopy(extra.get('media') or {}), width, height,
+            continuation=continue_from is not None, backend=machine.get('device_backend', 'cuda'))
+        if original_audio is not None:
+            canvas = audio_canvas
+            state['geometry'] = canvas
+            extra['original_audio'] = original_audio
+            flag = '--frames' if '--frames' in command else '--seconds'
+            position = command.index(flag)
+            command[position:position + 2] = (['--frames', str(canvas['frames'])] if 'segment' in original_audio else
+                ['--seconds', str((original_audio['end_sample'] - original_audio['start_sample']) / original_audio['sample_rate'])])
+            # The sound used as is sets the length and is the part's one sound: the engine adds no hidden
+            # tail, no voice reference and no first frame of the film beside it (cast pictures stay).
+            first_frame_reference = voice_reference = hide_tail = anchored = False
+            for flag in ('--first-frame-reference', '--voice-reference', '--hide-tail'):
+                if flag in command:
+                    command.remove(flag)
         generated_canvas, hidden = hide_tail_geometry(canvas, None if extra.get('conditioning') else prompt,
                                                       hide_tail, preview=bool(preview or upscale))
         hide_tail_frames = hidden['frames'] if hidden and hidden['used'] else 0
@@ -1439,7 +1458,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             from .continuation import ADALN_TASK, ANCHOR_ADALN_TASK, MISSING, validate_snapshot, summary
             validate_route(task='ref2va' if anchored or pictured else task_for(extra.get('media', {})),
                            anchor=anchored or pictured,
-                           media=extra.get('media'))
+                           media=extra.get('media'), original_audio=original_audio is not None)
+            if original_audio is not None and continuation is not None:
+                # An encoded ending has no stored origin; the engine checks the part against its own.
+                from .original_audio_chain import validate_continuation
+                validate_continuation(original_audio, continuation)
             if continuation is not None:
                 try:
                     continuation = validate_snapshot(continuation, sampled, sampling_plan=planned)
@@ -1497,7 +1520,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         preparation_started = time.monotonic()
         try:
             # Reference audio selects its own tables; match the encoder's choice.
-            asset_task = ((ANCHOR_ADALN_TASK if anchored or pictured else ADALN_TASK) if continue_from is not None
+            asset_task = ((ANCHOR_ADALN_TASK if anchored or pictured else ADALN_TASK)
+                          if continue_from is not None and original_audio is None
                           else engine_task(extra.get('media', {}), media_base))
             # Tables follow the step count; the cache is carried for exact level recognition.
             preparation = prepare_sampling_assets(root, machine, dict(planned, step_cache=step_cache) if step_cache else planned,
@@ -1598,7 +1622,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
             # Written before the result cache records the file's size and hash.
             from .comfy_metadata import embed_comfy_metadata
-            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
+            timing = {}
+            if original_audio is not None:
+                from math import lcm
+                timing['exact_timescale'] = lcm(original_audio['sample_rate'], 24)
+            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata, **timing)
         # The MP4 is saved and checked; its uncompressed frames and audio are no longer read.
         from .comfy_library import release_decoded, release_later
         state['decoded_release'] = release_decoded(run)

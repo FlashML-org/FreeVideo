@@ -98,6 +98,8 @@ test('main browser entry registers both views and preserves node hooks', async t
         attachReferencePicker() {}, referenceItems: () => [], syncReferencePrompt() {},
         shareButton: () => new Element('button'), reportFileName: () => 'FreeVideo-report-20261008-101530.json',
         rememberPromptDraft() {}, savePromptDraft: async () => false, openImageEditor: async () => null, icon: () => '',
+        AUDIO_USE: {reference: 'reference', original: 'original'}, usesOriginal: row => row?.use === 'original', checkOriginal: async () => ({ok: true}),
+        checkedLength: () => null, failureText: () => '', multipleText: () => '', createUseSwitch: () => globalThis.document.createElement('div'),
     };
     const previous = new Map();
     for (const [name, value] of Object.entries({
@@ -146,7 +148,8 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { swapMissingText } from './replace_person.js';", 'const swapMissingText = () => "";')
             .replace("import { agentInterfaceState } from './agent_connect.js';", "const agentInterfaceState = async () => 'off';")
             .replace("import { installNativeErrorGuard } from './native_errors.js';", 'const installNativeErrorGuard = () => {};')
-            .replace("import { installTranslateGuard } from './translate_guard.js';", 'const installTranslateGuard = () => {};');
+            .replace("import { installTranslateGuard } from './translate_guard.js';", 'const installTranslateGuard = () => {};')
+            .replace("import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch } from './audio_original.js';", 'const {AUDIO_USE,usesOriginal,checkOriginal,checkedLength,failureText,multipleText,createUseSwitch} = globalThis.__freevideoEntryTest;');
         await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');
         assert.ok(extension, 'the main extension must register');

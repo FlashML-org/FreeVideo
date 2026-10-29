@@ -77,10 +77,15 @@ class ComfyHost:
             # Each direction is filled once the node offers its input.
             if name in schema:
                 values[name] = '' if independent else block_inputs[key]
-        if 'voice_reference' in schema and values.get('continue_from'):
+        # A part that plays its range of a sound used as is takes no first frame of the film, no voice
+        # reference and no hidden tail: the engine declines all three for it (generate.py).
+        original = bool(block_inputs.get('original_audio'))
+        if original and 'first_frame_reference' in schema:
+            values['first_frame_reference'] = False
+        if 'voice_reference' in schema and values.get('continue_from') and not original:
             values['voice_reference'] = True
-        if ('hide_tail' in schema and not independent and block_inputs.get('index', 0) < block_inputs.get('count', 0) - 1
-                and continuation_supported()):
+        if ('hide_tail' in schema and not independent and not original
+                and block_inputs.get('index', 0) < block_inputs.get('count', 0) - 1 and continuation_supported()):
             # Only a backend that continues videos makes the extra tail frames; others ignore the option.
             values['hide_tail'] = True
         return values
@@ -176,6 +181,15 @@ class ComfyHost:
         blocks = chain_store.leading_blocks(record)
         # A planned chain shows exactly the requested length: what the last block made beyond it is left out.
         frames = planned['frames'] if planned and not planned['single'] and len(blocks) == len(record['blocks']) else None
+        if record.get('original_audio') is not None:
+            # The original selection replaces every part's sound: seam leads and voice levels do not apply.
+            from .original_audio_chain import joined_info
+            info = joined_info(record, blocks)
+            frames = ((info['end_sample'] - info['start_sample']) * 24 + info['sample_rate'] - 1) // info['sample_rate']
+            if len(blocks) < len(record['blocks']):
+                frames = sum(block['new_frames'] for block in blocks)
+            return join_outputs([block['output'] for block in blocks], record['id'], cancelled,
+                                frames=frames, replace=record.get('output'), original_audio=info)
         kept = {'leads': record['lead_reader'], 'expected_seams': record.get('expected_seams')} \
             if record.get('lead_reader') is not None else {}
         from .chain_level import voiced
@@ -357,6 +371,11 @@ def register(host_factory=None):
     async def create(request):
         try:
             value = await body(request)
+            from .audio_use_request import graph_audio, prepare_chain
+            if isinstance(value.get('prompt'), dict) and value.get('node') in value['prompt']:
+                if graph_audio(value['prompt'], value['node']):
+                    import folder_paths
+                    value = await asyncio.to_thread(prepare_chain, value, folder_paths.get_input_directory())
             normalized = chain_store.validate(value)
             if not fake and os.environ.get('FREEVIDEO_CHAIN_INDEPENDENT') != '1':
                 missing = {key for row in normalized['blocks'] for key in CONTINUE_INPUTS
@@ -377,7 +396,7 @@ def register(host_factory=None):
         except chain_plan.PlanError as failure:
             return response({'error': str(failure), 'code': failure.code}, 400)
         except ValueError as failure:
-            return response({'error': str(failure)}, 400)
+            return response({'error': str(failure), **(failure.as_dict() if hasattr(failure, 'as_dict') else {})}, 400)
 
     def asking(request):
         # ?client_id=... marks each chain as this page's own or not.

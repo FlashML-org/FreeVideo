@@ -43,6 +43,8 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
     refs = conditions
     if not refs:
         raise ValueError('Ref2VA requires references')
+    from .fixed_track import split, timesteps as fixed_timesteps
+    refs, fixed_audio = split(refs, num_frames, device)
     condition_latents = [row['latent'].to(device) for row in refs if row['kind'] in ('image', 'video')]
     audio_conditions = [row['audio_latent'].to(device) for row in refs if row.get('audio_latent') is not None]
     references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None,
@@ -103,8 +105,9 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         if video_rows.shape[0] != video_indices.numel():
             raise ValueError(f"{video_rows.shape[0]} video rows (with conditioning) != "
                              f"{video_indices.numel()} layout rows")
-    audio_rows = torch.randn((num_audio_latents * AUDIO_CHANNELS, 32),
-                             generator=generator, device=device, dtype=torch.float32)
+    audio_rows = (fixed_audio.clone() if fixed_audio is not None else
+                  torch.randn((num_audio_latents * AUDIO_CHANNELS, 32),
+                              generator=generator, device=device, dtype=torch.float32))
 
     if audio_conditions:
         audio_rows = torch.cat(audio_conditions + [audio_rows])
@@ -164,15 +167,21 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         row_timesteps = torch.full((seq_len,), float(t), dtype=torch.float32, device=device)
         if num_condition_rows:
             row_timesteps[video_indices[:num_condition_rows]] = max(float(t), KEYFRAME_NOISE_AUG)
-        row_timesteps[audio_indices[num_audio_condition_rows:]] = float(audio_t)
+        row_timesteps[audio_indices[num_audio_condition_rows:]] = 1.0 if fixed_audio is not None else float(audio_t)
         row_timesteps[audio_indices[:num_audio_condition_rows]] = 1.0
         timestep, timestep_indices = torch.unique(row_timesteps, sorted=True, return_inverse=True)
+        if fixed_audio is not None:
+            audio_rows[num_audio_condition_rows:] = fixed_audio
+            timestep, timestep_indices = fixed_timesteps(row_timesteps, t, audio_t)
         if timestep_task is not None:
             from .adaln import modality_timesteps
             # The cached table covers the initial superset of modalities. Keep
             # unused clock entries so removing the last visual/audio reference
             # does not change the table or the remaining rows' clock indices.
             timestep = modality_timesteps(t[None], audio_t[None], timestep_task)[0]
+            if fixed_audio is not None:
+                # Original audio rows stay clean (t = 1) at every step, so the superset stays the same per step.
+                timestep = torch.unique(torch.cat((timestep, timestep.new_ones(1))), sorted=True)
             timestep_indices = torch.searchsorted(timestep, row_timesteps)
         noise_pred, audio_noise_pred = transformer(
             hidden_states=video_rows[None],
@@ -191,9 +200,12 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         video_rows[num_condition_rows:] = scheduler.step(
             noise_pred[0, num_condition_rows:].float(), t, video_rows[num_condition_rows:],
             return_dict=False)[0]
-        audio_rows[num_audio_condition_rows:] = audio_scheduler.step(
-            audio_noise_pred[0, num_audio_condition_rows:].float(), audio_t,
-            audio_rows[num_audio_condition_rows:], return_dict=False)[0]
+        if fixed_audio is None:
+            audio_rows[num_audio_condition_rows:] = audio_scheduler.step(
+                audio_noise_pred[0, num_audio_condition_rows:].float(), audio_t,
+                audio_rows[num_audio_condition_rows:], return_dict=False)[0]
+        else:
+            audio_rows[num_audio_condition_rows:] = fixed_audio
 
         if step_seconds is not None:
             synchronize()

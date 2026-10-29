@@ -100,6 +100,18 @@ def generate(request, resident=None):
             if request['sampling_plan'] != expected:
                 raise ValueError('Sampling plan does not match the requested canvas and task')
             metrics['sampling_plan'] = expected
+        original_audio = request.get('original_audio')
+        if original_audio is not None:
+            from .original_audio import verify, AudioUseError
+            verify(original_audio)
+            if request.get('continuation') is not None and 'segment' not in original_audio:
+                raise AudioUseError('audio_original_route')
+            if request['engine_options'].get('task') not in ('ref2va_audio', 'ref2va_av'):
+                raise ValueError('Original audio requires a clean audio reference layout')
+            if hide_tail_frames:
+                # The clip's samples set the part's length; no frames are hidden after it.
+                raise AudioUseError('audio_original_route')
+            metrics['original_audio'] = original_audio
         continuation = request.get('continuation')
         if continuation is not None:
             from .continuation import (validate_route, summary, ADALN_TASK, ANCHOR_ADALN_TASK, UNSUPPORTED_DEVICE,
@@ -112,14 +124,20 @@ def generate(request, resident=None):
                            **(dict(sound=True, media=dict(references=[continuation['sound']]))
                               if continuation.get('sound') else {}),
                            two_pass=bool(request.get('sampling_plan', {}).get('requested')),
-                           preview=request.get('preview', False), refine_from=request.get('resume_first_pass'))
+                           preview=request.get('preview', False), refine_from=request.get('resume_first_pass'),
+                           original_audio=original_audio is not None and 'segment' in original_audio)
             if isinstance(getattr(torch.version, 'hip', None), str):
                 raise ValueError(UNSUPPORTED_DEVICE)
             continuation = dict(continuation,
                 audio_context=validate_audio_context(continuation.get('audio_context', AUDIO_CONTEXT_DEFAULT)))
+            if original_audio is not None:
+                from .original_audio_chain import validate_continuation
+                validate_continuation(original_audio, continuation)
+                continuation.update(video_only=True, audio_context='clean')
             request['continuation'] = continuation
             request['engine_options'] = dict(request['engine_options'],
-                adaln_task=ANCHOR_ADALN_TASK if continuation.get('anchor') else ADALN_TASK)
+                adaln_task=(request['engine_options']['task'] if original_audio is not None
+                            else ANCHOR_ADALN_TASK if continuation.get('anchor') else ADALN_TASK))
             metrics['continuation'] = summary(continuation, hide_tail_frames=hide_tail_frames)
             metrics['audio_context'] = continuation['audio_context']
         metrics['device_memory'] = device_memory_report(request['gpu_budget_bytes'], request.get('allocator_limit_bytes'),
@@ -208,6 +226,12 @@ def generate(request, resident=None):
             # Older official keyframe caches have no explicit task field.
             value.setdefault('task', options['task'])
             actual = describe(value, canvas['width'], canvas['height'], canvas['frames'])
+            from .original_audio import identity
+            originals = [row for row in value.get('references', []) if row.get('use') == 'original']
+            if originals or original_audio is not None:
+                if (len(originals) != 1 or original_audio is None
+                        or identity(originals[0].get('original_audio', {})) != identity(original_audio)):
+                    raise ValueError('Encoded original audio does not match the retained source')
             if actual['task'] != options['task'] or any(canvas.get(name, actual[name]) != actual[name]
                     for name in ('reference_video_tokens', 'reference_audio_tokens')):
                 raise ValueError('Encoded media disagrees with the admitted request layout')
@@ -219,9 +243,11 @@ def generate(request, resident=None):
         # too: its first and final canvases are the same one, so one tail
         # serves both stages. An explicit single-pass request keeps nothing.
         # Whatever media conditioned the request, the sampler returns only the
-        # generated picture and sound rows, so the tail is the same.
+        # generated picture and sound rows, so the tail is the same. A clip used
+        # as is continues only as a part of its own chain.
         plan_flags = request.get('sampling_plan') or {}
         continuable = (bool(plan_flags.get('enabled') or plan_flags.get('requested'))
+                       and (original_audio is None or 'segment' in original_audio)
                        and not request.get('preview'))
         first_tail = continuation_data = None
         def tail_failure(error):
@@ -656,9 +682,10 @@ def generate(request, resident=None):
                 continuation_data['metadata']['source_id'] = continuation['source_id']
         metrics.update(decode_to_file(latents, audio, request['output'], base=base, artifacts_dir=artifacts,
                                      **({'hide_tail_frames': hide_tail_frames} if hide_tail_frames else {}),
+                                     **({'original_audio': original_audio} if original_audio is not None else {}),
                                      **({'continuation': continuation} if continuation is not None else {}),
                                      **({'audio_lead_in_callback': keep_audio_lead_in}
-                                        if continuation is not None and continuation_data is not None else {}),
+                                        if continuation is not None and continuation_data is not None and original_audio is None else {}),
                                      model_cache=resident, phase_callback=decode_phase, output_size=output_size,
                                      ram_budget_bytes=request.get('ram_budget_bytes'), **decoder))
         if continuable and continuation_data is not None:

@@ -242,6 +242,12 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         for name in ('references', 'loras'):
             media[name] = [{**{k: v for k, v in row.items() if k != 'path'},
                             'sha256': file(row['path'], content=True)} for row in media.get(name, [])]
+        for row in media.get('references', []):
+            if row.get('use') == 'reference':
+                row.pop('use')
+            if row.get('original_audio'):
+                from .original_audio import identity
+                row['original_audio'] = identity(row['original_audio'])
         conditioning = file(extra['conditioning'], content=True) if extra.get('conditioning') else None
         if inspection:
             inspection.phases['inputs'] = time.monotonic() - input_started
@@ -253,7 +259,9 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         compute_env = {k: v for k, v in environment.items() if k not in ignored and k.startswith(prefixes)}
         return _key(dict(schema=2, prompt=prompt, seed=seed, canvas=canvas, sampling_plan=sampling_plan,
                          media=media, conditioning=conditioning, machine=machine, settings=settings,
-                         models=models, code=code, packages=packages, environment=compute_env))
+                         models=models, code=code, packages=packages, environment=compute_env,
+                         **({'original_audio': {k: v for k, v in extra['original_audio'].items() if k != 'path'}}
+                            if extra.get('original_audio') else {})))
     except TimeoutError:
         raise
     except (OSError, ValueError, TypeError, KeyError, AttributeError, sqlite3.Error):

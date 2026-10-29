@@ -75,7 +75,8 @@ def resolve_assets(serialized, input_directory):
     root = Path(input_directory).resolve()
     result = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'depth'}:
+        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'depth',
+                                                    'use', 'range', 'segment'}:
             raise ValueError('Invalid media item')
         if 'depth' in row:
             if type(row['depth']) is not bool:
@@ -104,6 +105,8 @@ def resolve_assets(serialized, input_directory):
         if not path.is_file():
             raise ValueError('Upload or select the missing media file: ' + name)
         kind = media_kind(name)
+        from .original_audio import fields
+        audio_fields = fields(dict(row, kind=kind))
         if role in ('first', 'last'):
             if kind != 'image':
                 raise ValueError('First and last frames must be images')
@@ -111,7 +114,7 @@ def resolve_assets(serialized, input_directory):
                 raise ValueError('Select only one ' + role + ' frame')
             result[role] = str(path)
         elif role == 'reference':
-            reference = {'kind': kind, 'path': str(path)}
+            reference = {'kind': kind, 'path': str(path), **audio_fields}
             if row.get('depth') is True:
                 reference.update(depth=True, early_steps=3)
             if cast_id(row) is not None:
@@ -138,6 +141,8 @@ def resolve_assets(serialized, input_directory):
             result.setdefault('references', []).append(reference)
         else:
             raise ValueError('Media role must be first, last or reference')
+    from .original_audio import original
+    original(result)
     # Mixing keyframes and references is checked when the video is made (comfy_media.export):
     # a part that continues a video uses its keyframes as pictures.
     return result
@@ -147,23 +152,27 @@ def continued_assets(serialized):
     """The panel rows a continued part uses: enabled image references in panel order, at most three
     (continuation.pick_pictures: with two or more characters, one picture each).
 
-    Its frames and sounds stay in the panel for parts that start fresh, but never reach a continued part's checks."""
+    Its frames and sounds stay in the panel for parts that start fresh, but never reach a continued part's checks.
+    The one exception is a sound used as is: every part plays its own range of it (original_audio_chain.block_prompt)."""
     from .continuation import pick_pictures
     try:
         rows = json.loads(serialized)
     except (TypeError, ValueError):
         return '[]'
-    pictures = []
+    pictures, original = [], []
     for row in rows if isinstance(rows, list) else ():
         if (isinstance(row, dict) and row.get('enabled', True) is True and row.get('role') == 'reference'
                 and isinstance(row.get('file'), str)):
+            if row.get('use') == 'original':
+                original.append(dict(file=row['file'], role='reference', use='original'))
+                continue
             try:
                 image = media_kind(row['file']) == 'image'
             except ValueError:
                 image = False
             if image:
                 pictures.append(row)
-    return json.dumps([_kept_row(row) for row in pick_pictures(pictures, cast_id)])
+    return json.dumps([_kept_row(row) for row in pick_pictures(pictures, cast_id)] + original)
 
 
 def cast_id(row):
@@ -180,12 +189,19 @@ def _kept_row(row):
     return kept
 
 
-def connect_assets(assets, *, first=None, last=None, reference=None, reference_audio=None, **images):
+def connect_assets(assets, *, first=None, last=None, reference=None, reference_audio=None, audio_use='reference',
+                   **images):
     """Keep connected IMAGE/AUDIO values native until request input export."""
     result = dict(assets)
     if set(images) - set(REFERENCE_INPUTS[1:]):
         raise TypeError('Unknown reference image input')
     images = dict(reference=reference, **images)
+    from .original_audio import fields, original
+    audio_fields = fields(dict(kind='audio', use=audio_use))
+    if audio_fields and reference_audio is None:
+        raise ValueError('Connect audio before selecting Use as is')
+    original(dict(references=[*result.get('references', []), *([dict(kind='audio', **audio_fields)]
+                  if reference_audio is not None else [])]))
     connected = {name: value for name, value in (('first', first), ('last', last),
                  *((name, images.get(name)) for name in REFERENCE_INPUTS), ('reference_audio', reference_audio))
                  if value is not None}
@@ -202,6 +218,8 @@ def connect_assets(assets, *, first=None, last=None, reference=None, reference_a
                          'For a long image batch, connect a clip to the Reference node\'s video input; a clip counts as one reference.')
     if connected:
         result['_connected'] = connected
+        if audio_fields:
+            result['_audio_use'] = 'original'
     return result
 
 
@@ -246,6 +264,8 @@ def output_summary(report, relative_video):
         # Resource reports keep the generated canvas; result cards show only saved frames.
         result['geometry'].update(frames=report['output_frames'],
                                   seconds=report['output_frames'] / (result['geometry'].get('fps') or 24))
+    if video.get('original_audio'):
+        result['original_audio'] = {k: v for k, v in video['original_audio'].items() if k != 'path'}
     checkpoint = encoding.get('checkpoint') or {}
     sizes = checkpoint.get('bytes'), checkpoint.get('expected_bytes')
     # Reports are read back from disk; a malformed one gets no notice rather than failing the library.

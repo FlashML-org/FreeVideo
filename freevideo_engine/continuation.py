@@ -93,11 +93,19 @@ def validate_frames(frames):
 
 
 def validate_route(*, task='t2va', two_pass=True, preview=False, refine_from=None,
-                   media=None, backend=None, anchor=False, sound=False):
+                   media=None, backend=None, anchor=False, sound=False, original_audio=False):
     """anchor: the part also takes pictures (an explicit anchor or the cast's pictures);
-    sound: the engine adds the film's opening sound as the one audio reference."""
+    sound: the engine adds the film's opening sound as the one audio reference;
+    original_audio: the part's sound is one audio clip used as is, apart from the references."""
     media = media or {}
     references = media.get('references')
+    if original_audio:
+        from .original_audio import original
+        kept = original(media) if isinstance(references, list) else None
+        if references and kept is None:
+            raise ValueError(UNSUPPORTED_MEDIA)
+        # The clip used as is is the part's own sound, not a reference; it takes no voice reference.
+        references = [row for row in references if row is not kept] if references else references
     kinds = ([row.get('kind') if isinstance(row, dict) else None for row in references]
              if isinstance(references, list) else None)
     valid_reference = (kinds is not None and kinds.count('image') + kinds.count('audio') == len(kinds)
@@ -106,6 +114,8 @@ def validate_route(*, task='t2va', two_pass=True, preview=False, refine_from=Non
     valid_task = task == ('ref2va' if anchor else 't2va')
     if sound:
         valid_task = valid_reference and task in (('ref2va', 'ref2va_av') if anchor else ('t2va', 'ref2va', 'ref2va_audio'))
+    if original_audio:
+        valid_task = not sound and task in (('ref2va', 'ref2va_av') if anchor else ('t2va', 'ref2va', 'ref2va_audio', 'ref2va_av'))
     if not supported()[0] or backend not in (None, 'cuda', 'mps'):
         raise ValueError(UNSUPPORTED_DEVICE)
     if refine_from:
@@ -116,6 +126,7 @@ def validate_route(*, task='t2va', two_pass=True, preview=False, refine_from=Non
     if (not valid_task or any(media.get(key) for key in ('first', 'last', 'conditioning_info'))
             or (references and not valid_reference)):
         raise ValueError(UNSUPPORTED_MEDIA)
+
 
 
 def encoded_references(conditions, task, anchor):
@@ -480,7 +491,8 @@ def load(request, stage):
     value = _snapshot_value(request)
     # Each pass receives writable tensors of its own; sampling cannot mutate
     # the immutable snapshot used by the next pass or retry.
-    return dict(audio_context=validate_audio_context(request.get('audio_context', AUDIO_CONTEXT_DEFAULT)),
+    return dict(**({'video_only': True} if request.get('video_only') else {}),
+                audio_context=validate_audio_context(request.get('audio_context', AUDIO_CONTEXT_DEFAULT)),
                 **({'anchor': request['anchor']} if request.get('anchor') else {}),
                 video=torch.from_numpy(value['video_lo' if stage == 'first' else 'video_hi'].copy()),
                 audio=torch.from_numpy(value['audio'].copy()))
@@ -561,6 +573,7 @@ class Prefix:
         if type(audio_offset) is not int or audio_offset < 0:
             raise ValueError('Invalid continuation reference row offset')
         self.audio_offset = audio_offset
+        self.video_only = data.get('video_only', False)
         self.video = data['video'].to(device=device, dtype=torch.float32)
         self.audio = data['audio'].to(device=device, dtype=torch.float32)
         if (self.video.ndim != 5 or self.video.shape[:3] != (1, transformer.config.in_channels, LATENT_FRAMES)
@@ -568,7 +581,7 @@ class Prefix:
             raise ValueError(MISSING)
         self.video_rows = patchify_video_latents(self.video, tuple(transformer.config.patch_size))
         self.audio_rows = self.audio.permute(0, 2, 1).reshape(-1, 32).contiguous()
-        if self.audio_context == 'renoise':
+        if not self.video_only and self.audio_context == 'renoise':
             generator = torch.Generator(device).manual_seed((seed + 1) % (1 << 64))
             self.noise = torch.randn(self.audio_rows.shape, generator=generator, device=device, dtype=torch.float32)
             from diffusers import MiniMaxH3Scheduler
@@ -580,14 +593,16 @@ class Prefix:
         video, audio = kwargs['hidden_states'][0], kwargs['audio_hidden_states'][0]
         count, ticks = self.video_rows.shape[0], self.audio.shape[2]
         generated = audio.shape[0] - self.audio_offset
-        if video.shape[0] <= self.video_offset + count or generated // 2 < ticks:
+        if video.shape[0] <= self.video_offset + count or not self.video_only and generated // 2 < ticks:
             raise ValueError(MISSING)
         self.current_video = video
         self.restore_video()
         audio_rows = torch.cat([torch.arange(ticks, device=audio.device) + self.audio_offset + channel * (generated // 2)
                                 for channel in range(2)])
         row_times = kwargs['timestep'][kwargs['timestep_indices']].clone()
-        if self.audio_context == 'clean':
+        if self.video_only:
+            pass  # The new segment owns the entire clean original-audio lane.
+        elif self.audio_context == 'clean':
             audio[audio_rows] = self.audio_rows
             row_times[kwargs['audio_indices'][audio_rows]] = CLEAN_T
         else:
@@ -596,7 +611,13 @@ class Prefix:
             # scale_noise uses H3's clean-at-one convention, not a standard DDPM clock.
             audio[audio_rows] = self.scheduler.scale_noise(self.audio_rows, audio_t, self.noise)
         row_times[kwargs['video_indices'][self.video_offset:self.video_offset + count]] = CLEAN_T
-        kwargs['timestep'], kwargs['timestep_indices'] = torch.unique(row_times, sorted=True, return_inverse=True)
+        if self.video_only:
+            # Original audio deliberately retains the unused audio clock for
+            # the modulation cache. Preserve that bank when pinning picture rows.
+            kwargs['timestep'] = torch.unique(torch.cat((kwargs['timestep'], row_times)), sorted=True)
+            kwargs['timestep_indices'] = torch.searchsorted(kwargs['timestep'], row_times)
+        else:
+            kwargs['timestep'], kwargs['timestep_indices'] = torch.unique(row_times, sorted=True, return_inverse=True)
         return args, kwargs
 
     def restore_video(self):
@@ -605,7 +626,8 @@ class Prefix:
 
     def finish(self, video, audio):
         video[:, :, :LATENT_FRAMES] = self.video
-        audio[:, :, :self.audio.shape[2]] = self.audio
+        if not self.video_only:
+            audio[:, :, :self.audio.shape[2]] = self.audio
         return video, audio
 
 

@@ -529,7 +529,8 @@ class ChainRunner:
     def hidden(self, exists=None):
         with self.lock:
             return {row['output'] for record in self.records.values()
-                    if record['join'] and record['output_state'] == 'done' and record['output_blocks'] > 1
+                    if record['join'] and record['output_state'] == 'done'
+                    and (record['output_blocks'] > 1 or record.get('original_audio') is not None)
                     and record['output'] not in {block['output'] for block in record['blocks']}
                     and (exists is None or exists(record['output']))
                     for row in record['blocks'][:record['output_blocks']] if row['output'] is not None}
@@ -597,8 +598,9 @@ class ChainRunner:
             self._save(record)
             self.wake.set()
             previous = self._sources(record, block)['after']
+            # A kept original soundtrack replaces every seam's sound, so there is no lead to save.
             keep = (record['id'], block['index'], output, previous['output'] if previous is not None else None,
-                    bool(saved))
+                    bool(saved) and record.get('original_audio') is None)
         self._keep_lead(*keep)
 
     def _keep_lead(self, identity, index, output, previous, continues):
@@ -627,6 +629,9 @@ class ChainRunner:
         block that continues from a block other than its neighbour cannot be repaired and counts as lost."""
         identity, blocks = snapshot['id'], store.leading_blocks(snapshot)
         wanted, kept = set(), 0
+        if snapshot.get('original_audio') is not None:
+            # The original selection replaces every block's sound, so no seam sound needs repair.
+            return wanted, kept
         for position, row in enumerate(blocks[1:] if getattr(self.host, 'repairs_seams', True) else (), 1):
             if not self._continues(row):
                 continue
@@ -647,7 +652,7 @@ class ChainRunner:
         if not blocks:
             record.update(output=None, output_blocks=0, output_state='pending', output_error=None)
             return final_state
-        if len(blocks) == 1:
+        if len(blocks) == 1 and record.get('original_audio') is None:
             output = blocks[0]['output']
             record.update(output=output, output_blocks=1 if output else 0, output_state='done', output_error=None)
             return final_state
@@ -763,7 +768,8 @@ class ChainRunner:
                 self._save(record)
                 prompt = deepcopy(record['snapshot']['prompt'])
                 block_inputs = dict(block['inputs'])
-                block_inputs.update(index=block['index'], count=len(record['blocks']))
+                block_inputs.update(index=block['index'], count=len(record['blocks']),
+                                    original_audio=block.get('original_audio') is not None)
                 sources = self._sources(record, block)
                 extra = deepcopy(record['snapshot']['extra_data'])
                 if record['client_id'] is not None:
@@ -804,6 +810,9 @@ class ChainRunner:
                     if hasattr(self.host, 'continued'):
                         self.host.continued(prompt, node)
                 prompt[node]['inputs'].update(self.inputs(block_inputs))
+                if record.get('original_audio') is not None:
+                    from .original_audio_chain import block_prompt
+                    block_prompt(prompt, node, record['original_audio'], block['original_audio'])
                 self.host.submit(prompt_id, node_prompt(prompt, node), extra)
             except Exception as error:
                 # A response may be lost after the host has accepted the prompt.

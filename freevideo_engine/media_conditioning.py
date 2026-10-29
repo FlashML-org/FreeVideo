@@ -100,6 +100,7 @@ def _describe(value, width, height, frames):
     to_cache([[prompt[None], {'minimax_token_tags': tags}]], task='ref2va')
     video_rows = audio_rows = seen_rows = 0
     guides = 0
+    original_count = 0
     for ref in refs:
         kind = ref.get('kind')
         if ref.get('guide'):
@@ -130,12 +131,20 @@ def _describe(value, width, height, frames):
             audio = _tensor(ref.get('audio_latent'), (None, 32), 'reference audio rows')
             if audio.shape[0] % 2:
                 raise ValueError('Reference audio must contain both channels')
-            audio_rows += audio.shape[0]
+            if ref.get('use') == 'original':
+                original_count += 1
+                if kind != 'audio' or audio.shape[0] != 2 * round(frames / 24 * 40):
+                    raise ValueError('Original audio latents do not match the generation duration')
+            else:
+                audio_rows += audio.shape[0]
     # Guide rows are never shown to the vision-language encoder, so only the
     # other visual references need jointly encoded vision tokens.
     if seen_rows and not bool((tags == 0).any()):
         raise ValueError('Visual references need jointly encoded vision tokens')
-    task = 'ref2va_av' if video_rows and audio_rows else 'ref2va_audio' if audio_rows else 'ref2va'
+    if original_count > 1:
+        from .original_audio import AudioUseError
+        raise AudioUseError('audio_original_multiple')
+    task = 'ref2va_av' if video_rows and (audio_rows or original_count) else 'ref2va_audio' if (audio_rows or original_count) else 'ref2va'
     value['task'] = task
     return {'task': task, 'text_tokens': len(tags), 'reference_video_tokens': video_rows,
             'reference_audio_tokens': audio_rows, 'width': width, 'height': height, 'frames': frames}
@@ -177,6 +186,8 @@ def from_comfy(conditioning, width, height, frames):
     if refs:
         value['references'] = []
         for row in refs:
+            if row.get('use') == 'original':
+                raise ValueError('Use as is needs the source audio file or AUDIO socket, not preencoded reference latents')
             kind = row['kind']
             ref = {'kind': 'video' if kind == 'video_audio' else kind}
             if kind in ('image', 'video', 'video_audio'):

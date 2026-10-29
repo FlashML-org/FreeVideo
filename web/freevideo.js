@@ -32,6 +32,7 @@ import { uploadMedia } from './media_upload.js';
 import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
+import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -258,6 +259,22 @@ function mediaPanel(node, mount = null) {
         rows[at] = {...rest, file: source}; update(rows);
         message(text('Restored the original image. Edit it again to reapply the changes.', '已恢复原图；再次编辑可以重新应用修改。'));
     }
+    // Reference | Use as is: the choice is checked against the file before it is kept.
+    function useSwitch(row) {
+        const group = createUseSwitch({t: text, use: usesOriginal(row) ? AUDIO_USE.original : AUDIO_USE.reference, onPick: async value => {
+            const current = read(), at = current.findIndex(r => r.file === row.file);
+            if (at < 0) return;
+            if (value === AUDIO_USE.reference) { const {use: _use, range: _range, ...rest} = current[at]; current[at] = rest; update(current); return; }
+            if (current.some((other, i) => i !== at && other.enabled !== false && usesOriginal(other))) { message(multipleText(text), true); return; }
+            group.set(AUDIO_USE.original, true);
+            const result = await checkOriginal(api, {...current[at], use: AUDIO_USE.original});
+            const latest = read(), now = latest.findIndex(r => r.file === row.file);
+            if (now < 0) return;
+            if (!result.ok) { group.set(AUDIO_USE.reference); message(failureText(result, text), true); return; }
+            latest[now] = {...latest[now], use: AUDIO_USE.original}; update(latest);
+        }});
+        return group;
+    }
     function render() {
         for (const preview of cards.querySelectorAll("video,audio")) {
             preview.pause(); preview.removeAttribute("src"); preview.load();
@@ -296,7 +313,12 @@ function mediaPanel(node, mount = null) {
             const card = el("div", undefined, "fv-card"); card.dataset.enabled = String(row.enabled !== false);
             const top = el("div", undefined, "fv-row");
             const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = row.enabled !== false;
-            enabled.setAttribute("aria-label", text("Use media", "使用素材")); enabled.onchange = () => { rows[index].enabled = enabled.checked; update(rows); };
+            enabled.setAttribute("aria-label", text("Use media", "使用素材")); enabled.onchange = () => {
+                if (enabled.checked && usesOriginal(rows[index]) && rows.some((other, i) => i !== index && other.enabled !== false && usesOriginal(other))) {
+                    enabled.checked = false; message(multipleText(text), true); return;
+                }
+                rows[index].enabled = enabled.checked; update(rows);
+            };
             const label = el("span", row.cast?.name || (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             const kind = mediaKind(row.file);
@@ -306,7 +328,8 @@ function mediaPanel(node, mount = null) {
             select.value = row.role; select.onchange = () => { rows[index].role = select.value; update(rows); };
             top.append(enabled, label);
             if (row.source) top.append(el('span', text('Edited', '已编辑'), 'fv-edited'));
-            top.append(select); card.append(top);
+            if (kind === "audio") top.append(useSwitch(row)); else top.append(select);
+            card.append(top);
             const preview = el(kind === "image" ? "img" : kind); preview.className = "fv-preview";
             preview.src = viewURL(row.file);
             if (kind === "image") {
@@ -373,6 +396,15 @@ function mediaPanel(node, mount = null) {
                 button(text("Remove", "移除"), text("Remove from this request; keep the uploaded file", "从本次请求移除，保留已上传文件"), () => { rows.splice(index, 1); update(rows); }));
             card.append(controls); cards.append(card);
         });
+        // A saved choice is checked again; a clip the server now refuses goes back to Reference.
+        const saved = rows.find(row => row.enabled !== false && usesOriginal(row));
+        if (saved && !checkedLength(saved)) checkOriginal(api, saved).then(result => {
+            if (result.ok || result.code === 'unreachable') return;
+            const latest = read(), at = latest.findIndex(row => row.file === saved.file && usesOriginal(row));
+            if (at < 0) return;
+            const {use: _use, range: _range, ...rest} = latest[at]; latest[at] = rest; update(latest);
+            message(failureText(result, text), true);
+        });
     }
     let uploading = false;
     serialized.serializeValue = () => {
@@ -384,7 +416,7 @@ function mediaPanel(node, mount = null) {
             return JSON.stringify(requestRows(swapState(node)));
         }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range}) => ({file, role, enabled, ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;
