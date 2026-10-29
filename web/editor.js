@@ -1463,7 +1463,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const progressComponents = given && Object.hasOwn(given, 'generationStandIn') && Object.keys(given).length === 1 ? null : given;
         const componentsReady = Promise.allSettled([import('./editor_tracks.js'), progressComponents || loadEditorComponents()]);
         await editorStyles; if (closing || disposed) return;
-        let record = null, key = null;
+        let record = null, key = null, lastMissing = false;
         try {
             await store.recoverOutbox(); if (closing || disposed) return;
             if (from?.work) {
@@ -1483,7 +1483,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 let id; try { id = optionalText(localStorage.getItem('fv-editor-last')); } catch {}
                 let draft; try { draft = globalThis.sessionStorage?.getItem('fv-editor-draft'); } catch { draft = lastDraft; }
                 if (draft?.startsWith('draft:')) key = draft;
-                else if (id) { record = await store.load(id); if (record) key = id; }
+                else if (id) {
+                    record = await store.load(id);
+                    // The last edit is gone (deleted or moved); say so once instead of opening a blank edit silently.
+                    if (record) key = id;
+                    else { lastMissing = true; try { localStorage.removeItem('fv-editor-last'); } catch {} }
+                }
             }
         } catch (value) { error(value, null, undefined, 'open-load'); }
         if (closing || disposed) return;
@@ -1495,6 +1500,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         initializing = false; savedContent = content(state.record); player.refresh();
         loaded = true; settleGenbar();
         updateTop(); updateTransport();
+        if (lastMissing && !state.record.id) notify(t('The last edit could not be found, so a blank edit is open. Click the edit name at the top to open another edit.',
+            '找不到上次的剪辑，已打开空白剪辑。点击顶部的剪⁠辑⁠名可打开其他剪辑。'));
         const [trackResult, componentResult] = await componentsReady; if (closing || disposed) return;
         // Optional progress components may fail without taking the tracks with them.
         if (componentResult.status === 'rejected') error(componentResult.reason, null, undefined, 'components');
