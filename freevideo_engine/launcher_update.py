@@ -76,8 +76,9 @@ RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
 CHANNELS = tuple(RELEASE_ASSETS)
 MANIFEST_DOMAIN = b'FreeVideo update manifest v1\x00'
 # Every platform's mirror manifest carries the release signature, which binds the
-# package digest; the Windows launcher also checks a mirror-only download's
-# Authenticode signature, and a Mac DMG is checked with codesign before use.
+# package digest. The Windows launcher also checks a mirror-only download's
+# Authenticode publisher. The Mac codesign check before use is an integrity check
+# only: it does not require a particular developer identity.
 MIRROR_CHANNELS = CHANNELS
 RETRY_SECONDS = 60
 MAX_RETRY_SECONDS = 15 * 60
