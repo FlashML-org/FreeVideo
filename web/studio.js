@@ -707,19 +707,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
         && Object.keys(entry.settings || {}).every(name => name === 'quality'
             ? Boolean(effort.levels().find(tier => tier.name === entry.settings.quality)) && !baseSteps.disabled && ['base_steps', 'two_pass', 'step_cache', 'upscale_factor'].every(key => widget(node, key) && !linked(node, key))
             : Boolean(widget(node, name)) && !linked(node, name))
-        && (entry.settings?.two_pass !== true || !twoPass.disabled);
+        && ((entry.settings?.two_pass !== true && entry.settings?.preview !== true) || !twoPass.disabled);
     const tryTourExample = async example => {
         if (!canTryTour(example)) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
         const {applyTourExample} = await import('./tour_try.js');
         const target = castAssets();
         const result = await applyTourExample({node, api, cn, rows: () => mediaRows(node), canApply: canTryTour,
             setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); },
+            // Two-pass and preview settle into one pass mode, whichever of the two the example lists first.
             setSetting: (name, input) => {
                 if (name === 'quality') {
                     const tier = effort.levels().find(tier => tier.name === input);
                     baseSteps.value = tier.steps; twoPass.checked = tier.twoPass; refineSteps.value = 3;
                     set(node, 'two_pass', tier.twoPass); set(node, 'step_cache', tier.stepCache || 'none'); setUpscale(tier.upscale);
-                } else if (name === 'two_pass') { choosePassMode(input ? 'on' : 'off'); }
+                } else if (name === 'two_pass') { choosePassMode(!input ? 'off' : example.settings?.preview === true ? 'preview' : 'on'); }
+                else if (name === 'preview') { choosePassMode(input && example.settings?.two_pass !== false ? 'preview' : (twoPass.checked ? 'on' : 'off')); }
                 else { set(node, name, input); if (name === 'width') width.value = input; if (name === 'height') height.value = input; if (name === 'seconds') seconds.value = input; }
             },
             write: rows => { if (!target) return false; target.field.value = JSON.stringify(rows); target.owner.graph?.change?.();
