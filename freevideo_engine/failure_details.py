@@ -367,6 +367,14 @@ def _without_ready_curl_diagnostics(text):
     return ''.join(lines)
 
 
+# Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
+UNSUPPORTED_VENDOR = (
+    ('FreeVideo supports NVIDIA graphics cards only',
+     'Installing a driver cannot change this. Use FreeVideo on a computer with an NVIDIA graphics card.'),
+    ('FreeVideo 只支持 NVIDIA 显卡',
+     '安装驱动无法改变这一点，请在装有 NVIDIA 显卡的电脑上使用 FreeVideo。'))
+
+
 # What each download source returned, as one short line per host and route on
 # the failure card. The full lines stay in the copied error and the report.
 SOURCE_REASONS = {
@@ -651,7 +659,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         (r'NVIDIA driver/nvidia-smi is missing\.', 'gpu-driver-missing',
          ('No NVIDIA driver was found', '未找到 NVIDIA 显卡驱动'),
          ('If this computer has an NVIDIA graphics card, install NVIDIA driver 580 or newer, '
-          'restart the computer, then click Retry installation.',
+          'restart the computer, then click "Retry installation".',
           '如果这台电脑有 NVIDIA 显卡，请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
@@ -725,7 +733,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         (ENVIRONMENT_PYTHON_REMOVED, 'environment-python-removed',
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
-          'then click Retry installation.',
+          'then click "Retry installation".',
           '可能被安全软件隔离了。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
         # Windows refuses PyTorch's unsigned DLLs under Smart App Control; reinstalling changes nothing.
         (r'WinError 4551|Application Control policy has blocked', 'app-control',

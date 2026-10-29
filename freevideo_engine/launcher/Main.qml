@@ -444,6 +444,7 @@ ApplicationWindow {
                         id: failureBody; x: 18; y: 18; width: parent.width - 36; spacing: 10
                         FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
+                        FText { visible: !!s.failure.note; text: s.failure.note || ""; color: theme.muted; Layout.fillWidth: true }
                         // What each download source returned: one short line per source.
                         FText { objectName: "failureSources"; visible: !!s.failure.sources; text: sourceLines(s.failure.sources); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         TextEdit {
