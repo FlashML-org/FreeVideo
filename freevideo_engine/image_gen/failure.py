@@ -56,7 +56,7 @@ _MPS_MEMORY = re.compile(r'MPS backend out of memory', re.I)
 _LIMIT = 16 * 1024
 # On a Mac the GPU's memory is the machine's: the same failure, in its words.
 UNIFIED_MESSAGE_ZH = {'no_memory': '内存不够，最小尺寸也没能生成。关掉其他程序后再试。'}
-HOST_MESSAGE_ZH = '电脑内存或虚拟内存不够，模型没能载入。关掉其他程序，或调大系统的虚拟内存后再试。'
+HOST_MESSAGE_ZH = '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。'
 
 
 def host_memory_shortage(error):

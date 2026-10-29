@@ -408,7 +408,7 @@ def with_reason(error):
 
 def build(code, *, details=None, request=None, validation=False, message=None, next_action=None,
           action_required=True, retry_after_seconds=None, owner=None, kind=None, stage='request', resumable=True,
-          report_id=None):
+          report_id=None, memory=None):
     code = code if code in ERRORS else 'internal_error'
     _, retryable, default_message, _ = ERRORS[code]
     action = recovery(code, kind=kind, stage=stage, resumable=resumable)
@@ -422,6 +422,8 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
                   docs='/freevideo/agent/v1/guide#errors')
     if kind == 'image':
         result.update(image_failure(code, report_id))
+        if code == 'no_memory' and memory == 'host':
+            result['memory'] = 'host'
     if action_required:
         result['next'] = next_action if validation and next_action else action
     if code == 'busy':

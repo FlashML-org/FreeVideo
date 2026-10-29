@@ -1007,7 +1007,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             // A picture takes seconds: the same quiet line while it is made, then the picture.
             const card = VIDEOS.includes(job.kind || 'generate') || (['image', 'production', 'cast'].includes(job.kind) && !WORKING.includes(job.status));
             const next = card ? jobMode(job) + (jobMode(job) === 'done' ? `:${job.play}:${job.thumbnail}:${job.work}`
-                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}` : '')
+                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}:${job.error?.memory || ''}` : '')
                 : WORKING.includes(job.status) ? 'quiet' : 'none';
             if (next !== mode) {
                 mode = next; item.dataset.job = job.id; item.dataset.mode = next.split(':')[0]; item.hidden = next === 'none';
@@ -1024,7 +1024,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 else if (next.startsWith('failed') && job.kind === 'image') {
                     // Picture failures name their step with the picture's own report card.
                     const host = el('div');
-                    renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id}, t,
+                    renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
+                        memory: job.error?.memory}, t,
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options)});
                     item.replaceChildren(host);
                     if (retry) item.append(press('fv-chat-retry', t('Retry', '重试'), retry));

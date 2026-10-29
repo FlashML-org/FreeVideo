@@ -49,7 +49,7 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
 }
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
-    fitted: info.fitted || null,
+    fitted: info.fitted || null, memory: info.memory || '',
 });
 
 export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThis)) {
@@ -177,8 +177,8 @@ export function imageGenError(code, info, t) {
     const say = (en, zh) => t(...memoryWords([en, zh], info?.unified));
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
     if (code === 'no_memory' && info?.memory === 'host')
-        return t('Not enough system memory or virtual memory to load the model. Close other programs, or enlarge the system virtual memory, then try again.',
-            '电脑内存或虚拟内存不够，模型没能载入。关掉其他程序，或调大系统的虚拟内存后再试。');
+        return t('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system settings, then try again.',
+            '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。');
     if (code === 'no_memory') {
         // Where it ran out decides what helps: the reference pictures are read at a fixed size,
         // so a smaller canvas does not change that stage.
@@ -410,9 +410,9 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     let state = {info: null, checking: false, running: false, job: null, fraction: 0, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
-    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: ''}
+    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
         : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '',
-            ...(error.fitted ? {fitted: error.fitted} : {})};
+            memory: error.memory || '', ...(error.fitted ? {fitted: error.fitted} : {})};
     const cancelJob = job => Promise.resolve().then(() => client.cancel(job)).catch(() => {});
     const forget = () => { try { store?.clear(); } catch { /* the job is only not resumed after a reload */ } };
     function scheduleInfo() {
@@ -469,7 +469,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         if (state.running || disposed || !request.prompt.trim() || !state.info?.installed) return;
         const current = ++epoch;
         // A picture that is edited sends its reference images first; there is no job to report on yet.
-        emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
         try {
             const {context, images = [], mask} = await prepare(request, alive);
@@ -492,7 +492,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     function resume({job, context, withImages = false}) {
         if (state.running || disposed || !job || !context) return false;
         const current = ++epoch;
-        emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         track(current, job, context, withImages, true);
         return true;
     }
@@ -500,16 +500,16 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         ++epoch; unschedule(timer); timer = null;
         const job = state.job;
         forget();
-        emit({running: false, job: null, stage: '', fraction: 0, error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: false, job: null, stage: '', fraction: 0, error: '', report_id: null, memory: '', waiting: '', fitted: null});
         return job ? cancelJob(job) : Promise.resolve();
     }
     // Start or pause the download of the image models; the reply is the new state, then polling follows it.
     async function pack(action) {
-        try { const info = await (action === 'cancel' ? client.packCancel() : client.packInstall()); if (!disposed) emit({info, error: '', report_id: null}); }
+        try { const info = await (action === 'cancel' ? client.packCancel() : client.packInstall()); if (!disposed) emit({info, error: '', report_id: null, memory: ''}); }
         catch (error) { if (!disposed) emit(failed(error)); }
         finally { if (!disposed) scheduleInfo(); }
     }
-    return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null}), state: () => state,
+    return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null, memory: ''}), state: () => state,
         dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; return cancel(); }};
 }
 
@@ -790,7 +790,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         action.hidden = !!missing && !pack;
         const percent = Math.floor(state.fraction * 100) + '%';
         if (state.error && !promptRequired) {
-            const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}`;
+            const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;
             if (mounted.failureKey !== failureKey) {
                 renderImageFailure(note, state, t, {productVersion, fetchApi});
                 mounted.failureKey = failureKey;
