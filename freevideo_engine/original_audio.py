@@ -39,6 +39,13 @@ class AudioUseError(ValueError):
         return dict(code=self.code, message=self.message_en, message_zh=self.message_zh)
 
 
+def audio_use_option(value):
+    """Audio use for the Media and Reference widgets: missing or empty means Reference, as before the
+    widget existed. Workflows saved before it existed hold the panel's '' in its position; any other
+    value is checked as given (fields)."""
+    return 'reference' if value is None or value == '' else value
+
+
 def fields(row):
     """Sparse canonical fields: explicit reference and omission are identical."""
     if not isinstance(row, dict):

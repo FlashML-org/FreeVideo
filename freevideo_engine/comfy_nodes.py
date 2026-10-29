@@ -7,6 +7,7 @@ from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 from . import comfy_bridge, workflow_repairs
 from .comfy_continuation import node_frames, optional_text, part_steps, request_options
 from .default_prompt import DEFAULT_PROMPT
+from .original_audio import audio_use_option
 
 References = io.Custom('FREEVIDEO_REFERENCES')
 LoRAs = io.Custom('FREEVIDEO_LORAS')
@@ -71,13 +72,6 @@ def upscale_option(value):
         return {}
     text = value if isinstance(value, str) else '%g' % value
     return {'upscale_factor': float(text)} if text in UPSCALE_OPTIONS and text != '2' else {}
-
-
-def audio_use_option(value):
-    """Audio use for the Media and Reference widgets: missing or empty means Reference, as before the
-    widget existed. Workflows saved before it existed hold the panel's '' in its position; any other
-    value is checked as given (original_audio.fields)."""
-    return 'reference' if value is None or value == '' else value
 
 
 class FreeVideoGenerate(io.ComfyNode):

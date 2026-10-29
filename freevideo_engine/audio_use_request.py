@@ -2,7 +2,7 @@
 from copy import deepcopy
 import json
 
-from .original_audio import AudioUseError, fields, inspect, canvas_for, original
+from .original_audio import AudioUseError, audio_use_option, fields, inspect, canvas_for, original
 from .chain_plan import MAX_SECONDS
 
 
@@ -49,11 +49,11 @@ def graph_audio(prompt, node):
                     options = fields(dict(asset, kind=media_kind(asset.get('file', ''))))
                     if options:
                         rows.append(dict(kind='audio', file=asset['file'], **options))
-            use = inputs.get('audio_use', 'reference')
+            use = audio_use_option(inputs.get('audio_use'))
             if isinstance(use, str) and fields(dict(kind='audio', use=use)):
                 rows.append(dict(kind='audio', use='original'))
         elif kind == 'FreeVideoReference':
-            use = inputs.get('use', 'reference')
+            use = audio_use_option(inputs.get('use'))
             if isinstance(use, str) and fields(dict(kind='audio', use=use)):
                 rows.append(dict(kind='audio', use='original'))
     original(dict(references=rows))
