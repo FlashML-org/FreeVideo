@@ -118,7 +118,7 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.14 | 1168&nbsp;s | 0.4.14 | Already&nbsp;optimal |
 | 5070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 11.5&nbsp;s | Light | 0.4.17 | 1003&nbsp;s | 0.4.24 | 900&nbsp;s&nbsp;(−100&nbsp;s) |
 | 3070&nbsp;Ti | 8&nbsp;GB | 64&nbsp;GB | 1344×768 | 16.5&nbsp;s | Light | 0.4.17 | 1623&nbsp;s | 0.4.24 | 1570&nbsp;s&nbsp;(−50&nbsp;s) |
-| 3060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 10&nbsp;s | Light⁵ | 0.4.18 | 843&nbsp;s | 0.4.24 | 810&nbsp;s&nbsp;(−33&nbsp;s) |
+| 3060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 10&nbsp;s | Light | 0.4.18 | 843&nbsp;s | 0.4.24 | 810&nbsp;s&nbsp;(−33&nbsp;s) |
 | 5060 | 8&nbsp;GB | 32&nbsp;GB | 672×1184 | 11.5&nbsp;s | Light | 0.4.18 | 707&nbsp;s | 0.4.24 | 680&nbsp;s&nbsp;(−27&nbsp;s) |
 | 5070&nbsp;Ti&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.23 | 373&nbsp;s¹³ | 0.4.23 | Thermal‑limited¹ |
 | 5060 | 8&nbsp;GB | 48&nbsp;GB | 768×1344 | 14&nbsp;s | Medium | 0.3.25 | 3474&nbsp;s | 0.3.25 | Already&nbsp;optimal |

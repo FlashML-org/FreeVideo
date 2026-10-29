@@ -118,7 +118,7 @@
 | 4060&nbsp;笔⁠记⁠本 | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | 轻⁠量 | 0.4.14 | 1168&nbsp;s | 0.4.14 | 已⁠是⁠最⁠优 |
 | 5070&nbsp;笔⁠记⁠本 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 11.5&nbsp;s | 轻⁠量 | 0.4.17 | 1003&nbsp;s | 0.4.24 | 900&nbsp;s⁠（−100&nbsp;s⁠） |
 | 3070&nbsp;Ti | 8&nbsp;GB | 64&nbsp;GB | 1344×768 | 16.5&nbsp;s | 轻⁠量 | 0.4.17 | 1623&nbsp;s | 0.4.24 | 1570&nbsp;s⁠（−50&nbsp;s⁠） |
-| 3060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 10&nbsp;s | 轻⁠量⁵ | 0.4.18 | 843&nbsp;s | 0.4.24 | 810&nbsp;s⁠（−33&nbsp;s⁠） |
+| 3060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 10&nbsp;s | 轻⁠量 | 0.4.18 | 843&nbsp;s | 0.4.24 | 810&nbsp;s⁠（−33&nbsp;s⁠） |
 | 5060 | 8&nbsp;GB | 32&nbsp;GB | 672×1184 | 11.5&nbsp;s | 轻⁠量 | 0.4.18 | 707&nbsp;s | 0.4.24 | 680&nbsp;s⁠（−27&nbsp;s⁠） |
 | 5070&nbsp;Ti&nbsp;笔⁠记⁠本 | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | 轻⁠量 | 0.4.23 | 373&nbsp;s¹³ | 0.4.23 | 散⁠热⁠受⁠限¹ |
 | 5060 | 8&nbsp;GB | 48&nbsp;GB | 768×1344 | 14&nbsp;s | 标⁠准 | 0.3.25 | 3474&nbsp;s | 0.3.25 | 已⁠是⁠最⁠优 |
