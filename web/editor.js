@@ -1500,8 +1500,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         initializing = false; savedContent = content(state.record); player.refresh();
         loaded = true; settleGenbar();
         updateTop(); updateTransport();
-        if (lastMissing && !state.record.id) notify(t('The last edit could not be found, so a blank edit is open. Click the edit name at the top to open another edit.',
-            '找不到上次的剪辑，已打开空白剪辑。点击顶部的剪⁠辑⁠名可打开其他剪辑。'));
+        if (lastMissing && !state.record.id) {
+            // Point at the name menu only when it lists another edit to open.
+            store.projects().catch(() => ({})).then(rows => {
+                if (closing || disposed) return;
+                const others = Array.isArray(rows) && rows.some(row => row.id !== state.record.id);
+                notify(t('The last edit could not be found, so a blank edit is open.', '找不到上次的剪辑，已打开空白剪辑。')
+                    + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪⁠辑⁠名可打开其他剪辑。') : ''));
+            });
+        }
         const [trackResult, componentResult] = await componentsReady; if (closing || disposed) return;
         // Optional progress components may fail without taking the tracks with them.
         if (componentResult.status === 'rejected') error(componentResult.reason, null, undefined, 'components');
