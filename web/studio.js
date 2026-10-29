@@ -1740,7 +1740,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         modeHelp.textContent = multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。');
-        cancelCurrent.hidden = !queueState?.running && !chainController?.active;
+        // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
+        cancelCurrent.hidden = !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all));
         cancelCurrent.disabled = cancelling;
         cancelCurrent.textContent = cancelling ? t('Cancelling…', '正在取消…') : t('Cancel current', '取消当前');
         stopLoop.hidden = !queueState?.looping;
@@ -1771,7 +1772,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function renderQueue(state) {
         if (disposed) return;
         queueState = state;
-        if (chainController?.active) { queueActions.hidden = false; updateRunButton(); return; }
+        if (chainController?.active && !state.running_all) { queueActions.hidden = false; updateRunButton(); return; }
         const active = state.running || state.pending[0];
         activePrompt = active?.id || null;
         const wasBusy = busy;
@@ -1782,28 +1783,50 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The right-hand frame belongs to the submitted video. Draft edits on
         // the left must never reshape a video currently being generated.
         if (Number.isFinite(g?.width) && Number.isFinite(g?.height)) previewSize(g.width, g.height);
-        queueToggle.textContent = t(`Queued · ${state.pending.length}`, `排队 ${state.pending.length} 个`);
-        queueDetails.hidden = state.pending.length === 0;
+        const queueRows = state.running_all ? [...state.running_all, ...state.pending] : state.pending;
+        const running = state.running_all?.length || 0, waiting = state.pending.length;
+        queueToggle.textContent = !state.running_all ? t(`Queued · ${waiting}`, `排队 ${waiting} 个`)
+            : [running && t(`${running} generating`, `生成中 ${running} 个`), waiting && t(`${waiting} queued`, `排队 ${waiting} 个`)]
+                .filter(Boolean).join(' · ');
+        queueDetails.hidden = queueRows.length === 0;
         queueActions.hidden = !busy && !state.looping && resumeChain.hidden;
-        const signature = JSON.stringify(state.pending.map(row => [row.id, row.inputs.width, row.inputs.height]));
+        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
+            ...(state.running_all ? [state.running_all.includes(row), row.progress?.sequence] : [])]));
         if (queueList.dataset.signature !== signature) {
             queueList.dataset.signature = signature; queueList.replaceChildren();
-            state.pending.forEach((row, index) => {
+            queueRows.forEach(row => {
+                const executing = Boolean(state.running_all?.includes(row));
+                // Only waiting rows are numbered: the number is the place in the queue.
+                const index = state.pending.indexOf(row);
+                const size = `${row.inputs.width} × ${row.inputs.height}`;
                 const item = el('div', null, 'fv-queue-item');
                 item.dataset.id = row.id;
                 // Waiting videos often share every setting; the start of the prompt tells them apart.
                 const summary = String(row.inputs.text ?? '').replace(/\s+/g, ' ').trim();
                 const description = el('div', null, 'fv-queue-text');
                 if (summary) { const line = el('span', summary, 'fv-queue-summary'); line.title = summary; description.append(line); }
-                description.append(el('span', `${index + 1} · ${row.inputs.width} × ${row.inputs.height} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
-                const remove = button(t('Remove', '移除'), async () => {
+                description.append(el('span', executing ? `${size} · ${row.inputs.seconds} s`
+                    : `${index + 1} · ${size} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
+                if (executing) {
+                    const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
+                    bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
+                    bar.setAttribute('aria-label', t(`${size} · ${row.inputs.seconds} s`, `${size} · ${row.inputs.seconds} 秒`));
+                    const fraction = row.progress?.overall?.fraction;
+                    if (Number.isFinite(fraction)) {
+                        const percent = Math.min(100, Math.max(0, fraction * 100));
+                        fill.style.width = `${percent}%`; bar.setAttribute('aria-valuenow', String(Math.round(percent)));
+                    } else bar.dataset.indeterminate = 'true';
+                    bar.append(fill); description.append(bar);
+                }
+                const remove = button(executing ? t('Cancel', '取消') : t('Remove', '移除'), async () => {
                     remove.disabled = true;
                     try { await queueController.cancel(row.id); }
                     catch (error) { showQueueError(error); remove.disabled = false; }
                 }, 'fv-quiet');
-                remove.setAttribute('aria-label', t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
+                remove.setAttribute('aria-label', executing ? t(`Cancel ${size} · ${row.inputs.seconds} s`, `取消 ${size} · ${row.inputs.seconds} 秒`)
+                    : t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
                 item.append(description);
-                if (index > 0) {
+                if (!executing && index > 0) {
                     const first = button(t('Move to front', '排到最前'), async () => {
                         first.disabled = remove.disabled = true;
                         movedId = row.id;
@@ -2046,6 +2069,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { if (chainController.active) { chainController.refresh(); return; } failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; liveProgressAt = Date.now(); busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });
     const progressChanged = e => {
         if (String(e.detail.node) !== String(node.id)) return;
+        if (e.detail.task_id && activePrompt && e.detail.task_id !== activePrompt) return;
         if (chainController.progress(e.detail)) return;
         progress.updateReport(e.detail);
         if (['failed', 'cancelled'].includes(e.detail.phase) || e.detail.result) {
@@ -2063,6 +2087,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     window.addEventListener('freevideo-progress', progressChanged);
     cleanup.push(() => window.removeEventListener('freevideo-progress', progressChanged));
     listen('execution_error', e => {
+        if (e.detail?.task_id && activePrompt && e.detail.task_id !== activePrompt) return;
         if (chainController.active && String(e.detail?.node_id) === String(node.id)) { chainController.refresh(); return; }
         const seen = new Set(), pending = [node];
         while (pending.length) {

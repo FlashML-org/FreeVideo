@@ -48,6 +48,10 @@ class ComfyHost:
     def __init__(self, server):
         self.server = server
 
+    @property
+    def concurrent(self):
+        return getattr(self.server, '_freevideo_front', None) is not None
+
     def continued(self, prompt, node):
         """A continued part's media panel keeps only the pictures it uses (prompt is this submission's copy)."""
         link = prompt[node]['inputs'].get('media')
@@ -97,6 +101,9 @@ class ComfyHost:
         return output.is_relative_to(root) and output.is_file()
 
     def submit(self, prompt_id, prompt, extra_data):
+        front = getattr(self.server, '_freevideo_front', None)
+        if front is not None:
+            return front.submit_sync(prompt_id, prompt, extra_data)
         try:
             from comfy.cli_args import args
         except ImportError:
@@ -139,12 +146,13 @@ class ComfyHost:
                 raise RuntimeError('Prompt validation failed') from None
 
     def status(self, prompt_id):
+        front = getattr(self.server, '_freevideo_front', None)
         queue = self.server.prompt_queue
-        running, pending = queue.get_current_queue()
+        running, pending = front.current_queue() if front is not None else queue.get_current_queue()
         for rows, state in ((running, 'running'), (pending, 'pending')):
             if any(row[1] == prompt_id for row in rows):
                 return dict(state=state, error=None, output=None)
-        history = queue.get_history(prompt_id=prompt_id).get(prompt_id)
+        history = (front.history(prompt_id) if front is not None else queue.get_history(prompt_id=prompt_id)).get(prompt_id)
         if history is None:
             return dict(state='missing', error=None, output=None)
         status = history.get('status')
@@ -168,6 +176,9 @@ class ComfyHost:
         return dict(state='error', error=message or 'Prompt execution failed', output=None)
 
     def cancel(self, prompt_id, node):
+        front = getattr(self.server, '_freevideo_front', None)
+        if front is not None:
+            return front.cancel(prompt_id, node)
         from .comfy_progress import cancel_request
         import nodes
         return cancel_request(self.server.prompt_queue, prompt_id, node, nodes.interrupt_processing)
@@ -280,12 +291,37 @@ def report_fields(chain):
         if isinstance(value, str):
             return dict(type='block', id=value)
         return dict(type='work') if value is not None else None
-    return dict(index=chain['index'], count=chain['count'],
-                after=source(chain['after']), before=source(chain['before']))
+    value = dict(index=chain['index'], count=chain['count'],
+                 after=source(chain['after']), before=source(chain['before']))
+    if chain.get('_dispatch'):
+        value['freevideo_dispatch'] = deepcopy_dispatch(chain['_dispatch'])
+    return value
+
+
+def deepcopy_dispatch(dispatch):
+    from copy import deepcopy
+    return deepcopy({key: dispatch[key] for key in ('task_id', 'executor_id', 'device', 'logical_device')
+                     if key in dispatch})
+
+
+def execution_dispatch(server):
+    """Private workers receive context in the prompt, never a second durable runner."""
+    if server is None or not os.environ.get('FREEVIDEO_EXECUTOR_DEVICE'):
+        return None
+    running, _ = server.prompt_queue.get_current_queue()
+    row = next((row for row in running if row[1] == server.last_prompt_id), None)
+    return row[3].get('freevideo_dispatch') if row is not None else None
 
 
 def block_context(server, node_id):
     try:
+        dispatch = execution_dispatch(server)
+        if dispatch is not None:
+            chain = dispatch.get('chain_context')
+            if dispatch.get('chain_node', str(node_id)) != str(node_id):
+                return None
+            return dict(chain, _prompt_id=server.last_prompt_id, _remote=True,
+                        _dispatch=deepcopy_dispatch(dispatch)) if chain is not None else None
         if RUNNER is not None and server is not None:
             prompt_id = server.last_prompt_id
             chain = RUNNER.context(prompt_id, node_id)
@@ -297,6 +333,16 @@ def block_context(server, node_id):
 
 def block_finished(chain, node_id, output, report_id, continuation=None):
     try:
+        if chain is not None and chain.get('_remote'):
+            from server import PromptServer
+            data = dict(
+                prompt_id=chain['_prompt_id'], task_id=chain['_dispatch']['task_id'],
+                node=str(node_id), output=output, report_id=report_id, continuation=continuation)
+            dispatch = execution_dispatch(PromptServer.instance)
+            if dispatch is not None:
+                dispatch.setdefault('finished', {})[str(node_id)] = data
+            PromptServer.instance.send_sync('freevideo_chain_finished', data)
+            return
         if RUNNER is not None and chain is not None:
             # Capture the executing attempt, so a late callback cannot finish a retry.
             RUNNER.finished(chain['_prompt_id'], node_id, output, report_id, continuation)
@@ -322,7 +368,7 @@ def register(host_factory=None):
     from server import PromptServer
     from .comfy_bridge import installation, installation_root
     server = PromptServer.instance
-    if server is None or getattr(server, '_freevideo_chain', False):
+    if server is None or getattr(server, '_freevideo_chain', False) or os.environ.get('FREEVIDEO_EXECUTOR_DEVICE'):
         return
     fake = host_factory is not None
     root = installation_root() if fake else installation()[0]

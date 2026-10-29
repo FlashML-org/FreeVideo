@@ -444,6 +444,12 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('dependencies', ['A runtime component could not load', '运行组件无法加载'],
             ['A component needed to run FreeVideo could not load.', 'FreeVideo 所需的运行组件未能加载。'],
             ['Select "Repair" in the launcher under Settings > Environment. If it still fails, export the report and submit it in a GitHub issue.', '可在启动器“设置 → 环境”里点“修复”。仍然失败时，请导出报告并提交到 GitHub issue。']);
+    // Multi-GPU executors stopped: every one of them, or twice under the same task
+    // (freevideo_engine/comfy_front.py NO_EXECUTOR, EXITED_AGAIN).
+    if (/every GPU process has stopped|GPU process exited again while running this task/i.test(text))
+        return row('executors', ['Generation stopped unexpectedly', '生成意外中断'],
+            ['', ''],
+            ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
     return row('unknown', ['Generation stopped', '生成已停止'],
         ['', ''], ['', '']);
 }

@@ -13,6 +13,29 @@ def with_private_compiler(root, env):
     return env
 
 
+EXECUTOR_DEVICE = 'FREEVIDEO_EXECUTOR_DEVICE'
+POOL_CONTROL = 'FREEVIDEO_POOL_CONTROL'
+
+
+def executor_device(environ=None):
+    return (os.environ if environ is None else environ).get(EXECUTOR_DEVICE, '')
+
+
+def control_process(environ=None):
+    env = os.environ if environ is None else environ
+    return not executor_device(env) and env.get(POOL_CONTROL) == '1'
+
+
+def configure_control(command, environment):
+    """Configure before Comfy imports Torch; leave the single-device launch intact."""
+    from .gpu_pool import pool_enabled
+    if executor_device(environment) or not pool_enabled(environment):
+        return command, environment
+    env = dict(environment, FREEVIDEO_POOL_CONTROL='1', FREEVIDEO_BACKGROUND_COMPILE='off',
+               FREEVIDEO_PROMPT_PRESTART='off')
+    return [*command, '--cpu'], env
+
+
 def isolated_environment(root, source, environ=None):
     """Remove inherited Python/package targets only in the engine's child."""
     from .proxy import inherited

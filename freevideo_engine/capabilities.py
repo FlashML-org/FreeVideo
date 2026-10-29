@@ -298,7 +298,9 @@ def _admit(machine, width, height, frames, steps, two_pass, task='t2va', refine=
             return request, code, None
         hardware = Hardware(machine['name'], machine['cap'], machine['vram'], machine['vram_free'],
                             machine['ram'], machine['ram_available'], system=machine['system'])
-        options = dict(precision=machine['precision'], attention='sage2/sage2', available_backends={'sage2'})
+        # SageAttention 2 has no sm100 kernels (data-centre Blackwell); those cards run torch-flash.
+        backend = 'torch-flash' if machine['cap'][0] == 10 else 'sage2'
+        options = dict(precision=machine['precision'], attention=backend + '/' + backend, available_backends={backend})
         choose(hardware, canvas=canvas, stage='encoding', **options)
         final = choose(hardware, canvas=dict(canvas, step_cache=step_cache) if step_cache else canvas, **options)
         if final.engine.get('step_cache'):

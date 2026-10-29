@@ -707,9 +707,25 @@ function showStudio(node) {
 const progressConnection = createProgressConnection(api, message => {
     const node = app.graph?.getNodeById(message.node);
     if (!node?.freevideoShowProgress) return false;
+    if (message.task_id) {
+        const rows = node.freevideoTaskProgress ||= new Map();
+        rows.set(message.task_id, message);
+        while (rows.size > 32) rows.delete(rows.keys().next().value);
+        node.freevideoProgressTask ||= message.task_id;
+        const ended = message.result || ['failed', 'cancelled'].includes(message.phase);
+        if (node.freevideoProgressTask !== message.task_id) {
+            if (ended) rows.delete(message.task_id);
+            window.dispatchEvent(new CustomEvent('freevideo-progress', {detail: message}));
+            return;
+        }
+        if (ended) { node.freevideoProgressTask = null; node.freevideoTaskProgress.delete(message.task_id); }
+    }
     node.freevideoReportProgress?.(message);
     if (message.result) node.freevideoShowResult({freevideo_summary: [message.result]});
-    else if (['failed', 'cancelled'].includes(message.phase)) node.freevideoStopProgress();
+    else if (['failed', 'cancelled'].includes(message.phase)) {
+        node.freevideoStopProgress();
+        if (message.task_id) restoreRunningTask(node);
+    }
     else node.freevideoShowProgress(message);
     window.dispatchEvent(new CustomEvent('freevideo-progress', {detail: message}));
 });
@@ -920,8 +936,13 @@ app.registerExtension({
 });
 
 api.addEventListener('executed', event => {
-    const {node: nodeId, prompt_id, output} = event.detail || {};
+    const {node: nodeId, prompt_id, output, task_id} = event.detail || {};
     const node = app.graph?.getNodeById(nodeId);
+    // Another task owns this node's display: its result is not this task's to show.
+    if (task_id && node && node.freevideoProgressTask && node.freevideoProgressTask !== task_id) {
+        node.freevideoTaskProgress?.delete(task_id); return;
+    }
+    if (task_id && node) { node.freevideoTaskProgress?.delete(task_id); if (node.freevideoProgressTask === task_id) node.freevideoProgressTask = null; }
     if (prompt_id && node?.freevideoShowResult && output?.freevideo_summary?.[0]) {
         node.freevideoShowResult({...output, freevideo_summary: [{...output.freevideo_summary[0], request_id: prompt_id}]});
     }
@@ -955,14 +976,45 @@ api.addEventListener('execution_error', event => {
                 if (link) pending.push(node.graph?.getNodeById(link.origin_id));
             }
         }
-        if (seen.has(String(event.detail?.node_id))) node.freevideoShowFailure(event.detail);
+        if (!seen.has(String(event.detail?.node_id))) continue;
+        const task = event.detail?.task_id;
+        if (task) {
+            // A failure of one task is not a failure of another task on the same node.
+            if (node.freevideoProgressTask && node.freevideoProgressTask !== task) { node.freevideoTaskProgress?.delete(task); continue; }
+            node.freevideoTaskProgress?.delete(task);
+            if (node.freevideoProgressTask === task) node.freevideoProgressTask = null;
+            node.freevideoShowFailure(event.detail);
+            restoreRunningTask(node);
+        } else node.freevideoShowFailure(event.detail);
     }
 });
 api.addEventListener('executing', event => {
     const id = typeof event.detail === 'object' ? event.detail?.node : event.detail;
-    if (id != null) {
+    const task = typeof event.detail === 'object' ? event.detail?.task_id : undefined;
+    if (id == null && task) {
+        // One task ending is not the end of the others on the same node.
+        for (const node of app.graph?._nodes || []) {
+            const rows = node.freevideoTaskProgress, shown = node.freevideoProgressTask;
+            rows?.delete(task);
+            if (shown === task) {
+                node.freevideoProgressTask = null;
+                node.freevideoStopProgress?.();
+                restoreRunningTask(node);
+            } else if (!shown && !rows?.size) node.freevideoStopProgress?.();
+        }
+    } else if (id != null) {
         const node = app.graph?.getNodeById(id); node?.freevideoClearFailure?.();
         if (!node?.freevideoProgress) node?.freevideoShowProgress?.({label: text('Preparing video', '正在准备视频'), reset: true, new_request: true});
         progressConnection.refresh();
     } else for (const node of app.graph?._nodes || []) node.freevideoStopProgress?.();
 });
+
+// Show the progress of a task that is still running on this node, if any.
+function restoreRunningTask(node) {
+    const rows = node.freevideoTaskProgress;
+    if (!rows?.size || !node.freevideoShowProgress) return false;
+    const [task, message] = [...rows].pop();
+    node.freevideoProgressTask = task;
+    node.freevideoShowProgress(message);
+    return true;
+}

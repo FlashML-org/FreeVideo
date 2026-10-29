@@ -190,6 +190,10 @@ class FreeVideoGenerate(io.ComfyNode):
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
                 step_cache='none', upscale_factor='2', allow_empty_prompt=False):
+        from .comfy_environment import control_process
+        from .gpu_pool import pool_enabled
+        if control_process() and pool_enabled():
+            raise RuntimeError('Generation requires a dispatched executor')
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
@@ -389,7 +393,8 @@ class FreeVideoGenerate(io.ComfyNode):
             gpu = None
         OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
                        agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
-        if target and not result_reused[0]:
+        from .comfy_environment import executor_device
+        if target and not result_reused[0] and not executor_device():
             client = server.client_id if server is not None else None
             def warmed(value):
                 if server is not None:
@@ -565,6 +570,9 @@ class FreeVideoFrames(io.ComfyNode):
 def start_background_compile():
     """Compile recent request shapes once this session is idle; see background_compile."""
     import os
+    from .comfy_environment import control_process, executor_device
+    if control_process() or executor_device():
+        return False
     from server import PromptServer
     from .background_compile import COMPILE, OWED_DELAY, START_DELAY, compile_owed
     if os.environ.get('FREEVIDEO_BACKGROUND_COMPILE', 'auto').lower() in ('0', 'off', 'false'):
@@ -588,6 +596,12 @@ def start_background_compile():
 
 class FreeVideoExtension(ComfyExtension):
     async def get_node_list(self):
+        from .comfy_environment import control_process
+        if control_process():
+            from server import PromptServer
+            from .comfy_pool import register_pool
+            await register_pool(PromptServer.instance, root=comfy_bridge.installation_root(),
+                                source=comfy_bridge.source_root())
         from .comfy_residency import install
         import comfy.model_management
         install(comfy.model_management)

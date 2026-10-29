@@ -1,12 +1,17 @@
+// A message is stale when the same stream already delivered an equal or later sequence.
+export function isStaleProgress(previous, message) {
+    return Number.isInteger(message?.sequence) && Number.isInteger(previous?.sequence) && previous.stream_id === message.stream_id
+        && previous.sequence >= message.sequence;
+}
 // WebSocket updates plus a small snapshot recovery path for reloads/new tabs.
 export function createProgressConnection(api, consume, now = () => Date.now()) {
     const seen = new Map();
     let pending = null, timer = null;
     function receive(message) {
         if (!message || message.node == null) return;
-        const key = String(message.node), previous = seen.get(key);
-        if (Number.isInteger(message.sequence) && previous?.stream_id === message.stream_id
-            && previous.sequence >= message.sequence) return;
+        const identity = message.task_id || message.prompt_id;
+        const key = identity ? JSON.stringify([identity, String(message.node)]) : String(message.node), previous = seen.get(key);
+        if (isStaleProgress(previous, message)) return;
         // The graph may still be loading. Do not acknowledge an undelivered
         // snapshot; the next poll restores it once the node exists.
         const age = Number.isFinite(message.age_seconds) ? Math.max(0, message.age_seconds) : 0;

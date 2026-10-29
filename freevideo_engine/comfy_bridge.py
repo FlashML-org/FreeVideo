@@ -6,6 +6,7 @@ This bridge only retains a request, supervises that CLI and forwards progress.
 import json
 import logging
 import math
+import contextlib
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +20,31 @@ from . import processes
 from .geometry import geometry
 from .comfy_environment import isolated_environment
 from .monitoring import save
+
+
+@contextlib.contextmanager
+def _device_generation_lease(environment):
+    """An executor of a multi-GPU pool holds its own device's lease, not the shared installation lock.
+
+    The child inherits the device lease; hosts without a pool leave the environment alone and
+    the child takes the installation lock itself, as before.
+    """
+    from .comfy_environment import executor_device
+    uuid = executor_device(environment)
+    if not uuid:
+        yield ()
+        return
+    from types import SimpleNamespace
+    from .gpu_pool import child_lease_environment, generation_lease
+    from .locking import LOCK_ENV
+    device = SimpleNamespace(uuid=uuid)
+    with generation_lease(device, wait_seconds=3) as descriptor:
+        os.set_inheritable(descriptor, True)
+        environment.update(child_lease_environment(device), **{LOCK_ENV: str(descriptor)})
+        try:
+            yield (descriptor,)
+        finally:
+            environment.pop(LOCK_ENV, None)
 
 
 def _timing_seconds(value):
@@ -852,6 +878,22 @@ def installation(source=None, environ=None):
         raise ValueError('The FreeVideo installation was moved. Rerun setup in the selected folder.')
     if not io_path(machine['python']).is_file():
         raise ValueError('The FreeVideo Python environment is missing. Rerun setup in %s.' % root)
+    from .comfy_environment import executor_device
+    device_id = executor_device(environ)
+    if device_id:
+        from .gpu_pool import enumerate_devices
+        env = os.environ if environ is None else environ
+        if env.get('CUDA_VISIBLE_DEVICES') != device_id:
+            raise ValueError('Executor device binding changed')
+        device = next((item for item in enumerate_devices(env) if item.uuid == device_id), None)
+        if device is None:
+            raise ValueError('Executor device is unavailable')
+        machine = dict(machine, gpu_uuid=device.uuid, gpu_name=device.name)
+        if isinstance(machine.get('hardware'), dict):
+            hardware = dict(machine['hardware'], gpu_uuid=device.uuid, gpu_name=device.name,
+                            capability=device.capability, vram_total=device.total_bytes)
+            hardware.pop('vram_free', None)
+            machine['hardware'] = hardware
     return root, plain_data(machine)
 
 
@@ -1184,6 +1226,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
              step_cache=None, upscale_factor=2, allow_empty_prompt=False):
+    from .comfy_environment import control_process
+    if control_process(environ):
+        raise RuntimeError('Generation requires a dispatched executor')
     from .tiers import STEP_CACHES
     from .two_pass import SCALES
     if upscale_factor not in SCALES:
@@ -1559,9 +1604,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 environment.pop(ENV, None)
             else:
                 environment[ENV] = OWNER.start(root, source, machine['python'], environment, busy=True)
-        with (run / 'generate.log').open('wb') as log:
+        with _device_generation_lease(environment) as held, (run / 'generate.log').open('wb') as log:
             process = processes.popen(command, env=environment, cwd=source, stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
+                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True, pass_fds=held)
             state.update(status='running', pid=process.pid)
             save(run / 'comfy-request.json', state)
             while process.poll() is None:
