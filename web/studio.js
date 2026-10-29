@@ -2122,7 +2122,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(listenDialogKey(dialog, 'keydown', escape));
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
-    dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
+    // Escape first closes the recent videos panel of a narrower window, then the studio.
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!recent.dismiss()) closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,

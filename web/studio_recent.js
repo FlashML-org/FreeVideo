@@ -18,24 +18,68 @@ export function createRecentVideos(t, {body, onSelect}) {
     element.append(heading, list);
     const toggle = el('button', null, 'fv-recent-toggle'); toggle.type = 'button';
     toggle.append(icon('sidebar')); toggle.setAttribute('aria-controls', element.id);
-    let expanded = true, selected = null, disposed = false, request = null, resizeTimer = null;
+    element.tabIndex = -1;
+    // Wide windows give the list its own column, remembered across visits. Narrower windows show it
+    // as a panel over the preview; it starts closed each time, so a saved column never covers the picture.
+    const wide = window.matchMedia('(min-width:1680px)');
+    let expanded = true, open = false, selected = null, disposed = false, request = null, resizeTimer = null;
     const cards = new Map();
     try { expanded = localStorage.getItem(KEY) !== 'false'; } catch {}
     function visibility() {
+        const shown = wide.matches ? expanded : open;
         body.dataset.recent = String(expanded);
-        toggle.setAttribute('aria-pressed', String(expanded));
-        const label = expanded ? t('Hide recent videos', '收起最近作品') : t('Show recent videos', '显示最近作品');
+        body.dataset.recentPanel = String(!wide.matches && open);
+        // The column is a pressed state of the layout; the panel is a disclosure that opens and closes.
+        toggle.setAttribute(wide.matches ? 'aria-pressed' : 'aria-expanded', String(shown));
+        toggle.removeAttribute(wide.matches ? 'aria-expanded' : 'aria-pressed');
+        const label = shown ? t('Hide recent videos', '收起最近作品') : t('Show recent videos', '显示最近作品');
         toggle.title = label; toggle.setAttribute('aria-label', label);
-        element.inert = !expanded; element.setAttribute('aria-hidden', String(!expanded));
+        element.inert = !shown; element.setAttribute('aria-hidden', String(!shown));
     }
     visibility();
+    // The panel hangs below the preview's tools, its right edge in line with theirs.
+    function place() {
+        const tools = toggle.parentElement?.getBoundingClientRect(), frame = body.getBoundingClientRect();
+        if (!tools) return;
+        body.style.setProperty('--fv-recent-top', `${Math.max(8, Math.round(tools.bottom - frame.top + 8))}px`);
+        body.style.setProperty('--fv-recent-right', `${Math.max(8, Math.round(frame.right - tools.right))}px`);
+    }
+    function showPanel() {
+        if (open || wide.matches) return;
+        place(); open = true; visibility();
+        const card = cards.get(selected) || cards.values().next().value;
+        (card || element).focus({preventScroll: true});
+        card?.scrollIntoView({block: 'nearest'});
+        element.scrollIntoView({block: 'nearest'});
+    }
+    // Returns whether a panel was open. Escape and a chosen video hand focus back to the button.
+    function hidePanel({restoreFocus = false} = {}) {
+        if (!open) return false;
+        open = false; visibility();
+        if (restoreFocus) toggle.focus({preventScroll: true});
+        return true;
+    }
     toggle.onclick = () => {
+        if (!wide.matches) { if (open) hidePanel(); else showPanel(); return; }
         // Let fitPreview follow the 200 ms grid change without a second size transition.
         clearTimeout(resizeTimer); body.classList.add('fv-recent-resizing');
         resizeTimer = setTimeout(() => body.classList.remove('fv-recent-resizing'), 250);
         expanded = !expanded; visibility();
         try { localStorage.setItem(KEY, String(expanded)); } catch {}
     };
+    // A press anywhere else, or focus moving elsewhere, closes the panel without taking focus.
+    const outside = event => {
+        if (open && !element.contains(event.target) && !toggle.contains(event.target)) hidePanel();
+    };
+    element.addEventListener('focusout', event => {
+        const next = event.relatedTarget;
+        if (open && next && !element.contains(next) && next !== toggle) hidePanel();
+    });
+    document.addEventListener('pointerdown', outside, true);
+    const layout = () => { open = false; visibility(); };
+    const resized = () => { if (open) place(); };
+    wide.addEventListener('change', layout);
+    window.addEventListener('resize', resized);
     const thumbnails = new IntersectionObserver(entries => {
         for (const {target, isIntersecting} of entries) if (isIntersecting) {
             target.src = target.dataset.src; thumbnails.unobserve(target);
@@ -59,7 +103,7 @@ export function createRecentVideos(t, {body, onSelect}) {
                 const card = el('button', null, 'fv-recent-card'); card.type = 'button';
                 const date = videoTimestamp(row, t), dimensions = videoDimensions(row);
                 card.setAttribute('aria-label', `${date} · ${dimensions}`);
-                card.onclick = () => onSelect(row);
+                card.onclick = () => { onSelect(row); hidePanel({restoreFocus: true}); };
                 const picture = el('div', null, 'fv-library-picture');
                 const image = el('img'); image.alt = ''; image.decoding = 'async';
                 image.dataset.src = videoThumbnailURL(row);
@@ -91,8 +135,10 @@ export function createRecentVideos(t, {body, onSelect}) {
     window.addEventListener('freevideo-result', completed);
     window.addEventListener('freevideo-library-deleted', deleted);
     window.addEventListener('freevideo-library-restored', refresh);
-    return {element, toggle, refresh, setSelected, dispose() {
+    return {element, toggle, refresh, setSelected, dismiss: () => hidePanel({restoreFocus: true}), dispose() {
         disposed = true; request?.abort(); thumbnails.disconnect();
+        document.removeEventListener('pointerdown', outside, true);
+        wide.removeEventListener('change', layout); window.removeEventListener('resize', resized);
         clearTimeout(resizeTimer); body.classList.remove('fv-recent-resizing');
         window.removeEventListener('freevideo-result', completed);
         window.removeEventListener('freevideo-library-deleted', deleted);
