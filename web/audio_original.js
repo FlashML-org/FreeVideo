@@ -8,6 +8,8 @@ css.rel = 'stylesheet'; css.href = new URL('./audio_original.css', import.meta.u
 export const AUDIO_USE = Object.freeze({reference: 'reference', original: 'original'});
 export const usesOriginal = row => row?.use === AUDIO_USE.original;
 export const activeOriginal = rows => rows.find(row => row.enabled !== false && usesOriginal(row)) || null;
+// The same card used as a reference: without the choice and its range.
+export const referenceRow = row => { if (!usesOriginal(row)) return row; const {use: _use, range: _range, ...rest} = row; return rest; };
 
 const rangeKey = range => range ? `${range.start_sample}-${range.end_sample}` : 'all';
 const keyOf = row => `${row.file}|${rangeKey(row.range)}`;

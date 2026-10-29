@@ -47,7 +47,7 @@ import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, SWAP_LORA } from './replace_state.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
-import { activeOriginal, checkOriginal, lockMark, blockOriginal } from './audio_original.js';
+import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
 import { waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
@@ -1989,7 +1989,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Audio used as is fixes the duration; long selections use the background chain.
     const SECONDS_BEFORE_AUDIO = 'freevideo_seconds_before_audio';
     let audioRevision = 0;
+    // Where Use as is does not apply (a preview first, continuing a video), a clip chosen as is goes back to Reference,
+    // whichever was chosen first; the run never carries it.
+    function releaseOriginal() {
+        const assets = widget(mediaNode, 'assets');
+        if (!originalBlocked() || !assets) return false;
+        const rows = JSON.parse(assets.value || '[]');
+        if (!Array.isArray(rows) || !rows.some(usesOriginal)) return false;
+        assets.value = JSON.stringify(rows.map(referenceRow)); mediaNode.graph?.change();
+        window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
+        return true;
+    }
     async function syncOriginalAudio() {
+        if (releaseOriginal()) return;
         const revision = ++audioRevision;
         const row = activeOriginal(mediaNode ? JSON.parse(value(mediaNode, 'assets') || '[]') : []);
         const result = row ? await checkOriginal(api, row) : null;
@@ -2020,8 +2032,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));
-    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged); syncOriginalAudio();
-    cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); });
+    const originalBlockChanged = () => { syncOriginalAudio(); };
+    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged); window.addEventListener('freevideo-audio-blocked', originalBlockChanged); syncOriginalAudio();
+    cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); window.removeEventListener('freevideo-audio-blocked', originalBlockChanged); });
     const listen = (type, handler) => { api.addEventListener(type, handler); cleanup.push(() => api.removeEventListener(type, handler)); };
     listen('status', () => { syncQueue().catch(() => {}); });
     listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { if (chainController.active) { chainController.refresh(); return; } failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; liveProgressAt = Date.now(); busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });

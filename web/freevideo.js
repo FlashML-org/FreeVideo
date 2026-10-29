@@ -32,7 +32,7 @@ import { uploadMedia } from './media_upload.js';
 import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
-import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch } from './audio_original.js';
+import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -271,6 +271,8 @@ function mediaPanel(node, mount = null) {
             const latest = read(), now = latest.findIndex(r => r.file === row.file);
             if (now < 0) return;
             if (!result.ok) { group.set(AUDIO_USE.reference); message(failureText(result, text), true); return; }
+            // A preview or a continued video turned on while the clip was checked: it stays a reference.
+            if (originalBlocked()) { group.set(AUDIO_USE.reference); return; }
             latest[now] = {...latest[now], use: AUDIO_USE.original}; update(latest);
         }});
         return group;
@@ -376,11 +378,11 @@ function mediaPanel(node, mount = null) {
             }
             if (kind !== "image") {
                 // References are cut to the generated length (at most 15 s); say so before the run.
-                // A video used without its sound has no audio to cut.
+                // A video used without its sound has no audio to cut; audio used as is is not cut.
                 const length = el("div", "", "fv-note"); length.hidden = true; card.append(length);
                 showLength = () => {
                     const long = preview.duration > 15.05 && Number.isFinite(preview.duration);
-                    length.hidden = !long || row.sound === false || rows[index]?.sound === false;
+                    length.hidden = !long || row.sound === false || rows[index]?.sound === false || usesOriginal(row);
                     if (long) length.textContent = text(`Audio length: ${preview.duration.toFixed(1)} s; uses up to the first 15 s within the video length.`,
                         `音频长 ${preview.duration.toFixed(1)} 秒，最多取前 15 秒且不超过视频时长。`);
                 };
