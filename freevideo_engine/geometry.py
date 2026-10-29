@@ -5,8 +5,23 @@ import types
 
 
 def geometry(width=1344, height=768, frames=None, seconds=None):
-    if any(not isinstance(n, int) or n < 256 or n % 32 for n in (width, height)):
-        raise ValueError('Width and height must be multiples of 32, at least 256 pixels.')
+    # Accept numpy integer types and integer-valued floats from upstream nodes,
+    # not only Python int; reject values that do not convert to a whole integer.
+    dims = []
+    for n in (width, height):
+        if isinstance(n, bool):
+            raise ValueError('Width and height must be multiples of 32, at least 256 pixels.')
+        # Normalize via float so strings ("640"), numpy integers and integer-valued
+        # floats all compare by numeric value rather than Python identity/type.
+        try:
+            f = float(n)
+        except (TypeError, ValueError):
+            raise ValueError('Width and height must be multiples of 32, at least 256 pixels.')
+        ni = int(f)
+        if f != ni or ni < 256 or ni % 32:
+            raise ValueError('Width and height must be multiples of 32, at least 256 pixels.')
+        dims.append(ni)
+    width, height = dims
     if frames is not None and seconds is not None:
         raise ValueError('Specify frames or seconds, not both.')
     if seconds is not None and (not math.isfinite(seconds) or seconds <= 0):
