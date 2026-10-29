@@ -13,6 +13,7 @@
       "Creations: a video can be marked as a favorite with the heart button, and \"All\" and \"Favorites\" at the top switch between every video and favorites only; the choice is kept for the next time Creations opens.",
       "Autopilot: a chat can be renamed with \"Rename\" in its menu. The name is kept after a restart, and clearing it shows the first message as the title again.",
       "Install: on Linux, setup from the launcher downloads Git and a C++ compiler privately when they are missing instead of asking for sudo; only basic tools such as curl still come from the system, and the launcher shows the command to install them. A graphics driver older than 580 gets its notice with the detected card even when nvidia-smi cannot answer the setup query. When the system is older than 2022 or lacks the graphics libraries its window needs, the Linux desktop app shows the reason and what to do instead of closing without a message.",
+      "Updates: on every platform, update downloads can use the mirror in China, and a slow source is switched automatically, continuing the download.",
       "Diagnostics: on Mac, a generation refused at the start for lack of free memory has its own row in the error panel, and the report records the memory at that moment. Feedback for a video in Creations that cannot be opened includes the player's error code and the file's response. Diagnostic reports record which graphics card the run used."
     ]
   },
@@ -28,6 +29,7 @@
       "作品库：可以用心形按钮收藏视频，顶部的“全部”和“收藏”可切换显示全部视频或只显示收藏；下次打开作品库时保留所选。",
       "AI 全自动：对话可以在菜单中“重命名”。名称在重启后保留，清空名称后重新以第一句话作为标题。",
       "安装：Linux 上从启动器安装时，缺少 Git 和 C++ 编译器会改为私有下载，不再需要 sudo；只有 curl 等基础工具仍需系统提供，启动器会给出安装命令。即使 nvidia-smi 无法响应安装检查的查询，低于 580 的显卡驱动也会显示带检测到显卡的提示。系统早于 2022 年或缺少窗口所需的图形库时，Linux 桌面版会说明原因和处理办法，不再无提示地退出。",
+      "更新：所有平台的更新下载都可走国内镜像，下载源过慢时自动换源续传。",
       "诊断：Mac 上因可用内存不足而在开始前被拒绝的生成，在错误面板中单独一行说明，报告会记录当时的内存。作品库中视频打不开时，反馈会附上播放器错误码和文件响应。诊断报告会记录这次运行使用的显卡。"
     ]
   },
