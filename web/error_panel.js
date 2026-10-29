@@ -234,8 +234,12 @@ function reportRedactor(detail, context) {
             .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ADDRESS REMOVED>');
         // Keep traceback source basenames and line numbers, never drive names,
         // home directories or private media filenames. Spaces in paths count.
-        text = text.replace(/(^|[^A-Za-z0-9_:/<>])(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path) => {
+        // The engine may have redacted the text already: what follows its own
+        // <PATH> marker stays when it is one name, and goes when it is the rest
+        // of a path (a user name with a space, a share).
+        text = text.replace(/(^|[^A-Za-z0-9_:/<])(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path, offset, whole) => {
             if (path === './setup.sh') return prefix + path;
+            if (prefix === '>' && whole.slice(0, offset + 1).endsWith('<PATH>') && !/[\\/]/.test(path.slice(1))) return prefix + path;
             const source = path.replace(/\\/g, '/').match(/\/([A-Za-z0-9_.-]+\.(?:py|js|ts|mjs))(?=[:\s]|$)/);
             return prefix + (source ? '<PATH>/' + source[1] + path.slice(path.indexOf(source[1]) + source[1].length) : '<PATH REMOVED>');
         });

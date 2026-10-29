@@ -24,7 +24,7 @@ import threading
 import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
-from .long_paths import io_path, is_windows, path_chars, plain, plain_errors
+from .long_paths import io_path, is_windows, path_chars, plain, plain_errors, ABSOLUTE_PATH, path_match
 from .system import curl_executable, curl_ca_arguments, missing_curl_message, windows
 
 
@@ -573,20 +573,29 @@ def _redact(value):
     if isinstance(value, bytes):
         value = value.decode('utf-8', errors='replace')
     value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
-    # User information in any URL (https, socks5, a token alone before @).
-    value = re.sub(r'(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@\x27\x22]+@', r'\1<REDACTED>@', value)
+    # User information in any URL (https, socks5, a token alone before @), up to
+    # the last @ before the host, so a password holding an @ goes as a whole.
+    value = re.sub(r'(?i)\b([a-z][a-z0-9+.-]*://)[^\s/\x27\x22]+@', r'\1<REDACTED>@', value)
+    # A proxy written without a scheme: user:password@host[:port].
+    value = re.sub(r'(?<![^\s\x27\x22(=,;])[^\s/:@\x27\x22]+:[^\s/\x27\x22]*@(?=[A-Za-z0-9[])', '<REDACTED>@', value)
     # Query strings routinely carry signed URLs and access tokens.
     value = re.sub(r'(?i)(https?://[^\s?\x27\x22]+)\?[^\s\x27\x22]+', r'\1', value)
-    value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+', r'\1<REDACTED>', value)
+    value = re.sub(r'(?i)(\b(?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]+', r'\1<REDACTED>', value)
+    # Hugging Face, GitHub and API keys, wherever they appear (a URL path, a header).
+    value = re.sub(r'\b(?:hf_|sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}\b', '<REDACTED>', value)
     value = re.sub(r'(?i)(\b[\w-]{0,64}(?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&]+',
                    r'\1<REDACTED>', value)
-    # Keep a stable path marker without exposing usernames, drives or mounts.
+    # Keep a stable path marker without exposing usernames, drives, shares or
+    # mounts; spaces, UNC and \\?\ paths included, as in a diagnostic report.
     # A marker already in place stays as it is, so redacting twice changes nothing.
-    return re.sub(r'(?<![A-Za-z0-9_:/>])(?:(?P<relative>\.{1,2}/[^\s"\'<>;,)\]}]*)|'
-                  r'(?:[A-Za-z]:[\\/]|/)([^\s"\'<>;,)\]}]*))',
-                  lambda match: match.group('relative') if match.group('relative') is not None
-                  and not re.search(r'[\\/]', match.group('relative').split('/', 1)[1]) else
-                  '<PATH>/' + re.split(r'[\\/]', match.group(0).rstrip('\\/'))[-1], value)
+    return ABSOLUTE_PATH.sub(_path_match, value)
+
+
+def _path_match(match):
+    # The rest of a URL whose token was removed (``.../<REDACTED>/file``).
+    if match.string.endswith('<REDACTED>', 0, match.start()) and not re.search(r'[\\/]', match.group(0)[1:]):
+        return match.group(0)
+    return path_match(match)
 
 
 def _package_failure(error):
@@ -662,6 +671,8 @@ def exit_code(error):
 def failure_reason(error):
     """(class, one short redacted line) for a failed source attempt."""
     text = error if isinstance(error, str) else (getattr(error, 'stderr', None) or getattr(error, 'stdout', None) or str(error))
+    if isinstance(text, (bytes, bytearray)):
+        text = bytes(text).decode('utf-8', errors='replace')
     head, _, output = str(text).partition('\n\nFull step output:\n')
     lines = [line.strip() for line in _redact(output or head).splitlines() if line.strip()]
     returncode = exit_code(error)

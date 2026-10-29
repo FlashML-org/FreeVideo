@@ -439,7 +439,10 @@ def launcher_failure(value, *, zh=False, **options):
     text, lines = _sources_block(str(value)) if value else ('', [])
     if not lines:
         return _launcher_failure(value, zh=zh, **options)
-    # The source lines never change which guidance applies.
+    # The source lines never change which guidance applies, except a full disk:
+    # no other source can help, so the card keeps the disk space guidance.
+    if any((found := _SOURCE_LINE.match(line)) and found['cls'] == 'disk-full' for line in lines):
+        text += '\nNot enough disk space'
     failure = _launcher_failure(text, zh=zh, **options)
     sources = source_lines(lines, zh)
     if sources:
