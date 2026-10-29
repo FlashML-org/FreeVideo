@@ -1,4 +1,4 @@
-import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
+import {isNetworkTypeError, connectionLostText, detectBrowserExtension, browserExtensionAdvice} from './browser_extension.js';
 
 // Original and enhanced prompts are separate workflow drafts, never diagnostics.
 export class PromptVersions {
@@ -147,7 +147,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const gib = value => String(Math.round(value / 2 ** 30));
     // Unknown codes keep the server's own reason, without paths, so the user can quote it.
     const reasonOf = error => String(error?.message || '').replace(/[A-Za-z]:[\\/][^\s'"]*|\/[^\s'"]+\/[^\s'"]*/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
-    const errorText = error => isNetworkTypeError(error) ? connectionLostText(t) : ({
+    // A dropped request names a browser extension only when the error carries evidence of one.
+    const networkText = error => {
+        const found = detectBrowserExtension(error);
+        return found ? browserExtensionAdvice(found, t).summary : connectionLostText(t);
+    };
+    const errorText = error => isNetworkTypeError(error) ? networkText(error) : ({
         busy: t('Finish the current queue before enhancing this prompt.', '请等待当前队列完成后再改写。'),
         prompt_required: t('Type a prompt first; enhancement rewrites it before generating.', '请先输入提示词，生成前会自动改写。'),
         setup_required: t('Complete FreeVideo installation first.', '请先完成 FreeVideo 安装。'),
@@ -171,7 +176,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     }[error?.message] || t(`Could not enhance the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Retry or switch enhancement off to use the original.`,
         `暂时无法改写${reasonOf(error) ? `。原因：${reasonOf(error)}。` : '，'}请重试，或关闭增强使用原文。`));
     // After falling back the original is already in use, so only the reason and the next useful step are shown.
-    const fallbackText = error => isNetworkTypeError(error) ? connectionLostText(t) : ({
+    const fallbackText = error => isNetworkTypeError(error) ? networkText(error) : ({
         busy: t('The prompt cannot be rewritten while the queue is running.', '队列未完成时不能改写。'),
         setup_required: t('Rewriting is available after FreeVideo installation is complete.', 'FreeVideo 安装完成后才能改写。'),
         model_missing: t('Rewriting needs the optional model. Download it to enable rewriting.', '改写需要可选模型，下载后可用。'),
