@@ -73,6 +73,13 @@ def upscale_option(value):
     return {'upscale_factor': float(text)} if text in UPSCALE_OPTIONS and text != '2' else {}
 
 
+def audio_use_option(value):
+    """Audio use for the Media and Reference widgets: missing or empty means Reference, as before the
+    widget existed. Workflows saved before it existed hold the panel's '' in its position; any other
+    value is checked as given (original_audio.fields)."""
+    return 'reference' if value is None or value == '' else value
+
+
 class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -460,7 +467,7 @@ class FreeVideoMedia(io.ComfyNode):
         import folder_paths
         return io.NodeOutput(connect_assets(resolve_assets(assets, folder_paths.get_input_directory()),
                                             first=first, last=last, reference=reference,
-                                            reference_audio=reference_audio, audio_use=audio_use, **images))
+                                            reference_audio=reference_audio, audio_use=audio_use_option(audio_use), **images))
 
 
 class FreeVideoReference(io.ComfyNode):
@@ -484,6 +491,7 @@ class FreeVideoReference(io.ComfyNode):
         if len(result) >= 32:
             raise ValueError('At most 32 ordered references; memory is checked against the actual request')
         kind, value = values[0]
+        use = audio_use_option(use)
         from .original_audio import fields, original
         options = fields(dict(kind=kind, **({'use': use} if use != 'reference' or kind == 'audio' else {})))
         result.append({'kind': kind, 'value': value, **options})

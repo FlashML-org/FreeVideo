@@ -22,7 +22,7 @@ import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
-import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue } from './optional_inputs.js';
+import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';
 import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';
 import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
@@ -452,7 +452,7 @@ function mediaPanel(node, mount = null) {
     const removed = node.onRemoved;
     node.onRemoved = function (...args) { dispose(); return removed?.apply(this, args); };
     const configure = node.onConfigure;
-    node.onConfigure = function (...args) { const result = configure?.apply(this, args); queueMicrotask(() => { syncReferenceSockets(node); render(); }); return result; };
+    node.onConfigure = function (...args) { const result = configure?.apply(this, args); cleanAudioUse(node); queueMicrotask(() => { syncReferenceSockets(node); render(); }); return result; };
     const connectionChanged = node.onConnectionsChange;
     node.onConnectionsChange = function (...args) { const result = connectionChanged?.apply(this, args); queueMicrotask(() => { syncReferenceSockets(node); update(read()); }); return result; };
     syncReferenceSockets(node); node.setSize([460, 460]); render();

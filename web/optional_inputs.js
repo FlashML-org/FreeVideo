@@ -69,6 +69,13 @@ export function cleanOptionalWidgets(node) {
     }
 }
 
+// Audio use came after the Media node's panel, which an older save keeps as '' in that position:
+// such a workflow, or one without the value, reads as Reference and is saved with it from then on.
+export function cleanAudioUse(node) {
+    const widget = node?.widgets?.find(w => w.name === 'audio_use');
+    if (widget && (widget.value === '' || widget.value == null)) widget.value = 'reference';
+}
+
 // The user chose to generate without a description: this request alone says so; the node's own widgets never keep it.
 export function allowEmptyPrompt(prompt, nodeId) {
     const inputs = prompt?.output?.[String(nodeId)]?.inputs;

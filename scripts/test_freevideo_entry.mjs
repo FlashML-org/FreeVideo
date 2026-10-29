@@ -10,7 +10,7 @@ import {outputDownloadURL} from '../web/output_download.js';
 import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
 import {expandCast} from '../web/cast_mention.js';
-import {cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue} from '../web/optional_inputs.js';
+import {cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue} from '../web/optional_inputs.js';
 
 class Element {
     constructor(tag) {
@@ -59,7 +59,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
             const cast = {element: new Element('cast'), options, destroyed: false, destroy() { this.destroyed = true; }};
             casts.push(cast); return cast;
@@ -133,7 +133,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest; const trackPromptDraft = () => {}; const watchPromptHistory = () => {}; const promptHistoryRestoring = () => false;')
-            .replace("import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue } from './optional_inputs.js';", 'const {cleanOptionalWidgets,cleanOptionalPrompt,optionalInputValue} = globalThis.__freevideoEntryTest;')
+            .replace("import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';", 'const {cleanOptionalWidgets,cleanOptionalPrompt,optionalInputValue,cleanAudioUse} = globalThis.__freevideoEntryTest;')
             .replace("import { regenerateResult, upscaleResult } from './studio_queue.js';", 'const {regenerateResult,upscaleResult} = globalThis.__freevideoEntryTest;')
             .replace("import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';", 'const {regenerateResult,createSecondPassQueue,enableNode} = globalThis.__freevideoEntryTest;')
             .replace("import { secondPassAction } from './result_actions.js';", 'const {secondPassAction} = globalThis.__freevideoEntryTest;')
