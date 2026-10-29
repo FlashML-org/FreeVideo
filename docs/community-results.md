@@ -115,6 +115,14 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 3080 | 10&nbsp;GB | 32&nbsp;GB | 768×1344 | 15&nbsp;s | Max | 0.4.22 | 1965&nbsp;s | 0.4.22 | Already&nbsp;optimal |
 | 4090&nbsp;Laptop | 16&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Medium | 0.4.14 | 590&nbsp;s | 0.4.17 | 570&nbsp;s&nbsp;(−20&nbsp;s) |
 | 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 960×544 | 10&nbsp;s | Light | 0.4.6 | 517&nbsp;s | 0.4.6 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.14 | 1168&nbsp;s | 0.4.14 | Already&nbsp;optimal |
+| 5070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 11.5&nbsp;s | Light | 0.4.17 | 1003&nbsp;s | 0.4.24 | 900&nbsp;s&nbsp;(−100&nbsp;s) |
+| 3070&nbsp;Ti | 8&nbsp;GB | 64&nbsp;GB | 1344×768 | 16.5&nbsp;s | Light | 0.4.17 | 1623&nbsp;s | 0.4.24 | 1570&nbsp;s&nbsp;(−50&nbsp;s) |
+| 3060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 10&nbsp;s | Light⁵ | 0.4.18 | 843&nbsp;s | 0.4.24 | 810&nbsp;s&nbsp;(−33&nbsp;s) |
+| 5060 | 8&nbsp;GB | 32&nbsp;GB | 672×1184 | 11.5&nbsp;s | Light | 0.4.18 | 707&nbsp;s | 0.4.24 | 680&nbsp;s&nbsp;(−27&nbsp;s) |
+| 5070&nbsp;Ti&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.23 | 373&nbsp;s¹³ | 0.4.23 | Thermal‑limited¹ |
+| 5060 | 8&nbsp;GB | 48&nbsp;GB | 768×1344 | 14&nbsp;s | Medium | 0.3.25 | 3474&nbsp;s | 0.3.25 | Already&nbsp;optimal |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 896×1120 | 10&nbsp;s | Light | 0.3.25 | 1045&nbsp;s | 0.4.0 | 1025&nbsp;s&nbsp;(−20&nbsp;s) |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -131,3 +139,4 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ¹⁰ GPU shared: other programs were using about 29% of the graphics card during the run, so FreeVideo's steps ran at a little over 70% of their usual speed. With the card free, the same request takes about 7200 s.
 - ¹¹ With 16 GB of RAM, the text encoder and part of the video model cannot stay in memory and are read from the drive; text encoding and the first pass, which wait on these reads, took about 460 s of the 887 s.
 - ¹² Reference-video task: the reference video and audio roughly double the sequence the model processes, so each step takes about twice as long as a plain request of the same size.
+- ¹³ Preview (first pass only).
