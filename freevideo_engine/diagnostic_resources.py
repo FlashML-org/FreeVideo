@@ -774,6 +774,12 @@ def planning(rows):
         item['idle_cache']['accounting'] = numbers(idle.get('ram_accounting'),
             ('raw_available_bytes', 'credited_available_bytes', 'pinned_model_bytes',
              'reused_encoder_working_bytes'))
+        kernels = mapping(row.get('attention_backends'))
+        if kernels:
+            # Whether the attention choice rested on this GPU's own kernel checks.
+            item['attention_backends'] = dict(kernel_receipt=name(kernels.get('kernel_receipt')),
+                offered=[value for value in sequence(kernels.get('offered')) if name(value)][:8],
+                withheld=sorted(value for value in mapping(kernels.get('withheld')) if name(value))[:8])
         result.append(item)
     return result
 
