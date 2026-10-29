@@ -23,12 +23,16 @@ from .monitoring import save
 
 ENV = 'FREEVIDEO_RESIDENT_SESSION'
 GiB = 2**30
-# A finished request releases the worker unless its next part is already on the
-# way. Then it is kept briefly, and given up at once when anything else needs
-# the memory: another program's GPU use grows, host memory runs low, or an
-# image or prompt model starts (those release it themselves).
+# A finished request keeps the worker for the next one while host memory is ample
+# (for as long as nothing needs the memory, unless KEEP_IDLE_SECONDS sets a limit), and it is given up at once when anything else
+# needs the memory: another program's GPU use grows, host memory runs low, an
+# image or prompt model starts (those release it themselves), or the agent asks
+# for the card back. A request that is not followed by a queued part and fails,
+# or a machine without the room, releases it as before; a next part already on
+# its way is held for HOLD_SECONDS.
 HOLD_SECONDS = 90.
 AGENT_HOLD_SECONDS = 30.
+KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
 HOST_FLOOR = 4 * GiB
 # Below this much host memory (free plus the idle worker's own), a kept worker's
@@ -377,13 +381,22 @@ class SessionOwner:
             rows, self.decisions = self.decisions, []
         return rows
 
-    def finished(self, *, next_part=None, agent=False, gpu=None):
-        """Release the idle worker now, or keep it while a next part is on its way."""
+    def finished(self, *, next_part=None, agent=False, gpu=None, warm=False):
+        """Release the idle worker now, or keep it for the next request.
+
+        A successful request (warm) keeps it while host memory is ample and the card's use can be read, so
+        another program's growth is seen; a next part on its way keeps it for a short hold. Anything else
+        gives the memory back now.
+        """
         with self.mutex:
             if self.active or self.process is None or self.process.poll() is not None:
                 return None
             hold = min(HOLD_SECONDS, AGENT_HOLD_SECONDS) if agent else HOLD_SECONDS
-            if not next_part or hold <= 0:
+            if not next_part and warm and gpu_used(gpu) is not None:
+                hold, next_part = KEEP_IDLE_SECONDS, 'warm'
+            else:
+                warm = False
+            if not next_part or (hold is not None and hold <= 0):
                 return self.release('finished' if not next_part else 'no_hold')
             reason = pressure(gpu, None) or self._tight()
             if reason:
@@ -391,9 +404,22 @@ class SessionOwner:
             self.generation += 1
             self.idle_since = time.monotonic()
             baseline = gpu_used(gpu)
+            if warm and baseline is None:
+                return self.release('gpu_unreadable')
             threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu, baseline),
                              name='freevideo-resident-hold', daemon=True).start()
             return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid)
+
+    def release_idle(self, reason='requested'):
+        """Give the card and host memory back on a caller's request; never touches a running request."""
+        with self.mutex:
+            if self.active:
+                return dict(released=False, reason='busy')
+            if self.process is None or self.process.poll() is not None:
+                return dict(released=False, reason='nothing_held')
+            row = self.release(reason)
+        return dict(released=True, reason=reason, **{k: v for k, v in (row or {}).items()
+                                                      if k in ('idle_seconds', 'worker_rss_bytes')})
 
     def _tight(self):
         from .system import windows
@@ -413,7 +439,7 @@ class SessionOwner:
     def _watch(self, generation, since, hold, gpu, baseline):
         while True:
             time.sleep(.5)
-            reason = ('idle' if time.monotonic() - since >= hold
+            reason = ('idle' if hold is not None and time.monotonic() - since >= hold
                       else pressure(gpu, baseline))
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
@@ -437,11 +463,15 @@ class SessionOwner:
             self.close()
             return self.record(**row)
 
-    def start(self, root, source, python, environment):
+    def start(self, root, source, python, environment, busy=False):
         with self.mutex:
             self.generation += 1
             self.idle_since = None
-            return self._start(root, source, python, environment)
+            endpoint = self._start(root, source, python, environment)
+            # Marked under the same lock, so a release cannot land between starting and using the worker.
+            if busy:
+                self.active = True
+            return endpoint
 
     def _start(self, root, source, python, environment):
         import hashlib
@@ -545,7 +575,9 @@ def pressure(gpu, baseline):
     if baseline is not None:
         # The idle worker does not allocate, so growth on the card is another program's.
         used = gpu_used(gpu)
-        if used is not None and used - baseline >= OTHER_GPU_GROWTH:
+        if used is None:
+            return 'gpu_unreadable'
+        if used - baseline >= OTHER_GPU_GROWTH:
             return 'other_program_gpu'
     return None
 

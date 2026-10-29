@@ -1,4 +1,4 @@
-"""One active durable chain, submitting ordinary host prompts by dependency."""
+"""Durable chains, submitting ordinary host prompts by dependency."""
 from copy import deepcopy
 import json
 import logging
@@ -126,6 +126,9 @@ class ChainRunner:
         self.starts, self.success, self.cancel_sent, self.progress_values = {}, {}, set(), {}
         self.progress_messages = {}
         self.estimates, self.queue, self.active = {}, [], None
+        self.concurrent = bool(getattr(host, 'concurrent', False))
+        if self.concurrent:
+            self.active = set()
         self.recover = set()
         for record in self.records.values():
             if record['state'] in store.ACTIVE:
@@ -244,16 +247,16 @@ class ChainRunner:
     def _waiting(self, record):
         """What a chain that has not started waits for: how many chains are ahead and, for a single
         one, the time it has left (None while that is unknown)."""
-        if record['state'] != 'queued' or record['id'] == self.active or record['id'] not in self.queue:
+        if record['state'] != 'queued' or record['id'] in self.active_ids() or record['id'] not in self.queue:
             return None
-        ahead = [] if self.active is None else [self.active]
+        ahead = self.active_ids()
         for identity in self.queue[:self.queue.index(record['id'])]:
             row = self.records.get(identity)
             if row is not None and row['state'] == 'queued' and identity not in ahead:
                 ahead.append(identity)
         if not ahead:
             return None
-        remaining = _number(self.progress_values.get(ahead[0], {}).get('remaining_seconds')) if len(ahead) == 1 and ahead[0] == self.active else None
+        remaining = _number(self.progress_values.get(ahead[0], {}).get('remaining_seconds')) if len(ahead) == 1 and ahead[0] in self.active_ids() else None
         return {'ahead': len(ahead), 'remaining_seconds': None if remaining is None or remaining < 0 else remaining}
 
     def _depths(self, record, seen=()):
@@ -529,15 +532,28 @@ class ChainRunner:
     def hidden(self, exists=None):
         with self.lock:
             return {row['output'] for record in self.records.values()
-                    if record['join'] and record['output_state'] == 'done' and record['output_blocks'] > 1
+                    if record['join'] and record['output_state'] == 'done'
+                    and (record['output_blocks'] > 1 or record.get('original_audio') is not None)
                     and record['output'] not in {block['output'] for block in record['blocks']}
                     and (exists is None or exists(record['output']))
                     for row in record['blocks'][:record['output_blocks']] if row['output'] is not None}
 
+    def active_ids(self):
+        """Stable chain order for both the legacy turn and the concurrent host."""
+        if self.concurrent:
+            return [identity for identity in self.records if identity in self.active]
+        return [self.active] if self.active is not None else []
+
+    def _release_active(self, identity):
+        if self.concurrent:
+            self.active.discard(identity)
+        elif self.active == identity:
+            self.active = None
+
     def _find(self, prompt_id, node):
-        record = self.records.get(self.active)
-        if record is not None:
-            if record['node'] == str(node) and record['state'] in store.ACTIVE:
+        for identity in self.active_ids():
+            record = self.records.get(identity)
+            if record is not None and record['node'] == str(node) and record['state'] in store.ACTIVE:
                 block = next((row for row in record['blocks'] if row['prompt_id'] == prompt_id
                               and row['state'] in ('queued', 'running')), None)
                 if block is not None:
@@ -597,8 +613,9 @@ class ChainRunner:
             self._save(record)
             self.wake.set()
             previous = self._sources(record, block)['after']
+            # A kept original soundtrack replaces every seam's sound, so there is no lead to save.
             keep = (record['id'], block['index'], output, previous['output'] if previous is not None else None,
-                    bool(saved))
+                    bool(saved) and record.get('original_audio') is None)
         self._keep_lead(*keep)
 
     def _keep_lead(self, identity, index, output, previous, continues):
@@ -627,6 +644,9 @@ class ChainRunner:
         block that continues from a block other than its neighbour cannot be repaired and counts as lost."""
         identity, blocks = snapshot['id'], store.leading_blocks(snapshot)
         wanted, kept = set(), 0
+        if snapshot.get('original_audio') is not None:
+            # The original selection replaces every block's sound, so no seam sound needs repair.
+            return wanted, kept
         for position, row in enumerate(blocks[1:] if getattr(self.host, 'repairs_seams', True) else (), 1):
             if not self._continues(row):
                 continue
@@ -647,7 +667,7 @@ class ChainRunner:
         if not blocks:
             record.update(output=None, output_blocks=0, output_state='pending', output_error=None)
             return final_state
-        if len(blocks) == 1:
+        if len(blocks) == 1 and record.get('original_audio') is None:
             output = blocks[0]['output']
             record.update(output=output, output_blocks=1 if output else 0, output_state='done', output_error=None)
             return final_state
@@ -677,8 +697,8 @@ class ChainRunner:
             block['error'] = status.get('error') or 'Prompt execution failed'
         next_state = 'cancelled' if record['state'] == 'cancelling' else next_state
         record['state'] = self._finish_blocks(record, next_state) if next_state in ('cancelled', 'failed') else next_state
-        if record['state'] not in store.ACTIVE and self.active == record['id']:
-            self.active = None
+        if record['state'] not in store.ACTIVE:
+            self._release_active(record['id'])
         self.starts.pop(prompt_id, None)
         self.success.pop(prompt_id, None)
         self.cancel_sent.discard(prompt_id)
@@ -704,24 +724,29 @@ class ChainRunner:
                             row['state'] in ('queued', 'running') for row in record['blocks']):
                         record['state'] = self._finish_blocks(record, 'cancelled')
                         self._save(record)
-                if self.active is not None and self.records[self.active]['state'] not in store.ACTIVE:
-                    self.active = None
+                for active_id in self.active_ids():
+                    if self.records[active_id]['state'] not in store.ACTIVE:
+                        self._release_active(active_id)
                 self._interrupt_dependants()
                 for queued_id in list(self.queue):
                     waiting = self.records[queued_id]
                     if waiting['state'] not in store.ACTIVE:
                         self.queue.remove(queued_id)
-                    elif self.active is None and (waiting['state'] == 'queued'
+                    elif (self.concurrent or self.active is None) and (waiting['state'] == 'queued'
                             and self._dependency_state(waiting) == 'ready'
                             or waiting['state'] == 'cancelling' and waiting['output_state'] == 'joining'):
                         self.queue.remove(queued_id)
-                        self.active = queued_id
-                identity = self.active
+                        if self.concurrent:
+                            self.active.add(queued_id)
+                        else:
+                            self.active = queued_id
+                identities = self.active_ids()
             for recovering_id, snapshot in recovering:
                 if not self.closed.is_set():
                     self._join(recovering_id, snapshot)
-            if identity is not None and not self.closed.is_set():
-                self._step_chain(identity)
+            for identity in identities:
+                if not self.closed.is_set():
+                    self._step_chain(identity)
 
     def _step_chain(self, identity):
         with self.lock:
@@ -763,13 +788,16 @@ class ChainRunner:
                 self._save(record)
                 prompt = deepcopy(record['snapshot']['prompt'])
                 block_inputs = dict(block['inputs'])
-                block_inputs.update(index=block['index'], count=len(record['blocks']))
+                block_inputs.update(index=block['index'], count=len(record['blocks']),
+                                    original_audio=block.get('original_audio') is not None)
                 sources = self._sources(record, block)
                 extra = deepcopy(record['snapshot']['extra_data'])
                 if record['client_id'] is not None:
                     extra['client_id'] = record['client_id']
                 extra['freevideo_chain'] = dict(id=identity, block=block['id'], part=block['part'], index=block['index'],
                     count=len(record['blocks']), after=deepcopy(block['after']), before=deepcopy(block['before']))
+                if self.concurrent:
+                    extra['freevideo_chain']['node'] = node
                 action = 'submit'
             elif record['state'] == 'cancelling' and prompt_id not in self.cancel_sent:
                 action = 'cancel'
@@ -804,6 +832,9 @@ class ChainRunner:
                     if hasattr(self.host, 'continued'):
                         self.host.continued(prompt, node)
                 prompt[node]['inputs'].update(self.inputs(block_inputs))
+                if record.get('original_audio') is not None:
+                    from .original_audio_chain import block_prompt
+                    block_prompt(prompt, node, record['original_audio'], block['original_audio'])
                 self.host.submit(prompt_id, node_prompt(prompt, node), extra)
             except Exception as error:
                 # A response may be lost after the host has accepted the prompt.
@@ -937,8 +968,8 @@ class ChainRunner:
             else:
                 record.update(state=final_state, output=output, output_blocks=len(store.leading_blocks(snapshot)),
                               output_state='done', output_error=None, output_seams=dict(expected=promised, kept=kept))
-            if record['state'] not in store.ACTIVE and self.active == identity:
-                self.active = None
+            if record['state'] not in store.ACTIVE:
+                self._release_active(identity)
             self._save(record)
 
     def _estimate(self, record, block):
@@ -954,9 +985,12 @@ class ChainRunner:
                 self.estimates[key] = None
         return self.estimates[key]
 
-    def progress(self, node, message):
+    def progress(self, node, message, prompt_id=None):
         with self.lock:
-            record = self.records.get(self.active)
+            if self.concurrent:
+                record, _ = self._find(prompt_id, node)
+            else:
+                record = self.records.get(self.active)
             if record is None or record['node'] != str(node) or record['state'] not in store.ACTIVE:
                 return None
             block = self._current(record)

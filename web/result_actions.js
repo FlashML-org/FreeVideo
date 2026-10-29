@@ -21,6 +21,7 @@ const ICONS = {
     expand: '<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>',
     copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>',
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1M7 7v4M9 7v4"/>',
+    heart: '<path d="M8 13.5 2.6 8.3a3.3 3.3 0 0 1 4.7-4.6L8 4.4l.7-.7a3.3 3.3 0 0 1 4.7 4.6Z"/>',
 };
 
 export function icon(name) {
@@ -198,9 +199,29 @@ async function reuseAction(record, t, reuse) {
 // `diagnostic` downloads the redacted report (and may offer to send it); a
 // result without one shows no report entry, because the full generation
 // record keeps local paths and is not meant to be shared.
-export function resultActions(record, t, {diagnostic = null, secondPass = null, remove = null, extend = null, reuse = null} = {}) {
+export function resultActions(record, t, {diagnostic = null, secondPass = null, remove = null, extend = null, reuse = null, favorite = null} = {}) {
     const bar = document.createElement('div'); bar.className = 'fv-actions';
     if (secondPass) bar.append(secondPassAction(t, secondPass));
+    if (favorite) {
+        const button = action('button', '', 'heart', 'fv-action-secondary fv-action-favorite');
+        const sync = () => {
+            button.setAttribute('aria-pressed', String(!!record.favorite));
+            button.lastElementChild.textContent = button.title = record.favorite
+                ? t('Remove from favorites', '取消收藏') : t('Add to favorites', '收藏');
+            button.setAttribute('aria-label', button.title);
+        };
+        sync();
+        // The caller reports a failure next to the video; the heart keeps its previous state.
+        button.onclick = async () => {
+            if (button.disabled) return;
+            button.disabled = true; button.setAttribute('aria-busy', 'true');
+            const value = !record.favorite;
+            try { await favorite(value); record.favorite = value; }
+            catch { /* Shown by the caller. */ }
+            finally { sync(); button.disabled = false; button.removeAttribute('aria-busy'); }
+        };
+        bar.append(button);
+    }
     if (record.video) {
         const download = action('a', t('Download video', '下载视频'), 'download', secondPass ? 'fv-action-secondary' : 'fv-action-primary');
         download.href = outputDownloadURL(api, record.video); download.download = '';

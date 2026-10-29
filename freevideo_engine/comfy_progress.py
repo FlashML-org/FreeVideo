@@ -69,7 +69,7 @@ class ProgressState:
 
     def publish(self, node, message):
         # Only presentation fields. In particular, do not retain the prompt,
-        # workflow, paths, device identity or full resource forecast here.
+        # workflow, paths or full resource forecast here.
         keys = ('label', 'detail', 'phase', 'stage', 'timing_phase', 'done', 'total', 'unit', 'low_memory', 'reference_trimmed',
                 'sampling_plan', 'bytes_per_second', 'block', 'blocks', 'elapsed_seconds', 'step_elapsed_seconds',
                 'estimated_step_seconds', 'remaining_seconds', 'display_fraction',
@@ -77,14 +77,18 @@ class ProgressState:
                 'new_request', 'reset', 'result', 'report_id', 'compatibility', 'memory_tight', 'references', 'chain',
                 'frame_preview')
         value = deepcopy({key: message[key] for key in keys if key in message})
+        if message.get('task_id'):
+            value.update({key: message[key] for key in ('task_id', 'prompt_id', 'executor_id', 'worker_prompt_id')
+                          if key in message})
         if isinstance(message.get('prediction'), dict):
             # The UI only needs a history marker, not the resource forecast.
             value['prediction'] = deepcopy({key: message['prediction'][key]
                                             for key in ('key', 'stage') if key in message['prediction']})
         node = str(node)
+        key = (str(message['task_id']), node) if message.get('task_id') else node
         with self.lock:
             now = self.clock()
-            old = self.rows.get(node)
+            old = self.rows.get(key)
             metadata_only = ('compatibility' in value and not value.get('new_request')
                              and not any(key in value for key in ('phase', 'stage', 'timing_phase', 'label', 'reset')))
             # A heartbeat carries a newer estimate, not engine progress (Harper's
@@ -113,6 +117,13 @@ class ProgressState:
                 measured, overall_measured = old['measured'], old.get('overall_measured', old['measured'])
             else:
                 measured = now
+                if message.get('task_id'):
+                    age = message.get('age_seconds', 0.)
+                    overall_age = message.get('overall_age_seconds', age)
+                    if isinstance(age, (int, float)) and age >= 0:
+                        measured = now - age
+                    if isinstance(overall_age, (int, float)) and overall_age >= 0:
+                        overall_measured = now - overall_age
                 # The page starts a new request on these too and clears its notes.
                 fresh = (value.get('new_request') or (value.get('overall') or {}).get('reset')
                          or (value.get('reset') and not value.get('phase')))
@@ -146,10 +157,10 @@ class ProgressState:
                         or (value.get('phase') == 'sampling' and isinstance(done, (int, float))
                             and isinstance(steps, (int, float)) and steps > 0 and done >= steps)):
                     value['memory_tight'] = dict(tight, first_pass_ended=True)
-            self._record_timeline(node, value, message, now, measured)
+            self._record_timeline(key, value, message, now, measured)
             self.sequence += 1
             value.update(node=node, stream_id=self.stream_id, sequence=self.sequence)
-            self.rows[node] = {'message': value, 'measured': measured, 'overall_measured': overall_measured}
+            self.rows[key] = {'message': value, 'measured': measured, 'overall_measured': overall_measured}
             while len(self.rows) > 32:
                 oldest = min(self.rows, key=lambda key: self.rows[key]['message']['sequence'])
                 del self.rows[oldest]
@@ -176,14 +187,29 @@ class ReportDownloads:
     def __init__(self):
         self.runs = {}
         self.roots = set()
+        self.dispatches = {}
         self.lock = threading.Lock()
 
     def register(self, output):
         token = uuid.uuid4().hex
+        dispatch = None
+        try:
+            from server import PromptServer
+            from .comfy_chain import execution_dispatch, deepcopy_dispatch
+            context = execution_dispatch(PromptServer.instance)
+            if context is not None:
+                dispatch = deepcopy_dispatch(context)
+                dispatch['worker_prompt_id'] = PromptServer.instance.last_prompt_id
+        except (ImportError, AttributeError):
+            pass
         with self.lock:
             self.runs[token] = Path(output)
+            if dispatch is not None:
+                self.dispatches[token] = dispatch
             while len(self.runs) > 64:
-                del self.runs[next(iter(self.runs))]
+                expired = next(iter(self.runs))
+                del self.runs[expired]
+                self.dispatches.pop(expired, None)
         self._remember(token, Path(output))
         return token
 
@@ -249,7 +275,15 @@ class ReportDownloads:
         path = write(output, live=True, restarted=restarted)
         if path is None:
             raise RuntimeError('Report not available yet')
-        return path.read_bytes()
+        data = path.read_bytes()
+        with self.lock:
+            dispatch = deepcopy(self.dispatches.get(token))
+        if dispatch is not None:
+            import json
+            report = json.loads(data)
+            report['freevideo_dispatch'] = dispatch
+            data = json.dumps(report, ensure_ascii=False).encode('utf-8')
+        return data
 
 
     def preview(self, token):
@@ -282,6 +316,14 @@ def progress_timeline(output):
 
 
 def publish(server, node, message):
+    try:
+        from .comfy_chain import execution_dispatch
+        dispatch = execution_dispatch(server)
+        if dispatch is not None:
+            message = dict(message, task_id=dispatch['task_id'], prompt_id=server.last_prompt_id,
+                           executor_id=dispatch['executor_id'])
+    except (AttributeError, KeyError):
+        pass
     try:
         from .comfy_chain import RUNNER
         chain = RUNNER.progress(node, message) if RUNNER is not None else None
@@ -345,6 +387,7 @@ def register():
     server = PromptServer.instance
     if server is None or getattr(server, '_freevideo_progress', False):
         return
+    # The async control entrypoint owns pool construction and shutdown.
     server._freevideo_progress = True
     try:
         import folder_paths
@@ -357,7 +400,9 @@ def register():
     async def report(request):
         async with report_lock:
             try:
-                data = await asyncio.to_thread(REPORTS.snapshot, request.match_info['report_id'])
+                front = getattr(server, '_freevideo_front', None)
+                data = (await front.download(request.match_info['report_id']) if front is not None
+                        else await asyncio.to_thread(REPORTS.snapshot, request.match_info['report_id']))
             except KeyError:
                 raise web.HTTPNotFound(text='Report unavailable') from None
             except (OSError, RuntimeError):
@@ -369,7 +414,9 @@ def register():
     @server.routes.get('/freevideo/frame-preview/{report_id}')
     async def frame_preview(request):
         try:
-            data = await asyncio.to_thread(REPORTS.preview, request.match_info['report_id'])
+            front = getattr(server, '_freevideo_front', None)
+            data = (await front.download(request.match_info['report_id'], preview=True) if front is not None
+                    else await asyncio.to_thread(REPORTS.preview, request.match_info['report_id']))
         except (KeyError, OSError):
             raise web.HTTPNotFound(text='') from None
         return web.Response(body=data, content_type='image/jpeg', headers={
@@ -392,6 +439,9 @@ def register():
         prompt_id, node_id = value.get('prompt_id'), value.get('node_id')
         if not isinstance(prompt_id, str) or not prompt_id or not isinstance(node_id, str):
             return web.json_response({'error': 'A request and node ID are required'}, status=400)
+        front = getattr(server, '_freevideo_front', None)
+        if front is not None:
+            return web.json_response({'status': front.cancel(prompt_id, node_id)})
         import nodes
         return web.json_response({'status': cancel_request(server.prompt_queue, prompt_id,
             node_id, nodes.interrupt_processing)})
@@ -404,5 +454,9 @@ def register():
             return web.json_response({'error': 'A request and node ID are required'}, status=400)
         from . import comfy_chain
         runner = comfy_chain.RUNNER
+        front = getattr(server, '_freevideo_front', None)
+        if front is not None:
+            return web.json_response({'status': front.move_first(prompt_id, node_id,
+                runner.owns if runner is not None else (lambda prompt_id: False))})
         return web.json_response({'status': move_request_first(server.prompt_queue, prompt_id, node_id,
             runner.owns if runner is not None else (lambda prompt_id: False))})

@@ -5,6 +5,8 @@ needed to reach an exact requested length with matching codec parameters. The
 sound is decoded and encoded once as a single stream: every block's sound
 follows the previous block's sound, not its own first frame, which keeps a
 long chain in step.
+Original soundtracks instead bypass every block's sound and mux the selected
+source range once, with a sample-identity receipt.
 """
 from datetime import datetime
 from fractions import Fraction
@@ -160,7 +162,8 @@ def _exact_tail(source, target, wanted, cancelled=None):
         temporary.unlink(missing_ok=True)
 
 
-def join_files(sources, target, cancelled=None, frames=None, leads=None, expected=None, speaking=None):
+def join_files(sources, target, cancelled=None, frames=None, leads=None, expected=None, speaking=None, *,
+               original_audio=None):
     """Write `target` from `sources` in order; returns the joined frame and sample counts.
 
     `frames`: stop at this length when a compatible short tail can close it exactly,
@@ -168,32 +171,38 @@ def join_files(sources, target, cancelled=None, frames=None, leads=None, expecte
     `leads`: optional `leads(following, previous)` returning a seam lead kept by the chain;
     the shared continuation record is read only when it has none.
     `expected`: how many seams should be repaired; only reported back, the caller decides.
+    `original_audio`: mux the original selection and close the picture on its
+    source-sample clock; a rounded completed prefix keeps its existing frames.
     """
     sources = list(sources)
     try:
-        return _join_ending(sources, target, cancelled, frames, leads, expected, speaking)
+        return _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio)
     except _VoiceFailed:
         logging.warning('[FreeVideo] The voice of the parts could not be evened out; they are joined as they are',
                         exc_info=True)
-        return _join_ending(sources, target, cancelled, frames, leads, expected, None)
+        return _join_ending(sources, target, cancelled, frames, leads, expected, None, original_audio)
 
 
-def _join_ending(sources, target, cancelled, frames, leads, expected, speaking):
+def _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio=None):
     try:
-        return _join_files(sources, target, cancelled, frames, leads=leads, expected=expected, speaking=speaking)
+        return _join_files(sources, target, cancelled, frames, leads=leads, expected=expected, speaking=speaking,
+                           original_audio=original_audio)
     except _ExactEndFailed:
         # A late mux or validation error must also leave the original ending available.
         return _join_files(sources, target, cancelled, frames, exact=False, leads=leads, expected=expected,
-                           speaking=speaking)
+                           speaking=speaking, original_audio=original_audio)
 
 
-def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expected=None, speaking=None):
+def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expected=None, speaking=None,
+                original_audio=None):
     import av
     from .comfy_metadata import _copy_stream
-    try:
-        from .comfy_continuation import audio_lead_in, apply_audio_lead_in
-    except ImportError:
-        audio_lead_in = apply_audio_lead_in = None
+    audio_lead_in = apply_audio_lead_in = None
+    if original_audio is None:
+        try:
+            from .comfy_continuation import audio_lead_in, apply_audio_lead_in
+        except ImportError:
+            audio_lead_in = apply_audio_lead_in = None
     if leads is not None and audio_lead_in is not None:
         stored = audio_lead_in
         def audio_lead_in(video, previous=None):
@@ -203,7 +212,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                 return leads(video, previous)
             return leads(video, previous) or stored(video, previous=previous)
     sources, target = [Path(source) for source in sources], Path(target)
-    if len(sources) < 2:
+    if len(sources) < (2 if original_audio is None else 1):
         raise ValueError('Joining needs at least two videos')
     if target.exists() or target.is_symlink():
         raise ValueError('The joined video already exists')
@@ -216,7 +225,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
             if len(first.streams.video) != 1:
                 raise ValueError('A block has no single picture stream')
             shape = _shape(first.streams.video[0])
-            sound = first.streams.audio[0] if first.streams.audio else None
+            sound = first.streams.audio[0] if first.streams.audio and original_audio is None else None
             rate = sound.codec_context.sample_rate if sound is not None else None
             layout = sound.codec_context.layout.name if sound is not None else None
             bit_rate = max(sound.codec_context.bit_rate or 0, 192000) if sound is not None else None
@@ -236,7 +245,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                 with av.open(str(source)) as container:
                     if len(container.streams.video) != 1 or _shape(container.streams.video[0]) != shape:
                         raise ValueError('The blocks differ in size or encoding')
-                    if bool(container.streams.audio) != (sound is not None):
+                    if original_audio is None and bool(container.streams.audio) != (sound is not None):
                         raise ValueError('Only some of the blocks have sound')
                     video = container.streams.video[0]
                     tail = (_exact_tail(source, target, wanted - frames, cancelled)
@@ -308,8 +317,33 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
         with av.open(str(temporary)) as check:
             if check.streams.video[0].frames != frames:
                 raise ValueError('The joined video is incomplete')
+        receipt = None
+        if original_audio is not None:
+            from .original_audio import mux
+            required = ((original_audio['end_sample'] - original_audio['start_sample']) * FPS
+                        + original_audio['sample_rate'] - 1) // original_audio['sample_rate']
+            if frames < required:
+                # Completed prefixes end on nearest-sample global boundaries.
+                # Rounding up can put the endpoint half a sample past the
+                # last frame; it does not require a further picture frame.
+                count = original_audio['end_sample'] - original_audio['start_sample']
+                if 2 * (count * FPS - frames * original_audio['sample_rate']) > FPS:
+                    raise ValueError('Original audio is longer than the joined picture')
+                required = frames
+            receipt = mux(temporary, temporary, original_audio, video_frames=required)
+            _check(cancelled)
+            rate, samples = receipt['sample_rate'], receipt['samples_per_channel']
+            with av.open(str(temporary)) as check:
+                video = check.streams.video[0]
+                frames = video.frames
+                if (video.duration is None or
+                        abs(video.duration * video.time_base - Fraction(samples, rate)) > Fraction(1, rate)):
+                    raise ValueError('The joined picture did not end on the selected audio sample')
+            if frames != required:
+                raise ValueError('The joined picture did not reach the selected audio endpoint')
         os.replace(temporary, target)
-        return dict(exact_end=wanted is not None and frames == wanted, frames=frames, width=shape[1], height=shape[2],
+        return dict(**({'original_audio': receipt} if receipt is not None else {}),
+                    exact_end=wanted is not None and frames == wanted, frames=frames, width=shape[1], height=shape[2],
                     audio_samples=samples, sample_rate=rate,
                     seams_repaired=joined_audio.seams_repaired if joined_audio is not None else 0,
                     seams_expected=expected,
@@ -563,7 +597,7 @@ def _replace_target(root, replace, identity, sources):
 
 
 def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, leads=None, expected_seams=None,
-                 speaking=None):
+                 speaking=None, *, original_audio=None):
     """Join relative block outputs into a saved video, replacing only this chain's earlier join."""
     import folder_paths
     root = Path(folder_paths.get_output_directory()).resolve()
@@ -594,8 +628,10 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
             originals = {str(source): output for source, output in zip(sources, outputs)}
             def kept(following, previous):
                 return leads(originals.get(str(following)), originals.get(str(previous)) if previous is not None else None)
-        joined = join_files(sources, staged, cancelled, frames, leads=kept, expected=expected_seams, speaking=speaking)
-        if expected_seams is not None and joined['seams_repaired'] < expected_seams:
+        joined = join_files(sources, staged, cancelled, frames, leads=kept, expected=expected_seams, speaking=speaking,
+                            **({'original_audio': original_audio} if original_audio is not None else {}))
+        # The original selection replaces every block's sound, so there are no seam sounds to repair.
+        if original_audio is None and expected_seams is not None and joined['seams_repaired'] < expected_seams:
             # A seam sound left unrepaired is never reported as a finished video.
             raise ValueError('Only %d of %d seam sounds could be repaired' % (joined['seams_repaired'], expected_seams))
         report = dict(success=True, geometry=dict(width=joined['width'], height=joined['height'], frames=joined['frames'],
@@ -607,6 +643,9 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
             report['chain_join']['seams_expected'] = expected_seams
         if joined.get('voice') is not None:
             report['chain_join']['voice'] = joined['voice']
+        if original_audio is not None:
+            report['video']['original_audio'] = joined['original_audio']
+            report['geometry']['seconds'] = joined['original_audio']['duration_seconds']
         with temporary.open('w', encoding='utf-8') as stream:
             json.dump(report, stream, ensure_ascii=False)
             stream.flush()

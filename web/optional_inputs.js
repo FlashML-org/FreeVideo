@@ -35,12 +35,52 @@ export function optionalInputValue(name, value) {
     return value;
 }
 
+// A saved workflow is read back by position, so a control can hold another type's value, a choice the
+// node no longer offers or a number outside its range. The node's own definition says what is valid:
+// such a value becomes the default, the others (prompt, size, seed, links, other nodes) are left as saved.
+export function definedWidgetValue(entry, value) {
+    if (!Array.isArray(entry)) return value;
+    const [kind, options = {}] = entry, choices = Array.isArray(kind) ? kind : options.options;
+    const fallback = options.default ?? (choices ? choices[0] : undefined);
+    if (fallback === undefined) return value;
+    if (choices) return choices.includes(value) ? value : fallback;
+    const inRange = number => (options.min === undefined || number >= options.min) && (options.max === undefined || number <= options.max);
+    if (kind === 'INT') return Number.isSafeInteger(value) && inRange(value) ? value : fallback;
+    if (kind === 'FLOAT') return typeof value === 'number' && Number.isFinite(value) && inRange(value) ? value : fallback;
+    if (kind === 'BOOLEAN') return typeof value === 'boolean' ? value : fallback;
+    if (kind === 'STRING') return typeof value === 'string' ? value : fallback;
+    return value;
+}
+
+export function migrateDefinedWidgets(node) {
+    const input = node?.constructor?.nodeData?.input;
+    for (const widget of node?.widgets || []) {
+        const value = definedWidgetValue(input?.required?.[widget.name] || input?.optional?.[widget.name], widget.value);
+        if (value !== widget.value) widget.value = value;
+    }
+}
+
 export function cleanOptionalWidgets(node) {
+    migrateDefinedWidgets(node);
     for (const widget of node?.widgets || []) {
         if (!(widget.name in DEFAULTS)) continue;
         const value = optionalInputValue(widget.name, widget.value);
         if (value !== widget.value) widget.value = value;
     }
+}
+
+// Audio use came after the Media node's panel, which an older save keeps as '' in that position:
+// such a workflow, or one without the value, reads as Reference and is saved with it from then on.
+export function cleanAudioUse(node) {
+    const widget = node?.widgets?.find(w => w.name === 'audio_use');
+    if (widget && (widget.value === '' || widget.value == null)) widget.value = 'reference';
+}
+
+// The user chose to generate without a description: this request alone says so; the node's own widgets never keep it.
+export function allowEmptyPrompt(prompt, nodeId) {
+    const inputs = prompt?.output?.[String(nodeId)]?.inputs;
+    if (inputs) inputs.allow_empty_prompt = true;
+    return prompt;
 }
 
 export function cleanOptionalPrompt(prompt) {

@@ -25,6 +25,9 @@ LEVELS = (
     dict(level=3, en='Strong · the GPU handles the least at a time; slowest', zh='加强 · 显卡每次处理的数据最少，生成最慢', head=1),
 )
 RECOVERY_SUCCESSES = 3
+# An interruption whose cause is unknown leaves no sign that the wider work grouping was at fault,
+# so one completed generation restores the previous level; a reported GPU error keeps the full streak.
+UNEXPLAINED_INTERRUPTIONS = ('unfinished_request_after_owner_and_worker_exit', 'unknown_worker_exit')
 SUCCESS_RECEIPTS = 64
 
 
@@ -52,6 +55,13 @@ def policy_revision():
     return digest.hexdigest()
 
 
+def recovery_required(state):
+    if state.get('recovery_required') in (1, RECOVERY_SUCCESSES):
+        return state['recovery_required']
+    reason = (state.get('trigger') or state.get('notice') or {}).get('reason')
+    return 1 if reason in UNEXPLAINED_INTERRUPTIONS else RECOVERY_SUCCESSES
+
+
 def current_settings(value):
     value = copy.deepcopy(value)
     revision = policy_revision()
@@ -69,7 +79,8 @@ def current_settings(value):
         value['notice'] = None
         value.pop('trigger', None)
         for field in ('unknown_interruptions', 'consecutive_successes', 'recovery_disabled',
-                      'last_counted_interruption', 'last_counted_batch', 'last_escalation', 'recovery'):
+                      'last_counted_interruption', 'last_counted_batch', 'last_escalation', 'recovery',
+                      'recovery_required'):
             value.pop(field, None)
     value.setdefault('unknown_interruptions', 0)
     value.setdefault('consecutive_successes', 0)
@@ -183,7 +194,8 @@ class Store:
         if key is None:
             return unavailable()
         if not io_path(self.path).exists():
-            return dict(current_settings(dict(level=0, automatic=True, notice=None)), levels=LEVELS, available=True)
+            return dict(current_settings(dict(level=0, automatic=True, notice=None)), levels=LEVELS, available=True,
+                        recovery_successes_required=RECOVERY_SUCCESSES)
         with closing(sqlite3.connect(_read_uri(self.path), uri=True, timeout=10)) as db:
             value = self.read_row(db, key)
         selected = current_settings(value)
@@ -192,7 +204,7 @@ class Store:
                 # Re-read under the lock so a concurrent user edit always wins.
                 selected = current_settings(self.read_row(db, key))
                 self.write_row(db, key, selected)
-        return dict(selected, levels=LEVELS, available=True)
+        return dict(selected, levels=LEVELS, available=True, recovery_successes_required=recovery_required(selected))
 
     def set(self, identity, level, automatic):
         if type(level) is not int or not 0 <= level <= 3 or type(automatic) is not bool:
@@ -248,7 +260,7 @@ class Store:
                 # once, and so does one that was already running at the last counted interruption.
                 # A request is registered after recovery in the same call, often within one tick
                 # of a coarse system clock, so an equal time counts.
-                elif (reason in ('unfinished_request_after_owner_and_worker_exit', 'unknown_worker_exit')
+                elif (reason in UNEXPLAINED_INTERRUPTIONS
                         and row['started'] >= value.get('last_counted_interruption', 0)
                         and (batch is None or batch != value.get('last_counted_batch'))):
                     incident['counted'] = True
@@ -262,6 +274,10 @@ class Store:
                     value['consecutive_successes'] = 0
             if escalate:
                 previous = value['level']
+                # A level raised by a GPU error keeps its full streak when unexplained events raise it further.
+                carried = previous > 0 and value['origin'] == 'automatic' and recovery_required(value) == RECOVERY_SUCCESSES
+                value['recovery_required'] = (1 if reason in UNEXPLAINED_INTERRUPTIONS and not carried
+                                              else RECOVERY_SUCCESSES)
                 value['level'] = min(3, max(2, value['level'] + 1))
                 incident['level_changed'] = value['level'] != previous
                 value['origin'] = 'automatic'
@@ -308,12 +324,13 @@ class Store:
             recovery = None
             if restoring:
                 value['consecutive_successes'] += 1
-                if value['consecutive_successes'] >= RECOVERY_SUCCESSES:
+                required = recovery_required(value)
+                if value['consecutive_successes'] >= required:
                     previous = value['level']
                     value['level'] = max(value['manual_level'], 2 if previous == 3 else 0)
                     if value['level'] < previous:
                         recovery = dict(id=row['id'], reason='consecutive_successes', previous_level=previous,
-                                        level=value['level'], successes=RECOVERY_SUCCESSES,
+                                        level=value['level'], successes=required,
                                         policy_revision=revision, time=time.time())
                         value['recovery'] = recovery
                     if value['manual_level'] and value['level'] == value['manual_level']:
@@ -326,7 +343,7 @@ class Store:
                         value['notice']['level'] = value['level']
             result = dict(unknown_interruptions=value['unknown_interruptions'],
                           consecutive_successes=value['consecutive_successes'],
-                          recovery_successes_required=RECOVERY_SUCCESSES,
+                          recovery_successes_required=recovery_required(value),
                           recovery_disabled=value['recovery_disabled'])
             if recovery:
                 result['recovery'] = recovery
@@ -367,7 +384,7 @@ def apply(profile, state):
         numerical_class='chunking-may-change-floating-point-results' if changes else 'unchanged')
     decision.update(unknown_interruptions=state.get('unknown_interruptions', 0),
                     consecutive_successes=state.get('consecutive_successes', 0),
-                    recovery_successes_required=RECOVERY_SUCCESSES,
+                    recovery_successes_required=recovery_required(state),
                     recovery_disabled=state.get('recovery_disabled', False))
     for field in ('origin', 'policy_revision', 'reset', 'notice', 'trigger', 'recovery'):
         if field in state:

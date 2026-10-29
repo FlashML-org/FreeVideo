@@ -76,7 +76,11 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot) {
         if (id === 'autopilot') text.setAttribute('translate', 'no');
         button.dataset.label = label; button.dataset.view = id;
         if (id === 'editor') button.dataset.fvGuide = 'longer';
-        button.setAttribute('aria-pressed', String(view === id)); button.onclick = action;
+        button.setAttribute('aria-pressed', String(view === id)); button.onclick = () => {
+            const result = action?.();
+            if (id === 'autopilot') Promise.resolve(result).then(() => import('./feature_tour.js')).then(({triggerFeatureTour}) => triggerFeatureTour(id)).catch(() => {});
+            return result;
+        };
         if (id === 'autopilot') {
             button.hidden = view !== id;
             if (view === id) button.dataset.here = 'true';
@@ -108,9 +112,11 @@ export function refreshNavigation() {
     }
 }
 
-export function openCreativeWorkspace() {
+export function openCreativeWorkspace({studioOnly = false} = {}) {
     // Settings replay belongs to the visible editing workspace too.
-    if (currentView === 'editor' && document.querySelector('dialog.fv-editor[open]')) return true;
+    const editor = studioOnly ? document.querySelector('dialog.fv-editor[open]') : null;
+    if (studioOnly && editor?.freevideoSwitchView) return editor.freevideoSwitchView('studio').then(() => Boolean(document.querySelector('dialog.fv-studio:not(.fv-editor)[open]')));
+    if (!studioOnly && currentView === 'editor' && document.querySelector('dialog.fv-editor[open]')) return true;
     refreshNavigation();
     const focused = Object.values(app.canvas?.selected_nodes || {}).find(n => n.comfyClass === 'FreeVideoGenerate' || n.type === 'FreeVideoGenerate');
     const node = currentView === 'studio' ? selected : focused || selected;

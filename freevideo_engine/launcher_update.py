@@ -36,6 +36,10 @@ MIRROR_BASE = 'https://modelscope.cn/models/BowenXue/FreeVideo-releases/resolve/
 # ModelScope redirects large files to its regional CDN: cdn-lfs-cn-<n>.modelscope.cn.
 MIRROR_CDN = re.compile(r'cdn-lfs-cn-[0-9]{1,2}\.modelscope\.cn')
 UPDATE_STALL_SECONDS = 30
+# A source this slow for this long gives way to the next one, keeping the bytes
+# already fetched; if every source is slow, the fastest one finishes the file.
+UPDATE_SLOW_SECONDS = 15
+UPDATE_SLOW_BYTES_PER_SECOND = 256 * 1024
 MANIFEST_CHECK_SECONDS = 20
 _metadata_budget = threading.local()
 log = logging.getLogger(__name__)
@@ -46,8 +50,9 @@ def mirror_url(relative):
 
 
 def source_order(language=None):
-    language = default_language() if language is None else language
-    return ('mirror', 'github') if language.lower().startswith('zh') else ('github', 'mirror')
+    language = (default_language() if language is None else language).lower()
+    # Windows names its locales in words ('Chinese (Simplified)_China'), not 'zh_CN'.
+    return ('mirror', 'github') if language.startswith(('zh', 'chinese')) else ('github', 'mirror')
 
 
 # The channel names the platform; launchers from before combined releases read
@@ -70,9 +75,11 @@ RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
                   LINUX_CHANNEL: ('FreeVideo-Linux-x86_64.AppImage', 'update-linux.json')}
 CHANNELS = tuple(RELEASE_ASSETS)
 MANIFEST_DOMAIN = b'FreeVideo update manifest v1\x00'
-# The mirror is only a source for packages whose own signature the launcher can
-# check after download; DMG and AppImage have none, so they stay on GitHub.
-MIRROR_CHANNELS = (CHANNEL,)
+# Every platform's mirror manifest carries the release signature, which binds the
+# package digest. The Windows launcher also checks a mirror-only download's
+# Authenticode publisher. The Mac codesign check before use is an integrity check
+# only: it does not require a particular developer identity.
+MIRROR_CHANNELS = CHANNELS
 RETRY_SECONDS = 60
 MAX_RETRY_SECONDS = 15 * 60
 MAX_DOWNLOAD_RETRIES = 3
@@ -661,7 +668,8 @@ def download(candidate, root, token='', *, progress=None, cancel=None, language=
     try:
         network.download(download_sources(candidate, language), io_path(target), asset['sha256'], report,
             network=dict(quiet=True, resource_check=cancelled), size=asset['bytes'],
-            stall_seconds=UPDATE_STALL_SECONDS, low_speed_limit=0, cycles=1,
+            stall_seconds=UPDATE_STALL_SECONDS, slow_seconds=UPDATE_SLOW_SECONDS,
+            low_speed_limit=UPDATE_SLOW_BYTES_PER_SECOND, cycles=2,
             category='launcher-update', validate_url=_trusted_url, verify=verify_signature,
             fallbacks=download_fallbacks(candidate, token))
     except network.DownloadError as error:

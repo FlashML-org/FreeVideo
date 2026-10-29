@@ -24,7 +24,7 @@ def _room(path, size):
     return disk_space.free_bytes(path.parent) >= 2 * size + 512 * 1024 * 1024
 
 
-def embed_comfy_metadata(path, *, prompt=None, workflow=None, backup=None):
+def embed_comfy_metadata(path, *, prompt=None, workflow=None, backup=None, exact_timescale=None):
     """Rewrite the MP4 at `path` with the graph in its metadata, copying the
     streams. The new file replaces the original only after every audio and video
     packet matches the original byte for byte and the graph reads back; with
@@ -48,7 +48,9 @@ def embed_comfy_metadata(path, *, prompt=None, workflow=None, backup=None):
             return False
         # faststart puts moov, and with it the metadata, before the media data.
         with av.open(str(path)) as source, av.open(str(temporary), 'w', format='mp4',
-                                                   options={'movflags': 'use_metadata_tags+faststart'}) as target:
+                options={'movflags': 'use_metadata_tags+faststart',
+                         **({'video_track_timescale': str(exact_timescale), 'movie_timescale': str(exact_timescale)}
+                            if exact_timescale is not None else {})}) as target:
             if not source.streams or any(stream.type not in ('video', 'audio') or stream.codec_context is None
                                          for stream in source.streams):
                 raise ValueError('Only videos with nothing but audio and video streams are rewritten')
@@ -61,6 +63,8 @@ def embed_comfy_metadata(path, *, prompt=None, workflow=None, backup=None):
                     target.mux(packet)
         if _media(temporary) != _media(path):
             raise ValueError('The rewritten video does not match the original')
+        if exact_timescale is not None and _timing(temporary) != _timing(path):
+            raise ValueError('The rewritten original soundtrack changed its timing')
         with av.open(str(temporary)) as check:
             if any(check.metadata.get(key) != value for key, value in tags.items()):
                 raise ValueError('The workflow did not read back')
@@ -108,6 +112,17 @@ def _media(path):
                 digests[packet.stream.index].update(bytes(packet))
                 counts[packet.stream.index] += 1
     return layout, [(counts[index], digests[index].hexdigest()) for index in sorted(digests)]
+
+
+def _timing(path):
+    import av
+    with av.open(str(path)) as reader:
+        streams = {s.index: [] for s in reader.streams}
+        for p in reader.demux():
+            if p.size:
+                streams[p.stream.index].append((p.pts * p.time_base if p.pts is not None else None,
+                    p.dts * p.time_base if p.dts is not None else None, p.duration * p.time_base))
+        return streams
 
 
 def _copy_stream(container, template):

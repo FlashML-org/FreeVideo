@@ -47,6 +47,7 @@ NOTICE_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')
 
 
 def source_files(root):
+    from freevideo_source_bootstrap import TOUR_FILES
     names = ['pyproject.toml', 'README.md', 'MANIFEST.in', '__init__.py',
              'freevideo', 'setup.sh', 'test.sh',
              'freevideo.ps1', 'setup.ps1', 'test.ps1', 'freevideo.cmd', 'setup.cmd', 'test.cmd',
@@ -64,9 +65,9 @@ def source_files(root):
     files = [root / name for name in names]
     files += [p for folder in ('freevideo_engine', 'constraints', 'web', 'example_workflows')
               for p in (root / folder).rglob('*')
-              if p.is_file() and (p.suffix in ('.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico', '.qml',
+              if p.is_file() and (not p.relative_to(root).as_posix().startswith('web/assets/tour/') or p.relative_to(root).as_posix() in TOUR_FILES) and (p.suffix in ('.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico', '.qml',
                                              '.woff2', '.otf', '.webp')
-                 or folder == 'web' and p.parent.name == 'tutorial' and p.suffix == '.mp4')]
+                 or folder == 'web' and (p.relative_to(root).as_posix() in TOUR_FILES or p.parent.name == 'tutorial' and p.suffix == '.mp4'))]
     return sorted(files)
 
 

@@ -6,6 +6,7 @@ This bridge only retains a request, supervises that CLI and forwards progress.
 import json
 import logging
 import math
+import contextlib
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +20,31 @@ from . import processes
 from .geometry import geometry
 from .comfy_environment import isolated_environment
 from .monitoring import save
+
+
+@contextlib.contextmanager
+def _device_generation_lease(environment):
+    """An executor of a multi-GPU pool holds its own device's lease, not the shared installation lock.
+
+    The child inherits the device lease; hosts without a pool leave the environment alone and
+    the child takes the installation lock itself, as before.
+    """
+    from .comfy_environment import executor_device
+    uuid = executor_device(environment)
+    if not uuid:
+        yield ()
+        return
+    from types import SimpleNamespace
+    from .gpu_pool import child_lease_environment, generation_lease
+    from .locking import LOCK_ENV
+    device = SimpleNamespace(uuid=uuid)
+    with generation_lease(device, wait_seconds=3) as descriptor:
+        os.set_inheritable(descriptor, True)
+        environment.update(child_lease_environment(device), **{LOCK_ENV: str(descriptor)})
+        try:
+            yield (descriptor,)
+        finally:
+            environment.pop(LOCK_ENV, None)
 
 
 def _timing_seconds(value):
@@ -852,12 +878,30 @@ def installation(source=None, environ=None):
         raise ValueError('The FreeVideo installation was moved. Rerun setup in the selected folder.')
     if not io_path(machine['python']).is_file():
         raise ValueError('The FreeVideo Python environment is missing. Rerun setup in %s.' % root)
+    from .comfy_environment import executor_device
+    device_id = executor_device(environ)
+    if device_id:
+        from .gpu_pool import enumerate_devices
+        env = os.environ if environ is None else environ
+        if env.get('CUDA_VISIBLE_DEVICES') != device_id:
+            raise ValueError('Executor device binding changed')
+        device = next((item for item in enumerate_devices(env) if item.uuid == device_id), None)
+        if device is None:
+            raise ValueError('Executor device is unavailable')
+        machine = dict(machine, gpu_uuid=device.uuid, gpu_name=device.name)
+        if isinstance(machine.get('hardware'), dict):
+            hardware = dict(machine['hardware'], gpu_uuid=device.uuid, gpu_name=device.name,
+                            capability=device.capability, vram_total=device.total_bytes)
+            hardware.pop('vram_free', None)
+            machine['hardware'] = hardware
     return root, plain_data(machine)
 
 
 def validate_request(prompt, width, height, seconds, seed, *, continue_from=None, frames=None,
-                     two_pass=True, preview=False, refine_from=None, media=None):
-    if not isinstance(prompt, str) or not prompt.strip():
+                     two_pass=True, preview=False, refine_from=None, media=None, original_audio=False,
+                     allow_empty_prompt=False):
+    # Only a request the user sent on purpose without a description may leave it empty.
+    if not isinstance(prompt, str) or not (prompt.strip() or allow_empty_prompt is True):
         raise ValueError('Enter a prompt describing the video and its audio.')
     if type(seed) is not int or not 0 <= seed <= 2**53 - 1:
         raise ValueError('Seed must be an integer between 0 and 9007199254740991.')
@@ -869,7 +913,8 @@ def validate_request(prompt, width, height, seconds, seed, *, continue_from=None
     canvas = geometry(width, height, frames=frames, seconds=None if frames is not None else seconds)
     if continue_from is not None:
         from .continuation import validate_path, validate_route
-        validate_route(two_pass=two_pass, preview=preview, refine_from=refine_from, media=media)
+        validate_route(two_pass=two_pass, preview=preview, refine_from=refine_from, media=media,
+                       original_audio=original_audio)
         validate_path(continue_from)
     return canvas
 
@@ -1180,7 +1225,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
-             step_cache=None, upscale_factor=2):
+             step_cache=None, upscale_factor=2, allow_empty_prompt=False):
+    from .comfy_environment import control_process
+    if control_process(environ):
+        raise RuntimeError('Generation requires a dispatched executor')
     from .tiers import STEP_CACHES
     from .two_pass import SCALES
     if upscale_factor not in SCALES:
@@ -1222,6 +1270,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         refine_steps = int(argument(arguments, '--refine-steps', 3))
         # The second pass never uses a step cache; the preview's own command keeps its flag.
         step_cache = argument(arguments, '--step-cache')
+        # The preview's own permission for an empty prompt travels with its saved request.
+        allow_empty_prompt = allow_empty_prompt or '--allow-empty-prompt' in arguments
     if preview or upscale:
         # A preview stays the quick half-size first pass, and its upscale continues that same pass.
         upscale_factor = 2
@@ -1229,7 +1279,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     validate_flags(preview, upscale, two_pass, base_steps)
     from .two_pass import validate_steps
     validate_steps(base_steps, refine_steps, two_pass)
-    canvas = validate_request(prompt, width, height, seconds, seed, continue_from=continue_from, frames=frames)
+    canvas = validate_request(prompt, width, height, seconds, seed, continue_from=continue_from, frames=frames,
+                              allow_empty_prompt=allow_empty_prompt)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
     continuation = None
@@ -1291,6 +1342,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                '--width', str(width), '--height', str(height), '--seconds', str(seconds), '--seed', str(seed),
                '--two-pass' if two_pass else '--no-two-pass',
                '--base-steps', str(base_steps), '--refine-steps', str(refine_steps)]
+    if allow_empty_prompt is True:
+        command.append('--allow-empty-prompt')
     if step_cache is not None:
         command += ['--step-cache', step_cache]
     if two_pass and upscale_factor != 2:
@@ -1426,6 +1479,24 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .media_request import task_for
         from .two_pass import plan, sampling_canvas
         from .generate import hide_tail_geometry
+        from .original_audio import prepare_request
+        from copy import deepcopy
+        original_audio, audio_canvas = prepare_request(deepcopy(extra.get('media') or {}), width, height,
+            continuation=continue_from is not None, backend=machine.get('device_backend', 'cuda'))
+        if original_audio is not None:
+            canvas = audio_canvas
+            state['geometry'] = canvas
+            extra['original_audio'] = original_audio
+            flag = '--frames' if '--frames' in command else '--seconds'
+            position = command.index(flag)
+            command[position:position + 2] = (['--frames', str(canvas['frames'])] if 'segment' in original_audio else
+                ['--seconds', str((original_audio['end_sample'] - original_audio['start_sample']) / original_audio['sample_rate'])])
+            # The sound used as is sets the length and is the part's one sound: the engine adds no hidden
+            # tail, no voice reference and no first frame of the film beside it (cast pictures stay).
+            first_frame_reference = voice_reference = hide_tail = anchored = False
+            for flag in ('--first-frame-reference', '--voice-reference', '--hide-tail'):
+                if flag in command:
+                    command.remove(flag)
         generated_canvas, hidden = hide_tail_geometry(canvas, None if extra.get('conditioning') else prompt,
                                                       hide_tail, preview=bool(preview or upscale))
         hide_tail_frames = hidden['frames'] if hidden and hidden['used'] else 0
@@ -1439,7 +1510,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             from .continuation import ADALN_TASK, ANCHOR_ADALN_TASK, MISSING, validate_snapshot, summary
             validate_route(task='ref2va' if anchored or pictured else task_for(extra.get('media', {})),
                            anchor=anchored or pictured,
-                           media=extra.get('media'))
+                           media=extra.get('media'), original_audio=original_audio is not None)
+            if original_audio is not None and continuation is not None:
+                # An encoded ending has no stored origin; the engine checks the part against its own.
+                from .original_audio_chain import validate_continuation
+                validate_continuation(original_audio, continuation)
             if continuation is not None:
                 try:
                     continuation = validate_snapshot(continuation, sampled, sampling_plan=planned)
@@ -1497,7 +1572,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         preparation_started = time.monotonic()
         try:
             # Reference audio selects its own tables; match the encoder's choice.
-            asset_task = ((ANCHOR_ADALN_TASK if anchored or pictured else ADALN_TASK) if continue_from is not None
+            asset_task = ((ANCHOR_ADALN_TASK if anchored or pictured else ADALN_TASK)
+                          if continue_from is not None and original_audio is None
                           else engine_task(extra.get('media', {}), media_base))
             # Tables follow the step count; the cache is carried for exact level recognition.
             preparation = prepare_sampling_assets(root, machine, dict(planned, step_cache=step_cache) if step_cache else planned,
@@ -1527,11 +1603,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 OWNER.close()
                 environment.pop(ENV, None)
             else:
-                environment[ENV] = OWNER.start(root, source, machine['python'], environment)
-                OWNER.active = True
-        with (run / 'generate.log').open('wb') as log:
+                environment[ENV] = OWNER.start(root, source, machine['python'], environment, busy=True)
+        with _device_generation_lease(environment) as held, (run / 'generate.log').open('wb') as log:
             process = processes.popen(command, env=environment, cwd=source, stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
+                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True, pass_fds=held)
             state.update(status='running', pid=process.pid)
             save(run / 'comfy-request.json', state)
             while process.poll() is None:
@@ -1598,7 +1673,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
             # Written before the result cache records the file's size and hash.
             from .comfy_metadata import embed_comfy_metadata
-            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
+            timing = {}
+            if original_audio is not None:
+                from math import lcm
+                timing['exact_timescale'] = lcm(original_audio['sample_rate'], 24)
+            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata, **timing)
         # The MP4 is saved and checked; its uncompressed frames and audio are no longer read.
         from .comfy_library import release_decoded, release_later
         state['decoded_release'] = release_decoded(run)

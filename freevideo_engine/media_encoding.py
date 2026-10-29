@@ -132,6 +132,15 @@ def prepare(media, canvas, directory):
         result.append({'kind': 'image', 'anchor': anchor, 'pixels': str(target), 'frames': 1})
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']
+        if row.get('use') == 'original':
+            from .original_audio import model_audio, inspect
+            numbers[kind] += 1
+            info = row.get('original_audio') or inspect(row)
+            target = directory / ('original-%02d.npy' % index)
+            result.append(dict(kind='audio', use='original', original_audio=info,
+                               audio=model_audio(info, canvas, target)))
+            ref_items.append({'type': 'audio'})
+            continue
         ref = {'kind': kind}
         if 'early_steps' in row:
             ref['early_steps'] = row['early_steps']
@@ -356,6 +365,13 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
                 audio = torch.from_numpy(np.load(row['audio'], allow_pickle=False)).to(device)
                 latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
                 ref['audio_latent'] = ((latent - mean) / std).reshape(-1, 32).contiguous()
+                if row.get('use') == 'original':
+                    ticks = round(canvas['frames'] / 24 * 40)
+                    sound = ref['audio_latent'].reshape(2, -1, 32)
+                    if sound.shape[1] < ticks:
+                        raise ValueError('Original audio encoder returned too few latent frames')
+                    ref.update(use='original', original_audio=row['original_audio'],
+                               audio_latent=sound[:, :ticks].reshape(-1, 32).contiguous())
                 del audio, latent
         del vae
         gc.collect()

@@ -53,7 +53,7 @@ def normalize_references(task, references=None):
         if not isinstance(row, dict):
             raise ValueError('Invalid reference metadata.')
         kind = row.get('kind')
-        allowed = {'kind', 'seconds'} if kind == 'audio' else {'kind', 'width', 'height'}
+        allowed = {'kind', 'seconds', 'use'} if kind == 'audio' else {'kind', 'width', 'height'}
         if kind == 'video':
             allowed |= {'seconds', 'audio_seconds', 'guide'}
         if kind not in ('image', 'video', 'audio') or set(row) - allowed:
@@ -83,7 +83,16 @@ def normalize_references(task, references=None):
                 raise ValueError('Specify positive finite soundtrack seconds, or omit it for silent video.')
             if audio < 1 / 32000:
                 raise ValueError('Reference audio is empty after normalization.')
-        rows.append((kind, width, height, seconds, audio))
+        from .original_audio import fields, AudioUseError, MAX_SECONDS
+        use = fields(row)
+        if use:
+            if seconds < 1.625:
+                raise AudioUseError('audio_original_short')
+            if seconds > MAX_SECONDS:
+                raise AudioUseError('audio_original_long')
+        rows.append((kind, width, height, seconds, audio) + (('original',) if use else ()))
+    if sum(len(row) == 6 for row in rows) > 1:
+        raise AudioUseError('audio_original_multiple')
     visual = any(r[0] != 'audio' for r in rows)
     audio = any(r[0] == 'audio' or r[4] is not None for r in rows)
     expected = 'ref2va_av' if visual and audio else 'ref2va_audio' if audio else 'ref2va' if visual else None
@@ -96,7 +105,7 @@ def reference_parameters(references):
     """JSON form of a normalized cache key, also used in notifications."""
     if references is None:
         return None
-    return [{k: v for k, v in zip(('kind', 'width', 'height', 'seconds', 'audio_seconds'), row)
+    return [{k: v for k, v in zip(('kind', 'width', 'height', 'seconds', 'audio_seconds', 'use'), row)
              if v is not None} for row in references]
 
 
@@ -124,7 +133,13 @@ def _material(canvas, task, references):
     video_rows = audio_rows = 0
     duration = 0.
     limit = reference_frames(canvas)
-    for kind, width, height, seconds, soundtrack in references:
+    for row in references:
+        kind, width, height, seconds, soundtrack = row[:5]
+        if len(row) == 6:
+            # Original audio occupies the existing target rows. Keep all
+            # ordinary model/decoder budgets, without duplicating the track.
+            duration += seconds
+            continue
         if kind != 'audio':
             width, height = reference_size(width, height, canvas)
             patches = (width // 32) * (height // 32)
@@ -283,7 +298,9 @@ def _admit(machine, width, height, frames, steps, two_pass, task='t2va', refine=
             return request, code, None
         hardware = Hardware(machine['name'], machine['cap'], machine['vram'], machine['vram_free'],
                             machine['ram'], machine['ram_available'], system=machine['system'])
-        options = dict(precision=machine['precision'], attention='sage2/sage2', available_backends={'sage2'})
+        # SageAttention 2 has no sm100 kernels (data-centre Blackwell); those cards run torch-flash.
+        backend = 'torch-flash' if machine['cap'][0] == 10 else 'sage2'
+        options = dict(precision=machine['precision'], attention=backend + '/' + backend, available_backends={backend})
         choose(hardware, canvas=canvas, stage='encoding', **options)
         final = choose(hardware, canvas=dict(canvas, step_cache=step_cache) if step_cache else canvas, **options)
         if final.engine.get('step_cache'):

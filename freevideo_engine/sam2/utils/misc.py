@@ -11,14 +11,15 @@ from threading import Thread
 import numpy as np
 import torch
 from PIL import Image
+from ...device_index import device_properties
 from tqdm import tqdm
 
 
 def get_sdpa_settings():
     if torch.cuda.is_available():
-        old_gpu = torch.cuda.get_device_properties(0).major < 7
+        old_gpu = device_properties(torch).major < 7
         # only use Flash Attention on Ampere (8.0) or newer GPUs
-        use_flash_attn = torch.cuda.get_device_properties(0).major >= 8
+        use_flash_attn = device_properties(torch).major >= 8
         if not use_flash_attn:
             warnings.warn(
                 "Flash Attention is disabled as it requires a GPU with Ampere (8.0) CUDA capability.",

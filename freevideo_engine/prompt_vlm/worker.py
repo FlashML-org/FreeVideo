@@ -301,12 +301,14 @@ def load_model(folder, torch, stats, checkpoint):
     available = stats['available_memory_at_start_bytes' if resident else 'available_memory_before_load_bytes']
     if available < stats['ram_required_bytes']:
         raise ValueError('ram_space')
+    from ..device_index import active_index
+    card = active_index(torch)
     checkpoint('load_weights')
     loading = time.monotonic()
     if resident:
         from .load import resident as load_resident
-        model = load_resident(folder, torch, 'cuda:0', resident, keep)
-        mapping, device = {'': 0}, 'cuda:0'
+        model = load_resident(folder, torch, 'cuda:%d' % card, resident, keep)
+        mapping, device = {'': card}, 'cuda:%d' % card
         stats.update(weights=resident, kv_positions=kv_positions(reserved_tokens(stats)))
     else:
         import psutil
@@ -317,17 +319,17 @@ def load_model(folder, torch, stats, checkpoint):
         mapping, device = {'': 'cpu'}, 'cpu'
         if weight_budget > 2 * 2**30:
             from accelerate import dispatch_model, infer_auto_device_map
-            mapping = infer_auto_device_map(model, max_memory={0: weight_budget,
+            mapping = infer_auto_device_map(model, max_memory={card: weight_budget,
                 'cpu': min(psutil.virtual_memory().total - 2 * 2**30, weights + available_memory() - 2 * 2**30)},
                 no_split_module_classes=['Qwen3VLTextDecoderLayer', 'Qwen3VLVisionBlock'], dtype=torch.bfloat16)
             if 'disk' in mapping.values():
                 raise ValueError('ram_space')
             model = dispatch_model(model, mapping)
-            device = 'cuda:0' if any(v == 0 for v in mapping.values()) else 'cpu'
+            device = 'cuda:%d' % card if any(v == card for v in mapping.values()) else 'cpu'
     stats.update(load_seconds=time.monotonic() - loading, placement_seconds=time.monotonic() - placing,
                  accelerations=['merged_gate_up', 'per_image_sdpa', 'chunked_vision_mlp', 'merged_qkv'],
                  backend='freetoken-portable-ops+transformers',
-                 cpu_offload=any(v == 'cpu' for v in mapping.values()) and any(v == 0 for v in mapping.values()),
+                 cpu_offload=any(v == 'cpu' for v in mapping.values()) and any(v == card for v in mapping.values()),
                  execution_device=device, device_map=mapping)
     return model, device
 

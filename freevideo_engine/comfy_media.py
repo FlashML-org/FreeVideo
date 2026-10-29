@@ -49,21 +49,24 @@ def continued(exported, notes=None):
     """What a continued part keeps of exported inputs: up to three pictures, and the LoRAs.
 
     It starts from the footage, so a first or last frame image becomes one more picture after the
-    reference pictures; pre-encoded conditioning, clips and sound are left out. When keyframes are
-    used or pictures are left out, notes gets one line saying so."""
+    reference pictures; pre-encoded conditioning, clips and sound are left out, except a sound used
+    as is, which every part plays its own range of. When keyframes are used or pictures are left out,
+    notes gets one line saying so."""
     from .continuation import PICTURES_MAX, pick_pictures
     media = (exported or {}).get('media') or {}
     kept = {key: value for key, value in media.items()
             if key not in ('first', 'last', 'references', 'conditioning_info')}
     pictures = [row for row in media.get('references', []) if row.get('kind') == 'image']
+    original = [row for row in media.get('references', []) if row.get('kind') == 'audio' and row.get('use') == 'original']
     keyframes = [name for name in ('first', 'last') if media.get(name)]
     # Characters added by an @ mention keep one picture each when there are several (pick_pictures).
     chosen = pick_pictures(pictures, lambda row: row.get('cast'))
     candidates = [_plain(row) for row in chosen] + [{'kind': 'image', 'path': media[name]} for name in keyframes]
-    if candidates:
-        kept['references'] = candidates[:PICTURES_MAX]
+    if candidates or original:
+        kept['references'] = candidates[:PICTURES_MAX] + original
     lines = [continued_note(len(pictures), keyframes, len(candidates[:PICTURES_MAX]))]
-    if any(row.get('kind') != 'image' for row in media.get('references', [])) or media.get('conditioning_info') \
+    if any(row.get('kind') != 'image' and row not in original for row in media.get('references', [])) \
+            or media.get('conditioning_info') \
             or (exported or {}).get('conditioning'):
         lines.append('A continued part uses picture references only. Video, audio and pre-encoded inputs are skipped.')
     for line in filter(None, lines):
@@ -100,7 +103,7 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
         if conditioning is not None or first is not None or last is not None or references:
             raise ValueError('Use the Media panel or direct media/conditioning sockets; disable duplicate inputs')
         connected = assets.get('_connected', {})
-        media.update({key: value for key, value in assets.items() if key != '_connected'})
+        media.update({key: value for key, value in assets.items() if key not in ('_connected', '_audio_use')})
         first, last = connected.get('first'), connected.get('last')
         references = []
         for name in REFERENCE_INPUTS:
@@ -112,6 +115,8 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
             references.extend({'kind': 'image', 'value': frame} for frame in frames)
         if connected.get('reference_audio') is not None:
             references.append({'kind': 'audio', 'value': connected['reference_audio']})
+        if assets.get('_audio_use') == 'original':
+            next(row for row in references if row['kind'] == 'audio')['use'] = 'original'
     if conditioning is not None and (first is not None or last is not None or references):
         raise ValueError('Preencoded conditioning already includes media; do not connect a second set')
     keyframes = first is not None or last is not None or any(name in media for name in ('first', 'last'))
@@ -145,7 +150,8 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
                 _audio(value, path)
             else:
                 raise ValueError('Unknown reference type')
-            row = {'kind': kind, 'path': str(path)}
+            from .original_audio import fields
+            row = {'kind': kind, 'path': str(path), **fields(reference)}
             if 'early_steps' in reference:
                 row['early_steps'] = reference['early_steps']
             media['references'].append(row)
@@ -162,5 +168,7 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
     if not continuing and media.get('references'):
         media['references'] = [_plain(row) for row in media['references']]
     if len(media) > 1:
+        from .original_audio import original
+        original(media)
         result['media'] = media
     return result

@@ -22,7 +22,7 @@ import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
-import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue } from './optional_inputs.js';
+import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';
 import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';
 import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
@@ -32,6 +32,7 @@ import { uploadMedia } from './media_upload.js';
 import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
+import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -258,6 +259,24 @@ function mediaPanel(node, mount = null) {
         rows[at] = {...rest, file: source}; update(rows);
         message(text('Restored the original image. Edit it again to reapply the changes.', '已恢复原图；再次编辑可以重新应用修改。'));
     }
+    // Reference | Use as is: the choice is checked against the file before it is kept.
+    function useSwitch(row) {
+        const group = createUseSwitch({t: text, use: usesOriginal(row) ? AUDIO_USE.original : AUDIO_USE.reference, onPick: async value => {
+            const current = read(), at = current.findIndex(r => r.file === row.file);
+            if (at < 0) return;
+            if (value === AUDIO_USE.reference) { const {use: _use, range: _range, ...rest} = current[at]; current[at] = rest; update(current); return; }
+            if (current.some((other, i) => i !== at && other.enabled !== false && usesOriginal(other))) { message(multipleText(text), true); return; }
+            group.set(AUDIO_USE.original, true);
+            const result = await checkOriginal(api, {...current[at], use: AUDIO_USE.original});
+            const latest = read(), now = latest.findIndex(r => r.file === row.file);
+            if (now < 0) return;
+            if (!result.ok) { group.set(AUDIO_USE.reference); message(failureText(result, text), true); return; }
+            // A preview or a continued video turned on while the clip was checked: it stays a reference.
+            if (originalBlocked()) { group.set(AUDIO_USE.reference); return; }
+            latest[now] = {...latest[now], use: AUDIO_USE.original}; update(latest);
+        }});
+        return group;
+    }
     function render() {
         for (const preview of cards.querySelectorAll("video,audio")) {
             preview.pause(); preview.removeAttribute("src"); preview.load();
@@ -296,7 +315,12 @@ function mediaPanel(node, mount = null) {
             const card = el("div", undefined, "fv-card"); card.dataset.enabled = String(row.enabled !== false);
             const top = el("div", undefined, "fv-row");
             const enabled = el("input"); enabled.type = "checkbox"; enabled.checked = row.enabled !== false;
-            enabled.setAttribute("aria-label", text("Use media", "使用素材")); enabled.onchange = () => { rows[index].enabled = enabled.checked; update(rows); };
+            enabled.setAttribute("aria-label", text("Use media", "使用素材")); enabled.onchange = () => {
+                if (enabled.checked && usesOriginal(rows[index]) && rows.some((other, i) => i !== index && other.enabled !== false && usesOriginal(other))) {
+                    enabled.checked = false; message(multipleText(text), true); return;
+                }
+                rows[index].enabled = enabled.checked; update(rows);
+            };
             const label = el("span", row.cast?.name || (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             const kind = mediaKind(row.file);
@@ -306,7 +330,8 @@ function mediaPanel(node, mount = null) {
             select.value = row.role; select.onchange = () => { rows[index].role = select.value; update(rows); };
             top.append(enabled, label);
             if (row.source) top.append(el('span', text('Edited', '已编辑'), 'fv-edited'));
-            top.append(select); card.append(top);
+            if (kind === "audio") top.append(useSwitch(row)); else top.append(select);
+            card.append(top);
             const preview = el(kind === "image" ? "img" : kind); preview.className = "fv-preview";
             preview.src = viewURL(row.file);
             if (kind === "image") {
@@ -353,11 +378,11 @@ function mediaPanel(node, mount = null) {
             }
             if (kind !== "image") {
                 // References are cut to the generated length (at most 15 s); say so before the run.
-                // A video used without its sound has no audio to cut.
+                // A video used without its sound has no audio to cut; audio used as is is not cut.
                 const length = el("div", "", "fv-note"); length.hidden = true; card.append(length);
                 showLength = () => {
                     const long = preview.duration > 15.05 && Number.isFinite(preview.duration);
-                    length.hidden = !long || row.sound === false || rows[index]?.sound === false;
+                    length.hidden = !long || row.sound === false || rows[index]?.sound === false || usesOriginal(row);
                     if (long) length.textContent = text(`Audio length: ${preview.duration.toFixed(1)} s; uses up to the first 15 s within the video length.`,
                         `音频长 ${preview.duration.toFixed(1)} 秒，最多取前 15 秒且不超过视频时长。`);
                 };
@@ -373,6 +398,15 @@ function mediaPanel(node, mount = null) {
                 button(text("Remove", "移除"), text("Remove from this request; keep the uploaded file", "从本次请求移除，保留已上传文件"), () => { rows.splice(index, 1); update(rows); }));
             card.append(controls); cards.append(card);
         });
+        // A saved choice is checked again; a clip the server now refuses goes back to Reference.
+        const saved = rows.find(row => row.enabled !== false && usesOriginal(row));
+        if (saved && !checkedLength(saved)) checkOriginal(api, saved).then(result => {
+            if (result.ok || result.code === 'unreachable') return;
+            const latest = read(), at = latest.findIndex(row => row.file === saved.file && usesOriginal(row));
+            if (at < 0) return;
+            const {use: _use, range: _range, ...rest} = latest[at]; latest[at] = rest; update(latest);
+            message(failureText(result, text), true);
+        });
     }
     let uploading = false;
     serialized.serializeValue = () => {
@@ -384,7 +418,7 @@ function mediaPanel(node, mount = null) {
             return JSON.stringify(requestRows(swapState(node)));
         }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range}) => ({file, role, enabled, ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;
@@ -418,7 +452,7 @@ function mediaPanel(node, mount = null) {
     const removed = node.onRemoved;
     node.onRemoved = function (...args) { dispose(); return removed?.apply(this, args); };
     const configure = node.onConfigure;
-    node.onConfigure = function (...args) { const result = configure?.apply(this, args); queueMicrotask(() => { syncReferenceSockets(node); render(); }); return result; };
+    node.onConfigure = function (...args) { const result = configure?.apply(this, args); cleanAudioUse(node); queueMicrotask(() => { syncReferenceSockets(node); render(); }); return result; };
     const connectionChanged = node.onConnectionsChange;
     node.onConnectionsChange = function (...args) { const result = connectionChanged?.apply(this, args); queueMicrotask(() => { syncReferenceSockets(node); update(read()); }); return result; };
     syncReferenceSockets(node); node.setSize([460, 460]); render();
@@ -673,9 +707,25 @@ function showStudio(node) {
 const progressConnection = createProgressConnection(api, message => {
     const node = app.graph?.getNodeById(message.node);
     if (!node?.freevideoShowProgress) return false;
+    if (message.task_id) {
+        const rows = node.freevideoTaskProgress ||= new Map();
+        rows.set(message.task_id, message);
+        while (rows.size > 32) rows.delete(rows.keys().next().value);
+        node.freevideoProgressTask ||= message.task_id;
+        const ended = message.result || ['failed', 'cancelled'].includes(message.phase);
+        if (node.freevideoProgressTask !== message.task_id) {
+            if (ended) rows.delete(message.task_id);
+            window.dispatchEvent(new CustomEvent('freevideo-progress', {detail: message}));
+            return;
+        }
+        if (ended) { node.freevideoProgressTask = null; node.freevideoTaskProgress.delete(message.task_id); }
+    }
     node.freevideoReportProgress?.(message);
     if (message.result) node.freevideoShowResult({freevideo_summary: [message.result]});
-    else if (['failed', 'cancelled'].includes(message.phase)) node.freevideoStopProgress();
+    else if (['failed', 'cancelled'].includes(message.phase)) {
+        node.freevideoStopProgress();
+        if (message.task_id) restoreRunningTask(node);
+    }
     else node.freevideoShowProgress(message);
     window.dispatchEvent(new CustomEvent('freevideo-progress', {detail: message}));
 });
@@ -886,8 +936,13 @@ app.registerExtension({
 });
 
 api.addEventListener('executed', event => {
-    const {node: nodeId, prompt_id, output} = event.detail || {};
+    const {node: nodeId, prompt_id, output, task_id} = event.detail || {};
     const node = app.graph?.getNodeById(nodeId);
+    // Another task owns this node's display: its result is not this task's to show.
+    if (task_id && node && node.freevideoProgressTask && node.freevideoProgressTask !== task_id) {
+        node.freevideoTaskProgress?.delete(task_id); return;
+    }
+    if (task_id && node) { node.freevideoTaskProgress?.delete(task_id); if (node.freevideoProgressTask === task_id) node.freevideoProgressTask = null; }
     if (prompt_id && node?.freevideoShowResult && output?.freevideo_summary?.[0]) {
         node.freevideoShowResult({...output, freevideo_summary: [{...output.freevideo_summary[0], request_id: prompt_id}]});
     }
@@ -921,14 +976,45 @@ api.addEventListener('execution_error', event => {
                 if (link) pending.push(node.graph?.getNodeById(link.origin_id));
             }
         }
-        if (seen.has(String(event.detail?.node_id))) node.freevideoShowFailure(event.detail);
+        if (!seen.has(String(event.detail?.node_id))) continue;
+        const task = event.detail?.task_id;
+        if (task) {
+            // A failure of one task is not a failure of another task on the same node.
+            if (node.freevideoProgressTask && node.freevideoProgressTask !== task) { node.freevideoTaskProgress?.delete(task); continue; }
+            node.freevideoTaskProgress?.delete(task);
+            if (node.freevideoProgressTask === task) node.freevideoProgressTask = null;
+            node.freevideoShowFailure(event.detail);
+            restoreRunningTask(node);
+        } else node.freevideoShowFailure(event.detail);
     }
 });
 api.addEventListener('executing', event => {
     const id = typeof event.detail === 'object' ? event.detail?.node : event.detail;
-    if (id != null) {
+    const task = typeof event.detail === 'object' ? event.detail?.task_id : undefined;
+    if (id == null && task) {
+        // One task ending is not the end of the others on the same node.
+        for (const node of app.graph?._nodes || []) {
+            const rows = node.freevideoTaskProgress, shown = node.freevideoProgressTask;
+            rows?.delete(task);
+            if (shown === task) {
+                node.freevideoProgressTask = null;
+                node.freevideoStopProgress?.();
+                restoreRunningTask(node);
+            } else if (!shown && !rows?.size) node.freevideoStopProgress?.();
+        }
+    } else if (id != null) {
         const node = app.graph?.getNodeById(id); node?.freevideoClearFailure?.();
         if (!node?.freevideoProgress) node?.freevideoShowProgress?.({label: text('Preparing video', '正在准备视频'), reset: true, new_request: true});
         progressConnection.refresh();
     } else for (const node of app.graph?._nodes || []) node.freevideoStopProgress?.();
 });
+
+// Show the progress of a task that is still running on this node, if any.
+function restoreRunningTask(node) {
+    const rows = node.freevideoTaskProgress;
+    if (!rows?.size || !node.freevideoShowProgress) return false;
+    const [task, message] = [...rows].pop();
+    node.freevideoProgressTask = task;
+    node.freevideoShowProgress(message);
+    return true;
+}

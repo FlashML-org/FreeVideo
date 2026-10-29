@@ -161,7 +161,7 @@ export async function openSetup() {
     // Why Install / repair is unavailable, so it never looks like a broken button.
     const blocked = note(""); blocked.classList.add("fv-setup-why"); blocked.setAttribute("aria-live", "polite"); blocked.hidden = true;
     installation.append(blocked);
-    const guideReplay = createGuideReplayEntry({dialog, cn, openWorkspace: async () => {
+    const guideReplay = createGuideReplayEntry({dialog, cn, api, openWorkspace: async () => {
         const {openCreativeWorkspace} = await import('./view_navigation.js');
         return openCreativeWorkspace();
     }});

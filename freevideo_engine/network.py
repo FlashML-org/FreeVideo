@@ -975,10 +975,15 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             reject(partial, 'hash-rejected')
     timeout = network.get('timeout_seconds', 5)
     affinity = partial.with_name(partial.name + '.source.json')
-    candidates = [(name, address, route, headers) for name, url in candidates
-                  for address, headers in ([(url, ())] +
+    candidates = [(name, address, route, headers, (fallback, rank)) for name, url in candidates
+                  for fallback, (address, headers) in enumerate([(url, ())] +
                       ([(fallbacks[name][0], tuple(fallbacks[name][1]))] if fallbacks and name in fallbacks else []))
-                  for route in route_order(network, category, name, env)]
+                  for rank, route in enumerate(route_order(network, category, name, env))]
+    if updating:
+        # Every source's own address on its first route comes before any other
+        # route or alternate address, so a slow source is left after one attempt.
+        candidates.sort(key=lambda row: row[4])
+    candidates = [row[:4] for row in candidates]
     if not candidates:
         raise RuntimeError('No download sources configured; existing files retained')
     if model and not network.get('manual_source_switch') and partial.exists() and affinity.is_file():
@@ -991,9 +996,12 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     # Try the next ranked candidate promptly. The final candidate gets bounded
     # retries; every mirror must honor the retained prefix, with no silent reset.
     measured_rates = {}
+    left_slow = set()
     for cycle in range(cycles):
         # Once every route has been tried, keep the fastest observed route even
         # if the user's entire connection is slow. Do not oscillate forever.
+        if cycle and updating and not left_slow:
+            break  # No source was left for being slow, so none is worth resuming.
         if cycle and measured_rates:
             candidates.sort(key=lambda row: -measured_rates.get((row[0], row[2]), 0))
         for candidate_index, (name, original_url, route, extra_headers) in enumerate(candidates):
@@ -1087,7 +1095,12 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                             # turn these excess bytes into progress or an ETA.
                             oversized = done
                             break
-                        recent.append((now, done))
+                        if updating and done == offset:
+                            # An update's speed is measured from its first body byte;
+                            # a source that sends nothing is left by the stall rule.
+                            recent = deque([(now, done)])
+                        else:
+                            recent.append((now, done))
                         window = max(5, slow_seconds or 0)
                         while len(recent) > 2 and recent[1][0] < now - window:
                             recent.popleft()
@@ -1095,6 +1108,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                                 and now - recent[0][0] >= slow_seconds
                                 and (done - recent[0][1]) / (now - recent[0][0]) < low_speed_limit):
                             slow = True
+                            left_slow.add((name, route))
                             break
                         # Speed samples follow redirects themselves; guarded updates
                         # must keep every request inside the caller's URL policy.
@@ -1144,8 +1158,10 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                         continue
                 current_size = partial.stat().st_size if partial.exists() else 0
                 if slow_seconds is not None:
-                    measured_rates[name, route] = (max(0, current_size - offset) /
-                        max(.001, time.monotonic() - started)) if slow else 0
+                    # A later failure at another address of the same source and
+                    # route must not erase the rate it was measured at.
+                    measured_rates[name, route] = max(measured_rates.get((name, route), 0), (
+                        max(0, current_size - offset) / max(.001, time.monotonic() - started)) if slow else 0)
                 if faster is not None:
                     measured_rates[name, route] = compare['current']
                     measured_rates.update(compare['rates'])

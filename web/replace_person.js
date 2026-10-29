@@ -36,8 +36,9 @@ function videoSeconds(file) {
     });
 }
 
-// mount: the Media section body. onChange runs after any change to the state.
-export function createReplacePerson({t, api, media, mount, view, onChange = () => {}}) {
+// mount: the Media section body. onChange runs after any change to the state; extra (optional) sits under the note,
+// shown only while the option is on.
+export function createReplacePerson({t, api, media, mount, view, onChange = () => {}, extra = null}) {
     const stored = () => media.properties?.[KEY];
     const state = () => { media.properties ??= {}; return media.properties[KEY] ??= {on: false, source: null, person: null, keepSound: false}; };
     const save = info => { media.graph?.change?.(); onChange(info); paint(); };
@@ -69,7 +70,7 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
     soundInput.onchange = () => { state().keepSound = soundInput.checked; save(); };
     source.box.classList.add('fv-swap-source'); person.box.classList.add('fv-swap-person');
     slots.append(source.box, person.box, sound);
-    mount.prepend(toggle.row, slots, note);
+    mount.prepend(...[toggle.row, slots, note, extra].filter(Boolean));
     let busy = false;
     async function choose(kind, file) {
         if (busy || media.isUploading) return;

@@ -5,12 +5,16 @@ export const hasConversations = state => state.supported === true && state.conve
 // The first other conversation with work under way; null when there is none.
 export const runningElsewhere = (state, session) => state.conversations.find(row => row.running > 0 && row.id !== session) || null;
 export const canDeleteConversation = row => !!row?.id && !(row.running > 0);
+// A chat the user has not spoken in yet has no name of its own to change.
+export const canRenameConversation = row => !!row?.id && !row.temporary;
 // The one menu moves from closed to Delete, then to Delete/Cancel. Snapshots can close either stage.
 export function conversationMenu(state, menu, action = 'reconcile', session = null) {
-    const eligible = id => state.supported === true && state.conversations.some(row => row.id === id && canDeleteConversation(row));
+    const eligible = id => state.supported === true && state.conversations.some(row => row.id === id && (canDeleteConversation(row) || canRenameConversation(row)));
     if (action === 'close') return null;
     if (action === 'open') return eligible(session) ? {session, stage: 'delete'} : null;
     if (!menu || !eligible(menu.session)) return null;
+    // Once asked to confirm a deletion, a chat that has started work is no longer one that can be deleted.
+    if (menu.stage === 'confirm' && !state.conversations.some(row => row.id === menu.session && canDeleteConversation(row))) return null;
     if (action === 'confirm' && menu.stage === 'delete') return {...menu, stage: 'confirm'};
     return menu;
 }

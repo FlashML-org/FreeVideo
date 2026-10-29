@@ -392,7 +392,12 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('unified-memory-limit', ['Not enough unified memory', '统一内存不足'],
             ['These settings need more memory than the device can provide.', '这组设置需要的内存超过设备上限。'],
             ['Choose a lower resolution or a shorter duration and retry.', '请降低分辨率或缩短时长后重试。']);
-    if (/MPS backend out of memory|MPS (?:generation|encoding|decoding) reached|No unified-memory allowance|Native generation needs at least .* unified memory/i.test(text))
+    // The start-of-request check does not depend on the settings, so lowering them is no advice here.
+    if (/Native generation needs at least .* unified memory/i.test(text))
+        return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
+            ['This Mac does not have enough free memory right now to start this generation.', '这台 Mac 当前可用的内存不足以开始这次生成。'],
+            ['Close other memory-heavy applications and retry. Export the report if it still fails.', '请关闭其他占用内存较多的程序后重试。仍然失败时，请导出报告。']);
+    if (/MPS backend out of memory|MPS (?:generation|encoding|decoding) reached|No unified-memory allowance/i.test(text))
         return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
             ['Generation needed more memory than was available.', '生成所需内存超过当时可用量。'],
             ['Close memory-heavy applications, or lower the resolution or duration, then retry. Export the report if it still fails.', '可关闭占用内存较多的程序，或调低分辨率、缩短时长后重试。仍然失败时，请导出报告。']);
@@ -439,6 +444,12 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('dependencies', ['A runtime component could not load', '运行组件无法加载'],
             ['A component needed to run FreeVideo could not load.', 'FreeVideo 所需的运行组件未能加载。'],
             ['Select "Repair" in the launcher under Settings > Environment. If it still fails, export the report and submit it in a GitHub issue.', '可在启动器“设置 → 环境”里点“修复”。仍然失败时，请导出报告并提交到 GitHub issue。']);
+    // Multi-GPU executors stopped: every one of them, or twice under the same task
+    // (freevideo_engine/comfy_front.py NO_EXECUTOR, EXITED_AGAIN).
+    if (/every GPU process has stopped|GPU process exited again while running this task/i.test(text))
+        return row('executors', ['Generation stopped unexpectedly', '生成意外中断'],
+            ['', ''],
+            ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
     return row('unknown', ['Generation stopped', '生成已停止'],
         ['', ''], ['', '']);
 }

@@ -127,10 +127,10 @@ def install_weight_reader(clip, backend, checkpoint, *, decoder=nvfp4_weight, po
 
 def encode(prompt, output, *, root, budget_bytes=3 * 2**30, reserve_bytes=2 * 2**30,
            library=None, checkpoint=None, weight_decoder='cpu', media=None, canvas=None, base=None,
-           media_budget_bytes=None):
+           media_budget_bytes=None, allow_empty_prompt=False):
     if sys.platform != 'darwin' or os.environ.get('PYTORCH_ENABLE_MPS_FALLBACK', '0') not in ('', '0'):
         raise RuntimeError('This encoder requires native Mac with CPU fallback disabled')
-    if not isinstance(prompt, str) or not prompt.strip():
+    if not isinstance(prompt, str) or not (prompt.strip() or allow_empty_prompt is True):
         raise ValueError('A nonempty prompt is required')
     if media_budget_bytes is not None and (type(media_budget_bytes) is not int or media_budget_bytes <= 0):
         raise ValueError('Native media encoding requires a positive byte allowance')

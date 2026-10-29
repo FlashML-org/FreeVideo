@@ -66,6 +66,7 @@ def tool_list():
         dict(name='freevideo_ask', title='Ask the local VLM', description='Ask FreeVideo\'s local vision-language model about images or sampled frames of a video (e.g. "Does this shot match its description? Answer as JSON {score, issues}").', annotations=write),
         dict(name='freevideo_enhance_prompt', title='Enhance a prompt', description='Rewrite a rough idea (any language) into a complete H3 prompt with the local VLM. Images become <Picture N> references.', annotations=write),
         dict(name='freevideo_assemble', title='Assemble clips', description='Join finished clips (job ids, saved video ids or files) into one video with cuts or crossfades; trims with start/end.', annotations=write),
+        dict(name='freevideo_release_gpu', title='Release the card', description='Free the graphics card and memory the video model holds; call before running another model. released=false while a video runs.', annotations=write),
         dict(name='freevideo_library', title='Saved videos', description='Saved FreeVideo videos, newest first, with prompts and the agent job that made them.', annotations=read)]
     from .schema import DRAMA_OPERATIONS
     rows.extend(dict(name='freevideo_drama_' + name, title='Film: ' + name, description=summary,
@@ -415,6 +416,8 @@ class Server:
         if name == 'freevideo_edit_image':
             made = c.edit(args['source'], args.get('recipe'), document=args.get('document'), target=args.get('target'))
             return made, self.picture(made['view'])
+        if name == 'freevideo_release_gpu':
+            return c.post('/gpu/release', {}), []
         if name == 'freevideo_library':
             return c.library(**args), []
         if name == 'freevideo_look':

@@ -2,6 +2,7 @@
 import math
 import threading
 import time
+from .device_index import device_properties
 from .system import windows
 
 _trial_allocator_owner = None
@@ -14,7 +15,7 @@ def owned_pool_capacity(torch):
     of the resident worker's pool has already been included by the driver.
     Use the same owner/context and bounds as allocator admission instead.
     """
-    total = torch.cuda.get_device_properties(0).total_memory
+    total = device_properties(torch).total_memory
     free, _ = torch.cuda.mem_get_info()
     reserved = torch.cuda.memory_reserved()
     local, reader = None, None
@@ -71,7 +72,7 @@ def configure(torch, budget_bytes, explicit_limit=None, *, reserve_bytes=0, syst
     """
     global _trial_allocator_owner
     from .policy import memory_fraction
-    total = torch.cuda.get_device_properties(0).total_memory
+    total = device_properties(torch).total_memory
     planned = memory_fraction(budget_bytes, total)
     if explicit_limit is not None and (type(explicit_limit) is not int or not 0 < explicit_limit <= total):
         raise ValueError('Benchmark allocator limit must be positive and no larger than physical VRAM')

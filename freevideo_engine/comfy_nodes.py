@@ -7,6 +7,7 @@ from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 from . import comfy_bridge, workflow_repairs
 from .comfy_continuation import node_frames, optional_text, part_steps, request_options
 from .default_prompt import DEFAULT_PROMPT
+from .original_audio import audio_use_option
 
 References = io.Custom('FREEVIDEO_REFERENCES')
 LoRAs = io.Custom('FREEVIDEO_LORAS')
@@ -136,6 +137,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.Combo.Input('upscale_factor', display_name='Upscale factor', options=list(UPSCALE_OPTIONS), default='2',
                     optional=True, advanced=True,
                     tooltip='Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
+                io.Boolean.Input('allow_empty_prompt', display_name='Allow empty prompt', default=False,
+                    optional=True, advanced=True, tooltip='Generates from an empty prompt instead of asking for one.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -145,7 +148,7 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, continue_from='', frames=0, two_pass=True,
                         preview=False, refine_from='', base_steps=8, refine_steps=3, step_cache='none',
-                        upscale_factor='2'):
+                        upscale_factor='2', allow_empty_prompt=False):
         # ComfyUI marks every input named here when a check fails, so only the checked widgets are
         # listed. Linked pictures, media and conditioning have no value before the run anyway.
         # step_cache and upscale_factor are named so ComfyUI skips their option lists: an older saved
@@ -159,7 +162,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 base_steps, refine_steps = part_steps(base_steps, refine_steps, step_cache)[:2]
                 options.update(two_pass=True, preview=False, refine_from=refine_from or None,
                                media=dict(first=False, last=False, conditioning_info=False))
-            comfy_bridge.validate_request(text, width, height, seconds, seed, **options)
+            comfy_bridge.validate_request(text, width, height, seconds, seed, **options,
+                                          allow_empty_prompt=allow_empty_prompt is True)
             if not refine_from:
                 from .two_pass import validate_steps
                 validate_steps(base_steps, refine_steps, two_pass)
@@ -186,7 +190,11 @@ class FreeVideoGenerate(io.ComfyNode):
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
-                step_cache='none', upscale_factor='2'):
+                step_cache='none', upscale_factor='2', allow_empty_prompt=False):
+        from .comfy_environment import control_process
+        from .gpu_pool import pool_enabled
+        if control_process() and pool_enabled():
+            raise RuntimeError('Generation requires a dispatched executor')
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
@@ -334,6 +342,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'first_frame_reference': True} if first_frame_reference is True and options.get('continue_from') else {}),
                 **({'voice_reference': True} if voice_reference is True and options.get('continue_from') else {}),
                 **({'hide_tail': True} if hide_tail is True else {}),
+                **({'allow_empty_prompt': True} if allow_empty_prompt is True else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
                 **({'report_extra': {'chain': report_fields(chain)}} if chain is not None else {}))
@@ -364,8 +373,8 @@ class FreeVideoGenerate(io.ComfyNode):
         server = PromptServer.instance
         def busy():
             return server is not None and server.prompt_queue.get_tasks_remaining() > 0
-        # Keep the models only while the next part is on its way; otherwise give
-        # the memory back now and let the file cache make the next load quick.
+        # A finished request keeps the models for the next one while memory is ample;
+        # a failed one, a tight host or another program's growth gives it back at once.
         try:
             # The running prompt is this one; only prompts still waiting are a next part.
             queued = server is not None and bool(server.prompt_queue.get_current_queue()[1])
@@ -383,9 +392,10 @@ class FreeVideoGenerate(io.ComfyNode):
             gpu = comfy_bridge.installation()[1].get('gpu_uuid')
         except (OSError, ValueError, KeyError, TypeError):
             gpu = None
-        OWNER.finished(next_part=next_part, gpu=gpu,
+        OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
                        agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
-        if target and not result_reused[0]:
+        from .comfy_environment import executor_device
+        if target and not result_reused[0] and not executor_device():
             client = server.client_id if server is not None else None
             def warmed(value):
                 if server is not None:
@@ -425,7 +435,8 @@ class FreeVideoMedia(io.ComfyNode):
                     io.Audio.Input('reference_audio', display_name='Reference audio', optional=True,
                         tooltip='Voice, music or rhythm reference, up to 15 seconds. Connect a Load Audio '
                                 'or other AUDIO output. Describe its role using <Audio 1> in the prompt. '
-                                'Experimental; does not lock the output soundtrack or lip sync.')],
+                                'Experimental; does not guarantee lip sync.'),
+                    io.Combo.Input('audio_use', options=['reference', 'original'], default='reference', optional=True)],
             outputs=[Media.Output('media')])
 
     @classmethod
@@ -444,12 +455,13 @@ class FreeVideoMedia(io.ComfyNode):
         return float('nan')
 
     @classmethod
-    def execute(cls, assets, first=None, last=None, reference=None, reference_audio=None, **images):
+    def execute(cls, assets, first=None, last=None, reference=None, reference_audio=None, audio_use='reference',
+                **images):
         from .comfy_assets import resolve_assets, connect_assets
         import folder_paths
         return io.NodeOutput(connect_assets(resolve_assets(assets, folder_paths.get_input_directory()),
                                             first=first, last=last, reference=reference,
-                                            reference_audio=reference_audio, **images))
+                                            reference_audio=reference_audio, audio_use=audio_use_option(audio_use), **images))
 
 
 class FreeVideoReference(io.ComfyNode):
@@ -460,11 +472,12 @@ class FreeVideoReference(io.ComfyNode):
             description='Append one image, video or audio reference in order. A clip is cut to the generated length, at most 15 s, and the cut is reported. '
                         'Connect the stack to Generate. VDN reference quality is experimental.',
             inputs=[io.Image.Input('image', optional=True), io.Video.Input('video', optional=True),
-                    io.Audio.Input('audio', optional=True), References.Input('previous', optional=True)],
+                    io.Audio.Input('audio', optional=True), References.Input('previous', optional=True),
+                    io.Combo.Input('use', options=['reference', 'original'], default='reference', optional=True)],
             outputs=[References.Output('references')])
 
     @classmethod
-    def execute(cls, image=None, video=None, audio=None, previous=None):
+    def execute(cls, image=None, video=None, audio=None, previous=None, use='reference'):
         values = [(kind, value) for kind, value in (('image', image), ('video', video), ('audio', audio)) if value is not None]
         if len(values) != 1:
             raise ValueError('Connect exactly one image, video or audio to each Reference node')
@@ -472,7 +485,12 @@ class FreeVideoReference(io.ComfyNode):
         if len(result) >= 32:
             raise ValueError('At most 32 ordered references; memory is checked against the actual request')
         kind, value = values[0]
-        return io.NodeOutput(result + [{'kind': kind, 'value': value}])
+        use = audio_use_option(use)
+        from .original_audio import fields, original
+        options = fields(dict(kind=kind, **({'use': use} if use != 'reference' or kind == 'audio' else {})))
+        result.append({'kind': kind, 'value': value, **options})
+        original(dict(references=result))
+        return io.NodeOutput(result)
 
 
 class FreeVideoLoRA(io.ComfyNode):
@@ -554,6 +572,9 @@ class FreeVideoFrames(io.ComfyNode):
 def start_background_compile():
     """Compile recent request shapes once this session is idle; see background_compile."""
     import os
+    from .comfy_environment import control_process, executor_device
+    if control_process() or executor_device():
+        return False
     from server import PromptServer
     from .background_compile import COMPILE, OWED_DELAY, START_DELAY, compile_owed
     if os.environ.get('FREEVIDEO_BACKGROUND_COMPILE', 'auto').lower() in ('0', 'off', 'false'):
@@ -577,6 +598,12 @@ def start_background_compile():
 
 class FreeVideoExtension(ComfyExtension):
     async def get_node_list(self):
+        from .comfy_environment import control_process
+        if control_process():
+            from server import PromptServer
+            from .comfy_pool import register_pool
+            await register_pool(PromptServer.instance, root=comfy_bridge.installation_root(),
+                                source=comfy_bridge.source_root())
         from .comfy_residency import install
         import comfy.model_management
         install(comfy.model_management)

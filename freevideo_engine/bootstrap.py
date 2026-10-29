@@ -35,6 +35,7 @@ from .environments import (ENVIRONMENTS, environment_names, select_layout, role_
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
 from . import network
+from .comfy_environment import with_private_compiler
 from . import processes
 from .system import install_root, venv_python, system_memory, nvidia_smi, memory_sample, curl_executable, missing_curl_message
 from .system import inference_headroom
@@ -362,7 +363,6 @@ def inventory(gpu=None):
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
             'swap_free_bytes': ram.get('swap_free_bytes'), 'system_memory': ram,
             'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': usable_git(),
-            **({} if platform.system() == 'Windows' else {'make': shutil.which('make')}),
             'git_found': shutil.which('git'), **detection}
 
 
@@ -523,10 +523,6 @@ def prepare_end(ui, success=True):
             ui.end(PREPARE_KEY, success=success)
 
 
-def missing_sage_tools(snapshot):
-    return ([] if snapshot.get('compiler') else ['g++']) + ([] if snapshot.get('make', True) else ['make'])
-
-
 def plan(args, *, local_progress=None, stage=None):
     root = args.root.expanduser().resolve()
     warnings = []
@@ -571,24 +567,14 @@ def plan(args, *, local_progress=None, stage=None):
         if cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580):
             # The card names the graphics card too; brackets would end its pattern early.
             model = re.sub(r'[()\r\n]', '', str(snapshot['selected_gpu'].get('name') or '')).strip()
-            errors.append('NVIDIA driver %s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
-                          % (driver, ' (%s)' % model if model else ''))
+            # The CUDA fallback reads no driver version; leave it out instead of printing a gap.
+            errors.append('NVIDIA driver%s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
+                          % (' ' + driver if driver else '', ' (%s)' % model if model else ''))
         compatibility = hardware.cuda_compatibility()
         if compatibility['error']:
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
         # A missing or too old Git is replaced by FreeVideo's own.
-        if not windows_target:
-            # ./setup.sh installs these before planning; the desktop launcher names the command instead.
-            missing = missing_sage_tools(snapshot)
-            if missing:
-                from .system import linux_tools_command
-                command = linux_tools_command(missing)
-                warnings.append('Missing %s, needed to build GPU acceleration for this GPU. %s, then check again.' % (
-                    ' and '.join(missing), 'In a terminal, run: ' + command if command else
-                    'Ask your administrator to install them'))
-                logging.getLogger(__name__).warning('%s Skipping Sage2 source compilation; '
-                    'continuing with cudnn/torch-flash attention.', warnings[-1])
         if offline_installation(root):
             # Its sources carry no Git history and its Python is the package's.
             errors.append('This folder holds an installation from offline packages; automatic installation does not change it. '
@@ -1344,6 +1330,7 @@ class Installer:
         from .triton_compat import environment
         return environment(self.root, dict(env,
             CUDA_VISIBLE_DEVICES=self.plan['inventory']['selected_gpu']['uuid'],
+            CUDA_DEVICE_ORDER='PCI_BUS_ID',
             TRITON_CACHE_DIR=str(self.root / 'kernel-cache' / 'triton'),
             CUDA_CACHE_PATH=str(self.root / 'kernel-cache' / 'cuda'),
             TORCHINDUCTOR_CACHE_DIR=str(self.root / 'kernel-cache' / 'inductor')))
@@ -1486,6 +1473,7 @@ class Installer:
         from .triton_compat import temporary_environment
         env = temporary_environment(self.root, env or self.env)
         env = dict(env, FREEVIDEO_INSTALL_PROGRESS='1')
+        env = with_private_compiler(self.root, env)
         args, cwd = uv_file_arguments(args, cwd)
         env = uv_build_environment(args, self.root, env)
         with self.state_lock:
@@ -1685,7 +1673,7 @@ class Installer:
                 'print("Windows runtime imports passed; GPU kernel probes follow")']), ('runtime',), ('environment:' + name,))
         overlap = (self.plan.get('model_transfer') or {}).get('overlap_build', True)
         # Linux builds SageAttention from a Git checkout.
-        task('sage', lambda: self.install_sage(uv, python), ('runtime', 'git') if overlap else ('runtime', 'git', 'models'),
+        task('sage', lambda: self.install_sage_optional(uv, python), ('runtime', 'git') if overlap else ('runtime', 'git', 'models'),
              ('environment:' + name,))
         if self.plan.get('disk_mode') == 'extreme':
             # Finish all environments before models occupy most of the disk.
@@ -1793,14 +1781,20 @@ class Installer:
             failure.package_attempts = error.attempts
             raise failure from error
 
+    def install_sage_optional(self, uv, python):
+        """Sage2 is an optional speed-up: where FreeVideo's own compiler builds it, a failure leaves it out."""
+        try:
+            return self.install_sage(uv, python)
+        except Exception as error:
+            if (self.system == 'Windows' or self.cancel.is_set()
+                    or shutil.which('g++', path=self.env['PATH'])):
+                raise
+            self.ui.write('Sage2 could not be built (%s); continuing without it.\n' % type(error).__name__)
+            return None
+
     def install_sage(self, uv, python):
         if self.system == 'Windows':
             return self.install_sage_windows(uv, python)
-        missing = missing_sage_tools(self.plan['inventory'])
-        if missing:
-            self.ui.write('Missing %s; skipping Sage2 source compilation and continuing with '
-                          'cudnn/torch-flash attention.\n' % ' and '.join(missing))
-            return None
         code = ('import json,platform,sys,torch; print(json.dumps(dict('
                 'python="cp"+str(sys.version_info.major)+str(sys.version_info.minor), '
                 'torch=str(torch.__version__),cuda=torch.version.cuda,cxx11_abi=torch.compiled_with_cxx11_abi(), '
@@ -1839,6 +1833,9 @@ class Installer:
                 CPATH=headers, TORCH_CUDA_ARCH_LIST=identity['arch'], MAX_JOBS=str(build['jobs']),
                 EXT_PARALLEL='1', NVCC_APPEND_FLAGS='--threads=' + str(build['nvcc_threads']))
             build_env.update(compiler['env'] if compiler['env'] is not None else self.install_compiler_linux())
+            if compiler['env'] is None:
+                # The private compiler is newer than an older system's libstdc++, which the Python process loads first.
+                build_env['LDFLAGS'] = (build_env.get('LDFLAGS', '') + ' -static-libstdc++ -static-libgcc').strip()
             self.command('sage2-toolchain-check', [python, '-c',
                 'from torch.utils.cpp_extension import is_ninja_available; '
                 'assert is_ninja_available(), "Ninja must be visible in the build PATH; serial fallback is refused"'], env=build_env)
@@ -1865,9 +1862,13 @@ class Installer:
         """
         spec = json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8'))
         below = spec['host_compiler_below'].get(cuda)
-        choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
+        # Without any system g++, FreeVideo's own compiler builds Sage2.
+        if not shutil.which('g++', path=self.env['PATH']):
+            choice = None
+        else:
+            choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
         if choice is None:
-            return {'env': None, 'identity': 'conda-forge gcc ' + spec['version']}
+            return {'env': None, 'identity': 'conda-forge gcc ' + spec['version'] + ' static-libstdc++'}
         cxx = choice.get('CXX', 'g++')
         return {'env': choice, 'identity': subprocess_output.output_external([cxx, '--version']).splitlines()[0]}
 
@@ -1896,6 +1897,13 @@ class Installer:
             shutil.rmtree(explicit.parent, ignore_errors=True)
             micromamba.unlink(missing_ok=True)
         self.command('portable-gcc-check', [compilers['CXX'], '--version'])
+        # The same compiler under its plain names, for tools that look for gcc (Triton builds its launcher with it).
+        links = self.root / 'tools' / 'gcc-bin'
+        links.mkdir(parents=True, exist_ok=True)
+        for name, target in (('gcc', compilers['CC']), ('cc', compilers['CC']), ('g++', compilers['CXX'])):
+            if not (links / name).is_symlink() or Path(os.readlink(links / name)) != target:
+                (links / name).unlink(missing_ok=True)
+                (links / name).symlink_to(target)
         return {key: str(path) for key, path in compilers.items()}
 
     def install_sage_windows(self, uv, python):

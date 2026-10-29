@@ -150,6 +150,10 @@ def sampling_provenance(request):
                          snapshot_sha256=_digest(tail['snapshot']), source_id=tail['source_id'])
         result['continuation'] = {key: item for key, item in value.items()
                                   if key not in ('snapshot', 'snapshot_data', 'source_video')}
+    if request.get('original_audio') is not None:
+        from .original_audio import verify, identity
+        verify(request['original_audio'])
+        result['original_audio'] = identity(request['original_audio'])
     return result
 
 

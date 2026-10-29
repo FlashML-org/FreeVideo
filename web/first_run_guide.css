@@ -33,3 +33,11 @@
 .fv-studio button.fv-showcase-close{position:absolute;top:8px;right:8px;width:36px;height:36px;min-height:36px;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:25px;line-height:1}
 .fv-studio button.fv-showcase-close:hover{color:var(--fv-ink);background:var(--fv-hover)}
 @media(max-width:480px){.fv-studio .fv-entry-showcase{padding:12px}.fv-studio .fv-showcase-card{padding:40px 12px 20px}.fv-studio .fv-showcase-card h2{margin:0 12px 20px;font-size:20px}}
+/* One local hint leaves every workspace control available. */
+.fv-first-start{box-sizing:border-box;position:fixed;z-index:12;width:250px;max-width:calc(100vw - 24px);padding:14px 16px;background:var(--fv-raised);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-md);box-shadow:0 8px 28px #0004}
+.fv-first-start p{margin:0;font-size:14px}
+.fv-first-start-arrow{position:absolute;left:26px;top:-6px;width:10px;height:10px;transform:rotate(45deg);background:var(--fv-raised);border-left:1px solid var(--fv-border);border-top:1px solid var(--fv-border)}
+.fv-first-start-dock .fv-first-start-arrow{display:none}
+.fv-first-start-above .fv-first-start-arrow{top:auto;bottom:-6px;left:calc(50% - 5px);transform:rotate(225deg)}
+.fv-next-step{box-sizing:border-box;position:fixed;z-index:12;width:260px;max-width:calc(100vw - 24px);padding:14px 16px;background:var(--fv-raised);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-md);box-shadow:0 8px 28px #0004;font:14px/1.6 var(--fv-font)}
+.fv-next-close{position:absolute;right:6px;top:4px;background:none;border:0;color:inherit;cursor:pointer;padding:4px 8px}.fv-next-actions{display:flex;gap:8px;margin-top:6px}.fv-next-actions button{flex:1}

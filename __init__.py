@@ -3,6 +3,14 @@ WEB_DIRECTORY = './web'
 
 
 async def comfy_entrypoint():
+    from .freevideo_engine.comfy_environment import control_process
+    from .freevideo_engine.gpu_pool import pool_enabled
+    if control_process() and pool_enabled():
+        from server import PromptServer
+        from .freevideo_engine import comfy_bridge
+        from .freevideo_engine.comfy_pool import register_pool
+        await register_pool(PromptServer.instance, root=comfy_bridge.installation_root(),
+                            source=comfy_bridge.source_root())
     from .freevideo_engine.comfy_progress import register as progress_routes
     progress_routes()
     try:
@@ -41,6 +49,8 @@ async def comfy_entrypoint():
     subtitle_file_routes()
     from .freevideo_engine.comfy_share import register as share_routes
     share_routes()
+    from .freevideo_engine.swap_lora import register as swap_lora_routes
+    swap_lora_routes()
     from .freevideo_engine.comfy_metadata import register as workflow_backfill
     workflow_backfill()
     try:

@@ -1,0 +1,10 @@
+.fv-audio-use{display:inline-flex;gap:0;margin-left:auto}
+.fv-audio-use button{min-height:var(--fv-h-sm,32px);border-radius:0;padding:5px 10px;white-space:nowrap}
+.fv-audio-use button+button{margin-left:-1px}
+.fv-audio-use button:first-child{border-radius:var(--fv-r-sm,8px) 0 0 var(--fv-r-sm,8px)}
+.fv-audio-use button:last-child{border-radius:0 var(--fv-r-sm,8px) var(--fv-r-sm,8px) 0}
+.fv-audio-use button[aria-pressed=true]{background:var(--fv-selected);color:var(--fv-accent);border-color:var(--fv-accent);position:relative}
+.fv-audio-use button:disabled{cursor:default}
+.fv-audio-lock{display:inline-flex;margin-left:6px;vertical-align:-3px;color:var(--fv-muted)}
+.fv-audio-lock svg{width:13px;height:13px}
+.fv-audio-lock[hidden]{display:none}

@@ -178,7 +178,7 @@ def features(continuation, vlm):
     return {'capabilities': True, 'plan': True, 'jobs.cancel': True, 'jobs.resume': True, 'takes': True,
             'library.read': True, 'library.download': True, 'imports.create': True, 'imports.read': True,
             'errors.validation': True, 'errors.missing_media': True,
-            'generate.text': True, 'generate.size': True, 'generate.first_frame': True, 'generate.seed': True,
+            'gpu.release': True, 'generate.text': True, 'generate.size': True, 'generate.first_frame': True, 'generate.seed': True,
             'queue.shared': True, 'queue.busy': True, 'chain.auto': bool(continuation),
             'enhance': bool(vlm.get('ready')), 'drama.film': True, 'images.edit': rules,
             'images.layers': rules, 'images.heal': rules, 'images.render': rules, 'projects.read': True,
@@ -1221,6 +1221,20 @@ def register():
                                         request_id=errors.request_id())}, 409)
         return reply(done[1], done[0])
 
+    @routes.post('/freevideo/agent/chat/rename')
+    @guarded
+    async def chat_rename(request):
+        value = await body(request)
+        def write():
+            store = work_sessions()
+            sid = chat_session(store, value['session'])
+            if sid is None:
+                raise JobError('not_found', 'No conversation')
+            # An empty name gives the conversation back the first thing the user said.
+            store.append(sid, dict(type='control', action='renamed', title=value['title'].strip()), by='user')
+            return dict(session=sid, title=next((r['title'] for r in store.history(chat['client'], limit=None) if r['id'] == sid), None))
+        return reply(await asyncio.to_thread(write))
+
     @routes.post('/freevideo/agent/chat/delete')
     @guarded
     async def chat_delete(request):
@@ -1463,6 +1477,12 @@ def register():
     async def get_job(request):
         row = await asyncio.to_thread(jobs.get, request.match_info['id'])
         return reply(job_answer(await wait_for_job(jobs, row, float(request[query_key].get('wait', '0') or 0))))
+
+    @routes.post(PREFIX + '/gpu/release')
+    @guarded
+    async def gpu_release(request):
+        from ..resident_process import OWNER
+        return reply(await asyncio.to_thread(OWNER.release_idle, 'agent_requested'))
 
     @routes.post(PREFIX + '/jobs/{id}/cancel')
     @guarded

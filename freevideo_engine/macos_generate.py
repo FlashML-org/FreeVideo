@@ -46,7 +46,12 @@ def policy(args, memory=None):
     capacity = min(memory['total_bytes'], amount('ram_gib', memory['total_bytes']))
     working = min(capacity, memory['available_bytes']) - reserve
     if working < 2 * GiB:
-        raise MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve')
+        error = MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve')
+        # What the system reported at this moment, so the report shows whether the Mac is small or busy.
+        error.memory_record = dict(total_bytes=memory['total_bytes'], available_bytes=memory['available_bytes'], reserve_bytes=reserve)
+        if getattr(args, 'ram_gib', None) is not None:
+            error.memory_record['launcher_limit_bytes'] = amount('ram_gib', None)
+        raise error
     # The original 4 GiB cap was a small-workload trial, not a device capacity.
     # Use the live unified allowance. The native backend additionally clamps it
     # to Metal's recommendation and rechecks availability when the worker starts.
@@ -270,7 +275,7 @@ def run(args):
                 report['phase'] = 'encoding'
                 save(output.with_suffix('.request.json'), report)
                 prompt = Path(args.prompt_file).read_text(encoding='utf-8')
-                if not prompt.strip():
+                if not prompt.strip() and not getattr(args, 'allow_empty_prompt', False):
                     raise ValueError('A nonempty prompt is required')
                 prompt_file = Path(args.prompt_file).resolve()
                 if report.get('first_frame_reference', {}).get('used'):
@@ -287,7 +292,8 @@ def run(args):
                     report['encoding_resources'] = execute(dict(phase='encoding', root=str(data_root()),
                         prompt_file=str(prompt_file), output=str(conditioning),
                         report=str(output.with_suffix('.encoding.json')), checkpoint=str(checkpoint),
-                        library=str(library), resources=resource, media=media, canvas=canvas, base=base), 'encoding')
+                        library=str(library), resources=resource, media=media, canvas=canvas, base=base,
+                        **({'allow_empty_prompt': True} if getattr(args, 'allow_empty_prompt', False) else {})), 'encoding')
                     metrics = json.loads(output.with_suffix('.encoding.json').read_text())
                     if cache:
                         try:
@@ -364,6 +370,8 @@ def run(args):
     except BaseException as error:
         report.update(error_type=type(error).__name__, error_message=str(error), exception=traceback.format_exc(),
                       cancelled=isinstance(error, KeyboardInterrupt))
+        if getattr(error, 'memory_record', None):
+            report['preflight_memory'] = error.memory_record
         raise
     finally:
         processes.restore_handlers(previous)
@@ -404,6 +412,7 @@ def worker(value):
             budget_bytes=resource['encoder_bytes'], reserve_bytes=resource['reserve_bytes'],
             media_budget_bytes=resource.get('allocator_capacity_bytes', resource['encoder_bytes']),
             weight_decoder=resource.get('encoder_weight_decoder', 'cpu'),
+            allow_empty_prompt=value.get('allow_empty_prompt') is True,
             media=value.get('media'), canvas=value.get('canvas'), base=value.get('base')))
         result['work_seconds'] = time.monotonic() - started
     except BaseException as error:

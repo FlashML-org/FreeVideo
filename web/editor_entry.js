@@ -57,5 +57,11 @@ export function openEditorView(node, {studio, work = null, extend = false, onPro
         else openStudio(node);
     }});
     viewChanged('editor', node);
+    // Every route into Edit (including the first video's next step) offers the same contextual card.
+    Promise.resolve(handle.ready).then(() => import('./feature_tour.js')).then(({triggerFeatureTour}) => {
+        const choice = new URLSearchParams(location.search).get('freevideo_lang');
+        const cn = choice === 'zh' || (choice !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
+        return triggerFeatureTour('editor', {api, cn, owner: handle.element});
+    }).catch(() => {});
     return handle;
 }

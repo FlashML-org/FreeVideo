@@ -161,7 +161,13 @@ class ComfyPort:
             raise specs.SpecError(errors)
 
     # Queue ---------------------------------------------------------------------------------------------
+    def scheduler(self):
+        return getattr(self.server, '_freevideo_front', None)
+
     def snapshot(self):
+        if self.scheduler() is not None:
+            running, pending = self.scheduler().current_queue()
+            return [row[1] for row in running], [row[1] for row in pending]
         running, pending = self.server.prompt_queue.get_current_queue()
         return [row[1] for row in running], [row[1] for row in sorted(pending, key=lambda r: r[0])]
 
@@ -186,18 +192,25 @@ class ComfyPort:
         return pending.index(prompt_id) + 1 if prompt_id in pending else None
 
     def history(self, prompt_id):
+        if self.scheduler() is not None:
+            return self.scheduler().history(prompt_id).get(prompt_id)
         return self.server.prompt_queue.get_history(prompt_id=prompt_id).get(prompt_id)
 
-    def progress(self, node):
+    def progress(self, node, prompt_id=None):
         from ..comfy_progress import STATE
         with STATE.lock:
-            row = STATE.rows.get(str(node))
+            key = (str(prompt_id), str(node)) if self.scheduler() is not None else str(node)
+            row = STATE.rows.get(key)
             if not row:
                 return None
             # How old the message is, as a reopened page gets it, so a bar can go on from where the engine is now.
             return dict(json.loads(json.dumps(row['message'])), age_seconds=max(0., STATE.clock() - row['measured']))
 
     async def submit(self, graph, extra):
+        if self.scheduler() is not None:
+            reply = await self.scheduler().submit(dict(prompt=graph, extra_data=extra,
+                client_id=extra.get('client_id', '')))
+            return reply['prompt_id']
         if self.handler is None:
             for route in self.server.routes:
                 if getattr(route, 'method', None) == 'POST' and getattr(route, 'path', None) == '/prompt':
@@ -236,6 +249,8 @@ class ComfyPort:
                 return response.status, await response.json(content_type=None)
 
     def cancel(self, prompt_id, node):
+        if self.scheduler() is not None:
+            return self.scheduler().cancel(prompt_id, node)
         import nodes
         from ..comfy_progress import cancel_request
         return cancel_request(self.server.prompt_queue, prompt_id, node, nodes.interrupt_processing)

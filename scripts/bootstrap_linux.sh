@@ -97,15 +97,18 @@ fv_missing_tools() {
 
 fv_system_deps() {
     ((${#fv_missing[@]})) || return 0
-    fv_note "Missing basic tools: ${fv_missing[*]}"
-    local manager name package reply
+    local manager name package reply listed
     local -a packages=() privilege=() install=() refresh=()
+    printf -v listed '%s, ' "${fv_missing[@]}"; listed="${listed%, }"
+    # Without a terminal (a desktop launcher) the failure text below names the tools instead.
+    if (( fv_allow_system )) || [[ -t 0 ]]; then fv_note "Missing basic tools: ${listed}"; fi
     if command -v apt-get >/dev/null 2>&1; then manager=apt-get
     elif command -v dnf >/dev/null 2>&1; then manager=dnf
     elif command -v yum >/dev/null 2>&1; then manager=yum
     elif command -v zypper >/dev/null 2>&1; then manager=zypper
     else
-        fv_fail 'No supported package manager found (apt-get/dnf/yum/zypper). Ask your administrator to install the listed tools, then rerun this command.'
+        fv_fail "缺少基础工具：${listed}。无法自动安装，请联系系统管理员安装以上工具，完成后重新开始安装。"
+        fv_fail "Missing basic tools: ${listed}. They cannot be installed automatically. Ask your administrator to install them, then start the installation again."
         return 1
     fi
     for name in "${fv_missing[@]}"; do
@@ -127,18 +130,36 @@ fv_system_deps() {
         zypper) install=(zypper --non-interactive install --no-recommends "${packages[@]}") ;;
     esac
     if (( EUID != 0 )); then privilege=(sudo); fi
-    fv_note 'System package step (existing Python and drivers are not replaced):'
-    ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
-    { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
     if (( fv_readonly )); then
+        fv_note 'System package step (existing Python and drivers are not replaced):'
+        ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
+        { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
         fv_fail 'Check only: no system packages installed. Run ./setup.sh to install the missing tools.'
         return 1
     fi
-    if (( ! fv_allow_system )); then
-        if [[ ! -t 0 ]]; then
-            fv_fail 'System packages need approval. Run interactively, or add --install-system-deps to a reviewed unattended setup.'
+    if (( ! fv_allow_system )) && [[ ! -t 0 ]]; then
+        # What a person types by hand: no unattended-run options, and the package list refreshed first
+        # because a minimal system often has an empty one.
+        local manual
+        manual="${privilege[*]:+sudo }$manager install ${packages[*]}"
+        [[ "$manager" != apt-get ]] || manual="${privilege[*]:+sudo }apt-get update && ${privilege[*]:+sudo }apt-get install ${packages[*]}"
+        if (( EUID != 0 )) && ! command -v sudo >/dev/null 2>&1; then
+            fv_fail "缺少基础工具：${listed}。此系统未安装 sudo，请联系系统管理员运行以下命令，完成后重新开始安装："
+            printf '%s\n' "  ${manual//sudo /}" >&2
+            fv_fail "Missing basic tools: ${listed}. sudo is not installed. Ask your administrator to run the following command, then start the installation again:"
+            printf '%s\n' "  ${manual//sudo /}" >&2
             return 1
         fi
+        fv_fail "缺少基础工具：${listed}。请在终端中运行以下命令，完成后重新开始安装："
+        printf '%s\n' "  ${manual}" >&2
+        fv_fail "Missing basic tools: ${listed}. Run the following command in a terminal, then start the installation again:"
+        printf '%s\n' "  ${manual}" >&2
+        return 1
+    fi
+    fv_note 'System package step (existing Python and drivers are not replaced):'
+    ((${#refresh[@]} == 0)) || { printf '  '; printf '%q ' "${privilege[@]}" "${refresh[@]}"; printf '\n'; } >&2
+    { printf '  '; printf '%q ' "${privilege[@]}" "${install[@]}"; printf '\n'; } >&2
+    if (( ! fv_allow_system )); then
         printf 'Install these missing system packages? [Y/n] / 回车安装以上基础工具，n 取消： ' >&2
         read -r reply || reply=n
         case "$reply" in ''|y|Y|yes|YES) ;; *) fv_fail 'Cancelled. No system packages installed.'; return 1 ;; esac
@@ -375,7 +396,8 @@ freevideo_bootstrap_linux() {
     [[ -n "${all_proxy:-}" || -z "${ALL_PROXY:-}" ]] || export all_proxy="$ALL_PROXY"
     [[ -n "${no_proxy:-}" || -z "${NO_PROXY:-}" ]] || export no_proxy="$NO_PROXY"
     if [[ "$mode" == setup ]] && (( ! fv_readonly )); then
-        fv_missing_tools git curl g++ make tar gzip sha256sum flock
+        # Git and a C++ compiler are downloaded privately by the installer when the machine has none.
+        fv_missing_tools curl tar gzip sha256sum flock
         fv_system_deps || return 1
     fi
     if (( found )); then

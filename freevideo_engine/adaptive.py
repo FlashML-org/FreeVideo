@@ -712,6 +712,17 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     from .continuation import validate_hide_tail
     hidden = validate_hide_tail(metrics.get('hide_tail_frames', 0))
     output_frames = expected - hidden
+    original_audio = metrics.get('original_audio')
+    if original_audio is not None:
+        if (not isinstance(original_audio, dict) or original_audio.get('sample_identical') is not True
+                or type(original_audio.get('samples_per_channel')) is not int
+                or type(original_audio.get('sample_rate')) is not int
+                or original_audio['samples_per_channel'] <= 0 or original_audio['sample_rate'] <= 0):
+            raise ValueError('Original audio export was not verified')
+        count, rate = original_audio['samples_per_channel'], original_audio['sample_rate']
+        output_frames = (count * canvas['fps'] + rate - 1) // rate
+        if hidden or not 0 < output_frames <= expected:
+            raise ValueError('Original audio exceeds the generated canvas')
     if continuation is not None:
         from .continuation import OVERLAP_FRAMES
         if (not isinstance(continuation, dict) or continuation.get('overlap_frames') != OVERLAP_FRAMES
@@ -739,10 +750,11 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     rgb_shape, dtype = _retained_array_header(Path(artifacts)/'rgb.npy')
     if str(dtype) != 'uint8' or rgb_shape != (output_frames, canvas['height'], canvas['width'], 3):
         raise ValueError('Retained video frames do not match the complete request.')
-    audio_shape, audio_dtype = _retained_array_header(Path(artifacts)/'audio.npy')
-    if (str(audio_dtype) != 'float32' or len(audio_shape) != 2 or audio_shape[0] != 2
-            or abs(audio_shape[1]/32000. - output_frames/canvas['fps']) > 1/canvas['fps']):
-        raise ValueError('Retained stereo audio does not match the request duration.')
+    if original_audio is None:
+        audio_shape, audio_dtype = _retained_array_header(Path(artifacts)/'audio.npy')
+        if (str(audio_dtype) != 'float32' or len(audio_shape) != 2 or audio_shape[0] != 2
+                or abs(audio_shape[1]/32000. - output_frames/canvas['fps']) > 1/canvas['fps']):
+            raise ValueError('Retained stereo audio does not match the request duration.')
     import av
     with av.open(str(output)) as container:
         video, audio = container.streams.video, container.streams.audio
@@ -752,8 +764,13 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
         # A request rendered at a larger size is saved at the size asked for.
         shown = metrics.get('output_size') or canvas
         if ((stream.width, stream.height, stream.frames) != (shown['width'],shown['height'],output_frames)
-                or float(stream.average_rate) != canvas['fps'] or audio[0].codec_context.channels != 2):
+                or (original_audio is None and float(stream.average_rate) != canvas['fps'])
+                or audio[0].codec_context.channels != (original_audio['channels'] if original_audio else 2)):
             raise ValueError('MP4 metadata does not match the requested output.')
+    if original_audio is not None:
+        # A skipped audio decode is not an ordinary request timing observation;
+        # retain the existing conservative planner budgets.
+        return None
     if metrics.get('sampling_reused') is True:
         # The output is validated, but these observations cover only a decoder
         # retry. Do not teach placement/ETA that a full request cost this little

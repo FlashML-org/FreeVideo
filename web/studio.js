@@ -1,7 +1,8 @@
 import {createLanAccess} from './lan_access.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import {createExpandButton} from './editor_expand.js';
-import {cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
+import {allowEmptyPrompt, cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
+import {showEmptyPrompt, dismissEmptyPrompt} from './empty_prompt_notice.js';
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
@@ -39,13 +40,16 @@ import { canvasDimensions, imageSizeSelection } from './studio_size.js';
 import { createCapabilityView } from './capability_view.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
-import { createFirstRunGuide } from './first_run_guide.js';
+import { createFirstRunGuide, createFirstStart } from './first_run_guide.js';
 import { SHOWCASE_SCENE } from './entry_showcase.js';
+import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './feature_tour.js';
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
-import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, SWAP_LORA } from './replace_state.js';
+import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora } from './replace_state.js';
+import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
+import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
 import { waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
@@ -652,6 +656,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // modal is above them and must remain interactive when the launcher reopens it.
     dialog.style.pointerEvents = 'auto';
     current = {node, dialog}; const cleanup = [];
+    let firstStart = null, exampleFocused = false;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
@@ -662,7 +667,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The Agent's page is the fourth tab, shown where the Agent interface is on; the guide's last step circles it.
     agentTabReady(agentInterfaceState(api), () => agentInterfaceState(api));
     // The length hint links to the same two views, through the same actions.
-    const toEditor = () => openEditorView(node, {studio: dialog}), toAutopilot = () => openAutopilot(node, {studio: dialog});
+    const toEditor = () => { firstStart?.dismiss(); return openEditorView(node, {studio: dialog}); };
+    const toAutopilot = () => { firstStart?.dismiss(); return openAutopilot(node, {studio: dialog}); };
     const navigation = viewSwitch('studio', () => {}, () => showNodes(node, dialog), toEditor, toAutopilot);
     const autopilotTab = navigation.querySelector('[data-view="autopilot"]');
     // The guide starts after the tab settles: it fixes its steps from the anchors present at that moment.
@@ -698,6 +704,46 @@ export function openStudio(node, {extendFrom = null} = {}) {
         people: t('Up to 3 characters', '最多 3 个角色'), full: t('Up to 32 references', '参考素材最多 32 个'),
         continued: t('Up to 3 images when continuing', '接续时最多 3\u00a0张')}[reason] || '');
     const castPending = new Map();
+    // The feature tour's "try it": one example into this panel's media list, prompt and settings.
+    const canTryTour = entry => !busy && !queued && !capturing && (!entry.prompt || !linked(node, 'text'))
+        && (!entry.assets?.length || Boolean(castAssets()))
+        && Object.keys(entry.settings || {}).every(name => name === 'quality'
+            ? Boolean(effort.levels().find(tier => tier.name === entry.settings.quality)) && !baseSteps.disabled && ['base_steps', 'two_pass', 'step_cache', 'upscale_factor'].every(key => widget(node, key) && !linked(node, key))
+            : Boolean(widget(node, name)) && !linked(node, name))
+        && ((entry.settings?.two_pass !== true && entry.settings?.preview !== true) || !twoPass.disabled);
+    const tryTourExample = async example => {
+        if (!canTryTour(example)) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        const {applyTourExample} = await import('./tour_try.js');
+        const target = castAssets();
+        const result = await applyTourExample({node, api, cn, rows: () => mediaRows(node), canApply: canTryTour,
+            setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); },
+            // Two-pass and preview settle into one pass mode, whichever of the two the example lists first.
+            setSetting: (name, input) => {
+                if (name === 'quality') {
+                    const tier = effort.levels().find(tier => tier.name === input);
+                    baseSteps.value = tier.steps; twoPass.checked = tier.twoPass; refineSteps.value = 3;
+                    set(node, 'two_pass', tier.twoPass); set(node, 'step_cache', tier.stepCache || 'none'); setUpscale(tier.upscale);
+                } else if (name === 'two_pass') { choosePassMode(!input ? 'off' : example.settings?.preview === true ? 'preview' : 'on'); }
+                else if (name === 'preview') { choosePassMode(input && example.settings?.two_pass !== false ? 'preview' : (twoPass.checked ? 'on' : 'off')); }
+                else { set(node, name, input); if (name === 'width') width.value = input; if (name === 'height') height.value = input; if (name === 'seconds') seconds.value = input; }
+            },
+            write: rows => { if (!target) return false; target.field.value = JSON.stringify(rows); target.owner.graph?.change?.();
+                window.dispatchEvent(new CustomEvent('freevideo-media', {detail: target.owner.id})); return true; }}, example);
+        if (result.ok) {
+            firstStart?.dismiss();
+            if (example.settings?.width && example.settings?.height) {
+                pixels = Number(example.settings.width) * Number(example.settings.height) / 1024 ** 2;
+                ratio = Number(example.settings.width) / Number(example.settings.height);
+                selected = frameShapes(t).find(([, , aspect]) => Math.abs(aspect - ratio) < .01)?.[0] || 'custom'; node.properties.freevideo_pixels = pixels; node.properties.freevideo_aspect = selected;
+            }
+            syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input')); updateRunButton();
+            if (example.assets?.length) mediaDetails.open = true;
+            // The lazy entry switches back through the editor before applying an example.
+            if (topDialog() !== dialog) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'workspace_changed'}; }
+            exampleFocused = true; generate.focus({preventScroll: true});
+        } else fault(t('Could not complete. Try again.', '没有完成，请重试'));
+        return result;
+    };
     function castChoices() {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
@@ -727,7 +773,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const references = attachReferencePicker(prompt, {items: () => referenceItems(node), t, view, host: dialog,
         characters: castChoices, onCharacter: mentionCharacter,
-        addMedia: () => { mediaDetails.open = true; mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
+        addMedia: () => { firstStart?.dismiss(); mediaDetails.open = true; triggerFeatureTour('media'); mediaDetails.scrollIntoView({block: 'nearest', behavior: 'smooth'}); mediaMount.querySelector('button')?.focus(); }});
     const mention = button('@', () => references.open(), 'fv-reference-trigger');
     mention.setAttribute('aria-label', t('Reference media (@)', '引用素材（@）'));
     mention.title = mention.getAttribute('aria-label');
@@ -826,7 +872,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const legacyOption = [...mp.options].find(o => Number(o.value) === 1);
     mp.disabled = dimensionsLinked;
     const seconds = el('input'); seconds.type = 'number'; seconds.required = true; seconds.min = '1.625'; seconds.step = 'any'; seconds.value = savedSeconds(node, value(node, 'seconds')); seconds.disabled = linked(node, 'seconds'); seconds.setAttribute('aria-label', t('Duration in seconds', '时长（秒）')); seconds.dataset.fvGuide = 'seconds';
-    const fields = el('div', null, 'fv-fields'); fields.append(field(t('Resolution', '清晰度'), resolutionSelect), field(t('Duration · seconds', '时长 · 秒'), seconds)); canvas.append(fields);
+    const audioLock = lockMark(), durationField = field(t('Duration · seconds', '时长 · 秒'), seconds); durationField.firstChild.append(audioLock);
+    const fields = el('div', null, 'fv-fields'); fields.append(field(t('Resolution', '清晰度'), resolutionSelect), durationField); canvas.append(fields);
     const canvasNote = el('div', null, 'fv-canvas-note'), dimensions = el('span'), duration = el('span'); canvasNote.append(dimensions, duration); canvas.append(canvasNote);
     const rangeMount = el('div'); canvas.append(rangeMount);
     let capabilityView;
@@ -932,18 +979,24 @@ export function openStudio(node, {extendFrom = null} = {}) {
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = mediaFilled(); }
     else mediaMount.append(el('p', t('Connect a FreeVideo Media panel in node view to upload here.', '在节点视图连接 FreeVideo 素材面板，可在这里上传。'), 'fv-legacy'));
     paintMediaHint(); mediaDetails.addEventListener('toggle', paintMediaHint);
+    mediaTitle.addEventListener('click', () => {
+        queueMicrotask(() => { if (mediaDetails.open && mediaDetails.dataset.expanded !== 'false') { firstStart?.dismiss(); triggerFeatureTour('media'); } });
+    });
     controls.addEventListener('change', paintMediaHint, true); controls.addEventListener('input', paintMediaHint, true);
     const connectedLora = upstream(node, 'loras');
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
     // Replace person: its LoRA row is found among the registered names (it may sit in a subfolder), a row the user had
     // switched off is switched on for the run, and everything done is undone when the option goes off.
-    // Returns '' when all is well, else the line to show; runs one at a time.
+    // Not installed: it is downloaded (progress in the panel), then added. Returns '' when all is well, else the line
+    // to show; runs one at a time.
     let swapLoraBusy = Promise.resolve('');
-    const swapLoraText = reason => reason === 'missing'
-        ? t(`"Replace person" needs the ${SWAP_LORA} LoRA in the models/loras folder.`, `“替换人物”需要把 ${SWAP_LORA} 放进 models/loras 文件夹。`)
-        : reason === 'ambiguous' ? t(`More than one ${SWAP_LORA} was found in models/loras. Add the one to use under "LoRA".`, `models/loras 中有多个 ${SWAP_LORA}，请在“LoRA”一栏添加要使用的那个。`)
+    const swapLoraText = reason => reason === 'ambiguous'
+        ? t('More than one Replace person model was found. Add the one to use under "LoRA".', '找到多个替换人物模型，请在“LoRA”一栏添加要使用的那个。')
         : t('Could not read the LoRA list. Try again.', '无法读取 LoRA 列表，请重试。');
-    async function applySwapLora() {
+    let swapPanel = null;
+    const swapDownload = swapLoraDownload({t, api, onReady: () => ensureSwapLora().then(problem => swapPanel?.notify(problem))});
+    cleanup.push(() => swapDownload.dispose());
+    async function applySwapLora(retry = false) {
         const state = mediaNode?.properties?.freevideo_replace_person;
         if (!state || !loraNode || !widget(loraNode, 'adapters')) return '';
         const current = value(loraNode, 'adapters') || '[]';
@@ -959,22 +1012,22 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!state.on) return '';
         const now = value(loraNode, 'adapters') || '[]';
         const result = prepareSwapLora(now, names, record);
+        if (!result.ok && result.reason === 'missing') return (await swapDownload.need(retry)) || swapLoraText('unreadable');
         if (!result.ok) return swapLoraText(result.reason);
         state.lora = result.record;
         if (result.adapters !== now) { set(loraNode, 'adapters', result.adapters); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id})); }
         return '';
     }
-    const ensureSwapLora = () => (swapLoraBusy = swapLoraBusy.then(applySwapLora, applySwapLora));
-    let swapPanel = null;
+    const ensureSwapLora = (retry = false) => (swapLoraBusy = swapLoraBusy.then(() => applySwapLora(retry), () => applySwapLora(retry)));
     function swapChanged(info) {
         mediaHint.textContent = swapState(mediaNode) ? t('Source video, person image', '源视频、人物图') : t('Reference images, first and last frames', '参考图、首帧、尾帧');
         // Switching the option only changes which media the prompt reads: its pictures are re-bound, never renumbered.
         syncReferencePrompt(node, t, info?.toggled === true); paintMediaHint();
-        ensureSwapLora().then(problem => { if (problem) swapPanel?.notify(problem); });
+        ensureSwapLora(info?.toggled === true).then(problem => { if (problem && !swapDownload.shown) swapPanel?.notify(problem); });
         window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
     }
     if (mediaNode?.freevideoCreateMediaEditor) {
-        const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged});
+        const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged, extra: swapDownload.element});
         cleanup.push(() => swap.dispose());
         if (swapState(mediaNode)) { mediaHint.textContent = t('Source video, person image', '源视频、人物图'); mediaDetails.open = true; }
     }
@@ -1018,13 +1071,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
     firstFrame.row.hidden = true; fields.after(firstFrame.row);
     firstFrame.input.checked = value(node, 'first_frame_reference') === true;
     firstFrame.input.onchange = () => { set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true; };
-    let manyParts = false;
+    let manyParts = false, originalOn = false;
     function updateFirstFrame() {
         // While a new plan is being worked out the row keeps its place.
         const plan = lengthControl.plan; if (plan || !lengthControl.needsPlan) manyParts = plan?.count > 1;
         firstFrame.row.hidden = !widget(node, 'first_frame_reference') || !(manyParts || extension.source);
-        firstFrame.input.checked = value(node, 'first_frame_reference') === true;
-        firstFrame.setDisabled(Boolean(capturing || queueState?.submitting || queueState?.running || chainController?.active));
+        // Audio used as is fixes the picture to the sound, so this switch is off while it applies.
+        firstFrame.input.checked = !originalOn && value(node, 'first_frame_reference') === true;
+        firstFrame.setDisabled(Boolean(originalOn || capturing || queueState?.submitting || queueState?.running || chainController?.active));
     }
     const samplingFields = el('div', null, 'fv-fields'); samplingFields.style.marginTop = '14px';
     const baseSteps = el('input'), refineSteps = el('input');
@@ -1077,6 +1131,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (runButtonReady) updateRunButton();
         }
         previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
+        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled);
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -1537,6 +1592,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             updateRunButton();
         },
         onResult: (result, outcome) => { node.freevideoLastResult = result; showResult(result, {chosen: outcome.partial});
+            if (!outcome.partial) firstStart?.complete(result);
             // A part that failed keeps its sentence; the part list already marks which ones finished.
             if (outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
         onError: showPartError});
@@ -1551,7 +1607,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             return removed?.apply(this, args);
         };
     }
-    const runrow = el('div', null, 'fv-runrow');
+    const runrow = el('div', null, 'fv-runrow'); cleanup.push(dismissEmptyPrompt);
     const runOptions = el('details', null, 'fv-run-options');
     const optionsToggle = el('summary'); optionsToggle.title = t('Generation mode', '生成方式');
     optionsToggle.setAttribute('aria-label', optionsToggle.title);
@@ -1688,7 +1744,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         modeHelp.textContent = multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。');
-        cancelCurrent.hidden = !queueState?.running && !chainController?.active;
+        // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
+        cancelCurrent.hidden = !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all));
         cancelCurrent.disabled = cancelling;
         cancelCurrent.textContent = cancelling ? t('Cancelling…', '正在取消…') : t('Cancel current', '取消当前');
         stopLoop.hidden = !queueState?.looping;
@@ -1719,7 +1776,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function renderQueue(state) {
         if (disposed) return;
         queueState = state;
-        if (chainController?.active) { queueActions.hidden = false; updateRunButton(); return; }
+        if (chainController?.active && !state.running_all) { queueActions.hidden = false; updateRunButton(); return; }
         const active = state.running || state.pending[0];
         activePrompt = active?.id || null;
         const wasBusy = busy;
@@ -1730,28 +1787,50 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The right-hand frame belongs to the submitted video. Draft edits on
         // the left must never reshape a video currently being generated.
         if (Number.isFinite(g?.width) && Number.isFinite(g?.height)) previewSize(g.width, g.height);
-        queueToggle.textContent = t(`Queued · ${state.pending.length}`, `排队 ${state.pending.length} 个`);
-        queueDetails.hidden = state.pending.length === 0;
+        const queueRows = state.running_all ? [...state.running_all, ...state.pending] : state.pending;
+        const running = state.running_all?.length || 0, waiting = state.pending.length;
+        queueToggle.textContent = !state.running_all ? t(`Queued · ${waiting}`, `排队 ${waiting} 个`)
+            : [running && t(`${running} generating`, `生成中 ${running} 个`), waiting && t(`${waiting} queued`, `排队 ${waiting} 个`)]
+                .filter(Boolean).join(' · ');
+        queueDetails.hidden = queueRows.length === 0;
         queueActions.hidden = !busy && !state.looping && resumeChain.hidden;
-        const signature = JSON.stringify(state.pending.map(row => [row.id, row.inputs.width, row.inputs.height]));
+        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
+            ...(state.running_all ? [state.running_all.includes(row), row.progress?.sequence] : [])]));
         if (queueList.dataset.signature !== signature) {
             queueList.dataset.signature = signature; queueList.replaceChildren();
-            state.pending.forEach((row, index) => {
+            queueRows.forEach(row => {
+                const executing = Boolean(state.running_all?.includes(row));
+                // Only waiting rows are numbered: the number is the place in the queue.
+                const index = state.pending.indexOf(row);
+                const size = `${row.inputs.width} × ${row.inputs.height}`;
                 const item = el('div', null, 'fv-queue-item');
                 item.dataset.id = row.id;
                 // Waiting videos often share every setting; the start of the prompt tells them apart.
                 const summary = String(row.inputs.text ?? '').replace(/\s+/g, ' ').trim();
                 const description = el('div', null, 'fv-queue-text');
                 if (summary) { const line = el('span', summary, 'fv-queue-summary'); line.title = summary; description.append(line); }
-                description.append(el('span', `${index + 1} · ${row.inputs.width} × ${row.inputs.height} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
-                const remove = button(t('Remove', '移除'), async () => {
+                description.append(el('span', executing ? `${size} · ${row.inputs.seconds} s`
+                    : `${index + 1} · ${size} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
+                if (executing) {
+                    const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
+                    bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
+                    bar.setAttribute('aria-label', t(`${size} · ${row.inputs.seconds} s`, `${size} · ${row.inputs.seconds} 秒`));
+                    const fraction = row.progress?.overall?.fraction;
+                    if (Number.isFinite(fraction)) {
+                        const percent = Math.min(100, Math.max(0, fraction * 100));
+                        fill.style.width = `${percent}%`; bar.setAttribute('aria-valuenow', String(Math.round(percent)));
+                    } else bar.dataset.indeterminate = 'true';
+                    bar.append(fill); description.append(bar);
+                }
+                const remove = button(executing ? t('Cancel', '取消') : t('Remove', '移除'), async () => {
                     remove.disabled = true;
                     try { await queueController.cancel(row.id); }
                     catch (error) { showQueueError(error); remove.disabled = false; }
                 }, 'fv-quiet');
-                remove.setAttribute('aria-label', t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
+                remove.setAttribute('aria-label', executing ? t(`Cancel ${size} · ${row.inputs.seconds} s`, `取消 ${size} · ${row.inputs.seconds} 秒`)
+                    : t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
                 item.append(description);
-                if (index > 0) {
+                if (!executing && index > 0) {
                     const first = button(t('Move to front', '排到最前'), async () => {
                         first.disabled = remove.disabled = true;
                         movedId = row.id;
@@ -1789,7 +1868,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             status.textContent = reply.status === 'cancelling' ? t('Stopping generation…', '正在停止生成…') : '';
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
-    async function submitDraft() {
+    async function submitDraft(options) {
+        const emptyAllowed = options?.allowEmpty === true;
         if (capturing || queueState?.submitting) return;
         // Ctrl+Enter leaves focus in a field: commit its edit (change fires on blur) first.
         const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
@@ -1807,7 +1887,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             invalid.focus(); invalid.reportValidity(); return;
         }
-        if (!extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
+            showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
+        }
         if (swapState(mediaNode)) {
             const missing = swapMissing(swapState(mediaNode));
             if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
@@ -1834,13 +1916,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const sourceState = source ? await extendSourceState(api, source) : 'ok';
             if (sourceState !== 'ok') throw new Error(extendSourceProblem(t, sourceState));
             if (source && lengthPlan?.count > 1) lengthOptions.after = {work: source.video};
-            const swapProblem = await ensureSwapLora();
+            const swapProblem = await ensureSwapLora(true);
             if (swapProblem) { status.dataset.error = 'true'; status.textContent = swapProblem; return; }
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = true;
             held = turnNodeOn(node);
-            const snapshot = singleRunSnapshot(extendSnapshot(cleanOptionalPrompt(clonePrompt(await app.graphToPrompt())), node.id, source,
+            const graph = cleanOptionalPrompt(clonePrompt(await app.graphToPrompt()));
+            if (emptyAllowed && !prompt.value.trim() && !extension.source) allowEmptyPrompt(graph, node.id);
+            const snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
@@ -1935,21 +2019,61 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const clearAddedNote = () => { if (status.textContent === addedNote) status.textContent = ''; };
     seconds.addEventListener('input', clearAddedNote); prompt.addEventListener('input', clearAddedNote);
     seconds.onchange = () => { if (lengthControl.commit({report: false})) updateCanvas(); };
-    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; refreshEffortEstimate(true); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    // Audio used as is fixes the duration; long selections use the background chain.
+    const SECONDS_BEFORE_AUDIO = 'freevideo_seconds_before_audio';
+    let audioRevision = 0;
+    // Where Use as is does not apply (a preview first, continuing a video), a clip chosen as is goes back to Reference,
+    // whichever was chosen first; the run never carries it.
+    function releaseOriginal() {
+        const assets = widget(mediaNode, 'assets');
+        if (!originalBlocked() || !assets) return false;
+        const rows = JSON.parse(assets.value || '[]');
+        if (!Array.isArray(rows) || !rows.some(usesOriginal)) return false;
+        assets.value = JSON.stringify(rows.map(referenceRow)); mediaNode.graph?.change();
+        window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
+        return true;
+    }
+    async function syncOriginalAudio() {
+        if (releaseOriginal()) return;
+        const revision = ++audioRevision;
+        const row = activeOriginal(mediaNode ? JSON.parse(value(mediaNode, 'assets') || '[]') : []);
+        const result = row ? await checkOriginal(api, row) : null;
+        if (disposed || revision !== audioRevision || result?.code === 'unreachable') return;
+        originalOn = Boolean(result?.ok); updateFirstFrame();
+        if (result?.ok) {
+            lengthControl.forceSingle(result.seconds <= 30);
+            if (linked(node, 'seconds')) return;
+            node.properties ||= {};
+            if (!Object.hasOwn(node.properties, SECONDS_BEFORE_AUDIO)) { node.properties[SECONDS_BEFORE_AUDIO] = Number(seconds.value); node.graph?.change(); }
+            const length = Math.ceil(result.seconds * 1000) / 1000;
+            seconds.disabled = false; audioLock.hidden = false;
+            if (Number(seconds.value) !== length) { seconds.value = length; if (lengthControl.commit({exact: true})) updateCanvas(); }
+            seconds.disabled = true;
+            return;
+        }
+        lengthControl.forceSingle(false); audioLock.hidden = true; seconds.disabled = linked(node, 'seconds');
+        if (node.properties && Object.hasOwn(node.properties, SECONDS_BEFORE_AUDIO)) {
+            seconds.value = node.properties[SECONDS_BEFORE_AUDIO]; delete node.properties[SECONDS_BEFORE_AUDIO]; node.graph?.change();
+            if (lengthControl.commit()) updateCanvas();
+        }
+    }
+    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
-    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
+    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));
-    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged);
-    cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); });
+    const originalBlockChanged = () => { syncOriginalAudio(); };
+    window.addEventListener('freevideo-media', mediaChanged); window.addEventListener('freevideo-result', resultChanged); window.addEventListener('freevideo-audio-blocked', originalBlockChanged); syncOriginalAudio();
+    cleanup.push(() => { window.removeEventListener('freevideo-media', mediaChanged); window.removeEventListener('freevideo-result', resultChanged); window.removeEventListener('freevideo-audio-blocked', originalBlockChanged); });
     const listen = (type, handler) => { api.addEventListener(type, handler); cleanup.push(() => api.removeEventListener(type, handler)); };
     listen('status', () => { syncQueue().catch(() => {}); });
     listen('executing', e => { const id = typeof e.detail === 'object' ? e.detail?.node : e.detail; if (String(id) === String(node.id)) { if (chainController.active) { chainController.refresh(); return; } failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null; liveProgressAt = Date.now(); busy = true; queued = false; updateRunButton(); showProgress(node.freevideoProgress || {label: t('Preparing your video', '正在准备视频'), reset: true, new_request: true}); status.textContent = ''; } syncQueue().catch(() => {}); });
     const progressChanged = e => {
         if (String(e.detail.node) !== String(node.id)) return;
+        if (e.detail.task_id && activePrompt && e.detail.task_id !== activePrompt) return;
         if (chainController.progress(e.detail)) return;
         progress.updateReport(e.detail);
         if (['failed', 'cancelled'].includes(e.detail.phase) || e.detail.result) {
@@ -1967,6 +2091,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     window.addEventListener('freevideo-progress', progressChanged);
     cleanup.push(() => window.removeEventListener('freevideo-progress', progressChanged));
     listen('execution_error', e => {
+        if (e.detail?.task_id && activePrompt && e.detail.task_id !== activePrompt) return;
         if (chainController.active && String(e.detail?.node_id) === String(node.id)) { chainController.refresh(); return; }
         const seen = new Set(), pending = [node];
         while (pending.length) {
@@ -1998,7 +2123,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
-    dialog.onclose = () => { disposed = true; for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
+    dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
         refine: Number(refineSteps.value), stepCache: stepCacheNow(), upscale: upscaleNow(), disabled: Boolean(extension.source) || dimensionsLinked || seconds.disabled}),
@@ -2013,7 +2138,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source));
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source));
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;
@@ -2059,8 +2184,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => { closed = true; guide?.dispose(); });
     agentDiscovery.then(() => {
         if (!closed) guide = createFirstRunGuide({dialog, api, cn, isBusy: () => busy || queued || capturing, targets: {media: mediaGuideTarget},
-            onShowcaseTry: () => openAutopilot(node, {studio: dialog, initialScene: SHOWCASE_SCENE})});
+            onShowcaseTry: () => openAutopilot(node, {studio: dialog, initialScene: SHOWCASE_SCENE}), onTry: tryTourExample});
     });
+    firstStart = createFirstStart({dialog, api, cn, prompt,
+        onPrefill: text => {
+            if (linked(node, 'text') || extension.source || prompt.value.trim()) return false;
+            set(node, 'text', text); prompt.value = text; placeholder(); updateRunButton(); return true;
+        }, onGenerate: () => { if (generate.disabled) return false; generate.click(); return true; }, onEdit: () => openEditorView(node, {studio: dialog}),
+        isBusy: () => busy || queued || capturing});
+    cleanup.push(() => firstStart.dispose());
+    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, canTry: canTryTour, isBusy: () => busy || queued || capturing};
+    cleanup.push(registerTourWorkspace(tourContext));
+    const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
+    cleanup.push(() => clearTimeout(tourTimer));
     const recentLoad = recent.refresh();
     if (node.freevideoProgress && !node.freevideoProgress.chain) showProgress(node.freevideoProgress);
     else if (result) showResult(result);
@@ -2075,7 +2211,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }).catch(() => {});
     // Opening leaves focus on the panel itself, not on the main button with a ring as if already pressed; Tab still reaches it.
     dialog.tabIndex = -1;
-    requestAnimationFrame(() => { if (dialog.open && !dialog.querySelector('.fv-guide-layer') && !document.querySelector('dialog.fv-editor[open]')) (extension.source ? prompt : dialog).focus({preventScroll: true}); });
+    requestAnimationFrame(() => { if (dialog.open && !exampleFocused && !dialog.querySelector('.fv-guide-layer') && !document.querySelector('dialog.fv-editor[open]')) (extension.source ? prompt : dialog).focus({preventScroll: true}); });
     // Establish the baseline after UI initialization; opening a panel is not an edit.
     trackPromptDraft(node);
     return dialog;

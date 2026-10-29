@@ -128,6 +128,10 @@ GUIDE = {
         'without studio prompts. POST /jobs/{id}/cancel cancels only this job.',
         'POST /jobs/{id}/resume continues failed, interrupted or cancelled generation; successful blocks stay. '
         'refine_from is the separate preview second pass. Active or succeeded jobs cannot resume.',
+        'After a video the model stays on the graphics card and in memory, so the next '
+        'video starts quickly; it goes at once when another program needs the memory. An agent that runs its own '
+        'model on the same card between videos (for example to check a result) calls POST /gpu/release (MCP freevideo_release_gpu) first '
+        '(it answers released=false while a video is running), or sets release_gpu_after=true on the generate job.',
         'Results include the joined library_id and each block library_id/report_id. Fetch videos and thumbnails '
         'with the token at /library/{day}/{run}/file and /thumbnail. MCP freevideo_asset and CLI agent asset use HTTP.',
     ],
@@ -309,6 +313,7 @@ CAPABILITIES_ZH = {
     ('GET', '/jobs/{id}'): '查看任务进度和结果',
     ('GET', '/jobs/{id}/events'): '持续接收任务进度',
     ('POST', '/jobs/{id}/cancel'): '取消任务',
+    ('POST', '/gpu/release'): '空闲时释放显存和内存里的视频模型',
     ('POST', '/jobs/{id}/resume'): '接着生成一条视频里还没完成的部分',
     ('POST', '/media'): '上传图片、视频或音频内容',
     ('POST', '/imports'): '导入视频或音频到剪辑时间线；轮询 GET /imports 等待就绪',

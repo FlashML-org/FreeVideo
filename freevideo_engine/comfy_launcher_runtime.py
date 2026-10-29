@@ -495,12 +495,19 @@ def launcher_comfy(selected, info):
 
 
 def queue_busy(url):
-    """Whether ComfyUI is running or holding jobs. An unreadable queue counts as idle."""
+    """Preserve the legacy check; a pool must confirm every executor is idle."""
+    from .gpu_pool import pool_enabled
+    pooled = pool_enabled()
     try:
         value = get_json(loopback_url(url) + '/queue', timeout=3)
-        return bool(value.get('queue_running') or value.get('queue_pending'))
-    except (OSError, ValueError, AttributeError):
+        if value.get('queue_running') or value.get('queue_pending'):
+            return True
+        if pooled:
+            state = get_json(loopback_url(url) + '/freevideo/pool', timeout=3)
+            return state.get('busy') is not False or state.get('confirmed') is not True
         return False
+    except (OSError, ValueError, AttributeError):
+        return pooled
 
 
 @plain_errors
@@ -1402,6 +1409,8 @@ class Controller:
                        custom_nodes='FreeVideo' if scoped else 'all')
         if selected.get('portable') and not selected['separate']:
             command.append('--windows-standalone-build')
+        from .comfy_environment import configure_control
+        command, env = configure_control(command, env)
         view = launch_view.for_engine(selected['engine'])
         started = command
         if view.used:

@@ -7,6 +7,7 @@ import time
 
 import torch
 from .torch_compat import empty_host_cache, host_cache_release_supported
+from .device_index import device_properties
 
 GiB = 1 << 30
 # Where a preview's sampling peak is kept, apart from its complete request's.
@@ -271,15 +272,22 @@ class ModelBank:
 
         The RAM guard counts the whole session, so retained engine weights
         plus the next encoder's start (about 8 GiB) must stay inside the
-        budget, and so must the host weights a fresh plan would pin: measured,
-        a retained copy left no room to pin and sampling took 95 s instead of
-        38 s. Otherwise the engine goes as it did with one worker per request.
+        budget, and so must the host weights a fresh plan would pin beyond those
+        the engine already holds: measured, a retained copy left no room to
+        pin and sampling took 95 s instead of 38 s. Otherwise the engine goes
+        as it did with one worker per request.
         """
-        if not self.ram_fits(8*GiB + int(pinned)):
+        # A retained engine's pinned weights are reused by the next request
+        # rather than pinned again, so they count once, in the session's use.
+        held = sum(pinned_cpu_storages(self.entries['engine']['model']).values()) if 'engine' in self.entries else 0
+        need = 8*GiB + max(0, int(pinned) - held)
+        if not self.ram_fits(need):
             self.converted_store.clear()
         for role in ('engine', 'encoder'):
-            if role in self.entries and not self.ram_fits(8*GiB + int(pinned)):
+            if role in self.entries and not self.ram_fits(need):
                 self.drop(role, 'Retained weights leave no host room for the next request')
+                if role == 'engine':
+                    need = 8*GiB + int(pinned)
         gc.collect()
         try:
             import ctypes
@@ -499,7 +507,7 @@ class ModelBank:
     def snapshot(self):
         if not torch.cuda.is_initialized():
             return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
-        uuid = str(getattr(torch.cuda.get_device_properties(0), 'uuid', ''))
+        uuid = str(getattr(device_properties(torch), 'uuid', ''))
         if uuid and not uuid.startswith(('GPU-', 'MIG-')):
             uuid = 'GPU-' + uuid
         host, committed = {}, {}

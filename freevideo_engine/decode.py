@@ -26,7 +26,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                    preload=False, pin_weights=False, artifacts_dir=None, phase_callback=None,
                    stream_output=False, stream_weights=False, resident_blocks=0, model_cache=None,
                    linear_compute_cache=False, continuation=None, audio_lead_in_callback=None, output_size=None,
-                   hide_tail_frames=0, ram_budget_bytes=None):
+                   hide_tail_frames=0, ram_budget_bytes=None, original_audio=None):
     from .continuation import validate_hide_tail
     validate_hide_tail(hide_tail_frames)
     def phase(name):
@@ -193,6 +193,12 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         if continuation is not None:
             from .continuation import OVERLAP_FRAMES
             frames = frames[OVERLAP_FRAMES:]
+        if original_audio is not None and 'segment' not in original_audio:
+            from .original_audio import verify
+            verify(original_audio)
+            count = original_audio['end_sample'] - original_audio['start_sample']
+            rate = original_audio['sample_rate']
+            frames = frames[:(count * FPS + rate - 1) // rate]
         artifact_seconds = streamed_timings.get('decoded_artifact_save_seconds', 0.)
         if artifacts_dir:
             import numpy as np
@@ -200,7 +206,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             tick = time.perf_counter()
             artifacts_dir = Path(artifacts_dir)
             artifacts_dir.mkdir(parents=True, exist_ok=True)
-            if not stream_output or continuation is not None or hide_tail_frames:
+            if not stream_output or continuation is not None or hide_tail_frames or original_audio is not None:
                 # A streamed mapping still contains overlap/hidden frames. Replace its
                 # retained artifact after the mapping closes, below.
                 rgb_path = artifacts_dir / ('rgb-new.npy' if stream_output else 'rgb.npy')
@@ -211,77 +217,103 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             import numpy as np
             np.save(directory / 'rgb-new.npy', frames.numpy() if hasattr(frames, 'numpy') else frames,
                     allow_pickle=False)
-        audio_start = time.perf_counter()
-        phase('audio_load_decode')
-        audio_vae = None
-        if model_cache is not None:
-            from .resident_models import key, file_identity
-            audio_key = key([file_identity(path) for path in sorted((Path(base)/'audio_vae').iterdir()) if path.is_file()])
-            audio_vae = model_cache.take('audio_vae', audio_key)
-            model_cache.make_room('audio_vae', 1*2**30, model=audio_vae, ram_need=256*2**20)
-        audio_cache_hit = audio_vae is not None
-        if audio_vae is None:
-            from .vae_weights import load_audio_vae
-            audio_vae, _ = load_audio_vae(base)
-        if model_cache is not None:
-            model_cache.put('audio_vae', audio_key, audio_vae)
-        audio_vae.eval().requires_grad_(False)
-        audio_mean = torch.tensor(audio_vae.config.latents_mean, device='cuda').view(1, -1, 1)
-        audio_std = torch.tensor(audio_vae.config.latents_std, device='cuda').view(1, -1, 1)
-        print(json.dumps({'event': 'decode_phase', 'phase': 'Decoding audio'}), flush=True)
-        audio = audio_vae.decode(audio_latents * audio_std + audio_mean, return_dict=False)[0]
-        audio = audio.float().permute(1, 0, 2)[0].cpu()
-        rate = audio_vae.config.sampling_rate
-        if continuation is not None:
-            if audio_lead_in_callback is not None:
-                from .continuation import capture_audio_lead_in
-                audio_lead_in_callback(capture_audio_lead_in(audio, continuation, rate))
-        if hide_tail_frames:
-            audio = audio[:, :round(kept_frames * 40 / 24) * 800]
-        if continuation is not None:
-            audio = audio[:, continuation['audio_latents'] * 800:]
-        audio_level = {'audio_rms': float(audio.square().mean().sqrt()) if audio.numel() else 0.,
-                       'audio_peak': float(audio.abs().max()) if audio.numel() else 0.,
-                       'audio_samples': int(audio.shape[-1])}
-        del audio_vae, audio_mean, audio_std
-        gc.collect()
-        torch.cuda.empty_cache()
-        audio_seconds = time.perf_counter() - audio_start
-        if artifacts_dir:
-            import wave
-            phase('audio_save')
-            tick = time.perf_counter()
-            np.save(artifacts_dir / 'audio.npy', audio.numpy(), allow_pickle=False)
-            # Preserve exact float audio above; WAV is an independently playable copy.
-            pcm = (audio.clamp(-1, 1).t().contiguous().numpy() * 32767).round().astype('<i2')
-            with wave.open(str(artifacts_dir / 'audio.wav'), 'wb') as wav:
-                wav.setnchannels(audio.shape[0])
-                wav.setsampwidth(2)
-                wav.setframerate(rate)
-                wav.writeframes(pcm.tobytes())
-            artifact_seconds += time.perf_counter() - tick
+        original_receipt = None
+        if original_audio is not None:
+            # The clip used as is is the sound; the model's audio is not decoded.
+            audio, rate, audio_seconds, audio_cache_hit, audio_level = None, original_audio['sample_rate'], 0., False, {}
+        else:
+            audio_start = time.perf_counter()
+            phase('audio_load_decode')
+            audio_vae = None
+            if model_cache is not None:
+                from .resident_models import key, file_identity
+                audio_key = key([file_identity(path) for path in sorted((Path(base)/'audio_vae').iterdir()) if path.is_file()])
+                audio_vae = model_cache.take('audio_vae', audio_key)
+                model_cache.make_room('audio_vae', 1*2**30, model=audio_vae, ram_need=256*2**20)
+            audio_cache_hit = audio_vae is not None
+            if audio_vae is None:
+                from .vae_weights import load_audio_vae
+                audio_vae, _ = load_audio_vae(base)
+            if model_cache is not None:
+                model_cache.put('audio_vae', audio_key, audio_vae)
+            audio_vae.eval().requires_grad_(False)
+            audio_mean = torch.tensor(audio_vae.config.latents_mean, device='cuda').view(1, -1, 1)
+            audio_std = torch.tensor(audio_vae.config.latents_std, device='cuda').view(1, -1, 1)
+            print(json.dumps({'event': 'decode_phase', 'phase': 'Decoding audio'}), flush=True)
+            audio = audio_vae.decode(audio_latents * audio_std + audio_mean, return_dict=False)[0]
+            audio = audio.float().permute(1, 0, 2)[0].cpu()
+            rate = audio_vae.config.sampling_rate
+            if continuation is not None:
+                if audio_lead_in_callback is not None:
+                    from .continuation import capture_audio_lead_in
+                    audio_lead_in_callback(capture_audio_lead_in(audio, continuation, rate))
+            if hide_tail_frames:
+                audio = audio[:, :round(kept_frames * 40 / 24) * 800]
+            if continuation is not None:
+                audio = audio[:, continuation['audio_latents'] * 800:]
+            audio_level = {'audio_rms': float(audio.square().mean().sqrt()) if audio.numel() else 0.,
+                           'audio_peak': float(audio.abs().max()) if audio.numel() else 0.,
+                           'audio_samples': int(audio.shape[-1])}
+            del audio_vae, audio_mean, audio_std
+            gc.collect()
+            torch.cuda.empty_cache()
+            audio_seconds = time.perf_counter() - audio_start
+            if artifacts_dir:
+                import wave
+                phase('audio_save')
+                tick = time.perf_counter()
+                np.save(artifacts_dir / 'audio.npy', audio.numpy(), allow_pickle=False)
+                # Preserve exact float audio above; WAV is an independently playable copy.
+                pcm = (audio.clamp(-1, 1).t().contiguous().numpy() * 32767).round().astype('<i2')
+                with wave.open(str(artifacts_dir / 'audio.wav'), 'wb') as wav:
+                    wav.setnchannels(audio.shape[0])
+                    wav.setsampwidth(2)
+                    wav.setframerate(rate)
+                    wav.writeframes(pcm.tobytes())
+                artifact_seconds += time.perf_counter() - tick
         destination = Path(out_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.stem + '.partial' + destination.suffix)
         encode_started = time.perf_counter()
         phase('mp4_save')
+        picture = frames
         if output_size is not None:
             # The model rendered a larger size; only the picture is scaled.
             from .output_fit import fit_frames
-            encode_video(fit_frames(frames, *output_size), fps=FPS, output_path=str(temporary), audio=audio,
-                         audio_sample_rate=rate)
+            picture = fit_frames(frames, *output_size)
+        if original_audio is not None:
+            from .original_audio import mux
+            # Encode picture only; audio never enters the model decoder or AAC encoder.
+            try:
+                encode_video(picture, fps=FPS, output_path=str(temporary))
+                if 'segment' in original_audio:
+                    # Keep the complete new picture grid for the ordinary
+                    # join. Standalone/editor block playback still has its
+                    # exact source sound; the final join ignores this track.
+                    info = dict(original_audio, start_sample=original_audio['segment']['start_sample'],
+                                end_sample=original_audio['segment']['end_sample'], full_source=False)
+                    original_receipt = mux(temporary, destination, info, trim_video=False)
+                    original_receipt['segment'] = original_audio['segment']
+                else:
+                    original_receipt = mux(temporary, destination, original_audio)
+                if artifacts_dir:
+                    from .monitoring import save
+                    save(artifacts_dir / 'original-audio.json', original_receipt)
+            finally:
+                temporary.unlink(missing_ok=True)
         else:
-            encode_video(frames, fps=FPS, output_path=str(temporary), audio=audio, audio_sample_rate=rate)
-        temporary.replace(destination)
+            encode_video(picture, fps=FPS, output_path=str(temporary), audio=audio, audio_sample_rate=rate)
+            temporary.replace(destination)
         frame_count = len(frames)
     finally:
         if rgb_mapping is not None:
             del frames
             rgb_mapping._mmap.close()
             retained = Path(artifacts_dir) if artifacts_dir else directory
-            if (continuation is not None or hide_tail_frames) and (retained / 'rgb-new.npy').is_file():
+            if (continuation is not None or hide_tail_frames or original_audio is not None) and (retained / 'rgb-new.npy').is_file():
                 (retained / 'rgb-new.npy').replace(retained / 'rgb.npy')
-    return {'vae_load_seconds': load_seconds, 'video_decode_seconds': video_decode_seconds,
+    return {**({'original_audio': original_receipt} if original_receipt is not None else {}),
+            'vae_load_seconds': load_seconds, 'video_decode_seconds': video_decode_seconds,
             'vae_linear_compute_cache': linear_compute_cache, 'vae_compute_cache_preparation': compute_cache_metrics,
             'resident_vae_cache_hit': vae_cache_hit, 'resident_audio_vae_cache_hit': audio_cache_hit,
             'vae_preload_seconds': preload_seconds,

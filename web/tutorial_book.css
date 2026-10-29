@@ -44,6 +44,8 @@
 .fv-book-limits ul { padding-inline-start:var(--book-md); margin:0; }
 .fv-book-limits li { margin-bottom:var(--book-sm); }
 .fv-book-start { margin-top:0; padding:var(--book-sm) var(--book-md); min-height:var(--book-control); border:0; border-radius:var(--book-control-radius); background:var(--book-button); color:var(--book-button-ink)!important; font-weight:600; }
+.fv-book-start + .fv-book-start, .fv-book-try + .fv-book-start { margin-inline-start:var(--book-sm); }
+.fv-book-try { background:var(--book-button); }
 .fv-book-start:disabled { opacity:.5; cursor:default; }
 .fv-book-picker { display:none; }
 @media(max-width:680px) {

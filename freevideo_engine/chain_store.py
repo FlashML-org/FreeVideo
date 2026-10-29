@@ -91,9 +91,15 @@ def validate(payload):
         source = payload.get('after')
         if source is not None and not isinstance(source, dict):
             raise ValueError('A planned video can only continue a saved work')
-        planned = chain_plan.plan(payload['seconds'], payload.get('single', False), payload.get('max_frames'),
-                                  payload.get('single_limit_seconds'), payload.get('block_seconds'),
-                                  continued=source is not None)
+        if payload.get('original_audio') is not None:
+            from .original_audio_chain import plan as audio_plan, selection_info
+            planned = audio_plan(selection_info(payload['original_audio']),
+                **{key: payload[key] for key in ('single', 'max_frames', 'single_limit_seconds', 'block_seconds')
+                   if key in payload})
+        else:
+            planned = chain_plan.plan(payload['seconds'], payload.get('single', False), payload.get('max_frames'),
+                                      payload.get('single_limit_seconds'), payload.get('block_seconds'),
+                                      continued=source is not None)
         inputs = prompt[node]['inputs']
         text, seed = payload.get('text', inputs.get('text')), payload.get('seed', inputs.get('seed'))
         if not isinstance(text, str):
@@ -117,6 +123,11 @@ def validate(payload):
         rows = payload['blocks']
     if not isinstance(rows, list) or not 1 <= len(rows) <= chain_plan.MAX_BLOCKS:
         raise ValueError('A chain requires 1 to %s blocks' % chain_plan.MAX_BLOCKS)
+    from .audio_use_request import graph_audio
+    from .original_audio import AudioUseError
+    if graph_audio(prompt, node) and payload.get('original_audio') is None and (len(rows) != 1 or not isinstance(rows[0], dict)
+                                    or any(rows[0].get(k) for k in ('after', 'before'))):
+        raise AudioUseError('audio_original_route')
     blocks, ids = [], set()
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -175,6 +186,9 @@ def validate(payload):
                   output_error=None, output_blocks=0, split=split)
     if queue:
         record['queue'] = True
+    if payload.get('original_audio') is not None:
+        from .original_audio_chain import bind
+        bind(record, payload['original_audio'])
     try:
         json.dumps(record, allow_nan=False)
     except (ValueError, TypeError, OverflowError) as error:
@@ -213,6 +227,12 @@ def detail(record):
         # Split parts repeat words put there by code; the page lists and edits only each part's own.
         from .prompt_vlm.rules import own_words
         value['part_words'] = own_words([str(row['inputs'].get('text', '')) for row in record['blocks']])
+    if record.get('original_audio') is not None:
+        selected = record['original_audio']
+        info = selected['info']
+        value['original_audio'] = dict(file=selected['file'], use='original',
+            range={key: info[key] for key in ('start_sample', 'end_sample')},
+            sample_rate=info['sample_rate'], source_sha256=info['sha256'])
     return value
 
 
@@ -304,10 +324,13 @@ def load_all(directory, limit=200, *, identity=None):
             normalized = validate(dict(node=record['node'], client_id=record['client_id'], **snapshot,
                 queue=record.get('queue', False), blocks=[{key: row[key] for key in ('id', 'part', 'after', 'before', 'fill', 'context')}
                         | row['inputs']
-                        for row in record['blocks']], join=record['join']))
+                        for row in record['blocks']], join=record['join'],
+                **({'original_audio': record['original_audio']} if 'original_audio' in record else {})))
             if record['state'] not in CHAIN_STATES:
                 raise ValueError('Invalid chain state')
             for row, clean in zip(record['blocks'], normalized['blocks']):
+                if record.get('original_audio') is not None and row.get('original_audio') != clean['original_audio']:
+                    raise ValueError('Invalid original audio block range')
                 row.setdefault('new_frames', clean['new_frames'])
                 if type(row['new_frames']) is not int or row['new_frames'] != clean['new_frames']:
                     raise ValueError('Invalid block new frame count')

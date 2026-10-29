@@ -27,6 +27,10 @@ def resource_arguments(parser):
 
 
 def main():
+    if os.environ.get('FREEVIDEO_HOME'):
+        # Without a system compiler, run-time builds (Triton) in this process use the one FreeVideo installed.
+        from .comfy_environment import with_private_compiler
+        with_private_compiler(os.environ['FREEVIDEO_HOME'], os.environ)
     if len(sys.argv) > 1 and sys.argv[1] in ('projects', 'sessions'):
         from .agent.cli import main as agent
         return agent(sys.argv[1:])
@@ -92,6 +96,7 @@ def main():
     source = generate.add_mutually_exclusive_group(required=True)
     source.add_argument('--prompt-file', type=Path)
     source.add_argument('--conditioning', type=Path)
+    generate.add_argument('--allow-empty-prompt', action='store_true', help='Generate from an empty prompt file')
     generate.add_argument('--cache', type=Path, required=True)
     generate.add_argument('--base', type=Path)
     generate.add_argument('--checkpoint', type=Path)
@@ -99,6 +104,9 @@ def main():
     from .media_request import TASKS
     generate.add_argument('--task', choices=TASKS, help='Input task; inferred when --media is provided')
     generate.add_argument('--media', type=Path, help='Versioned keyframe/reference/LoRA request JSON; local files only')
+    generate.add_argument('--audio', type=Path, help='Audio file; may be combined with image/video references in --media')
+    generate.add_argument('--audio-use', choices=('reference', 'original'),
+                          help='Audio use (default: reference); with --media alone, applies to its single audio file')
     generate.add_argument('--continue-from', type=Path, help='Continue an existing MP4 using its absolute path')
     generate.add_argument('--first-frame-reference', action='store_true',
                           help='With --continue-from: also give the model the first frame of the whole film as a '
@@ -167,6 +175,11 @@ def main():
                            anchor=args.continue_anchor is not None, two_pass=args.two_pass, preview=args.preview,
                            refine_from=args.refine_from)
     if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):
+        if args.command == 'generate':
+            from .media_request import read
+            from .original_audio import original, AudioUseError
+            if args.audio is not None or args.audio_use == 'original' or original(read(args.media)) is not None:
+                raise AudioUseError('audio_original_backend')
         from .macos_generate import dispatch
         return dispatch(args)
     if args.command == 'plan':

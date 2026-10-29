@@ -380,7 +380,9 @@ class Engine:
         set_softmax_backend(model, 'flex')
         if inference_kernels:
             from .row_kernels import install as install_row_kernels
+            from .linear_kernels import install as install_linear_kernels
             install_row_kernels()
+            install_linear_kernels()
         set_inference_mode(model, inference_kernels)
         self.attention.install(model)
         if head_chunk:
@@ -556,7 +558,9 @@ class Engine:
         if continuation is not None:
             from .continuation import validate_route
             # Audio references are admitted below, after inspecting the encoded modalities.
-            if self.task not in ('ref2va_audio', 'ref2va_av'):
+            if continuation.get('video_only'):
+                validate_route(task=self.task, anchor=bool(continuation.get('anchor')), original_audio=True)
+            elif self.task not in ('ref2va_audio', 'ref2va_av'):
                 validate_route(task=self.task, anchor=bool(continuation.get('anchor')))
             if tuple(continuation['video'].shape[-2:]) != (height // 16, width // 16):
                 from .continuation import SIZE_MISMATCH
@@ -623,10 +627,19 @@ class Engine:
                     sampling_kwargs.update(condition_schedule=condition_schedule, condition_trace=early_receipt['steps'])
             conditions = value.get('references') or None
             if continuation is not None:
-                from .continuation import encoded_references
-                if encoded_references(conditions, self.task, bool(continuation.get('anchor'))):
-                    validate_route(task=self.task, sound=True, anchor=bool(continuation.get('anchor')),
-                                   media=dict(references=[dict(kind=row['kind']) for row in conditions]))
+                from .continuation import UNSUPPORTED_MEDIA, encoded_references
+                from .fixed_track import split
+                # A clip used as is fills the part's own sound; only the other rows are references.
+                references, fixed = split(conditions or [], frames, self.device_backend.device)
+                if (fixed is None) == bool(continuation.get('video_only')):
+                    raise ValueError(UNSUPPORTED_MEDIA)
+                del fixed
+                if not continuation.get('video_only') or references:
+                    if encoded_references(references, self.task, bool(continuation.get('anchor'))):
+                        if continuation.get('video_only'):
+                            raise ValueError(UNSUPPORTED_MEDIA)
+                        validate_route(task=self.task, sound=True, anchor=bool(continuation.get('anchor')),
+                                       media=dict(references=[dict(kind=row['kind']) for row in references]))
                 # Ref2VA packs independent-size references before generated
                 # video rows in both passes. Their latents do not need the
                 # keyframe resize used by first/last-frame conditioning.

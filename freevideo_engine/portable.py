@@ -260,6 +260,7 @@ def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *,
     # CUDA UUIDs survive a Windows display-adapter order change. The host and
     # its engine children must see the same device that passed initialization.
     os.environ['CUDA_VISIBLE_DEVICES'] = machine['gpu_uuid']
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     if cancelled is not None:
         controller.cancelled = cancelled
         if cancelled.is_set():

@@ -2,6 +2,7 @@
 // replenishes a loop after its previous request has actually completed.
 import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
+import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
 
 // One dropped read is usually a connection reset or an engine restart. Only this many
@@ -129,6 +130,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     formatError = error => error} = {}) {
     nodeId = String(nodeId);
     let running = null, pending = [], submitting = false, loop = null, timer = null;
+    let runningAll = [], pooled = false;
     let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null;
     const listeners = new Set();
     const owned = new Set(), delivered = new Set();
@@ -138,7 +140,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         delivered.add(id); onResult(output, id);
     }
     const state = () => ({running, pending, submitting, looping: Boolean(loop?.active),
-        loopCompleted: loop?.completed || 0, error: lastError});
+        loopCompleted: loop?.completed || 0, error: lastError, ...(pooled ? {running_all: runningAll} : {})});
     const publish = () => { for (const listener of listeners) listener(state()); };
     function schedule() {
         clearTimeout(timer); timer = null;
@@ -153,7 +155,13 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         return row[2]?.[nodeId]?.class_type === 'FreeVideoGenerate'
             && (!api.clientId || row[3]?.client_id === api.clientId);
     }
-    const entry = row => ({id: row[1], inputs: clone(row[2][nodeId].inputs)});
+    const entry = row => {
+        // An older snapshot never moves a task's progress backwards.
+        const snapshot = row[3]?.freevideo_progress?.[nodeId], known = runningAll.find(item => item.id === row[1])?.progress;
+        const progress = snapshot && !isStaleProgress(known, snapshot) ? snapshot : known || snapshot;
+        return {id: row[1], inputs: clone(row[2][nodeId].inputs),
+            ...(row[3]?.freevideo_dispatch ? {executor: row[3].freevideo_dispatch, ...(progress ? {progress} : {})} : {})};
+    };
     async function cancel(id) {
         const response = await api.fetchApi('/freevideo/cancel', {method: 'POST',
             headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt_id: id, node_id: nodeId})});
@@ -203,7 +211,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     async function advanceLoop() {
         const session = loop;
         if (!session?.active || session.sending || !session.waiting) return;
-        if (running?.id === session.waiting || pending.some(row => row.id === session.waiting)) return;
+        if (runningAll.some(row => row.id === session.waiting) || pending.some(row => row.id === session.waiting)) return;
         const response = await fetchQueueRead(api, '/history/' + encodeURIComponent(session.waiting));
         if (!response.ok) throw new Error('queue_unavailable');
         const history = (await response.json())[session.waiting];
@@ -222,12 +230,14 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         const response = await fetchQueueRead(api, '/queue');
         if (!response.ok) throw new Error('queue_unavailable');
         const queue = await response.json();
-        running = (queue.queue_running || []).filter(matches).map(entry)[0] || null;
+        runningAll = (queue.queue_running || []).filter(matches).map(entry);
+        running = runningAll[0] || null;
         // Comfy returns its heap array; the queue number gives the real running order.
         pending = (queue.queue_pending || []).filter(matches).sort((a, b) => a[0] - b[0]).map(entry);
+        pooled = [...runningAll, ...pending].some(row => row.executor) || runningAll.length > 1;
         outage = null;
         if (isNetworkTypeError(lastError) && !lastError.loopStopped) lastError = null;
-        for (const row of [running, ...pending]) if (row) remember(row.id);
+        for (const row of [...runningAll, ...pending]) remember(row.id);
         await advanceLoop(); publish();
     }
     function refresh() {
@@ -282,10 +292,17 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     const onExecuted = event => {
         if (String(event.detail?.node) === nodeId) result(event.detail?.prompt_id, event.detail?.output);
     };
+    const onProgress = event => {
+        const message = event.detail;
+        if (!message?.task_id || String(message.node) !== nodeId) return;
+        const row = runningAll.find(row => row.id === message.task_id);
+        if (row && !isStaleProgress(row.progress, message)) { row.progress = message; publish(); }
+    };
     api.addEventListener('status', onStatus);
     api.addEventListener('execution_error', onFailure);
     api.addEventListener('execution_interrupted', onFailure);
     api.addEventListener('executed', onExecuted);
+    api.addEventListener('freevideo_progress', onProgress);
     return {
         state, refresh, start, stopLoop, moveFirst,
         subscribe(listener) { listeners.add(listener); listener(state()); schedule(); return () => { listeners.delete(listener); schedule(); }; },
@@ -298,6 +315,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
             api.removeEventListener('status', onStatus); api.removeEventListener('execution_error', onFailure);
             api.removeEventListener('execution_interrupted', onFailure);
             api.removeEventListener('executed', onExecuted);
+            api.removeEventListener('freevideo_progress', onProgress);
         },
     };
 }

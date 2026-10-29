@@ -713,6 +713,13 @@ class Jobs:
             elif save:
                 self.retry_pending()
             return
+        if row['kind'] == 'generate' and row.get('spec', {}).get('release_gpu_after') is True:
+            # The agent runs another model on this card next, so the card is free before the job reads as done.
+            from ..resident_process import OWNER
+            try:
+                OWNER.release_idle('agent_requested')
+            except Exception:
+                pass
         row.update(status=status, finished_at=self.clock(), updated_at=self.clock())
         if result is not None:
             row['result'] = result
@@ -1020,6 +1027,15 @@ class Jobs:
             return any(r['state'] in ('queued', 'running', 'cancelling') or r['output_state'] == 'joining'
                        for r in runner.records.values())
 
+    def scheduler(self):
+        get = getattr(self.port, 'scheduler', None)
+        return get() if callable(get) else None
+
+    def prompt_progress(self, node, prompt_id):
+        if self.scheduler() is not None:
+            return self.port.progress(node, prompt_id=prompt_id)
+        return self.port.progress(node)
+
     def resume(self, identity, *, key=None, value=None, replay_result=False, client=None):
         value = value or {}
         schema.validate(schema.contracts()['POST', '/jobs/{id}/resume']['body'], value)
@@ -1088,7 +1104,7 @@ class Jobs:
         entries, chains, prompts = [], [], {}
         if runner is not None:
             with runner.lock:
-                order = ([runner.active] if runner.active is not None else []) + runner.queue
+                order = runner.active_ids() + runner.queue
                 order += [r['id'] for r in runner.records.values() if r['id'] not in order]
                 records = [runner.records[identity] for identity in dict.fromkeys(order)]
                 for record in records:
@@ -1221,7 +1237,7 @@ class Jobs:
             position = self.port.position(row['comfy']['prompt_id'])
             if position:
                 return dict(phase='queued', label='Waiting in the ComfyUI queue', queue_position=position)
-            message = self.port.progress(row['comfy']['node'])
+            message = self.prompt_progress(row['comfy']['node'], row['comfy']['prompt_id'])
             if not message:
                 return dict(phase='starting', label='Starting')
             overall = message.get('overall') or {}
@@ -1248,9 +1264,10 @@ class Jobs:
             if row.get('chain_id'):
                 # A video in several parts has one bar over all of them; the engine times each part by itself.
                 chain = self.chain(row['chain_id'])
-                message = self.port.progress(chain['node']) or {} if chain['count'] == 1 and chain.get('node') else {}
+                current = next((b for b in chain['blocks'] if b['id'] == chain.get('current')), {})
+                message = self.prompt_progress(chain['node'], current.get('prompt_id')) or {} if chain['count'] == 1 and chain.get('node') else {}
             elif row['kind'] == 'generate' and row.get('comfy'):
-                message = self.port.progress(row['comfy']['node']) or {}
+                message = self.prompt_progress(row['comfy']['node'], row['comfy']['prompt_id']) or {}
             else:
                 return None
         except Exception:
@@ -1336,11 +1353,16 @@ class Jobs:
                 if self.ready(row) != 'ready':
                     continue
                 if kind == 'generate':
-                    if generation_ahead or vlm_ahead or self.port.vlm_busy() or self.port.image_busy():
+                    scheduler = self.scheduler()
+                    if (scheduler is None and generation_ahead or vlm_ahead
+                            or self.port.vlm_busy() or self.port.image_busy()):
                         generation_ahead = True
                         continue
                     generation_ahead = True
-                    if not row['spec'].get('refine_from') and (self.runner_busy() or self.port.queue_busy()):
+                    if scheduler is not None:
+                        if not scheduler.accepting():
+                            continue
+                    elif not row['spec'].get('refine_from') and (self.runner_busy() or self.port.queue_busy()):
                         continue
                 elif kind in GPU_KINDS:
                     chain_busy = self.runner_busy()
@@ -1620,8 +1642,11 @@ class Jobs:
         with self.lock, runner.lock:
             if row.get('_cancel') or row['status'] == 'cancelled':
                 return
-            if (any(r['state'] in ('queued', 'running', 'cancelling') or r['output_state'] == 'joining'
-                    for r in runner.records.values()) or self.port.queue_busy() or self.port.vlm_busy() or self.port.image_busy()):
+            scheduler = self.scheduler()
+            if (scheduler is None and (any(r['state'] in ('queued', 'running', 'cancelling') or r['output_state'] == 'joining'
+                    for r in runner.records.values()) or self.port.queue_busy())
+                    or scheduler is not None and not scheduler.accepting()
+                    or self.port.vlm_busy() or self.port.image_busy()):
                 return
             # Submit and plan refuse this up front; the backend can still change before a queued or resumed job starts.
             if (any(b['state'] != 'done' and (b['after'] or b['before'])
@@ -1831,7 +1856,7 @@ class Jobs:
             except Exception as error:
                 self.log_poll_failure(row, error)
         try:
-            report_id = (self.port.progress(chain['node']) or {}).get('report_id')
+            report_id = (self.prompt_progress(chain['node'], (block or {}).get('prompt_id')) or {}).get('report_id')
         except Exception:
             report_id = None
         code = reason.get('code', 'generation_failed')
