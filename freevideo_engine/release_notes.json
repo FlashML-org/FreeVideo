@@ -1,39 +1,68 @@
 {
   "schema": 1,
-  "product_version": "0.4.24",
+  "product_version": "0.4.25",
   "en": {
-    "summary": "A person in a source video can be replaced with the character in a person image; reference videos can be used for depth only; the built-in AI sets up a white-model scene from one sentence; an earlier video's prompt and settings can be reused; decoding on cards with less video memory is quicker.",
+    "summary": "An audio clip can be used as is, so the video carries that clip as its sound; a tutorial and feature examples explain each feature with an example that can be filled in directly; after a video finishes, the model stays loaded and the next video starts without reloading.",
     "changes": [
-      "Studio: \"Replace person\" in the Media section replaces the person in a source video with the character in a person image, and can keep the source video's sound; if that sound cannot be added, the finished video is still kept. A reference video can be set to \"Depth only\"; its depth is computed once and reused by later requests.",
-      "Creation panel: after an earlier video is selected in Recent videos, \"Reuse settings\" fills its prompt, picture size and duration back into the panel; \"Undo\" restores the previous values within 10 seconds.",
-      "White models: when no external Agent is connected, the white-model button in the chat box works with the built-in AI. Describe the shot in one sentence; if a ready-made scene fits, a white model is generated for confirmation, otherwise the reason is shown and the sentence is kept.",
-      "Long videos: when a description is split across parts, the story is no longer repeated in every part; the shared text keeps only what stays the same, such as people, place, lighting and style. Without the prompt model, the description is split across the parts by sentence instead of every part using the whole description, and the creation panel offers to download the prompt model; a download in progress is paused when generation starts.",
-      "Editor: a continued part can be as short as 5 seconds, and on Mac and on computers that cannot make 10 seconds at once a new part starts at 5 seconds; a video with a continued part shorter than 10 seconds has at most 4 parts. A description over the length limit is pointed out before sending, including on a retry.",
-      "Generation: after other ComfyUI workflows have run, the video memory they hold is released before a picture or a prompt rewrite starts, without restarting ComfyUI. A missing text encoder model is detected before encoding starts, with repair guidance; if a model repair fails while downloading, the original file is restored. When generation cannot start because the installation is in use, the failure details name the programs holding it open. When the GPU checks before switching to int8 fail, the failure card lists the reason for each check.",
-      "Memory and speed: on graphics cards that cannot hold the whole decoder, decoding no longer prepares the same layers again for every video segment or every new request while memory allows, with identical output. On most Windows graphics cards with 8 to 12 GB of video memory, the first pass of two-pass videos between 10 and 12 seconds without LoRA computes 8 attention heads at a time instead of 4, as shorter videos already did. On Windows, when other programs free video memory during a generation, the next pass and decoding use the recovered memory.",
-      "Install: setup no longer stops with a dependency mismatch after the installation folder was moved, copied or restored, and a dependency folder too deep for Windows is reported as a long path. Text encoder and tokenizer files deleted after installation are restored from the local copy before encoding and during repair, without downloading.",
-      "Phone access: the phone page works when local network access is switched on in the launcher, and no longer shows \"Connection lost. Reconnecting...\" with no content.",
-      "Agents: the install-skill command installs the FreeVideo skill for an Agent, also from deeply nested Windows folders. The tool list an Agent receives is shorter: common tools are listed in full and the others are opened through a help tool.",
-      "Diagnostic reports: when ComfyUI restarts during a generation, the report of that run is marked as interrupted instead of running, and a long video keeps the report of the part that was interrupted."
+      "Studio: audio cards offer \"Reference\" or \"Use as is\". With \"Use as is\", the clip is written into the video unchanged as its sound, the picture follows it, and the duration follows the clip and is locked. \"Use as is\" is not available with \"Preview first\" or when extending a video.",
+      "Guides: \"Tutorial\" in Settings has chapters with pictures for each feature, and \"Try it\" fills a chapter's example into the creation panel. \"Feature examples\" shows each feature as a looping preview of the input and the result, with \"Use this example\". The examples are shown once on first use, and after an update only the new ones are shown.",
+      "Memory and speed: after a video finishes, the model stays on the graphics card and in memory with no time limit, so the next video starts without reloading. It is released when memory runs low, when another program starts using more video memory, or before the picture or prompt model starts; when memory is tight, as much of it is kept as still leaves room for the next request.",
+      "Speed: the first video of a new length or size starts sooner, because three of the model's kernels are compiled once for every length, size and head split. Requests with LoRA adapters run faster, because each adapter's input projection is computed once per layer instead of once for every group of attention heads. A slowdown switched on automatically after the app was closed or stopped unexpectedly now lifts after one completed generation instead of three; a slowdown caused by a reported GPU error still needs three.",
+      "Generation: pressing Generate with an empty prompt shows \"The prompt is empty.\" next to the button, with \"Generate anyway\". In the editor, broken characters left in a description by a cut or a paste are removed before the part is sent.",
+      "Workflows: a saved workflow opens ready to run when a value on its FreeVideo node is no longer accepted; that value returns to its default and the rest of the workflow is unchanged.",
+      "Install: on Linux, setup from the launcher downloads Git and a C++ compiler privately when they are missing instead of asking for sudo; only basic tools such as curl still come from the system, and the launcher shows the command to install them. A graphics driver older than 580 gets its notice with the detected card even when nvidia-smi cannot answer the setup query.",
+      "Diagnostics: on Mac, a generation refused at the start for lack of free memory has its own row in the error panel, and the report records the memory at that moment. Feedback for a video in Creations that cannot be opened includes the player's error code and the file's response. Diagnostic reports record which graphics card the run used."
     ]
   },
   "zh": {
-    "summary": "可以用人物图中的角色替换源视频里的人物；参考视频可以仅参考深度；内置 AI 可以用一句话搭出白模场景；可以复用之前视频的提示词和设置；显存较小的显卡解码更快。",
+    "summary": "音频可以原样使用，视频直接以这段音频为声音；新增教程和功能示例，逐项介绍功能，示例可以直接填入；视频完成后模型保留，下一条视频无需重新加载。",
     "changes": [
-      "工作室：“素材”一栏新增“替换人物”，用人物图中的角色替换源视频里的人物，可选保留源视频的声音；声音未能加入时，生成的视频仍会保留。参考视频可以勾选“仅参考深度”，深度只计算一次，之后的请求直接复用。",
-      "创作面板：在“最近作品”中选中之前的视频后，点“复用设置”可以把它的提示词、画面尺寸和时长填回面板；10 秒内点“撤销”可以恢复原来的内容。",
-      "白模：未连接外部 Agent 时，聊天框的白模按钮也可以使用。用一句话描述镜头，有合适的现成场景就先生成白模供确认，没有则说明原因并保留输入。",
-      "长视频：描述分到各段时，不再在每一段重复整个故事，各段共用的部分只保留人物、场景、光线和风格等不变的内容。未安装提示词模型时，描述按句子顺序分到各段，不再每段都用整段描述，创作面板会提示下载提示词模型；开始生成时，正在进行的下载会暂停。",
-      "剪辑视图：接着生成的每段最短可以是 5 秒，在 Mac 和无法一次生成 10 秒的电脑上，新的一段默认 5 秒；含短于 10 秒的接续段时，一个视频最多 4 段。描述超过长度上限时，发送前（包括重试时）就会提示。",
-      "生成：在 ComfyUI 里跑过其他工作流之后，生成图片和改写提示词前会先释放这些工作流占用的显存，无需重启 ComfyUI。文本编码器模型缺失时，会在编码开始前检测并给出修复指引；模型修复在下载中失败时，会还原原来的文件。安装正被占用而无法开始生成时，失败详情会写出占用它的程序。切换到 int8 前的 GPU 检查失败时，错误卡片会列出每项检查的失败原因。",
-      "内存与速度：显存放不下整个解码器的显卡，在内存允许时解码不再为每个视频片段或每次新请求重复准备同样的层，输出不变。显存 8–12 GB 的大多数 Windows 显卡上，10–12 秒、不带 LoRA 的两遍视频，第一遍每次计算的注意力头由 4 个增加到 8 个，与更短的视频相同。Windows 上，生成过程中其他程序释放显存后，下一遍和解码会用上恢复的显存。",
-      "安装：安装目录被移动、复制或还原后，安装不再因依赖不一致而停下；依赖目录层级过深时会按长路径问题提示。安装后被删掉的文本编码器和分词器文件，会在编码前和修复时从本地副本还原，不需要下载。",
-      "手机访问：在启动器里打开局域网访问后，手机页可以正常使用，不再一直显示“连接断了，正在重新连接…”且没有内容。",
-      "Agent：install-skill 命令可以为 Agent 安装 FreeVideo 技能，Windows 上层级很深的目录也能装。Agent 拿到的工具列表更短：常用工具完整列出，其余工具通过帮助工具打开。",
-      "诊断报告：生成过程中 ComfyUI 重启后，这次运行的报告会标为已中断，不再显示为运行中；长视频会保留被中断那一段的报告。"
+      "工作室：音频卡片可选“参考”或“原样使用”。选择“原样使用”时，这段音频原样写入视频作为声音，画面随之生成，时长跟随音频并锁定。开启“先出预览”或接着生成时，不能选择“原样使用”。",
+      "指引：设置中的“教程”按功能分章，配有图片，点“试一试”可把该章的示例填入创作面板。“功能示例”逐项以循环预览展示输入和成片，并可点“用这个示例”。首次使用时会依次展示一遍，更新后只展示新增的示例。",
+      "内存与速度：视频完成后，模型会一直保留在显卡和内存中，不再有时间限制，下一条视频无需重新加载。内存不足、其他程序占用的显存增加，或图片和提示词模型启动前，模型会被释放；内存紧张时，在保证下一次请求放得下的前提下尽量多保留。",
+      "速度：换新的时长或尺寸后，第一条视频更早开始，模型的三个内核对所有时长、尺寸和分头方式只编译一次。挂 LoRA 的请求更快，每个适配器的输入降维乘法每层只算一次，不再每个注意力头组各算一次。应用被意外关闭或结束后自动开启的放慢，完成 1 次生成就解除，不再需要 3 次；显卡报告错误引起的放慢仍需 3 次。",
+      "生成：提示词为空时点生成，按钮旁会显示“提示词为空。”，并可点“继续生成”。剪辑视图中，剪切或粘贴在描述里留下的残缺字符会在发送前去掉。",
+      "工作流：另存的工作流中，FreeVideo 节点上有不再接受的取值时，打开即可运行；该取值恢复为默认值，工作流其余内容不变。",
+      "安装：Linux 上从启动器安装时，缺少 Git 和 C++ 编译器会改为私有下载，不再需要 sudo；只有 curl 等基础工具仍需系统提供，启动器会给出安装命令。即使 nvidia-smi 无法响应安装检查的查询，低于 580 的显卡驱动也会显示带检测到显卡的提示。",
+      "诊断：Mac 上因可用内存不足而在开始前被拒绝的生成，在错误面板中单独一行说明，报告会记录当时的内存。作品库中视频打不开时，反馈会附上播放器错误码和文件响应。诊断报告会记录这次运行使用的显卡。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.24",
+      "en": {
+        "summary": "A person in a source video can be replaced with the character in a person image; reference videos can be used for depth only; the built-in AI sets up a white-model scene from one sentence; an earlier video's prompt and settings can be reused; decoding on cards with less video memory is quicker.",
+        "changes": [
+          "Studio: \"Replace person\" in the Media section replaces the person in a source video with the character in a person image, and can keep the source video's sound; if that sound cannot be added, the finished video is still kept. A reference video can be set to \"Depth only\"; its depth is computed once and reused by later requests.",
+          "Creation panel: after an earlier video is selected in Recent videos, \"Reuse settings\" fills its prompt, picture size and duration back into the panel; \"Undo\" restores the previous values within 10 seconds.",
+          "White models: when no external Agent is connected, the white-model button in the chat box works with the built-in AI. Describe the shot in one sentence; if a ready-made scene fits, a white model is generated for confirmation, otherwise the reason is shown and the sentence is kept.",
+          "Long videos: when a description is split across parts, the story is no longer repeated in every part; the shared text keeps only what stays the same, such as people, place, lighting and style. Without the prompt model, the description is split across the parts by sentence instead of every part using the whole description, and the creation panel offers to download the prompt model; a download in progress is paused when generation starts.",
+          "Editor: a continued part can be as short as 5 seconds, and on Mac and on computers that cannot make 10 seconds at once a new part starts at 5 seconds; a video with a continued part shorter than 10 seconds has at most 4 parts. A description over the length limit is pointed out before sending, including on a retry.",
+          "Generation: after other ComfyUI workflows have run, the video memory they hold is released before a picture or a prompt rewrite starts, without restarting ComfyUI. A missing text encoder model is detected before encoding starts, with repair guidance; if a model repair fails while downloading, the original file is restored. When generation cannot start because the installation is in use, the failure details name the programs holding it open. When the GPU checks before switching to int8 fail, the failure card lists the reason for each check.",
+          "Memory and speed: on graphics cards that cannot hold the whole decoder, decoding no longer prepares the same layers again for every video segment or every new request while memory allows, with identical output. On most Windows graphics cards with 8 to 12 GB of video memory, the first pass of two-pass videos between 10 and 12 seconds without LoRA computes 8 attention heads at a time instead of 4, as shorter videos already did. On Windows, when other programs free video memory during a generation, the next pass and decoding use the recovered memory.",
+          "Install: setup no longer stops with a dependency mismatch after the installation folder was moved, copied or restored, and a dependency folder too deep for Windows is reported as a long path. Text encoder and tokenizer files deleted after installation are restored from the local copy before encoding and during repair, without downloading.",
+          "Phone access: the phone page works when local network access is switched on in the launcher, and no longer shows \"Connection lost. Reconnecting...\" with no content.",
+          "Agents: the install-skill command installs the FreeVideo skill for an Agent, also from deeply nested Windows folders. The tool list an Agent receives is shorter: common tools are listed in full and the others are opened through a help tool.",
+          "Diagnostic reports: when ComfyUI restarts during a generation, the report of that run is marked as interrupted instead of running, and a long video keeps the report of the part that was interrupted."
+        ]
+      },
+      "zh": {
+        "summary": "可以用人物图中的角色替换源视频里的人物；参考视频可以仅参考深度；内置 AI 可以用一句话搭出白模场景；可以复用之前视频的提示词和设置；显存较小的显卡解码更快。",
+        "changes": [
+          "工作室：“素材”一栏新增“替换人物”，用人物图中的角色替换源视频里的人物，可选保留源视频的声音；声音未能加入时，生成的视频仍会保留。参考视频可以勾选“仅参考深度”，深度只计算一次，之后的请求直接复用。",
+          "创作面板：在“最近作品”中选中之前的视频后，点“复用设置”可以把它的提示词、画面尺寸和时长填回面板；10 秒内点“撤销”可以恢复原来的内容。",
+          "白模：未连接外部 Agent 时，聊天框的白模按钮也可以使用。用一句话描述镜头，有合适的现成场景就先生成白模供确认，没有则说明原因并保留输入。",
+          "长视频：描述分到各段时，不再在每一段重复整个故事，各段共用的部分只保留人物、场景、光线和风格等不变的内容。未安装提示词模型时，描述按句子顺序分到各段，不再每段都用整段描述，创作面板会提示下载提示词模型；开始生成时，正在进行的下载会暂停。",
+          "剪辑视图：接着生成的每段最短可以是 5 秒，在 Mac 和无法一次生成 10 秒的电脑上，新的一段默认 5 秒；含短于 10 秒的接续段时，一个视频最多 4 段。描述超过长度上限时，发送前（包括重试时）就会提示。",
+          "生成：在 ComfyUI 里跑过其他工作流之后，生成图片和改写提示词前会先释放这些工作流占用的显存，无需重启 ComfyUI。文本编码器模型缺失时，会在编码开始前检测并给出修复指引；模型修复在下载中失败时，会还原原来的文件。安装正被占用而无法开始生成时，失败详情会写出占用它的程序。切换到 int8 前的 GPU 检查失败时，错误卡片会列出每项检查的失败原因。",
+          "内存与速度：显存放不下整个解码器的显卡，在内存允许时解码不再为每个视频片段或每次新请求重复准备同样的层，输出不变。显存 8–12 GB 的大多数 Windows 显卡上，10–12 秒、不带 LoRA 的两遍视频，第一遍每次计算的注意力头由 4 个增加到 8 个，与更短的视频相同。Windows 上，生成过程中其他程序释放显存后，下一遍和解码会用上恢复的显存。",
+          "安装：安装目录被移动、复制或还原后，安装不再因依赖不一致而停下；依赖目录层级过深时会按长路径问题提示。安装后被删掉的文本编码器和分词器文件，会在编码前和修复时从本地副本还原，不需要下载。",
+          "手机访问：在启动器里打开局域网访问后，手机页可以正常使用，不再一直显示“连接断了，正在重新连接…”且没有内容。",
+          "Agent：install-skill 命令可以为 Agent 安装 FreeVideo 技能，Windows 上层级很深的目录也能装。Agent 拿到的工具列表更短：常用工具完整列出，其余工具通过帮助工具打开。",
+          "诊断报告：生成过程中 ComfyUI 重启后，这次运行的报告会标为已中断，不再显示为运行中；长视频会保留被中断那一段的报告。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.23",
       "en": {
@@ -212,33 +241,6 @@
           "启动器：所选文件夹不是 ComfyUI 文件夹时，会指出附近找到的 ComfyUI 文件夹。Windows：引擎常用端口落在 Windows 保留的端口段里时，也能正常启动。",
           "安装：没有任何生成记录的安装，后台也会预编译标准尺寸。",
           "失败提示：生成过程中模型文件发生变化时，失败文字会写明变化的内容。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.16",
-      "en": {
-        "summary": "Any part of a long video can be generated again as a new video, phones on the same network can follow chats and generations behind an optional password, and the Mac app now updates itself.",
-        "changes": [
-          "Long videos: the part list shows each part's length and what it follows, and marks failed parts. Any finished part can be generated again as a new video that keeps the parts before it, and the original video stays as it was. In the joined video, click a part's length to play two seconds either side of its seam. The list shows only each part's own events, and editing a part keeps the rest of its description unchanged.",
-          "Phone access: phones on the same network can open FreeVideo from the phone icon and QR code in the top bar, chat with AI Autopilot and follow generations. Phone access can be switched on or off and protected with a password that phones sign in with.",
-          "Mac: an update is downloaded in the background, and Restart & update replaces the app in place and opens the new version. Models and settings are kept, and if any step fails the previous version is restored.",
-          "Reference videos: a reference video can now be used without its own sound.",
-          "Editor: parts cut off when the engine stopped now show \"Interrupted\". A problem reported from a failure now includes the step that failed.",
-          "Linux: on graphics cards that can hold the whole video model, video generation no longer keeps a copy of the weights in system memory, which saves about 20 GB.",
-          "Reporting problems: memory readings in feedback record free physical memory and commit headroom separately."
-        ]
-      },
-      "zh": {
-        "summary": "长视频的任何一段都可以重新生成为一条新视频；同一网络下的手机可以查看对话和生成进度，可设密码；Mac 版可以自动更新。",
-        "changes": [
-          "长视频：分段列表显示每段的时长和接在哪一段之后，并标出失败的段。任何已完成的段都可以从这里重新生成一条新视频，前面的段保持不变，原视频也不受影响。整条视频生成后，点某段的时长可播放它接缝前后各 2 秒。列表只显示每段自己的动作，编辑某一段时其余描述保持不变。",
-          "手机访问：同一网络下的手机可以通过顶栏的手机图标和二维码打开 FreeVideo，和 AI 全自动对话、查看生成进度。手机访问可以开关，也可以设置密码，手机登录后才能使用。",
-          "Mac：新版在后台下载，点“重启并更新”后原位替换应用并打开新版。模型和设置都会保留，任何一步失败都会还原旧版。",
-          "参考视频：参考视频可以只用画面、不使用它自己的声音。",
-          "剪辑视图：引擎中断而没做完的片段显示“上次中断”。从失败提示提交的问题会写明是哪一步出错。",
-          "Linux：显存放得下整个视频模型的显卡，生成视频时不再在系统内存里留一份权重副本，约省 20 GB 内存。",
-          "提交问题：反馈里的内存读数分开记录物理可用内存和提交余量。"
         ]
       }
     }
