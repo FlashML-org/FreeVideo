@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "repo": "Alissonerdx/Minimax-H3-ComfyUI",
+  "revision": "fd3dde7b3ec1ae4e09fafc46f000bedcc2db219b",
+  "license": "BFS Character Swap Community License 1.1",
+  "name": "alissonerdx-v1.1.safetensors",
+  "files": [
+    {
+      "file": "LICENSE_CHARACTER_SWAP.md",
+      "target": "LICENSE_CHARACTER_SWAP.md",
+      "bytes": 3132,
+      "sha256": "d6c36de728b812f9a751b2fdd441951e31fc8ca1e96b17fbef098a5c41c735f4"
+    },
+    {
+      "file": "loras/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors",
+      "target": "alissonerdx-v1.1.safetensors",
+      "bytes": 80673112,
+      "sha256": "ab21167bed71db99ac09527ad1f26f5f3517687ebf2e1f1bd5e91cc0bdf9b9c3"
+    }
+  ]
+}

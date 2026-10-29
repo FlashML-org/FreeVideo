@@ -265,4 +265,14 @@
 .fv-studio .fv-swap-sound{display:flex;align-items:center;gap:8px;grid-column:1/-1;white-space:nowrap;font-size:var(--fv-small,13px)}
 .fv-studio .fv-swap-sound:has(input:disabled){opacity:.4}
 .fv-studio .fv-swap-note{margin-top:8px}
+.fv-studio .fv-swap-download{margin-top:8px;font-size:var(--fv-micro);color:var(--fv-muted)}
+.fv-studio .fv-swap-download[hidden],.fv-studio :not(.fv-swap-on)>.fv-swap-download,.fv-studio .fv-swap-download [hidden]{display:none}
+.fv-studio .fv-swap-download[data-state=failed],.fv-studio .fv-swap-download[data-state=cancelled]{color:var(--fv-danger)}
+.fv-studio .fv-swap-download-line{display:flex;align-items:center;gap:10px;min-height:22px}
+.fv-studio .fv-swap-download-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.fv-studio .fv-swap-retry{flex:none;min-height:0;padding:3px 12px;font-size:var(--fv-micro)}
+.fv-studio .fv-swap-meter{position:relative;height:3px;margin-top:6px;border-radius:2px;background:var(--fv-border);overflow:hidden}
+.fv-studio .fv-swap-meter>i{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .4s ease-out}
+.fv-studio .fv-swap-meter[data-indeterminate=true]>i{width:32%;animation:fv-swap-sweep 1.4s ease-in-out infinite}
+@keyframes fv-swap-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
 @media (max-width:480px){.fv-studio .fv-swap-slots{grid-template-columns:1fr}.fv-studio .fv-swap-source{order:1}.fv-studio .fv-swap-sound{order:2}.fv-studio .fv-swap-person{order:3}}

@@ -46,7 +46,8 @@ import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './f
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
-import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, SWAP_LORA } from './replace_state.js';
+import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora } from './replace_state.js';
+import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
 import { waitingText } from './chain_support.js';
@@ -986,13 +987,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
     // Replace person: its LoRA row is found among the registered names (it may sit in a subfolder), a row the user had
     // switched off is switched on for the run, and everything done is undone when the option goes off.
-    // Returns '' when all is well, else the line to show; runs one at a time.
+    // Not installed: it is downloaded (progress in the panel), then added. Returns '' when all is well, else the line
+    // to show; runs one at a time.
     let swapLoraBusy = Promise.resolve('');
-    const swapLoraText = reason => reason === 'missing'
-        ? t(`"Replace person" needs the ${SWAP_LORA} LoRA in the models/loras folder.`, `“替换人物”需要把 ${SWAP_LORA} 放进 models/loras 文件夹。`)
-        : reason === 'ambiguous' ? t(`More than one ${SWAP_LORA} was found in models/loras. Add the one to use under "LoRA".`, `models/loras 中有多个 ${SWAP_LORA}，请在“LoRA”一栏添加要使用的那个。`)
+    const swapLoraText = reason => reason === 'ambiguous'
+        ? t('More than one Replace person model was found. Add the one to use under "LoRA".', '找到多个替换人物模型，请在“LoRA”一栏添加要使用的那个。')
         : t('Could not read the LoRA list. Try again.', '无法读取 LoRA 列表，请重试。');
-    async function applySwapLora() {
+    let swapPanel = null;
+    const swapDownload = swapLoraDownload({t, api, onReady: () => ensureSwapLora().then(problem => swapPanel?.notify(problem))});
+    cleanup.push(() => swapDownload.dispose());
+    async function applySwapLora(retry = false) {
         const state = mediaNode?.properties?.freevideo_replace_person;
         if (!state || !loraNode || !widget(loraNode, 'adapters')) return '';
         const current = value(loraNode, 'adapters') || '[]';
@@ -1008,22 +1012,22 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!state.on) return '';
         const now = value(loraNode, 'adapters') || '[]';
         const result = prepareSwapLora(now, names, record);
+        if (!result.ok && result.reason === 'missing') return (await swapDownload.need(retry)) || swapLoraText('unreadable');
         if (!result.ok) return swapLoraText(result.reason);
         state.lora = result.record;
         if (result.adapters !== now) { set(loraNode, 'adapters', result.adapters); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id})); }
         return '';
     }
-    const ensureSwapLora = () => (swapLoraBusy = swapLoraBusy.then(applySwapLora, applySwapLora));
-    let swapPanel = null;
+    const ensureSwapLora = (retry = false) => (swapLoraBusy = swapLoraBusy.then(() => applySwapLora(retry), () => applySwapLora(retry)));
     function swapChanged(info) {
         mediaHint.textContent = swapState(mediaNode) ? t('Source video, person image', '源视频、人物图') : t('Reference images, first and last frames', '参考图、首帧、尾帧');
         // Switching the option only changes which media the prompt reads: its pictures are re-bound, never renumbered.
         syncReferencePrompt(node, t, info?.toggled === true); paintMediaHint();
-        ensureSwapLora().then(problem => { if (problem) swapPanel?.notify(problem); });
+        ensureSwapLora(info?.toggled === true).then(problem => { if (problem && !swapDownload.shown) swapPanel?.notify(problem); });
         window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
     }
     if (mediaNode?.freevideoCreateMediaEditor) {
-        const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged});
+        const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged, extra: swapDownload.element});
         cleanup.push(() => swap.dispose());
         if (swapState(mediaNode)) { mediaHint.textContent = t('Source video, person image', '源视频、人物图'); mediaDetails.open = true; }
     }
@@ -1912,7 +1916,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const sourceState = source ? await extendSourceState(api, source) : 'ok';
             if (sourceState !== 'ok') throw new Error(extendSourceProblem(t, sourceState));
             if (source && lengthPlan?.count > 1) lengthOptions.after = {work: source.video};
-            const swapProblem = await ensureSwapLora();
+            const swapProblem = await ensureSwapLora(true);
             if (swapProblem) { status.dataset.error = 'true'; status.textContent = swapProblem; return; }
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
