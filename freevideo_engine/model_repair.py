@@ -242,3 +242,18 @@ def retain(root, path, approved):
         del values[str(path)]
         save(Path(root) / 'logs/model-mismatches.json', values)
     return target
+
+
+def restore(root, path, retained, approved, prior=None):
+    """Undo retention after a failed download, preserving any newly present target."""
+    if os.path.lexists(path):
+        return
+    check(retained, approved)
+    try:
+        rename_noreplace(retained, path)
+    except FileExistsError:
+        return
+    if prior is not None and same_identity(identity(path), prior):
+        values = read(root)
+        values[str(path)] = prior
+        save(Path(root) / 'logs/model-mismatches.json', values)

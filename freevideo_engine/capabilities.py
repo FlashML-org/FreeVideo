@@ -55,7 +55,7 @@ def normalize_references(task, references=None):
         kind = row.get('kind')
         allowed = {'kind', 'seconds'} if kind == 'audio' else {'kind', 'width', 'height'}
         if kind == 'video':
-            allowed |= {'seconds', 'audio_seconds'}
+            allowed |= {'seconds', 'audio_seconds', 'guide'}
         if kind not in ('image', 'video', 'audio') or set(row) - allowed:
             raise ValueError('Unsupported reference metadata.')
         width = height = seconds = audio = None
@@ -71,6 +71,12 @@ def normalize_references(task, references=None):
                 raise ValueError('Reference audio is empty after normalization.')
             if kind == 'video' and math.ceil(min(seconds, 15.) * 24) < 22:
                 raise ValueError('The reference video needs at least 22 normalized frames.')
+        if 'guide' in row:
+            # A guide clip is packed as a silent video reference (same rows and
+            # patches; only the time coordinates differ), so it keeps the plain
+            # video tuple and history matching counts it as reference video tokens.
+            if type(row['guide']) is not bool or 'audio_seconds' in row:
+                raise ValueError('A guide clip is a silent video reference.')
         if 'audio_seconds' in row:
             audio = row['audio_seconds']
             if not positive(audio):

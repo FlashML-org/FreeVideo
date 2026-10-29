@@ -33,8 +33,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Enter a longer duration. It is made in parts automatically. "Available sizes and lengths" shows how long each size can be and about how long it takes.', 'Choose "Generate video".', 'Choose "Extend" on a finished video to continue it.', 'Parts can also be added one by one in "Edit".'],
         },
         limits: {
-            zh: ['一个连续镜头最多 8 段，创作面板中时长最长 60 秒；分镜剧本可在剪辑视图中逐个镜头添加，或用 AI 全自动。', '分段生成和接着生成需要 NVIDIA 显卡或 Mac。', '段数越多，衔接处越容易出现变化；适合切换镜头处，可直接开始新的一段。'],
-            en: ['One continuous shot has at most 8 parts, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
+            zh: ['接着生成的每一段至少 5 秒。一个连续镜头最多 8 段，有短于 10 秒的段时最多 4 段；创作面板中时长最长 60 秒；分镜剧本可在剪辑视图中逐个镜头添加，或用 AI 全自动。', '分段生成和接着生成需要 NVIDIA 显卡或 Mac。', '段数越多，衔接处越容易出现变化；适合切换镜头处，可直接开始新的一段。'],
+            en: ['Each continued part is at least 5 seconds. One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
         },
     },
     {
@@ -51,8 +51,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Select the part to continue.', 'Click + next to the prompt to upload or generate images, up to 3.', 'Describe it, then choose "Generate".'],
         },
         limits: {
-            zh: ['接续生成最多使用 3 张参考图，不使用首帧和尾帧。', '剪辑视图只能添加图片；参考视频和音频在创作面板的“素材”中添加。', '同样最多 8 段；需要 NVIDIA 显卡或 Mac。'],
-            en: ['A part that continues the previous one uses up to 3 reference images and no first or last frames.', 'Edit takes images only. Add reference videos and audio under "Media" in the creation panel.', 'The same 8-part limit applies. An NVIDIA graphics card or a Mac is required.'],
+            zh: ['接续生成最多使用 3 张参考图，不使用首帧和尾帧。', '剪辑视图只能添加图片；参考视频和音频在创作面板的“素材”中添加。', '段数限制相同；需要 NVIDIA 显卡或 Mac。'],
+            en: ['A part that continues the previous one uses up to 3 reference images and no first or last frames.', 'Edit takes images only. Add reference videos and audio under "Media" in the creation panel.', 'The same part limits apply. An NVIDIA graphics card or a Mac is required.'],
         },
     },
 ];

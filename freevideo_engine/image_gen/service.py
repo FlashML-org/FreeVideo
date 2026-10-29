@@ -4,6 +4,7 @@ import asyncio
 from collections import OrderedDict
 from copy import deepcopy
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -34,6 +35,15 @@ QUEUE_TIMEOUT = 600.
 QUEUE_POLL = .1
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
                             'invalid_media', 'invalid_points', 'too_many_images'))
+
+
+def comfy_server():
+    """ComfyUI's server in this process, or None (tests, the engine's own command line)."""
+    try:
+        from server import PromptServer
+        return PromptServer.instance
+    except (ImportError, AttributeError):
+        return None
 
 
 class WorkerIdleExit(RuntimeError):
@@ -658,6 +668,9 @@ class Service:
         from ..background_compile import COMPILE
         from ..gpu_budget import open_bounded
         from ..resident_process import OWNER
+        from ..comfy_residency import native_reclaimable
+        # ComfyUI's own idle models in this process: work() unloads them before the worker starts.
+        native = native_reclaimable(comfy_server())
 
         def read():
             gpu = Gpu(machine.get('gpu_uuid'))
@@ -681,7 +694,7 @@ class Service:
                     # The worker still checks live capacity before inference.
                     return total
                 credit = sum(size for pid, size in rows.items() if pid in owned)
-                return min(total, total - used + credit)
+                return min(total, total - used + credit + native)
             finally:
                 gpu.close()
 
@@ -878,6 +891,17 @@ class Service:
                 raise BlockingIOError('busy_video')
             resident_process.OWNER.stop_prewarm()
             IDLE.stop()
+            from ..comfy_residency import release_native
+            try:
+                released = release_native(comfy_server())
+            except Exception:  # only frees memory early; the picture's own budget still decides
+                logging.warning('[FreeVideo] Could not unload ComfyUI models before the picture', exc_info=True)
+                released = None
+            if released is not None:
+                logging.info('[FreeVideo] Unloaded ComfyUI models before the picture: %s', released)
+                with self.mutex:
+                    if self.context is not None:
+                        self.context.native_release = released
             with runtime_lock(Path(root) / 'engine.lock', inherit=False) as descriptor:
                 try:
                     if self.session_stop.is_set():

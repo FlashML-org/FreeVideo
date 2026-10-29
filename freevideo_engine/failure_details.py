@@ -161,7 +161,7 @@ def display_launcher_error(value, *, zh=False, replacements=()):
     return text
 
 
-def setup_command_failure(label, log, exit_code):
+def setup_command_failure(label, log, exit_code, report=None):
     """Keep the complete failed step, with required GPU failures before metadata."""
     log = Path(log)
     try:
@@ -171,7 +171,7 @@ def setup_command_failure(label, log, exit_code):
     lines = ['Failed step: %s (exit code %s)' % (label, exit_code)]
     if label == 'kernels':
         try:
-            report = json.loads((log.parent / 'kernel-capabilities.json').read_text(encoding='utf-8'))
+            report = json.loads(Path(report or log.parent / 'kernel-capabilities.json').read_text(encoding='utf-8'))
         except (OSError, ValueError):
             report = {}
         if isinstance(report, dict):
@@ -375,6 +375,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
         return dict(title='', detail='', action='', kind='')
     text = _without_ready_curl_diagnostics(str(value))
     # Match only the cause position, never an echoed input or a log line below it.
+    # Holder diagnostics follow this exact cause; they are not part of its signature.
     causes = [line.strip() for line in text.splitlines() if line.strip()]
     index = 1 if causes and re.fullmatch(r'FreeVideo generation failed(?: \(exit -?\d+\))?', causes[0]) else 0
     cause = re.sub(r'^(?:[A-Za-z_][\w.]*(?:Error|Exception)):\s*', '', causes[index]) if len(causes) > index else ''
@@ -586,7 +587,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
          ('A video is still generating', '还有视频正在生成'),
          ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
           '更新已装好。等当前任务完成后点“重新连接”，ComfyUI 会重启并使用新版。')),
-        (r'WinError 206|The filename or extension is too long', 'path-too-long',
+        (r'WinError 206|The filename or extension is too long|is too long for Git to read', 'path-too-long',
          ("The installation folder's path is too long", '安装文件夹的路径太长'),
          ('Install FreeVideo in a folder with a shorter path, such as D:\\FreeVideo, then click "Retry installation".',
           '请把 FreeVideo 安装到路径较短的文件夹，例如 D:\\FreeVideo，然后点击“重试安装”。')),
@@ -676,6 +677,12 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
                 if found:
                     model, capability = found.groups()
                     detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'path-too-long':
+                # A dependency folder Git cannot read is named, above the same next step.
+                found = re.search(r'The path of the dependency folder (.+?) is too long for Git to read', text)
+                if found:
+                    detail = ('文件夹：%s' if zh else 'Folder: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             return dict(title=title[zh], detail=detail, action=action[zh], kind=kind)
     # Validation messages are already actionable. Show the cause, not a stack
@@ -872,6 +879,11 @@ def _mac_run(report, run, redactor):
     return 'Run: ' + '; '.join(parts)
 
 
+def missing_encoder(text):
+    return re.search(r"ENCODER_MODEL_MISSING:|Model in folder ['\"]text_encoders['\"] "
+                     r"with filename ['\"][^\r\n]+?['\"] not found\.", text, re.I) is not None
+
+
 def generation_failure(run, exit_code=None, *, repair=None):
     """Surface the cause, including a child traceback, even without a report.
 
@@ -886,10 +898,12 @@ def generation_failure(run, exit_code=None, *, repair=None):
     report = _report(run)
     redactor.structured(report)  # Collect prompt values without showing the request.
     # Read the whole bounded log, not a tail that could hide other output.
-    # A legacy managed failure has exactly this one nonempty line and exit 1.
-    if exit_code == 1 and [line for line in _read(run / 'generate.log', 8192).splitlines()
-                           if line.strip()] == [ENGINE_BUSY]:
-        lines.append(ENGINE_BUSY)
+    # Managed failures contain only the exact busy sentence and optional holder
+    # diagnostics. Other output must never acquire a busy classification.
+    busy_lines = [line for line in _read(run / 'generate.log', 8192).splitlines() if line.strip()]
+    if exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
+            and all(line.startswith('Lock file open:') for line in busy_lines[1:]):
+        lines.extend(busy_lines)
     # What the worker found when cuDNN refused its own files, ahead of the trace.
     explained = _runtime_explanation(report, REPAIR_MARK)
     if explained:
@@ -961,11 +975,14 @@ def generation_failure(run, exit_code=None, *, repair=None):
     promoted = bool(causes) and causes[-1] not in known
     if promoted:
         lines.insert(1, 'Cause: ' + causes[-1][:300])
+    encoder_missing = missing_encoder('\n'.join(lines))
+    if encoder_missing:
+        lines.insert(1, 'ENCODER_MODEL_MISSING: The encoder model file is missing. ' + REPAIR_MARK)
     if len(lines) == 1:
         lines.append('The worker ended without a readable error report.')
     summary = _mac_run(report, run, redactor)
     if summary:
-        lines.insert(2 if promoted else 1, summary)
+        lines.insert(1 + bool(promoted) + bool(encoder_missing), summary)
     lines.append('\nRetained outputs: ' + str(run))
     # The table failure can be in a retained child log rather than the report.
     # Keep its numeric metadata ahead of technical output for all interactive callers.
@@ -977,9 +994,9 @@ def generation_failure(run, exit_code=None, *, repair=None):
         card = sampling_table_failure(marker)
         first, _, rest = value.partition('\n')
         value = '\n'.join((first, marker, card['title'], card['detail'], rest))
-    if explained:
+    if explained or encoder_missing:
         from .runtime_libraries import REINSTALL
-        value = value.replace(REPAIR_MARK, repair or REINSTALL, 1)
+        value = value.replace(REPAIR_MARK, repair or REINSTALL)
     value = re.sub(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))', '', value)
     value = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', value)
     return value

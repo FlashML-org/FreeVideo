@@ -89,6 +89,8 @@ const PLAIN_ERRORS = [
 // line counts (after an optional "ValueError: "), or the line right under the
 // worker's "FreeVideo generation failed" header, so an input echoed inside or
 // below another error, even one line of a longer prompt, never turns into this advice.
+// Optional "Lock file open:" diagnostic lines follow the engine-busy cause; keep
+// matching its exact first line, so those details cannot become a new signature.
 function knownError(text) {
     const lines = String(text).slice(0, 65536).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const index = /^FreeVideo generation failed(?: \(exit -?\d+\))?$/.test(lines[0] ?? '') ? 1 : 0;
@@ -415,9 +417,15 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('output-folder', ['The output folder cannot be written to', '输出目录不可写'],
             ['The video could not be saved.', '视频没能保存。'],
             ['Check that the output folder can be written to, then retry.', '请检查输出文件夹的写入权限后重试。']);
-    if (/manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
+    if (/ENCODER_MODEL_MISSING:|Model in folder ['"]text_encoders['"] with filename ['"][^\r\n]+?['"] not found\./i.test(text)
+            || /manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
         return row('model-files', ['The model is not fully installed', '模型没有装全'],
             ['Some of the model files FreeVideo needs are missing.', 'FreeVideo 需要的部分模型文件缺失。'],
+            repairAction());
+    // The second form is the tokenizers library's own error when its vocab or merges file is gone.
+    if (/FreeVideo text encoder files are missing|`vocab` and `merges` must be both be from memory/i.test(text))
+        return row('encoder-files', ['The text encoder is not fully installed', '文本编码器没有装全'],
+            ['Some of the text encoder files FreeVideo needs are missing.', 'FreeVideo 需要的部分文本编码器文件缺失。'],
             repairAction());
     if (/No space left on device|WinError 112|disk (?:is )?full/i.test(text))
         return row('disk', ['Disk space is insufficient', '磁盘空间不足'],

@@ -99,7 +99,7 @@ GUIDE = {
     'timing': [
         'Single-block frames are 24 fps on a 17n+5 grid (6 s -> 6.583 s, 10 s -> 10.125 s). '
         'Under 30 s defaults to one generation when the device supports this size and quality; unknown limits use 15 s. '
-        'Otherwise it uses as few parts as possible, each at least 10 s; how many depends on how long this computer can generate in one run, and the parts continue and join automatically. '
+        'Otherwise it uses as few parts as possible, each continuing part 10 s or longer where the length allows and never under 5 s; how many depends on how long this computer can generate in one run, and the parts continue and join automatically. '
         'Multiple blocks or continue_from need two-pass text generation: quality "light" or "medium" '
         'or sampling.two_pass=true and no preview. Their only media is media.references with at most 3 pictures, '
         'which every continuing part also sees (keeps the same people); first_frame_reference then gives way to them. '
@@ -250,9 +250,10 @@ RULES = [
     'Cut by default. Wherever the film can change shot, make the new shot from the reference pictures it should '
     'have (cast cards, scene pictures) instead of continuing the previous video. Continue a video only for a '
     'long take that cannot be cut, an action that must stay unbroken, or sound that must stay unbroken, and '
-    'continuing again and again is not recommended. One video has at most 8 parts (the first and 7 '
-    'continuations), each continued part at least 10 seconds, about 110 seconds in all; filling that is not '
-    'recommended. Past it, cut to a new shot.',
+    'continuing again and again is not recommended. Each continued part is at least 5 seconds. One video has at '
+    'most 8 parts (the first and 7 continuations, about 110 seconds in all) when every continued part is at '
+    'least 10 seconds; with a continued part shorter than 10 seconds it has at most 4 parts, unless '
+    'first_frame_reference is true. Filling that is not recommended. Past it, cut to a new shot.',
     'A question is not a request. When the user asks about progress or status ("is it working?", "what happened?") '
     'answer it in one sentence from what you know or from the job and white-model status, and start nothing; never '
     'use a question as a prompt. When a row carries "whitebox", the user was starting a white-model scene that is '
@@ -287,7 +288,8 @@ RULES_ZH = [
     '先用 people（角色图和各自的位置）做出首帧，再用它生成视频。',
     '默认切镜头。能切镜头的地方就切：新镜头直接用对应的参考图（人物卡、场景图）生成，不接上一段视频。'
     '只有不能切镜的长镜头、必须连贯的动作、必须连贯的声音，才接着上一段生成，而且不建议一段接一段地连续接。'
-    '一条视频最多 8 段（第一段加 7 次接着生成），接着生成的每一段至少 10 秒，总长约 110 秒；不建议接满，超过就切镜头。',
+    '接着生成的每一段至少 5 秒。每段都不短于 10 秒时，一条视频最多 8 段（第一段加 7 次接着生成，总长约 110 秒）；'
+    '有短于 10 秒的段时最多 4 段，first_frame_reference 为 true 时除外。不建议接满，超过就切镜头。',
     '问话不是要求。用户问进度或状态（“在做吗”“怎么了”）时，用一句话照实回答，依据是你所知道的、任务和白模的状态，'
     '什么都不要开始；不要把问句当提示词。某条 inbox 带有 whitebox 时，说明用户刚启动了白模场景，'
     '它还在准备或已经失败：照实说是哪一种，再等用户回话。',
@@ -573,8 +575,9 @@ GUIDE['agent_jobs'] += [
     'before uploading. Unknown fields are rejected and every batch is validated before it is recorded.',
     'POST /plan gives the length supported for the current size and quality. Without continuation, only a '
     'single block can run; unknown device limits use 15 s. Multiple blocks return continuation_unavailable.',
-    'One video has at most 8 parts (60 s in one request). continue_from counts the parts of the video it '
-    'continues; plan and submit refuse a longer one and name the longest seconds that still fits.',
+    'One video has at most 8 parts (60 s in one request), or 4 when a continued part is shorter than 10 s and '
+    'first_frame_reference is not true. continue_from counts the parts of the video it continues; plan and '
+    'submit refuse a longer one and name the longest seconds that still fits.',
     'features in the status reply names what this installation offers; false means not usable now (for example '
     'chain.auto while continuation is false), and a missing name means not offered here.',
 ]

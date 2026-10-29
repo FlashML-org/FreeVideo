@@ -75,8 +75,14 @@ def resolve_assets(serialized, input_directory):
     root = Path(input_directory).resolve()
     result = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound'}:
+        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'depth'}:
             raise ValueError('Invalid media item')
+        if 'depth' in row:
+            if type(row['depth']) is not bool:
+                raise ValueError('Media depth must be a boolean')
+            if (row.get('role') != 'reference' or not isinstance(row.get('file'), str)
+                    or media_kind(row['file']) != 'video'):
+                raise ValueError('depth is only allowed on video references')
         # The character an @ mention added the row for; a continued part keeps one picture per character.
         if 'cast' in row and (set(row['cast'] if isinstance(row['cast'], dict) else ('?',)) != {'id'}
                               or not isinstance(row['cast']['id'], str) or not 0 < len(row['cast']['id']) <= 128):
@@ -106,6 +112,8 @@ def resolve_assets(serialized, input_directory):
             result[role] = str(path)
         elif role == 'reference':
             reference = {'kind': kind, 'path': str(path)}
+            if row.get('depth') is True:
+                reference.update(depth=True, early_steps=3)
             if cast_id(row) is not None:
                 reference['cast'] = cast_id(row)   # only a continued part reads it (comfy_media.continued)
             if 'early_steps' in row:
@@ -117,6 +125,16 @@ def resolve_assets(serialized, input_directory):
                 validate_sound(dict(row, kind=kind))
                 if not row['sound']:
                     reference['sound'] = False
+            if 'guide' in row:
+                from .media_request import validate_guide
+                validate_guide(dict(row, kind=kind))
+                if row['guide']:
+                    reference['guide'] = True
+            if 'keep_source_audio' in row:
+                from .media_request import validate_keep_source_audio
+                validate_keep_source_audio(dict(row, kind=kind), path)
+                if row['keep_source_audio']:
+                    reference['keep_source_audio'] = True
             result.setdefault('references', []).append(reference)
         else:
             raise ValueError('Media role must be first, last or reference')
@@ -222,6 +240,8 @@ def output_summary(report, relative_video):
                 video=relative_video.as_posix(), report=relative_video.with_suffix(
                     '.debug.json' if report.get('diagnostic_file') == relative_video.with_suffix('.debug.json').name
                     else '.request.json').as_posix())
+    if report.get('keep_source_audio_failed'):
+        result['keep_source_audio_failed'] = True
     if type(report.get('output_frames')) is int and report['output_frames'] > 0:
         # Resource reports keep the generated canvas; result cards show only saved frames.
         result['geometry'].update(frames=report['output_frames'],

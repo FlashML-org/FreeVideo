@@ -305,13 +305,22 @@ class LiveGPUBudget:
                 return min(seen), samples
         return None, samples
 
-    def refresh(self, stage, reclaim=None, workspace=None):
+    def refresh(self, stage, reclaim=None, workspace=None, confirm=False):
         cuda = self.torch.cuda
         free, reserved, local, decision, known, candidate = self._observe()
         target, action = self.limit, 'hold'
         if candidate < self.limit:
             target, action, self.pending = candidate, 'shrink', None
         elif candidate >= self.limit + 64 * 2**20:
+            if self.pending is None and confirm:
+                # A pass boundary has no earlier step to have seen the larger
+                # budget, and the next pass allocates against this limit at
+                # once. Confirm with a second reading here instead of starting
+                # it under a cap left over from the last pass's pressure.
+                self.sleep(SETTLE_INTERVAL)
+                *_, again_known, again = self._observe()
+                if again_known and again >= self.limit + 64 * 2**20:
+                    self.pending = candidate = min(candidate, again)
             if self.pending is not None:
                 target, action = min(candidate, self.pending), 'grow'
                 self.pending = None

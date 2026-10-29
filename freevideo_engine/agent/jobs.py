@@ -187,7 +187,7 @@ def part_prompt_problems(spec, prefix=''):
 
 
 def _continued_part_problem(seconds, chain):
-    """True when a video that continues another has a part the backend refuses, or is under 10 s.
+    """True when a video that continues another has a part the backend refuses, or is under MIN_PART_SECONDS.
 
     The backend compares each part's node input frames (overlap included); a part that
     continues is also at least MIN_PART_SECONDS long.
@@ -232,8 +232,8 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
     """
     if spec['kind'] != 'generate' or spec.get('refine_from'):
         return []
-    from ..chain_plan import MIN_PART_SECONDS, PlanError, plan
-    from ..chain_runner import ChainTooLong
+    from ..chain_plan import MIN_PART_SECONDS, PlanError, parts_limit, plan
+    from ..chain_runner import ChainShortPartsTooMany, ChainTooLong
     from ..chain_store import reference
     continued, frames = bool(spec.get('continue_from')), single_frame_limit(spec)
     if editor is None:
@@ -246,40 +246,50 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
             return [length_problem(spec['seconds'], continued, prefix, minimum=MIN_PART_SECONDS, frames=frames)]
     if runner is None:
         return []
-    limit = runner.max_parts
-    count = lambda seconds: len(plan(seconds, max_frames=frames, continued=continued)['blocks'])
+    # A video with a continuing part shorter than full_part_frames has fewer parts, unless every part sees the first frame.
+    limit, full = runner.max_parts, runner.full_part_frames
+    short_limit = parts_limit(True, spec.get('first_frame_reference') is True, limit)
+
+    def short_blocks(blocks):
+        return any(block['frames'] < full for index, block in enumerate(blocks) if index or continued)
     try:
         with runner.lock:
             if editor is not None:
-                rows = [dict(id=b['id'], after=reference(b.get('after')), before=reference(b.get('before')))
-                        for b in editor['blocks']]
-                earlier, needed = 0, max(runner._depths(dict(id=None, blocks=rows)).values())
+                rows = [dict(id=b['id'], after=reference(b.get('after')), before=reference(b.get('before')),
+                             inputs=dict(frames=b['frames'])) for b in editor['blocks']]
+                lineage = runner._lineage(dict(id=None, blocks=rows)).values()
+                earlier, needed = 0, max(parts for parts, _ in lineage)
+                short = max((parts for parts, flag in lineage if flag), default=0)
             else:
                 # A source the backend has no record of counts as one part, as it does there.
-                earlier = (runner._work_parts(work, ()) if work else planned or 1) if continued else 0
+                earlier, made_short = ((runner._work_lineage(work, ()) if work else (planned or 1, False))
+                                       if continued else (0, False))
                 needed = earlier + len(chain['blocks'])
+                short = needed if made_short or short_blocks(chain['blocks']) else 0
     except (ValueError, KeyError, TypeError):
         return []  # Not a chain the backend accepts; it says why when the chain is created.
-    if needed <= limit:
+    if needed <= limit and short <= short_limit:
         return []
+    error = ChainTooLong(needed, limit) if needed > limit else ChainShortPartsTooMany(short, short_limit)
     if editor is not None:
-        problem, got = schema.diagnostic(prefix + '/target', 'a range that takes at most %d parts' % limit, None), '%d parts' % needed
+        problem, got = schema.diagnostic(prefix + '/target', 'a range that takes at most %d parts' % error.limit, None), '%d parts' % error.parts
     else:
         # A length the planner refuses does not fit; a part that continues a video is at least MIN_PART_SECONDS.
-        def parts(seconds):
+        def fits(seconds):
             try:
-                return count(seconds)
+                blocks = plan(seconds, max_frames=frames, continued=continued)['blocks']
             except ValueError:
-                return limit + 1
+                return False
+            return earlier + len(blocks) <= (short_limit if made_short or short_blocks(blocks) else limit)
         shortest = MIN_PART_SECONDS if continued else 2
-        fit = next((s for s in range(int(spec['seconds']), shortest - 1, -1) if earlier + parts(s) <= limit), None)
+        fit = next((s for s in range(int(spec['seconds']), shortest - 1, -1) if fits(s)), None)
         if fit is None:
-            problem = schema.diagnostic(prefix + '/continue_from', 'a video of fewer than %d parts' % limit, None)
+            problem = schema.diagnostic(prefix + '/continue_from', 'a video of fewer than %d parts' % error.limit, None)
             got = 'a video of %d parts' % earlier
         else:
             problem, got = schema.diagnostic(prefix + '/seconds', 'at most %d' % fit, spec['seconds']), None
     message = problem['message'] if got is None else problem['message'].replace('received None', 'received ' + got)
-    return [dict(problem, got=got or problem['got'], message='%s %s' % (ChainTooLong(needed, limit), message))]
+    return [dict(problem, got=got or problem['got'], message='%s %s' % (error, message))]
 
 
 def continuation_unavailable():
@@ -1635,7 +1645,7 @@ class Jobs:
             except ChainTooLong as error:
                 # Submit and plan refuse this up front; a source that was still being made can only be counted here.
                 row['resume_pending'] = False
-                self.finish(row, 'failed', error=errors.build('chain_too_long', validation=True, message=str(error)))
+                self.finish(row, 'failed', error=errors.build(error.code, validation=True, message=str(error)))
                 return
             except (PlanError, ChainPartTooShort) as error:
                 row['resume_pending'] = False

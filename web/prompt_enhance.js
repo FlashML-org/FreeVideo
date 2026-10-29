@@ -97,6 +97,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     meter.append(fill); status.append(statusText, meter, report);
     // One place sets what the status line says and how it looks.
     function show(text, state = '', fraction = null) {
+        if (downloadOnly) { publishModel({text: text || ''}); return; }
         statusText.textContent = text || '';
         status.dataset.state = text ? state : '';
         report.hidden = !text || state !== 'error';
@@ -114,6 +115,26 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     install.append(detail, actions);
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
     let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
+    let downloadOnly = false, pausing = false, modelReading = null;
+    const modelState = {info: null, text: '', busy: false}, modelListeners = new Set();
+    function publishModel(change) {
+        Object.assign(modelState, change);
+        if (!disposed) for (const listener of modelListeners) listener(modelState);
+    }
+    // Share status with the length notice, including installs started by enhancement.
+    function readModel() {
+        if (modelReading) return modelReading;
+        modelReading = (async () => {
+            const reply = await api.fetchApi('/freevideo/prompt-vlm');
+            const info = await reply.json();
+            if (!reply.ok) throw new Error(info.error || 'request_failed');
+            token = info.token;
+            if (info.ram_bytes) ramBytes = info.ram_bytes;
+            publishModel({info});
+            return info;
+        })().catch(error => { publishModel({info: null}); throw error; }).finally(() => { modelReading = null; });
+        return modelReading;
+    }
     const prestart = promptPrestart(api, node.id, () => versions.value.enabled, () => !disposed && !input.disabled);
     const onFocus = () => { if (versions.value.enabled) void prestart.request(); };
     input.addEventListener('focus', onFocus);
@@ -225,12 +246,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 }
                 if (row.phase === 'complete') return row;
                 if (row.phase === 'failed') throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes});
-                if (row.phase === 'cancelled') throw new Error('cancelled');
+                if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
                 if (row.phase === 'download') {
-                    const fraction = (row.done || 0) / (row.total || 1), gib = value => (value / 2 ** 30).toFixed(1);
-                    show(t(`Downloading the model · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`, `正在下载模型 · ${gib(row.done || 0)} / ${gib(row.total || 0)} GiB`), 'progress', fraction);
-                } else {
+                    showDownload(row.done || 0, row.total || 0);
+                } else if (action !== 'install') {
                     // The ellipsis says "still going" until the seconds start counting.
                     const [en, zh] = row.phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
                     const s = elapsed(), m = Math.floor(s / 60), r = s % 60;
@@ -245,6 +265,54 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             throw error;
         } finally { job = ''; }
     }
+    function showDownload(done, total) {
+        const size = value => (value / 2 ** 30).toFixed(1);
+        const text = t(`Downloading the model · ${size(done)} / ${size(total)} GiB`, `正在下载模型 · ${size(done)} / ${size(total)} GiB`);
+        publishModel({text}); show(text, 'progress', done / (total || 1));
+    }
+    async function installModel(info) {
+        if (info.ready) return true;
+        const model = String(info.model || 'Qwen/Qwen3-VL-4B-Instruct').split('/').pop().replace(/-Instruct$/, '');
+        detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
+            `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
+        agree.textContent = downloadOnly ? t('Download', '下载') : t('Download and enable', '下载并启用');
+        install.hidden = false; render();
+        if (downloadOnly) install.scrollIntoView({block: 'nearest'});
+        const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
+        consent = null; install.hidden = true; render();
+        if (!accepted || disposed || cancelling) return false;
+        publishModel({busy: true}); showDownload(0, info.bytes || 0);
+        try {
+            await poll('install', {accept_download: true});
+            // A complete install is already authoritative; refresh metadata as well.
+            publishModel({info: {...info, ready: true}, text: ''});
+            await readModel().catch(() => {});
+        } catch (error) {
+            publishModel({text: errorText(pausing ? {message: 'download_failed'} : error)});
+            throw error;
+        } finally { publishModel({busy: false}); }
+        return true;
+    }
+    function downloadModel() {
+        if (running || disposed) return;
+        downloadOnly = true; cancelling = false;
+        running = Promise.resolve().then(async () => {
+            const info = await readModel();
+            if (!disposed && !cancelling) await installModel(info);
+        }).catch(error => { if (!disposed) show(errorText(pausing ? {message: 'download_failed'} : error)); }).finally(() => {
+            running = null; downloadOnly = false; cancelling = false; pausing = false; install.hidden = true; render();
+        });
+        render();
+        return running;
+    }
+    async function stopped(id) {
+        // The engine is free again once the server reports the download job ended (at most 10 s).
+        for (let i = 0; id && !disposed && i < 40; i++) {
+            const row = await post('status', {job: id}).catch(() => null);
+            if (!row || ['complete', 'failed', 'cancelled'].includes(row.phase)) return;
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
+    }
     async function enhance() {
         if (running) return running;
         if (!versions.value.original.trim()) {
@@ -256,25 +324,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             if (disposed || cancelling) throw new Error('cancelled');
             versions.value.useOriginal = false;
             const scene = context(), key = versions.key(scene), original = versions.value.original, edits = versions.value.edits;
-            const reply = await api.fetchApi('/freevideo/prompt-vlm');
-            const info = await reply.json();
+            const info = await readModel();
             if (disposed || cancelling) throw new Error('cancelled');
-            if (!reply.ok) throw new Error(info.error);
-            token = info.token;
-            if (info.ram_bytes) ramBytes = info.ram_bytes;
-            if (!info.ready) {
-                const model = String(info.model || 'Qwen/Qwen3-VL-4B-Instruct').split('/').pop().replace(/-Instruct$/, '');
-                detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
-                    `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
-                install.hidden = false; render();
-                const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
-                consent = null; install.hidden = true; render();
-                if (!accepted || disposed || cancelling) {
-                    versions.value.enabled = false;
-                    versions.select('original'); apply();
-                    throw new Error('cancelled');
-                }
-                await poll('install', {accept_download: true});
+            if (!await installModel(info)) {
+                versions.value.enabled = false;
+                versions.select('original'); apply();
+                throw new Error('cancelled');
             }
             const result = await poll('rewrite', {text: prepare(original), ...scene});
             if (disposed || cancelling) throw new Error('cancelled');
@@ -300,7 +355,19 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         versions.value.selected = 'original'; apply();
         show(t(`Generated with the original prompt. ${fallbackText(error)}`, `已用原文生成。${fallbackText(error)}`), 'note');
     }
-    return {element, async beforeGenerate() {
+    return {element, model: {read: readModel, download: downloadModel, subscribe(listener) {
+        modelListeners.add(listener); listener(modelState);
+        return () => modelListeners.delete(listener);
+    }}, async beforeGenerate() {
+        if (running && downloadOnly) {
+            // The download holds the engine the video needs: pause it (Retry resumes) instead of waiting for it.
+            const request = running, downloading = consent ? '' : job;
+            pausing = true;
+            await cancelJob().catch(() => {});
+            await request;
+            await stopped(downloading);
+            return;
+        }
         if (running) {
             try { await running; }
             catch (error) {
@@ -318,7 +385,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             useOriginal(error);
         }
     }, sync() { if (input.value !== versions.text()) changed(); }, dispose() {
-        disposed = true; prestart.dispose(); cancelJob().catch(() => {}); input.removeEventListener('input', changed);
+        disposed = true; modelListeners.clear(); prestart.dispose(); cancelJob().catch(() => {}); input.removeEventListener('input', changed);
         input.removeEventListener('beforeinput', replace);
         input.removeEventListener('focus', onFocus);
     }};

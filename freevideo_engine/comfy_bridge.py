@@ -1392,6 +1392,19 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})
             extra = export_inputs(run, canvas) or {}
+            if any(row.get('depth') is True for row in (extra.get('media') or {}).get('references', [])):
+                from .depth_reference import prepare_media
+                def release_depth_models():
+                    if release_models:
+                        release_models()
+                    from .encoder_prewarm import IDLE
+                    from .resident_process import OWNER, ENV
+                    IDLE.stop()
+                    OWNER.release('depth_reference')
+                    environment.pop(ENV, None)
+                extra = dict(extra, media=prepare_media(extra['media'], root=root, machine=machine,
+                    environ=environment, progress=send_progress, interrupted=interrupted,
+                    release_models=release_depth_models))
             if extra:
                 if extra.get('conditioning'):
                     position = command.index('--prompt-file')

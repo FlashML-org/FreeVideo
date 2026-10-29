@@ -491,8 +491,8 @@ def contracts(*, local=False):
     for method, suffix, summary, extra in (
             ('GET', '/next', 'The page asks for a white-model scene to render', {}),
             ('GET', '/presets', 'The ready-made white-model scenes the page can try', {}),
-            ('POST', '/try', 'The page renders one ready-made white-model scene (no model writes code)',
-             dict(body=obj(dict(preset=string(32, pattern=r'^[a-z0-9-]{1,32}$'), session=SESSION), ('preset',)))),
+            ('POST', '/try', 'The page renders one ready-made white-model scene, named (preset) or picked by the built-in AI for a shot (shot); no model writes code',
+             dict(body=obj(dict(preset=string(32, pattern=r'^[a-z0-9-]{1,32}$'), shot=string(4000), session=SESSION)))),
             ('POST', '/{id}/video', 'The page sends the rendered white-model video (the raw mp4 body)',
              dict(path=obj({'id': WHITEBOX}, ('id',)))),
             ('POST', '/{id}/failed', 'The page reports that a white-model scene could not be rendered',
@@ -1648,7 +1648,7 @@ def _tool_schema(name):
             value['required'].append('shot')
         if name == 'freevideo_wait':
             value['properties'].pop('wait')
-            value['properties']['timeout'] = number(0, 50, default=25, description='With id at most 25 seconds; without id (the user) up to 50, default 50.')
+            value['properties']['timeout'] = number(0, 50, default=45, description='With id up to 45 seconds; without id (the user) up to 50, default 50.')
             value['required'] = [k for k in value['required'] if k != 'id']
         return value
     if name == 'freevideo_asset':

@@ -7,7 +7,7 @@ import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
@@ -31,6 +31,7 @@ import { reconcileLoraTriggers } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
+import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
@@ -42,6 +43,8 @@ import { createFirstRunGuide } from './first_run_guide.js';
 import { SHOWCASE_SCENE } from './entry_showcase.js';
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
+import { createReplacePerson, swapMissingText } from './replace_person.js';
+import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, SWAP_LORA } from './replace_state.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
@@ -909,7 +912,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
     const mediaNode = upstream(node, 'media');
-    const mediaFilled = () => JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
+    const mediaFilled = () => swapState(mediaNode) ? Boolean(swapState(mediaNode).source || swapState(mediaNode).person) : JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
         || Boolean(mediaNode.inputs?.some(input => ['first', 'last', ...referenceInputs, 'reference_audio'].includes(input.name) && input.link != null));
     // The line beside the closed title says what the section is for, until something is added.
     // The guide opens the section it points at; the ring stays on the title row.
@@ -932,6 +935,49 @@ export function openStudio(node, {extendFrom = null} = {}) {
     controls.addEventListener('change', paintMediaHint, true); controls.addEventListener('input', paintMediaHint, true);
     const connectedLora = upstream(node, 'loras');
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
+    // Replace person: its LoRA row is found among the registered names (it may sit in a subfolder), a row the user had
+    // switched off is switched on for the run, and everything done is undone when the option goes off.
+    // Returns '' when all is well, else the line to show; runs one at a time.
+    let swapLoraBusy = Promise.resolve('');
+    const swapLoraText = reason => reason === 'missing'
+        ? t(`"Replace person" needs the ${SWAP_LORA} LoRA in the models/loras folder.`, `“替换人物”需要把 ${SWAP_LORA} 放进 models/loras 文件夹。`)
+        : reason === 'ambiguous' ? t(`More than one ${SWAP_LORA} was found in models/loras. Add the one to use under "LoRA".`, `models/loras 中有多个 ${SWAP_LORA}，请在“LoRA”一栏添加要使用的那个。`)
+        : t('Could not read the LoRA list. Try again.', '无法读取 LoRA 列表，请重试。');
+    async function applySwapLora() {
+        const state = mediaNode?.properties?.freevideo_replace_person;
+        if (!state || !loraNode || !widget(loraNode, 'adapters')) return '';
+        const current = value(loraNode, 'adapters') || '[]';
+        const record = state.lora && typeof state.lora === 'object' ? state.lora : null;
+        if (!state.on) {
+            state.lora = null;
+            if (record) { set(loraNode, 'adapters', releaseSwapLora(current, record)); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id})); }
+            return '';
+        }
+        let names;
+        try { const response = await api.fetchApi('/models/loras', {cache: 'no-store'}); if (!response.ok) throw new Error(response.statusText); names = await response.json(); }
+        catch { return swapLoraText('unreadable'); }
+        if (!state.on) return '';
+        const now = value(loraNode, 'adapters') || '[]';
+        const result = prepareSwapLora(now, names, record);
+        if (!result.ok) return swapLoraText(result.reason);
+        state.lora = result.record;
+        if (result.adapters !== now) { set(loraNode, 'adapters', result.adapters); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id})); }
+        return '';
+    }
+    const ensureSwapLora = () => (swapLoraBusy = swapLoraBusy.then(applySwapLora, applySwapLora));
+    let swapPanel = null;
+    function swapChanged(info) {
+        mediaHint.textContent = swapState(mediaNode) ? t('Source video, person image', '源视频、人物图') : t('Reference images, first and last frames', '参考图、首帧、尾帧');
+        // Switching the option only changes which media the prompt reads: its pictures are re-bound, never renumbered.
+        syncReferencePrompt(node, t, info?.toggled === true); paintMediaHint();
+        ensureSwapLora().then(problem => { if (problem) swapPanel?.notify(problem); });
+        window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
+    }
+    if (mediaNode?.freevideoCreateMediaEditor) {
+        const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged});
+        cleanup.push(() => swap.dispose());
+        if (swapState(mediaNode)) { mediaHint.textContent = t('Source video, person image', '源视频、人物图'); mediaDetails.open = true; }
+    }
     const [loraDetails, loraMount] = expand(t('LoRA', 'LoRA'));
     if (loraNode && widget(loraNode, 'adapters')) {
         const stop = loraPanel(loraNode, loraMount, {promptNode: node}); cleanup.push(stop);
@@ -960,7 +1006,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         };
     }
     advanced.append(custom);
-    lengthControl = createStudioLength({api, node, seconds, advanced, fields, t, field,
+    lengthControl = createStudioLength({api, node, seconds, advanced, fields, t, field, promptModel: enhancer.model,
         setSeconds: seconds => set(node, 'seconds', seconds), onChange: () => { if (runButtonReady) { updateRunButton(); showEffortEstimate(); updateDuration(); } },
         onEditor: toEditor, onAutopilot: toAutopilot, autopilot: !autopilotTab.hidden});
     cleanup.push(() => lengthControl.dispose());
@@ -1314,7 +1360,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const thermalNote = el('div', '', 'fv-note'); thermalNote.hidden = true;
     const sharedGpuNote = el('div', '', 'fv-note'); sharedGpuNote.hidden = true;
     const encoderNote = el('div', '', 'fv-note'); encoderNote.hidden = true;
-    output.append(status, reuseRow, trimNote, memoryNote, thermalNote, sharedGpuNote, encoderNote, links, stats, budget, progress.stall, progress.report, prewarm);
+    const keepSoundNote = el('div', keepSoundText(t), 'fv-note'); keepSoundNote.hidden = true;
+    output.append(status, reuseRow, trimNote, memoryNote, thermalNote, sharedGpuNote, keepSoundNote, encoderNote, links, stats, budget, progress.stall, progress.report, prewarm);
     const failure = createErrorPanel(t, reportRoute); output.append(failure.element);
     // With the picture, the result's actions and numbers form one block, centred below the header.
     output.append(el('div', null, 'fv-preview-end'));
@@ -1325,6 +1372,41 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => recent.dispose());
     // A run this window watched. Its result can arrive before or after the
     // final progress message, and more than once; the tip stays with that video.
+    // "Reuse settings" in the result bar: what the panel holds now, filling an earlier video's settings back,
+    // and the edits that withdraw the offer. A field the panel cannot change counts as already matching.
+    let reuseApplying = false;
+    function setSize(w, h) {
+        set(node, 'width', w); set(node, 'height', h);
+        ratio = w / h; pixels = w * h / 1024 ** 2;
+        selected = [['16:9', 16 / 9], ['9:16', 9 / 16], ['1:1', 1]].find(([, r]) => Math.abs(Math.log(ratio / r)) < .035)?.[0] || 'custom';
+        node.properties.freevideo_aspect = selected; node.properties.freevideo_pixels = pixels;
+        if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
+        mp.value = String(pixels); syncCanvasSize();
+    }
+    const reuse = {
+        now: saved => {
+            const sizeLocked = dimensionsLinked || Boolean(extension.source), lengthLocked = linked(node, 'seconds') || Boolean(extension.source);
+            return {text: prompt.disabled ? saved.text : prompt.value, width: sizeLocked ? saved.width : Number(value(node, 'width')),
+                height: sizeLocked ? saved.height : Number(value(node, 'height')),
+                frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value)};
+        },
+        apply: saved => {
+            reuseApplying = true;
+            try {
+                if (!prompt.disabled) { set(node, 'text', saved.text); window.dispatchEvent(new CustomEvent('freevideo-reference-prompt', {detail: node.id})); }
+                if (!dimensionsLinked && !extension.source) setSize(saved.width, saved.height);
+                if (saved.seconds !== null && !linked(node, 'seconds') && !extension.source) {
+                    seconds.value = String(saved.seconds);
+                    seconds.dispatchEvent(new Event('input')); seconds.dispatchEvent(new Event('change'));
+                }
+            } finally { reuseApplying = false; }
+        },
+        onEdit: listener => {
+            const heard = () => { if (!reuseApplying) listener(); };
+            controls.addEventListener('input', heard, true); controls.addEventListener('change', heard, true);
+            return () => { controls.removeEventListener('input', heard, true); controls.removeEventListener('change', heard, true); };
+        },
+    };
     let reportTipTimer = null, watchedRun = false, reportTipFor = null, shownReport = null;
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
@@ -1360,6 +1442,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         memoryNote.hidden = !r.low_memory || !!r.result_cache_hit;
         thermalNote.textContent = r.thermal ? thermalText(r.thermal, t) : ''; thermalNote.hidden = !r.thermal || !!r.result_cache_hit;
         sharedGpuNote.textContent = r.shared_gpu ? sharedGpuText(r.shared_gpu, t) : ''; sharedGpuNote.hidden = !sharedGpuNote.textContent || !!r.result_cache_hit;
+        keepSoundNote.hidden = !r.keep_source_audio_failed;
         encoderNote.textContent = r.encoder_file ? encoderFileText(r.encoder_file, t) : ''; encoderNote.hidden = !r.encoder_file;
         const encoderPath = encoderFilePath(r.encoder_file);
         if (encoderPath) encoderNote.append(el('pre', encoderPath, 'fv-encoder-path'));
@@ -1382,7 +1465,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
-                                                   secondPass: r.preview ? secondPass(r) : null}));
+                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse}));
         if (runButtonReady) updateExtendButton();
         // After a video finished just now, point at the report menu until the
         // user closes the tip once, whichever version they first saw it in.
@@ -1724,7 +1807,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             invalid.focus(); invalid.reportValidity(); return;
         }
-        if (!extension.source && !prompt.disabled && !prompt.value.trim() && !untouched()) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (!extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) { prompt.focus(); status.textContent = t('Describe your scene first.', '请先描述画面。'); return; }
+        if (swapState(mediaNode)) {
+            const missing = swapMissing(swapState(mediaNode));
+            if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
+        }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
@@ -1735,7 +1822,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             stopNote = ''; lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             lengthControl.freeze();
-            if ((!extension.source || prompt.value.trim()) && await enhancer.beforeGenerate() === false) return;
+            if ((!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
             if (disposed) return;
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
@@ -1747,6 +1834,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const sourceState = source ? await extendSourceState(api, source) : 'ok';
             if (sourceState !== 'ok') throw new Error(extendSourceProblem(t, sourceState));
             if (source && lengthPlan?.count > 1) lengthOptions.after = {work: source.video};
+            const swapProblem = await ensureSwapLora();
+            if (swapProblem) { status.dataset.error = 'true'; status.textContent = swapProblem; return; }
             // Only serialization briefly locks the editor. Network submission
             // and all GPU execution leave the next draft fully editable.
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = true;
@@ -1824,7 +1913,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         set(node, 'width', w); set(node, 'height', h); node.properties.freevideo_aspect = selected; node.properties.freevideo_pixels = pixels; syncCanvasSize();
     }
     async function inputRatio(required = false) {
-        const rows = mediaNode ? JSON.parse(value(mediaNode, 'assets') || '[]') : [];
+        const rows = mediaNode ? effectiveRows(mediaNode, widget(mediaNode, 'assets')) : [];
         const active = rows.filter(r => r.enabled !== false);
         const source = active.find(r => r.role === 'first') || active.find(r => r.role === 'last') || active.find(r => /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(r.file));
         if (!source) { if (required) throw new Error(t('Add an image in Media to follow its aspect ratio.', '请先在素材中添加图片，再跟随输入比例。')); return; }

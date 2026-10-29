@@ -5,6 +5,7 @@ import logging
 import math
 from pathlib import Path, PurePosixPath
 import random
+import re
 import threading
 import time
 import uuid
@@ -12,6 +13,30 @@ import uuid
 from . import chain_leads, chain_plan
 from . import chain_store as store
 
+REPORT_ID = re.compile(r'[a-f0-9]{32}')
+
+
+def _split_value(record, text):
+    """What the prompt model sorts into parts: the whole description and each part's new seconds."""
+    first = next(row for row in record['blocks'] if row['index'] == 0)
+    return dict(text=text, continued=first['after'] is not None,
+                seconds=[row['new_frames'] / chain_plan.FPS for row in record['blocks']])
+
+
+def _ordered_texts(record, value):
+    """Part texts when the description could not be split: its sentences in order, with the LoRA trigger
+    words every part carries, or None for a description without sentences."""
+    from .lora_triggers import apply_chain_triggers
+    from .prompt_vlm.rules import order_split
+    if not isinstance(value['text'], str):
+        return None
+    try:
+        probe = dict(snapshot=deepcopy(record['snapshot']), node=record['node'],
+                     blocks=[dict(inputs=dict(text=text)) for text in order_split(value)])
+        apply_chain_triggers(probe)
+    except Exception:
+        return None
+    return [row['inputs']['text'] for row in probe['blocks']]
 
 class ChainBusy(ValueError):
     pass
@@ -27,6 +52,18 @@ class ChainTooLong(ValueError):
         self.message_zh = '一个连续镜头最多 %d 段，请缩短。' % limit
 
 
+class ChainShortPartsTooMany(ChainTooLong):
+    """A video with a short continuing part, continued through more parts than such a video may have."""
+    code = 'chain_short_parts'
+
+    def __init__(self, parts, limit):
+        full = chain_plan.FULL_PART_SECONDS
+        ValueError.__init__(self, 'With a part shorter than %d seconds, one continuous shot can have up to %d parts. '
+                            'Make every part at least %d seconds long, or use fewer parts.' % (full, limit, full))
+        self.parts, self.limit = parts, limit
+        self.message_zh = '有短于 %d 秒的段时，一个连续镜头最多 %d 段。请把每段加长到至少 %d 秒，或减少段数。' % (full, limit, full)
+
+
 class ChainPartTooShort(ValueError):
     """A continuing part shorter than a continued video may have."""
     code = 'chain_part_too_short'
@@ -34,7 +71,7 @@ class ChainPartTooShort(ValueError):
     def __init__(self, seconds, limit):
         super().__init__('Each continued part must be at least %d seconds. Make it longer.' % limit)
         self.seconds, self.limit = seconds, limit
-        self.message_zh = '接着生成的每一段至少 %d 秒，请加长一些。' % limit
+        self.message_zh = '接着生成的每一段至少 %d 秒，请加长这一段。' % limit
 
 
 def _work_key(path):
@@ -69,11 +106,15 @@ def node_prompt(prompt, node):
 
 class ChainRunner:
     def __init__(self, store_dir, host, clock=time.monotonic, wall=time.time, estimate=None, poll=0.5, inputs=None,
-                 max_parts=None, min_part_frames=None, seeds=None):
+                 max_parts=None, min_part_frames=None, seeds=None, full_part_frames=None):
         self.store_dir, self.host = store_dir, host
         self.seeds = seeds or random.SystemRandom()
         self.max_parts = max_parts or store.MAX_PARTS
         self.min_part_frames = chain_plan.MIN_PART_FRAMES if min_part_frames is None else min_part_frames
+        # Continuing parts below this are short and hold their video to fewer parts. A runner given a lower
+        # shortest part (a test host) lowers this with it unless it is given too.
+        self.full_part_frames = (full_part_frames if full_part_frames is not None else chain_plan.FULL_PART_FRAMES
+                                 if min_part_frames is None else min(min_part_frames, chain_plan.FULL_PART_FRAMES))
         self.clock, self.wall, self.estimate, self.poll = clock, wall, estimate, poll
         self.inputs = inputs or host.inputs
         self.lock = threading.RLock()
@@ -219,33 +260,45 @@ class ChainRunner:
         """Parts each block of `record` continues through, itself included (a block with no source is the
         first part). A source that is an existing video counts the parts that video was made of, as far
         as this runner's records know them; one they do not know counts as one part."""
+        return {name: parts for name, (parts, _) in self._lineage(record, seen).items()}
+
+    def _lineage(self, record, seen=()):
+        """For each block of `record`: its parts as `_depths` counts them, and whether any continuing part
+        among them is short."""
         rows = {row['id']: row for row in record['blocks']}
-        depth, pending = {}, list(rows)
+        lineage, pending = {}, list(rows)
         while pending:
             rest = []
             for identity in pending:
                 row = rows[identity]
                 sources = [row[key] for key in ('after', 'before') if row[key] is not None]
-                if any(isinstance(value, str) and value not in depth for value in sources):
+                if any(isinstance(value, str) and value not in lineage for value in sources):
                     rest.append(identity)
                     continue
-                depth[identity] = 1 + sum(depth[value] if isinstance(value, str)
-                                          else self._source_parts(value, seen + (record['id'],))
-                                          for value in sources)
+                found = [lineage[value] if isinstance(value, str) else self._source_lineage(value, seen + (record['id'],))
+                         for value in sources]
+                short = bool(sources) and row['inputs']['frames'] < self.full_part_frames
+                lineage[identity] = (1 + sum(parts for parts, _ in found), short or any(flag for _, flag in found))
             if len(rest) == len(pending):
                 raise ValueError('Block references cannot contain a cycle or self reference')
             pending = rest
-        return depth
+        return lineage
 
     def _source_parts(self, value, seen):
+        return self._source_lineage(value, seen)[0]
+
+    def _source_lineage(self, value, seen):
         if 'chain' not in value:
-            return self._work_parts(value['work'], seen)
+            return self._work_lineage(value['work'], seen)
         self._referenced_block(value)
         if value['chain'] in seen:
             raise ValueError('Chain references cannot contain a cycle')
-        return self._depths(self.records[value['chain']], seen)[value['block']]
+        return self._lineage(self.records[value['chain']], seen)[value['block']]
 
     def _work_parts(self, work, seen):
+        return self._work_lineage(work, seen)[0]
+
+    def _work_lineage(self, work, seen):
         key = _work_key(work)
         for record in list(self.records.values()):
             if record['id'] in seen:
@@ -255,9 +308,27 @@ class ChainRunner:
             else:
                 names = [row['id'] for row in record['blocks'] if row['output'] and _work_key(row['output']) == key]
             if names:
-                depth = self._depths(record, seen)
-                return max(depth[name] for name in names)
-        return 1
+                lineage = self._lineage(record, seen)
+                return max(lineage[name][0] for name in names), any(lineage[name][1] for name in names)
+        return 1, False
+
+    def _check_parts(self, record):
+        """Refuses, before anything is written or queued, a chain with a continuing part too short or a video
+        continued through too many parts."""
+        short = [row['inputs']['frames'] for row in record['blocks']
+                 if (row['after'] is not None or row['before'] is not None)
+                 and row['inputs']['frames'] < self.min_part_frames]
+        if short:
+            raise ChainPartTooShort(min(short) / chain_plan.FPS, chain_plan.MIN_PART_SECONDS)
+        lineage = self._lineage(record).values()
+        parts = max(parts for parts, _ in lineage)
+        if parts > self.max_parts:
+            raise ChainTooLong(parts, self.max_parts)
+        inputs = record['snapshot']['prompt'][record['node']].get('inputs') or {}
+        limit = chain_plan.parts_limit(True, inputs.get('first_frame_reference') is True, self.max_parts)
+        parts = max((parts for parts, flag in lineage if flag), default=0)
+        if parts > limit:
+            raise ChainShortPartsTooMany(parts, limit)
 
     def create(self, payload):
         from .lora_triggers import apply_chain_triggers
@@ -265,14 +336,7 @@ class ChainRunner:
         apply_chain_triggers(record)
         with self.lock:
             # Before anything is written or queued: a refused chain leaves every record and file as it was.
-            short = [row['inputs']['frames'] for row in record['blocks']
-                     if (row['after'] is not None or row['before'] is not None)
-                     and row['inputs']['frames'] < self.min_part_frames]
-            if short:
-                raise ChainPartTooShort(min(short) / chain_plan.FPS, chain_plan.MIN_PART_SECONDS)
-            parts = max(self._depths(record).values())
-            if parts > self.max_parts:
-                raise ChainTooLong(parts, self.max_parts)
+            self._check_parts(record)
             record['created'] = self.wall()
             self._save(record)
             self.records[record['id']] = record
@@ -334,10 +398,14 @@ class ChainRunner:
                                  fraction=0., remaining_seconds=None, continuation=None,
                                  skip_frames=0, skip_audio_samples=0)
             split = record.get('split')
+            whole = record['snapshot']['prompt'][record['node']]['inputs'].get('text')
             if (split is not None and split['state'] == 'failed' and split['reason'] in ('busy', 'memory')
                     and all(row['state'] != 'done' for row in record['blocks'])
-                    and len({row['inputs']['text'] for row in record['blocks']}) == 1):
+                    and [row['inputs']['text'] for row in record['blocks']] in (
+                        [whole] * len(record['blocks']), _ordered_texts(record, _split_value(record, whole)))):
                 # Busy and memory pass; nothing has started and no part was rewritten, so split again.
+                for row in record['blocks']:
+                    row['inputs']['text'] = whole
                 split.update(state='pending', reason=None)
             if client_id is not None:
                 record['client_id'] = client_id
@@ -410,14 +478,7 @@ class ChainRunner:
                 except Exception:
                     raise ValueError('Text must be at most 20000 characters with LoRA triggers') from None
                 record['blocks'][start['index']]['inputs']['text'] = probe['blocks'][0]['inputs']['text']
-            short = [row['inputs']['frames'] for row in record['blocks']
-                     if (row['after'] is not None or row['before'] is not None)
-                     and row['inputs']['frames'] < self.min_part_frames]
-            if short:
-                raise ChainPartTooShort(min(short) / chain_plan.FPS, chain_plan.MIN_PART_SECONDS)
-            parts = max(self._depths(record).values())
-            if parts > self.max_parts:
-                raise ChainTooLong(parts, self.max_parts)
+            self._check_parts(record)
             # The kept seams are repaired with the sound the original chain kept for them. Copies left by
             # a failed save have no record, so the next start prunes them.
             try:
@@ -690,8 +751,7 @@ class ChainRunner:
                 split['state'] = 'running'
                 record['state'] = 'running'
                 self._save(record)
-                value = dict(text=block['inputs']['text'], continued=block['after'] is not None,
-                             seconds=[row['new_frames'] / chain_plan.FPS for row in record['blocks']])
+                value = _split_value(record, block['inputs']['text'])
                 action = 'split'
             elif prompt_id is None:
                 self.progress_messages.pop(identity, None)
@@ -819,9 +879,13 @@ class ChainRunner:
                         row['inputs']['text'] = value['text']
                     record['split'].update(state='failed', reason='failed')
             else:
-                # The whole description goes to every part, as before; the page says why.
+                # Without the prompt model the sentences go to the parts in order, so no part plays the whole
+                # story again; the page says why. A description without sentences goes to every part.
                 if parts is not None:
                     reason = 'unusable'
+                texts = _ordered_texts(record, value)
+                for row, text in zip(record['blocks'], texts or [value['text']] * len(record['blocks'])):
+                    row['inputs']['text'] = text
                 record['split'].update(state='failed', reason=reason if reason in store.SPLIT_REASONS else 'failed')
             self._save(record)
 
@@ -898,6 +962,12 @@ class ChainRunner:
             block = self._current(record)
             if block is None or block['state'] != 'running':
                 return None
+            token = message.get('report_id')
+            if isinstance(token, str) and REPORT_ID.fullmatch(token) and block['report_id'] != token:
+                # A restart ends this block before `finished` stores its report, and the
+                # report of the interrupted run is the one a failure needs.
+                block['report_id'] = record['last_report_id'] = token
+                self._save(record)
             overall = message.get('overall') or {}
             used = _number(overall.get('elapsed_seconds'))
             used = self._elapsed(block) if used is None else used

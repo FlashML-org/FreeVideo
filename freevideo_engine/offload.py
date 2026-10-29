@@ -905,6 +905,11 @@ class LayerOffloader:
                 'host_view_hits': getattr(self.weight_source, 'host_view_hits', 0) - self.host_view_hits_start,
                 'host_view_hit_bytes': getattr(self.weight_source, 'host_view_hit_bytes', 0) - self.host_view_hit_bytes_start,
                 'host_view_released': getattr(self.weight_source, 'host_view_released', 0),
+                # Converted layers kept in RAM for the clips still to come.
+                'converted_layer_count': len(getattr(self.weight_source, 'converted', None) or {}),
+                'converted_bytes': getattr(self.weight_source, 'converted_bytes', 0),
+                'converted_hits': getattr(self.weight_source, 'converted_hits', 0),
+                'converted_refused': getattr(self.weight_source, 'converted_refused', 0),
                 # Direct reads kept in the file cache between steps and those passing through.
                 'cache_kept_layer_count': len(getattr(self.weight_source, 'cache_kept', None) or {}),
                 'cache_kept_bytes': getattr(self.weight_source, 'cache_kept_bytes', 0),
@@ -950,6 +955,9 @@ class LayerOffloader:
         self.cached.clear()
         self.cache_candidates.clear()
         self.slots.clear()
+        release = getattr(self.weight_source, 'release_converted', None)
+        if release is not None:
+            release()
         self.closed = True
 
     def __enter__(self):

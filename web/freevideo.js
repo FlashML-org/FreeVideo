@@ -6,7 +6,7 @@ import { api } from "../../scripts/api.js";
 import { openEditorView } from './editor_loader.js';
 import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';
 import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { startUpdateChecks } from './updates.js';
@@ -16,7 +16,7 @@ import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces
 import { isLaunchVisit } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
-import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows } from './prompt_references.js';
+import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
@@ -29,6 +29,8 @@ import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
 import { uploadMedia } from './media_upload.js';
+import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
+import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -49,7 +51,7 @@ style.textContent = `
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
-.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}
+.fv-panel select{max-width:170px}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:auto}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel[data-freevideo=media]>.fv-mode{display:inline-block;margin:4px 0 2px;padding:2px 8px;border-radius:var(--fv-r-xs,3px);background:var(--fv-selected);font-weight:var(--fv-medium,500)}.fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
 .fv-card[data-enabled=false]{opacity:.5}.fv-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:60px}
@@ -335,6 +337,15 @@ function mediaPanel(node, mount = null) {
                 card.append(preview);
             }
             let showLength = () => {};
+            if (kind === "video" && row.role === "reference") {
+                // Off by default: the video itself is the reference. On: its depth picture is, and the picture and colours are not asked for.
+                const depth = el("label", undefined, "fv-depth-only"), box = el("input");
+                box.type = "checkbox"; box.checked = row.depth === true;
+                box.onchange = () => { if (box.checked) rows[index].depth = true; else delete rows[index].depth; update(rows); };
+                depth.append(box, el("span", text("Depth only", "仅参考深度")));
+                depth.title = text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。");
+                card.append(depth);
+            }
             if (kind === "video") {
                 const sound = el("label", undefined, "fv-sound"); const box = el("input"); box.type = "checkbox"; box.checked = row.sound !== false;
                 box.onchange = () => { if (box.checked) delete rows[index].sound; else rows[index].sound = false; showLength(); update(rows); };
@@ -366,8 +377,14 @@ function mediaPanel(node, mount = null) {
     let uploading = false;
     serialized.serializeValue = () => {
         if (node.isUploading) throw new Error(text("Wait for media uploads to finish before running", "请等待素材上传完成后再生成"));
+        // Replace person: the two slots are the media, and both are needed.
+        if (swapState(node)) {
+            const missing = swapMissing(swapState(node));
+            if (missing) throw new Error(swapMissingText(missing, text));
+            return JSON.stringify(requestRows(swapState(node)));
+        }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth}) => ({file, role, enabled, ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;
@@ -578,6 +595,7 @@ function resultPanel(node) {
         if (value.thermal && !value.result_cache_hit) resultNotes.push(el("div", thermalText(value.thermal, text), "fv-note"));
         const shared = value.shared_gpu && !value.result_cache_hit ? sharedGpuText(value.shared_gpu, text) : '';
         if (shared) resultNotes.push(el("div", shared, "fv-note"));
+        if (value.keep_source_audio_failed) resultNotes.push(el("div", keepSoundText(text), "fv-note"));
         if (value.encoder_file) {
             const note = el("div", encoderFileText(value.encoder_file, text), "fv-note");
             const path = encoderFilePath(value.encoder_file);
@@ -754,7 +772,14 @@ app.registerExtension({
                 }
                 // Characters mentioned with @ travel as <Subject N> plus their definitions; the draft keeps the typed names.
                 const prompt = this.widgets?.find(w => w.name === 'text');
-                if (prompt) { const owner = this; prompt.serializeValue = () => expandCast(prompt.value, mediaRows(owner), {continued: Boolean(owner.freevideoContinues?.())}).text; }
+                if (prompt) {
+                    const owner = this;
+                    // Replace person asks for its prefix here, where every way of running the node reads the text.
+                    prompt.serializeValue = () => {
+                        const body = expandCast(prompt.value, mediaRows(owner), {continued: Boolean(owner.freevideoContinues?.())}).text;
+                        return swapState(mediaNodeOf(owner)) ? withPrefix(body) : body;
+                    };
+                }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
                     quality.label = text('Two-pass acceleration', '二次采样加速');

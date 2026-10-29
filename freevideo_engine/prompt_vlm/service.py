@@ -1,6 +1,7 @@
 """Optional rewrite and ask jobs; prompts, questions and answers stay in memory, never in job reports."""
 import atexit
 import json
+import logging
 import os
 from pathlib import Path
 import queue
@@ -402,6 +403,12 @@ class Service:
                 OWNER.stop_prewarm()
                 from ..encoder_prewarm import IDLE
                 IDLE.stop()
+                from ..comfy_residency import release_native
+                from ..image_gen.service import comfy_server
+                try:
+                    release_native(comfy_server())
+                except Exception:  # only frees memory early; the load's own free-memory check still decides
+                    logging.warning('[FreeVideo] Could not unload ComfyUI models before the prompt model', exc_info=True)
             with runtime_lock(Path(root) / 'engine.lock', inherit=False) as descriptor:
                 self.check()
                 if action == 'install':

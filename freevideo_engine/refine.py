@@ -61,8 +61,10 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         refs = conditions
         condition_latents = [row['latent'].to(device) for row in refs if row['kind'] in ('image', 'video')]
         audio_conditions = [row['audio_latent'].to(device) for row in refs if row.get('audio_latent') is not None]
-        references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None) for row in refs]
-        layout = MiniMaxH3Ref2VAPrepareLayoutStep.build_ref2va_packed_sequence(
+        references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None,
+                                      guide=bool(row.get('guide')), guide_index=row.get('guide_index', 0)) for row in refs]
+        from . import guide_layout
+        layout = guide_layout.build(MiniMaxH3Ref2VAPrepareLayoutStep.build_ref2va_packed_sequence,
             text_token_tags, references, condition_latents, audio_conditions,
             latent_frames, LATENT_H, LATENT_W, audio_frames, patch, AUDIO_CHANNELS, AUDIO_TAG, VIDEO_TAG)
     else:

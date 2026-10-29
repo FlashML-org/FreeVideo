@@ -35,7 +35,8 @@ const HOWTOS = [
                 zh: '填写更长的时长，会自动分段生成。'},
             {id: 'generate', anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'},
             {id: 'extend', anchor: '.fv-action-extend', image: 'extend-button',
-                en: 'Choose "Extend" on a finished video to continue it.', zh: '在生成好的视频上点“接着生成”，继续下一段。'},
+                en: 'Choose "Extend" on a finished video to continue it. Each continued part is at least 5 seconds; with a part shorter than 10 seconds, one video has at most 4 parts.',
+                zh: '在生成好的视频上点“接着生成”，继续下一段。接着生成的每一段至少 5 秒；有短于 10 秒的段时，一条视频最多 4 段。'},
             {id: 'longer', anchor: '[data-view="editor"]', en: 'Parts can also be added one by one in "Edit".', zh: '也可在“剪辑视图”中逐段接续。'}]},
     {id: 'editor-extend-refs', view: 'editor', title: ['Add reference images when extending in Edit', '在剪辑视图延长时加参考图'],
         steps: [

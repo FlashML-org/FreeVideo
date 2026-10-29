@@ -55,7 +55,7 @@ def read(path):
                 raise ValueError('Invalid ' + field + ' entry')
             if field != 'references' and 'early_steps' in entry:
                 raise ValueError('early_steps is only allowed on video references')
-            allowed = {'path', 'kind', 'early_steps', 'sound'} if field == 'references' else {'path', 'strength', 'alpha'}
+            allowed = {'path', 'kind', 'early_steps', 'sound', 'guide', 'keep_source_audio'} if field == 'references' else {'path', 'strength', 'alpha'}
             if set(entry) - allowed:
                 raise ValueError('Unknown ' + field + ' fields')
             row = file_info(entry.get('path'))
@@ -70,6 +70,16 @@ def read(path):
                     validate_sound(entry)
                     if not entry['sound']:
                         row['sound'] = False
+                if 'guide' in entry:
+                    validate_guide(entry)
+                    # A false marker is not stored, so requests without a guide
+                    # keep exactly the same rows and cache key as before.
+                    if entry['guide']:
+                        row['guide'] = True
+                if 'keep_source_audio' in entry:
+                    validate_keep_source_audio(entry, row['path'])
+                    if entry['keep_source_audio']:
+                        row['keep_source_audio'] = True
             else:
                 if Path(row['path']).suffix.lower() != '.safetensors':
                     raise ValueError('LoRA requires safetensors; pickle adapters are not loaded')
@@ -81,7 +91,13 @@ def read(path):
                     row[name] = number
             result[field].append(row)
     if result['references'] and any(result.get(k) for k in ('first', 'last')):
-        raise ValueError('Reference and keyframe layouts cannot be mixed; use separate requests')
+        raise ValueError('Reference and first/last keyframe layouts cannot be mixed in one request; '
+                         'mark the clip that carries the motion with "guide": true instead')
+    guides = [row for row in result['references'] if row.get('guide')]
+    if len(guides) > 1:
+        raise ValueError('At most one guide clip per request')
+    # The packed layout needs the guide after the other references.
+    result['references'].sort(key=lambda row: bool(row.get('guide')))
     if value.get('conditioning_info') is not None:
         info = value['conditioning_info']
         if not isinstance(info, dict) or info.get('task') not in TASKS:
@@ -114,6 +130,33 @@ def validate_sound(row):
         raise ValueError('Video reference sound must be true or false')
 
 
+def validate_guide(row):
+    """A guide is a video reference that shares the generated clip's time origin.
+
+    It is encoded like a silent video reference, so it cannot carry its own
+    audio or a delayed start.
+    """
+    if row.get('kind') != 'video':
+        raise ValueError('guide is only allowed on video references')
+    if type(row['guide']) is not bool:
+        raise ValueError('Video reference guide must be true or false')
+    if row['guide'] and 'early_steps' in row:
+        raise ValueError('A guide clip cannot use early_steps')
+
+
+def validate_keep_source_audio(row, path):
+    """Keeping the guide's sound needs a guide clip that has an audio stream."""
+    if type(row['keep_source_audio']) is not bool:
+        raise ValueError('keep_source_audio must be true or false')
+    if not row['keep_source_audio']:
+        return
+    if row.get('guide') is not True:
+        raise ValueError('keep_source_audio is only allowed on a guide clip')
+    from .guide_audio import has_audio
+    if not has_audio(path):
+        raise ValueError('keep_source_audio needs a guide clip with an audio stream')
+
+
 def reference_stages(media):
     """Active references at each boundary; zero-step inputs never reach an encoder."""
     refs = media.get('references', [])
@@ -134,7 +177,7 @@ def cache_key(prompt, media, canvas):
     for key in ('first', 'last', 'references'):
         value = media.get(key)
         if value:
-            identity[key] = [{k: v for k, v in row.items() if k != 'path'}
+            identity[key] = [{k: v for k, v in row.items() if k not in ('path', 'keep_source_audio')}
                              for row in value] if isinstance(value, list) else value['sha256']
     return 'multimodal:' + json.dumps(identity, sort_keys=True, ensure_ascii=False)
 

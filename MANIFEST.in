@@ -11,6 +11,7 @@ recursive-include web/fonts *.woff2
 recursive-include web/tutorial *.webp *.mp4
 recursive-include freevideo_engine/assets *.png *.ico
 recursive-include freevideo_engine/launcher *.qml
+recursive-include freevideo_engine/agent/skill *.txt
 recursive-include freevideo_engine/launcher/licenses *.txt
 recursive-include freevideo_engine/licenses *.txt
 recursive-include constraints *.txt

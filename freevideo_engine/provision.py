@@ -61,6 +61,20 @@ def verified(path, row, stamps, *, mode='auto', hf_directory=None, producer_rece
 
 
 def models(plan):
+    retained = []
+    try:
+        _models(plan, retained)
+    except BaseException as error:
+        # All download/verifier threads have stopped before names are restored.
+        for root, path, kept, approved, prior in reversed(retained):
+            try:
+                model_repair.restore(root, path, kept, approved, prior)
+            except (OSError, ValueError) as rollback_error:
+                error.add_note('Could not restore retained model %s: %s' % (path, rollback_error))
+        raise
+
+
+def _models(plan, retained):
     # Use the same canonical spelling as compact_sources/ownership, including
     # Windows 8.3 temporary-directory aliases. Keep managed_model's link and
     # ownership checks intact; a different spelling must not lose the receipt.
@@ -109,9 +123,11 @@ def models(plan):
         from .install_disk import check_models
         check_models(local_files + missing, replacements=replacements)
     for name, approved in replacements.items():
-        retained = model_repair.retain(root, Path(name), approved)
+        prior = model_repair.read(root).get(name)
+        kept = model_repair.retain(root, Path(name), approved)
+        retained.append((root, Path(name), kept, approved, prior))
         stamps.pop(name, None)
-        emit('model_retained', file=name, keep_as=approved['keep_as'], retained=str(retained), bytes=approved['bytes'])
+        emit('model_retained', file=name, keep_as=approved['keep_as'], retained=str(kept), bytes=approved['bytes'])
     stopped = threading.Event()
     failures = []
     ready = [0]
@@ -474,9 +490,10 @@ def prefetch(plan, out):
     """Fetch the prepared format an installation is about to switch to, beside the one in use.
 
     Generation keeps running on the installed model: only the setup lease is
-    held (no concurrent setup run), machine.json and prepared-cache.json are
-    not touched, and nothing is removed. The setup run that switches afterwards
-    finds every file present and verified.
+    held (no concurrent setup run). A shared encoder replacement clears readiness
+    while it runs and restores it once it ends with the files back in place;
+    otherwise machine.json and prepared-cache.json are not touched.
+    The setup run that switches afterwards finds every file present and verified.
     """
     from .prepared_model import files as prepared_files
     root = Path(plan['root']).expanduser().resolve()
@@ -489,7 +506,24 @@ def prefetch(plan, out):
     if Path(machine['cache']).resolve() == Path(prepared['cache']).resolve():
         raise ValueError('This prepared model is already in use')
     with runtime_lock(root / 'setup.lock', inherit=False):
-        models(plan)
+        encoder_repair = any(Path(row['path']).resolve().is_relative_to(Path(plan['encoder_dir']).resolve())
+                             for row in plan.get('replace_models', []))
+        def readiness(value):
+            # Change only the flag: the file may have been updated since it was read.
+            current = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
+            save(root / 'machine.json', dict(current, ready=value))
+        if encoder_repair:
+            readiness(False)
+        try:
+            models(plan)
+        except BaseException as error:
+            # models() restored every retained file unless it says otherwise.
+            if encoder_repair and not any(note.startswith('Could not restore')
+                                          for note in getattr(error, '__notes__', ())):
+                readiness(True)
+            raise
+        if encoder_repair:
+            readiness(True)
     directory = Path(prepared['directory'])
     rows = prepared_files(prepared)
     present = [row for row in rows if (directory / row['file']).is_file()

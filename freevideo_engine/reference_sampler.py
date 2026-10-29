@@ -20,7 +20,7 @@ from src.models.sequence_layout import layout_from_indices
 from src.inference.render import KEYFRAME_NOISE_AUG
 from src.models.hybrid_transform import iter_hybrids, set_layout
 
-from . import step_grid
+from . import guide_layout, step_grid
 
 # Rebound per Engine request by sampler_for_canvas.
 LATENT_H, LATENT_W = 48, 84
@@ -45,14 +45,15 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         raise ValueError('Ref2VA requires references')
     condition_latents = [row['latent'].to(device) for row in refs if row['kind'] in ('image', 'video')]
     audio_conditions = [row['audio_latent'].to(device) for row in refs if row.get('audio_latent') is not None]
-    references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None) for row in refs]
+    references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None,
+                                  guide=bool(row.get('guide')), guide_index=row.get('guide_index', 0)) for row in refs]
     patch = tuple(transformer.config.patch_size)                    # (1, 2, 2)
     channels = transformer.config.in_channels                       # 24
     frame_h, frame_w = LATENT_H // patch[1], LATENT_W // patch[2]
 
     def make_layout(text_token_tags, references, condition_latents, audio_conditions):
         position_ids, token_tags, video_indices, audio_indices, text_indices, num_condition_rows, num_audio_condition_rows = (
-            MiniMaxH3Ref2VAPrepareLayoutStep.build_ref2va_packed_sequence(
+            guide_layout.build(MiniMaxH3Ref2VAPrepareLayoutStep.build_ref2va_packed_sequence,
                 text_token_tags, references, condition_latents, audio_conditions, num_latent_frames, LATENT_H, LATENT_W, num_audio_latents,
                 patch, AUDIO_CHANNELS, AUDIO_TAG, VIDEO_TAG,
             )
@@ -134,7 +135,8 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             generated_audio = audio_rows[num_audio_condition_rows:]
             keep_video = [i for i, row in enumerate(visual_refs) if row.get('early_steps', step + 1) > step]
             keep_audio = [i for i, row in enumerate(audio_refs) if row.get('early_steps', step + 1) > step]
-            references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None)
+            references = [SimpleNamespace(kind=row['kind'], has_audio=row.get('audio_latent') is not None,
+                                          guide=bool(row.get('guide')), guide_index=row.get('guide_index', 0))
                           for row in value.get('references', [])]
             prompt_embeds = value['prompt_embeds'].to(device=device, dtype=prompt_embeds.dtype)
             previous_audio_condition_rows = num_audio_condition_rows

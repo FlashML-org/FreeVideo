@@ -31,6 +31,7 @@ from .jobs import ACTIVE, DONE, JobError, Jobs, chain_error, library_view
 
 PREFIX = '/freevideo/agent/v1'
 from .whitebox import MAX_VIDEO_BYTES as MAX_WHITEBOX_VIDEO
+from . import whitebox_pick
 from .whitebox_presets import PRESETS, preset as whitebox_preset
 # What an empty wait tells the agent: the conversation is open for as long as the user keeps the page.
 KEEP_WAITING = ('Nothing new yet. The user is still in FreeVideo and may speak at any moment: call this wait '
@@ -46,6 +47,8 @@ RESUMED = ('This conversation is already under way; its last lines are in "befor
            'say nothing until the user speaks, then carry on from there.')
 BEFORE_LINES, BEFORE_TEXT = 8, 600
 # The user started a white-model scene and then spoke: the words may be about it, not a new request.
+# Seconds one question to the local prompt model may take, loading the model included.
+WHITEBOX_ASK_SECONDS = 120
 WHITEBOX_PENDING = ('The user started a white-model scene in this conversation ("whitebox" lists it). If the words ask about '
                     'it or about progress, answer from its status in one sentence (waiting or rendering: still being made; '
                     'failed: say it was not made, and why) and start nothing. A question is never a prompt.')
@@ -2191,24 +2194,63 @@ def register():
     async def whitebox_presets(request):
         return reply(dict(presets=[{k: row[k] for k in ('id', 'name', 'shot', 'prompt')} for row in PRESETS]))
 
+    def whitebox_ask(question, system, answer_format, max_tokens):
+        """One question to the local prompt model; a refusal, a timeout or a lost job is an OSError for pick()."""
+        try:
+            key = port.vlm_start('ask', dict(questions=[dict(text=question, images=[])], format=answer_format,
+                                              max_tokens=max_tokens, system=system))
+        except JobError as error:
+            raise OSError(error.code) from None
+        deadline = time.monotonic() + WHITEBOX_ASK_SECONDS
+        while True:
+            try:
+                state = port.vlm_status(key)
+            except (ValueError, JobError):
+                raise OSError('lost') from None
+            phase = state.get('phase')
+            if phase == 'complete':
+                answers = state.get('answers') or []
+                if len(answers) != 1 or not isinstance(answers[0], dict):
+                    raise OSError('invalid_output')
+                return answers[0]
+            if phase not in ('starting', 'loading', 'rewriting', 'answering', 'finishing', 'cancelling'):
+                raise OSError(str(state.get('error') or phase))
+            if time.monotonic() > deadline:
+                port.vlm_cancel(key)
+                raise TimeoutError('timeout')
+            time.sleep(.5)
+
     @routes.post('/freevideo/agent/whitebox/try')
     @guarded
     async def whitebox_try(request):
         if request.content_type != 'application/json':
             return problem('unsupported_media_type', 'Send JSON', 415)
         value = await body(request)
-        row = whitebox_preset(value.get('preset') if isinstance(value, dict) else None)
-        if row is None:
-            raise JobError('not_found', 'No such ready-made scene')
+        if not isinstance(value, dict):
+            raise JobError('invalid_request', 'Send a JSON object')
         sid = value.get('session')
-        notice = None
         if sid is not None:
             store = work_sessions()
             if store is None or not isinstance(sid, str) or not store.has(chat['client'], sid):
                 raise JobError('not_found', 'No such conversation')
-            # The conversation gets the confirmation card once the page has rendered the scene.
-            notice = dict(question=row['prompt'], summary=row['name'])
-        scene = await asyncio.to_thread(jobs.whitebox.create, row['code'], row['shot'], sid, notice)
+        shot = value.get('shot')
+        if (shot is None) == (value.get('preset') is None):
+            raise JobError('invalid_request', 'Send either a preset or a shot')
+        if shot is not None:
+            # The built-in AI picks a ready-made scene for the shot; when none fits, the video is made as usual.
+            picked = await asyncio.to_thread(whitebox_pick.pick, shot, whitebox_ask)
+            if picked['code'] is None:
+                return reply(dict(scene=None, reason=picked['reason']))
+            row = whitebox_preset(picked['params']['template'])
+            code = picked['code']
+        else:
+            row = whitebox_preset(value.get('preset'))
+            if row is None:
+                raise JobError('not_found', 'No such ready-made scene')
+            shot, code = row['shot'], row['code']
+        # The conversation gets the confirmation card once the page has rendered the scene.
+        notice = dict(question=row['prompt'], summary=row['name']) if sid is not None else None
+        scene = await asyncio.to_thread(jobs.whitebox.create, code, shot, sid, notice)
         return reply(dict(scene, preset=row['id'], name=row['name'], prompt=row['prompt']), 201)
 
     @routes.post('/freevideo/agent/whitebox/{id}/video')

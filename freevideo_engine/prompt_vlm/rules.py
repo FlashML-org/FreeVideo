@@ -547,12 +547,15 @@ def split_instruction(value):
     return f"""A long video is made of {count} parts generated one after another; each part continues where the
 previous one ended. Sort the user's description into what stays the same and what happens in each part:
 {chr(10).join(rows)}
-Shared: who is in the scene and how they look, the place, the lighting, the camera, the style and the
-background sound. Copy these words from the description. Leave out every action, event, change, every [L]
-marker and all talking: how someone speaks belongs next to their marker.
+Shared: only what stays the same in every part: who is in the scene and how they look, the place, the
+lighting, the camera framing, the style and the background sound. Copy these words from the description.
+Leave out every action, movement, event and change, camera moves, anything that only appears later, every
+[L] marker and all talking: how someone speaks belongs next to their marker. Shared never retells the story.
 Part N: only what happens during that part, in the order of the description, so each action happens
 once. Part 1 {opening}; each later part picks up where the previous part ended. When the story is
-shorter than the video, the later parts go on with small, calm, silent actions instead of repeating it.
+shorter than the video, the later parts carry it on with a simple new development that follows from it,
+such as a next small action or a new view of the scene; they never repeat an earlier action and add no
+speech. Every part has something of its own.
 The markers [L1], [L2], ... stand for spoken lines; their speaking time is given. Put each marker in
 exactly one part, in order, where it is said, as "he says [L2]" or "她说 [L2]"; spread them so each
 part's speech fits its seconds. Do not write any other speech: nobody talks, keeps talking or goes
@@ -625,26 +628,97 @@ def spoken(line, words):
     return ('说：' if language(words) in ('Chinese', 'Japanese') else 'says: ') + line
 
 
+def clauses(text):
+    """Sentences, and the comma-separated pieces inside them, in order. A period before a digit (00:04.000)
+    or a letter does not end one."""
+    pieces = re.findall(r'.+?(?:[。！？!?；;，,]+[”"’』」)]*|\.(?![\w])[”"’』」)]*|$)', text, re.S)
+    return [piece.strip() for piece in pieces if piece.strip()]
+
+
+def sentences(body):
+    """Sentences in order; a spoken line [L1] ends one. A period before a digit or a letter does not."""
+    return [piece.strip() for piece in re.findall(
+        r'.+?(?:\[L\d+\][。！？!?.，,]*|[。！？!?]+[”"’』」)]*|\.(?![\w])[”"’』」)]*|$)', ' '.join(body.split()), re.S)
+        if piece.strip()]
+
+
+def wide(words):
+    """Mostly Chinese, Japanese or Korean letters."""
+    letters = re.findall(r'[^\W\d_]', words)
+    return sum(bool(re.match('[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]', c)) for c in letters) * 2 > len(letters)
+
+
+def action(words):
+    """Long enough to be an action rather than a name: six Chinese or Japanese characters, or twelve letters."""
+    return len(words) >= (6 if re.search('[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]', words) else 12)
+
+
+def quiet(body):
+    return '画面继续，没有人说话。' if language(body) == 'Chinese' else 'The scene goes on and nobody speaks.'
+
+
 def validate_split(text, value, *, strict=False):
     """Part texts built from the model's sorting; every spoken line kept once, in order.
 
-    A part with nothing new carries on from the previous one; a misplaced line is placed by speaking time.
-    Only an answer without the expected layout or a usable shared description fails; strict also
-    fails when the model did not place every line once and in order, so it can be asked again.
+    Shared is what every part repeats, so an action in it is played again in every part: words of Shared
+    that also stand in a part, or in the description after its opening sentence, are story and are left
+    out, and a Shared that holds a spoken line or a whole part is the story itself and fails, as does an
+    answer in another language than the description. Strict also fails on such words, on a part with
+    nothing of its own and on lines not placed once and in order, so the model can be asked again;
+    otherwise a misplaced line is placed by speaking time and an empty later part carries on quietly.
     """
     body, sound, lines = part_source(value['text'])
     shared, events = split_answer(text, len(value['seconds']))
-    shared = ' '.join(re.sub(r'\[L\d+\]', '', shared).split())
+    if re.search(r'\[L\d+\]', shared) or wide(body) != wide(shared + ' '.join(events)):
+        raise ValueError('invalid_output')
+    used = set()
+    def once(match):
+        # A marker written twice stays where it first stands.
+        if match.group(0) in used:
+            return ''
+        used.add(match.group(0))
+        return match.group(0)
+    events = [' '.join(re.sub(r'\[L\d+\]', once, event).split()) for event in events]
+    keys = [plain(re.sub(r'\[L\d+\]', '', event)) for event in events]
+    if any(len(event) > 4000 for event in events) or any(key and (key in plain(shared) or key == plain(body))
+                                                         for key in keys):
+        raise ValueError('invalid_output')
+    # Clauses after the opening sentence, each with whether it stands in the first half of the description.
+    told_at, story = 0, []
+    for index, sentence in enumerate(sentences(body)):
+        for piece in clauses(sentence):
+            words = plain(re.sub(r'\[L\d+\]', '', piece))
+            if index and action(words):
+                story.append((words, told_at < len(body) / 2))
+            told_at += len(piece)
     if not 20 <= len(shared) <= 4000:
         raise ValueError('invalid_output')
-    seen, cleaned = {plain(shared), plain(body)}, []
-    for event in events:
-        key = plain(re.sub(r'\[L\d+\]', '', event))
-        if len(event) > 4000 or not key or key in seen or key in plain(shared):
+    def placed_twice(piece):
+        return action(plain(piece)) and any(plain(piece) in key for key in keys)
+    def told(piece):
+        return next((early for words, early in story if action(plain(piece))
+                     and (plain(piece) in words or words in plain(piece))), None)
+    if strict and any(placed_twice(piece) for piece in clauses(shared)):
+        raise ValueError('invalid_output')
+    join = '' if wide(shared) else ' '
+    kept = [piece for piece in clauses(shared) if not placed_twice(piece) and told(piece) is None]
+    # Story the model left in Shared alone: its first half opens the video, the rest is not repeated.
+    opening = [piece for piece in clauses(shared) if not placed_twice(piece) and told(piece)]
+    shared = ' '.join(join.join(kept).split()).rstrip(',，;；')
+    if opening:
+        lead = ' '.join(join.join(opening).split()).rstrip(',，;；。.') + ('。' if join == '' else '.')
+        events[0] = join.join([lead[:1].upper() + lead[1:], events[0]]).strip()
+        keys[0] = plain(re.sub(r'\[L\d+\]', '', events[0]))
+    seen, cleaned = [], []
+    for event, key in zip(events, keys):
+        if any(key in earlier for earlier in seen):
             key = ''
-        seen.add(key)
+        seen.append(key)
         cleaned.append(event if key else ' '.join(re.findall(r'\[L\d+\]', event)))
     events = cleaned
+    if not re.sub(r'\[L\d+\]', '', events[0]).strip() or strict and not all(
+            re.sub(r'\[L\d+\]', '', event).strip() for event in events):
+        raise ValueError('invalid_output')
     placed = [int(n) for event in events for n in re.findall(r'\[L(\d+)\]', event)]
     if placed != list(range(1, len(lines) + 1)) and strict:
         raise ValueError('invalid_output')
@@ -659,14 +733,58 @@ def validate_split(text, value, *, strict=False):
                                                       else spoken(lines[int(m.group(2)) - 1], shared)), words)
     parts = []
     for index, event in enumerate(events):
-        if index == 0 and not re.sub(r'\[[LP]\d+\]', '', event).strip():
-            # Nothing sorted into the opening: it is the user's own description, without later lines.
-            mine = set(re.findall(r'\[[LP](\d+)\]', event))
-            words = re.sub(r'\[L(\d+)\]', lambda m: m.group(0) if m.group(1) in mine else '', body)
-            words = restore(' '.join(words.split()))
-        else:
-            words = ' '.join(([CONTINUE] if index or value.get('continued') else []) + [shared] +
-                             ([restore(event)] if event else []))
+        words = ' '.join(([CONTINUE] if index or value.get('continued') else []) + ([shared] if shared else []) +
+                         [restore(event) if re.sub(r'\[[LP]\d+\]', '', event).strip() else
+                          (restore(event) + ' ' + quiet(body)).strip()])
+        if sound:
+            words = 'integrated_multimodal_description: [Shot 1] ' + words + '\n\n' + sound
+        parts.append(words)
+    return parts
+
+
+def order_split(value):
+    """Part texts when the prompt model cannot sort the description: its sentences in order, each in one part.
+
+    Nothing is repeated, so no part plays the story again; a spoken line ends its sentence. A part between
+    sentences carries on from the previous one without speech. Shot labels and their times describe the whole video and
+    are left out.
+    """
+    body, sound, lines = part_source(value['text'])
+    body = re.sub(r'\[Shot \d+\]\s*|\bAt \d{2}:\d{2}(?:\.\d+)?\s*[:,]?\s*', '', body)
+    pieces = sentences(body)
+    count = len(value['seconds'])
+    if not pieces:
+        raise ValueError('invalid_prompt')
+    owner = []
+    if len(pieces) <= count:
+        # A short story is spread over the video instead of ending early.
+        owner = [index * count // len(pieces) for index in range(len(pieces))]
+    else:
+        # Each part takes the sentences whose middle falls in its share of the video, at least one each.
+        # Spoken lines take time: a sentence weighs as much as its words with the lines put back.
+        sizes = [len(re.sub(r'\[L(\d+)\]', lambda m: lines[int(m.group(1)) - 1], piece)) for piece in pieces]
+        total, ends = sum(sizes), []
+        clock = 0.
+        for length in value['seconds']:
+            clock += length
+            ends.append(clock / sum(value['seconds']))
+        done = 0
+        for index, size in enumerate(sizes):
+            middle = (done + size / 2) / total
+            done += size
+            part = next(n for n, end in enumerate(ends) if middle <= end or n == count - 1)
+            low = owner[-1] if owner else 0
+            # Room for every later part to get one sentence, and no part skipped while sentences remain.
+            part = max(low, count - (len(pieces) - index), min(part, low + 1 if owner else 0))
+            owner.append(part)
+    events = [[] for _ in range(count)]
+    for piece, part in zip(pieces, owner):
+        events[part].append(piece)
+    parts = []
+    for index, event in enumerate(events):
+        # A part with no sentence of its own goes on quietly instead of inventing speech.
+        words = re.sub(r'\[L(\d+)\]', lambda m: lines[int(m.group(1)) - 1], ' '.join(event)) or quiet(body)
+        words = ' '.join(([CONTINUE] if index or value.get('continued') else []) + [words])
         if sound:
             words = 'integrated_multimodal_description: [Shot 1] ' + words + '\n\n' + sound
         parts.append(words)
@@ -727,4 +845,5 @@ def validate_parts(parts, value):
 
 
 SPLIT_RETRY = ('Answer again with exactly one "Shared:" line and the "Part N:" lines, every [L] marker exactly once '
-               'and in order, and no marker in Shared.')
+               'and in order, and no marker in Shared. Shared holds no action, and every part has something of its '
+               'own that no other part repeats.')

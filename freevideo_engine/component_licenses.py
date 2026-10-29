@@ -35,6 +35,13 @@ ENCODER = row('encoder', ('H3 text encoder', 'H3 文本编码器'),
               ('MiniMax H3 Community License Agreement, with the Qwen3-VL Apache License 2.0 notice',
                'MiniMax H3 社区许可协议，附 Qwen3-VL 的 Apache 2.0 声明'),
               'https://huggingface.co/t8star/Vdn-Minimax-H3-Comfy/blob/main/LICENSE')
+DEPTH = row('depth-reference', ('Depth Anything V2 Small code and weights', 'Depth Anything V2 Small 代码和权重'),
+            ('Apache License 2.0', 'Apache 许可证 2.0'),
+            'https://github.com/DepthAnything/Depth-Anything-V2/blob/a561b849ebae10a6f5ef49e26c83cbbcd36c71bf/LICENSE')
+
+
+def depth_license():
+    return local(DEPTH, HERE / 'licenses/Depth-Anything-V2-Apache-2.0.txt')
 # Libraries a runtime may carry, found by file name: versioned Windows names and Linux
 # lib*.so.* alike. A CUDA build of Torch counts for CUDA, so a runtime whose CUDA files
 # are named otherwise still lists it.
@@ -113,12 +120,17 @@ def bundle(root, value):
         # The rest of what the Windows runtime carries (Triton's tools, TinyCC) and where its source is.
         rows.append(row('notices', ('Third-party notices', '第三方组件说明'),
                         ('Copyrights and licenses of the other components', '其余组件的版权和许可'), TEXTS / NOTICES))
+    if any('depth_anything_v2/' in entry['path'].replace('\\', '/')
+           or entry['path'].endswith('depth_anything_v2_vits.pth') for entry in value['files']):
+        rows.append(depth_license())
     return rows
 
 
 def named(url):
     """A row for a licence link from an installation plan; one not listed here shows its site."""
     from urllib.parse import urlsplit
+    if url.startswith('https://huggingface.co/depth-anything/Depth-Anything-V2-Small/'):
+        return depth_license()
     prefixes = ((MODEL, 'https://huggingface.co/OpenVDN/'), (ENCODER, 'https://huggingface.co/t8star/'),
                 *((value, value['link'].rsplit('/', 1)[0] + '/') for value, _ in RUNTIME))
     known = next((value for value, prefix in prefixes if url.startswith(prefix)), None)

@@ -383,6 +383,29 @@ def _low_page_priority(enabled):
             swap(previous)
 
 
+# Converted decoder layers are private copies and charge commit, but they stand
+# in for the clean file pages the streamed reads would otherwise keep cycling
+# through the standby list, so the floor left to the rest of the system is
+# smaller than for views. Admission is re-checked at every layer.
+CONVERTED_RESERVE = int(1.5 * 2**30)
+
+
+def converted_fits(size, reserve=CONVERTED_RESERVE, room=None):
+    """Whether one more converted layer may stay in RAM as a private copy.
+
+    ``room`` is what the request's own RAM budget still allows, when it has one.
+    """
+    from .hardware import cgroup_memory
+    from .system import system_memory
+    if room is not None and room < size:
+        return False
+    available = system_memory()['available_bytes']
+    headroom = cgroup_memory()['reclaimable_available_bytes']
+    if headroom is not None:
+        available = min(available, headroom)
+    return available - size >= reserve
+
+
 def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
     """Whether one more layer may stay in RAM as a read-only file view.
 
@@ -397,13 +420,54 @@ def host_view_fits(size, reserve=HOST_VIEW_RESERVE):
     return available - size >= reserve
 
 
+class ConvertedStore:
+    """Converted decoder layers that outlive one decode, for a resident process.
+
+    Entries belong to one checkpoint identity; a different one empties the store.
+    """
+
+    def __init__(self):
+        self.identity = None
+        self.layers = {}
+        self.lock = threading.Lock()
+
+    def bind(self, identity):
+        with self.lock:
+            if identity != self.identity:
+                self.layers = {}
+                self.identity = identity
+            return self.layers
+
+    def size(self):
+        with self.lock:
+            return sum(value.numel() * value.element_size()
+                       for tensors in list(self.layers.values()) for value in tensors.values())
+
+    def clear(self):
+        with self.lock:
+            self.layers.clear()
+            self.identity = None
+
+
 class SafetensorLayers:
     def __init__(self, paths, prefixes, *, intermediate_dtype=None, direct_read=None, host_views=False,
-                 host_view_reserve=HOST_VIEW_RESERVE):
+                 host_view_reserve=HOST_VIEW_RESERVE, keep_converted=False, converted_room=None,
+                 converted_store=None):
         from .system import windows
+        self.converted_store = None
         self.direct_read = windows() if direct_read is None else direct_read
         self.prefixes = tuple(prefixes)
         self.intermediate_dtype = intermediate_dtype
+        # Layers converted from their checkpoint dtype (the decoder's FP16
+        # Linear values) kept for the layers' next uses. A tile decode streams
+        # the same layers once per clip; converting reads the whole FP32 layer
+        # each time, from disk once the file cache cannot hold them.
+        self.keep_converted = keep_converted and intermediate_dtype is not None
+        self.converted_room = converted_room
+        self.converted = {}
+        self.converted_bytes = 0
+        self.converted_hits = 0
+        self.converted_refused = 0
         self.files = {}
         self.handle_files = {}
         self.keys = {}
@@ -461,6 +525,14 @@ class SafetensorLayers:
                         self.byte_ranges[key] = (8 + length + start, end - start,
                                                 spec['dtype'], tuple(spec['shape']))
             self.check(path)
+        if converted_store is not None and self.keep_converted:
+            # A resident process keeps the layers for its next request; they are
+            # served only while the checkpoint files, layers and dtype are unchanged.
+            self.converted = converted_store.bind(
+                (tuple(sorted((str(path), identity) for path, identity in self.files.items())),
+                 self.prefixes, str(self.intermediate_dtype)))
+            self.converted_bytes = converted_store.size()
+            self.converted_store = converted_store
 
     @staticmethod
     def identity(path):
@@ -701,6 +773,28 @@ class SafetensorLayers:
                             else torch.empty(shape, dtype=dtype))
         return tensors
 
+    def _keep_converted(self, index, tensors, shared):
+        """Keep this layer's converted tensors if RAM has room, as private copies."""
+        size = sum(value.numel() * value.element_size() for value in tensors.values())
+        with self.cache_lock:
+            if index in self.converted:
+                return
+            room = self.converted_room() if self.converted_room is not None else None
+            if (self.converted_room is not None and room is None) or not converted_fits(size, room=room):
+                self.converted_refused += 1
+                return
+            # A tensor that needed no conversion may still map the checkpoint.
+            self.converted[index] = {name: value.clone() if name in shared else value
+                                     for name, value in tensors.items()}
+            self.converted_bytes += size
+
+    def release_converted(self):
+        if self.converted_store is not None:
+            return  # owned by the resident process, which releases it under memory pressure
+        with self.cache_lock:
+            self.converted.clear()
+            self.converted_bytes = 0
+
     def adopt(self, index):
         """Keep a layer that loading just read as views, so its first pass reads no disk.
 
@@ -812,8 +906,16 @@ class SafetensorLayers:
     @contextmanager
     def layer(self, index, layout):
         from contextlib import ExitStack
+        with self.cache_lock:
+            kept = self.converted.get(index)
+            if kept is not None:
+                self.converted_hits += 1
+        if kept is not None:
+            yield dict(kept)
+            return
         prefix = self.prefixes[index]
         tensors = {}
+        shared = set()
         paths = {self.keys[prefix + name] for _, name, *_ in layout}
         for path in paths:
             self.check(path)
@@ -831,6 +933,10 @@ class SafetensorLayers:
                     if self.intermediate_dtype is not None:
                         tensor = tensor.to(dtype=self.intermediate_dtype)
                     tensors[name] = tensor.to(dtype=dtype)
+                    if tensors[name] is tensor:
+                        shared.add(name)
+                if self.keep_converted:
+                    self._keep_converted(index, tensors, shared)
                 yield tensors
         finally:
             tensors.clear()

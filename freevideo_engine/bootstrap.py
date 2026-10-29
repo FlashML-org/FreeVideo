@@ -1579,8 +1579,9 @@ class Installer:
                             if self.ui.verbose or not success else 'Ready')
         if child.returncode:
             from .failure_details import setup_command_failure, environment_python_removed
+            report = args[args.index('--out') + 1] if '--out' in args[:-1] else None
             raise RuntimeError(environment_python_removed(args, getattr(self, 'pythons', {}).values())
-                               + setup_command_failure(label, log, child.returncode))
+                               + setup_command_failure(label, log, child.returncode, report=report))
         return log
 
     def component_tasks(self, uv):

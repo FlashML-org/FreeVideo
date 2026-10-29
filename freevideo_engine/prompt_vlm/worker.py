@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 import traceback
@@ -331,8 +332,8 @@ def load_model(folder, torch, stats, checkpoint):
     return model, device
 
 
-def generate(torch, model, inputs, max_new_tokens, started, on_token):
-    """Greedy decoding; on_token(timing) sees first-output and decode speed."""
+def generate(torch, model, inputs, max_new_tokens, started, on_token, stop=None):
+    """Greedy decoding; on_token(timing) sees first-output and decode speed, and stop(ids) may end it early."""
     from transformers import StoppingCriteria, StoppingCriteriaList
     prompt = inputs.input_ids.shape[-1]
     timing = {}
@@ -351,7 +352,7 @@ def generate(torch, model, inputs, max_new_tokens, started, on_token):
             timing.update(output_tokens=tokens, decode_seconds=now - self.first,
                           decode_tokens_per_second=(tokens - 1) / (now - self.first) if now > self.first else None)
             on_token(timing)
-            return False
+            return bool(stop is not None and tokens % 16 == 0 and stop(input_ids[0, prompt:]))
     with torch.inference_mode():
         output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, use_cache=True,
                                 stopping_criteria=StoppingCriteriaList([Progress()]))
@@ -500,8 +501,17 @@ def split(folder, value, stats):
         if time.monotonic() - shown[0] > .5:
             checkpoint('decode', 'splitting')
             shown[0] = time.monotonic()
-    ids, _ = generate(torch, model, inputs.to(device), limit, loaded, on_token)
-    answers = [processor.decode(ids, skip_special_tokens=True)] if len(ids) < limit else []
+    def ended(ids):
+        # A model that starts the answer over after the last part would repeat it until the limit.
+        text = processor.decode(ids, skip_special_tokens=True)
+        last = re.search(r'(?m)^Part %d:' % count, text)
+        again = last and re.search(r'(?m)^(?:Part \d+:|Shared:)', text[last.end():])
+        return text[:last.end() + again.start()].rstrip() if again else None
+    def answer(ids):
+        text = ended(ids)
+        return [text] if text is not None else [processor.decode(ids, skip_special_tokens=True)] if len(ids) < limit else []
+    ids, _ = generate(torch, model, inputs.to(device), limit, loaded, on_token, ended)
+    answers = answer(ids)
     stats.update(split_seconds=time.monotonic() - loaded, output_tokens=len(ids))
     parts = None
     try:
@@ -512,10 +522,9 @@ def split(folder, value, stats):
             split_user_text(value) + '\n\n' + SPLIT_RETRY)}]}]
         retry_inputs = tokenize(processor, retry)
         if retry_inputs.input_ids.shape[-1] + limit <= stats.get('kv_positions', 10 ** 9):
-            ids, _ = generate(torch, model, retry_inputs.to(device), limit, time.monotonic(), lambda timing: None)
+            ids, _ = generate(torch, model, retry_inputs.to(device), limit, time.monotonic(), lambda timing: None, ended)
             stats.update(split_retry=True, retry_output_tokens=len(ids), split_seconds=time.monotonic() - loaded)
-            if len(ids) < limit:
-                answers.insert(0, processor.decode(ids, skip_special_tokens=True))
+            answers[:0] = answer(ids)
         for strict in (True, False):
             for answer in answers:
                 try:

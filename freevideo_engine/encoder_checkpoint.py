@@ -3,10 +3,80 @@ import json
 import math
 import mmap
 import os
+from pathlib import Path
+import stat
 import struct
 import sys
 import warnings
 import weakref
+
+
+PACKAGE = Path(__file__).resolve().parent
+
+
+def resolve_encoder(folder_paths, name):
+    files = json.loads((PACKAGE / 'model_files.json').read_text(encoding='utf-8'))
+    expected = next((row['bytes'] for row in files if row['file'] == 'text_encoders/' + name), None)
+    path = None
+    copies = {}
+    if expected is not None:
+        folders = folder_paths.get_folder_paths('text_encoders')
+        models_dir = getattr(folder_paths, 'models_dir', None)
+        if models_dir is not None:
+            models_dir = os.path.normcase(os.path.realpath(models_dir))
+            freevideo, bundled = [], []
+            # FreeVideo paths stay preferred after a resident worker registers them.
+            for folder in folders:
+                resolved = os.path.normcase(os.path.realpath(folder))
+                try:
+                    in_models = os.path.commonpath([models_dir, resolved]) == models_dir
+                except ValueError:
+                    in_models = False  # Different Windows drives cannot share a model root.
+                (bundled if in_models else freevideo).append(folder)
+            folders = freevideo + bundled
+        for folder in folders:
+            candidate = os.path.realpath(os.path.join(folder, name))
+            if candidate in copies:
+                continue
+            try:
+                info = Path(candidate).stat()
+            except OSError:
+                continue
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            copies[candidate] = info.st_size
+            if path is None and info.st_size == expected:
+                path = candidate
+    if path is None:
+        path = folder_paths.get_full_path_or_raise('text_encoders', name)
+    checkpoint = dict(state='read_only_mmap' if sys.platform == 'win32' else 'native_mmap',
+                      bytes=Path(path).stat().st_size)
+    if expected is not None:
+        checkpoint.update(expected_bytes=expected, tested_size=checkpoint['bytes'] == expected)
+        selected = os.path.realpath(path)
+        mismatched = sum(size != expected for candidate, size in copies.items() if candidate != selected)
+        if mismatched:
+            checkpoint['mismatched_copies'] = mismatched
+    return path, checkpoint
+
+
+def preflight_encoder(root, name, model_paths=None):
+    """Use the worker's native path configuration without importing its tensor runtime."""
+    previous = list(sys.path)
+    sys.path.insert(0, str(Path(root).resolve()))
+    try:
+        import folder_paths
+        from utils.extra_config import load_extra_path_config
+        if model_paths:
+            load_extra_path_config(str(model_paths))
+        try:
+            return resolve_encoder(folder_paths, name)
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                "ENCODER_MODEL_MISSING: Model in folder 'text_encoders' with filename '%s' not found. "
+                'Please repair the installation. 请修复安装。' % name) from error
+    finally:
+        sys.path[:] = previous
 
 
 def read_only_state_dict(path, dtypes):

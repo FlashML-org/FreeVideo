@@ -35,6 +35,9 @@
 .fv-studio .fv-length-link{display:inline;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--fv-accent);font:inherit;vertical-align:baseline;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 .fv-studio .fv-length-link:hover{background:transparent;color:var(--fv-ink)}
 .fv-studio .fv-length-link:focus-visible{outline:2px solid var(--fv-accent);outline-offset:3px}
+.fv-studio .fv-length-model{margin:12px 0;line-height:1.6}
+.fv-studio .fv-length-model .fv-quiet{display:flex;width:max-content;margin:6px 0 0;min-height:28px;padding:3px 12px;border:1px solid var(--fv-border,#ffffff2e);border-radius:var(--fv-r-sm,6px);color:var(--fv-ink);font:inherit;white-space:nowrap}
+.fv-studio .fv-length-model .fv-quiet:hover:not(:disabled){border-color:var(--fv-muted,#a2abba)}
 .fv-studio .fv-resolution-select{position:relative;min-width:0}
 .fv-studio .fv-resolution-select select{appearance:none;-webkit-appearance:none;color:transparent;padding-right:36px}
 .fv-studio .fv-resolution-select option{color:var(--fv-ink)}
@@ -240,3 +243,20 @@
 /* The queued count follows the part number; when the line is too narrow it wraps out of sight. */
 .fv-studio .fv-chain-position:has(.fv-chain-queued){display:flex;flex-wrap:wrap;column-gap:0;line-height:1.4;max-height:1.4em;overflow:hidden}
 .fv-studio .fv-chain-position .fv-chain-queued{white-space:pre}
+.fv-studio .fv-replace-person{margin-top:0;margin-bottom:12px}
+.fv-studio .fv-replace-person.fv-swap-blocked{cursor:not-allowed}
+.fv-studio .fv-swap-on>.fv-panel{display:none}
+.fv-studio .fv-swap-slots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fv-studio .fv-swap-slots[hidden],.fv-studio .fv-swap-note[hidden],.fv-studio .fv-swap-sound[hidden]{display:none}
+.fv-studio .fv-swap-slot{min-width:0}
+.fv-studio .fv-swap-title{font-size:var(--fv-micro);color:var(--fv-muted);margin:0 0 7px}
+.fv-studio .fv-swap-drop{box-sizing:border-box;width:100%;height:112px;flex-direction:column;gap:2px;padding:6px;border:1px dashed var(--fv-border);background:var(--fv-card);color:var(--fv-muted);border-radius:var(--fv-r-sm);overflow:hidden}
+.fv-studio .fv-swap-drop.fv-swap-filled{border-style:solid;gap:4px}
+.fv-studio .fv-swap-plus{font-size:20px;line-height:1;color:var(--fv-ink)}
+.fv-studio .fv-swap-sub{font-size:var(--fv-micro)}
+.fv-studio .fv-swap-thumb{width:100%;height:68px;min-height:0;object-fit:cover;border-radius:4px;background:#0003}
+.fv-studio .fv-swap-name{max-width:100%;line-height:1.3;flex:none;font-size:var(--fv-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-studio .fv-swap-sound{display:flex;align-items:center;gap:8px;grid-column:1/-1;white-space:nowrap;font-size:var(--fv-small,13px)}
+.fv-studio .fv-swap-sound:has(input:disabled){opacity:.4}
+.fv-studio .fv-swap-note{margin-top:8px}
+@media (max-width:480px){.fv-studio .fv-swap-slots{grid-template-columns:1fr}.fv-studio .fv-swap-source{order:1}.fv-studio .fv-swap-sound{order:2}.fv-studio .fv-swap-person{order:3}}

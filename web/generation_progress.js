@@ -20,6 +20,7 @@ const SUBACTIVITY = {
     gpu: ['Loading the prompt model', '正在加载提示词模型'],
     prompt: ['Processing the prompt', '正在处理提示词'],
     reference: ['Processing reference images and videos', '正在处理参考图片和视频'],
+    depth: ['Extracting depth from the reference video', '正在提取参考视频的深度'],
     load: ['Loading the video model', '正在载入视频模型'],
     first: ['Running the first step (it takes longer the first time a size is used or after an update)',
         '正在进行第一步（首次使用这个尺寸或更新后，第一步要多花一些时间）'],
@@ -38,6 +39,7 @@ const SAMPLING_NAME = {
 };
 const SAMPLING_PASS = {first: ['first pass', '一采'], pass2: ['second pass', '二采'], preview: ['preview', '预览']};
 const SUBACTIVITY_LABELS = {
+    'Extracting depth from the reference video': 'depth',
     'Starting generation process': 'start', 'Starting text encoder': 'libraries',
     'Loading text encoder': 'libraries', 'Preparing text encoder GPU': 'gpu',
     'Reading text encoder weights': 'weights', 'Preparing text encoder model': 'weights',
@@ -96,7 +98,7 @@ const STALL_SECONDS_BY_PHASE = Object.freeze({
     latent_upscale: 180, sample_finalize: 180, decode: 180, save: 180,
     dependencies: 180, recovery: 180, other: 180,
     // A long video's part descriptions: the server waits at most 10 min for the model and
-    // writes for at most 15 min, then falls back to the whole description on its own.
+    // writes for at most 15 min, then splits the description by sentence on its own.
     describe: 1500,
 });
 // Normal stage sentences keep the sampling step or a download's size and speed.
@@ -122,7 +124,7 @@ const LABEL_ACTIVITY = {
         'Preparing prompt data', 'Saving prompt cache', 'Reusing prompt cache', 'Prompt ready',
         'Releasing idle models and checking available memory again'],
     combined: ['Encoding text and images', 'Preparing the prompt and images', 'Preparing text and image tokens'],
-    reference: ['Preparing reference media', 'Retaining and checking input media', 'Encoding input media',
+    reference: ['Extracting depth from the reference video', 'Preparing reference media', 'Retaining and checking input media', 'Encoding input media',
         'Encoding reference media', 'Encoding image/video references', 'Encoding reference audio',
         'Encoding long references', 'Encoding long references in smaller blocks'],
     load: ['Loading the video model', 'Loading video model', 'Loading native MPS model', 'Loading cached video model',
@@ -268,6 +270,11 @@ export function sharedGpuText(shared, t) {
     const percent = Math.min(95, Math.round(mean / 5) * 5);
     return t(`Other programs were using about ${percent}% of the GPU.`,
         `其他程序占用了约 ${percent}% 的显卡。`);
+}
+
+// Replace person: the source video's sound was asked for and could not be put into the video.
+export function keepSoundText(t) {
+    return t('The source video sound could not be kept. The video uses generated sound.', '未能保留源视频声音，成片使用生成的声音。');
 }
 
 export function encoderFilePath(file) {
@@ -773,8 +780,8 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             automatic: compatibilityText,
             notice: trimStatus([...trims.values()], t),
             // A long video whose part descriptions could not be written: the server's own words stay in the report.
-            split: splitFailed === 'model_missing' ? t('Prompt model not installed. Every part uses the same description.', '未安装提示词模型，各段用同一段描述')
-                : t('Every part uses the same description.', '各段用同一段描述')}[level] || (!ended ? progressText : '');
+            split: splitFailed === 'model_missing' ? t('Prompt model not installed. The description is split across the parts by sentence.', '未安装提示词模型，描述按句子顺序分到各段')
+                : t('The description is split across the parts by sentence.', '描述按句子顺序分到各段')}[level] || (!ended ? progressText : '');
         if (status.textContent !== explanation) status.textContent = explanation;
         status.hidden = !explanation; status.dataset.level = level;
         const announcements = [];
