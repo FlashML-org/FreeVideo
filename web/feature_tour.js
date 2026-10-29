@@ -68,6 +68,8 @@ function styles() {
         const css = el('link'); css.rel = 'stylesheet'; css.setAttribute(`data-fv-tour-${name}`, ''); css.href = new URL(`./${name}.css`, import.meta.url).href; document.head.append(css);
     }
 }
+// The guide, its next-step hint and a how-to that is still opening its view all keep automatic tour cards closed.
+const GUIDE_ON_SCREEN = '.fv-guide-layer,.fv-first-start,.fv-next-step,body[data-fv-how-to]';
 export async function openFeatureTour({api = contextFor()?.api, cn = contextFor()?.cn, cards = readyCards(), start, grid = false, trigger = null, version, owner = contextFor()?.dialog, isBusy = contextFor()?.isBusy} = {}) {
     if (!api || opening || active) return false;
     opening = true;
@@ -82,7 +84,7 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
         if (grid) cards = [...cards].sort((a, b) => Number(record.record?.seen.includes(tourKey(a))) - Number(record.record?.seen.includes(tourKey(b))));
         loaded = (await Promise.all(cards.map(c => loadTourCard(c)))).filter(Boolean);
         if (!loaded.length || (owner && (!owner.open || !owner.isConnected || [...document.querySelectorAll('dialog[open]')].at(-1) !== owner))
-            || ((trigger || version) && (isBusy?.() || document.querySelector('.fv-guide-layer,.fv-first-start,.fv-next-step')))) { release(loaded); return false; }
+            || ((trigger || version) && (isBusy?.() || document.querySelector(GUIDE_ON_SCREEN)))) { release(loaded); return false; }
         styles();
         const lang = cn ? 'zh' : 'en', text = TOUR_TEXT[lang];
         const dialog = el('dialog', 'fv-feature-tour'); dialog.lang = cn ? 'zh-CN' : 'en';
@@ -191,7 +193,7 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
 }
 export async function triggerFeatureTour(trigger, options = {}) {
     const context = {...contextFor(), ...options};
-    if (!context.api || context.isBusy?.() || document.querySelector('.fv-guide-layer,.fv-first-start,.fv-next-step')) return false;
+    if (!context.api || context.isBusy?.() || document.querySelector(GUIDE_ON_SCREEN)) return false;
     return openFeatureTour({...context, owner: context.owner || document.querySelector('dialog.fv-editor[open]') || context.dialog, trigger});
 }
 export async function offerVersionTour(context) {

@@ -71,12 +71,17 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Plays one how-to. The editor ones open the Edit view first; the others open the creation panel.
 export async function startHowTo(id, {openWorkspace = async () => (await import('./view_navigation.js')).openCreativeWorkspace()} = {}) {
     const howTo = HOWTOS.find(item => item.id === id);
-    if (!howTo || !await howToAvailable(id) || !await openWorkspace()) return false;
-    if (howTo.view === 'editor') {
-        document.querySelector('dialog.fv-studio [data-view="editor"]')?.click();
-        for (let i = 0; i < 40 && !document.querySelector('dialog.fv-editor[open]'); i++) await wait(100);
-    }
-    await document.fonts.ready;
-    await wait(250);
-    return showHowTo(howTo.steps);
+    if (!howTo || !await howToAvailable(id)) return false;
+    // Tour cards stay closed while a how-to opens its view, as they do over the guide layer.
+    document.body.dataset.fvHowTo = 'opening';
+    try {
+        if (!await openWorkspace()) return false;
+        if (howTo.view === 'editor') {
+            document.querySelector('dialog.fv-studio [data-view="editor"]')?.click();
+            for (let i = 0; i < 40 && !document.querySelector('dialog.fv-editor[open]'); i++) await wait(100);
+        }
+        await document.fonts.ready;
+        await wait(250);
+        return await showHowTo(howTo.steps);
+    } finally { delete document.body.dataset.fvHowTo; }
 }
