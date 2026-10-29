@@ -14,11 +14,23 @@ export class PromptVersions {
     edit(text, restart = false) {
         this.value.edits = (this.value.edits || 0) + 1;
         if (restart && this.value.selected === 'rewritten') {
-            Object.assign(this.value, {original: text, rewritten: '', model: '', selected: 'original', context: '', useOriginal: false});
+            Object.assign(this.value, {original: text, originalModel: '', rewritten: '', model: '', selected: 'original', context: '', useOriginal: false});
             return;
         }
         this.value[this.value.selected] = text;
-        if (this.value.selected === 'original') this.value.context = '';
+        if (this.value.selected === 'original') { this.value.context = ''; if (restart) this.value.originalModel = ''; }
+    }
+    // Text put in the box from elsewhere starts a new scene. `model` is the H3 text it shows in short, sent as written
+    // until the box is cleared or replaced.
+    adopt(text, model = '') {
+        // A version saved in sections before the box showed it in short (an older workflow) keeps its place.
+        if (model && model !== text && model === this.text()) {
+            this.value[this.value.selected] = text;
+            this.value[this.value.selected === 'rewritten' ? 'model' : 'originalModel'] = model;
+            return;
+        }
+        this.edit(text, true);
+        this.value.originalModel = model === text ? '' : model;
     }
     key(context) { return JSON.stringify({text: this.value.original, ...context}); }
     // `model` is the rewrite as the model wrote it, kept when the box shows it in a shorter form.
@@ -410,7 +422,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             if (error?.message === 'cancelled' || cancelling || disposed) { show(errorText({message: 'cancelled'})); return false; }
             useOriginal(error);
         }
-    }, sync() { if (input.value !== versions.text()) changed(); }, dispose() {
+    }, sync(model = '') {
+        // The box was filled from elsewhere (a reused prompt, the node on the canvas): a new scene, not an edit.
+        if (input.value === versions.text() && !model) return;
+        if (waiting) { waiting = false; show(''); }
+        versions.adopt(input.value, model); replacing = false; save(); render();
+    }, dispose() {
         disposed = true; modelListeners.clear(); prestart.dispose(); cancelJob().catch(() => {}); input.removeEventListener('input', changed);
         input.removeEventListener('beforeinput', replace);
         input.removeEventListener('focus', onFocus);

@@ -34,7 +34,7 @@ import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, pass
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
 import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
-import { shownRewrite } from './prompt_sections.js';
+import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
@@ -835,7 +835,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
     requestAssets = createRequestAssets({t, api, request: () => requestAssetsQuery?.()});
     cleanup.push(() => requestAssets.dispose());
     let requestAssetsQuery = null;
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); prompt.disabled = linked(node, 'text'); mention.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); enhancer.sync(); } };
+    // H3 text put in the box from elsewhere (a reused prompt, an older workflow) shows in the same readable form as a
+    // rewrite; the enhancer keeps the model's words and sends them as written until the box is cleared or replaced.
+    const showPrompt = () => {
+        const text = value(node, 'text');
+        const readable = untouched() || linked(node, 'text') ? null : shownRewrite(text, t('en', 'zh'));
+        if (readable !== null) set(node, 'text', readable);
+        if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text'));
+        enhancer.sync(readable === null ? '' : text);
+    };
+    showPrompt();
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { prompt.disabled = linked(node, 'text'); showPrompt(); mention.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
     const promptSection = section(t('Describe your scene', '描述画面'));
@@ -1445,7 +1455,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const reuse = {
         now: saved => {
             const sizeLocked = dimensionsLinked || Boolean(extension.source), lengthLocked = linked(node, 'seconds') || Boolean(extension.source);
-            return {text: prompt.disabled ? saved.text : prompt.value, width: sizeLocked ? saved.width : Number(value(node, 'width')),
+            return {text: prompt.disabled ? saved.text : requestText(prompt.value, node.properties?.freevideo_prompt_versions), width: sizeLocked ? saved.width : Number(value(node, 'width')),
                 height: sizeLocked ? saved.height : Number(value(node, 'height')),
                 frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value)};
         },
@@ -2167,7 +2177,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }
         twoPass.checked = Boolean(source) || value(node, 'two_pass') !== false;
         previewFirst.checked = !source && value(node, 'preview') === true;
-        prompt.value = shown(value(node, 'text')); placeholder(); enhancer.sync();
+        showPrompt(); placeholder();
         // The media panel and the @ list read whether a video is being continued.
         if (mediaNode) window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
         syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input'));

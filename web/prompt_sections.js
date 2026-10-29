@@ -101,7 +101,10 @@ export function modelText(shown, rewrite) {
         .map(([name, body]) => `${name}: ${body}`).join('\n\n');
 }
 
-// The prompt widget's text for the request: a rewrite the box shows in short goes back in the model's sections.
+// The prompt widget's text for the request: text the box shows in short (a rewrite, or H3 text put in the box from
+// elsewhere) goes back in the model's sections while the widget still holds what the box last recorded.
 export function requestText(text, versions) {
-    return versions?.selected === 'rewritten' && versions.model ? modelText(text, versions.model) : text;
+    const side = versions?.selected === 'rewritten' ? 'rewritten' : 'original';
+    const model = side === 'rewritten' ? versions?.model : versions?.originalModel;
+    return model && versions[side] === text ? modelText(text, model) : text;
 }
