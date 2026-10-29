@@ -1,8 +1,8 @@
 import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 
 const COPY = {
-    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示'},
-    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough'},
+    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '试一试'},
+    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Try it'},
 };
 const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -68,7 +68,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
     picker.setAttribute('aria-label', text.contents); mobile.append(picker);
     const article = el('article', 'fv-book-article'); article.tabIndex = 0;
     const navButtons = new Map();
-    let start = null;
+    let start = null, tryButton = null;
     const syncHowTo = () => {
         if (!start) return;
         const button = start, id = dialog.dataset.chapter;
@@ -78,6 +78,11 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
         if (!button.disabled) Promise.resolve(window.freevideoHowTo.available?.(id)).then(ok => {
             if (ok === false && start === button) { button.disabled = true; button.hidden = true; }
         }).catch(() => {});
+    };
+    // "Try it" puts the chapter's example into the creation panel through the same entry as the feature cards.
+    const syncTry = () => {
+        if (!tryButton) return;
+        tryButton.hidden = tryButton.disabled = typeof window.freevideoHowTo?.tryIt !== 'function';
     };
     function select(id) {
         const item = TUTORIAL_CHAPTERS.find(c => c.id === id) || TUTORIAL_CHAPTERS[0];
@@ -103,8 +108,19 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
             dialog.close();
             window.freevideoHowTo?.start(item.id);
         };
-        article.append(steps, start, limits);
+        tryButton = null;
+        if (item.example) {
+            tryButton = el('button', 'fv-book-start fv-book-try', text.tryIt); tryButton.type = 'button';
+            tryButton.onclick = () => {
+                syncTry();
+                if (tryButton.disabled) return;
+                dialog.close();
+                window.freevideoHowTo.tryIt(item.example, {chapter: item.id});
+            };
+        }
+        article.append(steps, ...(tryButton ? [tryButton] : []), start, limits);
         syncHowTo();
+        syncTry();
         article.scrollTop = 0;
     }
     for (const item of TUTORIAL_CHAPTERS) {
@@ -122,12 +138,16 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
     dialog.addEventListener('close', () => {
         dialog.querySelectorAll('video').forEach(video => video.pause());
         window.removeEventListener('focus', syncHowTo);
+        window.removeEventListener('focus', syncTry);
         window.removeEventListener('freevideo-howto-ready', syncHowTo);
+        window.removeEventListener('freevideo-howto-ready', syncTry);
         dialog.remove(); current = null;
         if (restore?.isConnected) restore.focus({preventScroll: true});
     }, {once: true});
     window.addEventListener('focus', syncHowTo);
+    window.addEventListener('focus', syncTry);
     window.addEventListener('freevideo-howto-ready', syncHowTo);
+    window.addEventListener('freevideo-howto-ready', syncTry);
     layout.append(nav, article); dialog.append(header, mobile, layout);
     document.body.append(dialog);
     current = {dialog, select}; select(chapter); dialog.showModal(); close.focus();
