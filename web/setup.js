@@ -4,6 +4,7 @@ import { openCompatibility } from './compatibility.js';
 import { animateDetails, closeDialog } from './motion.js';
 import { createGuideReplayEntry } from './first_run_guide.js';
 import { issueButton } from './issue_button.js';
+import { agentConfirmSettings } from './agent_confirm_settings.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./setup.css', import.meta.url).href;
@@ -165,7 +166,8 @@ export async function openSetup() {
         const {openCreativeWorkspace} = await import('./view_navigation.js');
         return openCreativeWorkspace();
     }});
-    dialog.append(heading, installation, downloads, advanced, guideReplay);
+    const agentConfirm = agentConfirmSettings(t, api);
+    dialog.append(heading, installation, downloads, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
