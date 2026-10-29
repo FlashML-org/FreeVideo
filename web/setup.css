@@ -54,6 +54,7 @@
 }
 .fv-setup :is(input,textarea,select):focus{border-color:var(--fv-accent)}
 .fv-setup input.fv-number{display:inline-block;width:96px;margin:0 6px}
+.fv-setup input.fv-minutes:not([type=checkbox]):not([type=range]){display:inline-block;width:96px;margin:0 6px}
 .fv-setup textarea{resize:vertical;line-height:1.6}
 .fv-setup label.fv-check{display:flex;align-items:flex-start;gap:9px;color:var(--fv-ink)}
 .fv-setup input[type=checkbox]{flex:none;width:16px;height:16px;margin:3px 0 0;accent-color:var(--fv-accent)}

@@ -33,11 +33,11 @@ export function agentConfirmSettings(t, api) {
     const startBox = el('input'); startBox.type = 'checkbox';
     const startLabel = el('label', 'fv-check'); startLabel.append(startBox, el('span', null, t('Ask before an agent starts a film', 'Agent 开拍整部片前先询问')));
     const longBox = el('input'); longBox.type = 'checkbox';
-    const minutesField = el('input', 'fv-number'); minutesField.type = 'number'; minutesField.min = '1'; minutesField.max = String(MAX_MINUTES); minutesField.step = '1';
-    const longLabel = el('label', 'fv-check');
-    longLabel.append(longBox, el('span', null, t('Ask before an agent reshoot that takes more than', 'Agent 重拍预计超过')), minutesField, el('span', null, t('minutes', '分钟时先询问')));
+    const longLabel = el('label', 'fv-check'); longLabel.append(longBox, el('span', null, t('Ask before a long agent reshoot', 'Agent 重拍耗时较长时先询问')));
+    const minutesField = el('input', 'fv-minutes'); minutesField.type = 'number'; minutesField.min = '1'; minutesField.max = String(MAX_MINUTES); minutesField.step = '1';
+    const minutesLabel = el('label', null, t('Long means more than', '超过')); minutesLabel.append(minutesField, el('span', null, t('minutes', '分钟')));
     const status = el('p', 'fv-muted'); status.setAttribute('role', 'status');
-    section.append(startLabel, longLabel, status);
+    section.append(startLabel, longLabel, minutesLabel, status);
 
     let shown = {start: true, long: true, minutes: DEFAULT_MINUTES}, busy = false;
     const render = () => {
@@ -46,7 +46,8 @@ export function agentConfirmSettings(t, api) {
         startBox.disabled = longBox.disabled = busy;
     };
     async function save(patch, next) {
-        busy = true; render(); status.textContent = '';
+        // The control keeps what the user just chose while the save runs; it goes back only if the save fails.
+        busy = true; startBox.disabled = longBox.disabled = minutesField.disabled = true; status.textContent = '';
         try {
             const response = await agentSend(api, 'PUT', PATH, patch);
             if (!response.ok) throw new Error('Not saved');
