@@ -65,6 +65,24 @@ ApplicationWindow {
     readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
     readonly property var availableEarlier: s.update.candidate ? (s.update.candidate_earlier || []) : s.update.engine ? (s.update.engine_earlier || []) : []
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
+    // A source line wraps inside the host, after the host or the route, after a comma, or before
+    // the time, and an English reason also between words. Qt text has no keep-all or nowrap span,
+    // so word joiners and no-break spaces hold the rest.
+    function sourceLines(value) {
+        function hold(part, spaces) {
+            var out = "", prev = ""
+            for (var c of part) {
+                if (prev && prev !== "，" && prev !== "," && (spaces || !/\s/.test(prev + c)))
+                    out += "\u2060"
+                out += spaces && c === " " ? "\u00a0" : c; prev = c
+            }
+            return out
+        }
+        return (value || "").split("\n").map(function (line) {
+            var m = /^(.*? · )([^:：]*([:：]))( ?)(.*?)( ?)([（(][\d.]+ ?(?:秒|s)[)）])?$/.exec(line)
+            return m ? m[1] + hold(m[2], true) + m[4] + hold(m[5], m[3] === "：") + m[6] + hold(m[7] || "", true) : line
+        }).join("\n")
+    }
     function number(n) { return typeof n === "number" && isFinite(n) }
     function fraction(row) { return row && number(row.total) && row.total > 0 && number(row.done) && row.done <= row.total ? row.done / row.total : -1 }
     function gb(n) { return n >= 1e9 ? (n / 1e9).toFixed(1) + "\u00a0GB" : Math.max(1, Math.round(n / 1e6)) + "\u00a0MB" }
@@ -427,7 +445,7 @@ ApplicationWindow {
                         FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
                         // What each download source returned: one short line per source.
-                        FText { objectName: "failureSources"; visible: !!s.failure.sources; text: s.failure.sources || ""; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FText { objectName: "failureSources"; visible: !!s.failure.sources; text: sourceLines(s.failure.sources); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         TextEdit {
                             objectName: "failurePath"; visible: !!s.failure.path; text: s.failure.path || ""
                             readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText
@@ -1443,7 +1461,7 @@ ApplicationWindow {
                         ColumnLayout {
                             id: settingsError; x: 14; y: 14; width: parent.width - 28; spacing: 8
                             FText { text: s.failure.title + "\n" + (s.failure.action || s.failure.detail); color: theme.danger; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
-                            FText { objectName: "settingsFailureSources"; visible: !!s.failure.sources; text: s.failure.sources || ""; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                            FText { objectName: "settingsFailureSources"; visible: !!s.failure.sources; text: sourceLines(s.failure.sources); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             TextEdit {
                                 objectName: "settingsFailurePath"; visible: !!s.failure.path; text: s.failure.path || ""
                                 readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText
