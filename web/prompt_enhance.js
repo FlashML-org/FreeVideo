@@ -1,3 +1,5 @@
+import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
+
 // Original and enhanced prompts are separate workflow drafts, never diagnostics.
 export class PromptVersions {
     constructor(saved, text) {
@@ -91,7 +93,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const statusText = el('span', null, 'fv-enhance-status-text');
     const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');
     meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
-    // The shared "Report a problem" button, handed in by the page (this file loads without imports).
+    // The shared "Report a problem" button, handed in by the page.
     const report = issueButton ? issueButton(t, () => ({where: ['Prompt enhancement', '提示词增强'], message: statusText.textContent})) : document.createElement('span');
     report.hidden = true;
     meter.append(fill); status.append(statusText, meter, report);
@@ -115,6 +117,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     install.append(detail, actions);
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
     let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
+    let retryWait = null;
     let downloadOnly = false, pausing = false, modelReading = null;
     const modelState = {info: null, text: '', busy: false}, modelListeners = new Set();
     function publishModel(change) {
@@ -144,7 +147,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const gib = value => String(Math.round(value / 2 ** 30));
     // Unknown codes keep the server's own reason, without paths, so the user can quote it.
     const reasonOf = error => String(error?.message || '').replace(/[A-Za-z]:[\\/][^\s'"]*|\/[^\s'"]+\/[^\s'"]*/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
-    const errorText = error => ({
+    const errorText = error => isNetworkTypeError(error) ? connectionLostText(t) : ({
         busy: t('Finish the current queue before enhancing this prompt.', '请等待当前队列完成后再改写。'),
         prompt_required: t('Type a prompt first; enhancement rewrites it before generating.', '请先输入提示词，生成前会自动改写。'),
         setup_required: t('Complete FreeVideo installation first.', '请先完成 FreeVideo 安装。'),
@@ -168,7 +171,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     }[error?.message] || t(`Could not enhance the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Retry or switch enhancement off to use the original.`,
         `暂时无法改写${reasonOf(error) ? `。原因：${reasonOf(error)}。` : '，'}请重试，或关闭增强使用原文。`));
     // After falling back the original is already in use, so only the reason and the next useful step are shown.
-    const fallbackText = error => ({
+    const fallbackText = error => isNetworkTypeError(error) ? connectionLostText(t) : ({
         busy: t('The prompt cannot be rewritten while the queue is running.', '队列未完成时不能改写。'),
         setup_required: t('Rewriting is available after FreeVideo installation is complete.', 'FreeVideo 安装完成后才能改写。'),
         model_missing: t('Rewriting needs the optional model. Download it to enable rewriting.', '改写需要可选模型，下载后可用。'),
@@ -223,7 +226,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         return data;
     }
     async function cancelJob() {
-        cancelling = true; consent?.(false); consent = null; render();
+        cancelling = true; retryWait?.(); consent?.(false); consent = null; render();
         const request = running;
         try { if (job) await post('cancel', {job}); }
         catch (error) { if (running === request) { cancelling = false; render(); } throw error; }
@@ -233,11 +236,24 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         if (disposed || cancelling) throw new Error('cancelled');
         const started = await post(action, body); job = started.job;
         const since = performance.now(), elapsed = () => Math.floor((performance.now() - since) / 1000);
+        let failures = 0;
         if (disposed || cancelling) await post('cancel', {job});
         try {
             for (;;) {
                 if (disposed || cancelling) throw new Error('cancelled');
-                const row = await post('status', {job});
+                let row;
+                try { row = await post('status', {job}); failures = 0; }
+                catch (error) {
+                    if (disposed || cancelling) throw new Error('cancelled');
+                    if (!isNetworkTypeError(error) || ++failures > 3) throw error;
+                    // Retry status reads only; submitting again could start a second job.
+                    await new Promise(resolve => {
+                        const done = () => { clearTimeout(timer); retryWait = null; resolve(); };
+                        const timer = setTimeout(done, 1000);
+                        retryWait = done;
+                    });
+                    continue;
+                }
                 if (disposed || cancelling) throw new Error('cancelled');
                 if (row.rewrite_report_id) {
                     node.properties.freevideo_prompt_report = row.rewrite_report_id;
