@@ -4,7 +4,7 @@
   "en": {
     "summary": "An audio clip can be used as is, so the video carries that clip as its sound; a tutorial and feature examples explain each feature with an example that can be filled in directly; after a video finishes, the model stays loaded and the next video starts without reloading.",
     "changes": [
-      "Studio: audio cards offer \"Reference\" or \"Use as is\". With \"Use as is\", the clip is written into the video unchanged as its sound, the picture follows it, and the duration follows the clip and is locked. \"Use as is\" is not available with \"Preview first\" or when extending a video.",
+      "Studio: audio cards offer \"Reference\" or \"Use as is\". With \"Use as is\", the clip is written into the video unchanged as its sound, the picture follows it, and the duration follows the clip and is locked. \"Use as is\" is not available with \"Preview first\" or when extending a video. Replace person downloads its model when it is missing.",
       "Guides: \"Tutorial\" in Settings has chapters with pictures for each feature, and \"Try it\" fills a chapter's example into the creation panel. \"Feature examples\" shows each feature as a looping preview of the input and the result, with \"Use this example\". The examples are shown once on first use, and after an update only the new ones are shown.",
       "Memory and speed: after a video finishes, the model stays on the graphics card and in memory with no time limit, so the next video starts without reloading. It is released when memory runs low, when another program starts using more video memory, or before the picture or prompt model starts; when memory is tight, as much of it is kept as still leaves room for the next request.",
       "Speed: the first video of a new length or size starts sooner, because three of the model's kernels are compiled once for every length, size and head split. Requests with LoRA adapters run faster, because each adapter's input projection is computed once per layer instead of once for every group of attention heads. A slowdown switched on automatically after the app was closed or stopped unexpectedly now lifts after one completed generation instead of three; a slowdown caused by a reported GPU error still needs three.",
@@ -20,7 +20,7 @@
   "zh": {
     "summary": "音频可以原样使用，视频直接以这段音频为声音；新增教程和功能示例，逐项介绍功能，示例可以直接填入；视频完成后模型保留，下一条视频无需重新加载。",
     "changes": [
-      "工作室：音频卡片可选“参考”或“原样使用”。选择“原样使用”时，这段音频原样写入视频作为声音，画面随之生成，时长跟随音频并锁定。开启“先出预览”或接着生成时，不能选择“原样使用”。",
+      "工作室：音频卡片可选“参考”或“原样使用”。选择“原样使用”时，这段音频原样写入视频作为声音，画面随之生成，时长跟随音频并锁定。开启“先出预览”或接着生成时，不能选择“原样使用”。替换人物缺少模型时会自动下载。",
       "指引：设置中的“教程”按功能分章，配有图片，点“试一试”可把该章的示例填入创作面板。“功能示例”逐项以循环预览展示输入和成片，并可点“用这个示例”。首次使用时会依次展示一遍，更新后只展示新增的示例。",
       "内存与速度：视频完成后，模型会一直保留在显卡和内存中，不再有时间限制，下一条视频无需重新加载。内存不足、其他程序占用的显存增加，或图片和提示词模型启动前，模型会被释放；内存紧张时，在保证下一次请求放得下的前提下尽量多保留。",
       "速度：换新的时长或尺寸后，第一条视频更早开始，模型的三个内核对所有时长、尺寸和分头方式只编译一次。挂 LoRA 的请求更快，每个适配器的输入降维乘法每层只算一次，不再每个注意力头组各算一次。应用被意外关闭或结束后自动开启的放慢，完成 1 次生成就解除，不再需要 3 次；显卡报告错误引起的放慢仍需 3 次。",
