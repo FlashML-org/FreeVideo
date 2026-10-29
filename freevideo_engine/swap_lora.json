@@ -2,6 +2,7 @@
   "format": 1,
   "repo": "Alissonerdx/Minimax-H3-ComfyUI",
   "revision": "fd3dde7b3ec1ae4e09fafc46f000bedcc2db219b",
+  "modelscope": "https://www.modelscope.cn/models/BowenXue/FreeVideo-releases/resolve/master/models/swap-lora",
   "license": "BFS Character Swap Community License 1.1",
   "name": "alissonerdx-v1.1.safetensors",
   "files": [

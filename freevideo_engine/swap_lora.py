@@ -6,8 +6,8 @@ the licence text travel with the weights, so the licence file is fetched first
 and the weights land beside it under the name Replace person looks for.
 
 The transfer is the image pack's: the same measured source order, the user's
-download source and proxy settings (Hugging Face or its mirror; a ModelScope
-choice falls back to them), resumable partials and sha256 checks. A copy of the
+download source and proxy settings (Hugging Face, its mirror, or our ModelScope
+copy of the same files), resumable partials and sha256 checks. A copy of the
 LoRA that is already registered, at any depth of the LoRA folders, is used as it
 is and never downloaded again.
 """
@@ -38,12 +38,13 @@ def present(names, spec=None):
 
 
 def remote(spec, row):
-    """One catalog file on the pinned Hugging Face revision, from the official host or its mirror."""
+    """One catalog file on the pinned Hugging Face revision (official host or its mirror) or our ModelScope copy."""
     from .network import source_url
     path = '/%s/resolve/%s/%s' % (spec['repo'], spec['revision'], row['file'])
+    sources = [dict(id=name, url=source_url('models', name) + path) for name in ('official', 'hf-mirror')]
+    sources.append(dict(id='modelscope', url=spec['modelscope'] + '/' + row['target']))
     return dict(repo=spec['repo'], revision=spec['revision'], file=row['file'], family='image',
-                sha256=row['sha256'], bytes=row['bytes'],
-                sources=[dict(id=name, url=source_url('models', name) + path) for name in ('official', 'hf-mirror')])
+                sha256=row['sha256'], bytes=row['bytes'], sources=sources)
 
 
 def _intact(path, row, check):
