@@ -443,9 +443,13 @@ def validation(errors, code='invalid_request'):
 
 
 def text(error):
+    """One line for the Agent; a plain-text error (a failed white-model scene) is its own message."""
+    if not isinstance(error, dict):
+        return str(error).strip() or 'failed: The request did not finish.'
     reason = error.get('reason') or {}
-    message = reason.get('en') or error['message']
-    diagnostic = image_failure(error['code'], error.get('report_id'))['report_id'] if reason else None
-    return '%s: %s%s%s' % (error['code'], message,
+    code = error.get('code') or 'failed'
+    message = reason.get('en') or error.get('message') or ''
+    diagnostic = image_failure(code, error.get('report_id'))['report_id'] if reason else None
+    return '%s: %s%s%s' % (code, message,
                           ' Diagnostic report: /freevideo/image-gen/report/' + diagnostic if diagnostic else '',
                           ' Next: ' + error['next'] if error.get('next') else '')
