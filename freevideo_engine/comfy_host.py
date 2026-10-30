@@ -185,7 +185,7 @@ def _prepare(root, comfy, machine, run, download, repair=False):
                 [uv, 'pip', 'install', '--python', python, *NODE_PACKAGES], environment, 'Install ComfyUI packages'), env)
         except network.PackageSourcesError as error:
             error.log_files = list(package_logs)
-            error.args = (str(error) + '. Attempt logs: ' + ', '.join(package_logs),)
+            error.args = (str(error) + '\nAttempt logs: ' + ', '.join(package_logs),)
             raise
         save(receipt, identity)
     elif repair or not recorded:
@@ -233,7 +233,7 @@ def _prepare(root, comfy, machine, run, download, repair=False):
                 return network.package_command(plan, family, command, env)
             except network.PackageSourcesError as error:
                 error.log_files = list(package_logs)
-                error.args = (str(error) + '. Attempt logs: ' + ', '.join(package_logs),)
+                error.args = (str(error) + '\nAttempt logs: ' + ', '.join(package_logs),)
                 raise
 
         prepared = False

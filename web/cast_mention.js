@@ -125,9 +125,22 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
             const last = ranges[ranges.length - 1];
             if (last && number === last[1] + 1) last[1] = number; else ranges.push([number, number]);
         }
-        return {name: person.name, description: person.description, pictures: ranges, audio: null};
+        return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: null};
     });
     return {text: subjectDefinitions(subjects) + '\n\n' + result, subjects};
+}
+
+// The rewrite of an expanded prompt, written back with the names the box had: <Subject N> becomes "@handle" of the
+// subject expandCast gave that number, and the subject definitions the rewrite opens with are left out, since
+// expandCast writes them again from the cards (their picture numbers follow the media list as it is then). A rewrite
+// with a number that stands for no one is kept as it came.
+export function restoreCast(text, subjects) {
+    text = String(text ?? '');
+    const handles = (Array.isArray(subjects) ? subjects : []).map(subject => subject.handle ?? subject.name);
+    const numbers = [...text.matchAll(/<Subject (\d+)>/g)].map(match => Number(match[1]));
+    if (!numbers.length || numbers.some(number => !handles[number - 1])) return text;
+    const body = text.replace(/^\s*subject_definitions:(?:[\s\S]*?\n\s*\n(?=[a-z_]+:)|[\s\S]*?\n\s*\n|[\s\S]*$)/, '').trim();
+    return (body || text).replace(/<Subject (\d+)>/g, (_, number) => '@' + handles[number - 1]);
 }
 
 // The pictures of a card to put in the media list, as the Agent carries them (agent/drama.py person_pictures): the sheet of

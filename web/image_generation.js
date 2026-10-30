@@ -49,7 +49,7 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
 }
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
-    fitted: info.fitted || null,
+    fitted: info.fitted || null, memory: info.memory || '',
 });
 
 export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThis)) {
@@ -176,6 +176,9 @@ export function imageGenError(code, info, t) {
     };
     const say = (en, zh) => t(...memoryWords([en, zh], info?.unified));
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
+    if (code === 'no_memory' && info?.memory === 'host')
+        return t('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system settings, then try again.',
+            '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。');
     if (code === 'no_memory') {
         // Where it ran out decides what helps: the reference pictures are read at a fixed size,
         // so a smaller canvas does not change that stage.
@@ -211,7 +214,7 @@ export const REPORT_LABELS = Object.freeze({
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, fitted, info} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis)} = {}) {
     host.replaceChildren();
     if (!error || error === 'cancelled') return null;
@@ -222,7 +225,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info}
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, unified: info?.unified_memory}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory}, t);
     card.append(reason); host.append(card);
     if (!report_id) return card;
     const fetchReport = async () => {
@@ -407,9 +410,9 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     let state = {info: null, checking: false, running: false, job: null, fraction: 0, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
-    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: ''}
+    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
         : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '',
-            ...(error.fitted ? {fitted: error.fitted} : {})};
+            memory: error.memory || '', ...(error.fitted ? {fitted: error.fitted} : {})};
     const cancelJob = job => Promise.resolve().then(() => client.cancel(job)).catch(() => {});
     const forget = () => { try { store?.clear(); } catch { /* the job is only not resumed after a reload */ } };
     function scheduleInfo() {
@@ -466,7 +469,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         if (state.running || disposed || !request.prompt.trim() || !state.info?.installed) return;
         const current = ++epoch;
         // A picture that is edited sends its reference images first; there is no job to report on yet.
-        emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
         try {
             const {context, images = [], mask} = await prepare(request, alive);
@@ -489,7 +492,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     function resume({job, context, withImages = false}) {
         if (state.running || disposed || !job || !context) return false;
         const current = ++epoch;
-        emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         track(current, job, context, withImages, true);
         return true;
     }
@@ -497,16 +500,16 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         ++epoch; unschedule(timer); timer = null;
         const job = state.job;
         forget();
-        emit({running: false, job: null, stage: '', fraction: 0, error: '', report_id: null, waiting: '', fitted: null});
+        emit({running: false, job: null, stage: '', fraction: 0, error: '', report_id: null, memory: '', waiting: '', fitted: null});
         return job ? cancelJob(job) : Promise.resolve();
     }
     // Start or pause the download of the image models; the reply is the new state, then polling follows it.
     async function pack(action) {
-        try { const info = await (action === 'cancel' ? client.packCancel() : client.packInstall()); if (!disposed) emit({info, error: '', report_id: null}); }
+        try { const info = await (action === 'cancel' ? client.packCancel() : client.packInstall()); if (!disposed) emit({info, error: '', report_id: null, memory: ''}); }
         catch (error) { if (!disposed) emit(failed(error)); }
         finally { if (!disposed) scheduleInfo(); }
     }
-    return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null}), state: () => state,
+    return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null, memory: ''}), state: () => state,
         dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; return cancel(); }};
 }
 
@@ -652,13 +655,17 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const list = el('div', null, 'fv-ie-menu-list');
         menu.append(summary, list);
         // Choosing several: the ticked files, the reason each one that stayed gives, and the two-step confirm of the delete button.
-        let selecting = false, armed = null, failed = false;
+        let selecting = false, armed = null, failed = false, unopened = null;
         const chosen = new Set(), stayed = new Map();
         const reasons = {busy: t('In use', '被占用'), missing: t('Already gone', '已不存在'), invalid: t('Not deleted', '未删除')};
         const disarm = () => { clearTimeout(armed); armed = null; };
         const draw = () => {
             list.replaceChildren();
             if (failed) list.append(el('div', t('Could not delete this image', '无法删除这张图片'), 'fv-ie-menu-label'));
+            if (unopened) {
+                list.append(el('div', t('The folder could not be opened automatically. Open it in a file manager.', '无法自动打开该文件夹，请在文件管理器中手动打开'), 'fv-ie-menu-label'));
+                if (unopened.folder) list.append(el('div', unopened.folder, 'fv-ie-menu-label fv-ie-gen-history-path'));
+            }
             if (!past.length) { list.append(el('div', t('No images generated yet', '还没有生成过图片'), 'fv-ie-menu-label')); return; }
             const grid = el('div', null, 'fv-ie-gen-history-grid');
             for (const item of past) {
@@ -732,14 +739,17 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             } else {
                 foot.append(button(t('Select', '选择'), null, () => { selecting = true; failed = false; draw(); }, 'fv-ie-menu-item'));
                 if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname))
-                    foot.append(button(t('Open folder', '打开文件夹'), null, () => { void client.historyOpen().catch(() => {}); }, 'fv-ie-menu-item'));
+                    foot.append(button(t('Open folder', '打开文件夹'), null, async () => {
+                        let answer; try { answer = await client.historyOpen(); } catch { answer = {opened: false}; }
+                        unopened = answer.opened === false ? {folder: answer.folder || ''} : null; draw();
+                    }, 'fv-ie-menu-item'));
             }
             list.append(foot);
         };
         menu.ontoggle = async () => {
             if (!menu.open) return;
             try { past = await client.history(); } catch { past = []; }
-            selecting = false; chosen.clear(); stayed.clear(); disarm(); failed = false;
+            selecting = false; chosen.clear(); stayed.clear(); disarm(); failed = false; unopened = null;
             draw();
             // Open upward when the list does not fit below, and keep it inside the window.
             list.classList.remove('fv-ie-gen-history-up'); list.style.right = '';
@@ -780,7 +790,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         action.hidden = !!missing && !pack;
         const percent = Math.floor(state.fraction * 100) + '%';
         if (state.error && !promptRequired) {
-            const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}`;
+            const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;
             if (mounted.failureKey !== failureKey) {
                 renderImageFailure(note, state, t, {productVersion, fetchApi});
                 mounted.failureKey = failureKey;

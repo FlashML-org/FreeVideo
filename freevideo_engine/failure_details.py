@@ -237,6 +237,12 @@ PLACE_RULES = (
       'Choose a folder on an APFS or Mac OS Extended disk.',
       '它不能安装 FreeVideo。'
       '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk that does not support file links', 'disk-format',
+     ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
+     ("It does not support the file operations that FreeVideo's Python environment needs. "
+      "Choose a folder on the Mac's built-in disk.",
+      '它不能安装 FreeVideo。'
+      '请选择 Mac 内置硬盘上的文件夹。')),
     (r'The installation folder is on a disk that is not connected', 'disk-missing',
      ('The disk is not connected', '这块硬盘没有连接'),
      ('Connect the disk that holds the installation folder, then check again, or choose another folder.',
@@ -361,8 +367,105 @@ def _without_ready_curl_diagnostics(text):
     return ''.join(lines)
 
 
-def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                     unavailable='none'):
+# Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
+UNSUPPORTED_VENDOR = (
+    ('FreeVideo supports NVIDIA graphics cards only',
+     'Installing a driver cannot change this. Use FreeVideo on a computer with an NVIDIA graphics card.'),
+    ('FreeVideo 只支持 NVIDIA 显卡',
+     '安装驱动无法改变这一点，请在装有 NVIDIA 显卡的电脑上使用 FreeVideo。'))
+
+
+# What each download source returned, as one short line per host and route on
+# the failure card. The full lines stay in the copied error and the report.
+SOURCE_REASONS = {
+    'timeout': ('Connection timed out', '连接超时'),
+    'dns': ('Host name could not be resolved', '无法解析域名'),
+    'refused': ('Connection refused', '连接被拒绝'),
+    'connect': ('Could not connect', '无法连接'),
+    'reset': ('Connection interrupted', '连接中断'),
+    'unreachable': ('Network unreachable', '网络不可达'),
+    'proxy': ('Proxy connection failed', '代理连接失败'),
+    'tls': ('Certificate check failed', '证书验证失败'),
+    'http': ('Server returned HTTP {status}', '服务器返回 HTTP {status}'),
+    'disk-full': ('Not enough disk space', '磁盘空间不足'),
+    'write': ('Could not write the file', '无法写入文件'),
+    'access-denied': ('Access denied, possibly by security software', '访问被拒绝，可能被安全软件拦截'),
+    'no-progress': ('No data received for a long time', '长时间没有收到数据'),
+    'slow': ('Download too slow', '下载速度过低'),
+    'integrity': ('File checksum did not match', '文件校验不符'),
+    'size': ('File size did not match', '文件大小不符'),
+    'no-resume': ('Resume not supported', '不支持续传'),
+    'faster-source': ('Dropped for a faster source', '速度较慢，已换用其他源'),
+    'redirect': ('Redirect refused', '重定向被拒绝'),
+    'exit': ('Exit code {code}', '退出代码 {code}'),
+    'other': ('Other error', '其他错误'),
+}
+SOURCE_ROUTES = {'direct': ('direct', '直连'), 'inherited': ('current connection', '当前连接')}
+SOURCE_CUSTOM = ('custom source', '自定义源')
+SOURCE_CARD_LINES = 6
+_SOURCE_LINE = re.compile(r'^\s*- (?P<source>[^/\s]+)/(?P<route>[^\s:(]+)(?: \((?P<host>[^)\s]*)\))?: '
+                          r'(?P<cls>[\w-]+)(?P<rest>.*)$')
+
+
+def _sources_block(text):
+    """(text without the "Sources tried" block, its source lines)."""
+    found = re.search(r'\nSources tried(?: for [^\n:]{1,80})?:\n', text)
+    if not found:
+        return text, []
+    head, tail = text[:found.start()], text[found.end():]
+    lines = tail.split('\n')
+    count = next((i for i, line in enumerate(lines) if not line.startswith('  - ')), len(lines))
+    rest = '\n'.join(lines[count:])
+    return head + ('\n' + rest if rest.strip() else ''), lines[:count]
+
+
+def source_lines(lines, zh=False):
+    """One short line per host and route: what failed and how long it took."""
+    rows = {}
+    for line in lines:
+        found = _SOURCE_LINE.match(line)
+        if not found:
+            continue
+        rest = found['rest']
+        status = re.search(r'\bHTTP (\d{3})\b|\b(?:error|status)\D{0,4}([1-5]\d\d)\b', rest)
+        code = re.search(r'\bexit (-?\d+)\b|\(exit code (-?\d+)\)|\bcurl-(\d+)\b', rest)
+        seconds = re.search(r', (\d+(?:\.\d+)?) s(?::|$)', rest)
+        name = found['cls'] if found['cls'] in SOURCE_REASONS else 'other'
+        if name == 'http' and not status:
+            name = 'other'
+        if name == 'exit' and not code:
+            name = 'other'
+        reason = SOURCE_REASONS[name][zh].format(status=status and (status[1] or status[2]),
+                                                 code=code and next(filter(None, code.groups()), ''))
+        host = found['host'] or (SOURCE_CUSTOM[zh] if found['source'].startswith('user') else found['source'])
+        route = SOURCE_ROUTES.get(found['route'], (found['route'],) * 2)[zh]
+        if seconds:
+            value = float(seconds[1])
+            value = ('%.1f' % value) if value < 10 else '%d' % round(value)
+            reason += ('（%s 秒）' if zh else ' (%s s)') % value
+        rows.pop((host, route), None)
+        rows[host, route] = ('%s · %s：%s' if zh else '%s · %s: %s') % (host, route, reason)
+    return list(rows.values())[-SOURCE_CARD_LINES:]
+
+
+def launcher_failure(value, *, zh=False, **options):
+    """Short guidance; a download that failed on every source also lists what each source returned."""
+    text, lines = _sources_block(str(value)) if value else ('', [])
+    if not lines:
+        return _launcher_failure(value, zh=zh, **options)
+    # The source lines never change which guidance applies, except a full disk:
+    # no other source can help, so the card keeps the disk space guidance.
+    if any((found := _SOURCE_LINE.match(line)) and found['cls'] == 'disk-full' for line in lines):
+        text += '\nNot enough disk space'
+    failure = _launcher_failure(text, zh=zh, **options)
+    sources = source_lines(lines, zh)
+    if sources:
+        failure['sources'] = '\n'.join(sources)
+    return failure
+
+
+def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
+                      unavailable='none'):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
@@ -556,12 +659,16 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
         (r'NVIDIA driver/nvidia-smi is missing\.', 'gpu-driver-missing',
          ('No NVIDIA driver was found', '未找到 NVIDIA 显卡驱动'),
          ('If this computer has an NVIDIA graphics card, install NVIDIA driver 580 or newer, '
-          'restart the computer, then click Retry installation.',
+          'restart the computer, then click "Retry installation".',
           '如果这台电脑有 NVIDIA 显卡，请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
           '请将 NVIDIA 显卡驱动更新到 580 或更新版本，重启电脑后点击“重试安装”。')),
+        (r"GPU detection failed\. nvidia-smi: .*(?:exit status 9|couldn.t communicate)|cuInit failed", 'gpu-driver-not-loaded',
+         ('The NVIDIA driver is installed but not running', 'NVIDIA 显卡驱动已安装但未运行'),
+         ('Restart the computer, then click "Retry installation". If it still fails after the restart, reinstall the NVIDIA driver.',
+          '请重启电脑后点击“重试安装”。重启后仍然失败时，请重新安装 NVIDIA 显卡驱动。')),
         (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
          ('This GPU is not supported', '这张显卡不受支持'),
          ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
@@ -626,7 +733,7 @@ def launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_rep
         (ENVIRONMENT_PYTHON_REMOVED, 'environment-python-removed',
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
-          'then click Retry installation.',
+          'then click "Retry installation".',
           '可能被安全软件隔离了。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
         # Windows refuses PyTorch's unsigned DLLs under Smart App Control; reinstalling changes nothing.
         (r'WinError 4551|Application Control policy has blocked', 'app-control',

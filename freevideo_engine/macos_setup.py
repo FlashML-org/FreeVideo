@@ -12,7 +12,13 @@ class Installer(SharedInstaller):
         super().__init__(value, ui)
 
     def device_environment(self, env):
-        return native.environment(self.root, env)
+        env = native.environment(self.root, env)
+        links = native.probe_links(self.root)
+        if links == 'blocked':
+            raise RuntimeError(native.LOCATION_UNSUPPORTED)
+        if links == 'copy':
+            env['UV_LINK_MODE'] = 'copy'
+        return env
 
     def device_configuration(self):
         return dict(device_backend='mps', device_identity=self.plan['inventory']['selected_device'])

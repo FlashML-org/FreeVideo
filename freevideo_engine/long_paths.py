@@ -232,3 +232,35 @@ def plain_errors(function):
 def path_chars(path):
     """Windows budgets count UTF-16 code units (a non-BMP character uses two)."""
     return len(str(path).encode('utf-16-le', errors='surrogatepass')) // 2
+
+
+ABSOLUTE_PATH = re.compile(
+    # The preceding character guard prevents URL slashes from being treated
+    # as local paths while still matching a drive path after prose such as
+    # ``at C:\\Users\\...`` or a quoted traceback location.  A slash followed by
+    # whitespace is prose (``8.0 / SM80``), not the start of a path.
+    # Consume explicit relative paths too, spaces included, so an interior
+    # slash (after e.g. a hyphen) cannot subsequently be mistaken for an
+    # absolute path. Only our own ``./setup.sh`` command stays as written.
+    r'''(?<![A-Za-z0-9_:/])(?:(?P<command>\./setup\.sh(?![\w/\\-]|\.\w))|\.{1,2}/[^"'<>;\r\n,\)\]}]*|'''
+    r'''(?:(?:[A-Za-z]:[\\/])|(?:\\\\[^\\/\s"'<>]+[\\/])|/(?![/\s]))[^"'<>;\r\n,\)\]}]*)''')
+
+
+def path_placeholder(value):
+    """``<PATH>/`` and the last component: no usernames, drives, shares or parent directories."""
+    normalized = str(value).rstrip('\\/')
+    name = re.split(r'[\\/]', normalized)[-1]
+    return '<PATH>/' + name if name else '<PATH>'
+
+
+def path_match(match):
+    """Replacement for an ``ABSOLUTE_PATH`` match. Spaces, UNC shares and ``\\\\?\\`` prefixes count."""
+    value = match.group(0)
+    if match.group('command') is not None:
+        return value
+    # Text is often redacted again (a worker's log inside a report, the
+    # launcher terminal).  The ``/name`` after an earlier ``<PATH>`` is that
+    # pass's own output, unless it still has a directory in it.
+    if match.string.endswith('<PATH>', 0, match.start()) and not re.search(r'[\\/]', value[1:].rstrip('\\/')):
+        return value
+    return path_placeholder(value)

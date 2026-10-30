@@ -52,13 +52,17 @@ def commit_exhausted(error):
 
     Rust-backed file readers raise a plain OSError carrying only the localized
     system message plus "(os error 1455)", so the numeric attributes are unset.
+    A different numeric code wins over the text, which may be a file name.
     """
     seen = set()
     while isinstance(error, BaseException) and id(error) not in seen:
         seen.add(id(error))
-        if getattr(error, 'winerror', None) == 1455 or re.search(r'(?:os error|winerror)\s*1455\b', str(error), re.I):
+        code = getattr(error, 'winerror', None)
+        if code == 1455:
             return True
-        error = error.__cause__ or error.__context__
+        if code is None and re.search(r'(?:os error|winerror)\s*1455\b', str(error), re.I):
+            return True
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
     return False
 
 
@@ -770,6 +774,12 @@ def planning(rows):
         item['idle_cache']['accounting'] = numbers(idle.get('ram_accounting'),
             ('raw_available_bytes', 'credited_available_bytes', 'pinned_model_bytes',
              'reused_encoder_working_bytes'))
+        kernels = mapping(row.get('attention_backends'))
+        if kernels:
+            # Whether the attention choice rested on this GPU's own kernel checks.
+            item['attention_backends'] = dict(kernel_receipt=name(kernels.get('kernel_receipt')),
+                offered=[value for value in sequence(kernels.get('offered')) if name(value)][:8],
+                withheld=sorted(value for value in mapping(kernels.get('withheld')) if name(value))[:8])
         result.append(item)
     return result
 

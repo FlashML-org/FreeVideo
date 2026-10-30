@@ -74,49 +74,111 @@ def readiness(rows):
                                           if row.get('status') != 'complete' and row['backend'] != 'linear'])
 
 
-def matching_receipt(hardware, discovered=None):
-    """The saved kernel checks when they still match this GPU, driver and packages; else None."""
-    discovered = set(installed_backends() if discovered is None else discovered)
-    expected = identity(hardware)
-    # Normalize tuples exactly as on disk.
-    expected = json.loads(json.dumps(expected))
+def _saved_receipt():
     try:
         receipt = json.loads(receipt_path().read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    return receipt if isinstance(receipt, dict) else None
+
+
+def _expected_identity(hardware):
+    # Normalize tuples exactly as on disk.
+    return json.loads(json.dumps(identity(hardware)))
+
+
+def _matching(receipt, expected, discovered):
+    try:
         if receipt['identity'] != expected or set(receipt['installed_attention_packages']) != discovered:
-            receipt = None
-        elif (not isinstance(receipt.get('kernel_probes'), list)
-              or not discovered | {'linear'} <= {row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)}
-                 <= discovered | set(LINEAR_PROBES)
-              or len(receipt['kernel_probes']) != len({row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)})
-              or any(not isinstance(row, dict) or row.get('status') not in ('complete', 'error')
-                     for row in receipt['kernel_probes'])):
-            receipt = None
-    except (OSError, ValueError, KeyError, TypeError):
-        receipt = None
+            return None
+        if (not isinstance(receipt.get('kernel_probes'), list)
+                or not discovered | {'linear'} <= {row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)}
+                   <= discovered | set(LINEAR_PROBES)
+                or len(receipt['kernel_probes']) != len({row.get('backend') for row in receipt['kernel_probes'] if isinstance(row, dict)})
+                or any(not isinstance(row, dict) or row.get('status') not in ('complete', 'error')
+                       for row in receipt['kernel_probes'])):
+            return None
+    except (KeyError, TypeError):
+        return None
     return receipt
 
 
-def available_backends(hardware, *, discovered=None, probe_missing=True):
+def matching_receipt(hardware, discovered=None):
+    """The saved kernel checks when they still match this GPU, driver and packages; else None."""
+    discovered = set(installed_backends() if discovered is None else discovered)
+    receipt = _saved_receipt()
+    return None if receipt is None else _matching(receipt, _expected_identity(hardware), discovered)
+
+
+# Compute capabilities SageAttention 2.x has kernels for (its sageattn dispatch);
+# on any other GPU its first call raises "Unsupported CUDA architecture".
+SAGE2_CAPABILITIES = frozenset({(8, 0), (8, 6), (8, 9), (9, 0), (12, 0), (12, 1)})
+
+
+def withheld_without_receipt(hardware, discovered, receipt=None, expected=None):
+    """Installed backends known not to run here although this GPU has no matching checks.
+
+    Planning without a matching receipt offers what is installed, so the first
+    request after a driver or FreeVideo update, or on another card in the same
+    machine, keeps the backend its checks chose before. Two kinds of backend
+    are left out: one whose package has no kernels for this compute capability,
+    and one whose last check failed on the same architecture with the same
+    packages (only the card, driver or FreeVideo's own files differ). Returns
+    {backend: reason}.
+    """
+    withheld = {}
+    capability = tuple(hardware.capability) if isinstance(hardware.capability, (tuple, list)) else None
+    if 'sage2' in discovered and capability not in SAGE2_CAPABILITIES:
+        withheld['sage2'] = 'no SageAttention 2 kernels for compute capability %s' % (
+            '.'.join(map(str, capability)) if capability else 'unknown')
+    try:
+        saved = receipt['identity']
+        expected = _expected_identity(hardware) if expected is None else expected
+        comparable = (all(saved['hardware'][key] == expected['hardware'][key]
+                          for key in ('system', 'capability', 'torch_version', 'cuda_version'))
+                      and saved['packages'] == expected['packages']
+                      and saved.get('fa4_overlay_sha256') == expected['fa4_overlay_sha256']
+                      and set(receipt['installed_attention_packages']) == discovered)
+        if comparable:
+            for row in receipt['kernel_probes']:
+                if isinstance(row, dict) and row.get('status') == 'error' and row.get('backend') in discovered:
+                    withheld.setdefault(row['backend'], 'failed its last check on this architecture with these packages')
+    except (KeyError, TypeError, AttributeError):
+        pass
+    return withheld
+
+
+def available_backends(hardware, *, discovered=None, probe_missing=True, evidence=None):
     """Reuse matching checks; re-probe after a GPU, driver or package/code change.
 
-    Read-only planning may opt out of probing. Execution callers never turn an
-    unavailable requested backend into another backend or a math SDPA kernel.
+    Read-only planning may opt out of probing; it then offers the installed
+    backends except those known not to run here (``withheld_without_receipt``).
+    Execution callers never turn an unavailable requested backend into another
+    backend or a math SDPA kernel. ``evidence``, a dict, receives which checks
+    the answer rests on.
     """
     discovered = set(installed_backends() if discovered is None else discovered)
-    receipt = matching_receipt(hardware, discovered)
+    saved = _saved_receipt()
+    expected = _expected_identity(hardware) if saved is not None else None
+    receipt = None if saved is None else _matching(saved, expected, discovered)
     if receipt is not None and probe_missing and needs_path_recheck(receipt):
         # They failed while the installation ran from another folder, and compilers take some
         # paths only as that folder spells them. What passed is kept wherever it ran from.
         receipt = None
     if receipt is None:
         if not probe_missing:
-            return discovered
+            withheld = withheld_without_receipt(hardware, discovered, saved, expected)
+            if evidence is not None:
+                evidence.update(kernel_receipt='unmatched' if saved is not None else 'missing', withheld=withheld)
+            return discovered - set(withheld)
         from .doctor import doctor
         receipt = doctor(probe=True, hardware=hardware, backends=discovered)
     checked = readiness(receipt['kernel_probes'])
     if not checked['ready']:
         raise RuntimeError('GPU kernel checks did not find a working linear and attention path. '
                            'Run freevideo doctor --probe; details: ' + str(receipt_path()))
+    if evidence is not None:
+        evidence.update(kernel_receipt='matching', withheld={})
     return discovered.intersection(checked['usable_attention_backends'])
 
 

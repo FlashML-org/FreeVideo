@@ -1,6 +1,10 @@
 /* One token table for the web views, mirroring freevideo_engine/branding.py so
    a control looks the same in the launcher and in ComfyUI. Scope the tokens to
    our own views; never change ComfyUI's theme. */
+/* Curly single quotes from a Latin face where Segoe UI is missing: the CJK faces after it draw them full width.
+   Only Linux faces are named, so other systems keep their own quotes. */
+@font-face{font-family:"FreeVideo Quotes";font-weight:100 500;unicode-range:U+2018-2019;src:local("Noto Sans Regular"),local("NotoSans-Regular"),local("DejaVu Sans"),local("Liberation Sans")}
+@font-face{font-family:"FreeVideo Quotes";font-weight:600 900;unicode-range:U+2018-2019;src:local("Noto Sans Bold"),local("NotoSans-Bold"),local("DejaVu Sans Bold"),local("Liberation Sans Bold")}
 :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
   /* Surfaces, from the backdrop up to a hovered control; mirrors branding.py. */
   --fv-bg:#111720;--fv-canvas:#161e29;--fv-card:#1a222e;--fv-raised:#212a37;--fv-hover:#2a3341;
@@ -24,7 +28,7 @@
   --fv-ease-out:cubic-bezier(.22,1,.36,1);--fv-ease:cubic-bezier(.4,0,.2,1);
   --fv-quick:.14s;--fv-base:.24s;--fv-slow:.42s;
   --fv-step:4px;
-  --fv-font:"Segoe UI","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
+  --fv-font:"Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
   font-family:var(--fv-font);
   color-scheme:dark;
 }

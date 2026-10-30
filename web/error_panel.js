@@ -201,10 +201,12 @@ function reportRedactor(detail, context) {
     for (const node of list(context.graph?._nodes)) {
         remember(node.properties?.freevideo_prompt_versions?.original);
         remember(node.properties?.freevideo_prompt_versions?.rewritten);
+        remember(node.properties?.freevideo_prompt_versions?.model);
         for (const widget of list(node.widgets)) remember(widget.value);
     }
     remember(context.node?.properties?.freevideo_prompt_versions?.original);
     remember(context.node?.properties?.freevideo_prompt_versions?.rewritten);
+    remember(context.node?.properties?.freevideo_prompt_versions?.model);
     for (const widget of list(context.node?.widgets)) remember(widget.value);
     for (const node of Object.values(record(detail?.response?.node_errors ?? detail?.node_errors)))
         for (const reason of list(node?.errors)) remember(reason?.extra_info?.received_value);
@@ -234,8 +236,12 @@ function reportRedactor(detail, context) {
             .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ADDRESS REMOVED>');
         // Keep traceback source basenames and line numbers, never drive names,
         // home directories or private media filenames. Spaces in paths count.
-        text = text.replace(/(^|[^A-Za-z0-9_:/<>])(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path) => {
+        // The engine may have redacted the text already: what follows its own
+        // <PATH> marker stays when it is one name, and goes when it is the rest
+        // of a path (a user name with a space, a share).
+        text = text.replace(/(^|[^A-Za-z0-9_:/<])(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path, offset, whole) => {
             if (path === './setup.sh') return prefix + path;
+            if (prefix === '>' && whole.slice(0, offset + 1).endsWith('<PATH>') && !/[\\/]/.test(path.slice(1))) return prefix + path;
             const source = path.replace(/\\/g, '/').match(/\/([A-Za-z0-9_.-]+\.(?:py|js|ts|mjs))(?=[:\s]|$)/);
             return prefix + (source ? '<PATH>/' + source[1] + path.slice(path.indexOf(source[1]) + source[1].length) : '<PATH REMOVED>');
         });
@@ -318,7 +324,8 @@ export function createErrorReport(detail, context = {}) {
 // known: a report's known_error. Pass null when the report has none, so an
 // echoed sentence in its redacted text is not taken for the engine's message.
 export function failureAdvice(value, t, known = knownError(value)) {
-    const text = String(value).slice(0, 65536);
+    // What each download source returned never changes which advice applies.
+    const text = String(value).slice(0, 65536).replace(/\nSources tried(?: for [^\n:]{1,80})?:\n(?:  - [^\n]*(?:\n|$))*/g, '\n');
     const row = (kind, title, summary, action) => ({kind, title: t(...title), summary: t(...summary), action: t(...action)});
     if (known?.kind === 'sampling-table') {
         // Names and plan matching follow sampling_effort.js; metadata carries no user text.

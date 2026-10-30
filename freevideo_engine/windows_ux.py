@@ -15,6 +15,31 @@ def taskbar_identity():
         function('FlashML.FreeVideo.Launcher')
 
 
+def folder_opener():
+    """The command that shows a folder in the file manager, or None when the system has none."""
+    import shutil
+    for name, extra in (('xdg-open', []), ('gio', ['open'])):
+        found = shutil.which(name)
+        if found:
+            return [found] + extra
+    return None
+
+
+def open_folder(folder):
+    """Show a folder in the file manager on Linux; False when no opener exists or it cannot start."""
+    import subprocess
+    from .linux_bundle import child_environment
+    command = folder_opener()
+    if not command:
+        return False
+    try:
+        subprocess.Popen(command + [str(folder)], env=child_environment(), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return False
+    return True
+
+
 def open_browser(url):
     """Use Windows' URL association directly and retain its actionable errors."""
     with external_python():

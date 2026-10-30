@@ -13,12 +13,13 @@ const t = (en, zh) => cn ? zh : en;
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
-export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'qrcodegen.js', 'agent_activity.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
+export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'qrcodegen.js', 'agent_activity.js', 'agent_confirm_settings.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
     'editor.js', 'editor_actions.js', 'editor_lifecycle.js', 'editor_adjust.js', 'editor_adjust_picture.js', 'editor_picture_fields.js', 'editor_picture_session.js', 'editor_preview_picture.js', 'editor_entry.js', 'editor_expand.js', 'editor_export_dialog.js', 'editor_first_frame.js', 'editor_media_references.js', 'editor_references.js', 'editor_genbar.js', 'editor_geometry.js', 'editor_library.js', 'editor_menu.js', 'editor_model.js', 'editor_frame.js', 'editor_player.js', 'editor_room.js', 'editor_select.js', 'editor_state.js', 'editor_store.js', 'editor_tracks.js', 'editor_generation.js', 'editor_transport.js', 'editor_transport_model.js', 'editor_audio.js', 'editor_audio_model.js', 'editor_audio_notes.js', 'editor_audio_replace.js', 'editor_audio_rules.js', 'editor_speed.js', 'editor_speed_model.js', 'editor_failure.js', 'editor_header_fit.js',
     'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'done_notify.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'image_commands.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js',
-    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js',
+    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'studio_queue.js', 'studio_size.js',
-    'toolbar_position.js', 'updates.js', 'view_navigation.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js'];
+    'toolbar_position.js', 'updates.js', 'view_navigation.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
+    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {
@@ -527,8 +528,22 @@ async function reloadOnce(problems) {
     return true;
 }
 
+// Curly single quotes from a Latin face where Segoe UI is missing, as theme.css does: the CJK faces after it draw
+// them full width. Added from here because theme.css may be one of the files that failed.
+let quoteFaces = false;
+function addQuoteFaces() {
+    if (quoteFaces || !globalThis.FontFace || !document.fonts) return;
+    quoteFaces = true;
+    for (const [weight, names] of [['100 500', ['Noto Sans Regular', 'NotoSans-Regular', 'DejaVu Sans', 'Liberation Sans']],
+        ['600 900', ['Noto Sans Bold', 'NotoSans-Bold', 'DejaVu Sans Bold', 'Liberation Sans Bold']]]) {
+        try { document.fonts.add(new FontFace('FreeVideo Quotes', names.map(name => `local("${name}")`).join(), {weight, unicodeRange: 'U+2018-2019'})); }
+        catch { /* The card still shows in the fonts the browser has. */ }
+    }
+}
+
 function show(problems) {
     lastProblems = problems;
+    addQuoteFaces();
     card?.remove();
     card = document.createElement('section');
     card.setAttribute('role', 'alert'); card.className = 'fv-health';
@@ -536,7 +551,7 @@ function show(problems) {
         width: 'min(600px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 32px)', overflow: 'auto', boxSizing: 'border-box',
         padding: '18px 20px 16px', borderRadius: '12px', background: '#1a222e', color: '#e7edf7',
         border: '1px solid #5a3440', boxShadow: '0 18px 48px rgba(0,0,0,.45)',
-        font: '13px/1.55 "Segoe UI","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
+        font: '13px/1.55 "Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
     const title = document.createElement('div');
     const extension = problems.map(extensionProblem).find(Boolean);
     const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, t,

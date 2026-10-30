@@ -121,6 +121,10 @@ export function detectBrowserExtension(error, {kind = 'unknown', known = null, b
     return {evidence, extension: byId.get(id)?.name ?? null, script: frame ? userScriptName(frame) : null};
 }
 
+// A wrapped window.fetch alone does not say that the request was blocked: any script that
+// wraps fetch makes it true, also while the engine is merely unreachable for a moment.
+export const wrappedFetchOnly = result => result?.evidence?.length === 1 && result.evidence[0] === 'wrapped-fetch';
+
 export const EXTENSION_COPY = Object.freeze({
     title: ['A browser extension is interfering with FreeVideo', '浏览器扩展干扰了 FreeVideo'],
     // English uses straight quotes: curly ones widen in the CJK font stack.

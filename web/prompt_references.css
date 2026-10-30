@@ -1,5 +1,5 @@
 .fv-prompt-editor{position:relative;display:flex;flex-direction:column;height:170px;min-height:148px;max-height:340px;resize:vertical;overflow:hidden;background:var(--fv-card)}
-.fv-studio .fv-prompt-editor textarea{flex:1;min-height:0;height:0;max-height:none;resize:none;padding-bottom:8px;outline:none}
+.fv-studio .fv-prompt-editor textarea{flex:1;min-height:0;height:0;max-height:none;resize:none;padding-bottom:14px;outline:none}
 .fv-prompt-tools{display:flex;flex:none;align-items:center;justify-content:flex-end;height:36px;padding-right:9px}
 .fv-studio .fv-prompt-draft-note{min-height:27px;height:27px;margin:0 auto 0 9px;padding:0 9px;border:0;background:transparent;color:var(--fv-warning);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-studio .fv-prompt-draft-note[hidden]{display:none}
@@ -21,7 +21,7 @@
 
 .fv-reference-group{padding:6px 8px 3px;font-size:11px;color:var(--fv-muted,#a9b3c4)}
 .fv-reference-person{min-height:36px;padding:5px 8px;gap:10px}
-.fv-reference-face{width:24px;height:24px;flex:none;border-radius:50%;object-fit:cover;background:var(--fv-raised,#252e39)}
+.fv-reference-face{width:24px;height:24px;flex:none;border-radius:50%;object-fit:cover;object-position:50% 15%;object-view-box:inset(0 20% 40% 20%);background:var(--fv-raised,#252e39)}
 .fv-reference-person strong{font-size:13px;font-weight:550;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-reference-person[aria-disabled=true]{opacity:.5;cursor:not-allowed}
 .fv-mention-mirror{position:absolute;box-sizing:border-box;overflow:hidden;pointer-events:none;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;color:var(--fv-ink,#eee);z-index:1}

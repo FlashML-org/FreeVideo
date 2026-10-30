@@ -15,6 +15,7 @@ from .attention import WindowAttention
 from .backends import get_backend
 from .weights import skeleton
 from .paths import base_path, checkpoint_path
+from .processes import pin_attention_priority
 from .torch_compat import empty_host_cache
 
 
@@ -1007,6 +1008,7 @@ class Engine:
             self.refiner_released = False
         # load_prompt returns [tokens, width]; generate_latents adds the batch
         # dimension before the original transformer call.
+        pin_attention_priority()
         prompt = prompt.unsqueeze(0) if prompt.ndim == 2 else prompt
         text = self.transformer.context_embedder(prompt.to(input_dtype(self.transformer.context_embedder)))
         with self.device_backend.make_offloader(refiner, prefetch=False,

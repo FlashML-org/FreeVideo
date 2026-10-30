@@ -67,6 +67,28 @@ def encode_visual(vae, pixels, *, device='cuda', posterior='sample'):
     return (latent - mean) / std
 
 
+def _retry_in_host_memory(memory, encode):
+    """Run `encode`; if MPS runs out of memory, run it once more with each residual block's input held in host memory.
+
+    The copy is exact, so the latent is the same; `memory` is the stats of
+    bounded_encoder, which is None on CUDA.
+    """
+    if memory is None:
+        return encode()
+    try:
+        return encode()
+    except RuntimeError as error:
+        if 'MPS backend out of memory' not in str(error) or memory.get('residual_offload'):
+            raise
+        failure = str(error)[:300]
+    import gc
+    import torch
+    gc.collect()
+    torch.mps.empty_cache()
+    memory.update(residual_offload=True, memory_retry=failure)
+    return encode()
+
+
 def _audio(path, destination, seconds):
     """The clip's first `seconds` at 32 kHz stereo, as the official pipeline truncates reference audio.
 
@@ -326,22 +348,28 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding image/video references'}), flush=True)
         # Conditioning never decodes: the 9.0 GiB decoder in the shared shards
         # is not read. The independent output decoder is loaded after sampling.
+        on_mps = torch.device(device).type == 'mps'
+        # On MPS the weights stay in the checkpoint mapping and each encoder
+        # stage uploads its own while it runs (bounded_encoder).
         vae, _ = load_video_encoder(base, before_upload=None if resident is None else
-                                    lambda model: resident.input_vae_room(model, canvas), device=device)
+                                    lambda model: resident.input_vae_room(model, canvas),
+                                    device='cpu' if on_mps else device)
         lifetime = nullcontext()
-        if torch.device(device).type == 'mps':
+        if on_mps:
             from .backends.mps_vae_encode import bounded_encoder
-            lifetime = bounded_encoder(vae)
+            lifetime = bounded_encoder(vae, device=device)
         with lifetime as memory:
             for index, (row, ref) in enumerate(zip(normalized, refs)):
                 if row.get('pixels') and index not in hits:
                     mapped = np.load(row['pixels'], mmap_mode='r', allow_pickle=False)
                     if row['frames'] == 1:
                         pixels = torch.from_numpy(np.array(mapped[:1])).to(device).permute(3, 0, 1, 2)[None]
-                        ref['latent'] = encode_vae_condition(vae, pixels, PIXEL_MEAN, PIXEL_STD, 42).cpu()
+                        ref['latent'] = _retry_in_host_memory(memory, lambda: encode_vae_condition(
+                            vae, pixels, PIXEL_MEAN, PIXEL_STD, 42)).cpu()
                         del pixels
                     else:
-                        ref['latent'] = encode_visual(vae, mapped[:row['frames']], device=device)
+                        ref['latent'] = _retry_in_host_memory(
+                            memory, lambda: encode_visual(vae, mapped[:row['frames']], device=device))
                     del mapped
                     if cache is not None and index in keys:
                         _remember_latent(cache, keys[index], ref['latent'], Path(row['pixels']).parent)

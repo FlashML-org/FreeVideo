@@ -191,7 +191,10 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             if getattr(args, 'step_cache', None):
                 # The planner keeps the first-block cache only where it fits.
                 planning_canvas['step_cache'] = args.step_cache
-            options.update(available_backends=available_backends(hardware, probe_missing=False), canvas=planning_canvas,
+            kernels = {}
+            offered = available_backends(hardware, probe_missing=False, evidence=kernels)
+            row['attention_backends'] = dict(kernels, offered=sorted(offered))
+            options.update(available_backends=offered, canvas=planning_canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))
             cache = getattr(args, 'cache', None)
             if cache is not None and (Path(cache) / 'manifest.json').is_file():

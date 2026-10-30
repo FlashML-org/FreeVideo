@@ -2242,6 +2242,7 @@ class Session:
         for group, entries in probe.get('sources', {}).items():
             for entry in entries:
                 names = {'edge-models': ('Video model', '视频模型'), 'vdn-models': ('Decoder', '解码器'),
+                         'encoder-models': ('Text encoder', '文本编码器'),
                          'image-models': NAMES['image'],
                          'models': NAMES['text'], 'pypi': ('Python packages', 'Python 依赖'),
                          'github': ('Tools', '安装工具'), 'git': ('Git', 'Git'), 'cuda': ('CUDA', 'CUDA')}
@@ -2253,6 +2254,15 @@ class Session:
         from .sampling_assets import total_bytes
         failure = launcher_failure(error, zh=self.language.startswith('zh'), can_repair=self.can_repair(),
                                    repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable())
+        if failure.get('kind') == 'gpu-driver-missing':
+            from .display_adapters import adapters, line, only_other_vendors
+            zh = self.language.startswith('zh')
+            names = adapters()
+            if line(zh, names):
+                failure['note'] = line(zh, names)
+            if only_other_vendors(names):
+                from .failure_details import UNSUPPORTED_VENDOR
+                failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
         if failure.get('path'):
             # The local repair instruction needs the actual file location; copied details stay redacted.
             from .model_repair import MISMATCH_PATH

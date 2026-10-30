@@ -18,7 +18,7 @@ import uuid
 
 from . import image_pack
 from ..download_settings import observed_speed
-from .failure import (Context, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
+from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
 
 BODY_LIMIT = 64 * 1024
@@ -353,9 +353,9 @@ class Service:
             if failure:
                 raise failure[0]
         else:
-            from .. import processes
-            processes.popen(['xdg-open', folder], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, start_new_session=True)
+            from ..windows_ux import open_folder
+            if not open_folder(folder):
+                return dict(opened=False, folder=folder)  # the page tells the user where the images are
         return dict(opened=True)
 
     def close_segment_worker(self):
@@ -748,6 +748,9 @@ class Service:
             result['message_zh'] = MESSAGE_ZH[code]
             if context.machine.get('device_backend') == 'mps' and code in UNIFIED_MESSAGE_ZH:
                 result['message_zh'] = UNIFIED_MESSAGE_ZH[code]
+            if code == 'no_memory' and (isinstance(row, dict) and row.get('memory') == 'host'
+                                        or error is not None and host_memory_shortage(error)):
+                result.update(memory='host', message_zh=HOST_MESSAGE_ZH)
         if code not in NO_REPORT:
             if video_busy is None:
                 try:

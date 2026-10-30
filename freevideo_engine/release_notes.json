@@ -1,39 +1,76 @@
 {
   "schema": 1,
-  "product_version": "0.4.25",
+  "product_version": "0.4.26",
   "en": {
-    "summary": "An audio clip can be used as is, so the video carries that clip as its sound; a tutorial and feature examples explain each feature with an example that can be filled in directly; after a video finishes, the model stays loaded and the next video starts without reloading.",
+    "summary": "Recent videos open at every window width, when every download source fails the launcher shows the reason for each source, and replacing a person runs on 16 GB Macs.",
     "changes": [
-      "Studio: audio cards offer \"Reference\" or \"Use as is\". With \"Use as is\", the clip is written into the video unchanged as its sound, the picture follows it, and the duration follows the clip and is locked. \"Use as is\" is not available with \"Preview first\" or when extending a video. Replace person downloads its model when it is missing.",
-      "Guides: \"Tutorial\" in Settings has chapters with pictures for each feature, and \"Try it\" fills a chapter's example into the creation panel. \"Feature examples\" shows each feature as a looping preview of the input and the result, with \"Use this example\". The examples are shown once on first use, and after an update only the new ones are shown.",
-      "Memory and speed: after a video finishes, the model stays on the graphics card and in memory with no time limit, so the next video starts without reloading. It is released when memory runs low, when another program starts using more video memory, or before the picture or prompt model starts; when memory is tight, as much of it is kept as still leaves room for the next request.",
-      "Speed: the first video of a new length or size starts sooner, because three of the model's kernels are compiled once for every length, size and head split. Requests with LoRA adapters run faster, because each adapter's input projection is computed once per layer instead of once for every group of attention heads. A slowdown switched on automatically after the app was closed or stopped unexpectedly now lifts after one completed generation instead of three; a slowdown caused by a reported GPU error still needs three.",
-      "Generation: pressing Generate with an empty prompt shows \"The prompt is empty.\" next to the button, with \"Generate anyway\". In the editor, broken characters left in a description by a cut or a paste are removed before the part is sent. On a computer with several graphics cards, queued videos run at the same time, one on each card.",
-      "Workflows: a saved workflow opens ready to run when a value on its FreeVideo node is no longer accepted; that value returns to its default and the rest of the workflow is unchanged.",
-      "Creations: a video can be marked as a favorite with the heart button, and \"All\" and \"Favorites\" at the top switch between every video and favorites only; the choice is kept for the next time Creations opens.",
-      "Autopilot: a chat can be renamed with \"Rename\" in its menu. The name is kept after a restart, and clearing it shows the first message as the title again.",
-      "Install: on Linux, setup from the launcher downloads Git and a C++ compiler privately when they are missing instead of asking for sudo; only basic tools such as curl still come from the system, and the launcher shows the command to install them. A graphics driver older than 580 gets its notice with the detected card even when nvidia-smi cannot answer the setup query. When the system is older than 2022 or lacks the graphics libraries its window needs, the Linux desktop app shows the reason and what to do instead of closing without a message.",
-      "Updates: on every platform, update downloads can use the mirror in China, and a slow source is switched automatically, continuing the download.",
-      "Diagnostics: on Mac, a generation refused at the start for lack of free memory has its own row in the error panel, and the report records the memory at that moment. Feedback for a video in Creations that cannot be opened includes the player's error code and the file's response. Diagnostic reports record which graphics card the run used."
+      "Creation panel: \"Recent videos\" can be opened at every window width; in a narrow window the list opens over the preview. The @ character menu shows each character's face close-up instead of the full-length picture. When a part length is refused, the length panel says whether it is too short or too long instead of asking to try again. When the connection to FreeVideo drops briefly, the queue no longer reports browser extension interference; a loop that cannot submit its next job stops with the error instead of retrying.",
+      "Install: when every source for a download fails, the launcher's error card lists each source with its reason and time, and the copied details and the diagnostic report include the same list. Git errors name the folder of the dependency. Account names, passwords, tokens and local paths are removed from the listed addresses. The video text encoder can also be downloaded from ModelScope, so a first install no longer depends on Hugging Face alone for this file; a download that fails the integrity check falls back to Hugging Face.",
+      "Prompt enhancement: when the connection to FreeVideo is lost, a connection-lost message is shown instead of the browser's raw error, and a failed progress check is retried before the rewrite stops. After a rewrite, characters mentioned with @ are still shown by name in the prompt box. When the prompt or references change during a rewrite, a note asks for a new rewrite instead of an error with a report button.",
+      "Prompt enhancement: the rewrite tab shows the scene description followed by a separate \"Sound:\" section instead of the model's field names. With several shots, each shot is its own paragraph labelled with its number and start time. A rewrite that is not edited is submitted exactly as the model wrote it. The default prompt in a prompt box that has not been edited uses the same layout and is also submitted unchanged. A prompt filled in with \"Reuse settings\" or opened from a workflow saved by an earlier version also uses this layout and, when not edited, is submitted unchanged.",
+      "Editor: when the last edit can no longer be found, a blank edit opens with a message saying so; clicking the edit name at the top opens another edit.",
+      "Settings: a new AI Agent section chooses whether an agent asks before starting a film and before a long reshoot, and how many minutes make a reshoot long. Both ask by default. When an agent's white-model scene fails, the agent receives the reason instead of a generic connection error.",
+      "Install: when the NVIDIA driver is installed but not running, for example right after it was installed, the launcher's error card asks for a restart instead of showing the raw detection error. When the NVIDIA driver is missing, the card adds one line naming the graphics card Windows lists; when Windows lists only AMD or Intel graphics, the card says FreeVideo supports NVIDIA graphics cards only.",
+      "Video generation: when a generation falls back to a freshly started worker, the result is the same as in the worker that was already running. After a driver or FreeVideo update, or on another graphics card in the same computer, the first generation no longer fails because an attention method the card cannot run was chosen.",
+      "Image generation: when Windows runs out of virtual memory while loading the image model, the failure card says so and suggests closing other apps or increasing virtual memory.",
+      "Linux: when no file manager can open a folder, the launcher and the image history show a message, and the image history also shows the images folder. The default save location follows the desktop's Documents folder. Curly apostrophes in English text are drawn at normal width instead of full width.",
+      "Mac: encoding a reference video (replace person, extending a video) needs about half the unified memory per tile, so it runs on 16 GB Macs where it stopped with a unified-memory error, including at the lowest resolution. Results are unchanged.",
+      "Mac: before installing, the launcher checks whether the disk of the chosen folder supports the file operations the Python environment needs. Without hard links the installation copies files instead; when links or renaming are not supported, a card asks for a folder on the Mac's built-in disk before anything is installed."
     ]
   },
   "zh": {
-    "summary": "音频可以原样使用，视频直接以这段音频为声音；新增教程和功能示例，逐项介绍功能，示例可以直接填入；视频完成后模型保留，下一条视频无需重新加载。",
+    "summary": "任何窗口宽度下都能打开“最近作品”，依赖下载在所有源都失败时，启动器列出每个源的原因；16 GB 的 Mac 上也能替换人物。",
     "changes": [
-      "工作室：音频卡片可选“参考”或“原样使用”。选择“原样使用”时，这段音频原样写入视频作为声音，画面随之生成，时长跟随音频并锁定。开启“先出预览”或接着生成时，不能选择“原样使用”。替换人物缺少模型时会自动下载。",
-      "指引：设置中的“教程”按功能分章，配有图片，点“试一试”可把该章的示例填入创作面板。“功能示例”逐项以循环预览展示输入和成片，并可点“用这个示例”。首次使用时会依次展示一遍，更新后只展示新增的示例。",
-      "内存与速度：视频完成后，模型会一直保留在显卡和内存中，不再有时间限制，下一条视频无需重新加载。内存不足、其他程序占用的显存增加，或图片和提示词模型启动前，模型会被释放；内存紧张时，在保证下一次请求放得下的前提下尽量多保留。",
-      "速度：换新的时长或尺寸后，第一条视频更早开始，模型的三个内核对所有时长、尺寸和分头方式只编译一次。挂 LoRA 的请求更快，每个适配器的输入降维乘法每层只算一次，不再每个注意力头组各算一次。应用被意外关闭或结束后自动开启的放慢，完成 1 次生成就解除，不再需要 3 次；显卡报告错误引起的放慢仍需 3 次。",
-      "生成：提示词为空时点生成，按钮旁会显示“提示词为空。”，并可点“继续生成”。剪辑视图中，剪切或粘贴在描述里留下的残缺字符会在发送前去掉。有多张显卡的电脑上，排队的视频会同时生成，每张显卡一条。",
-      "工作流：另存的工作流中，FreeVideo 节点上有不再接受的取值时，打开即可运行；该取值恢复为默认值，工作流其余内容不变。",
-      "作品库：可以用心形按钮收藏视频，顶部的“全部”和“收藏”可切换显示全部视频或只显示收藏；下次打开作品库时保留所选。",
-      "AI 全自动：对话可以在菜单中“重命名”。名称在重启后保留，清空名称后重新以第一句话作为标题。",
-      "安装：Linux 上从启动器安装时，缺少 Git 和 C++ 编译器会改为私有下载，不再需要 sudo；只有 curl 等基础工具仍需系统提供，启动器会给出安装命令。即使 nvidia-smi 无法响应安装检查的查询，低于 580 的显卡驱动也会显示带检测到显卡的提示。系统早于 2022 年或缺少窗口所需的图形库时，Linux 桌面版会说明原因和处理办法，不再无提示地退出。",
-      "更新：所有平台的更新下载都可走国内镜像，下载源过慢时自动换源续传。",
-      "诊断：Mac 上因可用内存不足而在开始前被拒绝的生成，在错误面板中单独一行说明，报告会记录当时的内存。作品库中视频打不开时，反馈会附上播放器错误码和文件响应。诊断报告会记录这次运行使用的显卡。"
+      "创作面板：任何窗口宽度下都能打开“最近作品”；窗口较窄时，列表盖在预览上打开。输入 @ 时，角色头像改为脸部特写，不再是全身图。每段时长被拒绝时，长度面板会说明是过短还是过长，不再提示重试。与 FreeVideo 的连接短暂中断时，队列不再提示浏览器扩展干扰；循环生成提交下一个任务失败时，循环停止并显示错误，不再重试。",
+      "安装：依赖下载在所有源都失败时，启动器错误卡片逐个列出每个源的失败原因和耗时，复制的详情和诊断报告中也附有这份列表。Git 报错会写明对应依赖的文件夹。列出的地址会去掉账号、密码、令牌和本地路径。视频文本编码器增加魔搭下载源，首次安装下载这个文件时不再只依赖 Hugging Face；下载的文件校验不通过时改从 Hugging Face 下载。",
+      "提示词增强：与 FreeVideo 的连接中断时，显示连接断开的提示，而不是浏览器的原始错误；改写进度读取失败时先重试，不再立即中止。改写后，人物仍以“@人物名”显示在提示词框中。改写过程中原文或素材有改动时，显示一条提醒，请按新内容重新改写，不再显示错误和报告按钮。",
+      "提示词增强：“改写”页签只显示画面描述，下面单独列出“声音：”段，不再显示模型的字段名；有多个镜头时，每个镜头单独成段，标出镜头编号和开始时间。未修改的改写结果按模型原文提交。提示词框里未改动的默认提示词也按同样方式显示，提交时仍用原文。用“复用设置”填入的提示词和旧版本保存的工作流里的提示词同样按这种方式显示，未修改时按原文提交。",
+      "剪辑视图：上次的剪辑已找不到时，打开空白剪辑并给出说明；点击顶部的剪辑名可打开其他剪辑。",
+      "设置：新增“AI Agent”区块，可选择 Agent 在开拍整部片前、以及耗时较长的重拍前是否先询问，并设置重拍达到多少分钟算较长。两项默认都询问。Agent 搭建的白模场景失败时，Agent 收到具体原因，不再是笼统的连接错误。",
+      "安装：NVIDIA 显卡驱动已安装但未运行时（例如刚装好还未重启），启动器错误卡片提示重启电脑，不再显示原始的检测失败信息。未找到 NVIDIA 显卡驱动时，提示卡新增一行，写出系统列出的显卡；系统只列出 AMD 或 Intel 显卡时，卡片说明 FreeVideo 只支持 NVIDIA 显卡。",
+      "视频生成：生成改由新启动的进程完成时，结果与原先运行中的进程相同。驱动或 FreeVideo 更新后，或换用同一台电脑里的另一张显卡时，首次生成不再因选用这张显卡无法运行的注意力方式而失败。",
+      "图像生成：Windows 虚拟内存不足、无法载入图像模型时，失败卡片会说明原因，并建议关闭其他程序或调大虚拟内存。",
+      "Linux：没有可用的文件管理器打开文件夹时，启动器和图片历史给出提示，图片历史同时显示图片文件夹的路径；默认保存位置跟随桌面设置的文档文件夹。英文中的弯撇号按西文宽度显示，不再显示为全角。",
+      "Mac：编码参考视频（替换人物、接着生成）时，每个瓦片所需的统一内存约减半，在 16 GB 的 Mac 上不再因统一内存不足而中止，最低分辨率下也是如此；结果不变。",
+      "Mac：安装开始前，启动器先检查所选文件夹所在磁盘是否支持 Python 运行环境所需的文件操作。不支持硬链接时改用复制继续安装；不支持链接或改名时，在安装任何内容之前提示选择 Mac 内置硬盘上的文件夹。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.25",
+      "en": {
+        "summary": "An audio clip can be used as is, so the video carries that clip as its sound; a tutorial and feature examples explain each feature with an example that can be filled in directly; after a video finishes, the model stays loaded and the next video starts without reloading.",
+        "changes": [
+          "Studio: audio cards offer \"Reference\" or \"Use as is\". With \"Use as is\", the clip is written into the video unchanged as its sound, the picture follows it, and the duration follows the clip and is locked. \"Use as is\" is not available with \"Preview first\" or when extending a video. Replace person downloads its model when it is missing.",
+          "Guides: \"Tutorial\" in Settings has chapters with pictures for each feature, and \"Try it\" fills a chapter's example into the creation panel. \"Feature examples\" shows each feature as a looping preview of the input and the result, with \"Use this example\". The examples are shown once on first use, and after an update only the new ones are shown.",
+          "Memory and speed: after a video finishes, the model stays on the graphics card and in memory with no time limit, so the next video starts without reloading. It is released when memory runs low, when another program starts using more video memory, or before the picture or prompt model starts; when memory is tight, as much of it is kept as still leaves room for the next request.",
+          "Speed: the first video of a new length or size starts sooner, because three of the model's kernels are compiled once for every length, size and head split. Requests with LoRA adapters run faster, because each adapter's input projection is computed once per layer instead of once for every group of attention heads. A slowdown switched on automatically after the app was closed or stopped unexpectedly now lifts after one completed generation instead of three; a slowdown caused by a reported GPU error still needs three.",
+          "Generation: pressing Generate with an empty prompt shows \"The prompt is empty.\" next to the button, with \"Generate anyway\". In the editor, broken characters left in a description by a cut or a paste are removed before the part is sent. On a computer with several graphics cards, queued videos run at the same time, one on each card.",
+          "Workflows: a saved workflow opens ready to run when a value on its FreeVideo node is no longer accepted; that value returns to its default and the rest of the workflow is unchanged.",
+          "Creations: a video can be marked as a favorite with the heart button, and \"All\" and \"Favorites\" at the top switch between every video and favorites only; the choice is kept for the next time Creations opens.",
+          "Autopilot: a chat can be renamed with \"Rename\" in its menu. The name is kept after a restart, and clearing it shows the first message as the title again.",
+          "Install: on Linux, setup from the launcher downloads Git and a C++ compiler privately when they are missing instead of asking for sudo; only basic tools such as curl still come from the system, and the launcher shows the command to install them. A graphics driver older than 580 gets its notice with the detected card even when nvidia-smi cannot answer the setup query. When the system is older than 2022 or lacks the graphics libraries its window needs, the Linux desktop app shows the reason and what to do instead of closing without a message.",
+          "Updates: on every platform, update downloads can use the mirror in China, and a slow source is switched automatically, continuing the download.",
+          "Diagnostics: on Mac, a generation refused at the start for lack of free memory has its own row in the error panel, and the report records the memory at that moment. Feedback for a video in Creations that cannot be opened includes the player's error code and the file's response. Diagnostic reports record which graphics card the run used."
+        ]
+      },
+      "zh": {
+        "summary": "音频可以原样使用，视频直接以这段音频为声音；新增教程和功能示例，逐项介绍功能，示例可以直接填入；视频完成后模型保留，下一条视频无需重新加载。",
+        "changes": [
+          "工作室：音频卡片可选“参考”或“原样使用”。选择“原样使用”时，这段音频原样写入视频作为声音，画面随之生成，时长跟随音频并锁定。开启“先出预览”或接着生成时，不能选择“原样使用”。替换人物缺少模型时会自动下载。",
+          "指引：设置中的“教程”按功能分章，配有图片，点“试一试”可把该章的示例填入创作面板。“功能示例”逐项以循环预览展示输入和成片，并可点“用这个示例”。首次使用时会依次展示一遍，更新后只展示新增的示例。",
+          "内存与速度：视频完成后，模型会一直保留在显卡和内存中，不再有时间限制，下一条视频无需重新加载。内存不足、其他程序占用的显存增加，或图片和提示词模型启动前，模型会被释放；内存紧张时，在保证下一次请求放得下的前提下尽量多保留。",
+          "速度：换新的时长或尺寸后，第一条视频更早开始，模型的三个内核对所有时长、尺寸和分头方式只编译一次。挂 LoRA 的请求更快，每个适配器的输入降维乘法每层只算一次，不再每个注意力头组各算一次。应用被意外关闭或结束后自动开启的放慢，完成 1 次生成就解除，不再需要 3 次；显卡报告错误引起的放慢仍需 3 次。",
+          "生成：提示词为空时点生成，按钮旁会显示“提示词为空。”，并可点“继续生成”。剪辑视图中，剪切或粘贴在描述里留下的残缺字符会在发送前去掉。有多张显卡的电脑上，排队的视频会同时生成，每张显卡一条。",
+          "工作流：另存的工作流中，FreeVideo 节点上有不再接受的取值时，打开即可运行；该取值恢复为默认值，工作流其余内容不变。",
+          "作品库：可以用心形按钮收藏视频，顶部的“全部”和“收藏”可切换显示全部视频或只显示收藏；下次打开作品库时保留所选。",
+          "AI 全自动：对话可以在菜单中“重命名”。名称在重启后保留，清空名称后重新以第一句话作为标题。",
+          "安装：Linux 上从启动器安装时，缺少 Git 和 C++ 编译器会改为私有下载，不再需要 sudo；只有 curl 等基础工具仍需系统提供，启动器会给出安装命令。即使 nvidia-smi 无法响应安装检查的查询，低于 580 的显卡驱动也会显示带检测到显卡的提示。系统早于 2022 年或缺少窗口所需的图形库时，Linux 桌面版会说明原因和处理办法，不再无提示地退出。",
+          "更新：所有平台的更新下载都可走国内镜像，下载源过慢时自动换源续传。",
+          "诊断：Mac 上因可用内存不足而在开始前被拒绝的生成，在错误面板中单独一行说明，报告会记录当时的内存。作品库中视频打不开时，反馈会附上播放器错误码和文件响应。诊断报告会记录这次运行使用的显卡。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.24",
       "en": {
@@ -183,70 +220,6 @@
           "下载清单：检查不再每次重新校验所有模型文件；已经校验过的文件在大小、时间和 inode 都没变时直接跳过。",
           "保留导致兼容档位升高的显卡错误的出错阶段、步数、错误类型和内存读数，之后一次运行发送的诊断报告仍能看出它停在哪里。",
           "对话中修改了正在等待 Agent 的消息后，提示不再按错误显示、不再带“报告问题”按钮，改为普通状态提示。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.18",
-      "en": {
-        "summary": "FreeVideo can be installed into deeply nested folders on Windows; many failure messages state the cause and the next step; Windows computers with little free memory can complete generation; consecutive requests run faster on computers with ample memory.",
-        "changes": [
-          "Install: FreeVideo can be installed into deeply nested folders on Windows; when an update cannot be installed and the previous version is restored, the notice follows the interface language.",
-          "Launcher: errors state the step that failed and what to do next, and Report a problem includes a line about the environment; when the saved installation folder cannot be opened, Start opens the setup page with the saved paths and an explanation; a graphics driver older than 580 gets a notice with the installed version and the update steps; a damaged launcher settings file is kept as a copy before it is replaced; the launcher keeps working when the prompt model file list is missing, and that row appears once the list is available.",
-          "Model downloads: slow sources are retried with a longer time limit, and the last failure reason of each source and route is listed; when a source has problems, the launcher shows a dedicated card with a button to switch sources; the image model has its own download list with links and checksums, exported to a separate folder.",
-          "Failure messages: a failed video generation names the stage where it stopped (loading, sampling or decoding); failure feedback starts with the last error; automatic subtitles, subtitle downloads, media import and subtitle import in the editor state the reason when they fail, and GBK-encoded SRT subtitles can be imported; image generation, adding workflows and share export state when the disk is full; an unreadable queued reference image prompts for a different image; a failed part of a long video shows a short status, with details in the error card and the name of any missing file.",
-          "Generation: fixed an error when submitting a generation; when first/last frames and references cannot be combined, the failure card says which media to turn off; Generate with AI explains when the media list is full at 32 items; the estimate before generation marks first-time preparation, and a slow estimate gives a reason and a remedy; a queued request shows its wait in minutes or the number of requests ahead; a queued export shows Queued on its button; LoRA files in more naming styles are recognized, and an acceleration LoRA made for the original model gets its own explanation.",
-          "Prompt enhancement: scenes with audio, connected nodes or videos can be enhanced, with audio and connected nodes skipped and one frame read from each video; with reference images, a rewrite that leaves out an image reference is sent back to the model once to add it.",
-          "Reference images: uploading and reading show Uploading reference image and Reading reference image N%; the + button in the editor shows a spinner while loading; library import shows uploading, queued and processing in turn, and finishes once progress reaches 100%.",
-          "Autopilot: it can be stopped while waiting for a reply and shows its current action; after three minutes without a progress update it says generation is still running; a background tab title starts with Confirmation needed, Failed or Done; Edit prompt puts the summary back in the input box; the confirmation card shows the size and duration; when the entry check fails, the entry stays and the check can be retried; an unreadable saved conversation or film leaves the rest available; failure reasons are readable in the English interface.",
-          "Multi-shot films: for long videos and multi-shot films made by Autopilot, music is added on request: when requested, one continuous score is laid over the whole film after the shots are joined, and a music file from the user can be used directly.",
-          "Create and Your creations: saving or loading a prompt can be retried after a failure; key presses stay inside the creation panel; in the image editor, the History entry stays visible after a picture is placed from the history; the end of the Your creations list shows how many records cannot be read.",
-          "Memory and speed: when a Windows computer is refused only because of the default memory reserve, part of the reserve is used, keeping at least 1 GiB, so generation can start with about 5 GiB free; on computers with ample memory, consecutive requests skip reloading the models and run faster.",
-          "Mac: encoding with many reference images is much faster; accelerated computation falls back to the standard method when its results look wrong; after a one-click update, a new version that starts slowly is kept."
-        ]
-      },
-      "zh": {
-        "summary": "Windows 上可以安装到层级较深的文件夹；多处失败提示写明原因和下一步操作；可用内存较少的 Windows 电脑可以继续完成生成；内存宽裕的电脑连续生成时速度更快。",
-        "changes": [
-          "安装：Windows 上可以安装到层级较深的文件夹；更新未能装上并换回旧版时，提示按界面语言显示。",
-          "启动器：出错时写明出错的步骤和下一步操作，“报告问题”附带一行环境信息；已保存的安装文件夹无法打开时，点击“启动”会进入安装页，显示已保存的路径和说明；显卡驱动版本低于 580 时，显示当前驱动版本和更新步骤；启动设置文件损坏时，先保留一份副本再保存；提示词模型的文件清单缺失时，启动器照常工作，相应一行在清单可用后显示。",
-          "模型下载：下载源较慢时以更长的时限重试，并分别列出每个下载源和线路最近一次失败的原因；下载源出现问题时，启动器显示专门的卡片和切换下载源的按钮；图像模型有单独的下载清单，列出链接和校验值，并导出到单独的文件夹。",
-          "失败提示：视频生成失败时写明出错的阶段（载入、采样或解码）；生成失败后的反馈以最后一条错误开头；剪辑页的自动字幕、字幕下载、素材导入和字幕导入失败时写明原因，GBK 编码的 SRT 字幕可以导入；图像生成、补写工作流和分享导出遇到磁盘已满时写明原因；排队中的参考图无法读取时，提示更换图片；长视频的某一段失败时显示简短状态，详细内容在错误卡片中，并写出缺失文件的名称。",
-          "生成：修复了部分情况下提交生成时报错的问题；首尾帧与参考素材不能同时使用时，失败卡片说明原因并提示关闭哪一类素材；素材列表已满 32 项时，“AI 生成”说明原因；生成前的时间估计注明“含首次准备”，预计较慢时给出一个原因和一个处理办法；排队时显示“约 N 分钟后开始”或“前面还有 N 个”；导出排队时按钮显示“排队中”；更多命名方式的 LoRA 文件可以正确识别，为原版模型制作的加速 LoRA 会显示专门说明。",
-          "提示词增强：场景中有音频、连接节点或视频时也可以增强，音频和连接节点会被跳过，视频读取一帧画面；带参考图时，改写结果遗漏图片引用，会请模型补上一次。",
-          "参考图：上传和读取时显示“正在上传参考图”和“正在读取参考图 N%”；剪辑页的“+”按钮在加载时显示转圈；素材库导入依次显示上传中、排队中和处理中，进度到 100% 后直接完成。",
-          "AI 全自动：等待回复时可以停止，并显示当前动作；三分钟没有进度更新时，提示仍在生成中；后台标签页的标题前显示“待确认”“失败”或“已完成”；“改描述”会把摘要放回输入框；确认卡片显示尺寸和时长；入口检查失败时保留入口，可以重试；某个已保存的对话或影片无法读取时，其余内容照常可用；英文界面下的失败原因清楚可读。",
-          "多镜头作品：AI 全自动制作长视频和多镜头作品时，配乐按需添加：需要配乐时，在各镜头拼接完成后为整片铺一段连贯的配乐，用户提供的音乐文件也可以直接使用。",
-          "创作面板与我的作品：提示词保存或读取失败时可以重试；按键操作只作用于创作面板；图像编辑中从历史记录放入画布后，“历史”入口保持可见；“我的作品”列表末尾显示无法读取的记录数量。",
-          "内存与速度：Windows 电脑只因默认预留空间不足而无法开始生成时，会使用部分预留空间（至少保留 1 GiB），可用内存约 5 GiB 时也可以开始生成；连续生成多个请求时，内存宽裕的电脑无需重复加载模型，速度更快。",
-          "Mac：使用大量参考图时，编码速度明显提升；加速计算的结果异常时，自动改用标准计算；一键更新后，启动较慢的新版本同样会保留。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.17",
-      "en": {
-        "summary": "Image generation and editing come to Apple silicon Macs, a Mac update that fails to open is rolled back, and phones on the same network connect more reliably.",
-        "changes": [
-          "Mac: Macs with Apple silicon and at least 16 GB of memory can now generate and edit images.",
-          "Mac: in later updates, if the new version stops right after opening, the previous version is put back. The previous version is kept in a hidden folder so it no longer shows up in search or Launchpad. When an update fails, the reason and both buttons now appear right below the description.",
-          "Phone access: the phone page connects when phone access is switched on in the launcher, and also works on older phone browsers.",
-          "Queue: a single failed read of the queue no longer shows the connection lost card. The card appears after three failures in a row and goes away when the connection returns, and a running loop is kept through a short outage.",
-          "Launcher: when the chosen folder is not a ComfyUI folder, the launcher names a ComfyUI folder found nearby. Windows: the engine now starts when its usual port falls inside a range that Windows has reserved.",
-          "Installation: an installation with no generation on record now also compiles the standard size in the background.",
-          "Failures: when the model file changed during generation, the failure text names what changed."
-        ]
-      },
-      "zh": {
-        "summary": "Apple 芯片的 Mac 可以生成和编辑图片；Mac 更新后打不开时会还原旧版；同一网络下的手机连接更稳定。",
-        "changes": [
-          "Mac：Apple 芯片、内存 16 GB 及以上的 Mac 可以生成和编辑图片。",
-          "Mac：以后的更新中，新版刚打开就停止时会自动换回旧版。旧版保存在隐藏文件夹里，不再出现在搜索和启动台中。更新失败时，失败原因和两个按钮紧跟在说明下方显示。",
-          "手机访问：在启动器中打开手机访问后，手机页面即可连接，较旧的手机浏览器也能使用。",
-          "队列：读取队列只失败一次时不再弹出“连接已断开”卡片；连续失败三次才出现，连接恢复后自动消失；短时间断线时，正在运行的循环会保留。",
-          "启动器：所选文件夹不是 ComfyUI 文件夹时，会指出附近找到的 ComfyUI 文件夹。Windows：引擎常用端口落在 Windows 保留的端口段里时，也能正常启动。",
-          "安装：没有任何生成记录的安装，后台也会预编译标准尺寸。",
-          "失败提示：生成过程中模型文件发生变化时，失败文字会写明变化的内容。"
         ]
       }
     }

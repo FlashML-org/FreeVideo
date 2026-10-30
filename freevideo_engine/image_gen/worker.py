@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from .failure import Context, classify_exception, exception_details, safe_plan
+from .failure import Context, classify_exception, exception_details, host_memory_shortage, safe_plan
 
 
 class Inbox:
@@ -170,6 +170,8 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                 result = dict(phase='error', code=code, stage=context.timing.stage, reloaded=reload,
                               seconds=context.timing.seconds(), stages=context.timing.snapshot(), plan=plan,
                               error=exception_details(error, context.redactor, code))
+                if code == 'no_memory' and host_memory_shortage(error):
+                    result['memory'] = 'host'
                 try:
                     result.update(attention_report(runner, context.redactor))
                 except Exception:

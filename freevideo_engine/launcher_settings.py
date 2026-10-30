@@ -2,6 +2,7 @@
 from contextlib import ExitStack, contextmanager
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -139,7 +140,32 @@ def documents_directory():
         function.restype = ctypes.c_long
         if function(None, 5, None, 0, buffer) == 0 and buffer.value:
             return Path(buffer.value)
+    if os.name != 'nt':
+        configured = xdg_documents_directory()
+        if configured:
+            return configured
     return Path.home() / 'Documents'
+
+
+def xdg_documents_directory():
+    """The Documents folder the desktop chose (localized or moved), from the XDG user-dirs file."""
+    value = os.environ.get('XDG_DOCUMENTS_DIR')
+    if not value:
+        base = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+        try:
+            text = (base / 'user-dirs.dirs').read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            return None
+        match = re.search(r'^\s*XDG_DOCUMENTS_DIR\s*=\s*"([^"\n]+)"', text, re.M)
+        value = match.group(1) if match else None
+    if not value:
+        return None
+    value = value.replace('$HOME', str(Path.home()))
+    path = Path(value)
+    # An unset folder is written as $HOME itself; that is not a Documents folder.
+    if not path.is_absolute() or path == Path.home():
+        return None
+    return path
 
 
 class Store:

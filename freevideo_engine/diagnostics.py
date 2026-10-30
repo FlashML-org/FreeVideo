@@ -17,6 +17,7 @@ import zipfile
 import platform
 
 from . import execution_paths
+from . import long_paths
 from .long_paths import io_path, resolved, plain, plain_text
 from . import __version__
 from .bootstrap import DEFAULT_ROOT
@@ -38,16 +39,8 @@ SENSITIVE = re.compile(r'(?:^|[_-])(?:token|password|secret|credential|api[_-]?k
 # elsewhere, so replacing only the current installation root is insufficient.
 PATH_KEYS = frozenset(('base', 'checkpoint', 'encoder', 'output', 'directory',
                        'retained', 'sample_csv', 'path', 'root', 'command'))
-ABSOLUTE_PATH = re.compile(
-    # The preceding character guard prevents URL slashes from being treated
-    # as local paths while still matching a drive path after prose such as
-    # ``at C:\\Users\\...`` or a quoted traceback location.  A slash followed by
-    # whitespace is prose (``8.0 / SM80``), not the start of a path.
-    # Consume explicit relative paths too, spaces included, so an interior
-    # slash (after e.g. a hyphen) cannot subsequently be mistaken for an
-    # absolute path. Only our own ``./setup.sh`` command stays as written.
-    r'''(?<![A-Za-z0-9_:/])(?:(?P<command>\./setup\.sh(?![\w/\\-]|\.\w))|\.{1,2}/[^"'<>;\r\n,\)\]}]*|'''
-    r'''(?:(?:[A-Za-z]:[\\/])|(?:\\\\[^\\/\s"'<>]+[\\/])|/(?![/\s]))[^"'<>;\r\n,\)\]}]*)''')
+# Shared with the download error text, which is redacted before it reaches a report.
+ABSOLUTE_PATH = long_paths.ABSOLUTE_PATH
 
 
 class Redactor:
@@ -99,28 +92,16 @@ class Redactor:
         value = ABSOLUTE_PATH.sub(self._path_match, value)
         return value
 
-    @classmethod
-    def _path_match(cls, match):
-        value = match.group(0)
-        if match.group('command') is not None:
-            return value
-        # Text is often redacted again (a worker's log inside a report, the
-        # launcher terminal).  The ``/name`` after an earlier ``<PATH>`` is that
-        # pass's own output, unless it still has a directory in it.
-        if match.string.endswith('<PATH>', 0, match.start()) and not re.search(r'[\\/]', value[1:].rstrip('\\/')):
-            return value
-        return cls._path_placeholder(value)
+    @staticmethod
+    def _path_match(match):
+        return long_paths.path_match(match)
 
     @staticmethod
     def _path_key(key):
         lowered = str(key).lower()
         return lowered in PATH_KEYS or lowered.endswith(('_path', '_paths', '_dir', '_root', '_report'))
 
-    @staticmethod
-    def _path_placeholder(value):
-        normalized = str(value).rstrip('\\/')
-        name = re.split(r'[\\/]', normalized)[-1]
-        return '<PATH>/' + name if name else '<PATH>'
+    _path_placeholder = staticmethod(long_paths.path_placeholder)
 
     def path(self, value):
         """Return a slash-normalized relative path safe for a shared report."""

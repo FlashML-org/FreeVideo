@@ -21,10 +21,10 @@ import { openLibrary } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
-import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
+import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
-import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
+import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
@@ -34,6 +34,7 @@ import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, pass
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
 import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
+import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
@@ -684,14 +685,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };
     syncReferencePrompt(node, t);
-    // An untouched node shows its starter prompt as a placeholder and generates it.
-    // Once something was typed, an emptied box stays empty and asks for a scene.
+    // An untouched node shows its starter prompt as a placeholder, in the same readable form as a rewrite, and generates
+    // it as written. Once something was typed, an emptied box stays empty and asks for a scene.
     const starter = node.freevideoStarterPrompt || '';
+    const starterShown = shownRewrite(starter, t('en', 'zh')) ?? starter;
     const untouched = () => Boolean(starter) && value(node, 'text') === starter;
     const shown = text => starter && text === starter ? '' : String(text || '');
     const prompt = el('textarea'); prompt.value = shown(value(node, 'text')); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
     prompt.dataset.fvGuide = 'describe';
-    const placeholder = () => { prompt.placeholder = extension.source ? extendText(t, 'prompt') : untouched() ? starter : t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); };
+    const placeholder = () => { prompt.placeholder = extension.source ? extendText(t, 'prompt') : untouched() ? starterShown : t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); };
     placeholder();
     prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
     const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
@@ -817,9 +819,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, onChange: () => { castOverlay.refresh(); references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else castLibrary = library; });
-    let requestAssets = null;
+    let requestAssets = null, rewriteSubjects = [];
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
-        prepare: text => expandCast(text, mediaRows(node), {continued: Boolean(extension.source)}).text,
+        // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
+        prepare: text => { const out = expandCast(text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
+        restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
         onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); },
@@ -831,7 +835,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
     requestAssets = createRequestAssets({t, api, request: () => requestAssetsQuery?.()});
     cleanup.push(() => requestAssets.dispose());
     let requestAssetsQuery = null;
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); prompt.disabled = linked(node, 'text'); mention.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); enhancer.sync(); } };
+    // H3 text put in the box from elsewhere (a reused prompt, an older workflow) shows in the same readable form as a
+    // rewrite; the enhancer keeps the model's words and sends them as written until the box is cleared or replaced.
+    const showPrompt = () => {
+        const text = value(node, 'text');
+        const readable = untouched() || linked(node, 'text') ? null : shownRewrite(text, t('en', 'zh'));
+        if (readable !== null) set(node, 'text', readable);
+        if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text'));
+        enhancer.sync(readable === null ? '' : text);
+    };
+    showPrompt();
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { prompt.disabled = linked(node, 'text'); showPrompt(); mention.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
     const promptSection = section(t('Describe your scene', '描述画面'));
@@ -1441,7 +1455,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const reuse = {
         now: saved => {
             const sizeLocked = dimensionsLinked || Boolean(extension.source), lengthLocked = linked(node, 'seconds') || Boolean(extension.source);
-            return {text: prompt.disabled ? saved.text : prompt.value, width: sizeLocked ? saved.width : Number(value(node, 'width')),
+            return {text: prompt.disabled ? saved.text : requestText(prompt.value, node.properties?.freevideo_prompt_versions), width: sizeLocked ? saved.width : Number(value(node, 'width')),
                 height: sizeLocked ? saved.height : Number(value(node, 'height')),
                 frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value)};
         },
@@ -1692,7 +1706,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         lastQueueError = identity;
         const report = failure.show(error, error?.schema === 'freevideo.error-report', {stage: 'queue', node, graph: app.graph});
         node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
-        connectionNotice = isNetworkTypeError(error) && !report.browser_extension;
+        connectionNotice = isNetworkTypeError(error) && (!report.browser_extension || wrappedFetchOnly(report.browser_extension));
     }
     // The queue read works again: take the lost-connection notice down. A failure card for anything else stays.
     function clearConnectionNotice() {
@@ -2122,7 +2136,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(listenDialogKey(dialog, 'keydown', escape));
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
-    dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
+    // Escape first closes the recent videos panel of a narrower window, then the studio.
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!recent.dismiss()) closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
@@ -2162,7 +2177,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }
         twoPass.checked = Boolean(source) || value(node, 'two_pass') !== false;
         previewFirst.checked = !source && value(node, 'preview') === true;
-        prompt.value = shown(value(node, 'text')); placeholder(); enhancer.sync();
+        showPrompt(); placeholder();
         // The media panel and the @ list read whether a video is being continued.
         if (mediaNode) window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
         syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input'));

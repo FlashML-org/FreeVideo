@@ -687,7 +687,7 @@ class Jobs:
                 error = errors.build(code, details=error.get('details'),
                     request=row.get('request_id'), action_required=code != 'cancelled',
                     kind=row['kind'], stage='terminal', resumable=not row['spec'].get('refine_from'),
-                    report_id=error.get('report_id'))
+                    report_id=error.get('report_id'), memory=error.get('memory'))
                 if row['kind'] == 'image':
                     reason_zh, reason_en = error['error_zh'], error['error_en']
         if error is not None:
@@ -1979,7 +1979,7 @@ class Jobs:
             code = failure.get('code') if isinstance(failure, dict) else failure
             code = code or 'generation_failed'
             if not self.wait_image(row, code):
-                self.finish(row, 'failed', error=dict(code=code, report_id=state.get('report_id')))
+                self.finish(row, 'failed', error=dict(code=code, report_id=state.get('report_id'), memory=state.get('memory')))
 
     # Local VLM -----------------------------------------------------------------------------------------
     def start_vlm(self, row):

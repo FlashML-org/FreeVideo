@@ -1,6 +1,6 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
-import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError} from './browser_extension.js';
+import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
 import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
@@ -131,7 +131,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     nodeId = String(nodeId);
     let running = null, pending = [], submitting = false, loop = null, timer = null;
     let runningAll = [], pooled = false;
-    let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null;
+    let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null, submitError = null;
     const listeners = new Set();
     const owned = new Set(), delivered = new Set();
     function remember(id) { owned.add(id); if (owned.size > 128) { const old = owned.values().next().value; owned.delete(old); delivered.delete(old); } }
@@ -224,6 +224,8 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         }
         session.completed++; session.sending = true; publish();
         try { await submit(session, true); refreshAgain = true; }
+        // The server may have accepted the request even though its reply was lost: submitting again could queue a second job.
+        catch (error) { submitError = error; throw error; }
         finally { session.sending = false; }
     }
     async function readQueue() {
@@ -235,10 +237,12 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         // Comfy returns its heap array; the queue number gives the real running order.
         pending = (queue.queue_pending || []).filter(matches).sort((a, b) => a[0] - b[0]).map(entry);
         pooled = [...runningAll, ...pending].some(row => row.executor) || runningAll.length > 1;
+        for (const row of [...runningAll, ...pending]) remember(row.id);
+        // A failing history read of a loop counts as part of the same outage: the count restarts only after the whole round worked.
+        await advanceLoop();
         outage = null;
         if (isNetworkTypeError(lastError) && !lastError.loopStopped) lastError = null;
-        for (const row of [...runningAll, ...pending]) remember(row.id);
-        await advanceLoop(); publish();
+        publish();
     }
     function refresh() {
         if (disposed) return Promise.resolve();
@@ -246,7 +250,9 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         refreshing = (async () => {
             do { refreshAgain = false; await readQueue(); } while (refreshAgain && !disposed);
         })().catch(error => {
-            if (!isNetworkTypeError(error) || detectBrowserExtension(error)) { fail(error); throw error; }
+            // Only a wrapped fetch is not proof of a blocking extension: it is counted as an outage like any other.
+            const extension = detectBrowserExtension(error);
+            if (!isNetworkTypeError(error) || error === submitError || (extension && !wrappedFetchOnly(extension))) { fail(error); throw error; }
             // A lost connection does not stop a loop at first: it only continues after a successful read.
             outage = {failures: (outage?.failures || 0) + 1, since: outage?.since ?? Date.now()};
             if (outage.failures < OUTAGE_POLLS) return;

@@ -741,7 +741,7 @@ WHITEBOX_TOOLS = dict(submit='freevideo_whitebox_submit', get='freevideo_whitebo
 
 def whitebox_schema(name):
     if name == 'submit':
-        return obj(dict(code=string(65536, description='JavaScript that defines build(THREE) and returns {scene, camera, update(t)}.'),
+        return obj(dict(code=string(65536, description='An ES module with export function build(THREE) that returns {scene, camera, update(t)}.'),
                         summary=string(500, description='One sentence on what the scene shows, for the confirm card.')), ('code',))
     return obj({'wait': WAIT})
 

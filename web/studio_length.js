@@ -1,6 +1,6 @@
 import {capabilityPoints, interpolate} from './chain_support.js';
 import {issueButton} from './issue_button.js';
-import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds, defaultBlockSeconds} from './length_plan.js?v=20261011-length';
+import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds, defaultBlockSeconds} from './length_plan.js?v=20261027-length';
 
 export const LENGTH_PROPERTIES = Object.freeze({seconds: 'freevideo_seconds', single: 'freevideo_single', block: 'freevideo_block_seconds'});
 const positive = value => typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -133,6 +133,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             continuation_unavailable: noParts ? NO_PARTS
                 : t('Choose a smaller picture size to make a longer video.', '如需生成更长的视频，请选择更小的画面大小。'),
             too_long: TOO_LONG() + storyboardText(),
+            block_too_short: t('The part length is too short. Set a longer part length.', '每段时长过短，请加长。'),
+            block_too_long: t('The part length is longer than one run allows at this size. Set a shorter part length.', '每段时长超过当前画面大小的单次上限，请缩短。'),
             other: t('Could not plan this video. Try again.', '暂时无法安排这条视频的分段，请重试。')}[kind];
     }
     function invalidate() {
@@ -150,7 +152,11 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             const reply = response.status === 404 ? null : await response.json();
             if (disposed || controller.signal.aborted || version !== revision) return null;
             if (response.status === 404) { absent = true; plan = null; error = null; }
-            else if (response.status === 400) error = classifyPlanError(reply);
+            else if (response.status === 400) {
+                error = classifyPlanError(reply);
+                // A part length the user cannot edit is not the cause: the device limit is.
+                if (block.disabled && (error === 'block_too_short' || error === 'block_too_long')) error = 'continuation_unavailable';
+            }
             else if (response.ok) { plan = readLengthPlan(reply); if (!plan) error = 'other'; }
             else error = 'other';
         } catch { if (!controller.signal.aborted && version === revision) error = 'other'; }

@@ -1777,7 +1777,8 @@ class Installer:
                 return network.download_command(self.network, 'github', attempt, self.env, category='python',
                                                 extra_sources=['user-python'] if custom else [], notice=notice)
         except network.PackageSourcesError as error:
-            failure = RuntimeError('Python download failed on every route; see retained logs')
+            failure = RuntimeError('Python download failed on every route; see retained logs'
+                                   + network.sources_text(error.attempts))
             failure.package_attempts = error.attempts
             raise failure from error
 
