@@ -174,6 +174,10 @@ ApplicationWindow {
         if (code === "active-variant-incomplete") return t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
         return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
     }
+    function upgradeReportText() {
+        // A failed upgrade reports the whole failure, including the step log, not only the first line shown on the card.
+        return upgrade.status === "failed" && upgrade.error ? upgrade.error : upgradeExplanation()
+    }
     function upgradeExplanation() {
         var u = upgrade
         var lora = u.lora_variants && u.lora_variants.length
@@ -885,7 +889,7 @@ ApplicationWindow {
                             FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
                                       text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
                             FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
-                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(upgradeExplanation(), t("Model upgrade", "模型升级")) }
+                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(upgradeReportText(), t("Model upgrade", "模型升级")) }
                             FButton {
                                 objectName: "modelUpgradeButton"; primary: true
                                 visible: upgrade.status === "available" || upgrade.status === "releasable"
