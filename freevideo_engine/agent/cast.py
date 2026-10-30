@@ -25,7 +25,7 @@ KINDS = ('character', 'setting')
 ORIGINS = ('user', 'agent', 'builtin')
 LABELS = schema.LABELS
 EDITABLE = ('name', 'description', 'images', 'voice')
-MAX_IMAGES = 6
+MAX_IMAGES = schema.MAX_CAST_IMAGES
 MAX_CANDIDATES = 6
 MAX_RECEIPTS = 64
 VOICE_SECONDS = (2, 15)
@@ -40,7 +40,7 @@ TURN = dict(aspect='9:16', seconds=6)
 CLOSE_UP = dict(aspect='1:1', seconds=4)
 SCENE = dict(aspect='16:9', seconds=6)
 
-# The sheet of every view a shot carries for each person, put together here from the card's own pictures: up to six
+# The sheet of every view a continuing shot carries for a single person, put together here from the card's own pictures: up to six
 # equal cells (three to a row) on a light grey ground, each picture scaled whole and centred, no text.
 SHEET_VERSION = 1
 SHEET_ORDER = ('front', 'three_quarter', 'side', 'back', 'face')  # then any other label, in card order
@@ -140,6 +140,12 @@ def _plain(item):
     return None
 
 
+def _caption(row):
+    """A requested picture's caption on one line, as picture fields ({} when it has none)."""
+    text = ' '.join(str(row.get('caption') or '').split())
+    return {'caption': text} if text else {}
+
+
 def _check(record, stem):
     card = record['card']
     if (card['id'] != stem or not CARD.fullmatch(stem) or card['kind'] not in KINDS
@@ -161,7 +167,8 @@ def _check(record, stem):
         if not isinstance(card[key], list) or len(card[key]) > limit:
             raise ValueError('Invalid pictures')
         for row in card[key]:
-            if not isinstance(row['label'], str) or not isinstance(row['media']['file'], str):
+            if (not isinstance(row['label'], str) or not isinstance(row['media']['file'], str)
+                    or not isinstance(row.get('caption', ''), str)):
                 raise ValueError('Invalid picture')
             unknown_labels |= row['label'] not in LABELS
     if card['voice'] is not None:
@@ -383,7 +390,7 @@ class Cast:
         images = []
         for index, row in enumerate(value.get('images', [])):
             entry = self._picture_at(identity, row['media'], by, index)
-            images.append(dict(entry, label=row.get('label', 'other')))
+            images.append(dict(entry, label=row.get('label', 'other'), **_caption(row)))
         voice = self._voice(identity, value['voice']) if value.get('voice') else None
         with self.changed:
             digest, replay = self._receipt('cast:create', value, ref, client)
@@ -461,7 +468,7 @@ class Cast:
         for key, rows in changes.items():
             if key == 'images':
                 resolved['images'] = [entry if entry is not None else dict(self._picture_at(identity, row['media'], by, index),
-                                      label=row.get('label', 'other')) for index, (row, entry) in enumerate(rows)]
+                                      label=row.get('label', 'other'), **_caption(row)) for index, (row, entry) in enumerate(rows)]
             elif key == 'voice':
                 resolved['voice'] = None if rows is None else self._voice(identity, rows)
             else:
@@ -510,16 +517,19 @@ class Cast:
                         entry.pop('label_guess', None)
                         if by == 'user':
                             entry.pop('generated', None)  # The user's label makes it the user's picture.
+                    if 'caption' in row:  # Left out, the caption stays; "" removes it.
+                        entry.pop('caption', None)
+                        entry.update(_caption(row))
                 else:
                     fresh = True
                 rows.append((row, entry))
-            current = [(r['media']['file'], r['label']) for r in card['images']]
-            proposed = [(e['media']['file'], e['label']) for _, e in rows if e is not None]
+            current = [(r['media']['file'], r['label'], r.get('caption')) for r in card['images']]
+            proposed = [(e['media']['file'], e['label'], e.get('caption')) for _, e in rows if e is not None]
             if fresh or proposed != current:
                 changes['images'] = rows
                 if by != 'user' and card['edited_by_user']['images']:
                     # The user's pictures may only be joined by candidates the server made; never replaced.
-                    untouched = all((f, l) in proposed for f, l in current) and len(kept) == len(current)
+                    untouched = all(row in proposed for row in current) and len(kept) == len(current)
                     if fresh or not untouched or not added:
                         raise self._by_user(card, 'images')
         if 'voice' in value:

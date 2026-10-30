@@ -22,10 +22,12 @@ const button = (className, label, action) => {
     const node = el('button', className, label); node.type = 'button'; node.onclick = action; return node;
 };
 const path = id => '/freevideo/agent/cast/' + encodeURIComponent(id);
+// MAX_CAST_IMAGES and MAX_CAST_CAPTION in agent/schema.py.
+const MAX_PICTURES = 24, MAX_CAPTION = 200;
 
 // kind 'setting' is the scene row: wide pictures, up to 3 per card, and no front picture.
 export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () => {}, kind = 'character'}) {
-    const scene = kind === 'setting', SLOTS = scene ? 3 : 6;
+    const scene = kind === 'setting', SLOTS = scene ? 3 : MAX_PICTURES;
     const word = (character, place) => scene ? place : character;
     if (!document.querySelector('link[data-freevideo-cast]')) {
         const css = el('link'); css.rel = 'stylesheet'; css.dataset.freevideoCast = '';
@@ -103,9 +105,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         if (disposed || !available) return;
         current?.close();
         let closed = false, loading = !!id, saving = false, revision, active = 'upload';
-        let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
-        const slots = Array(SLOTS).fill(null), slotUI = [];
-        const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = scene ? 'scene' : 'character';
+    let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [], mirrored = '', savedDescription = null;
+        const slots = [null], slotUI = [];
+    const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = scene ? 'scene' : 'character';
         const top = el('div', 'fv-cast-top');
         const title = el('h2', '', id ? word(text('Edit character', '编辑角色'), text('Edit scene', '编辑场景')) : word(text('New character', '新建角色'), text('New scene', '新建场景')));
         dialog.setAttribute('aria-label', title.textContent);
@@ -115,6 +117,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         name.placeholder = word(text('Name', '名字'), text('Name', '名称')); name.setAttribute('aria-label', name.placeholder);
         name.oninput = () => sync();
         name.onkeydown = event => { if (event.key === 'Enter') event.preventDefault(); };
+        const description = el('textarea', 'fv-cast-description'); description.rows = 2; description.maxLength = 1000;
+        description.placeholder = text('Description (optional): details the pictures may not show, e.g. a dragon tattoo on the back, a scar over the left eyebrow',
+            '描述（可选）：图片里可能看不到的细节，例如背上的龙纹身、左眉上的疤');
+        description.setAttribute('aria-label', text('Description', '描述'));
         const tabs = el('div', 'fv-cast-tabs'); tabs.setAttribute('role', 'tablist');
         tabs.setAttribute('aria-label', text('Images', '图片'));
         const uploadTab = button('', text('Upload images', '上传图片'), () => select('upload'));
@@ -130,7 +136,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const save = button('fv-cast-save', text('Save', '保存'), () => saveCard());
         actions.append(remove, cancel, save);
         const issue = issueButton(text, () => ({where: CAST_ISSUE, message: status.textContent})); issue.hidden = true;
-        dialog.append(top, name, tabs, uploadPane, aiPane, status, issue, actions); tabs.append(uploadTab, aiTab);
+        dialog.append(top, name, description, tabs, uploadPane, aiPane, status, issue, actions); tabs.append(uploadTab, aiTab);
 
         // A refresh notice is plain secondary text; only failures are shown as errors.
         const message = (content, notice = false) => {
@@ -147,7 +153,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'));
         function sync() {
             const busy = loading || saving;
-            name.disabled = busy; remove.disabled = busy;
+            name.disabled = description.disabled = busy; remove.disabled = busy;
             uploadTab.disabled = aiTab.disabled = busy;
             const before = missing;
             missing = busy ? '' : missingNow();
@@ -156,14 +162,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             else { save.removeAttribute('aria-disabled'); save.removeAttribute('title'); }
             if (before && before !== missing && status.textContent === before) message('');
             for (let index = 0; index < slotUI.length; index++) {
-                slotUI[index].choose.disabled = busy; slotUI[index].remove.disabled = busy;
+                slotUI[index].choose.disabled = busy; slotUI[index].remove.disabled = busy; slotUI[index].caption.disabled = busy;
             }
         }
         // A refused picture is named on its own tile; choosing another picture there, or saving again, clears it.
         // A tile too narrow for the words keeps only its red border, and the words go on the line under the pictures.
         let markedBelow = -1;
         function mark(index, content = '') {
-            const {slot, problem} = slotUI[index];
+            const {slot, frame, problem} = slotUI[index];
             // Clear the line only while it still holds this tile's words, not a later message.
             if (markedBelow === index) { markedBelow = -1; if (status.textContent === problem.dataset.message) message(''); }
             problem.dataset.message = content;
@@ -171,8 +177,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             problem.replaceChildren(...content.replace(/([，。]|\. )/g, '$1\n').split('\n').filter(Boolean).map(part => el('span', 'fv-cast-slot-line', part)));
             if (content) problem.append(issueButton(text, () => ({where: CAST_ISSUE, message: content})));
             problem.hidden = !content; slot.classList.toggle('fv-cast-bad', !!content);
-            const width = slot.clientWidth;
-            if (content && width > 0 && (width < 100 || problem.scrollWidth > problem.clientWidth || problem.offsetHeight > slot.clientHeight / 2)) {
+            const width = frame.clientWidth;
+            if (content && width > 0 && (width < 100 || problem.scrollWidth > problem.clientWidth || problem.offsetHeight > frame.clientHeight / 2)) {
                 problem.hidden = true; markedBelow = index; message(content);
             }
         }
@@ -190,13 +196,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             select(event.key === 'Home' ? 'upload' : event.key === 'End' ? 'ai' : active === 'upload' ? 'ai' : 'upload');
             (active === 'upload' ? uploadTab : aiTab).focus();
         };
-        function release(index) {
-            if (slots[index]?.preview) URL.revokeObjectURL(slots[index].preview);
-            slots[index] = null;
-        }
+        const revoke = picture => { if (picture?.preview) URL.revokeObjectURL(picture.preview); };
         function paint(index) {
-            const {choose, remove} = slotUI[index], picture = slots[index];
+            const {choose, remove, caption} = slotUI[index], picture = slots[index];
+            caption.hidden = !picture; caption.value = picture?.caption || '';
+            caption.setAttribute('aria-label', text(`What image ${index + 1} shows`, `图片 ${index + 1} 的内容`));
             choose.replaceChildren(); let image = null;
+            choose.setAttribute('aria-label', !index && !frontless ? text('Front image', '正面图片')
+                : picture ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : text('Add images', '添加图片'));
             if (picture) {
                 image = el('img'); image.alt = '';
                 // The remove button waits for the picture, so a slot still loading never looks like a filled one.
@@ -206,34 +213,60 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 choose.append(image);
             } else {
                 choose.append(el('span', 'fv-cast-slot-plus', '+'));
-                if (!index && !scene) choose.append(el('span', '', text('Front image', '正面图片')));
+                choose.append(el('span', '', index || frontless ? text('Add images', '添加图片') : text('Front image', '正面图片')));
             }
             remove.hidden = true; if (image?.complete) remove.hidden = false; mark(index); sync();
         }
+        // A tile for each picture and one empty tile after them, until the card is full.
+        function layout() {
+            const wanted = Math.min(slots.length + 1, SLOTS);
+            while (slotUI.length > wanted) slotUI.pop().slot.remove();
+            while (slotUI.length < wanted) addSlot();
+        }
+        // The first file goes on the tile it was given to; the others go after the last picture.
         function chooseFiles(index, files) {
             if (loading || saving || closed) return;
-            for (const file of Array.from(files).slice(0, SLOTS - index)) {
-                release(index);
-                slots[index] = {file, label: index || scene ? 'other' : 'front', preview: URL.createObjectURL(file)};
-                paint(index++);
+            const changed = [];
+            for (const file of Array.from(files)) {
+                if (index >= SLOTS) break;
+                revoke(slots[index]);
+                slots[index] = {file, label: index || frontless ? 'other' : 'front', preview: URL.createObjectURL(file)};
+                changed.push(index); index = slots.length;
             }
-            message('');
+            layout(); changed.forEach(at => paint(at)); message('');
         }
-        for (let index = 0; index < SLOTS; index++) {
-            const slot = el('div', 'fv-cast-slot' + (index || scene ? '' : ' fv-cast-front'));
-            const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
-            const label = scene ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
-            const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
-            const remove = button('fv-cast-remove', '×', () => { release(index); paint(index); });
+        function drop(index) {
+            revoke(slots[index]);
+            if (!index && !frontless) { slots[0] = null; paint(0); return; }
+            // A refused picture keeps its mark when the pictures after the removed one move up.
+            const marks = slotUI.map(({problem}) => problem.dataset.message || '');
+            if (markedBelow >= index) mark(markedBelow);
+            slots.splice(index, 1); layout();
+            if (!slots.length) slots.push(null);
+            for (let at = index; at < slotUI.length; at++) { paint(at); if (marks[at + 1]) mark(at, marks[at + 1]); }
+        }
+        function addSlot() {
+            const index = slotUI.length;
+            const slot = el('div', 'fv-cast-slot' + (index || scene ? '' : ' fv-cast-front')), frame = el('div', 'fv-cast-frame');
+            const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.multiple = true; input.hidden = true;
+            const choose = button('fv-cast-choose', '', () => input.click());
+            const remove = button('fv-cast-remove', '×', () => drop(index));
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
+            const caption = el('input', 'fv-cast-caption'); caption.type = 'text'; caption.maxLength = MAX_CAPTION;
+            caption.placeholder = text('What it shows', '图中内容');
+            caption.title = text('Goes into the prompt with this image, e.g. "dragon tattoo on her back"', '会和这张图一起写进提示词，例如“背上的龙纹身”');
+            caption.oninput = () => { if (slots[index]) slots[index].caption = caption.value; };
+            caption.onkeydown = event => { if (event.key === 'Enter') event.preventDefault(); };
             input.onchange = () => { chooseFiles(index, input.files); input.value = ''; };
             slot.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
             slot.ondrop = event => { event.preventDefault(); event.stopPropagation(); chooseFiles(index, event.dataTransfer.files); };
             const problem = el('div', 'fv-cast-slot-error'); problem.setAttribute('role', 'alert'); problem.hidden = true;
             // The remove button comes after the text so it stays above it on a narrow tile.
-            slot.append(choose, problem, remove, input); slotUI.push({slot, choose, remove, problem});
+            frame.append(choose, problem, remove); slot.append(frame, caption, input);
+            slotUI.push({slot, frame, choose, remove, problem, caption});
             (index || scene ? views : uploadPane).append(slot); paint(index);
         }
+        layout();
         uploadPane.append(views);
         function resetDelete() {
             clearTimeout(deleteTimer); deleteTimer = null; confirming = false;
@@ -244,15 +277,16 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             try {
                 const card = await get(id);
                 if (closed) return;
-                revision = card.revision; name.value = card.name;
-                for (let i = 0; i < SLOTS; i++) release(i);
+                revision = card.revision; name.value = card.name; mirrored = '';
+                savedDescription = card.description ?? null; description.value = savedDescription || '';
+                slots.forEach(revoke);
                 // A card may have no front picture (the API does not require one): all its pictures stay, in order, and
                 // saving does not ask for a front; the front slot is only reserved while there is a front to keep first.
                 frontless = scene || card.images.length > 0 && card.images[0].label !== 'front';
-                card.images.slice(0, SLOTS).forEach((picture, index) => { slots[index] = {...picture}; });
-                // The API allows six pictures on a scene card but the dialog shows three: the rest stay as they are.
-                beyond = card.images.slice(SLOTS).map(picture => ({media: picture.media, label: picture.label}));
-                slotUI.forEach((_, index) => paint(index));
+                slots.splice(0, slots.length, ...card.images.slice(0, SLOTS).map(picture => ({...picture})));
+                beyond = scene ? card.images.slice(SLOTS).map(picture => ({media: picture.media, label: picture.label, caption: picture.caption || ''})) : [];
+                if (!slots.length) slots.push(null);
+                layout(); slotUI.forEach((_, index) => paint(index));
                 generator?.cancel(); aiState = {busy: false, done: false}; select('upload'); resetDelete();
             } finally { loading = false; if (!closed) sync(); }
         }
@@ -277,7 +311,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 }));
                 const frontNeeded = !scene && (active === 'ai' || !frontless);
                 if (!pictures.length || pictures.length > SLOTS || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
-                    message(word(text('Choose one front image and up to 5 more angles', '选一张正面图片，再加最多 5 张其他角度的图片'),
+                    message(word(text(`Choose one front image and up to ${MAX_PICTURES - 1} more images`, `选一张正面图片，再加最多 ${MAX_PICTURES - 1} 张其他图片`),
                         text('Choose up to 3 images', '最多选 3 张图片')), true); return;
                 }
                 const images = [];
@@ -285,11 +319,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                     if (closed) return;
                     // Cache uploads on the slot so retrying a refused save does not upload twice.
                     if (picture.file && !picture.media) picture.media = (await uploadOne(picture.file)).file;
-                    images.push({media: picture.media, label: picture.label});
+                    images.push({media: picture.media, label: picture.label, caption: String(picture.caption || '').replace(/\s+/g, ' ').trim()});
                 }
                 if (id && scene) images.push(...beyond);
                 if (closed) return;
-                const body = {name: name.value.trim(), images};
+                // An untouched description goes back exactly as the card has it; a typed one goes on one line.
+                const about = description.value === (savedDescription || '') ? savedDescription
+                    : description.value.replace(/\s+/g, ' ').trim() || null;
+                const body = {name: name.value.trim(), description: about, images};
                 await value(await (id ? agentSend(api, 'PATCH', path(id), {revision, ...body})
                     : agentPost(api, '/freevideo/agent/cast', {kind, ...body})));
                 close(); await saved();
@@ -317,7 +354,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             if (closed) return;
             closed = true; clearTimeout(deleteTimer);
             generator?.cancel(); generator?.destroy();
-            for (let index = 0; index < SLOTS; index++) release(index);
+            slots.forEach(revoke);
             if (dialog.open) dialog.close(); dialog.remove();
             if (current?.element === dialog) current = null;
             add.focus();
@@ -330,10 +367,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();
         if (id) load().catch(error => message(error.message));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
-        const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; paint(0); };
+        const pick = file => { if (closed || !scene) return; revoke(slots[0]); slots[0] = {media: file, label: 'other'}; paint(0); };
         mountGenerator({container: aiPane, api, text, viewURL, kind, onPick: pick, onState: state => {
             if (closed) return;
-            aiState = state; sync();
+            aiState = state;
+            // The words that made the AI pictures describe the character too, unless the box says something else.
+            const words = state.description || '', typed = description.value.trim();
+            if (words && (!typed || typed === mirrored)) description.value = mirrored = words;
+            sync();
         }}).then(instance => {
             if (closed) { instance?.cancel(); instance?.destroy(); return; }
             generator = instance; aiTab.hidden = tabs.hidden = !instance; sync();
