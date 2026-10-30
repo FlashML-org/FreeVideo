@@ -4,7 +4,7 @@ Summarised from MiniMax's h3-prompt-writing skill (linked below) and FreeVideo's
 own prompt rules; the enhancement job applies the same contract.
 """
 from ..default_prompt import DEFAULT_PROMPT
-from .schema import CAST_OPERATIONS, DRAMA_OPERATIONS, IMAGE_OPERATIONS, PROJECT_OPERATIONS, SESSION_OPERATIONS, WHITEBOX_OPERATIONS
+from .schema import CAST_OPERATIONS, DRAMA_OPERATIONS, IMAGE_OPERATIONS, MAX_CAST_IMAGES, PROJECT_OPERATIONS, SESSION_OPERATIONS, WHITEBOX_OPERATIONS
 
 from .whitebox import SCENE_PROMPT
 
@@ -598,11 +598,15 @@ GUIDE['filming_routes'] = [dict(operation=name, method=method, path=path, descri
 GUIDE['cast_routes'] = [dict(operation=name, method=method, path=path, description=summary)
     for name, (method, path, summary) in CAST_OPERATIONS.items()]
 GUIDE['cast'] = [
-    'A card is a character or setting: name, a one-sentence English description used in prompts, up to six '
-    'labelled pictures (front, three_quarter, side, back, face, sheet, other) and an optional 2 to 15 s voice.',
+    'A card is a character or setting: name, a one-sentence English description used in prompts, up to %d '
+    'labelled pictures (front, three_quarter, side, back, face, sheet, other) and an optional 2 to 15 s voice. '
+    'Each picture may have a caption: what it shows that the others do not ("dragon tattoo on her back"), written '
+    'into the prompt beside its picture tag.'
+    % MAX_CAST_IMAGES,
     'Changes need the revision you read (body revision or If-Match); stale_revision returns the current card in '
     'error.card. Fields the user changed return changed_by_user: keep the user\'s version.',
-    'Film with a card by setting characters.<key>.card. Cards are read when each take is submitted. Shots that '
+    'Film with a card by setting characters.<key>.card. Cards are read when each take is submitted. A shot carries '
+    'every picture of its carded people within the 32 references (the face, else the front, last). Shots that '
     'continue the previous one carry the sheet and the face for a single person, else one picture each (the face, '
     'else the front) for at most 3 people, and keep the voices of the previous shot; POST /drama/plan shows each shot\'s cast. '
     'A shot\'s own references replace the card pictures; references=[] sends none. '

@@ -22,6 +22,8 @@ const button = (className, label, action) => {
     const node = el('button', className, label); node.type = 'button'; node.onclick = action; return node;
 };
 const path = id => '/freevideo/agent/cast/' + encodeURIComponent(id);
+// MAX_CAST_IMAGES and MAX_CAST_CAPTION in agent/schema.py.
+const MAX_PICTURES = 24, MAX_CAPTION = 200;
 
 export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () => {}}) {
     if (!document.querySelector('link[data-freevideo-cast]')) {
@@ -99,8 +101,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         if (disposed || !available) return;
         current?.close();
         let closed = false, loading = !!id, saving = false, revision, active = 'upload';
-        let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = false;
-        const slots = Array(6).fill(null), slotUI = [];
+        let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = false, mirrored = '', savedDescription = null;
+        // slots[0] is the front; the other pictures follow it without gaps.
+        const slots = [null], slotUI = [];
         const dialog = el('dialog', 'fv-cast-dialog');
         const top = el('div', 'fv-cast-top');
         const title = el('h2', '', id ? text('Edit character', '编辑角色') : text('New character', '新建角色'));
@@ -111,6 +114,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         name.placeholder = text('Name', '名字'); name.setAttribute('aria-label', text('Name', '名字'));
         name.oninput = () => sync();
         name.onkeydown = event => { if (event.key === 'Enter') event.preventDefault(); };
+        const description = el('textarea', 'fv-cast-description'); description.rows = 2; description.maxLength = 1000;
+        description.placeholder = text('Description (optional): details the pictures may not show, e.g. a dragon tattoo on the back, a scar over the left eyebrow',
+            '描述（可选）：图片里可能看不到的细节，例如背上的龙纹身、左眉上的疤');
+        description.setAttribute('aria-label', text('Description', '描述'));
         const tabs = el('div', 'fv-cast-tabs'); tabs.setAttribute('role', 'tablist');
         tabs.setAttribute('aria-label', text('Images', '图片'));
         const uploadTab = button('', text('Upload images', '上传图片'), () => select('upload'));
@@ -126,7 +133,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const save = button('fv-cast-save', text('Save', '保存'), () => saveCard());
         actions.append(remove, cancel, save);
         const issue = issueButton(text, () => ({where: CAST_ISSUE, message: status.textContent})); issue.hidden = true;
-        dialog.append(top, name, tabs, uploadPane, aiPane, status, issue, actions); tabs.append(uploadTab, aiTab);
+        dialog.append(top, name, description, tabs, uploadPane, aiPane, status, issue, actions); tabs.append(uploadTab, aiTab);
 
         // A refresh notice is plain secondary text; only failures are shown as errors.
         const message = (content, notice = false) => {
@@ -143,7 +150,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             : aiState.done ? '' : text('Generate the images first', '先生成角色图片');
         function sync() {
             const busy = loading || saving;
-            name.disabled = busy; remove.disabled = busy;
+            name.disabled = description.disabled = busy; remove.disabled = busy;
             uploadTab.disabled = aiTab.disabled = busy;
             const before = missing;
             missing = busy ? '' : missingNow();
@@ -152,14 +159,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             else { save.removeAttribute('aria-disabled'); save.removeAttribute('title'); }
             if (before && before !== missing && status.textContent === before) message('');
             for (let index = 0; index < slotUI.length; index++) {
-                slotUI[index].choose.disabled = busy; slotUI[index].remove.disabled = busy;
+                slotUI[index].choose.disabled = busy; slotUI[index].remove.disabled = busy; slotUI[index].caption.disabled = busy;
             }
         }
         // A refused picture is named on its own tile; choosing another picture there, or saving again, clears it.
         // A tile too narrow for the words keeps only its red border, and the words go on the line under the pictures.
         let markedBelow = -1;
         function mark(index, content = '') {
-            const {slot, problem} = slotUI[index];
+            const {slot, frame, problem} = slotUI[index];
             // Clear the line only while it still holds this tile's words, not a later message.
             if (markedBelow === index) { markedBelow = -1; if (status.textContent === problem.dataset.message) message(''); }
             problem.dataset.message = content;
@@ -167,8 +174,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             problem.replaceChildren(...content.replace(/([，。]|\. )/g, '$1\n').split('\n').filter(Boolean).map(part => el('span', 'fv-cast-slot-line', part)));
             if (content) problem.append(issueButton(text, () => ({where: CAST_ISSUE, message: content})));
             problem.hidden = !content; slot.classList.toggle('fv-cast-bad', !!content);
-            const width = slot.clientWidth;
-            if (content && width > 0 && (width < 100 || problem.scrollWidth > problem.clientWidth || problem.offsetHeight > slot.clientHeight / 2)) {
+            const width = frame.clientWidth;
+            if (content && width > 0 && (width < 100 || problem.scrollWidth > problem.clientWidth || problem.offsetHeight > frame.clientHeight / 2)) {
                 problem.hidden = true; markedBelow = index; message(content);
             }
         }
@@ -186,13 +193,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             select(event.key === 'Home' ? 'upload' : event.key === 'End' ? 'ai' : active === 'upload' ? 'ai' : 'upload');
             (active === 'upload' ? uploadTab : aiTab).focus();
         };
-        function release(index) {
-            if (slots[index]?.preview) URL.revokeObjectURL(slots[index].preview);
-            slots[index] = null;
-        }
+        const revoke = picture => { if (picture?.preview) URL.revokeObjectURL(picture.preview); };
         function paint(index) {
-            const {choose, remove} = slotUI[index], picture = slots[index];
+            const {choose, remove, caption} = slotUI[index], picture = slots[index];
+            caption.hidden = !picture; caption.value = picture?.caption || '';
+            caption.setAttribute('aria-label', text(`What image ${index + 1} shows`, `图片 ${index + 1} 的内容`));
             choose.replaceChildren(); let image = null;
+            choose.setAttribute('aria-label', !index ? text('Front image', '正面图片')
+                : picture ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : text('Add images', '添加图片'));
             if (picture) {
                 image = el('img'); image.alt = '';
                 // The remove button waits for the picture, so a slot still loading never looks like a filled one.
@@ -202,34 +210,59 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 choose.append(image);
             } else {
                 choose.append(el('span', 'fv-cast-slot-plus', '+'));
-                if (!index) choose.append(el('span', '', text('Front image', '正面图片')));
+                choose.append(el('span', '', index ? text('Add images', '添加图片') : text('Front image', '正面图片')));
             }
             remove.hidden = true; if (image?.complete) remove.hidden = false; mark(index); sync();
         }
+        // A tile for each picture and one empty tile after them, until the card is full.
+        function layout() {
+            const wanted = Math.min(slots.length + 1, MAX_PICTURES);
+            while (slotUI.length > wanted) slotUI.pop().slot.remove();
+            while (slotUI.length < wanted) addSlot();
+        }
+        // The first file goes on the tile it was given to; the others go after the last picture.
         function chooseFiles(index, files) {
             if (loading || saving || closed) return;
-            for (const file of Array.from(files).slice(0, 6 - index)) {
-                release(index);
+            const changed = [];
+            for (const file of Array.from(files)) {
+                if (index >= MAX_PICTURES) break;
+                revoke(slots[index]);
                 slots[index] = {file, label: index ? 'other' : 'front', preview: URL.createObjectURL(file)};
-                paint(index++);
+                changed.push(index); index = slots.length;
             }
-            message('');
+            layout(); changed.forEach(at => paint(at)); message('');
         }
-        for (let index = 0; index < 6; index++) {
-            const slot = el('div', 'fv-cast-slot' + (index ? '' : ' fv-cast-front'));
-            const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
-            const label = index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
-            const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
-            const remove = button('fv-cast-remove', '×', () => { release(index); paint(index); });
+        function drop(index) {
+            revoke(slots[index]);
+            if (!index) { slots[0] = null; paint(0); return; }
+            // A refused picture keeps its mark when the pictures after the removed one move up.
+            const marks = slotUI.map(({problem}) => problem.dataset.message || '');
+            if (markedBelow >= index) mark(markedBelow);
+            slots.splice(index, 1); layout();
+            for (let at = index; at < slotUI.length; at++) { paint(at); if (marks[at + 1]) mark(at, marks[at + 1]); }
+        }
+        function addSlot() {
+            const index = slotUI.length;
+            const slot = el('div', 'fv-cast-slot' + (index ? '' : ' fv-cast-front')), frame = el('div', 'fv-cast-frame');
+            const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.multiple = true; input.hidden = true;
+            const choose = button('fv-cast-choose', '', () => input.click());
+            const remove = button('fv-cast-remove', '×', () => drop(index));
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
+            const caption = el('input', 'fv-cast-caption'); caption.type = 'text'; caption.maxLength = MAX_CAPTION;
+            caption.placeholder = text('What it shows', '图中内容');
+            caption.title = text('Goes into the prompt with this image, e.g. "dragon tattoo on her back"', '会和这张图一起写进提示词，例如“背上的龙纹身”');
+            caption.oninput = () => { if (slots[index]) slots[index].caption = caption.value; };
+            caption.onkeydown = event => { if (event.key === 'Enter') event.preventDefault(); };
             input.onchange = () => { chooseFiles(index, input.files); input.value = ''; };
             slot.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
             slot.ondrop = event => { event.preventDefault(); event.stopPropagation(); chooseFiles(index, event.dataTransfer.files); };
             const problem = el('div', 'fv-cast-slot-error'); problem.setAttribute('role', 'alert'); problem.hidden = true;
             // The remove button comes after the text so it stays above it on a narrow tile.
-            slot.append(choose, problem, remove, input); slotUI.push({slot, choose, remove, problem});
+            frame.append(choose, problem, remove); slot.append(frame, caption, input);
+            slotUI.push({slot, frame, choose, remove, problem, caption});
             (index ? views : uploadPane).append(slot); paint(index);
         }
+        layout();
         uploadPane.append(views);
         function resetDelete() {
             clearTimeout(deleteTimer); deleteTimer = null; confirming = false;
@@ -240,13 +273,15 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             try {
                 const card = await get(id);
                 if (closed) return;
-                revision = card.revision; name.value = card.name;
-                for (let i = 0; i < 6; i++) release(i);
+                revision = card.revision; name.value = card.name; mirrored = '';
+                savedDescription = card.description ?? null; description.value = savedDescription || '';
+                slots.forEach(revoke);
                 // A card may have no front picture (the API does not require one): all its pictures stay, in order, and
                 // saving does not ask for a front; the front slot is only reserved while there is a front to keep first.
                 frontless = card.images.length > 0 && card.images[0].label !== 'front';
-                card.images.slice(0, 6).forEach((picture, index) => { slots[index] = {...picture}; });
-                slotUI.forEach((_, index) => paint(index));
+                slots.splice(0, slots.length, ...card.images.slice(0, MAX_PICTURES).map(picture => ({...picture})));
+                if (!slots.length) slots.push(null);
+                layout(); slotUI.forEach((_, index) => paint(index));
                 generator?.cancel(); aiState = {busy: false, done: false}; select('upload'); resetDelete();
             } finally { loading = false; if (!closed) sync(); }
         }
@@ -270,18 +305,21 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                     label: picture.label || (index ? 'other' : 'front'),
                 }));
                 const frontNeeded = active === 'ai' || !frontless;
-                if (!pictures.length || pictures.length > 6 || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
-                    message(text('Choose one front image and up to 5 more angles', '选一张正面图片，再加最多 5 张其他角度的图片'), true); return;
+                if (!pictures.length || pictures.length > MAX_PICTURES || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
+                    message(text(`Choose one front image and up to ${MAX_PICTURES - 1} more images`, `选一张正面图片，再加最多 ${MAX_PICTURES - 1} 张其他图片`), true); return;
                 }
                 const images = [];
                 for (const picture of pictures) {
                     if (closed) return;
                     // Cache uploads on the slot so retrying a refused save does not upload twice.
                     if (picture.file && !picture.media) picture.media = (await uploadOne(picture.file)).file;
-                    images.push({media: picture.media, label: picture.label});
+                    images.push({media: picture.media, label: picture.label, caption: String(picture.caption || '').replace(/\s+/g, ' ').trim()});
                 }
                 if (closed) return;
-                const body = {name: name.value.trim(), images};
+                // An untouched description goes back exactly as the card has it; a typed one goes on one line.
+                const about = description.value === (savedDescription || '') ? savedDescription
+                    : description.value.replace(/\s+/g, ' ').trim() || null;
+                const body = {name: name.value.trim(), description: about, images};
                 await value(await (id ? agentSend(api, 'PATCH', path(id), {revision, ...body})
                     : agentPost(api, '/freevideo/agent/cast', {kind: 'character', ...body})));
                 close(); await saved();
@@ -309,7 +347,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             if (closed) return;
             closed = true; clearTimeout(deleteTimer);
             generator?.cancel(); generator?.destroy();
-            for (let index = 0; index < 6; index++) release(index);
+            slots.forEach(revoke);
             if (dialog.open) dialog.close(); dialog.remove();
             if (current?.element === dialog) current = null;
             add.focus();
@@ -323,7 +361,11 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         if (id) load().catch(error => message(error.message));
         mountGenerator({container: aiPane, api, text, viewURL, onState: state => {
             if (closed) return;
-            aiState = state; sync();
+            aiState = state;
+            // The words that made the AI pictures describe the character too, unless the box says something else.
+            const words = state.description || '', typed = description.value.trim();
+            if (words && (!typed || typed === mirrored)) description.value = mirrored = words;
+            sync();
         }}).then(instance => {
             if (closed) { instance?.cancel(); instance?.destroy(); return; }
             generator = instance; aiTab.hidden = tabs.hidden = !instance; sync();

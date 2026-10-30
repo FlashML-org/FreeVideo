@@ -24,14 +24,14 @@ import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
-import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
+import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, withCharacter } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
-import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
+import { resultActions, previewBadge, icon, actionsUnavailable, copyText } from './result_actions.js';
 import { framesOf } from './result_reuse.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
@@ -748,7 +748,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
         return castLibrary.list().filter(card => card.name).map(card => {
-            const state = mentionState(rows, card, Math.min(MAX_PICTURES_EACH, Number(card.images) || 0), {continued: Boolean(extension.source)});
+            const state = mentionState(rows, card, Number(card.images) || 0, {continued: Boolean(extension.source)});
             return {id: card.id, name: card.name, handle: mentionHandle(rows, card, castPending), thumb: card.thumbnail?.file ? view(card.thumbnail.file) : card.thumbnail?.url || '',
                 blocked: state.ok ? '' : castBlocked(state.reason)};
         });
@@ -799,7 +799,23 @@ export function openStudio(node, {extendFrom = null} = {}) {
         draftNote.textContent = save ? t('Prompt not saved · retry', '描述没能保存 · 重试') : t('Last prompt not loaded · retry', '上次的描述没能读取 · 重试');
     };
     showDraftTrouble(promptDraftTrouble()); cleanup.push(watchPromptDraftTrouble(showDraftTrouble));
-    const promptTools = el('div', null, 'fv-prompt-tools'); promptTools.append(draftNote, mention); promptEditor.append(promptTools);
+    // The node's own serializer (freevideo.js) makes the request text, so this shows exactly what H3 is sent.
+    const fullPrompt = button(t('Full prompt', '完整提示词'), () => {
+        const text = widget(node, 'text')?.serializeValue?.() ?? expandCast(prompt.value, mediaRows(node), {continued: Boolean(extension.source)}).text;
+        const box = el('dialog', null, 'fv-full-prompt'), area = el('textarea');
+        box.setAttribute('aria-label', t('Prompt sent to H3', '发送给 H3 的提示词'));
+        area.readOnly = true; area.spellcheck = false; area.value = text;
+        const note = el('span', t(`${text.length} characters`, `${text.length} 个字符`), 'fv-full-prompt-note');
+        if (extension.source) note.textContent += t(' · continuing with the first frame adds a note about it', ' · 接续并参考首帧时会再加一句首帧说明');
+        const copy = button(t('Copy', '复制'), async () => { copy.textContent = await copyText(text) ? t('Copied', '已复制') : t('Select and copy', '请手动复制'); });
+        const foot = el('div', null, 'fv-full-prompt-foot'); foot.append(note, copy, button(t('Close', '关闭'), () => box.close()));
+        box.append(el('h2', t('Prompt sent to H3', '发送给 H3 的提示词')), area, foot);
+        box.onclose = () => box.remove();
+        dialog.append(box); box.showModal(); area.focus(); area.setSelectionRange(0, 0);
+    }, 'fv-full-prompt-open');
+    fullPrompt.title = t('See the exact prompt the model receives', '查看模型收到的完整提示词');
+    fullPrompt.disabled = prompt.disabled;
+    const promptTools = el('div', null, 'fv-prompt-tools'); promptTools.append(draftNote, fullPrompt, mention); promptEditor.append(promptTools);
     cleanup.push(() => references.dispose());
     const terms = attachTermSuggest(prompt, {t, host: dialog, suppressed: () => !!mentionAt(prompt.value, prompt.selectionStart, prompt.selectionEnd, handleNames(castChoices()))});
     cleanup.push(() => terms.dispose());
@@ -831,7 +847,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     requestAssets = createRequestAssets({t, api, request: () => requestAssetsQuery?.()});
     cleanup.push(() => requestAssets.dispose());
     let requestAssetsQuery = null;
-    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); prompt.disabled = linked(node, 'text'); mention.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); enhancer.sync(); } };
+    const promptChanged = e => { if (String(e.detail) === String(node.id)) { if (prompt.value !== shown(value(node, 'text'))) prompt.value = shown(value(node, 'text')); prompt.disabled = linked(node, 'text'); mention.disabled = fullPrompt.disabled = prompt.disabled; placeholder(); castOverlay.refresh(); references.refresh(); announceCast(); enhancer.sync(); } };
     window.addEventListener('freevideo-reference-prompt', promptChanged);
     cleanup.push(() => window.removeEventListener('freevideo-reference-prompt', promptChanged));
     const promptSection = section(t('Describe your scene', '描述画面'));

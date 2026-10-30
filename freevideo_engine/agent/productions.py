@@ -978,8 +978,8 @@ class Productions:
         return resolved
 
     def _carry(self, play, shot, cards, item, *, continues):
-        """The cast a shot carries: each person's sheet and face close-up on every device (one picture a person when
-        a continuing shot has several people). Plan previews and submissions both come here, so they agree."""
+        """The cast a shot carries: every picture of each person (the sheet and face of one person, or one picture a
+        person, when the shot continues). Plan previews and submissions both come here, so they agree."""
         return drama.cast_references(play, shot, cards, continues=continues)
 
     def _current(self, play):

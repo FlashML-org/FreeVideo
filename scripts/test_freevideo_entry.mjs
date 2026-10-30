@@ -9,7 +9,7 @@ import {uploadMedia} from '../web/media_upload.js';
 import {outputDownloadURL} from '../web/output_download.js';
 import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
-import {expandCast} from '../web/cast_mention.js';
+import {expandCast, staleCast, withCurrentCard} from '../web/cast_mention.js';
 import {cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue} from '../web/optional_inputs.js';
 
 class Element {
@@ -48,7 +48,7 @@ test('main browser entry registers both views and preserves node hooks', async t
     let restoreReleases = 0;
     let launchReady = null;
     const opening = {setName: name => openingEvents.push(['name', name]), cover: () => openingEvents.push(['cover']), finish: () => openingEvents.push(['finish'])};
-    const casts = [];
+    const casts = [], castCards = {};
     let progressView, progressOptions, realProgressFactory, studioView, doneNotifyOptions;
     const app = {
         registerExtension(extension) { extensions.push(extension); },
@@ -59,9 +59,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, staleCast, withCurrentCard, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
-            const cast = {element: new Element('cast'), options, destroyed: false, destroy() { this.destroyed = true; }};
+            const cast = {element: new Element('cast'), options, destroyed: false, destroy() { this.destroyed = true; },
+                get: async id => structuredClone(castCards[id])};
             casts.push(cast); return cast;
         },
         secondPassAction: () => new Element('button'),
@@ -128,7 +129,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
             .replace("import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';", 'const {startDoneNotify} = globalThis.__freevideoEntryTest; const askDesktopPermission = (...args) => globalThis.__permissionAsks.push(args); const DESKTOP_SETTING = "FreeVideo.DoneNotify.Desktop";')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
-            .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
+            .replace("import { expandCast, staleCast, withCurrentCard } from './cast_mention.js';", 'const {expandCast,staleCast,withCurrentCard} = globalThis.__freevideoEntryTest;')
             .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
@@ -524,6 +525,25 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(casts[0].options.api, api);
         assert.equal(typeof casts[0].options.uploadOne, 'function');
         assert.equal(typeof casts[0].options.viewURL, 'function');
+        // A mentioned character's rows follow its edited card: every picture with its caption and the new description,
+        // in place of the old rows; a picture switched off stays off, and an unchanged card rewrites nothing.
+        const was = {id: 'c1', name: 'Mara', description: 'Old'};
+        media.widgets[0].value = JSON.stringify([{file: 'street.png', role: 'reference', enabled: true},
+            {file: 'sheet.png', role: 'reference', enabled: true, cast: was}, {file: 'face.png', role: 'reference', enabled: false, cast: was}]);
+        castCards.c1 = {id: 'c1', name: 'Mara', description: 'A dragon tattoo on her back', revision: 4, images: [
+            {label: 'front', media: {file: 'front.png'}}, {label: 'face', media: {file: 'face.png'}},
+            {label: 'other', media: {file: 'tattoo.png'}, caption: 'the dragon tattoo on her back'}]};
+        const listed = [{id: 'c1', name: 'Mara', description: 'A dragon tattoo on her back', revision: 4}, {id: 'c2', name: 'Ann', revision: 1}];
+        casts[0].options.onChange(listed); await new Promise(resolve => setTimeout(resolve, 0));
+        const now = {id: 'c1', name: 'Mara', description: 'A dragon tattoo on her back', revision: 4};
+        assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'street.png', role: 'reference', enabled: true},
+            {file: 'front.png', role: 'reference', enabled: true, cast: now},
+            {file: 'tattoo.png', role: 'reference', enabled: true, cast: {...now, caption: 'the dragon tattoo on her back'}},
+            {file: 'face.png', role: 'reference', enabled: false, cast: now}]);
+        const followed = media.widgets[0].value;
+        casts[0].options.onChange(listed); await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(media.widgets[0].value, followed);
+        media.widgets[0].value = '[]';
         assert.match(mode.textContent, /Reference/);
         assert.equal(audioHelp.hidden, false);
         assert.match(audioHelp.textContent, /<Audio 1>/);
