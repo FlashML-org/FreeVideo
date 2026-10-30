@@ -193,7 +193,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
         const summary = JSON.stringify([running, complete, Math.round(progress * 100)]);
         if (summary !== last) {
             last = summary;
-            onState({busy: running, progress, done: complete});
+            onState({busy: running, progress, done: complete, description: state.description});
         }
     }
 

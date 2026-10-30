@@ -564,6 +564,10 @@ def drama_schema(name):
     return obj(dict(ref=REF, **({'transition': enum(('cut', 'crossfade'))} if name == 'finish' else {})))
 
 
+# A card's pictures; each may carry a one-line caption that prompts write beside its <Picture N> tag.
+MAX_CAST_IMAGES = 24
+MAX_CAST_CAPTION = 200
+
 CAST_OPERATIONS = {
     'create': ('POST', '/cast', 'Create a character or setting card when no existing card fits'),
     'list': ('GET', '/cast', 'Search the cast library before casting; reuse a matching card'),
@@ -584,7 +588,10 @@ def cast_schema(name, *, local=False):
     sound['oneOf'][1]['properties']['url'] = picture['oneOf'][1]['properties']['url']
     sound['oneOf'][1]['allOf'] = sound['oneOf'][1]['allOf'][:1]
     fields = dict(name=string(120), description=nullable(string(1000)),
-                  images=array(obj(dict(media=picture, label=enum(LABELS)), ('media',)), 0, 6),
+                  images=array(obj(dict(media=picture, label=enum(LABELS), caption={'type': 'string', 'maxLength': MAX_CAST_CAPTION,
+                      'description': 'Optional: what this picture shows, e.g. "dragon tattoo on her back"; written into prompts. '
+                                     '"" removes it.'}),
+                      ('media',)), 0, MAX_CAST_IMAGES),
                   voice=nullable(obj(dict(media=sound, start=number(0, 3600, default=0), end=number(0, 3600)), ('media',))))
     if name == 'create':
         return obj(dict(kind=enum(('character', 'setting'), default='character'), **fields, ref=REF), ('name',))
@@ -608,7 +615,7 @@ def cast_schema(name, *, local=False):
 def cast_view():
     picture = obj(dict(media=obj(dict(file=FILE, url=string(2048)), ('file', 'url')),
                        by=enum(('user', 'agent', 'builtin')), from_job=JOB, generated={'type': 'boolean'},
-                       label={'type': 'string'}, label_guess={'type': 'boolean'}), ('media', 'by', 'label'))
+                       label={'type': 'string'}, label_guess={'type': 'boolean'}, caption=string(MAX_CAST_CAPTION)), ('media', 'by', 'label'))
     generating = obj(dict(job=JOB, face_job=nullable(JOB), jobs=array(JOB, 1, 5),
         source=enum(('image', 'video')), replace={'type': 'boolean'}, at=string(),
         by=enum(('user', 'agent', 'builtin'))), ('job', 'face_job', 'replace', 'at', 'by'))
@@ -617,7 +624,7 @@ def cast_view():
         ('job', 'face_job', 'seed', 'prompt_version'))
     return dict(obj(dict(id=CAST, kind=enum(('character', 'setting')), name=string(120),
         description=nullable(string(1000)), revision=number(1, integer=True),
-        images=array(picture, 0, 6), candidates=array(picture, 0, 6),
+        images=array(picture, 0, MAX_CAST_IMAGES), candidates=array(picture, 0, 6),
         generating=nullable(generating), generated=nullable(generated),
         generate_error=nullable(obj(dict(code=string(), job=JOB, message=string(), error_zh=string(), error_en=string()), ('code', 'job', 'message')))),
         ('id', 'kind', 'name', 'revision', 'images', 'candidates', 'generating')), additionalProperties=True)
@@ -1021,7 +1028,7 @@ def production_response():
             cast_reference=CAST_REFERENCE, cast_omitted=dict(type='array', items=string()),
             cast_voice_omitted=dict(type='array', items=string()),
             cast_missing=dict(type='array', items=string()),
-            cast_pictures_each=dict(type=['integer', 'null'], description='Most pictures one person carries in this shot: two (the sheet of every view and the face close-up), or one each when a continuing shot has several people.'),
+            cast_pictures_each=dict(type=['integer', 'null'], description='Most pictures one person carries in this shot: every picture of the card (fewer only when the 32 references run out), or in a continuing shot the sheet and the face for one person, else one each.'),
             takes=dict(type='array', items=dict(type='object', properties=dict(take=number(1, integer=True), job=REF,
                 task={'oneOf': [JOB, {'type': 'null'}]}, generation=number(0, integer=True), seed=number(0, integer=True),
                 stale={'type': 'boolean'}, error={'type': ['object', 'null']},

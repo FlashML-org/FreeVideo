@@ -17,7 +17,7 @@ import { isLaunchVisit } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
-import { expandCast } from './cast_mention.js';
+import { expandCast, staleCast, withCurrentCard } from './cast_mention.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
@@ -159,7 +159,20 @@ function mediaPanel(node, mount = null) {
     }
     role.value = 'reference';
     toolbar.append(add, generateImage, addAudio, role, picker, audioPicker); panel.append(toolbar, mode, note, audioHelp, connections, cards);
-    const cast = createCastLibrary({api, text, viewURL, uploadOne});
+    // Mentioned characters follow their cards: pictures, captions and description as they are now, one card at a time.
+    let following = Promise.resolve();
+    const cast = createCastLibrary({api, text, viewURL, uploadOne, onChange: cards => {
+        following = following.then(() => followCards(cards)).catch(() => {});
+    }});
+    async function followCards(cards) {
+        let rows; try { rows = read(); } catch { return; }
+        for (const id of staleCast(rows, cards)) {
+            const card = await cast.get(id);
+            try { rows = read(); } catch { return; }
+            const current = withCurrentCard(rows, card);
+            if (current !== rows) update(current);
+        }
+    }
     panel.prepend(cast.element);
     const read = () => {
         const rows = JSON.parse(serialized.value || "[]");

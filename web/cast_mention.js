@@ -1,16 +1,15 @@
 // @-mentions of library characters in the prompt box.
 // While editing, the text keeps the character's name ("@Su Wan"); the character's pictures are ordinary reference rows
-// of the media list that carry `cast: {id, name, description}`. When a request is made the names become <Subject N>
-// and the subject definitions go in front, the same wording the Agent's drama planner writes (agent/drama.py).
+// of the media list that carry `cast: {id, name, description, revision, caption?}`. When a request is made the names become
+// <Subject N> and the subject definitions go in front, the same wording the Agent's drama planner writes (agent/drama.py).
 export const MAX_PEOPLE = 3;
-export const MAX_PICTURES_EACH = 2;
 export const MAX_REFERENCES = 32;
-// Which of a card's pictures stands for the person after the sheet; the others follow in the card's own order.
+// Which of a card's pictures stands for the person; it goes after the others, which keep the card's own order.
 export const PICTURE_ORDER = ['face', 'front', 'three_quarter'];
 
-// subjects: [{name, description, pictures: [first, last] | null, audio: number | null}]. This is the one JS place for
-// the wording; its Python twin is subject_definitions() and tests/fixtures/subject_definitions.json holds the cases
-// both sides must reproduce character for character.
+// subjects: [{name, description, pictures: [first, last] | null, captions?: [[picture, text]], audio: number | null}]. This
+// is the one JS place for the wording; its Python twin is subject_definitions() and tests/fixtures/subject_definitions.json
+// holds the cases both sides must reproduce character for character.
 export function subjectDefinitions(subjects) {
     const parts = subjects.map((subject, index) => {
         let text = `<Subject ${index + 1}> is ${subject.name}`;
@@ -23,6 +22,10 @@ export function subjectDefinitions(subjects) {
             const pictures = ranges.map(([a, b]) => a === b ? `<Picture ${a}>` : `<Picture ${a}> to <Picture ${b}>`).join(', ');
             const single = ranges.length === 1 && ranges[0][0] === ranges[0][1];
             tags.push(`${pictures} show${single ? 's' : ''} its appearance`);
+            for (const [picture, caption] of subject.captions || []) {
+                const words = String(caption || '').trim().replace(/\.+$/, '');
+                if (words) tags.push(`<Picture ${picture}> shows ${words}`);
+            }
         }
         if (subject.audio) tags.push(`<Audio ${subject.audio}> is its voice`);
         if (tags.length) text += ' ' + tags.join('; ') + '.';
@@ -125,29 +128,27 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
             const last = ranges[ranges.length - 1];
             if (last && number === last[1] + 1) last[1] = number; else ranges.push([number, number]);
         }
-        return {name: person.name, description: person.description, pictures: ranges, audio: null};
+        const captions = person.rows.filter(index => numbers.has(index) && list[index].cast.caption)
+            .map(index => [numbers.get(index), list[index].cast.caption]).sort((a, b) => a[0] - b[0]);
+        return {name: person.name, description: person.description, pictures: ranges, ...(captions.length ? {captions} : {}), audio: null};
     });
     return {text: subjectDefinitions(subjects) + '\n\n' + result, subjects};
 }
 
-// The pictures of a card to put in the media list, as the Agent carries them (agent/drama.py person_pictures): the sheet of
-// every view (the card's own, else the one the library made), then the face close-up, else the front view. A card with no
-// sheet (one picture, or none could be made) carries its face alone.
+// Every picture of a card for the media list, as a fresh Agent shot carries them (agent/drama.py person_pictures): card
+// order, with the one standing for the person moved last so a continued part keeps it. [{file, caption?}]
 export function cardPictures(card) {
     const rank = new Map(PICTURE_ORDER.map((label, index) => [label, index]));
     const usable = (card?.images || []).map((image, index) => ({image, index}))
         .filter(({image}) => image?.media?.file && IMAGE.test(image.media.file));
-    const views = usable.filter(({image}) => image.label !== 'sheet')
-        .sort((a, b) => (rank.get(a.image.label) ?? PICTURE_ORDER.length) - (rank.get(b.image.label) ?? PICTURE_ORDER.length) || a.index - b.index)
-        .map(({image}) => image.media.file);
-    const sheet = usable.find(({image}) => image.label === 'sheet')?.image.media.file
-        || (IMAGE.test(card?.sheet?.file || '') ? card.sheet.file : null);
-    if (!sheet) return views.slice(0, 1);
-    return [sheet, ...views.slice(0, 1).filter(file => file !== sheet)];
+    const best = usable.filter(({image}) => image.label !== 'sheet')
+        .sort((a, b) => (rank.get(a.image.label) ?? PICTURE_ORDER.length) - (rank.get(b.image.label) ?? PICTURE_ORDER.length) || a.index - b.index)[0];
+    return [...usable.filter(entry => entry !== best), ...(best ? [best] : [])]
+        .map(({image}) => ({file: image.media.file, ...(image.caption ? {caption: image.caption} : {})}));
 }
 
 // Whether a character can be mentioned now; `reason` is the one thing in the way.
-// `count` is how many pictures the card would add when only its list row is known.
+// `count` is how many pictures the card would add when only its list row is known; one row of room is enough (characterRows).
 export function mentionState(rows, card, count = cardPictures(card).length, {continued = false} = {}) {
     const list = Array.isArray(rows) ? rows : [];
     const people = castInRows(list);
@@ -155,7 +156,7 @@ export function mentionState(rows, card, count = cardPictures(card).length, {con
     if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) return {ok: false, reason: 'frames'};
     if (people.length >= MAX_PEOPLE) return {ok: false, reason: 'people'};
     if (continued && pictureNumbers(list).size >= CONTINUE_PICTURES) return {ok: false, reason: 'continued'};
-    if (list.filter(enabled).length + count > MAX_REFERENCES) return {ok: false, reason: 'full'};
+    if (list.length + Math.min(count, 1) > MAX_REFERENCES) return {ok: false, reason: 'full'};
     return {ok: true, present: false};
 }
 
@@ -176,7 +177,34 @@ export function mentionHandle(rows, card, pending = new Map()) {
 export function withCharacter(rows, card, typed = '') {
     const list = Array.isArray(rows) ? rows.map(row => ({...row})) : [];
     if (castInRows(list).some(person => person.id === card.id)) return list;
-    const handle = typed || mentionHandle(list, card);
-    const cast = {id: card.id, name: card.name, description: card.description || '', ...(handle === card.name ? {} : {handle})};
-    return [...list, ...cardPictures(card).map(file => ({file, role: 'reference', enabled: true, cast}))];
+    return [...list, ...characterRows(card, typed || mentionHandle(list, card), MAX_REFERENCES - list.length)];
+}
+
+// A card's picture rows; with less room than pictures, the first ones and the one standing for the person.
+function characterRows(card, handle, room) {
+    const pictures = cardPictures(card);
+    const kept = pictures.length <= room ? pictures : room > 0 ? [...pictures.slice(0, room - 1), pictures.at(-1)] : [];
+    const cast = {id: card.id, name: card.name, description: card.description || '', revision: card.revision,
+        ...(handle === card.name ? {} : {handle})};
+    return kept.map(({file, caption}) => ({file, role: 'reference', enabled: true, cast: caption ? {...cast, caption} : cast}));
+}
+
+// Characters in the list whose card (a library list row) has changed since they were mentioned.
+export function staleCast(rows, cards) {
+    const revisions = new Map((Array.isArray(cards) ? cards : []).map(card => [card.id, card.revision]));
+    return [...new Set((Array.isArray(rows) ? rows : []).filter(row => row?.cast?.id && revisions.has(row.cast.id)
+        && row.cast.revision !== revisions.get(row.cast.id)).map(row => row.cast.id))];
+}
+
+// The list with this character's rows made again from its card as it is now, where its first row was. The text keeps
+// naming it as before and pictures switched off stay off; the same array when nothing changed.
+export function withCurrentCard(rows, card) {
+    const list = Array.isArray(rows) ? rows : [], at = list.findIndex(row => row?.cast?.id === card.id);
+    if (at < 0) return rows;
+    const old = list.filter(row => row?.cast?.id === card.id), others = list.filter(row => row?.cast?.id !== card.id);
+    const off = new Set(old.filter(row => row.enabled === false).map(row => row.file));
+    const fresh = characterRows(card, old[0].cast.handle || old[0].cast.name || card.name, MAX_REFERENCES - others.length)
+        .map(row => off.has(row.file) ? {...row, enabled: false} : row);
+    if (JSON.stringify(fresh) === JSON.stringify(old)) return rows;
+    return [...others.slice(0, at), ...fresh, ...others.slice(at)];
 }
