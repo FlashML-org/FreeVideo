@@ -138,5 +138,5 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ⁹ The drive holding the model files reads at about 80 MB/s; reading them took about 570 s of the 1676 s.
 - ¹⁰ GPU shared: other programs were using about 29% of the graphics card during the run, so FreeVideo's steps ran at a little over 70% of their usual speed. With the card free, the same request takes about 7200 s.
 - ¹¹ With 16 GB of RAM, the text encoder and part of the video model cannot stay in memory and are read from the drive; text encoding and the first pass, which wait on these reads, took about 460 s of the 887 s.
-- ¹² Reference-video task: the reference video and audio roughly double the sequence the model processes, so each step takes about twice as long as a plain request of the same size.
+- ¹² Task with a reference: every step also processes the reference video, images or audio, so each step takes longer than a plain request of the same size, up to about twice as long with a long reference.
 - ¹³ Preview (first pass only).
