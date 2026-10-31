@@ -6,6 +6,7 @@ on disk; a miss never deletes user artifacts or substitutes a finished video.
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import time
@@ -25,7 +26,7 @@ def digest(path):
 
 
 class InputCache:
-    """One receipt per input: no global index, eviction, or RAM-sized cache."""
+    """One receipt per input; a hit refreshes its receipt and `prune` evicts the least recently used ones."""
     def __init__(self, identity, *, root=None, kind='conditioning'):
         encoded = json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()
         self.identity = hashlib.sha256(encoded).hexdigest()
@@ -74,6 +75,10 @@ class InputCache:
                 return None
             from .file_ops import publish
             publish(temporary, destination)
+            try:
+                os.utime(self.receipt(key))
+            except OSError:
+                pass
             result = copy.deepcopy(entry['metrics'])
             # A receipt describes the original encoding. Keep its timings as
             # provenance, not work performed by this cache-hit request.
@@ -127,4 +132,35 @@ class InputCache:
         save(receipt, {'identity': self.identity, 'file': target.name, 'bytes': size,
                        'sha256': checksum, 'metrics': metrics, 'created_epoch': time.time()},
              staging='receipt.')
+        self.prune()
         return True
+
+    def prune(self, max_bytes=1 << 30, max_entries=4096):
+        """Drop the least recently used receipts of this kind, across identities, until under both limits.
+
+        Only files this cache wrote are removed; unreadable receipts are left in place."""
+        kind = self.root.parent
+        rows, owners = [], {}
+        try:
+            for receipt in kind.glob('*/*.json'):
+                try:
+                    entry = json.loads(receipt.read_text(encoding='utf-8'))
+                    if not isinstance(entry['file'], str) or Path(entry['file']).name != entry['file']:
+                        continue
+                    data = receipt.parent / entry['file']
+                    rows.append((receipt.stat().st_mtime, receipt, data))
+                    owners[data] = owners.get(data, 0) + 1
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
+            total = sum({data: data.stat().st_size for _, _, data in rows if data.exists()}.values())
+            for _, receipt, data in sorted(rows, key=lambda row: row[0]):
+                if total <= max_bytes and len(rows) <= max_entries:
+                    break
+                receipt.unlink()
+                rows = [row for row in rows if row[1] != receipt]
+                owners[data] -= 1
+                if not owners[data] and data.exists():
+                    total -= data.stat().st_size
+                    data.unlink()
+        except OSError as error:
+            self.note = type(error).__name__ + ': input cache pruning skipped'

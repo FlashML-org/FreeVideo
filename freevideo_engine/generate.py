@@ -797,13 +797,14 @@ def _run(args):
                             and (args.comfy_root or comfy_root()).resolve() == Path(machine['comfy_root']).resolve()
                             and args.model_paths and args.model_paths.resolve() == Path(machine['model_paths']).resolve())
                         if same_inputs:
+                            # The text cache needs only the encoder and its code: no git, no video models.
+                            from .input_cache import InputCache
+                            input_cache = InputCache(tuning.text_identity(machine, hardware))
+                            report['input_cache'].update(enabled=True, directory=str(input_cache.root))
                             identity = tuning.identity(machine, hardware)
                             state, reason = tuning.load_state(identity)
                             if active_loras:
                                 state, reason = None, 'LoRA uses its own model history; encoder cache remains reusable'
-                            from .input_cache import InputCache
-                            input_cache = InputCache(identity)
-                            report['input_cache'].update(enabled=True, directory=str(input_cache.root))
                             report['tuning']['note'] = reason
                         else:
                             report['tuning']['note'] = 'Explicit model/encoder paths differ from the optimized installation'
