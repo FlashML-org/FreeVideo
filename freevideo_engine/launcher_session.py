@@ -132,6 +132,7 @@ class Session:
         self.page = 'comfy'
         self.token = ''
         self.error = ''
+        self.field_error = {}
         self.notice = ''
         self.action_notice = ''
         self.pending_update = None
@@ -261,6 +262,10 @@ class Session:
             self.persist()
 
     def edit(self, key, value):
+        # A rejected entry stays explained until that field is accepted; the text is in the old
+        # interface language after a switch.
+        if self.field_error and key in (self.field_error.get('key'), 'language'):
+            self.field_error = {}
         if key in ('engine', 'comfy', 'destination', 'new_comfy', 'offline_runtime') and not self.can_manage():
             self.explain_busy()
             return
@@ -272,8 +277,12 @@ class Session:
         if key == 'token':
             if self.controller.busy:
                 raise ValueError(self.t('Pause installation before changing the token.', '请先暂停安装，再修改 Token。'))
-            from .hf_auth import validate
-            self.token = validate(str(value)); return
+            from .hf_auth import ERROR_EN, ERROR_ZH, validate
+            try:
+                self.token = validate(str(value))
+            except ValueError:
+                raise ValueError(self.t(ERROR_EN, ERROR_ZH)) from None
+            return
         if key not in self.form:
             return
         if self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy:
@@ -282,7 +291,16 @@ class Session:
         if key in ('separate', 'repair', 'new_comfy', 'sampling_caches', 'lan_access', 'image_model', 'prompt_model', 'prompt_hint_dismissed'):
             value = bool(value)
         if key == 'url':
-            value = local_url(str(value))
+            try:
+                value = local_url(str(value))
+            except ValueError as exc:
+                if str(exc).startswith(('Invalid ComfyUI port', 'Port ')):
+                    message = self.t('The ComfyUI port is not valid.', 'ComfyUI 端口无效。')
+                else:
+                    message = self.t(
+                        'Enter localhost or an IP address of this computer, for example http://127.0.0.1:8188.',
+                        '请输入 localhost 或本机的 IP 地址，例如 http://127.0.0.1:8188。')
+                raise ValueError(message) from None
         if key == 'environment_method' and value not in ('auto', 'manual'):
             raise ValueError('Unknown environment installation method')
         if key == 'environment_method' and value == 'manual' and not runtime_packages_supported():
@@ -2333,7 +2351,8 @@ class Session:
                                            and not self.form['offline_runtime'], zh)),
             video_model_guide=video_instructions(zh),
             adaln_dialog=self.adaln_dialog_view(error, update),
-            selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error, retry_kind=self.retry_kind(), notice=self.notice,
+            selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,
+            field_error=dict(self.field_error or {}), retry_kind=self.retry_kind(), notice=self.notice,
             # Qt reads a list as an array; LEVELS is a tuple.
             compatibility=dict(self.compatibility, levels=list(self.compatibility.get('levels') or ())),
             report=dict(self.report),

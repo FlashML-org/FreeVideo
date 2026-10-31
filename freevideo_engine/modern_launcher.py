@@ -143,7 +143,14 @@ def create_ui(session, *, show=True):
 
         @Slot(str, 'QVariant')
         def edit(self, key, value):
-            self.invoke(session.edit, key, value)
+            def edit_field():
+                try:
+                    session.edit(key, value)
+                except ValueError as exc:
+                    if key not in ('token', 'url'):
+                        raise
+                    session.field_error = dict(key=key, message=str(exc))
+            self.invoke(edit_field)
 
         @Slot(str, bool)
         def action(self, name, accepted=False):
