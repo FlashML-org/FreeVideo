@@ -1423,6 +1423,30 @@ def git_version(executable, env=None):
     return (int(found[1]), int(found[2])) if found else None
 
 
+# Windows loader codes for a missing DLL, a missing export and a wrong-architecture image.
+GIT_LOADER_FAILURES = {0xC0000135, 0xC0000139, 0xC000007B}
+
+
+def git_https_ready(executable, env=None):
+    """False when this Git's HTTPS helper cannot load its libcurl; True otherwise.
+
+    `git --version` never loads libcurl, so a damaged Git passes it and fails at
+    the first fetch. A request to a local port nobody listens on needs no network
+    and reaches the helper: "connection refused" means libcurl loaded.
+    """
+    env = dict(env if env is not None else os.environ, NO_PROXY='*', no_proxy='*')
+    try:
+        result = subprocess_output.run_external(
+            [str(executable), '-c', 'http.proxy=', 'ls-remote', 'https://127.0.0.1:9/probe.git'], env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30, **hidden_console())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return True  # Not a library failure; the version check already ran the executable.
+    output = (result.stdout or '').lower()
+    if 'failed to load library' in output or ('libcurl' in output and 'dll' in output):
+        return False
+    return (result.returncode & 0xFFFFFFFF) not in GIT_LOADER_FAILURES
+
+
 def old_git_message(version):
     return ('Git %d.%d is too old to download the pinned sources; FreeVideo needs Git %d.%d or newer. '
             'Click Retry installation to use FreeVideo\'s own Git.' % (*version, *MIN_GIT))

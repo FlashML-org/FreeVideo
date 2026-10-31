@@ -2020,8 +2020,10 @@ class Installer:
         return micromamba, [path for path, _, _ in rows[1:]]
 
     def install_git_windows(self):
-        # An older Git on PATH cannot fetch the pinned sources; use the portable one.
-        if usable_git(self.env['PATH'], self.env):
+        # An older Git on PATH, or one whose HTTPS helper cannot load libcurl, cannot
+        # fetch the pinned sources; use the portable one.
+        found = usable_git(self.env['PATH'], self.env)
+        if found and network.git_https_ready(found, self.env):
             return
         spec = self.versions['windows']['git']
         archive = self.root / 'downloads' / ('MinGit-' + spec['version'] + '.zip')
