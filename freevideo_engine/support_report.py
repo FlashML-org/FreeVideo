@@ -458,6 +458,14 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
         if not request.get('encoding_resources'):
             request['encoding_resources'] = dict(ram=read_json('.encoding.memory.json'))
         summary = summarize(request, engine, encoding)
+        try:
+            from .precompile_state import collect as precompile_status
+            precompile = precompile_status()
+        except Exception:
+            # Status collection is optional even when the installation is broken.
+            from .diagnostic_resources import precompile as sanitize_precompile
+            precompile = sanitize_precompile(None)
+        summary['precompile'] = precompile
         if live and not restarted and bridge.get('status') in ('starting', 'running'):
             summary['status'] = 'running'
         if bridge.get('status') == 'reused':
@@ -575,6 +583,9 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
             suffix = ('.encoder-retry-' if encoder_retry else '.retry-') + str(_retry['index']) + '.debug.json'
         target = output.with_suffix(suffix)
         cleaned = clean(payload)
+        # Like token_summary, text_tokens is numeric shape metadata; restore
+        # only this allowlisted section after the generic secret redactor.
+        cleaned['summary']['precompile'] = precompile
         if timeline is not None:
             # Counter slashes in fixed label keys look like paths to the text
             # scrubber. Restore only the receipt already validated above.

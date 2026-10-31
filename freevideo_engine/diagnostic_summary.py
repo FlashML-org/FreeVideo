@@ -32,6 +32,7 @@ def summary_report(report):
     result = dict(kind='generation', status=summary.get('status') if summary.get('status') in
                   ('complete', 'reused', 'retrying', 'running') else 'incomplete',
                   version=__version__, hardware={}, config={}, geometry={}, memory={}, stages=[], steps=[], errors=[])
+    result['precompile'] = diagnostic.precompile(summary.get('precompile'))
     for k in ('gpu_name', 'system', 'architecture', 'driver_version', 'torch_version', 'cuda_version'):
         if _label(hardware.get(k)):
             result['hardware'][k] = hardware[k]

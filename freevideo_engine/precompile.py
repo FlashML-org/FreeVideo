@@ -53,7 +53,7 @@ OWNER_ENV = 'FREEVIDEO_BACKGROUND_OWNER'
 
 
 class GiveWay(BlockingIOError):
-    """The user's other programs need the memory or the GPU: stop without a receipt."""
+    """The user's other programs need memory/GPU: leave the cache receipt intact."""
 
 
 # Set when the interactive session stops a background run. A signal can land
@@ -184,6 +184,8 @@ def run(machine, *, environment=None, timeout=TIMEOUT_SECONDS, background=False,
     own_temporary_environment(root)
     environment = temporary_environment(root, environment)
     receipt = dict(success=False, started=time.time(), shapes=[])
+    from .precompile_state import record
+    record(root, 'running', started_at=receipt['started'], shapes=[])
     if machine.get('gpu_vendor') == 'amd':
         # Not measured on AMD GPUs yet; their first request compiles as before.
         return dict(receipt, skipped=True, reason='AMD GPU')
@@ -208,6 +210,7 @@ def run(machine, *, environment=None, timeout=TIMEOUT_SECONDS, background=False,
             and previous.get('caches') == receipt['caches'] and marked(receipt['caches'], previous.get('started'))):
         # Same code, packages, GPU, request shapes, plan inputs and compiler
         # caches, which still hold what that run wrote: nothing to compile.
+        record(root, 'complete', shapes=previous.get('shapes'))
         return dict(previous, skipped=True)
     checkpoint()
     room = None
@@ -365,6 +368,8 @@ def compile_shapes(machine, shapes, history, identity, receipt, environment, tim
                     for sample in row.get('worker', {}).get('passes', ()):
                         if 'conditioning' in sample:
                             sample['conditioning'] = launch_view.value(sample['conditioning'], back)
+                from .precompile_state import record
+                record(root, 'running', started_at=receipt['started'], shapes=receipt['shapes'])
     # A stop arriving after the last worker finished finds the work done; the
     # receipt records it, so the next start does not compile it again.
     receipt['success'] = all(row.get('returncode') == 0 for row in receipt['shapes'])
@@ -374,6 +379,8 @@ def compile_shapes(machine, shapes, history, identity, receipt, environment, tim
     if receipt['success']:
         mark(receipt['caches'], receipt['started'])
     save(root / 'precompile.json', receipt)
+    from .precompile_state import record
+    record(root, 'complete' if receipt['success'] else 'unknown', shapes=receipt['shapes'])
     return receipt
 
 
@@ -539,7 +546,7 @@ def main(argv=None):
         def stopped(signum, frame):
             # Stopped by the interactive session: give way at the next
             # checkpoint, stopping the children and removing temporary folders
-            # on the way out, without a receipt.
+            # on the way out, leaving the cache receipt intact.
             CANCELLED.set()
         termination_handler(stopped)
     try:
@@ -553,12 +560,19 @@ def main(argv=None):
         receipt = run(machine, background=args.background, owner=int(owner) if owner else None)
     except Exception as error:
         if args.background and isinstance(error, BlockingIOError):
-            # The GPU or memory is in use: no receipt, so the next idle start tries again.
+            # Only diagnostic status changes; the next idle start still tries again.
+            from .precompile_state import flush, record, reason_code
+            record(machine['root'], 'not_started', reason=reason_code(error)
+                   if isinstance(error, GiveWay) else 'lease_busy')
+            flush(cancelled=CANCELLED)  # A stop must not wait for diagnostic I/O.
             print(json.dumps(dict(event='give_way', reason=str(error), at=time.time())), flush=True)
             return BUSY_EXIT
         # FreeVideo works either way; record why.
         receipt = dict(success=False, error=repr(error))
         save(Path(machine['root']) / 'precompile.json', receipt)
+    from .precompile_state import flush, record
+    record(machine['root'], 'complete' if receipt.get('success') else 'unknown', shapes=receipt.get('shapes', []))
+    flush(cancelled=CANCELLED)
     print(json.dumps({key: receipt.get(key) for key in ('success', 'skipped', 'seconds')}))
     return 0
 

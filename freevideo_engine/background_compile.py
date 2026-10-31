@@ -12,7 +12,8 @@ always did.
 
 It runs only before the session's first generation. After that, the resident
 encoder holds GPU memory that a request would release, so the plan would no
-longer be the request's. An interrupted run writes no receipt. When the run
+longer be the request's. An interrupted run leaves the cache receipt intact
+and records diagnostic status separately. When the run
 was stopped or found no room (background_room), the session waits twice as
 long before the next try, up to MAX_DELAY; the next start tries again too.
 """
@@ -24,6 +25,7 @@ import time
 
 from . import processes
 from .long_paths import io_path
+from .precompile_state import read, record
 
 START_DELAY = 30.
 # A compile that is owed (nothing compiled yet for this code, driver or GPU)
@@ -70,6 +72,7 @@ class BackgroundCompile:
         self.thread = None
         self.lock = None
         self.attempts = []
+        self.root = None
 
     def start(self, command, *, environment, cwd, log, lock, busy, delay=START_DELAY):
         """Run `command` once the session is quiet; False when this session already did.
@@ -80,6 +83,7 @@ class BackgroundCompile:
             if self.thread is not None or self.closed.is_set():
                 return False
             self.lock = Path(lock)
+            self.root = Path(log).parent
             self.thread = threading.Thread(target=self._work, args=(command, environment, cwd, Path(log), busy, delay),
                                            name='FreeVideo background compile', daemon=True)
             self.thread.start()
@@ -96,12 +100,15 @@ class BackgroundCompile:
         with self.guard:
             process, self.process = self.process, None
             if process is None:
+                if final and self.thread is not None and self.thread.is_alive():
+                    record(self.root, 'not_started', reason='foreground_work', final=True)
                 return None
             row = self.attempts[-1]
             if process.poll() is None:
                 # Marked before the signal: the worker thread then retries
                 # instead of reading the exit as a finished run.
                 row['stopped'] = True
+                record(self.root, 'not_started', reason='foreground_work', final=final)
                 processes.stop(process, grace=STOP_GRACE)
                 row['stop_seconds'] = time.monotonic() - tick
             # Every process of the tree holds the lease; once it is free the
@@ -129,20 +136,30 @@ class BackgroundCompile:
     def _quiet(self, busy, delay):
         """True after `delay` seconds without work; False once closed."""
         since = time.monotonic()
+        postponed = False
         while time.monotonic() - since < delay:
             if self.closed.wait(1.):
                 return False
             if busy():
                 since = time.monotonic()
+                if not postponed:
+                    record(self.root, 'not_started', reason='session_busy')
+                postponed = True
+            else:
+                postponed = False
         return True
 
     def _work(self, command, environment, cwd, log, busy, delay):
         # The first wait may be shorter than the retry backoff, which always
         # starts from START_DELAY: a stopped or crowded-out run is not hammered.
         pause = START_DELAY
+        self.root = log.parent
         for attempt in range(ATTEMPTS):
             if attempt:
                 pause = delay = min(2 * pause, MAX_DELAY)
+            # A retry retains the actual pressure/stop reason from its last
+            # attempt instead of replacing it with the backoff mechanism.
+            record(self.root, 'not_started', reason=None if attempt else 'idle_delay')
             if not self._quiet(busy, delay):
                 return
             with self.guard:
@@ -152,12 +169,19 @@ class BackgroundCompile:
                              'a generation request stops it.')
                 row = dict(started=time.time())
                 self.attempts.append(row)
-                with io_path(log).open('ab') as stream:
-                    from .triton_compat import temporary_environment
-                    environment = temporary_environment(environment.get('FREEVIDEO_HOME') or self.lock.parent, environment)
-                    process = self.process = processes.popen(
-                        command, env=environment, cwd=cwd, stdin=subprocess.DEVNULL, stdout=stream,
-                        stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
+                try:
+                    with io_path(log).open('ab') as stream:
+                        from .triton_compat import temporary_environment
+                        environment = temporary_environment(environment.get('FREEVIDEO_HOME') or self.lock.parent,
+                                                            environment)
+                        process = self.process = processes.popen(
+                            command, env=environment, cwd=cwd, stdin=subprocess.DEVNULL, stdout=stream,
+                            stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
+                except BaseException:
+                    record(self.root, 'unknown')
+                    raise
+                # Only a started process is running, with its own identity.
+                record(self.root, 'running', started_at=row['started'], shapes=[], pid=process.pid)
             while process.poll() is None:
                 if busy():
                     self.stop()
@@ -178,7 +202,14 @@ class BackgroundCompile:
             row.update(returncode=process.poll(), seconds=time.time() - row['started'])
             from .precompile import BUSY_EXIT
             if not stopped and row['returncode'] != BUSY_EXIT:
+                receipt, _ = read(self.root / 'precompile.json', 2 * 2**20)
+                record(self.root, 'complete' if row['returncode'] == 0 and receipt.get('success') is True
+                       else 'unknown')
                 return  # Compiled, or failed with a receipt that says why.
+            if not stopped:
+                # The child normally wrote the resource reason. Keep it even
+                # if the child exited before publishing diagnostic status.
+                record(self.root, 'not_started')
 
 
 COMPILE = BackgroundCompile()
