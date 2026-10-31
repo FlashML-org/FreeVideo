@@ -43,6 +43,8 @@ export const STAGE_TEXT = Object.freeze({
 const WORKING = ['running', 'queued', 'waiting', 'cancelling'], VIDEOS = ['generate', 'assemble'];
 // What a job with no picture of its own is doing, in the reader's language.
 const QUIET = {vlm: ['Checking', '检查中'], enhance: ['Enhancing prompt', '增强提示词']};
+// Other jobs without a card keep their line while they run, and a finished one still marks the tab.
+const BUSY = {music: ['Making music', '制作配乐']};
 const WHITEBOX = {
     generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '改描述'], decline: ['Skip', '跳过'],
     approved: ['Approved', '已确认'], superseded: ['Replaced', '已被替换'], declined: ['Skipped', '已跳过'],
@@ -1018,7 +1020,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 else if (next === 'quiet') {
                     const label = el('span'); item.replaceChildren(el('span', 'fv-chat-dots'), label);
                     apply = next => { label.textContent = stopping.has(next.id) || next.status === 'cancelling'
-                        ? t('Stopping', '正在停止') : t(...(QUIET[next.kind] || ['Working', '进行中'])); };
+                        ? t('Stopping', '正在停止') : t(...(QUIET[next.kind] || BUSY[next.kind] || ['Working', '进行中'])); };
                 }
                 else if (next === 'stopped' && (!job.error || job.kind === 'image')) { item.replaceChildren(el('span', null, t('Stopped', '已停止'))); apply = null; }
                 else if (next.startsWith('failed') && job.kind === 'image') {

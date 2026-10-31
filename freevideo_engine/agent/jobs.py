@@ -32,7 +32,7 @@ from ..system import windows
 ACTIVE = ('waiting', 'queued', 'running', 'cancelling')
 CAST_AGAIN = 'POST /freevideo/agent/v1/cast/%s/generate to make the reference pictures again.'
 DONE = ('succeeded', 'failed', 'cancelled', 'interrupted')
-GPU_KINDS = ('vlm', 'enhance', 'image')
+GPU_KINDS = ('vlm', 'enhance', 'image', 'music')
 IMAGE_ERRORS = errors.IMAGE_ERRORS
 IMAGE_WAIT_ERRORS = ('busy', 'busy_video')
 IMAGE_WAIT_NOTICES = {
@@ -1429,6 +1429,9 @@ class Jobs:
             elif row['kind'] == 'image_edit':
                 from .images import run_render
                 result = run_render(self, row)
+            elif row['kind'] == 'music':
+                from .music import run_music
+                result = run_music(self, row)
             else:
                 result = self.run_assemble(row)
             return result
