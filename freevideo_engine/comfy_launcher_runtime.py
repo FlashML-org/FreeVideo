@@ -494,8 +494,16 @@ def launcher_comfy(selected, info):
         return False
 
 
+ENGINE_UPDATE_WAITS = 'ComfyUI is running a job, so the engine update waits'
+
+
+def _refused(error):
+    return isinstance(error, ConnectionRefusedError) or isinstance(getattr(error, 'reason', None), ConnectionRefusedError)
+
+
 def queue_busy(url):
-    """Preserve the legacy check; a pool must confirm every executor is idle."""
+    """Preserve the legacy check; a pool must confirm every executor is idle. A refused
+    connection means nothing listens, so there is no job; a timeout is not that answer."""
     from .gpu_pool import pool_enabled
     pooled = pool_enabled()
     try:
@@ -506,8 +514,8 @@ def queue_busy(url):
             state = get_json(loopback_url(url) + '/freevideo/pool', timeout=3)
             return state.get('busy') is not False or state.get('confirmed') is not True
         return False
-    except (OSError, ValueError, AttributeError):
-        return pooled
+    except (OSError, ValueError, AttributeError) as error:
+        return pooled and not _refused(error)
 
 
 @plain_errors
@@ -1151,8 +1159,7 @@ class Controller:
             # Whoever started it (another launcher, the freevideo command), a ComfyUI of this installation
             # that is generating keeps its packages: the switch waits for the job.
             if queue_busy(loopback_url(self.server_address or self.selection['url'])):
-                raise RuntimeError('ComfyUI is running a job, so the engine update waits. Try again after it finishes; '
-                                   'the job is left running.')
+                raise RuntimeError(ENGINE_UPDATE_WAITS + '. Try again after it finishes; the job is left running.')
             self._stop_server_for_setup(selected['url'])
         engine_binding.rebind(selected['engine'], machine, selected['source'])
         self.stage('nodes', label='Install FreeVideo workflow')
@@ -1178,12 +1185,11 @@ class Controller:
         keeps loaded after a video (Windows refuses to replace SageAttention's
         _fused.pyd), and a model switch must not leave the old model in that
         worker. Stop our own idle server; connecting after setup starts it
-        again. A running job is never stopped."""
-        if not self.owns_server():
-            return
+        again. A running job is never stopped, in a server another program started either."""
         if queue_busy(loopback_url(self.server_address or url)):
             raise RuntimeError('ComfyUI is running a job. Try again after it finishes; the job is left running.')
-        self.stop_owned_server()
+        if self.owns_server():
+            self.stop_owned_server()
 
     def ensure_shortcut(self):
         from .desktop_shortcut import create_after_install

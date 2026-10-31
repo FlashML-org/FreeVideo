@@ -13,7 +13,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
 from . import disk_space
-from .comfy_launcher_runtime import Controller, layout, local_url, loopback_url, managed_frontend, new_layout, queue_busy
+from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, Controller, layout, local_url, loopback_url, managed_frontend,
+                                     new_layout, queue_busy)
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
@@ -1288,10 +1289,11 @@ class Session:
             self.update_checked = time.monotonic()
             self.updater.run('check')
 
-    def _queue_busy(self):
-        """True or False once known for a server this launcher owns, None before."""
+    def _queue_busy(self, any_server=False):
+        """True or False once known for a server this launcher owns, None before. An engine update
+        also waits for a server another program started: it moves the same installation."""
         owns = getattr(self.controller, 'owns_server', None)
-        if not callable(owns) or owns() is not True:
+        if not any_server and (not callable(owns) or owns() is not True):
             return False
         now = time.monotonic()
         if (self.queue_thread is None or not self.queue_thread.is_alive()) and (
@@ -1365,7 +1367,7 @@ class Session:
     def _update_engine_when_idle(self):
         if self.task_busy():
             return
-        busy = self._queue_busy()
+        busy = self._queue_busy(any_server=True)
         self.update_waiting = bool(busy)
         if busy is not False:
             return
@@ -1772,6 +1774,13 @@ class Session:
                 # Nothing new to download or approve: deploy, then restart ComfyUI.
                 self.controller.run('install', True)
                 row, busy = self.controller.state, self.controller.busy
+        if (self.engine_updating and not busy and row.get('status') == 'failed'
+                and str(row.get('error') or '').startswith(ENGINE_UPDATE_WAITS)):
+            # A video started after the check: keep waiting for it instead of showing a failure.
+            self.controller.state = row = dict(row, status='open', error=None, exception=None)
+            self.engine_updating = self.engine_autoinstall = False
+            self.update_intent = 'engine'
+            self.queue_state = None
         if self.engine_updating and not busy and not self.engine_autoinstall:
             self.engine_updating = False
         groups = row.get('task', {}).get('model_groups') or row.get('model_groups') or row.get('plan', {}).get('model_groups')
