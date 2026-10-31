@@ -630,6 +630,34 @@ def checkout_entry(data, folder):
             and (io_path(folder) / 'freevideo_engine' / 'comfy_nodes.py').is_file())
 
 
+PRESTARTUP_MARK = '# Installed by FreeVideo launcher.\n'
+
+
+def install_prestartup(target, engine):
+    """ComfyUI runs prestartup_script.py of a node folder before it imports its server. The launcher's
+    small loader runs the certificate fix from the source; a file that is not the launcher's stays."""
+    path = target / 'prestartup_script.py'
+    if path.is_file() and not path.read_text(encoding='utf-8', errors='replace').startswith(PRESTARTUP_MARK):
+        return
+    code = (PRESTARTUP_MARK +
+            "import json as _json\nfrom pathlib import Path as _Path\n"
+            "_source = _Path(_json.loads((_Path(__file__).parent / 'freevideo-launcher.json').read_text(encoding='utf-8'))['source'])\n"
+            + launch_view.entry_lines(launch_view.for_engine(engine)) +
+            "_script = _source / 'freevideo_engine' / 'windows_ssl.py'\n"
+            "if _script.is_file():\n"
+            "    exec(compile(_script.read_text(encoding='utf-8'), str(_script), 'exec'))\n").encode()
+    if path.is_file() and path.read_bytes() != code:
+        # An older loader, or one the user added to: keep a copy, as for the entry point.
+        backup = engine / 'launcher' / 'backups' / (target.name + '-' + hashlib.sha256(path.read_bytes()).hexdigest()[:12] + '-prestartup.py')
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if not backup.exists():
+            backup.write_bytes(path.read_bytes())
+    if not path.is_file() or path.read_bytes() != code:
+        temporary = path.with_suffix('.py.launcher-tmp')
+        temporary.write_bytes(code)
+        os.replace(temporary, path)
+
+
 def deploy(root, source, engine):
     """Update only our entry point; preserve source edits, libraries and templates."""
     root, source, engine = map(resolved, (root, source, engine))
@@ -665,6 +693,7 @@ def deploy(root, source, engine):
     temporary = entry.with_suffix('.py.launcher-tmp')
     temporary.write_bytes(code)
     os.replace(temporary, entry)
+    install_prestartup(target, engine)
     template = (source / 'example_workflows' / TEMPLATE).read_bytes()
     digest = hashlib.sha256(template).hexdigest()[:12]
     saved = []

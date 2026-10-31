@@ -267,8 +267,9 @@ def request(url, *, headers=None, timeout=3):
     class Stay(HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
-    context = ssl.create_default_context()
-    context.check_hostname, context.verify_mode = False, ssl.CERT_NONE  # Our own certificate, possibly self-signed.
+    # Our own certificate, possibly self-signed: nothing is verified, so the system certificates are not loaded.
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname, context.verify_mode = False, ssl.CERT_NONE
     opener = build_opener(ProxyHandler({}), Stay(), HTTPSHandler(context=context))
     try:
         with opener.open(Request(url, headers=headers or {}), timeout=timeout) as reply:

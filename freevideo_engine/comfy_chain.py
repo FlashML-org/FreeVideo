@@ -124,7 +124,7 @@ class ComfyHost:
         # This request belongs to our own server, even with an inherited proxy.
         handlers = [request.ProxyHandler({})]
         if tls:
-            context = ssl.create_default_context()
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             handlers.append(request.HTTPSHandler(context=context))
