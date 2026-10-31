@@ -14,6 +14,26 @@ from .diagnostics import Redactor, is_link, read_bounded
 from .diagnostic_resources import kernel_receipt
 from .monitoring import save
 
+AGENT_VIDEO_STALL_SECONDS = 180
+
+
+def agent_video_stalls(rows, *, now=None):
+    now = time.time() if now is None else now
+    result = []
+    for row in rows if isinstance(rows, list) else ():
+        if not isinstance(row, dict) or row.get('status') != 'running':
+            continue
+        registered = row.get('video_registered_at')
+        diagnostics = mapping(row.get('generation_poll_diagnostics'))
+        last = mapping(diagnostics.get('last'))
+        if (type(registered) not in (int, float) or now - registered < AGENT_VIDEO_STALL_SECONDS
+                or not isinstance(row.get('id'), str) or not last):
+            continue
+        result.append(dict(task_id=row['id'], status='running', video_registered_at=registered,
+            last_poll={key: last.get(key) for key in ('time', 'queue_state', 'history_entry',
+                'history_success', 'freevideo_summary')}, poll_count=diagnostics.get('count')))
+    return result
+
 
 def number(value):
     return value if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
@@ -380,6 +400,7 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
                 exception=latest.get('exception', []), gpu=latest or mapping(encoding.get('gpu')),
                 memory=mapping(last_stage.get('memory'))))
         bridge = mapping(bridge) or read_json('comfy-request', output.parent / 'comfy-request.json')
+        agent_poll = read_json('agent-generation-poll', output.parent / 'agent-generation-poll.json')
         redactor = Redactor([(str(output.parent), '<RUN>')])
         try:
             redactor.replacements.append((str(Path.home()), '<HOME>'))
@@ -482,6 +503,10 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
                               'Cached encoder receipts do not describe this request’s peak.'),
             bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm') if k in bridge},
             collection_notes=notes, log_tails={})
+        stalled = agent_video_stalls(bridge.get('agent_generation_jobs') or
+                                     agent_poll.get('agent_generation_jobs'))
+        if stalled:
+            payload['agent_generation_stalls'] = stalled
         try:
             if preview:
                 previous, previous_engine, previous_encoding = preview
