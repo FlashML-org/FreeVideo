@@ -176,7 +176,7 @@ def run(value):
             elif value.get('refine_from') and reuse_preview(value, artifacts, result):
                 stages = ['upscale', 'refinement', 'decode']
             joined = False
-            retry = False
+            retry = metal_retry = avoid_mlx = False
             for stage in stages:
                 if joined and stage in ('upscale', 'refinement'):
                     continue
@@ -185,8 +185,10 @@ def run(value):
                 request = artifacts / (stage + '-request.json')
                 receipt = artifacts / (stage + '-result.json')
                 while True:
-                    save(request, dict(value, phase=stage, report=str(receipt), **(
-                        {'memory_retry': True} if retry and stage in ('first-pass', 'refinement') else {})))
+                    retry_options = {'memory_retry': True} if retry and stage in ('first-pass', 'refinement') else {}
+                    if retry_options and avoid_mlx:
+                        retry_options['avoid_mlx'] = True
+                    save(request, dict(value, phase=stage, report=str(receipt), **retry_options))
                     tick = time.monotonic()
                     try:
                         # Inherit stdout/stderr: progress and errors stay in the same
@@ -196,8 +198,15 @@ def run(value):
                             pass_fds=(descriptor,), check=True)
                     except subprocess.CalledProcessError:
                         failed = read_receipt(receipt)
-                        if retry or not memory_exhausted(stage, failed):
+                        if not memory_exhausted(stage, failed):
                             raise
+                        metal = METAL_FAILURE in str(failed.get('error_message', ''))
+                        if retry:
+                            if not metal_retry or not metal or avoid_mlx:
+                                raise
+                            # A second Metal failure at the smallest partitions
+                            # gets one fresh process using Torch attention.
+                            avoid_mlx = True
                         # Unified memory taken by other applications can leave a
                         # sampling pass short of its plan, and Metal can fail a command
                         # buffer without naming memory. Retry it once in a fresh
@@ -205,6 +214,7 @@ def run(value):
                         # Keeping a saved first pass avoids changing its latents
                         # with those new partitions.
                         retry = True
+                        metal_retry = metal
                         rows = failed.get('sampling_passes')
                         if (stage == 'first-pass' and failed.get('joined_sampling') is True
                                 and failed.get('sampling_phase') in ('upscale', 'refinement')
@@ -215,16 +225,17 @@ def run(value):
                                 and len(rows[0]['step_seconds']) == sampling['base_steps']):
                             retain_joined_progress(result, failed)
                             retained_joined = failed
-                        metal = METAL_FAILURE in str(failed.get('error_message', ''))
                         result.setdefault('memory_retries', []).append(dict(phase=stage,
                             kind='metal_command_buffer' if metal else 'unified_memory',
+                            attention='torch' if avoid_mlx else 'mlx',
                             error_type=failed.get('error_type'), error_message=failed.get('error_message'),
                             compute=failed.get('compute'), process_seconds=time.monotonic() - tick))
                         print(json.dumps(dict(event='resource_retry', retry=dict(
                             failed_phase='refinement' if stage == 'refinement' or retained_joined else 'sampling',
-                            kind='metal_command_buffer' if metal else 'unified_memory', attempt=2, max_attempts=2,
+                            kind='metal_command_buffer' if metal else 'unified_memory',
+                            attempt=3 if avoid_mlx else 2, max_attempts=3 if avoid_mlx else 2,
                             reuse_first_pass=stage == 'refinement' or bool(retained_joined)))), flush=True)
-                        if retained_joined:
+                        if stage == 'first-pass' and retained_joined:
                             break
                         receipt.unlink(missing_ok=True)
                         continue
@@ -232,6 +243,9 @@ def run(value):
                         if receipt.is_file():
                             result['stages'][stage] = dict(read_receipt(receipt),
                                                            process_seconds=time.monotonic() - tick)
+                    if stage in ('first-pass', 'refinement'):
+                        # A later pass's failure is not a consecutive failed retry.
+                        metal_retry = False
                     break
                 if stage == 'first-pass' and retained_joined:
                     continue
@@ -297,7 +311,7 @@ def run(value):
         save(path, result)
 
 
-def stage_compute(resource, canvas, retry=False):
+def stage_compute(resource, canvas, retry=False, avoid_mlx=False):
     """Partitions for this sampling stage from its live unified-memory allowance.
 
     The supervisor's policy fixes the reserve and allocator ceiling; the stage
@@ -315,12 +329,15 @@ def stage_compute(resource, canvas, retry=False):
     shape = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
     tokens, frames = shape['video_tokens'] + 1024, shape['latent_frames']
     result = plan(budget, tokens, frames=frames, allow_bounded=True, force_bounded=retry)
-    try:
-        import mlx.core as mx
-        mx.array([1.0])            # Fails early where Metal is unusable for MLX.
-        result['attention_impl'] = 'mlx'
-    except Exception:
+    if avoid_mlx:
         result['attention_impl'] = 'torch'
+    else:
+        try:
+            import mlx.core as mx
+            mx.array([1.0])            # Fails early where Metal is unusable for MLX.
+            result['attention_impl'] = 'mlx'
+        except Exception:
+            result['attention_impl'] = 'torch'
     result.update(fast_kernels=resource.get('fast_kernels', True), tokens=tokens, frames=frames)
     return result
 
@@ -394,7 +411,8 @@ def worker(value):
             initial = torch.load(artifacts / 'upscaled.pt', map_location='cpu', weights_only=True) if refining else None
             print(json.dumps(dict(event='model_load_phase', phase='Loading native MPS model')), flush=True)
             retry = value.get('memory_retry') is True
-            compute = stage_compute(resource, sampling['second' if refining else 'first'], retry=retry)
+            compute = stage_compute(resource, sampling['second' if refining else 'first'], retry=retry,
+                                    avoid_mlx=value.get('avoid_mlx') is True)
             result['compute'] = compute
             if retry:
                 result['memory_retry'] = True
