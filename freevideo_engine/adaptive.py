@@ -67,6 +67,26 @@ def second_pass_resumable(error, failure, metrics, attempts):
     return not any(row.get('decision', {}).get('second_pass_resume') for row in attempts)
 
 
+def decode_resumable(error, failure, metrics, attempts):
+    """A CUDA error after sampling finished and its latents were saved and validated.
+
+    Any CUDA error qualifies, including a lost or unknown device state: the
+    retry is one fresh process that loads only the retained latents and decodes
+    them with the same placement, so no earlier context is reused and the
+    sampling is not repeated. It is not repeated itself, and a worker that may
+    still own the device never gets it. Out-of-memory keeps its own path.
+    """
+    from .decode_resume import completed_sampling
+    if failure.get('kind') not in ('cuda_error', 'code_error') or getattr(error, 'worker_stop_confirmed', None) is False:
+        return False
+    recorded = str((metrics or {}).get('error', '')).lower()
+    if not (cuda_runtime_error(error) or 'cuda error' in recorded) or 'out of memory' in recorded:
+        return False
+    if not completed_sampling(metrics):
+        return False
+    return not any(row.get('decision', {}).get('decode_resume') for row in attempts)
+
+
 def classify_failure(error, metrics=None):
     """Only positively identified resource failures are retriable.
 
@@ -651,8 +671,10 @@ def execute_attempts(history, identity, profile, canvas, launch, *,
             history.finish(attempt, failure['outcome'], details=details)
             row.update(state=failure['outcome'], failure=failure)
             persist()
-            resume = (automatic and index < max_retries and not failure['retryable']
-                      and second_pass_resumable(error, failure, metrics, report['resource_attempts']))
+            decode_resume = (automatic and index < max_retries and not failure['retryable']
+                             and decode_resumable(error, failure, metrics, report['resource_attempts']))
+            resume = decode_resume or (automatic and index < max_retries and not failure['retryable']
+                                       and second_pass_resumable(error, failure, metrics, report['resource_attempts']))
             if not automatic or not (failure['retryable'] or resume) or index == max_retries:
                 raise
             previous_ram_retries = sum(r.get('failure', {}).get('kind') == 'ram_pressure'
@@ -660,7 +682,12 @@ def execute_attempts(history, identity, profile, canvas, launch, *,
             previous_gpu_retries = sum(r.get('failure', {}).get('kind') == 'gpu_oom'
                                        for r in report['resource_attempts'][:-1])
             from .decode_resume import completed_sampling
-            if resume:
+            if decode_resume:
+                updated, decision = copy.deepcopy(current), dict(
+                    reason='A CUDA error ended the request after sampling finished; decode only the '
+                           'retained latents in a fresh worker with the same placement.',
+                    numerical_class='unchanged', decode_resume=True)
+            elif resume:
                 updated, decision = copy.deepcopy(current), dict(
                     reason='A CUDA call was rejected in the second pass; repeat only the second pass '
                            'from the retained first pass with the same placement.',

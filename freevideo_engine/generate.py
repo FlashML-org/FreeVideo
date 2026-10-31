@@ -30,6 +30,42 @@ from .adaptive import (WorkerExit, classify_failure, local_identity, history_pat
 from .resource_history import ResourceHistory
 
 
+# A worker that exits after a CUDA error normally does so at once. One whose
+# driver teardown never returns would otherwise hold the request forever, so
+# the controller ends a worker that recorded this failure and is still running.
+FAILED_WORKER_GRACE_SECONDS = 20.
+
+
+class FailureReceipt:
+    """Whether the worker's metrics file records a request ended by a CUDA error."""
+    def __init__(self, command):
+        self.path = self.stamp = None
+        self.found = False
+        self.since = time.time_ns()  # A receipt left by an earlier request is not this worker's.
+        try:
+            request = json.loads(Path(command[command.index('--request') + 1]).read_text(encoding='utf-8'))
+            self.path = Path(request['metrics']) if request.get('metrics') else None
+        except (ValueError, IndexError, KeyError, OSError, TypeError):
+            pass
+
+    def recorded(self):
+        if self.path is None or self.found:
+            return self.found
+        try:
+            status = self.path.stat()
+            stamp = (status.st_mtime_ns, status.st_size)
+            if stamp == self.stamp or status.st_mtime_ns < self.since:
+                return False
+            metrics = json.loads(self.path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False  # Unreadable or half written: read again at the next poll.
+        self.stamp = stamp
+        failure = metrics.get('failure') if isinstance(metrics, dict) else None
+        self.found = (isinstance(failure, dict) and metrics.get('success') is False
+                      and failure.get('kind') == 'cuda_error')
+        return self.found
+
+
 def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_start=None,
           minimum_available_bytes=None, ram_budget_is_estimate=False):
     from .ram import ProcessMemory
@@ -55,6 +91,8 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
             process = processes.popen(command, env=env, stdout=stream, stderr=subprocess.STDOUT,
                                        pass_fds=(descriptor,), start_new_session=True)
         pending_error = None
+        receipt = FailureReceipt(command)
+        failed_since = None
         try:
             if on_start:
                 on_start(process.pid)
@@ -90,6 +128,14 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
                             (', '.join(pressure['enforced_reasons']), pressure['working_bytes']/2**30,
                              ram_budget_bytes/2**30, pressure['available_bytes']/2**30,
                              pressure['emergency_floor_bytes']/2**30)) + detail)
+                if receipt.recorded():
+                    failed_since = time.monotonic() if failed_since is None else failed_since
+                    if time.monotonic() - failed_since >= FAILED_WORKER_GRACE_SECONDS:
+                        telemetry['worker_unresponsive_after_failure_seconds'] = time.monotonic() - failed_since
+                        telemetry['worker_exit'] = dict(exit_reading(None), memory=memory_sample())
+                        print(json.dumps({'event': 'worker_ended_after_failure',
+                                          'seconds': telemetry['worker_unresponsive_after_failure_seconds']}), flush=True)
+                        raise WorkerExit(None, log)
                 try:
                     process.wait(timeout=.5)
                 except subprocess.TimeoutExpired:
