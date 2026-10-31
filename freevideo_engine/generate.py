@@ -1254,8 +1254,9 @@ def _run(args):
                 shutil.copyfile(destination.with_suffix('.engine.json'), artifacts / 'first-pass.engine.json')
                 from .preview import upscale_reads
                 report['preview']['upscale_reads'] = upscale_reads(request['cache'], report['video'], upscaler_checkpoint)
-            if not preview and any(row.get('keep_source_audio') for row in media.get('references', [])):
-                from .guide_audio import apply_to_report as keep_source_audio
+            from .guide_audio import apply_to_report as keep_source_audio, requested as keeps_source_audio
+            if keeps_source_audio(media):
+                # A preview gets the guide clip's sound too; its upscale reads the retained first pass, not this MP4.
                 keep_source_audio(destination, media, report)
             report['success'] = True
     except BaseException as error:
