@@ -38,23 +38,34 @@ PHONE_PAGE = (
 COOKIE = 'freevideo_access'
 DAYS = 30
 LOGIN_PATH = '/m/login'
-# Temporary English copy; keep all password-page text here for Iris.
-PASSWORD_COPY = dict(title='FreeVideo', password='Password', remember='Keep me signed in',
-                     submit='Sign in', incorrect='Incorrect password', retry='Try again later ({minutes} minutes).',
-                     phone='FreeVideo mobile')
+# All password-page text lives here; the lockout line matches web/phone_model.js.
+PASSWORD_COPY = dict(
+    en=dict(title='FreeVideo', password='Password', remember='Keep me signed in',
+            submit='Sign in', incorrect='Incorrect password', retry='Too many attempts. Try again in {minutes} min.',
+            phone='FreeVideo mobile'),
+    zh=dict(title='FreeVideo', password='密码', remember='保持登录',
+            submit='登录', incorrect='密码不正确', retry='尝试次数过多，请 {minutes} 分钟后再试。',
+            phone='FreeVideo 手机版'))
 
 
-def password_page(*, error='', retry_after=0, status=401):
-    copy = PASSWORD_COPY
+def password_language(request):
+    """'zh' when the browser's most preferred language is Chinese, else 'en'."""
+    first = request.headers.get('Accept-Language', '').split(',')[0].split(';')[0].strip().lower()
+    return 'zh' if first == 'zh' or first.startswith('zh-') else 'en'
+
+
+def password_page(request, *, error='', retry_after=0, status=401):
+    language = password_language(request)
+    copy = PASSWORD_COPY[language]
     message = copy['retry'].format(minutes=math.ceil(retry_after / 60)) if retry_after else error
     response = web.Response(status=status, content_type='text/html', text=(
-        '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" '
+        '<!doctype html><html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" '
         'content="width=device-width,initial-scale=1"><title>{title}</title></head><body>'
         '<h1>{title}</h1><p data-retry-after="{retry_after}">{message}</p><form method="post" action="{action}">'
         '<label>{password}<input type="password" name="password" autocomplete="current-password" required></label>'
         '<label><input type="checkbox" name="remember" value="1" checked>{remember}</label>'
         '<button type="submit">{submit}</button></form></body></html>').format(
-            **{k: html.escape(v) for k, v in copy.items()}, message=html.escape(message), retry_after=retry_after, action=LOGIN_PATH))
+            **{k: html.escape(v) for k, v in copy.items()}, language=language, message=html.escape(message), retry_after=retry_after, action=LOGIN_PATH))
     response.headers['Cache-Control'] = 'no-store'
     # Chromium sends Origin: null from a no-referrer page, which the login would refuse.
     response.headers['Referrer-Policy'] = 'same-origin'
@@ -191,17 +202,17 @@ def create(upstream, token, engine=None):
             await asyncio.sleep(max(0, LOGIN_DELAY - (time.monotonic() - started)))
             auth.reload()
             if not auth.enabled or auth.record != record:
-                return password_page(error=PASSWORD_COPY['incorrect'])
+                return password_page(request, error=PASSWORD_COPY[password_language(request)]['incorrect'])
             now = time.monotonic()
             remaining = auth.attempts.remaining(ip, now)
             if remaining:
                 auth.log(ip, 'locked')
-                return password_page(retry_after=remaining, status=429)
+                return password_page(request, retry_after=remaining, status=429)
             if not correct:
                 remaining = auth.attempts.failed(ip, now)
                 if remaining:
                     auth.log(ip, 'locked')
-                return password_page(error=PASSWORD_COPY['incorrect'], retry_after=remaining,
+                return password_page(request, error=PASSWORD_COPY[password_language(request)]['incorrect'], retry_after=remaining,
                                      status=429 if remaining else 401)
             value = auth.issue(remember, time.time())
             auth.attempts.success(ip)
@@ -284,7 +295,7 @@ def create(upstream, token, engine=None):
                 header = request.headers.get('Authorization', '')
                 if not (header[:7].lower() == 'bearer ' and matches(header[7:].strip(), token)):
                     remaining = auth.attempts.remaining(request.remote or '', time.monotonic())
-                    return password_page(retry_after=remaining, status=429 if remaining else 401)
+                    return password_page(request, retry_after=remaining, status=429 if remaining else 401)
         else:
             offered = request.rel_url.query.get('token')
             if offered is not None:

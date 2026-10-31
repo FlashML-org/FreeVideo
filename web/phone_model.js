@@ -25,8 +25,8 @@ export function mergePhoneJobs(previous, chat, activity, snapshots = []) {
 }
 export function retryWords(seconds, t) {
     const count = Math.ceil(Math.max(0, seconds));
-    return count > 90 ? t(`Too many tries. Please try again in ${Math.ceil(count / 60)} min.`, `试错次数太多，请 ${Math.ceil(count / 60)} 分钟后再试。`)
-        : t(`Too many tries. Please try again in ${count} s.`, `试错次数太多，请 ${count} 秒后再试。`);
+    return count > 90 ? t(`Too many attempts. Try again in ${Math.ceil(count / 60)} min.`, `尝试次数过多，请 ${Math.ceil(count / 60)} 分钟后再试。`)
+        : t(`Too many attempts. Try again in ${count} s.`, `尝试次数过多，请 ${count} 秒后再试。`);
 }
 export function queueWords(index, t) {
     const n = index + 1, mod = n % 100;
