@@ -1999,7 +1999,7 @@ class Jobs:
     def start_image(self, row):
         spec = row['spec']
         row['_phase'] = 'preparing images'
-        value = {k: spec[k] for k in ('width', 'height', 'seed') if k in spec}
+        value = {k: spec[k] for k in ('width', 'height', 'seed', 'loras') if k in spec}
         if spec.get('people'):
             # A first frame: the people's pictures at the asked places, in the scene shown or described.
             action = 'compose'

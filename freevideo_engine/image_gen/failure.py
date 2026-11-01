@@ -13,16 +13,18 @@ from ..disk_space import ran_out
 from ..exit_diagnostics import clean_reading, clean_sample
 from ..diagnostic_resources import commit_exhausted
 from ..failure_details import Redactor
+from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 
 ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unreadable',
                     'device_unavailable', 'worker_exit', 'timeout', 'cancelled', 'disk_full',
-                    'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed'))
+                    'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
 NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
-                       'disk_full'))
+                       'disk_full')) | LORA_ERRORS
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 MESSAGE_ZH = {
+    **LORA_MESSAGE_ZH,
     'no_memory': '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。',
     'small_memory': '这台 Mac 的内存不足 16 GB，无法生成图片。',
     'busy_video': '视频正在生成，完成后再试。',

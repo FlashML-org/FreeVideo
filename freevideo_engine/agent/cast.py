@@ -679,7 +679,11 @@ class Cast:
             if value['face'] and card['kind'] != 'character':
                 raise spec.SpecError([schema.diagnostic('/face', 'false for a setting card', True)])
             ready = value.get('source') != 'video' and getattr(self.jobs.port, 'image_ready', lambda: False)()
-            source = value.get('source', 'image' if ready else 'video')
+            from ..image_gen.loras import validate_selection
+            loras = validate_selection(value.get('loras', []))
+            source = value.get('source', 'image' if ready or loras else 'video')
+            if loras and source != 'image':
+                spec.fail('/loras', 'LoRAs for reference pictures require source=image')
             # An explicit image request goes through the image service even when
             # its pack is absent: that failure owns a diagnostic report and a
             # durable job/card, just like a picture requested directly.
@@ -689,7 +693,7 @@ class Cast:
                 from ..image_gen.cast_views import VIEWS, SETTING_VIEWS
                 # A picture takes seconds, so a character always gets every view, the face close-up included.
                 views = list(SETTING_VIEWS if card['kind'] == 'setting' else VIEWS)
-                items = self._image_items(card, views[:1], seed)
+                items = self._image_items(card, views[:1], seed, loras=loras)
             else:
                 parts = [('turn', SCENE if card['kind'] == 'setting' else TURN, False)]
                 if value['face']:
@@ -708,12 +712,14 @@ class Cast:
                 card['_generating'].update(source=source, stage='front', views=views[1:],
                                             job_views={jobs[0]: views[0]}, name=card['name'],
                                             description=card['description'])
+                if loras:
+                    card['_generating']['loras'] = loras
             result = dict(job=jobs[0], jobs=jobs, card=view(card))
             self._remember(record, ref, digest, result, client)
             self._save(record)
             return result
 
-    def _image_items(self, card, views, seed, front=None, from_photo=False):
+    def _image_items(self, card, views, seed, front=None, from_photo=False, loras=None):
         from ..image_gen.cast_views import size, uses_front, view_prompt, photo_prompt
         # A picture somebody put on the card (the user, or an agent passing on the user's photo) is the person.
         photo = next((row['media'] for row in card.get('images', []) if not row.get('generated')), None)
@@ -726,7 +732,8 @@ class Cast:
                       view_prompt(dict(card, photo=True) if from_photo else card, part))
             items.append(dict(kind='image', prompt=prompt, width=width, height=height, seed=seed,
                               images=images, label=('Cast · %s · %s' % (card['name'], part))[:120],
-                              metadata=dict(cast_card=card['id'], cast_part=part)))
+                              metadata=dict(cast_card=card['id'], cast_part=part),
+                              **({'loras': loras} if loras else {})))
         return items
 
     def _image_views(self, identity, generating, hidden, rows):
@@ -742,7 +749,7 @@ class Cast:
             card = record['card']
             basis = dict(id=identity, kind=hidden['kind'], name=hidden['name'], description=hidden['description'])
             items = self._image_items(basis, hidden['views'], hidden['seed'], dict(file=front['result']['file']),
-                                      from_photo=bool(front['spec'].get('images')))
+                                      from_photo=bool(front['spec'].get('images')), loras=hidden.get('loras'))
             jobs, _ = self.jobs.submit_request(dict(jobs=items, ref='cast-' + hidden['ref'] + '-views'),
                 client='cast:' + identity, parent=dict(cast=identity, ref=hidden['ref']))
             card['generating']['jobs'].extend(row['id'] for row in jobs)

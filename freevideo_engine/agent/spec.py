@@ -271,6 +271,10 @@ def normalize(value, *, port=None):
             result['questions'].append(item)
         result.update({k: value[k] for k in ('format', 'max_tokens', 'system') if k in value})
     elif kind == 'image':
+        from ..image_gen.loras import validate_selection
+        loras = validate_selection(original.get('loras', []))
+        if loras:
+            result['loras'] = loras
         width, height = ((value['width'], value['height']) if 'width' in value else
                          contract.IMAGE_ASPECTS[value.get('aspect', '1:1')])
         result.update(prompt=value.get('prompt', ''), width=width, height=height,

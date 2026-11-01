@@ -44,6 +44,9 @@ from PIL import Image
 from .qwen_text import QwenTextEncoder
 
 
+# Free card memory that must remain after a request's LoRA branches are placed on the card; below it they
+# stay in pinned host memory and move to the card per use.
+LORA_GPU_MARGIN = 2 << 30
 TURBO_SIGMAS = (1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0)
 
 
@@ -257,7 +260,7 @@ class QwenImageGenerator:
 
     @torch.no_grad()
     def generate(self, prompt: str, *, width: int, height: int, seed: int | None = None, steps: int = 8,
-                 reference_images=None, edit_mask=None, progress=None, cancel=None) -> Image.Image:
+                 reference_images=None, edit_mask=None, loras=None, progress=None, cancel=None) -> Image.Image:
         if self._closed:
             raise RuntimeError("Generator is closed")
         if not isinstance(prompt, str):
@@ -269,6 +272,10 @@ class QwenImageGenerator:
         width, height = normalize_dimensions(width, height)
         if edit_mask is not None and not reference_images:
             raise ValueError("edit_mask needs a reference image: the first one is the picture being edited")
+        if loras:
+            from .qwen_lora import UNUSABLE, inspect_file
+            if not all(inspect_file(item["path"])["ok"] for item in loras):
+                raise ValueError(UNUSABLE)
 
         def check_cancel():
             if cancel is not None and cancel():
@@ -347,7 +354,7 @@ class QwenImageGenerator:
         image_mask = torch.cat([image_mask, image_mask.new_ones(1, latents.shape[1] // 4)], dim=1)
         sigmas = torch.tensor(self.sample_sigmas, device=self.device, dtype=torch.float32)
         timesteps = sigmas[:-1] * 1000
-        with self._stage("denoise"):
+        with self._stage("denoise"), self._lora_scope(loras):
             report("denoise", 0.0)
             for i, timestep in enumerate(timesteps):
                 check_cancel()
@@ -394,6 +401,23 @@ class QwenImageGenerator:
                                               region_edit.blend_alpha(edit_mask, reference_images[0].size))
             report("decode", 1.0)
         return image
+
+    @contextmanager
+    def _lora_scope(self, loras):
+        """Attach this request's LoRAs to the DiT for the denoising loop only; no LoRAs, no change."""
+        if not loras:
+            yield
+            return
+        from .qwen_lora import LoraSet
+        on_card = False
+        if torch.device(self.device).type == "cuda":
+            floor = LORA_GPU_MARGIN + sum(Path(item["path"]).stat().st_size for item in loras)
+            on_card = torch.cuda.mem_get_info(self.device)[0] > floor
+        branches = LoraSet(loras, device=self.device if on_card else "cpu")
+        try:
+            yield branches.attach(self.transformer)
+        finally:
+            branches.detach()
 
     def close(self) -> None:
         """Release owned model references; all active stages have already left."""

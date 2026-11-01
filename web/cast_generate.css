@@ -2,6 +2,11 @@
 .fv-cg-body{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:24px;align-items:start}
 .fv-cg [hidden]{display:none!important}
 .fv-cg-side{display:flex;flex-direction:column;gap:12px;min-width:0;align-self:stretch}
+/* The LoRA list opens in the column, under the description, so it never leaves the dialog; its controls take the panel's look. */
+.fv-cg-side .fv-ie-lora summary{display:inline-grid;box-sizing:border-box;height:32px;padding:0 9px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);white-space:nowrap;font-variant-numeric:tabular-nums}
+.fv-cg-side .fv-ie-lora-trigger::placeholder{color:var(--fv-disabled)}
+.fv-cg-side .fv-ie-lora .fv-ie-lora-panel{position:static;width:auto;max-height:none;margin-top:8px;padding:0;border:0;background:none;box-shadow:none}
+.fv-cg-side .fv-ie-lora select,.fv-cg-side .fv-ie-lora input:not([type=checkbox]),.fv-cg-side .fv-ie-lora button{box-sizing:border-box;min-height:30px;padding:3px 8px;border:1px solid var(--fv-border,#ffffff1f);border-radius:6px;background:var(--fv-raised,#202a38);color:inherit;font:inherit}
 .fv-cg-foot{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px}
 .fv-cg-text{flex:1;box-sizing:border-box;width:100%;min-height:160px;resize:none;padding:12px;border:1px solid var(--fv-border,#ffffff15);border-radius:8px;background:var(--fv-card,#202a38);color:inherit;font:inherit;line-height:1.6;outline:none;transition:border-color .2s}
 .fv-cg-text:focus{border-color:color-mix(in srgb,var(--fv-accent,#6db8fa) 60%,transparent)}

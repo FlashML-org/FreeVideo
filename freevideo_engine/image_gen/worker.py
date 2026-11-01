@@ -154,11 +154,13 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     if value.get('mask'):
                         region['edit_mask'] = stack.enter_context(Image.open(value['mask']))
                         region['edit_mask'].load()
+                    loras = value.get('loras') or None
                     back_check = None
                     def generate(seed):
                         return runner.generate(
                             value['prompt'], width=value['width'], height=value['height'],
                             seed=seed, reference_images=references, **region,
+                            **(dict(loras=loras) if loras else {}),
                             progress=progress, cancel=inbox.cancel.is_set)
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
