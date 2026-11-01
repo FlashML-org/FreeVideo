@@ -4,7 +4,7 @@ from pathlib import Path
 
 from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 
-from . import comfy_bridge, workflow_repairs
+from . import comfy_bridge, usage_habit, workflow_repairs
 from .comfy_continuation import node_frames, optional_text, part_steps, request_options
 from .default_prompt import DEFAULT_PROMPT
 from .original_audio import audio_use_option
@@ -397,8 +397,8 @@ class FreeVideoGenerate(io.ComfyNode):
             gpu = comfy_bridge.installation()[1].get('gpu_uuid')
         except (OSError, ValueError, KeyError, TypeError):
             gpu = None
-        OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
-                       agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
+        kept = OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
+                              agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
         from .comfy_environment import executor_device
         if target and not result_reused[0] and not executor_device():
             client = server.client_id if server is not None else None
@@ -411,12 +411,19 @@ class FreeVideoGenerate(io.ComfyNode):
                     IDLE.schedule(path, output.with_suffix('.prewarm.json'),
                                   ram_budget=measured.get('profile', {}).get('inference_ram_budget_gb', 0) * 1e9,
                                   busy=busy, notify=warmed, purpose='upscale')
+                elif (isinstance(kept, dict) and kept.get('action') == 'kept' and next_part is None
+                        and usage_habit.dominant((usage_habit.load() or {}).get('recent')) == 'prompt'):
+                    # Prompts change often: place the encoder on the card while the kept worker
+                    # idles. It yields to any new task, and only what fits free memory is placed.
+                    root, machine = comfy_bridge.installation()
+                    environment = comfy_bridge.engine_environment(root, comfy_bridge.source_root())
+                    environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(comfy_bridge.source_root()))
+                    OWNER.warm_encoder(output, machine['python'], environment, busy=busy, notify=warmed)
                 else:
-                    # File cache only: a kept worker must not grow on the card while it waits.
                     IDLE.schedule(path, output.with_suffix('.prewarm.json'),
                                   ram_budget=measured.get('profile', {}).get('inference_ram_budget_gb', 0) * 1e9,
                                   busy=busy, notify=warmed)
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError):
                 pass  # A saved video remains successful if idle warming cannot start.
         return io.NodeOutput(InputImpl.VideoFromFile(str(output)), report, ui=preview)
 

@@ -23,17 +23,17 @@ from .monitoring import save
 
 ENV = 'FREEVIDEO_RESIDENT_SESSION'
 GiB = 2**30
-# A finished request keeps the worker for the next one while host memory is ample
-# (for as long as nothing needs the memory, unless KEEP_IDLE_SECONDS sets a limit), and it is given up at once when anything else
-# needs the memory: another program's GPU use grows, host memory runs low, an
+# A successful request settles individual caches inside the worker, then keeps
+# it without an idle limit unless KEEP_IDLE_SECONDS sets one. It gives up the
+# worker at once when another program's GPU use grows, host memory runs low, an
 # image or prompt model starts (those release it themselves), or the agent asks
-# for the card back. A request that is not followed by a queued part and fails,
-# or a machine without the room, releases it as before; a next part already on
-# its way is held for HOLD_SECONDS.
+# for the card back. A failed request without a queued part releases it as
+# before; a next part already on its way is held for HOLD_SECONDS.
 HOLD_SECONDS = 90.
 AGENT_HOLD_SECONDS = 30.
 KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
+PRELOAD_CONTEXT_BYTES = 1536 * 2**20  # what the preload's process adds beside its weights (context, allocator, staging; measured 1.4 GiB)
 HOST_FLOOR = 4 * GiB
 # Below this much host memory (free plus the idle worker's own), a kept worker's
 # base leaves the next part less room than a fresh one; measured on 16 GiB.
@@ -363,6 +363,7 @@ class SessionOwner:
         self.identity = None
         self.active = False
         self.prewarm = None
+        self.gpu = self.baseline = self.own = None
         self.mutex = threading.RLock()
         self.generation = 0
         self.idle_since = None
@@ -384,7 +385,7 @@ class SessionOwner:
     def finished(self, *, next_part=None, agent=False, gpu=None, warm=False):
         """Release the idle worker now, or keep it for the next request.
 
-        A successful request (warm) keeps it while host memory is ample and the card's use can be read, so
+        A successful request (warm) keeps its settled caches above HOST_FLOOR while the card's use can be read, so
         another program's growth is seen; a next part on its way keeps it for a short hold. Anything else
         gives the memory back now.
         """
@@ -398,6 +399,8 @@ class SessionOwner:
                 warm = False
             if not next_part or (hold is not None and hold <= 0):
                 return self.release('finished' if not next_part else 'no_hold')
+            # The worker settles individual caches against its live RAM budget.
+            # A small host alone is no reason to discard everything it kept.
             reason = pressure(gpu, None) or self._tight()
             if reason:
                 return self.release(reason)
@@ -406,20 +409,11 @@ class SessionOwner:
             baseline = gpu_used(gpu)
             if warm and baseline is None:
                 return self.release('gpu_unreadable')
-            threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu, baseline),
+            self.gpu, self.baseline = gpu, baseline
+            self.own = gpu_own(gpu) if warm else None
+            threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu),
                              name='freevideo-resident-hold', daemon=True).start()
             return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid)
-
-    def release_idle(self, reason='requested'):
-        """Give the card and host memory back on a caller's request; never touches a running request."""
-        with self.mutex:
-            if self.active:
-                return dict(released=False, reason='busy')
-            if self.process is None or self.process.poll() is not None:
-                return dict(released=False, reason='nothing_held')
-            row = self.release(reason)
-        return dict(released=True, reason=reason, **{k: v for k, v in (row or {}).items()
-                                                      if k in ('idle_seconds', 'worker_rss_bytes')})
 
     def _tight(self):
         from .system import windows
@@ -436,11 +430,79 @@ class SessionOwner:
             pass
         return None
 
-    def _watch(self, generation, since, hold, gpu, baseline):
+    def preloading(self):
+        return self.prewarm is not None and self.prewarm.thread is not None and self.prewarm.thread.is_alive()
+
+    def warm_encoder(self, output, python, environment, *, busy=None, notify=None):
+        """Place the encoder on the card while the kept worker idles, under the worker's own lease.
+
+        Only the models the worker can hold beside what it keeps are placed (it
+        sizes that from live free memory), and any new request, queued prompt or
+        memory pressure stops it first.
+        """
+        with self.mutex:
+            if (self.process is None or self.process.poll() is not None or self.active or
+                    environment.get('FREEVIDEO_ENCODER_PREWARM', 'auto').lower() in ('0', 'off', 'false')):
+                return False
+            self.stop_prewarm()
+            if self.process is None:
+                return False
+            from .idle_encoder import IdleEncoder
+            self.prewarm = IdleEncoder()
+            return self.prewarm.schedule(self.endpoint, output, python, environment, busy=busy, notify=notify)
+
+    def release_idle(self, reason='requested'):
+        """Give the card and host memory back on a caller's request; never touches a running request."""
+        with self.mutex:
+            if self.active:
+                return dict(released=False, reason='busy')
+            if self.process is None or self.process.poll() is not None:
+                return dict(released=False, reason='nothing_held')
+            row = self.release(reason)
+        return dict(released=True, reason=reason, **{k: v for k, v in (row or {}).items()
+                                                      if k in ('idle_seconds', 'worker_rss_bytes')})
+
+    def placed_bytes(self):
+        """Card bytes the last idle preload accounts for: its reported growth, else its budget, plus the context."""
+        try:
+            report = json.loads(Path(self.prewarm.report).read_text(encoding='utf-8'))
+            before, after = report.get('gpu_bytes_before'), report.get('gpu_bytes_after')
+            if type(before) is int and type(after) is int:
+                known = max(0, after - before)
+            else:
+                known = max(0, int(report.get('gpu_budget_bytes') or 0))
+        except (AttributeError, OSError, TypeError, ValueError):
+            known = 0
+        return known + PRELOAD_CONTEXT_BYTES
+
+    def _watch(self, generation, since, hold, gpu):
+        placing = False
         while True:
             time.sleep(.5)
-            reason = ('idle' if hold is not None and time.monotonic() - since >= hold
-                      else pressure(gpu, baseline))
+            # Our own idle preload grows the card; only another program's growth counts,
+            # so the reference is read again once placement has ended.
+            unreadable = False
+            if self.preloading():
+                placing = True
+            elif placing:
+                placing = False
+                used = gpu_used(gpu)
+                own = gpu_own(gpu)
+                if used is None:
+                    unreadable = True  # Same as at the start of the hold: never keep without a reading.
+                elif own is not None and self.own is not None and self.baseline is not None:
+                    # Only the part this tree added moves the reference; another program's share stays visible.
+                    self.baseline += max(0, own - self.own)
+                    self.own = own
+                elif self.baseline is not None:
+                    # No per-process bytes (WDDM): only what the preload reports it placed, plus its
+                    # context, moves the reference; the rest of the growth is another program's.
+                    self.baseline += min(max(0, used - self.baseline), self.placed_bytes())
+                else:
+                    self.baseline = used
+            reason = ('gpu_unreadable' if unreadable else
+                      'idle' if hold is not None and time.monotonic() - since >= hold
+                      else pressure(gpu, None if placing else self.baseline))
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
                     return
@@ -560,6 +622,23 @@ def gpu_used(gpu):
         finally:
             device.close()
         return memory[0] if memory else None
+    except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
+        return None
+
+
+def gpu_own(gpu):
+    """Card bytes held by this process tree (the kept worker and its leases), or None if not listed."""
+    try:
+        from .background_room import Gpu, family
+        device = Gpu(gpu)
+        try:
+            rows = device.processes()
+        finally:
+            device.close()
+        if rows is None or any(size is None for size in rows.values()):
+            return None
+        pids = family(os.getpid())
+        return sum(size for pid, size in rows.items() if pid in pids)
     except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
         return None
 

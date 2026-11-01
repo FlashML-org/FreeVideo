@@ -68,6 +68,25 @@ def main():
                         from .worker import generate
                         bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'))
                         generate(request, resident=bank)
+                        # Only a fully returned video is a success, including its
+                        # final cleanup. Keep habit data inside this worker.
+                        try:
+                            bank.succeeded(request)
+                        except Exception:
+                            pass  # Optional observations cannot fail a finished video.
+                        try:
+                            bank.settle(float(request['engine_options'].get('pin_host_gb') or 0)*1e9)
+                        except Exception:
+                            pass  # Best-effort trimming cannot fail a finished video.
+                        if request.get('metrics'):
+                            try:
+                                from .monitoring import save
+                                path = Path(request['metrics'])
+                                metrics = json.loads(path.read_text(encoding='utf-8'))
+                                metrics.update(resident_models=bank.snapshot(), resident_admission=list(bank.decisions))
+                                save(path, metrics)
+                            except (OSError, ValueError, TypeError):
+                                pass
                     else:
                         from .encode_worker import encode
                         bank.configure(request['gpu_budget_gb']*1e9, request.get('ram_budget_bytes'))
