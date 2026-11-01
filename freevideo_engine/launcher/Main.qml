@@ -1208,6 +1208,7 @@ ApplicationWindow {
                         FGroup {
                             Layout.fillWidth: true; title: t("Hugging Face token · optional", "Hugging Face 令牌 · 可选")
                             FField { Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: s.token_set ? t("Token set for this session", "本次已设置令牌") : "hf_…"; enabled: !s.busy; onEditingFinished: backend.edit("token", text) }
+                            FText { objectName: "tokenError"; visible: s.field_error.key === "token"; text: visible ? s.field_error.message : ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 12
                                 FText { text: t("Use your account's download quota. Kept for this session only.", "使用账号下载额度，仅本次打开有效。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
@@ -1428,6 +1429,7 @@ ApplicationWindow {
                         FGroup {
                             Layout.fillWidth: true; title: t("ComfyUI address", "ComfyUI 地址")
                             FField { objectName: "listenAddress"; Layout.fillWidth: true; value: s.form.url; enabled: !s.form.lan_access; onEditingFinished: backend.edit("url", text) }
+                            FText { objectName: "addressError"; visible: s.field_error.key === "url"; text: visible ? s.field_error.message : ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             FText { objectName: "listenAddressHint"; text: s.lan_password_set ? t("With 0.0.0.0 or this computer's LAN IP, devices on the same network can open FreeVideo without the password.", "填 0.0.0.0 或本机的局域网 IP 后，同一网络中的设备不用密码就能打开 FreeVideo。") : t("With 0.0.0.0 or this computer's LAN IP, devices on the same network can open FreeVideo without the access link.", "填 0.0.0.0 或本机的局域网 IP 后，同一网络中的设备不需要访问链接就能打开 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             FText { visible: Qt.platform.os === "windows"; text: t("Windows will ask for permission. Check \"Private networks\", then click \"Allow access\".", "Windows 会弹出确认框，请勾选“专用网络”，再点“允许访问”。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         }

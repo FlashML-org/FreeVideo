@@ -71,17 +71,17 @@ def linux_tools_command(names, which=shutil.which, root=None):
     The desktop launcher cannot ask for a password in a terminal, so its plan
     names the command; ./setup.sh installs the same packages itself.
     """
-    manager = next((m for m in ('apt-get', 'dnf', 'yum', 'zypper') if which(m)), None)
+    manager = next((m for m in ('apt-get', 'dnf', 'yum', 'zypper', 'pacman') if which(m)), None)
     if manager is None:
         return None
     packages = []
     for name in names:
-        package = {'g++': 'build-essential' if manager == 'apt-get' else 'gcc-c++',
+        package = {'g++': 'build-essential' if manager == 'apt-get' else 'gcc' if manager == 'pacman' else 'gcc-c++',
                    'make': 'build-essential' if manager == 'apt-get' else 'make'}.get(name, name)
         if package not in packages:
             packages.append(package)
     install = {'apt-get': 'apt-get install -y', 'dnf': 'dnf install -y', 'yum': 'yum install -y',
-               'zypper': 'zypper --non-interactive install'}[manager]
+               'zypper': 'zypper --non-interactive install', 'pacman': 'pacman -S --needed'}[manager]
     privilege = '' if (root if root is not None else os.geteuid() == 0) else 'sudo '
     update = privilege + 'apt-get update && ' if manager == 'apt-get' else ''
     return update + privilege + install + ' ' + ' '.join(packages)

@@ -639,6 +639,14 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('This folder holds an offline installation', '这个位置是离线包安装'),
          ('Open it from the launcher. For an automatic installation, go back to Setup and choose another folder.',
           '请在启动页直接打开这份安装。如需自动安装，请回到安装设置，换一个安装位置。')),
+        # offline_packages.inspect_archive and check_runtime_platform.
+        (r'The file is not a FreeVideo offline package', 'not-offline-package',
+         ('This is not a FreeVideo offline package', '这不是 FreeVideo 离线包'),
+         ('Choose a FreeVideo model package or Environment ZIP.', '请选择 FreeVideo 的模型包或运行环境包（ZIP 文件）。')),
+        (r'The Windows runtime package cannot be used on macOS', 'runtime-platform',
+         ('This Environment ZIP is for Windows', '这个运行环境包只能用于 Windows'),
+         ('Import only the model packages and continue; FreeVideo downloads the Mac environment automatically.',
+          '请只导入模型包并继续安装，FreeVideo 会自动下载 Mac 的运行环境。')),
         # Both carry ComfyUI's log, whose unrelated lines must not pick the card.
         (r'ComfyUI is still starting or could not load FreeVideo', 'comfy-nodes',
          ('ComfyUI did not load FreeVideo', 'ComfyUI 没有加载 FreeVideo'),

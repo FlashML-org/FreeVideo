@@ -123,11 +123,12 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5070&nbsp;Ti&nbsp;Laptop | 12&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.23 | 373&nbsp;s¹³ | 0.4.23 | Thermal‑limited¹ |
 | 5060 | 8&nbsp;GB | 48&nbsp;GB | 768×1344 | 14&nbsp;s | Medium | 0.3.25 | 3474&nbsp;s | 0.3.25 | Already&nbsp;optimal |
 | 3060 | 12&nbsp;GB | 32&nbsp;GB | 896×1120 | 10&nbsp;s | Light | 0.3.25 | 1045&nbsp;s | 0.4.0 | 1025&nbsp;s&nbsp;(−20&nbsp;s) |
+| 3060&nbsp;Laptop | 6&nbsp;GB | 40&nbsp;GB | 960×544 | 15&nbsp;s | Light⁵ | 0.4.24 | 713&nbsp;s | 0.4.24 | Thermal‑limited¹ |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
 - Already optimal: weight placement and transfers on this machine are already the fastest they can be; the time depends on the GPU's compute and the chosen quality level.
-- ¹ Thermal-limited: the GPU spent most of the run in thermal slowdown (3070 Laptop: 229 MHz on average at 89 °C; A5000 Laptop: 882 MHz on average), so cooling limited the time.
+- ¹ Thermal-limited: the GPU spent most of the run in thermal slowdown (3070 Laptop: 229 MHz on average at 89 °C; A5000 Laptop: 882 MHz on average; 3060 Laptop: 1496 MHz on average at 81 °C), so cooling limited the time.
 - ² This machine still runs the FP8 model; the estimate is for the int8 model, a one-click upgrade in the launcher since 0.3.0.
 - ³ Preview: only the first pass, at half resolution. With 16 GB of RAM most of the model is read from the drive at every step (about 80 MB/s on this machine), which takes most of the time.
 - ⁴ The report had no diagnostic file; the estimate replays the plan for this machine's configuration and measures the same request on our test machines.
@@ -138,5 +139,5 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ⁹ The drive holding the model files reads at about 80 MB/s; reading them took about 570 s of the 1676 s.
 - ¹⁰ GPU shared: other programs were using about 29% of the graphics card during the run, so FreeVideo's steps ran at a little over 70% of their usual speed. With the card free, the same request takes about 7200 s.
 - ¹¹ With 16 GB of RAM, the text encoder and part of the video model cannot stay in memory and are read from the drive; text encoding and the first pass, which wait on these reads, took about 460 s of the 887 s.
-- ¹² Reference-video task: the reference video and audio roughly double the sequence the model processes, so each step takes about twice as long as a plain request of the same size.
+- ¹² Task with a reference: every step also processes the reference video, images or audio, so each step takes longer than a plain request of the same size, up to about twice as long with a long reference.
 - ¹³ Preview (first pass only).

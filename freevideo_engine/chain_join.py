@@ -171,6 +171,8 @@ def join_files(sources, target, cancelled=None, frames=None, leads=None, expecte
     `leads`: optional `leads(following, previous)` returning a seam lead kept by the chain;
     the shared continuation record is read only when it has none.
     `expected`: how many seams should be repaired; only reported back, the caller decides.
+    The returned `seam_notes` list describes unrepaired seams, numbered from one,
+    without source paths or exception messages.
     `original_audio`: mux the original selection and close the picture on its
     source-sample clock; a rounded completed prefix keeps its existing frames.
     """
@@ -220,6 +222,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
     temporary = target.with_name('.join-' + uuid.uuid4().hex + '.mp4')
     wanted, frames, samples = frames, 0, 0
     used_tail = False
+    blocks_joined = 0
     try:
         with av.open(str(sources[0])) as first:
             if len(first.streams.video) != 1:
@@ -264,6 +267,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                             fifo = av.AudioFifo()
                             joined_audio = _JoinedAudio(output, audio, fifo, rate, layout,
                                                         audio_lead_in, apply_audio_lead_in, cancelled, voice)
+                            joined_audio.seams_total = len(sources) - 1
                     streams = [video] + ([container.streams.audio[0]] if sound is not None else [])
                     shift, count = None, 0
                     # A decoder returns the encoder's padding after the last sample; the stream's own
@@ -309,6 +313,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                     if not count:
                         raise ValueError('A block has no picture')
                     frames += count
+                    blocks_joined += 1
             if audio is not None:
                 samples = joined_audio.finish()
                 for packet in audio.encode(None):
@@ -347,6 +352,11 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                     audio_samples=samples, sample_rate=rate,
                     seams_repaired=joined_audio.seams_repaired if joined_audio is not None else 0,
                     seams_expected=expected,
+                    seam_notes=(joined_audio.seam_notes if joined_audio is not None else
+                                [dict(seam=seam, step='no_audio' if seam < blocks_joined else 'not_joined',
+                                      reason='previous block has no sound track' if seam < blocks_joined
+                                      else 'next block is outside the requested frame range')
+                                 for seam in range(1, len(sources))] if original_audio is None else []),
                     voice=[[round(setting[0], 1), round(setting[1], 1)] if setting is not None else None
                            for setting in voice] if voice is not None and audio is not None else None)
     except (JoinCancelled, _VoiceFailed):
@@ -384,10 +394,14 @@ class _JoinedAudio:
         self.cancelled, self.next_head = cancelled, None
         self.warned = False
         self.written = self.seams_repaired = 0
+        self.seam = self.seams_total = 0
+        self.seam_notes = []
 
     def start(self, source, stream, limit, last=None, following=None, total_frames=None):
         import av
         context = stream.codec_context
+        self.seam += 1
+        self.source_format = context.sample_rate, context.layout.name, getattr(context.layout, 'nb_channels', None)
         self.source, self.following = str(source), str(following) if following is not None else None
         self.limit, self.heard, self.kept = limit, 0, 0
         # end() has released the previous tail and flushed its resampler. Count
@@ -453,30 +467,59 @@ class _JoinedAudio:
     def _release(self):
         tail = self.tail
         if tail is not None and len(tail) == SEAM_TAIL and self.following is not None:
+            stage = 'reading next block sound'
             try:
-                head = _audio_head(self.following, self.cancelled)
+                # Keep the two-argument head reader usable by existing adapters. The
+                # cancellation callback also carries this call's optional diagnostic sink.
+                def checked():
+                    return self.cancelled is not None and self.cancelled()
+                checked.seam_note = self._note
+                head = _audio_head(self.following, checked)
                 if head is not None:
+                    stage = 'reading seam record'
                     lead = self.read_lead(self.following, previous=self.source) if self.read_lead is not None else None
                     if lead is not None:
+                        stage = 'copying seam windows'
                         repaired_tail, repaired_head = tail.copy(), head.copy()
+                        stage = 'applying seam record'
                         if self.apply_lead(repaired_tail, repaired_head, lead):
                             tail = repaired_tail
                             self.next_head = self.following, repaired_head
                             self.seams_repaired += 1
                         else:
+                            self._note('apply_rejected', 'seam record was rejected by apply')
                             self._warn()
+                    else:
+                        self._note('no_record', 'seam record is unavailable' if self.read_lead is not None
+                                   else 'seam record reader is unavailable')
+                else:
+                    self._note('next_head', 'next block effective head is unavailable')
             except JoinCancelled:
                 raise
-            except Exception:
+            except Exception as error:
+                name = type(error).__name__
+                self._note('exception', '%s raised %s' % (stage, name), stage=stage, exception=name)
                 self._warn()
+        elif self.following is not None or self.seam <= self.seams_total:
+            if tail is None or len(tail) != SEAM_TAIL:
+                count = len(tail) if tail is not None else 0
+                self._note('previous_tail', 'previous block effective tail has %d samples, needs %d' %
+                           (count, SEAM_TAIL), samples=count, required=SEAM_TAIL)
+            else:
+                self._note('not_joined', 'next block is outside the requested frame range')
         if tail is not None:
             self._queue(tail)
         self.tail, self.released = None, True
 
     def _warn(self):
         if not self.warned:
-            logging.warning('[FreeVideo] A chain sound seam could not be repaired; the blocks are joined as they are')
+            logging.warning('[FreeVideo] A chain sound seam could not be repaired; the blocks are joined as they are'
+                            + _seam_reasons(self.seam_notes[-1:]))
             self.warned = True
+
+    def _note(self, step, reason, **values):
+        if not any(note['seam'] == self.seam for note in self.seam_notes):
+            self.seam_notes.append(dict(seam=self.seam, step=step, reason=reason, **values))
 
     def _queue(self, data):
         import av
@@ -495,9 +538,17 @@ class _JoinedAudio:
                 self._native(frame)
             if not self.released:
                 self._release()
+        elif self.following is not None or self.seam <= self.seams_total:
+            rate, layout, channels = self.source_format
+            self._note('previous_format', 'previous block sound is %d Hz %s, needs 32000 Hz stereo' % (rate, layout),
+                       sample_rate=rate, layout=layout, channels=channels, required_sample_rate=32000,
+                       required_channels=2)
         self._encode(self.resampler.resample(None))
 
     def finish(self):
+        for seam in range(self.seam + 1, self.seams_total + 1):
+            self.seam_notes.append(dict(seam=seam, step='not_joined',
+                                        reason='next block is outside the requested frame range'))
         return _encode(self.output, self.stream, self.fifo, [], 0, None,
                        self.written, self.rate, self.layout, final=True, shaper=self.shaper)[1]
 
@@ -506,14 +557,24 @@ def _audio_head(source, cancelled):
     """Decode just the next block's kept native head, without changing its files."""
     import av
     import numpy as np
+    note = getattr(cancelled, 'seam_note', lambda *args, **kwargs: None)
     _check(cancelled)
     with av.open(source) as container:
         if not container.streams.audio:
+            note('no_audio', 'next block has no sound track')
             return None
         stream = container.streams.audio[0]
         if stream.codec_context.sample_rate != 32000 or stream.codec_context.layout.name != 'stereo':
+            context = stream.codec_context
+            note('next_format', 'next block sound is %d Hz %s, needs 32000 Hz stereo' %
+                 (context.sample_rate, context.layout.name), sample_rate=context.sample_rate,
+                 layout=context.layout.name, channels=context.layout.nb_channels,
+                 required_sample_rate=32000, required_channels=2)
             return None
         if stream.duration is not None and round(stream.duration * stream.time_base * 32000) < SEAM_HEAD:
+            count = round(stream.duration * stream.time_base * 32000)
+            note('next_head', 'next block effective head has %d samples, needs %d' % (count, SEAM_HEAD),
+                 samples=count, required=SEAM_HEAD)
             return None
         resampler = av.AudioResampler(format='fltp', layout='stereo', rate=32000)
         chunks, count = [], 0
@@ -528,7 +589,18 @@ def _audio_head(source, cancelled):
                     count += keep
                     if count == SEAM_HEAD:
                         return np.ascontiguousarray(np.concatenate(chunks), dtype=np.float32)
+        note('next_head', 'next block effective head has %d samples, needs %d' % (count, SEAM_HEAD),
+             samples=count, required=SEAM_HEAD)
     return None
+
+
+def _seam_reasons(notes):
+    # A seam with no record, or one the cut never reached, is usually a seam nobody asked to repair: name the others first.
+    notes = sorted(notes, key=lambda note: note['step'] in ('no_record', 'not_joined'))
+    reasons = ['seam %d: %s' % (note['seam'], note['reason']) for note in notes[:3]]
+    if len(notes) > 3:
+        reasons.append('and %d more' % (len(notes) - 3))
+    return ' (' + '; '.join(reasons) + ')' if reasons else ''
 
 
 def _encode(output, stream, fifo, resampled, heard, limit, written, rate, layout, final=False, shaper=None):
@@ -633,7 +705,8 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
         # The original selection replaces every block's sound, so there are no seam sounds to repair.
         if original_audio is None and expected_seams is not None and joined['seams_repaired'] < expected_seams:
             # A seam sound left unrepaired is never reported as a finished video.
-            raise ValueError('Only %d of %d seam sounds could be repaired' % (joined['seams_repaired'], expected_seams))
+            raise ValueError('Only %d of %d seam sounds could be repaired' % (joined['seams_repaired'], expected_seams)
+                             + _seam_reasons(joined.get('seam_notes', [])))
         report = dict(success=True, geometry=dict(width=joined['width'], height=joined['height'], frames=joined['frames'],
                                                   fps=FPS, seconds=joined['frames'] / FPS),
                       request_seconds=_request_seconds(sources), video={}, encoding={},

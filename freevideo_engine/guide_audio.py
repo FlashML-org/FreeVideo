@@ -80,6 +80,11 @@ def replace_audio(video, guide, output, *, rate=48000, layout='stereo'):
     return seconds
 
 
+def requested(media):
+    """True when the request asks to keep a guide clip's own audio (a preview included)."""
+    return any(row.get('guide') and row.get('keep_source_audio') for row in media.get('references', []))
+
+
 def apply(video, media):
     """Replace ``video`` in place when the request's guide asks to keep its audio. Returns True if replaced."""
     guide = next((row for row in media.get('references', []) if row.get('guide') and row.get('keep_source_audio')), None)

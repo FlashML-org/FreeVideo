@@ -116,6 +116,54 @@ def identity(machine, hardware):
             'encoder': machine['encoder'], 'model_revision': machine['model_revision']}
 
 
+TEXT_SCHEMA = 1
+TEXT_FILES = ('encode_worker.py', 'encoder_lowmem.py', 'encoder_precision.py', 'encoder_checkpoint.py',
+              'encoder_pinning.py', 'encoder_workspace.py', 'encoder_memory.py', 'adaptive.py',
+              'conditioning.py', 'media_request.py')
+TEXT_PACKAGES = ('torch', 'transformers', 'tokenizers', 'comfy-kitchen', 'safetensors', 'numpy')
+
+
+def encoder_content(path, catalog):
+    """Cheap content identity of the encoder file: catalog hash and size, plus its header and sampled blocks.
+
+    A same-size edit that touches none of the sampled bytes is not seen; a full 15 GB hash on every run would
+    cost more than the encode it avoids."""
+    size = path.stat().st_size
+    expected = next((row for row in catalog if row['file'].endswith('/' + path.name)), None)
+    value = hashlib.sha256()
+    with path.open('rb') as stream:
+        head = stream.read(8)
+        value.update(head)
+        value.update(stream.read(int.from_bytes(head, 'little') if int.from_bytes(head, 'little') < 2**26 else 0))
+        for index in range(16):
+            stream.seek(size * index // 16)
+            value.update(stream.read(65536))
+    return {'size': size, 'catalog_sha256': expected and expected['sha256'],
+            'catalog_bytes': expected and expected['bytes'], 'sampled_sha256': value.hexdigest()}
+
+
+def text_identity(machine, hardware):
+    """What the text conditioning of a prompt depends on: encoder content, its code and arithmetic, nothing else.
+
+    No git, no timestamps, no video models, no GPU serial number: an unrelated update or a copied folder without
+    .git keeps the cache; a different encoder file, library, source or GPU architecture does not."""
+    package = Path(__file__).parent
+    catalog = json.loads((package / 'model_files.json').read_text(encoding='utf-8'))
+    catalog = catalog['files'] if isinstance(catalog, dict) else catalog
+    encoder = Path(machine['encoder_model_root']) / 'text_encoders' / machine['encoder']
+    specs = json.loads((package / 'dependencies.json').read_text(encoding='utf-8'))
+    texts = Path(machine['comfy_root']) / 'comfy' / 'text_encoders'
+    assets = {str(p.relative_to(texts)): digest(p) for p in sorted(texts.rglob('*'))
+              if p.is_file() and p.suffix in ('.py', '.json', '.txt', '.model')}
+    versions = package_versions(machine['comfy_python'])
+    return {'schema': TEXT_SCHEMA, 'kind': 'text-conditioning', 'system': hardware.system,
+            'gpu': [hardware.gpu_name, list(hardware.capability), hardware.driver_version],
+            'encoder': encoder_content(encoder, catalog),
+            'encoder_packages': {k: v for k, v in versions.items() if k in TEXT_PACKAGES},
+            'comfy_commit': specs['encoder']['comfy_commit'], 'comfy_text_encoders': assets,
+            'source_sha256': {name: digest(package / name) for name in TEXT_FILES}}
+
+
 def report_identity_errors(inventory, expected):
     errors = []
     if expected.get('system') and inventory.get('hardware', {}).get('system') != expected['system']:

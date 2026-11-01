@@ -139,17 +139,18 @@ def validate_catalog(spec):
                 or not isinstance(spec['revision'], str) or not spec['revision']):
             raise PackError('invalid_catalog')
         image_rows = spec['groups']['image']
-        segment_rows = spec['groups'].get('segment', [])
-        found = image_rows + segment_rows
-        if (not image_rows or len({r['file'] for r in found}) != len(found)
-                or any(row['component'] == 'segment' for row in image_rows)
-                or any(row['component'] != 'segment' for row in segment_rows)):
+        # A group of its own holds only its own component; the image group holds neither.
+        own = {group: spec['groups'].get(group, []) for group in ('segment', 'music')}
+        found = image_rows + [row for found in own.values() for row in found]
+        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own}
+                or any(row['component'] in own for row in image_rows)
+                or any(row['component'] != group for group, found in own.items() for row in found)):
             raise PackError('invalid_catalog')
         for row in found:
             _relative(row['file'])
             if (type(row['bytes']) is not int or row['bytes'] <= 0
                     or not re.fullmatch('[0-9a-f]{64}', row['sha256'])
-                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'segment')):
+                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'segment', 'music')):
                 raise PackError('invalid_catalog')
             ids = [s['id'] for s in row['sources']]
             required = {'official', 'modelscope'}
@@ -226,6 +227,11 @@ NOTICE_TEXT = (b'Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Cop
 SEGMENT_NOTICE_TEXT = (b'SAM 2.1 Hiera small, Copyright (c) Meta Platforms, Inc. and affiliates.\n'
                        b'Licensed under Apache-2.0; see freevideo_engine/licenses/SAM2-Apache-2.0.txt.\n'
                        b'https://github.com/facebookresearch/sam2\n')
+MUSIC_NOTICE_TEXT = (b'ACE-Step 1.5, Copyright (c) 2026 ACEStep. Licensed under the MIT License; see '
+                     b'freevideo_engine/licenses/ACE-Step-MIT.txt.\nhttps://github.com/ace-step/ACE-Step-1.5\n'
+                     b'Qwen3-Embedding-0.6B, Copyright (c) Alibaba Cloud. Licensed under Apache-2.0.\n')
+NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
+           'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT)}
 
 
 def _notice():
@@ -235,7 +241,7 @@ def _notice():
 def _notice_ready(path, *, group='image'):
     """Informational only: a missing or different notice never makes the pack unusable."""
     try:
-        return path.is_file() and path.read_bytes() == (SEGMENT_NOTICE_TEXT if group == 'segment' else NOTICE_TEXT)
+        return path.is_file() and path.read_bytes() == NOTICES[group][1]
     except OSError:
         return False
 
@@ -243,10 +249,10 @@ def _notice_ready(path, *, group='image'):
 def _write_notice(folder, owned, *, group='image'):
     """Put the notice into the model folder when possible; a failure is logged and the install goes on."""
     try:
-        notice = _path(folder, 'SAM2-NOTICE.txt' if group == 'segment' else 'NOTICE.txt')
+        notice = _path(folder, NOTICES[group][0])
         if notice.exists():
             return   # present (ours or the user's own text): left as it is
-        notice.write_bytes(SEGMENT_NOTICE_TEXT if group == 'segment' else NOTICE_TEXT)
+        notice.write_bytes(NOTICES[group][1])
         _own(folder, owned, notice)
     except Exception as error:
         logging.warning('[FreeVideo] Could not write the image model notice: %s', redacted_launcher_error(error))
@@ -382,7 +388,7 @@ def status(root=None, *, group='image'):
         files.append(dict(file=row['file'], bytes=row['bytes'], ready=intact, downloaded_bytes=retained, stale=old))
     checking = bool(stale) and _start_recheck(root, folder, stale)
     try:
-        notice_ready = _notice_ready(_path(folder, 'SAM2-NOTICE.txt' if group == 'segment' else 'NOTICE.txt'), group=group)
+        notice_ready = _notice_ready(_path(folder, NOTICES[group][0]), group=group)
     except PackError:
         notice_ready = False
     total = sum(r['bytes'] for r in files)
@@ -650,7 +656,7 @@ def repair(root=None, progress=None, check=None, *, engine_root=None, group='ima
 def removal_plan(root=None, *, group='image'):
     folder = base(root)
     owned = _read(folder, OWNERSHIP)
-    notice = 'SAM2-NOTICE.txt' if group == 'segment' else 'NOTICE.txt'
+    notice = NOTICES[group][0]
     allowed = {notice}
     for row in rows(group=group):
         allowed.update((row['file'], row['file'] + '.partial', row['file'] + '.partial.source.json'))

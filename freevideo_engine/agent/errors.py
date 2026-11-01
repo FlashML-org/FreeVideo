@@ -114,6 +114,11 @@ ERRORS.update({
                         'Do not retry. Write the subtitle lines yourself with the subtitles edit, or tell the user the model is not installed.'),
     'listen_failed': (409, True, 'Listening to the sound did not finish.',
                       'Read the project, then submit the listening job again with a new ref; if it fails again, write the lines yourself.'),
+    'music_download_failed': (409, True, 'The music model could not be downloaded.',
+                              'Tell the user the music model needs about 20 GB of free disk and a network connection, then '
+                              'submit the music job again with a new ref; if it fails again, write the score yourself.'),
+    'music_failed': (409, True, 'Composing the music did not finish.',
+                     'Read the project, then submit the music job again with a new ref; if it fails again, write the score yourself.'),
     'clip_source_unusable': (409, False, 'A clip\'s source is missing, or cannot be read as far as the clip uses it.',
                              'Read the project and check each clip\'s source: it must exist and play, and in + frames must stay '
                              'within its real length. Correct the project, then export the new revision.'),
@@ -221,6 +226,8 @@ def recovery(code, *, kind=None, stage='request', resumable=True):
         return ERRORS[code][3]
     if kind == 'image' and code == 'disk_full':
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
+    if kind == 'music' and code == 'out_of_memory':
+        return 'Close other GPU applications, then submit the music job again with a new ref.'
     if kind == 'image' and code == 'no_memory':
         return 'Lower the picture dimensions or use fewer reference pictures, then submit with a new ref.'
     if kind in RECOVERY and stage == 'terminal':

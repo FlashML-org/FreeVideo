@@ -290,6 +290,9 @@ def normalize(value, *, port=None):
     elif kind == 'listen':
         result.update(editor_project=value['editor_project'], revision=value['revision'], mode=value['mode'],
                       language=value.get('language', 'auto'), **{k: value[k] for k in ('lines', 'range') if k in value})
+    elif kind == 'music':
+        result.update(editor_project=value['editor_project'], revision=value['revision'], caption=value['caption'],
+                      **{k: value[k] for k in ('seed', 'quiet') if k in value})
     elif kind == 'image_edit':
         result.update(image=value['image'], revision=value['revision'])
     else:

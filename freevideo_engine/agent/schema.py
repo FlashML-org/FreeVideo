@@ -64,7 +64,7 @@ EDITOR_SOURCE = string(1034, pattern=r'^(?:work:\d{4}-\d{2}-\d{2}/[0-9a-f]{32}|g
 SAVED = string(43, pattern=r'^\d{4}-\d{2}-\d{2}/[0-9a-f]{32}$')
 SLUG = string(64, pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
 REF = string(128, pattern=r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$',
-             description='Idempotency key; reuse only with the same request content. Batch row refs also name dependencies.')
+             description='Idempotency key; reuse only with the same request content.')
 FILE = string(1024, pattern=r'^(?!/)(?!.*(?:\\|:))(?!.*(?:^|/)\.\.(?:/|$)).+$')
 FRAME = {'oneOf': [enum(('first', 'last')), number(0, 86400)]}  # Seconds into the video; the bound keeps it a float.
 WAIT = number(0, default=0, description='x-clamp caps accepted wait values at 25 seconds without rejecting larger values.', **{'x-clamp': 25})
@@ -159,7 +159,7 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
 
 
 def common():
-    return dict(label=string(120), project=SLUG, metadata={'x-json-bytes': 16 * 1024, 'description': 'x-json-bytes limits serialized finite JSON to 16384 bytes, which JSON Schema cannot measure.'},
+    return dict(label=string(120), project=SLUG, metadata={'x-json-bytes': 16 * 1024, 'description': 'x-json-bytes: serialized finite JSON of at most 16384 bytes.'},
                 after=array(JOB), ref=REF)
 
 
@@ -311,6 +311,23 @@ def listen(*, local=False):
         **{'x-job-kind': 'listen'})
 
 
+MUSIC_FIELDS = dict(
+    caption=string(512, description='The music in English: genre, instruments, tempo, mood and how it changes over the film. No singing.'),
+    seed=number(0, 2**32 - 1, integer=True, description='Same seed and caption, same piece.'),
+    quiet=array(obj(dict(start=EDITOR_FRAME, frames=number(1, 10**7, integer=True)), ('start', 'frames')), 1, 500,
+                description='Frames where someone speaks; the music is lower there.'))
+
+
+def music(*, local=False):
+    return obj(dict(kind={'const': 'music', 'type': 'string'},
+        editor_project=string(34, pattern=r'^e-[0-9a-f]{32}$', description='The editing project to score (GET /projects).'),
+        revision=number(1, 2**53 - 1, integer=True, description='The saved revision you read; the music follows the timeline length when the job runs.'),
+        **MUSIC_FIELDS, **common()), ('kind', 'editor_project', 'revision', 'caption'),
+        description='Compose one piece of music as long as the timeline with the local music model and lay it on sound track a2 from '
+                    'frame 0, quieter than the video sound and faded in and out. The first use downloads the model (about 20 GB).',
+        **{'x-job-kind': 'music'})
+
+
 def image_edit(*, local=False):
     return obj(dict(kind={'const': 'image_edit', 'type': 'string'},
         image=dict(IMAGE, description='The image session to render (POST /images).'),
@@ -321,11 +338,12 @@ def image_edit(*, local=False):
 
 
 KINDS = dict(generate=generate, assemble=assemble, vlm=vlm, enhance=enhance, image=image,
-             export=export, listen=listen, image_edit=image_edit)
+             export=export, listen=listen, music=music, image_edit=image_edit)
 
 
-def job_schema(*, local=False, refs=False):
-    value = {'oneOf': [f(local=local) for f in KINDS.values()], 'x-discriminator': 'kind',
+def job_schema(*, local=False, refs=False, batch=False):
+    # Music scores a joined cut, so it is not a storyboard row.
+    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind == 'music')], 'x-discriminator': 'kind',
              'description': 'x-discriminator selects field diagnostics by kind; all accepted branches use standard oneOf.'}
     return batch_references(value) if refs else value
 
@@ -341,7 +359,7 @@ def batch_references(value):
 
 
 def batch_schema(*, local=False):
-    return obj(dict(jobs=array(job_schema(local=local, refs=True), 1, 64), ref=REF), ('jobs',), description='x-batch additionally checks earlier-row references and at most 64 jobs after takes expansion.', **{'x-batch': True})
+    return obj(dict(jobs=array(job_schema(local=local, refs=True, batch=True), 1, 64), ref=REF), ('jobs',), description='x-batch additionally checks earlier-row references and at most 64 jobs after takes expansion.', **{'x-batch': True})
 
 
 def import_upload():
@@ -442,7 +460,7 @@ def contracts(*, local=False):
         if method == 'GET':
             extra['query'] = shape
         else:
-            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen') else {}))
+            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music') else {}))
         routes[method, suffix] = route(summary, **extra)
     for name, (method, suffix, summary) in WHITEBOX_OPERATIONS.items():
         extra = dict(path=obj({'id': WHITEBOX}, ('id',))) if '{id}' in suffix else {}
@@ -825,11 +843,12 @@ PROJECT_OPERATIONS = {
     'generate': ('POST', '/projects/{id}/generate', 'Make new picture and sound for selected clips or a frame range, as the page Generate does. First get revision and clip IDs; the parts are reserved at once and fill in as the returned job finishes.'),
     'export': ('POST', '/projects/{id}/export', 'Render one saved revision to an MP4 in the saved videos. First get the revision; wait for the returned job, then read its result video.'),
     'listen': ('POST', '/projects/{id}/listen', 'Listen to the timeline sound for subtitles: mode align times lines you give, transcribe writes down what is said. First get the revision; wait for the returned job, then add the lines with the subtitles edit. Nothing is saved; with no speech model for the language the call fails with no_speech_model, so write the lines by hand.'),
+    'music': ('POST', '/projects/{id}/music', 'Compose music as long as the joined cut and lay it on sound track a2 at frame 0, under the video sound. First get the revision; a2 must be empty. Wait for the returned job; the first use downloads the model (20 GB).'),
 }
 PROJECT_TOOLS = dict(list='freevideo_projects', get='freevideo_project_read', create='freevideo_project_create',
                      write='freevideo_project_write', operations='freevideo_editor_operations',
                      generate='freevideo_project_generate', export='freevideo_export',
-                     listen='freevideo_project_listen')
+                     listen='freevideo_project_listen', music='freevideo_project_music')
 
 SESSION_OPERATIONS = {
     'create': ('POST', '/sessions', 'Create a work conversation for messages and plans shared with the user.'),
@@ -943,6 +962,8 @@ def project_schema(name):
         return obj(dict(revision=revision, ref=REF), ('revision',))
     if name == 'listen':
         return obj(dict(revision=revision, **LISTEN_FIELDS, ref=REF), ('revision', 'mode'))
+    if name == 'music':
+        return obj(dict(revision=revision, **MUSIC_FIELDS, ref=REF), ('revision', 'caption'))
     if name != 'operations':
         return EMPTY
     fields = {
@@ -1095,8 +1116,9 @@ def issues(schema, value, path='', *, refs=False):
                 return [diagnostic(path + '/' + field, ', '.join(variants), selected)]
             return issues(variants[selected], value, path, refs=refs)
         kind = value.get('kind', 'generate')
-        if not isinstance(kind, str) or kind not in KINDS:
-            return [diagnostic(path + '/kind', ', '.join(KINDS), kind)]
+        kinds = [s.get('x-job-kind') for s in schema['oneOf']]
+        if not isinstance(kind, str) or kind not in kinds:
+            return [diagnostic(path + '/kind', ', '.join(kinds), kind)]
         chosen = next(s for s in schema['oneOf'] if s.get('x-job-kind') == kind)
         return issues(chosen, value, path, refs=refs)
     for rule in schema.get('allOf', []):

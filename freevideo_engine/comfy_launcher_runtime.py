@@ -494,8 +494,16 @@ def launcher_comfy(selected, info):
         return False
 
 
+ENGINE_UPDATE_WAITS = 'ComfyUI is running a job, so the engine update waits'
+
+
+def _refused(error):
+    return isinstance(error, ConnectionRefusedError) or isinstance(getattr(error, 'reason', None), ConnectionRefusedError)
+
+
 def queue_busy(url):
-    """Preserve the legacy check; a pool must confirm every executor is idle."""
+    """Preserve the legacy check; a pool must confirm every executor is idle. A refused
+    connection means nothing listens, so there is no job; a timeout is not that answer."""
     from .gpu_pool import pool_enabled
     pooled = pool_enabled()
     try:
@@ -506,8 +514,8 @@ def queue_busy(url):
             state = get_json(loopback_url(url) + '/freevideo/pool', timeout=3)
             return state.get('busy') is not False or state.get('confirmed') is not True
         return False
-    except (OSError, ValueError, AttributeError):
-        return pooled
+    except (OSError, ValueError, AttributeError) as error:
+        return pooled and not _refused(error)
 
 
 @plain_errors
@@ -622,6 +630,34 @@ def checkout_entry(data, folder):
             and (io_path(folder) / 'freevideo_engine' / 'comfy_nodes.py').is_file())
 
 
+PRESTARTUP_MARK = '# Installed by FreeVideo launcher.\n'
+
+
+def install_prestartup(target, engine):
+    """ComfyUI runs prestartup_script.py of a node folder before it imports its server. The launcher's
+    small loader runs the certificate fix from the source; a file that is not the launcher's stays."""
+    path = target / 'prestartup_script.py'
+    if path.is_file() and not path.read_text(encoding='utf-8', errors='replace').startswith(PRESTARTUP_MARK):
+        return
+    code = (PRESTARTUP_MARK +
+            "import json as _json\nfrom pathlib import Path as _Path\n"
+            "_source = _Path(_json.loads((_Path(__file__).parent / 'freevideo-launcher.json').read_text(encoding='utf-8'))['source'])\n"
+            + launch_view.entry_lines(launch_view.for_engine(engine)) +
+            "_script = _source / 'freevideo_engine' / 'windows_ssl.py'\n"
+            "if _script.is_file():\n"
+            "    exec(compile(_script.read_text(encoding='utf-8'), str(_script), 'exec'))\n").encode()
+    if path.is_file() and path.read_bytes() != code:
+        # An older loader, or one the user added to: keep a copy, as for the entry point.
+        backup = engine / 'launcher' / 'backups' / (target.name + '-' + hashlib.sha256(path.read_bytes()).hexdigest()[:12] + '-prestartup.py')
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if not backup.exists():
+            backup.write_bytes(path.read_bytes())
+    if not path.is_file() or path.read_bytes() != code:
+        temporary = path.with_suffix('.py.launcher-tmp')
+        temporary.write_bytes(code)
+        os.replace(temporary, path)
+
+
 def deploy(root, source, engine):
     """Update only our entry point; preserve source edits, libraries and templates."""
     root, source, engine = map(resolved, (root, source, engine))
@@ -657,6 +693,7 @@ def deploy(root, source, engine):
     temporary = entry.with_suffix('.py.launcher-tmp')
     temporary.write_bytes(code)
     os.replace(temporary, entry)
+    install_prestartup(target, engine)
     template = (source / 'example_workflows' / TEMPLATE).read_bytes()
     digest = hashlib.sha256(template).hexdigest()[:12]
     saved = []
@@ -1151,8 +1188,7 @@ class Controller:
             # Whoever started it (another launcher, the freevideo command), a ComfyUI of this installation
             # that is generating keeps its packages: the switch waits for the job.
             if queue_busy(loopback_url(self.server_address or self.selection['url'])):
-                raise RuntimeError('ComfyUI is running a job, so the engine update waits. Try again after it finishes; '
-                                   'the job is left running.')
+                raise RuntimeError(ENGINE_UPDATE_WAITS + '. Try again after it finishes; the job is left running.')
             self._stop_server_for_setup(selected['url'])
         engine_binding.rebind(selected['engine'], machine, selected['source'])
         self.stage('nodes', label='Install FreeVideo workflow')
@@ -1178,12 +1214,11 @@ class Controller:
         keeps loaded after a video (Windows refuses to replace SageAttention's
         _fused.pyd), and a model switch must not leave the old model in that
         worker. Stop our own idle server; connecting after setup starts it
-        again. A running job is never stopped."""
-        if not self.owns_server():
-            return
+        again. A running job is never stopped, in a server another program started either."""
         if queue_busy(loopback_url(self.server_address or url)):
             raise RuntimeError('ComfyUI is running a job. Try again after it finishes; the job is left running.')
-        self.stop_owned_server()
+        if self.owns_server():
+            self.stop_owned_server()
 
     def ensure_shortcut(self):
         from .desktop_shortcut import create_after_install

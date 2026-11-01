@@ -147,7 +147,7 @@ def inventory(rows):
 def check_runtime_platform():
     import sys
     if sys.platform == 'darwin':
-        raise ValueError('这是 Windows 运行环境包，不能用于 Mac。请导入模型包后继续安装，安装器会自动下载 Mac 运行环境。')
+        raise ValueError('The Windows runtime package cannot be used on macOS.')
 
 
 def inspect_archive(path):
@@ -158,7 +158,7 @@ def inspect_archive(path):
         marker = next((name for name in ('offline-package.json', 'runtime.json')
                        if PREFIX + name in names), None)
         if marker is None:
-            raise ValueError('不是 FreeVideo 离线包，请选择模型或运行环境 ZIP。')
+            raise ValueError('The file is not a FreeVideo offline package.')
         info = archive.getinfo(PREFIX + marker)
         if info.file_size > 16 * 2**20:
             raise ValueError('Oversized offline inventory')

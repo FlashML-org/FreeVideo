@@ -32,7 +32,7 @@ from ..system import windows
 ACTIVE = ('waiting', 'queued', 'running', 'cancelling')
 CAST_AGAIN = 'POST /freevideo/agent/v1/cast/%s/generate to make the reference pictures again.'
 DONE = ('succeeded', 'failed', 'cancelled', 'interrupted')
-GPU_KINDS = ('vlm', 'enhance', 'image')
+GPU_KINDS = ('vlm', 'enhance', 'image', 'music')
 IMAGE_ERRORS = errors.IMAGE_ERRORS
 IMAGE_WAIT_ERRORS = ('busy', 'busy_video')
 IMAGE_WAIT_NOTICES = {
@@ -1429,6 +1429,9 @@ class Jobs:
             elif row['kind'] == 'image_edit':
                 from .images import run_render
                 result = run_render(self, row)
+            elif row['kind'] == 'music':
+                from .music import run_music
+                result = run_music(self, row)
             else:
                 result = self.run_assemble(row)
             return result
@@ -1785,26 +1788,94 @@ class Jobs:
     def poll_generation(self, row):
         prompt_id, node = row['comfy']['prompt_id'], row['comfy']['node']
         state = self.port.prompt_state(prompt_id)
+        polled_at = self.clock()
         if state == 'running' and row['status'] == 'queued':
             self.touch(row, status='running', started_at=self.clock())
+        history = None if state in ('running', 'pending') else self.port.history(prompt_id)
+        status = (history or {}).get('status') or {}
+        outputs = ((history or {}).get('outputs') or {}).get(node) or {}
+        summary = (outputs.get('freevideo_summary') or [None])[0]
+        diagnostics = row.setdefault('generation_poll_diagnostics', dict(count=0))
+        previous = diagnostics.get('last')
+        previous_state = tuple(previous.get(key) for key in
+            ('queue_state', 'history_entry', 'history_success', 'freevideo_summary')) if isinstance(previous, dict) else None
+        registered_before = diagnostics.get('video_registered_at')
+        diagnostics['count'] += 1
+        diagnostics['last'] = dict(time=polled_at, queue_state=state,
+            history_entry=history is not None, history_success=status.get('status_str') == 'success',
+            freevideo_summary=bool(summary))
+        video = summary.get('video') if isinstance(summary, dict) else None
+        if not isinstance(video, str):
+            for entries in outputs.values():
+                for entry in entries if isinstance(entries, list) else ():
+                    if not isinstance(entry, dict) or not isinstance(entry.get('filename'), str):
+                        continue
+                    candidate = '/'.join(part for part in (entry.get('subfolder'), entry['filename']) if part)
+                    if candidate.startswith('FreeVideo/'):
+                        video = candidate
+                        break
+                if video:
+                    break
+        if isinstance(video, str) and not diagnostics.get('video_registered_at'):
+            try:
+                if self.saved_video(video):
+                    diagnostics['video_registered_at'] = polled_at
+            except (OSError, JobError, TypeError, ValueError):
+                pass
+        current_state = tuple(diagnostics['last'][key] for key in
+            ('queue_state', 'history_entry', 'history_success', 'freevideo_summary'))
+        changed = (previous_state != current_state or
+                   registered_before != diagnostics.get('video_registered_at'))
+        now = polled_at
+        due = now - row.get('_generation_poll_saved_at', float('-inf')) >= 60
+        should_publish = changed or due
+        if should_publish:
+            self.save(row)
+            row['_generation_poll_saved_at'] = now
         if state in ('running', 'pending'):
+            if should_publish:
+                self.publish_generation_diagnostics(row, node)
             return
-        history = self.port.history(prompt_id)
         if history is None:
             if state == 'missing' and self.clock() - row.get('queued_at', row['updated_at']) > 10:
                 self.finish(row, 'cancelled' if row.get('_cancel') else 'failed',
                             error=dict(code='cancelled' if row.get('_cancel') else 'lost',
                                        message='The request left the ComfyUI queue without a result'))
+            if should_publish:
+                self.publish_generation_diagnostics(row, node)
             return
-        status = history.get('status') or {}
-        outputs = (history.get('outputs') or {}).get(node) or {}
-        summary = (outputs.get('freevideo_summary') or [None])[0]
         if status.get('status_str') == 'success' and summary:
             self.finish(row, 'succeeded', result=self.generation_result(row, summary))
+            if should_publish:
+                self.publish_generation_diagnostics(row, node)
             return
         if status.get('completed') is False or status.get('status_str') == 'error' or not summary:
             error = self.port.generation_error(history, node)
             self.finish(row, 'cancelled' if error['code'] == 'cancelled' else 'failed', error=error)
+        if should_publish:
+            self.publish_generation_diagnostics(row, node)
+
+    def publish_generation_diagnostics(self, row, node):
+        if not hasattr(self.port, 'run_output'):
+            return
+        try:
+            output = self.port.run_output(node)
+            if output is None:
+                return
+            path = Path(output).parent / 'agent-generation-poll.json'
+            value = dict(agent_generation_jobs=[dict(id=job['id'], status=job['status'],
+                video_registered_at=job.get('generation_poll_diagnostics', {}).get('video_registered_at'),
+                generation_poll_diagnostics=job.get('generation_poll_diagnostics'))
+                for job in self.jobs.values() if job.get('kind') == 'generate'
+                and job.get('generation_poll_diagnostics')])
+            temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+            try:
+                temporary.write_text(json.dumps(value, allow_nan=False), encoding='utf-8')
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        except (OSError, TypeError, ValueError, AttributeError):
+            return
 
     def generation_result(self, row, summary):
         spec = row['spec']

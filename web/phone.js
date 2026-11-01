@@ -107,7 +107,7 @@ pw.onsubmit = async event => {
         const wait = Number(response.headers.get('X-FreeVideo-Retry-After'));
         if (response.ok) { locked = false; password.value = ''; pwError.hidden = true; field.classList.remove('bad'); renderShell(); await poller.poll(); }
         else if (response.status === 429 && wait > 0) lockFor(wait);
-        else if (response.status === 401) { pwError.textContent = t('Wrong password. Please try again.', '密码不对，请再输一次。'); pwError.hidden = false; field.classList.add('bad'); password.focus(); password.select(); }
+        else if (response.status === 401) { pwError.textContent = t('Incorrect password.', '密码不正确。'); pwError.hidden = false; field.classList.add('bad'); password.focus(); password.select(); }
         else { pwError.textContent = t('Connection lost. Reconnecting…', '连接断了，正在重新连接…'); pwError.hidden = false; }
     } catch { pwError.textContent = t('Connection lost. Reconnecting…', '连接断了，正在重新连接…'); pwError.hidden = false; }
     finally { pw.dataset.busy = 'false'; tickPassword(); }

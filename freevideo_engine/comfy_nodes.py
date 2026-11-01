@@ -233,6 +233,11 @@ class FreeVideoGenerate(io.ComfyNode):
             stop_image_for_generation(PromptServer.instance)
         except Exception as error:
             logging.warning('[FreeVideo] Could not stop image generation before the video: %s', error)
+        try:   # nor music for a cut, which composes again after the video
+            from .music.service import stop_for_generation as stop_music_for_generation
+            stop_music_for_generation(PromptServer.instance)
+        except Exception as error:
+            logging.warning('[FreeVideo] Could not stop music before the video: %s', error)
         prewarm = {}
         result_reused = [False]
         result_report = [None]

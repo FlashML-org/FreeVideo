@@ -395,6 +395,50 @@ class Projects:
             self._remember(ref, digest, result, client)
             return result
 
+    def music(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue a music job for the revision the caller read; a stale revision starts nothing."""
+        schema.validate(schema.project_schema('music'), value)
+        with self.listen_lock:  # the same key sent twice at once queues one job
+            digest, replay = self._receipt('projects:music', dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            if not comfy_editor.duration(stored):
+                raise _invalid('/revision', 'a revision whose timeline has clips', value['revision'])
+            job = jobs.submit(dict(kind='music', editor_project=identity,
+                                   **{k: v for k, v in value.items() if k != 'ref'}), client=client)[0]
+            result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
+            self._remember(ref, digest, result, client)
+            return result
+
+    def lay_music(self, identity, source):
+        """Put a finished score on a2 from frame 0 of the project as it is now; returns the save and the new clip IDs."""
+        found = comfy_editor.sources(self.root, [source])[source]
+        if found['missing'] or not found['frames']:
+            raise JobError('music_failed', 'The music file is not readable')
+        kind, path = source.split(':', 1)
+        operation = dict(op='insert', at=0, media=dict(source=dict(kind=kind, id=path), frames=found['frames'], hasVideo=False,
+                                                        hasAudio=True, width=0, height=0, targetTrack='a2'))
+        before, refused = {}, {}
+        def change(project):
+            before['ids'] = set(_clips(project))
+            if any(track['id'] == 'a2' and track['clips'] for track in project['tracks']):
+                # An insert there would push the whole cut later; an earlier score is removed first.
+                refused.update(code='audio_full')
+                return dict(ok=True, project=project)
+            reply = editor_runtime.runtime().batch(project, [operation])
+            if not reply['ok']:
+                refused.update(reply['error'])
+                return dict(ok=True, project=project)  # nothing changes; the reason is raised below
+            return reply
+        saved = self._update(identity, change)
+        if refused:
+            code = STATE_CODES.get(refused.get('code'), 'music_failed')
+            raise JobError(code, 'Sound track a2 cannot take the music from frame 0 (%s)' % refused.get('code'))
+        return saved, sorted(set(_clips(saved)) - before['ids'])
+
     def _update(self, identity, change, *, tries=4):
         """Read, change and save; a page save in between makes it read again. None when nothing changed."""
         for _ in range(tries):

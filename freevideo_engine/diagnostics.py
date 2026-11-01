@@ -191,7 +191,7 @@ def report_files(directory):
             if name in NAMES or name.endswith(('.log', '.jsonl', '.request.json', '.debug.json',
                                                '.encoding.json', '.engine.json', '.memory.json',
                                                '.gpu.json', '.sampling-memory.json', '.comfy-request.json',
-                                               'comfy-request.json')):
+                                               'comfy-request.json', 'agent-generation-poll.json')):
                 yield Path(current) / name
 
 

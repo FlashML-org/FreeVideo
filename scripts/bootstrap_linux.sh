@@ -106,6 +106,7 @@ fv_system_deps() {
     elif command -v dnf >/dev/null 2>&1; then manager=dnf
     elif command -v yum >/dev/null 2>&1; then manager=yum
     elif command -v zypper >/dev/null 2>&1; then manager=zypper
+    elif command -v pacman >/dev/null 2>&1; then manager=pacman
     else
         fv_fail "缺少基础工具：${listed}。无法自动安装，请联系系统管理员安装以上工具，完成后重新开始安装。"
         fv_fail "Missing basic tools: ${listed}. They cannot be installed automatically. Ask your administrator to install them, then start the installation again."
@@ -114,7 +115,7 @@ fv_system_deps() {
     for name in "${fv_missing[@]}"; do
         package="$name"
         case "$name" in
-            g++|make) if [[ "$manager" == apt-get ]]; then package=build-essential; else package=gcc-c++; fi ;;
+            g++|make) if [[ "$manager" == apt-get ]]; then package=build-essential; elif [[ "$manager" == pacman ]]; then package=gcc; else package=gcc-c++; fi ;;
             sha256sum) package=coreutils ;;
             flock) package=util-linux ;;
         esac
@@ -128,6 +129,7 @@ fv_system_deps() {
                  install=(apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends "${packages[@]}") ;;
         dnf|yum) install=("$manager" --setopt=timeout=30 --setopt=retries=2 install -y "${packages[@]}") ;;
         zypper) install=(zypper --non-interactive install --no-recommends "${packages[@]}") ;;
+        pacman) install=(pacman -S --needed --noconfirm "${packages[@]}") ;;
     esac
     if (( EUID != 0 )); then privilege=(sudo); fi
     if (( fv_readonly )); then
@@ -142,6 +144,7 @@ fv_system_deps() {
         # because a minimal system often has an empty one.
         local manual
         manual="${privilege[*]:+sudo }$manager install ${packages[*]}"
+        [[ "$manager" != pacman ]] || manual="${privilege[*]:+sudo }pacman -S --needed ${packages[*]}"
         [[ "$manager" != apt-get ]] || manual="${privilege[*]:+sudo }apt-get update && ${privilege[*]:+sudo }apt-get install ${packages[*]}"
         if (( EUID != 0 )) && ! command -v sudo >/dev/null 2>&1; then
             fv_fail "缺少基础工具：${listed}。此系统未安装 sudo，请联系系统管理员运行以下命令，完成后重新开始安装："

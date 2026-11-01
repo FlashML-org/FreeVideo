@@ -156,6 +156,50 @@ def encoder_prewarm(value):
     return result
 
 
+PRECOMPILE_REASONS = ('idle_delay', 'session_busy', 'foreground_work',
+    'ram_pressure', 'gpu_busy', 'gpu_memory_pressure', 'gpu_processes_unavailable',
+    'gpu_in_use', 'lease_busy', 'unknown')
+
+
+def precompile_shape(value):
+    """Allowlisted request shape only, never cache/conditioning/model paths."""
+    value = mapping(value)
+    result = {key: value[key] for key in ('width', 'height', 'frames', 'base_steps', 'refine_steps')
+              if type(value.get(key)) is int and value[key] > 0}
+    if not all(key in result for key in ('width', 'height', 'frames')):
+        return {}
+    if value.get('task') in ('t2va', 'fl2va', 'ref2va'):
+        result['task'] = value['task']
+    if type(value.get('two_pass')) is bool:
+        result['two_pass'] = value['two_pass']
+    result.update({key: number for key, number in numbers(value, ('upscale_factor',)).items() if number > 0})
+    tokens = sequence(value.get('text_tokens'))[:8]
+    if tokens and all(type(n) is int and n > 0 for n in tokens):
+        result['text_tokens'] = list(tokens)
+    return result
+
+
+def precompile(value):
+    """Fresh bounded structure for local and uploaded precompile evidence."""
+    value = mapping(value)
+    state = value.get('state')
+    result = dict(state=state if state in ('complete', 'running', 'not_started', 'unknown') else 'unknown',
+                  covered_shapes=[], scope='installation_snapshot')
+    for row in sequence(value.get('covered_shapes'))[:16]:
+        shape = precompile_shape(row)
+        if shape and shape not in result['covered_shapes']:
+            result['covered_shapes'].append(shape)
+    result.update(numbers(value, ('updated_at', 'started_at')))
+    if value.get('receipt') in ('available', 'missing', 'invalid'):
+        result['receipt'] = value['receipt']
+    last = mapping(value.get('last_postpone'))
+    at = numbers(last, ('at',))
+    if at:
+        result['last_postpone'] = dict(at, reason=last.get('reason')
+            if last.get('reason') in PRECOMPILE_REASONS else 'unknown')
+    return result
+
+
 def embedding(value):
     """Tensor metadata only: no indices, tensor values, prompt or media content."""
     value = mapping(value)
@@ -323,7 +367,14 @@ def kernel_receipt(value):
 def numbers(value, keys):
     value = mapping(value)
     return {k: value[k] for k in keys if type(value.get(k)) in (int, float)
-            and math.isfinite(value[k]) and value[k] >= 0}
+            and finite(value[k]) and value[k] >= 0}
+
+
+def finite(number):
+    try:
+        return math.isfinite(number)
+    except OverflowError:  # An int beyond the float range, e.g. 10**400.
+        return False
 
 
 def weight_placement(value):

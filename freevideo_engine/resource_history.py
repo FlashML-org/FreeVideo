@@ -409,7 +409,14 @@ class ResourceHistory:
             if observation is not None and outcome != 'success':
                 raise ValueError('Failed attempts cannot certify resource calibration')
             if outcome == 'discarded':
-                if (details or {}).get('kind') in ('cuda_error', 'unknown_worker_exit'):
+                # A first CUDA error in the decode phase comes after sampling finished: the
+                # sampling partitions a compatibility level changes did not fail, and the
+                # retry decodes the saved latents. A decode retry that fails again is
+                # recorded, since only a higher level changes the decoder.
+                repeated = bool(json.loads(row['details_json']).get('decision_evidence', {}).get('decode_resume'))
+                after_sampling = ((details or {}).get('kind') == 'cuda_error'
+                                  and (details or {}).get('failed_phase') == 'decode' and not repeated)
+                if (details or {}).get('kind') in ('cuda_error', 'unknown_worker_exit') and not after_sampling:
                     from .compatibility import Store
                     Store(self.path.parent).incident(self._row(row), details['kind'], evidence=details)
                 db.execute('DELETE FROM attempts WHERE id=?',(attempt_id,))

@@ -58,15 +58,17 @@ GUIDE = {
         'for each shot: the shots are generated separately, so the music would not be continuous and would jump at '
         'every cut. Write music in a shot only when the user asks for it there.',
         'When the user wants music over the film, keep every shot at N/A and lay one score on one sound track after '
-        'the cut is joined. If the user gives a music file, import it. If there is none, compose it yourself: write '
-        'a program that synthesizes one audio file (WAV, using the standard wave module and numpy or whatever is '
-        'already installed, nothing to install) as long as the finished cut, with its sections, changes and ending '
-        'on the cut points. Import it with POST /imports (MCP freevideo_import_media, CLI imports add), wait until it '
-        'is ready, and insert import:<id> at frame 0 of the project. There is no volume or fade operation, so build '
-        'them into the file: keep the music clearly quieter than the dialogue and ambience, lower it further while '
-        'someone speaks (take the line times from your own screenplay and shot lengths, or run a listen job in align '
-        'mode to time them), and fade it in at the start and out at the end. The audio goes onto a free sound track by '
-        'itself; read the project afterwards and check that one clip covers the whole film.',
+        'the cut is joined. If the user gives a music file, import it with POST /imports (MCP freevideo_import_media, '
+        'CLI imports add), wait until it is ready, and insert import:<id> at frame 0 of the project. If there is none, '
+        'run a music job: POST /projects/{id}/music with the revision you read, a caption describing the music in '
+        'English (genre, instruments, tempo, mood and how it changes over the film; there is no singing) and quiet, '
+        'the frame ranges where someone speaks (from your own screenplay and shot lengths, or a listen job in align '
+        'mode). The job composes one piece as long as the timeline, levels it under the dialogue and ambience, lowers '
+        'it in the quiet ranges, fades both ends and lays it on sound track a2 from frame 0; remove an earlier score '
+        'there first. The first use downloads the music model (about 20 GB), so tell the user it can take a while. '
+        'Read the project afterwards and check that one clip covers the whole film. Only if the job fails with '
+        'music_download_failed or music_failed twice, write a program that synthesizes one WAV file (the standard '
+        'wave module and numpy, nothing to install) built the same way and import it.',
     ],
     'references': [
         "User message attachments are reference images by default. Use each name directly in media.references, media.first or media.last according to the user's words; if the intended role is unclear, ask one question. Text can be empty when a message has attachments.",
@@ -141,6 +143,7 @@ GUIDE = {
         'POST /projects/{id}/operations sends revision and 1-64 operations, using whole frames at 24 fps. The batch saves once or changes nothing.',
         'On 409 project_changed, recompute edits from error.project and its current_revision, then send a new request. On clip_busy wait for generation to finish.',
         'POST /projects/{id}/generate reserves pending parts for clip_ids or a start/frames range and fills them as the returned job finishes. POST /projects/{id}/export renders the revision you read; wait for its job.',
+        'Music: POST /projects/{id}/music with the revision you read and a caption; wait for the job, then read the project: result.clip_ids are the new clips on a2. Run it after the cut is joined; a second run needs the earlier score removed from a2.',
         'Subtitles: POST /projects/{id}/listen with mode transcribe (writes down what is said) or align (times the lines you give) and the revision you read; wait for the job and read result.lines, each with start and end frames. Then add them with a subtitles operation of cues {start, frames, text}; replace true swaps the whole track. With no speech model the job fails with no_speech_model: write the lines yourself.',
         'The user sees one line under each picture clip: its note, or else the first line of its description. A description is generation text, often long and in English, so after you add, generate or change a clip, write a note (operation note) in the user\'s language saying what is in the picture: the subject first, then the setting, for example "Train through morning mist" (in Chinese "小火车穿过晨雾"). A short clip shows only the first few characters, about four in Chinese, and those must already make sense on their own. Do not write where the clip sits (opening, middle, ending, part 2): the order of the clips shows that. Do not write how far along it is: the clip already shows its progress. Keep it true when you change the clip again.',
         'Reuse ref or Idempotency-Key only for the identical request. Source video/audio/thumbnail URLs require the same Agent token.',
@@ -366,6 +369,8 @@ CAPABILITIES_ZH = {
     ('POST', '/projects/{id}/listen'): '听剪辑工程的声音，得到字幕行及其时间：对给定字幕行定时，或直接转写。'
         '先读取 revision，等待返回的任务完成，再用 subtitles 编辑把字幕行加入时间线；'
         '没有安装语音模型时返回 no_speech_model，改为自己写字幕行',
+    ('POST', '/projects/{id}/music'): '为剪辑时间线作一段与其等长的配乐，放在第二条声音轨道的开头，音量低于视频声音并带淡入淡出。'
+        '剪辑拼好后先读取 revision，并删去该轨道上原有的配乐；首次使用会下载音乐模型（约 20 GB）',
     ('POST', '/images'): '像图片编辑页面一样打开图片；提交 source，会话会保留源图片副本和图层文档',
     ('GET', '/images/{id}'): '读取图片编辑会话的图层文档、选区和 revision；编辑前先读取 revision 和图层标识',
     ('PUT', '/images/{id}'): '替换整个图片文档；先读取会话并提交其 revision。'

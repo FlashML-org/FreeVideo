@@ -660,7 +660,7 @@ async function check() {
     send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
-        const problems = [{text: t('The ComfyUI page did not finish loading within a minute.', 'ComfyUI 页面在一分钟内没有加载完成。'), advice: 'browser'}];
+        const problems = [{text: t('The ComfyUI page did not finish loading within a minute.', 'ComfyUI 页面在一分钟内没有加载完成。'), advice: 'reload'}];
         show(problems); send('error', problems); return;
     }
     // A restarted ComfyUI has not heard from this page; tell it again.

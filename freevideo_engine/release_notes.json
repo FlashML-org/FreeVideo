@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.4.26",
+  "product_version": "0.4.27",
   "en": {
-    "summary": "Recent videos open at every window width, when every download source fails the launcher shows the reason for each source, and replacing a person runs on 16 GB Macs.",
+    "summary": "The Agent can make music for a project, an update started during a generation waits for it to finish, and a preview can keep the guide clip's sound.",
     "changes": [
-      "Creation panel: \"Recent videos\" can be opened at every window width; in a narrow window the list opens over the preview. The @ character menu shows each character's face close-up instead of the full-length picture. When a part length is refused, the length panel says whether it is too short or too long instead of asking to try again. When the connection to FreeVideo drops briefly, the queue no longer reports browser extension interference; a loop that cannot submit its next job stops with the error instead of retrying.",
-      "Install: when every source for a download fails, the launcher's error card lists each source with its reason and time, and the copied details and the diagnostic report include the same list. Git errors name the folder of the dependency. Account names, passwords, tokens and local paths are removed from the listed addresses. The video text encoder can also be downloaded from ModelScope, so a first install no longer depends on Hugging Face alone for this file; a download that fails the integrity check falls back to Hugging Face.",
-      "Prompt enhancement: when the connection to FreeVideo is lost, a connection-lost message is shown instead of the browser's raw error, and a failed progress check is retried before the rewrite stops. After a rewrite, characters mentioned with @ are still shown by name in the prompt box. When the prompt or references change during a rewrite, a note asks for a new rewrite instead of an error with a report button.",
-      "Prompt enhancement: the rewrite tab shows the scene description followed by a separate \"Sound:\" section instead of the model's field names. With several shots, each shot is its own paragraph labelled with its number and start time. A rewrite that is not edited is submitted exactly as the model wrote it. The default prompt in a prompt box that has not been edited uses the same layout and is also submitted unchanged. A prompt filled in with \"Reuse settings\" or opened from a workflow saved by an earlier version also uses this layout and, when not edited, is submitted unchanged.",
-      "Editor: when the last edit can no longer be found, a blank edit opens with a message saying so; clicking the edit name at the top opens another edit.",
-      "Settings: a new AI Agent section chooses whether an agent asks before starting a film and before a long reshoot, and how many minutes make a reshoot long. Both ask by default. When an agent's white-model scene fails, the agent receives the reason instead of a generic connection error.",
-      "Install: when the NVIDIA driver is installed but not running, for example right after it was installed, the launcher's error card asks for a restart instead of showing the raw detection error. When the NVIDIA driver is missing, the card adds one line naming the graphics card Windows lists; when Windows lists only AMD or Intel graphics, the card says FreeVideo supports NVIDIA graphics cards only.",
-      "Video generation: when a generation falls back to a freshly started worker, the result is the same as in the worker that was already running. After a driver or FreeVideo update, or on another graphics card in the same computer, the first generation no longer fails because an attention method the card cannot run was chosen.",
-      "Image generation: when Windows runs out of virtual memory while loading the image model, the failure card says so and suggests closing other apps or increasing virtual memory.",
-      "Linux: when no file manager can open a folder, the launcher and the image history show a message, and the image history also shows the images folder. The default save location follows the desktop's Documents folder. Curly apostrophes in English text are drawn at normal width instead of full width.",
-      "Mac: encoding a reference video (replace person, extending a video) needs about half the unified memory per tile, so it runs on 16 GB Macs where it stopped with a unified-memory error, including at the lowest resolution. Results are unchanged.",
-      "Mac: before installing, the launcher checks whether the disk of the chosen folder supports the file operations the Python environment needs. Without hard links the installation copies files instead; when links or renaming are not supported, a card asks for a folder on the Mac's built-in disk before anything is installed."
+      "Agent: a new music tool makes a soundtrack for a project and places it on an audio track. The music model is downloaded on first use (about 20 GB); cards with little video memory use a built-in 8-bit form. If two attempts fail, the Agent synthesizes the music itself.",
+      "Updates: when \"Update now\" is pressed while a video is generating, the page shows a waiting screen instead of a failure card, and the update starts when the job ends. The wait also covers a job on a server that another program started.",
+      "Audio: a kept original audio track is written as lossless audio that browsers can play. A preview made with a guide clip keeps the clip's sound when that was requested.",
+      "Long videos: when seams cannot be joined, the notes name the seams that failed first, with the step and the format. The how-to for a long video points to \"Extend\" below the finished video.",
+      "Phone access: the password page is shown in Chinese when the browser's preferred language is Chinese.",
+      "Speed: the encoded text of a prompt is kept per encoder file and prompt, so a repeated prompt starts sooner.",
+      "Precompile: the status keeps the order of its writes, stopping responds quickly, and the diagnostic report includes the status.",
+      "Decoding and reports: a CUDA error while decoding after sampling has finished no longer fails the video; the saved result is decoded once more in a fresh process. A process that keeps running after a CUDA error is ended, so the failure is reported instead of waiting. Diagnostic reports record the polling of Agent generations.",
+      "Errors: a refused offline package says why, and a slow ComfyUI page is no longer blamed on the browser.",
+      "Install: on Windows the portable Git is used when the installed Git cannot load libcurl, and the Windows certificate store is used for HTTPS checks, skipping a certificate that cannot be read. A rejected token or address stays explained under its field until it is accepted.",
+      "Linux: on Arch, the setup names the pacman command for missing basic tools.",
+      "Mac: after two Metal command buffer failures during sampling, a third attempt runs with Torch attention."
     ]
   },
   "zh": {
-    "summary": "任何窗口宽度下都能打开“最近作品”，依赖下载在所有源都失败时，启动器列出每个源的原因；16 GB 的 Mac 上也能替换人物。",
+    "summary": "Agent 可以为作品制作配乐；生成中点击更新会等任务结束后再更新；预览也可以保留引导片段的声音。",
     "changes": [
-      "创作面板：任何窗口宽度下都能打开“最近作品”；窗口较窄时，列表盖在预览上打开。输入 @ 时，角色头像改为脸部特写，不再是全身图。每段时长被拒绝时，长度面板会说明是过短还是过长，不再提示重试。与 FreeVideo 的连接短暂中断时，队列不再提示浏览器扩展干扰；循环生成提交下一个任务失败时，循环停止并显示错误，不再重试。",
-      "安装：依赖下载在所有源都失败时，启动器错误卡片逐个列出每个源的失败原因和耗时，复制的详情和诊断报告中也附有这份列表。Git 报错会写明对应依赖的文件夹。列出的地址会去掉账号、密码、令牌和本地路径。视频文本编码器增加魔搭下载源，首次安装下载这个文件时不再只依赖 Hugging Face；下载的文件校验不通过时改从 Hugging Face 下载。",
-      "提示词增强：与 FreeVideo 的连接中断时，显示连接断开的提示，而不是浏览器的原始错误；改写进度读取失败时先重试，不再立即中止。改写后，人物仍以“@人物名”显示在提示词框中。改写过程中原文或素材有改动时，显示一条提醒，请按新内容重新改写，不再显示错误和报告按钮。",
-      "提示词增强：“改写”页签只显示画面描述，下面单独列出“声音：”段，不再显示模型的字段名；有多个镜头时，每个镜头单独成段，标出镜头编号和开始时间。未修改的改写结果按模型原文提交。提示词框里未改动的默认提示词也按同样方式显示，提交时仍用原文。用“复用设置”填入的提示词和旧版本保存的工作流里的提示词同样按这种方式显示，未修改时按原文提交。",
-      "剪辑视图：上次的剪辑已找不到时，打开空白剪辑并给出说明；点击顶部的剪辑名可打开其他剪辑。",
-      "设置：新增“AI Agent”区块，可选择 Agent 在开拍整部片前、以及耗时较长的重拍前是否先询问，并设置重拍达到多少分钟算较长。两项默认都询问。Agent 搭建的白模场景失败时，Agent 收到具体原因，不再是笼统的连接错误。",
-      "安装：NVIDIA 显卡驱动已安装但未运行时（例如刚装好还未重启），启动器错误卡片提示重启电脑，不再显示原始的检测失败信息。未找到 NVIDIA 显卡驱动时，提示卡新增一行，写出系统列出的显卡；系统只列出 AMD 或 Intel 显卡时，卡片说明 FreeVideo 只支持 NVIDIA 显卡。",
-      "视频生成：生成改由新启动的进程完成时，结果与原先运行中的进程相同。驱动或 FreeVideo 更新后，或换用同一台电脑里的另一张显卡时，首次生成不再因选用这张显卡无法运行的注意力方式而失败。",
-      "图像生成：Windows 虚拟内存不足、无法载入图像模型时，失败卡片会说明原因，并建议关闭其他程序或调大虚拟内存。",
-      "Linux：没有可用的文件管理器打开文件夹时，启动器和图片历史给出提示，图片历史同时显示图片文件夹的路径；默认保存位置跟随桌面设置的文档文件夹。英文中的弯撇号按西文宽度显示，不再显示为全角。",
-      "Mac：编码参考视频（替换人物、接着生成）时，每个瓦片所需的统一内存约减半，在 16 GB 的 Mac 上不再因统一内存不足而中止，最低分辨率下也是如此；结果不变。",
-      "Mac：安装开始前，启动器先检查所选文件夹所在磁盘是否支持 Python 运行环境所需的文件操作。不支持硬链接时改用复制继续安装；不支持链接或改名时，在安装任何内容之前提示选择 Mac 内置硬盘上的文件夹。"
+      "Agent：新增配乐工具，为作品制作配乐并放到一条音频轨上。配乐模型首次使用时下载（约 20 GB）；显存较小的显卡使用内置的 8 位形式。两次尝试都失败时，由 Agent 自己合成。",
+      "更新：有视频正在生成时点击“立即更新”，页面显示等待画面，不再出现失败卡片，任务结束后开始更新。由其他程序启动的服务上的任务也会等待。",
+      "音频：保留的原始音轨以浏览器可播放的无损音频写入。使用引导片段的预览在要求保留时，也保留该片段的声音。",
+      "长视频：接缝无法衔接时，说明先列出失败的接缝及其步骤和格式。长视频的使用指引改为指向成片下方的“接着生成”。",
+      "手机访问：浏览器的首选语言为中文时，密码页显示中文。",
+      "速度：提示词的文本编码结果按编码器文件和提示词保存，重复使用同一提示词时更快开始。",
+      "预编译：状态按写入顺序保存，停止时响应更快，诊断报告包含该状态。",
+      "解码与诊断报告：采样完成后解码时出现 CUDA 错误，不再整条失败，已保存的结果会在新进程中重新解码一次；出现 CUDA 错误后仍不退出的进程会被结束，直接报告失败，不再一直等待。诊断报告记录 Agent 生成任务的轮询情况。",
+      "错误提示：离线包被拒绝时说明原因；ComfyUI 页面加载较慢时不再归咎于浏览器。",
+      "安装：Windows 上已安装的 Git 无法载入 libcurl 时改用便携版 Git；HTTPS 检查使用 Windows 证书库，遇到无法读取的证书时跳过。令牌或地址被拒绝后，说明一直显示在对应输入框下，直到输入被接受。",
+      "Linux：在 Arch 上缺少基础工具时，安装脚本给出对应的 pacman 命令。",
+      "Mac：采样时连续两次 Metal 命令缓冲区失败后，用 Torch 注意力再试第三次。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.26",
+      "en": {
+        "summary": "Recent videos open at every window width, when every download source fails the launcher shows the reason for each source, and replacing a person runs on 16 GB Macs.",
+        "changes": [
+          "Creation panel: \"Recent videos\" can be opened at every window width; in a narrow window the list opens over the preview. The @ character menu shows each character's face close-up instead of the full-length picture. When a part length is refused, the length panel says whether it is too short or too long instead of asking to try again. When the connection to FreeVideo drops briefly, the queue no longer reports browser extension interference; a loop that cannot submit its next job stops with the error instead of retrying.",
+          "Install: when every source for a download fails, the launcher's error card lists each source with its reason and time, and the copied details and the diagnostic report include the same list. Git errors name the folder of the dependency. Account names, passwords, tokens and local paths are removed from the listed addresses. The video text encoder can also be downloaded from ModelScope, so a first install no longer depends on Hugging Face alone for this file; a download that fails the integrity check falls back to Hugging Face.",
+          "Prompt enhancement: when the connection to FreeVideo is lost, a connection-lost message is shown instead of the browser's raw error, and a failed progress check is retried before the rewrite stops. After a rewrite, characters mentioned with @ are still shown by name in the prompt box. When the prompt or references change during a rewrite, a note asks for a new rewrite instead of an error with a report button.",
+          "Prompt enhancement: the rewrite tab shows the scene description followed by a separate \"Sound:\" section instead of the model's field names. With several shots, each shot is its own paragraph labelled with its number and start time. A rewrite that is not edited is submitted exactly as the model wrote it. The default prompt in a prompt box that has not been edited uses the same layout and is also submitted unchanged. A prompt filled in with \"Reuse settings\" or opened from a workflow saved by an earlier version also uses this layout and, when not edited, is submitted unchanged.",
+          "Editor: when the last edit can no longer be found, a blank edit opens with a message saying so; clicking the edit name at the top opens another edit.",
+          "Settings: a new AI Agent section chooses whether an agent asks before starting a film and before a long reshoot, and how many minutes make a reshoot long. Both ask by default. When an agent's white-model scene fails, the agent receives the reason instead of a generic connection error.",
+          "Install: when the NVIDIA driver is installed but not running, for example right after it was installed, the launcher's error card asks for a restart instead of showing the raw detection error. When the NVIDIA driver is missing, the card adds one line naming the graphics card Windows lists; when Windows lists only AMD or Intel graphics, the card says FreeVideo supports NVIDIA graphics cards only.",
+          "Video generation: when a generation falls back to a freshly started worker, the result is the same as in the worker that was already running. After a driver or FreeVideo update, or on another graphics card in the same computer, the first generation no longer fails because an attention method the card cannot run was chosen.",
+          "Image generation: when Windows runs out of virtual memory while loading the image model, the failure card says so and suggests closing other apps or increasing virtual memory.",
+          "Linux: when no file manager can open a folder, the launcher and the image history show a message, and the image history also shows the images folder. The default save location follows the desktop's Documents folder. Curly apostrophes in English text are drawn at normal width instead of full width.",
+          "Mac: encoding a reference video (replace person, extending a video) needs about half the unified memory per tile, so it runs on 16 GB Macs where it stopped with a unified-memory error, including at the lowest resolution. Results are unchanged.",
+          "Mac: before installing, the launcher checks whether the disk of the chosen folder supports the file operations the Python environment needs. Without hard links the installation copies files instead; when links or renaming are not supported, a card asks for a folder on the Mac's built-in disk before anything is installed."
+        ]
+      },
+      "zh": {
+        "summary": "任何窗口宽度下都能打开“最近作品”，依赖下载在所有源都失败时，启动器列出每个源的原因；16 GB 的 Mac 上也能替换人物。",
+        "changes": [
+          "创作面板：任何窗口宽度下都能打开“最近作品”；窗口较窄时，列表盖在预览上打开。输入 @ 时，角色头像改为脸部特写，不再是全身图。每段时长被拒绝时，长度面板会说明是过短还是过长，不再提示重试。与 FreeVideo 的连接短暂中断时，队列不再提示浏览器扩展干扰；循环生成提交下一个任务失败时，循环停止并显示错误，不再重试。",
+          "安装：依赖下载在所有源都失败时，启动器错误卡片逐个列出每个源的失败原因和耗时，复制的详情和诊断报告中也附有这份列表。Git 报错会写明对应依赖的文件夹。列出的地址会去掉账号、密码、令牌和本地路径。视频文本编码器增加魔搭下载源，首次安装下载这个文件时不再只依赖 Hugging Face；下载的文件校验不通过时改从 Hugging Face 下载。",
+          "提示词增强：与 FreeVideo 的连接中断时，显示连接断开的提示，而不是浏览器的原始错误；改写进度读取失败时先重试，不再立即中止。改写后，人物仍以“@人物名”显示在提示词框中。改写过程中原文或素材有改动时，显示一条提醒，请按新内容重新改写，不再显示错误和报告按钮。",
+          "提示词增强：“改写”页签只显示画面描述，下面单独列出“声音：”段，不再显示模型的字段名；有多个镜头时，每个镜头单独成段，标出镜头编号和开始时间。未修改的改写结果按模型原文提交。提示词框里未改动的默认提示词也按同样方式显示，提交时仍用原文。用“复用设置”填入的提示词和旧版本保存的工作流里的提示词同样按这种方式显示，未修改时按原文提交。",
+          "剪辑视图：上次的剪辑已找不到时，打开空白剪辑并给出说明；点击顶部的剪辑名可打开其他剪辑。",
+          "设置：新增“AI Agent”区块，可选择 Agent 在开拍整部片前、以及耗时较长的重拍前是否先询问，并设置重拍达到多少分钟算较长。两项默认都询问。Agent 搭建的白模场景失败时，Agent 收到具体原因，不再是笼统的连接错误。",
+          "安装：NVIDIA 显卡驱动已安装但未运行时（例如刚装好还未重启），启动器错误卡片提示重启电脑，不再显示原始的检测失败信息。未找到 NVIDIA 显卡驱动时，提示卡新增一行，写出系统列出的显卡；系统只列出 AMD 或 Intel 显卡时，卡片说明 FreeVideo 只支持 NVIDIA 显卡。",
+          "视频生成：生成改由新启动的进程完成时，结果与原先运行中的进程相同。驱动或 FreeVideo 更新后，或换用同一台电脑里的另一张显卡时，首次生成不再因选用这张显卡无法运行的注意力方式而失败。",
+          "图像生成：Windows 虚拟内存不足、无法载入图像模型时，失败卡片会说明原因，并建议关闭其他程序或调大虚拟内存。",
+          "Linux：没有可用的文件管理器打开文件夹时，启动器和图片历史给出提示，图片历史同时显示图片文件夹的路径；默认保存位置跟随桌面设置的文档文件夹。英文中的弯撇号按西文宽度显示，不再显示为全角。",
+          "Mac：编码参考视频（替换人物、接着生成）时，每个瓦片所需的统一内存约减半，在 16 GB 的 Mac 上不再因统一内存不足而中止，最低分辨率下也是如此；结果不变。",
+          "Mac：安装开始前，启动器先检查所选文件夹所在磁盘是否支持 Python 运行环境所需的文件操作。不支持硬链接时改用复制继续安装；不支持链接或改名时，在安装任何内容之前提示选择 Mac 内置硬盘上的文件夹。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.25",
       "en": {
@@ -191,35 +228,6 @@
           "一次性错误自动重试：第二遍遇到一次性的 CUDA 错误时，自动从已完成的第一遍续跑一次，不再整个请求失败或重做第一遍；Mac 上采样阶段遇到 Metal 命令缓冲区错误时，会用更小的内存分块重试一次。失败报告写明机器、设置和重试结果，报告编号在服务重启后仍可取回。",
           "同一请求、同一种子，解码出的画面每次逐位一致。与之前的版本相比，同一种子的画面可能有细微差别。",
           "不受支持的显卡的提示卡现在写出检测到的显卡和计算能力，并说明 FreeVideo 需要计算能力 8.0 及以上的显卡（GeForce RTX 30 系列及更新），与显存大小无关。错误文字中句子里的斜杠不再被替换成路径占位符。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.19",
-      "en": {
-        "summary": "Several pictures can be deleted from the image history at once; prompt enhancement states the reason when it cannot finish.",
-        "changes": [
-          "Install: setup no longer stops when some graphics card details cannot be read; command-line generation works on Windows when FreeVideo is installed in a very deep folder.",
-          "Image history: after Select, several pictures can be checked and deleted at once, with a second click to confirm; pictures that are in use or cannot be deleted stay in place with the reason shown.",
-          "Prompt enhancement: when enhancement cannot finish and the original prompt is used, the reason is shown; a rewrite that lacks the video or audio description is sent back to the model to add it.",
-          "Editor: Extend on a finished video without a description asks for a description first instead of showing an English validation error; when the description box is cleared, the description carried over for that segment is used.",
-          "The Linux package now includes curl, so installation and downloads work on systems without it.",
-          "Download list: the check no longer hashes every model file again each time it runs; files already hashed are skipped while their size, times and inode are unchanged.",
-          "Keeps the failed phase, step count, error type and memory readings of a GPU error that raised the compatibility level, so a diagnostic report sent after a later run still shows where it stopped.",
-          "The chat no longer shows the notice for an edited waiting message as an error with a report button; it is a plain status line."
-        ]
-      },
-      "zh": {
-        "summary": "生图历史可以一次删除多张；提示词增强未能完成时写明原因。",
-        "changes": [
-          "安装：部分显卡信息读不到时，安装不再中断；Windows 上 FreeVideo 安装在很深的文件夹时，命令行生成可以正常运行。",
-          "生图历史：点“选择”后可以勾选多张一次删除，删除前需要再次确认；被占用或无法删除的图片会保留并写明原因。",
-          "提示词增强：增强未能完成、改用原提示词时，写明原因；改写结果缺少视频或音频描述时，会请模型补上。",
-          "剪辑页：在没有描述的成片后“接着生成”时，会提示先写一句描述，不再显示英文校验错误；描述框被清空时，沿用这一段原有的描述。",
-          "Linux 安装包自带 curl，系统未安装 curl 时也能正常安装和下载。",
-          "下载清单：检查不再每次重新校验所有模型文件；已经校验过的文件在大小、时间和 inode 都没变时直接跳过。",
-          "保留导致兼容档位升高的显卡错误的出错阶段、步数、错误类型和内存读数，之后一次运行发送的诊断报告仍能看出它停在哪里。",
-          "对话中修改了正在等待 Agent 的消息后，提示不再按错误显示、不再带“报告问题”按钮，改为普通状态提示。"
         ]
       }
     }

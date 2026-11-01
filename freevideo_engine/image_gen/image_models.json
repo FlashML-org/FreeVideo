@@ -39,6 +39,629 @@
           }
         ]
       }
+    ],
+    "music": [
+      {
+        "file": "music/acestep-v15-xl-turbo-bf16/transformer/config.json",
+        "component": "music",
+        "bytes": 1303,
+        "sha256": "6b6753b2833681bb0ad3363be71cafaa2b0a751146bbeb4e8ae485a407fa5775",
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "revision": "200ba991ae448051e14b0183157e35c2d27c9fb0",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/7f2c053810d7af9d2511487360543bca83ca119a/transformer/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo-bf16/transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+        "component": "music",
+        "bytes": 4986971904,
+        "sha256": "814723a63ba0b11dc4a7e8a5d43b8107c947fcdb5ab1e30c65469252272b35d7",
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "revision": "200ba991ae448051e14b0183157e35c2d27c9fb0",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/diffusion_pytorch_model-00001-of-00002.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/diffusion_pytorch_model-00001-of-00002.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/7f2c053810d7af9d2511487360543bca83ca119a/transformer/diffusion_pytorch_model-00001-of-00002.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo-bf16/transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+        "component": "music",
+        "bytes": 3350889672,
+        "sha256": "38ab6a8443be10b3c4bb0b784a5b78d471358d1b4982c139cb7893c455670b67",
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "revision": "200ba991ae448051e14b0183157e35c2d27c9fb0",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/diffusion_pytorch_model-00002-of-00002.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/transformer/diffusion_pytorch_model-00002-of-00002.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/7f2c053810d7af9d2511487360543bca83ca119a/transformer/diffusion_pytorch_model-00002-of-00002.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo-bf16/condition_encoder/config.json",
+        "component": "music",
+        "bytes": 502,
+        "sha256": "76e9eeba7b3248500cd0f5fb7ecd66129af0c9ea98ffb762bd8879753595233b",
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "revision": "200ba991ae448051e14b0183157e35c2d27c9fb0",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/condition_encoder/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/condition_encoder/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/7f2c053810d7af9d2511487360543bca83ca119a/condition_encoder/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo-bf16/condition_encoder/diffusion_pytorch_model.safetensors",
+        "component": "music",
+        "bytes": 1218676312,
+        "sha256": "ca111ca95858c8d3c3678c986dda03df20778c0de009f57109c1052866d522b2",
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "revision": "200ba991ae448051e14b0183157e35c2d27c9fb0",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/condition_encoder/diffusion_pytorch_model.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/200ba991ae448051e14b0183157e35c2d27c9fb0/condition_encoder/diffusion_pytorch_model.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo-diffusers/resolve/7f2c053810d7af9d2511487360543bca83ca119a/condition_encoder/diffusion_pytorch_model.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo/config.json",
+        "component": "music",
+        "bytes": 2407,
+        "sha256": "e3665376d46477cbd3e76203cd4e241f11a6a6bb5f88464c49f3c6aae51a918b",
+        "repo": "ACE-Step/acestep-v15-xl-turbo",
+        "revision": "d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo/resolve/76db8b369a2f0b3d8b68a3258a6e60ca43753546/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo/model-00004-of-00004.safetensors",
+        "component": "music",
+        "bytes": 4988483464,
+        "sha256": "a868b05493c73808408f58b33a903371bb2846b53c8b19bd7476991bc8837259",
+        "repo": "ACE-Step/acestep-v15-xl-turbo",
+        "revision": "d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/model-00004-of-00004.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/model-00004-of-00004.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo/resolve/76db8b369a2f0b3d8b68a3258a6e60ca43753546/model-00004-of-00004.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-v15-xl-turbo/silence_latent.pt",
+        "component": "music",
+        "bytes": 3841215,
+        "sha256": "a778e9dd942f5e8b2c09c55370782d318834432b03dabbcdf70e6ed49ad6358b",
+        "repo": "ACE-Step/acestep-v15-xl-turbo",
+        "revision": "d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/silence_latent.pt"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/acestep-v15-xl-turbo/resolve/d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee/silence_latent.pt"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/acestep-v15-xl-turbo/resolve/76db8b369a2f0b3d8b68a3258a6e60ca43753546/silence_latent.pt"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/added_tokens.json",
+        "component": "music",
+        "bytes": 2217787,
+        "sha256": "db08b66a515fb5d6acca0b3492d25bb44e0deda6241fc1113ac0679d40558c48",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/added_tokens.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/added_tokens.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/added_tokens.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/chat_template.jinja",
+        "component": "music",
+        "bytes": 4168,
+        "sha256": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/chat_template.jinja"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/chat_template.jinja"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/chat_template.jinja"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/config.json",
+        "component": "music",
+        "bytes": 1385,
+        "sha256": "73515ca4bfd86a5b56f28bf680311d1911e159c85d7f7ceb2188e310007c9010",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/merges.txt",
+        "component": "music",
+        "bytes": 1671853,
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/merges.txt"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/merges.txt"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/merges.txt"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/model.safetensors",
+        "component": "music",
+        "bytes": 3708521528,
+        "sha256": "f161689da73e5ecefa28ff780d51c2d92a00f056d021d7933c779ed5c6cd7db8",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/model.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/model.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/model.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/special_tokens_map.json",
+        "component": "music",
+        "bytes": 1824199,
+        "sha256": "76e233bfc357b0b03d7b6e6ba8e799244f358552575a7cdadb78d3d19106b298",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/special_tokens_map.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/special_tokens_map.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/special_tokens_map.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/tokenizer.json",
+        "component": "music",
+        "bytes": 24321939,
+        "sha256": "35af56c3f5cb3ea2cc578aa28a8937770981d504f183ac5c8c38baf4bbd4af4d",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/tokenizer.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/tokenizer.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/tokenizer.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/tokenizer_config.json",
+        "component": "music",
+        "bytes": 14072925,
+        "sha256": "6cd70cdd89425971794f5235562edcc608b0629a6c4686ae51a8b8c8b8ba5e95",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/tokenizer_config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/tokenizer_config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/tokenizer_config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/acestep-5Hz-lm-1.7B/vocab.json",
+        "component": "music",
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/vocab.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/acestep-5Hz-lm-1.7B/vocab.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/acestep-5Hz-lm-1.7B/vocab.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/added_tokens.json",
+        "component": "music",
+        "bytes": 707,
+        "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/added_tokens.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/added_tokens.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/added_tokens.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/config.json",
+        "component": "music",
+        "bytes": 1359,
+        "sha256": "bb23c1607cfe059a58d8f0196cf1cebb52082b1056b8e358a579da80a5759420",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/merges.txt",
+        "component": "music",
+        "bytes": 1671853,
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/merges.txt"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/merges.txt"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/merges.txt"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/model.safetensors",
+        "component": "music",
+        "bytes": 1191586416,
+        "sha256": "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/model.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/model.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/model.safetensors"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/special_tokens_map.json",
+        "component": "music",
+        "bytes": 613,
+        "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/special_tokens_map.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/special_tokens_map.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/special_tokens_map.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/tokenizer.json",
+        "component": "music",
+        "bytes": 11423705,
+        "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/tokenizer.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/tokenizer.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/tokenizer.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/tokenizer_config.json",
+        "component": "music",
+        "bytes": 5404,
+        "sha256": "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/tokenizer_config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/tokenizer_config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/tokenizer_config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/Qwen3-Embedding-0.6B/vocab.json",
+        "component": "music",
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/vocab.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/Qwen3-Embedding-0.6B/vocab.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/Qwen3-Embedding-0.6B/vocab.json"
+          }
+        ]
+      },
+      {
+        "file": "music/vae/config.json",
+        "component": "music",
+        "bytes": 425,
+        "sha256": "14e019904df567f26df750317a70e2bd08f9f8f3c40ff4a24c97d1cd3f20ccd2",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/vae/config.json"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/vae/config.json"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/vae/config.json"
+          }
+        ]
+      },
+      {
+        "file": "music/vae/diffusion_pytorch_model.safetensors",
+        "component": "music",
+        "bytes": 337431388,
+        "sha256": "da17edb604c40deaf09e9b24974e590d1ca83a374070e5d0884cfa4bed9a99b0",
+        "repo": "ACE-Step/Ace-Step1.5",
+        "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+        "model_id": "ace-step-1.5-xl-turbo",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/vae/diffusion_pytorch_model.safetensors"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/ACE-Step/Ace-Step1.5/resolve/19671f406d603126926c1b7e2adc169acbcade22/vae/diffusion_pytorch_model.safetensors"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/vae/diffusion_pytorch_model.safetensors"
+          }
+        ]
+      }
     ]
   }
 }

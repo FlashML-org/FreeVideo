@@ -145,6 +145,19 @@ def _samples(frame):
     return data if frame.format.is_planar else data.reshape(-1, len(frame.layout.channels)).T
 
 
+def _fits_flac(data):
+    """Whether native samples fit FLAC's signed 24-bit grid without rounding."""
+    import numpy as np
+    if data.dtype.kind == 'f':
+        if not ((data >= -1).all() and (data < 1).all()):
+            return False
+        scaled = data.astype(np.float64) * (1 << 23)
+        return bool((scaled == np.trunc(scaled)).all())
+    if data.dtype.itemsize <= 2:
+        return True
+    return bool(((data & 255) == 0).all())
+
+
 def inspect(row, *, max_seconds=MAX_SECONDS):
     """Read a bounded selection on the source's integer decoded-sample clock.
 
@@ -166,10 +179,13 @@ def inspect(row, *, max_seconds=MAX_SECONDS):
                 raise AudioUseError('audio_original_format')
             if end is not None and end - start > rate * max_seconds:
                 raise _too_long(max_seconds)
-            count = 0
+            count, flac_compatible = 0, True
             for frame in container.decode(audio=0):
                 if frame.sample_rate != rate or len(frame.layout.channels) != channels:
                     raise AudioUseError('audio_original_format')
+                begin, stop = max(0, start - count), min(frame.samples, end - count) if end is not None else frame.samples
+                if begin < stop and flac_compatible:
+                    flac_compatible = _fits_flac(_samples(frame)[:, begin:stop])
                 count += frame.samples
                 if end is not None and count >= end:
                     break
@@ -190,7 +206,7 @@ def inspect(row, *, max_seconds=MAX_SECONDS):
         raise ValueError('Original audio changed after inspection')
     return dict(version=VERSION, path=str(path.resolve()), sha256=sha, bytes=path.stat().st_size,
                 sample_rate=rate, channels=channels, start_sample=start, end_sample=end,
-                codec=codec, full_source=not selection,
+                codec=codec, full_source=not selection, flac_compatible=flac_compatible,
                 normalization='PyAV-native-to-fltp-32000-v1',
                 decoder_version=av.__version__,
                 library_versions={k: list(v) for k, v in av.library_versions.items()})
@@ -292,6 +308,7 @@ def _audio_stream(container, codec, rate, channels, itemsize):
     stream.codec_context.format = fmt
     if codec == 'flac' and itemsize == 4:
         fmt = stream.codec_context.format = 's32'
+        stream.codec_context.options = {'bits_per_raw_sample': '24'}
     return stream, fmt
 
 
@@ -506,7 +523,7 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
         else:
             picture = Path(video)
         copied = False
-        if info['full_source'] and info['codec'] in ('aac', 'alac', 'mp3', 'flac'):
+        if info['full_source'] and info['codec'] in ('aac', 'mp3', 'flac'):
             try:
                 _mux_streams(picture, temporary, rate, copy_from=info['path'])
                 copied = saved(temporary)
@@ -517,7 +534,11 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
         if not copied:
             chunks = _selected_chunks(info)
             first = next(chunks)
-            if first.dtype.kind == 'f':
+            fits_flac = info.get('flac_compatible')
+            if fits_flac is None:
+                # Receipts saved before the browser format check still export losslessly.
+                fits_flac = all(_fits_flac(data) for data in _selected_chunks(info))
+            if first.dtype.kind == 'f' and not fits_flac:
                 codec, kind = ('pcm_f64le', first.dtype) if first.dtype.itemsize == 8 else ('pcm_f32le', np.dtype('<f4'))
                 convert = lambda data: data.astype(kind, copy=False)
             elif first.dtype.itemsize <= 2:
@@ -526,8 +547,9 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
                 convert = ((lambda data: ((data.astype(np.int16) - 128) * 256).astype(kind)) if first.dtype == np.uint8
                            else (lambda data: data.astype(kind, copy=False)))
             else:
-                codec, kind = 'pcm_s32le', np.dtype('<i4')
-                convert = lambda data: data.astype(kind, copy=False)
+                codec, kind = 'flac' if fits_flac else 'pcm_s32le', np.dtype('<i4')
+                convert = ((lambda data: (data.astype(np.float64) * (1 << 31)).astype(kind))
+                           if first.dtype.kind == 'f' else (lambda data: data.astype(kind, copy=False)))
             try:
                 _mux_streams(picture, temporary, rate,
                              encode=(codec, map(convert, chain([first], chunks)), info['channels'], kind.itemsize))
