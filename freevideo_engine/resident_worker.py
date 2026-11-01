@@ -98,7 +98,7 @@ def main():
                 if diagnostics is not None:
                     diagnostics.finish(False)
                 traceback.print_exc()
-                from .adaptive import classify_failure, commit_exhausted, cuda_runtime_error
+                from .adaptive import classify_failure, commit_exhausted, commit_limited_allocation, cuda_runtime_error
                 failure = classify_failure(error)
                 if request.get('metrics'):
                     from .monitoring import save
@@ -136,6 +136,12 @@ def main():
                 # cannot be trusted to return it, and every later request would
                 # fail the same way. A fresh worker starts from zero.
                 if commit_exhausted(error):
+                    log.flush()
+                    os._exit(75)
+                # The same holds when the driver refuses a device allocation
+                # for lack of commit while the card still has free memory: the
+                # process keeps its charge and its mappings are unreliable.
+                if commit_limited_allocation(error, failure):
                     log.flush()
                     os._exit(75)
                 failed_error = error

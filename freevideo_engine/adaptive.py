@@ -41,6 +41,37 @@ def commit_exhausted(error):
     return found(error)
 
 
+def commit_limited_allocation(error, failure):
+    """A driver-level CUDA allocation failure on Windows with VRAM to spare.
+
+    WDDM charges device allocations to the system commit limit. When that limit
+    is spent the driver refuses to map more device memory although the card has
+    room: the error is the bare "CUDA error: out of memory" of the runtime, not
+    the caching allocator's "CUDA out of memory. Tried to allocate", and the
+    device is not near its budget. A worker that keeps serving afterwards
+    still holds the commit it charged (about 6 GiB private commit after a
+    cleaned-up failure, against 0.03 GiB in a new process) and its device
+    mappings are inconsistent: the retry in it failed with "resource already
+    mapped" and the worker could not be stopped. WDDM non-local exhaustion is a
+    separate case with its own recovery (``nonlocal_exhausted``).
+    """
+    from .system import windows
+    if not windows() or failure.get('kind') != 'gpu_oom' or nonlocal_exhausted(failure):
+        return False
+    gpu = failure.get('gpu') if isinstance(failure.get('gpu'), dict) else {}
+    free = gpu.get('free_bytes')
+    if type(free) is not int or free < 2 * 2**30:
+        return False
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        text = str(error).lower()
+        if 'cuda error: out of memory' in text and 'cuda out of memory' not in text:
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 # A CUDA error that may leave the device itself unusable; never retried.
 DEVICE_STATE_ERRORS = ('cuda error: unknown error', 'device is lost', 'device lost', 'gpu is lost',
     'illegal memory access', 'device-side assert', 'unspecified launch failure', 'driver shutting down',
