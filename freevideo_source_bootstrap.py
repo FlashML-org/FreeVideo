@@ -101,6 +101,10 @@ TOUR_FILES = frozenset((
     'web/assets/tour/c8-s1.webp',
     'web/assets/tour/c9-s1.mp4',
     'web/assets/tour/c9-s1.webp',
+    'web/assets/tour/c10-person.webp',
+    'web/assets/tour/c10-s1.mp4',
+    'web/assets/tour/c10-s1.webp',
+    'web/assets/tour/c10-source.webp',
     'web/assets/tour/fox-sheet.webp',
 ))
 

@@ -8,10 +8,10 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'quick-start-1.webp', en: 'quick-start-2.webp'},
-            alt: {zh: '创作面板：描述框和“生成视频”按钮已用红框标出。', en: 'The creation panel, with the prompt box and the "Generate video" button outlined in red.'},
+            alt: {zh: '创作面板：描述框和“生⁠成⁠视⁠频”按钮已用红框标出。', en: 'The creation panel, with the prompt box and the "Generate video" button outlined in red.'},
         },
         steps: {
-            zh: ['打开“创作面板”，在“描述画面”中写一句话，说明谁在什么地方做什么。', '画幅选“横屏”或“竖屏”，其余保持默认。', '点“生成视频”。', '完成后在预览区播放，点“下载视频”保存。'],
+            zh: ['打开“创作面板”，在“描述画面”中写一句话，说明谁在什么地方做什么。', '画幅选“横屏”或“竖屏”，其余保持默认。', '点“生⁠成⁠视⁠频”。', '完成后在预览区播放，点“下载视频”保存。'],
             en: ['Open "Create" and write one sentence under the prompt: who is where and doing what.', 'Choose "Landscape" or "Portrait" and keep the rest as it is.', 'Choose "Generate video".', 'When it finishes, play it in the preview and choose "Download video" to save it.'],
         },
         example: {
@@ -20,8 +20,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['首次生成需要加载模型，用时较长；之后会更快。', '同一时间只处理一个请求，其余请求在队列中等待。'],
-            en: ['The first run loads the models and takes longer. Later runs are faster.', 'One request runs at a time and the others wait in the queue.'],
+            zh: ['首次生成需要加载模型，用时较长；之后会更快。', '每张显卡同一时间处理一个请求，其余请求在队列中等待。'],
+            en: ['The first run loads the models and takes longer. Later runs are faster.', 'Each graphics card runs one request at a time, and the others wait in the queue.'],
         },
     },
     {
@@ -34,8 +34,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：描述、画幅与时长区域已用红框标出。', en: 'The creation panel, with the prompt and the Frame & duration fields outlined in red.'},
         },
         steps: {
-            zh: ['在“描述画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与时长”中选择横屏、竖屏或方形，并设置“清晰度”。', '在“时长 · 秒”中填写秒数；“可生成范围”中可查看各尺寸的最长时长和预计用时。', '点“生成视频”。'],
-            en: ['Write the subject, action, place and camera in the prompt, for example "the camera slowly moves closer".', 'Under "Frame & duration", choose landscape, portrait or square and set "Resolution".', 'Enter the seconds under "Duration · seconds". "Available sizes and lengths" shows the longest length and the estimated time for each size.', 'Choose "Generate video".'],
+            zh: ['在“描述画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与时长”中选择横屏、竖屏或方形，并设置“清晰度”。', '在“时长 · 秒”中填写秒数；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。描述为空时会先提示，点“继⁠续⁠生⁠成”仍可生成。'],
+            en: ['Write the subject, action, place and camera in the prompt, for example "the camera slowly moves closer".', 'Under "Frame & duration", choose landscape, portrait or square and set "Resolution".', 'Enter the seconds under "Duration · seconds". "Available sizes and lengths" shows the longest length and the estimated time for each size.', 'Choose "Generate video". With an empty prompt, a note appears first; choose "Generate anyway" to go ahead.'],
         },
         example: {
             assets: [],
@@ -57,7 +57,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：素材区域中图片的用途下拉框已用红框标出。', en: 'The creation panel, with the image role selectors in the Media section outlined in red.'},
         },
         steps: {
-            zh: ['在“素材”中点“上传文件”，添加起始图片，并将它的用途下拉框选为“首帧”。', '需要结尾画面时，再添加一张图片并设为“尾帧”。', '在描述中写明两张图之间发生了什么。', '点“生成视频”。'],
+            zh: ['在“素材”中点“上传文件”，添加起始图片，并将它的用途下拉框选为“首帧”。', '需要结尾画面时，再添加一张图片并设为“尾⁠帧”。', '在描述中写明两张图之间发生了什么。', '点“生⁠成⁠视⁠频”。'],
             en: ['Under "Media", choose "Upload files", add the starting image and set its role dropdown to "First frame".', 'For an ending picture, add another image and set it to "Last frame".', 'Describe what happens between the two images.', 'Choose "Generate video".'],
         },
         example: {
@@ -80,8 +80,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：素材区域和参考图已用红框标出。', en: 'The creation panel, with the Media section and a reference image outlined in red.'},
         },
         steps: {
-            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：点“上\u2060传\u2060文\u2060件”添加，在描述中输入 @ 引用。', '点“生成视频”。'],
-            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them with "Upload files" and mention them in the prompt with @.', 'Choose "Generate video".'],
+            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：点“上\u2060传\u2060文\u2060件”添加，在描述中输入 @ 引用。', '音频卡片上选“原样使用”时，成片直接使用这段声音，时长随音频而定；一次只能有一段音频原样使用。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them with "Upload files" and mention them in the prompt with @.', 'On an audio card, choose "Use as is" to put that audio into the result unchanged. The duration follows the audio, and only one audio file can be used as is.', 'Choose "Generate video".'],
         },
         example: {
             assets: [],
@@ -103,7 +103,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '角色窗口：名字、正面图片和其他角度图片已用红框标出。', en: 'The character window, with the name, front image and other angles outlined in red.'},
         },
         steps: {
-            zh: ['展开创作面板的“素材”，在“角色”一行点“+”（新建角色）。', '填写“名字”，设置“正面图片”：可“上传图片”，也可“AI 生成”，后者会按描述一次生成 5 张供选。', '可再添加最多 5 张其他角度的图片，然后点“保存”。', '之后在描述中输入 @ 选择该角色，并写明其动作。'],
+            zh: ['展开创作面板的“素材”，在“角色”一行点“+”（新建角色）。', '填写“名字”，设置“正面图片”：可“上⁠传⁠图⁠片”，也可“AI 生成”，后者会按描述一次生成 5 张供选。', '可再添加最多 5 张其他角度的图片，然后点“保⁠存”。', '之后在描述中输入 @ 选择该角色，并写明其动作。'],
             en: ['Expand "Media" in the creation panel and, on the "Characters" row, choose + (New character).', 'Enter a "Name" and set the "Front image": choose "Upload images", or "Generate with AI", which makes 5 pictures from a description to pick from.', 'Add up to 5 images from other angles, then choose "Save".', 'In later prompts, type @ to pick the character and describe what the character does.'],
         },
         example: {
@@ -117,6 +117,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'replace-person',
+        title: {zh: '替换人物', en: 'Replace person'},
+        summary: {zh: '把视频里的人换成人物图中的人，动作和镜头沿用源视频。', en: 'Put the person from an image into a video, keeping the motion and camera of the source video.'},
+        media: {
+            type: 'image',
+            src: {zh: 'replace-person-1.webp', en: 'replace-person-2.webp'},
+            alt: {zh: '创作面板：素材中的“替换人物”、源视频和人物图两格、“保⁠留⁠源⁠视⁠频⁠声⁠音”已用红框标出。', en: 'The creation panel, with "Replace person", the source video and person image slots, and "Keep source video sound" outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，打开“替换人物”。', '在“源视频”中点“添加视频”，在“人物图”中点“添加图片”。', '需要源视频的声音时，勾选“保⁠留⁠源⁠视⁠频⁠声⁠音”。', '描述可以留空，也可以补充画面要求；然后点“生⁠成⁠视⁠频”。'],
+            en: ['Expand "Media" in the creation panel and turn on "Replace person".', 'Under "Source video" choose "Add video", and under "Person image" choose "Add image".', 'To keep the sound of the source video, check "Keep source video sound".', 'The prompt can stay empty or describe more of the picture. Then choose "Generate video".'],
+        },
+        limits: {
+            zh: ['替换人物不能与首帧、尾帧同时使用。', '首次使用时会自动下载替换人物模型（约 80 MB），面板中显示进度，下载完成后才能生成。', '源视频至少 1 秒；源视频没有声音时，不能保留声音。'],
+            en: ['Replace person cannot be used with first or last frames.', 'The first time, the Replace person model (about 80 MB) downloads on its own. The panel shows the progress, and generation can start when it finishes.', 'The source video must be at least 1 second long. A source video without sound has no sound to keep.'],
+        },
+    },
+    {
         id: 'quality-tiers',
         title: {zh: '四个质量档位', en: 'The four quality levels'},
         summary: {zh: '档位越靠右，用时越长、细节越多。', en: 'Further right takes longer and keeps more detail.'},
@@ -126,7 +144,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：质量滑块上的轻量、标准、精细、极致已用红框标出。', en: 'The creation panel, with the quality slider and its four names outlined in red.'},
         },
         steps: {
-            zh: ['在“质量”滑块上选择“轻量”“标准”“精细”或“极致”。', '构思阶段用“轻量”，快速确认画面和动作。', '定稿时改用“精细”或“极致”。', '选好档位后，“质量”旁会显示预计用时；然后点“生成视频”。'],
+            zh: ['在“质量”滑块上选择“轻量”“标准”“精细”或“极⁠致”。', '构思阶段用“轻量”，快速确认画面和动作。', '定稿时改用“精细”或“极⁠致”。', '选好档位后，“质量”旁会显示预计用时；然后点“生⁠成⁠视⁠频”。'],
             en: ['Move the "Quality" slider to Light, Medium, High or Max.', 'While exploring, use Light to check the picture and motion quickly.', 'For the final video, switch to High or Max.', 'The estimated time for the chosen level appears next to "Quality". Then choose "Generate video".'],
         },
         example: {
@@ -149,7 +167,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：二次采样选项“先出预览”已用红框标出。', en: 'The creation panel, with the "Preview first" option outlined in red.'},
         },
         steps: {
-            zh: ['在二次采样中选择“先出预览”，按钮变为“生成预览”。', '点“生成预览”，等待预览完成。', '画面满意时，点结果中的“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
+            zh: ['在二次采样中选择“先出预览”，按钮变为“生⁠成⁠预⁠览”。', '点“生⁠成⁠预⁠览”，等待预览完成。', '画面满意时，点结果中的“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
             en: ['Under two-pass sampling choose "Preview first". The button changes to "Generate preview".', 'Choose "Generate preview" and wait for it to finish.', 'When the picture is right, choose "Run second pass" in the result.', 'Otherwise change the prompt or the seed and generate a new preview.'],
         },
         example: {
@@ -169,10 +187,10 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'long-video-1.webp', en: 'long-video-2.webp'},
-            alt: {zh: '创作面板：时长输入框和“可生成范围”入口已用红框标出。', en: 'The creation panel, with the duration field and "Available sizes and lengths" control outlined in red.'},
+            alt: {zh: '创作面板：时长输入框和“可⁠生⁠成⁠范⁠围”入口已用红框标出。', en: 'The creation panel, with the duration field and "Available sizes and lengths" control outlined in red.'},
         },
         steps: {
-            zh: ['填写更长的时长，会自动分段生成；“可生成范围”中可查看各尺寸的最长时长和预计用时。', '点“生成视频”。', '在生成好的视频下方点“接着生成”，继续下一段。', '更长的多镜头视频，可在“剪辑视图”中另起新的镜头，或使用“AI 全自动”。'],
+            zh: ['填写更长的时长，会自动分段生成；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。', '在生成好的视频下方点“接着生成”，继续下一段。', '更长的多镜头视频，可在“剪辑视图”中另起新的镜头，或使用“AI 全自动”。'],
             en: ['Enter a longer duration. It is made in parts automatically. "Available sizes and lengths" shows how long each size can be and about how long it takes.', 'Choose "Generate video".', 'Choose "Extend" below a finished video to continue it.', 'For a longer video with several shots, start new shots in "Edit", or use "Autopilot".'],
         },
         example: {
@@ -195,7 +213,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：接着生成的草稿段和描述框已用红框标出。', en: 'The Edit view, with the draft part that continues the video and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段（默认 10 秒；在 Mac 和一次生成不了 10 秒的设备上为 5 秒），在底部描述框写明接下来发生什么。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
+            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段（默认 10 秒；在 Mac 和一次生成不了 10 秒的设备上为 5 秒），在底部描述框写明接下来发生什么。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
             en: ['Choose "Extend" below a finished video. The Edit view opens.', 'Select the part added after it (10 seconds by default, or 5 seconds on a Mac and on devices that cannot make 10 seconds at once) and write what happens next in the box at the bottom.', 'To make it longer, drag the part out; each part is at least 5 seconds. Then choose "Generate".', 'The new part follows the original and is joined into one video.'],
         },
         example: {
@@ -218,7 +236,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图时间线：接续上一段的草稿带有连接标记，与后面空开的独立镜头已用红框标出。', en: 'The Edit timeline, with the draft that continues the video, marked by a link, and the separate shot after a gap outlined in red.'},
         },
         steps: {
-            zh: ['要让画面接着上一段往下发展，在生成好的视频下方点“接着生成”：新的一段紧接在后面，带有连接标记，与前面拼成同一个镜头。', '要换场景或切到另一个画面，在时间线的空白处拖出一段，写下描述再点“生成”：它是独立镜头，不接前面的画面。', '看时间线：接续的一段紧贴前一段，带连接标记；独立镜头与前面的视频分开显示。'],
+            zh: ['要让画面接着上一段往下发展，在生成好的视频下方点“接着生成”：新的一段紧接在后面，带有连接标记，与前面拼成同一个镜头。', '要换场景或切到另一个画面，在时间线的空白处拖出一段，写下描述再点“生⁠成”：它是独立镜头，不接前面的画面。', '看时间线：接续的一段紧贴前一段，带连接标记；独立镜头与前面的视频分开显示。'],
             en: ['To carry the picture on from the previous part, choose "Extend" below a finished video. The new part follows right after it, carries a link mark, and joins the earlier part as one shot.', 'To change scene or cut to another picture, drag out a part in an empty place on the timeline, describe it and choose "Generate". It is a separate shot and does not continue the earlier picture.', 'Check the timeline: a continuing part sits right against the part before it and carries a link mark. A separate shot is drawn apart from the video before it.'],
         },
         example: {
@@ -241,7 +259,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁剪”（窗口窄于 1280 时，先点“调整”打开该面板）。', '完成后点右上角的“导出”保存。'],
+            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”（窗口窄于 1280 时，先点“调⁠整”打开该面板）。', '完成后点右上角的“导⁠出”保存。'],
             en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to continue.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop" (on a window narrower than 1280 pixels, choose "Adjust" first to open the panel).', 'When done, choose "Export" at the top right.'],
         },
         example: {
@@ -264,7 +282,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：选中的接续段和描述框旁的参考图入口已用红框标出。', en: 'The Edit view, with the selected continuation and the reference image control beside the prompt outlined in red.'},
         },
         steps: {
-            zh: ['选中要接续的一段。', '点描述框旁的 +，上传或生成图片，最多 3 张。', '填写描述，然后点“生成”。'],
+            zh: ['选中要接续的一段。', '点描述框旁的 +，上传或生成图片，最多 3 张。', '填写描述，然后点“生⁠成”。'],
             en: ['Select the part to continue.', 'Click + next to the prompt to upload or generate images, up to 3.', 'Describe it, then choose "Generate".'],
         },
         example: {
@@ -287,12 +305,12 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: 'AI 全自动：连接 Agent 的按钮已用红框标出。', en: 'Autopilot, with the button that connects an agent outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”（或所连 Agent 的名字）后，在“对 Agent 说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。'],
-            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" (or the agent\'s name), describe the video under "Message the agent…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.'],
+            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”（或所连 Agent 的名字）后，在“对 Agent 说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
+            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" (or the agent\'s name), describe the video under "Message the agent…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
         },
         limits: {
-            zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。'],
-            en: ['An agent must be connected first. Until then only the connection card is shown.', 'More shots take longer.'],
+            zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。', 'Agent 开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI Agent”中选择。'],
+            en: ['An agent must be connected first. Until then only the connection card is shown.', 'More shots take longer.', 'Whether an agent asks before starting a film or a long reshoot is set under "AI Agent" in Settings.'],
         },
     },
     {
@@ -305,8 +323,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '“我的作品”：第一条作品已用红框标出。', en: 'Your creations, with the first video outlined in red.'},
         },
         steps: {
-            zh: ['点预览区的“作品”，打开“我的作品”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续。', '需要成片时，在“剪辑视图”点“导出”。', '在导出窗口选择范围、画质和内容，再点“导出”。'],
-            en: ['Choose "Creations" in the preview area to open the library.', 'Pick a video to play it, or choose "Extend" to continue it in the Edit view.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content, then choose "Export".'],
+            zh: ['点预览区的“作品”，打开“我的作品”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容，再点“导⁠出”。'],
+            en: ['Choose "Creations" in the preview area to open the library.', 'Pick a video to play it, or choose "Extend" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content, then choose "Export".'],
         },
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出过程中取消不会留下不完整的文件。'],
@@ -327,8 +345,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Read the error message first. It names what to try.', 'If it still fails, choose "Export report" to save the diagnostic information.', 'Choose "Report a problem" and attach the report to a GitHub issue.', 'When asked to restart, restart FreeVideo.'],
         },
         limits: {
-            zh: ['报告中的路径已做脱敏处理。'],
-            en: ['Paths in the report are anonymized.'],
+            zh: ['报告中的路径已做脱敏处理。', '全部下载源都失败时，错误卡片会逐个列出下载源和失败原因。'],
+            en: ['Paths in the report are anonymized.', 'When every download source fails, the error card lists each source and the reason it failed.'],
         },
     },
 ];
