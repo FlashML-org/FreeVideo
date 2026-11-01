@@ -56,6 +56,26 @@ def register_prompt_cleanup():
     server.add_on_prompt_handler(clean_prompt)
 
 
+def schedule_startup_prefetch(delay=15.):
+    """Once after the engine starts, read what the first request reads into the OS file cache, as far as
+    free memory goes. A request, or the busy queue, cancels it through the same stop as the idle read."""
+    from .encoder_prewarm import IDLE, startup_files
+    try:
+        from server import PromptServer
+        server = PromptServer.instance
+        root, machine = comfy_bridge.installation()
+        habit = usage_habit.load()
+        files = startup_files(machine, usage_habit.dominant(habit['recent'] if habit else None))
+        files = [item for item in files if item.is_file()]
+        if not files:
+            return False
+    except (ImportError, OSError, RuntimeError, ValueError, KeyError, TypeError, AttributeError):
+        return False  # Optional preparation cannot stop the engine from starting.
+    def busy():
+        return server is not None and server.prompt_queue.get_tasks_remaining() > 0
+    return IDLE.schedule(files, root / 'startup-prewarm.json', busy=busy, purpose='startup', delay=delay)
+
+
 def step_cache_option(value):
     """Bridge keyword for the Step cache widget; a workflow without it, with 'none' or with a value that is
     not an option adds nothing. Workflows saved before the widget existed hold '' in its position."""
