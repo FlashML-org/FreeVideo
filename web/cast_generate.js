@@ -4,6 +4,7 @@
 // and stay in the input folder; the dialog puts them on the card.
 import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, renderImageFailure,
     IMAGE_GEN_POLL_MS, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
+import {createImageLoras} from './image_lora.js';
 
 export {imageGenerationSupported as castGenerateSupported} from './image_generation.js';
 
@@ -22,7 +23,7 @@ const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 export function createCastGenerator({client, onChange = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
     const fresh = () => CAST_VIEWS.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: ''};
-    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false;
+    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras;
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const setPicture = (index, patch) => emit({pictures: state.pictures.map((row, i) => i === index ? {...row, ...patch} : row)});
     const cancelJob = id => Promise.resolve().then(() => client.cancel(id)).catch(() => {});
@@ -31,7 +32,8 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
     async function runOne(index, alive) {
         const view = plan[index], front = state.pictures[0].file;
         const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed,
-            images: view.from_front ? [front] : [], ...(view.view === 'back' ? {cast_view: 'back'} : {})});
+            images: view.from_front ? [front] : [], ...(view.view === 'back' ? {cast_view: 'back'} : {}),
+            ...(loras === undefined ? {} : {loras})});
         if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory});
         if (!alive()) { await cancelJob(row.job); return null; }
         job = row.job;
@@ -54,14 +56,15 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
         }
     }
 
-    async function start(description) {
+    async function start(description, {loras: selectedLoras} = {}) {
         description = String(description || '').trim();
         if (state.running || disposed || !description) return;
         // After a failure the same description goes on from the picture that failed.
-        const resume = !!state.error && description === state.description && plan && !done();
+        const resume = !!state.error && description === state.description && plan && !done()
+            && JSON.stringify(selectedLoras) === JSON.stringify(loras);
         const current = ++epoch;
         const alive = () => current === epoch && !disposed;
-        if (!resume) { seed = randomSeed(); plan = null; }
+        if (!resume) { seed = randomSeed(); plan = null; loras = structuredClone(selectedLoras); }
         emit({running: true, error: '', report_id: null, waiting: '', description,
             ...(resume ? {} : {pictures: fresh(), current: 0})});
         try {
@@ -105,7 +108,7 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
         dispose() { disposed = true; return stop(); }};
 }
 
-export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, fetchApi, client}) {
+export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, fetchApi, client, loras}) {
     const tr = t || ((en) => en);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
@@ -129,8 +132,11 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     field.maxLength = 1000;
     const note = el('div', 'fv-cg-note'); note.setAttribute('role', 'status');
     const action = el('button', 'fv-cg-action'); action.type = 'button';
+    // A caller that passes a fixed list owns the choice; otherwise the panel offers the same picker as image generation.
+    const picker = loras === undefined ? createImageLoras({t: tr, fetchApi: fetcher, getPrompt: () => field.value,
+        setPrompt: text => { field.value = text; }, onChange: () => render()}) : null;
     foot.append(note, action);
-    side.append(field, foot);
+    side.append(field, ...(picker ? [picker.element] : []), foot);
     const grid = el('div', 'fv-cg-views');
     const cells = CAST_VIEWS.map(view => {
         const cell = el('div', 'fv-cg-view');
@@ -157,6 +163,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
         const isMissing = missing();
         root.dataset.state = isMissing ? 'missing' : running ? 'running' : generator.done() ? 'done' : state.error ? 'failed' : 'idle';
         field.readOnly = running;
+        if (picker) picker.element.inert = running;
         action.hidden = !!isMissing;
         // One accent button at a time: Generate until the five pictures exist, then Regenerate is neutral.
         const finishedAll = generator.done() && !running;
@@ -212,7 +219,8 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
             return;
         }
         attention = null;
-        void generator.start(field.value);
+        const chosen = picker ? picker.value() : loras;
+        void generator.start(field.value, picker && !chosen.length ? {} : {loras: chosen});
     }
     action.onclick = () => generator.state().running ? void generator.stop() : begin();
     field.addEventListener('input', () => {
@@ -230,7 +238,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
         getPictures: () => generator.done() && !generator.state().running ? generator.state().pictures.map(row => ({file: row.file, label: row.view})) : [],
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
-        destroy() { disposed = true; clearTimeout(infoTimer); void generator.dispose(); root.remove(); },
+        destroy() { disposed = true; picker?.dispose(); clearTimeout(infoTimer); void generator.dispose(); root.remove(); },
         element: root,
     };
 }

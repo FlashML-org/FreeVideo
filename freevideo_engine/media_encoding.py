@@ -351,9 +351,12 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         on_mps = torch.device(device).type == 'mps'
         # On MPS the weights stay in the checkpoint mapping and each encoder
         # stage uploads its own while it runs (bounded_encoder).
-        vae, _ = load_video_encoder(base, before_upload=None if resident is None else
-                                    lambda model: resident.input_vae_room(model, canvas),
-                                    device='cpu' if on_mps else device)
+        if resident is not None and not on_mps:
+            vae = resident.input_video_encoder(base, canvas, device=device)
+        else:
+            vae, _ = load_video_encoder(base, before_upload=None if resident is None else
+                                        lambda model: resident.input_vae_room(model, canvas),
+                                        device='cpu' if on_mps else device)
         lifetime = nullcontext()
         if on_mps:
             from .backends.mps_vae_encode import bounded_encoder
@@ -382,8 +385,9 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         empty_cache()
     if any(row.get('audio') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
-        vae, _ = load_audio_vae(base, before_upload=None if resident is None else
-                                lambda model: resident.input_vae_room(model, canvas, audio=True), device=device)
+        vae = (resident.input_audio_encoder(base, canvas, device=device)
+               if resident is not None and torch.device(device).type != 'mps' else
+               load_audio_vae(base, device=device)[0])
         mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
         std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
         if vae.config.sampling_rate != 32000:

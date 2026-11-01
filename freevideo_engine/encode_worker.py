@@ -576,8 +576,8 @@ def _encode(args, request, resident, trace):
             save(request['metrics'], {**loading, 'success': False, 'phase': 'keyframe_vae',
                                      'load_seconds': load_seconds, 'prompt_encode_seconds': prompt_encode_seconds})
         # Only the encoder is read; the decoder in the shared shards is skipped.
-        vae, _ = load_video_encoder(request['base'], before_upload=None if resident is None else
-                                    lambda model: resident.input_vae_room(model, dict(width=width, height=height)))
+        vae = (resident.input_video_encoder(request['base'], dict(width=width, height=height))
+               if resident is not None else load_video_encoder(request['base'])[0])
         torch.cuda.synchronize()
         keyframe_metrics['keyframe_vae_load_seconds'] = time.perf_counter() - vae_started
         vae_started = time.perf_counter()

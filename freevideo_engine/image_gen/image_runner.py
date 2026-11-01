@@ -293,7 +293,7 @@ class ImageRunner:
             reference_pixels=reference_pixels, shape=self.shape)
 
     def generate(self, prompt, *, width, height, seed=None, reference_images=None, edit_mask=None,
-                 progress=None, cancel=None):
+                 loras=None, progress=None, cancel=None):
         plan = self.plan(width, height, reference_images)
         if self.full_card and not self._all_on_card(plan):
             self._to_streamed()
@@ -305,9 +305,10 @@ class ImageRunner:
         self.te_stack.set_resident(plan.te_resident_layers)
         self.generator.vae_tile = plan.vae_tiling
         self.generator.vae_tile_size = plan.vae_tile_size
+        extra = dict(loras=loras) if loras else {}
         return self.generator.generate(prompt, width=width, height=height, seed=seed,
                                        reference_images=reference_images, edit_mask=edit_mask,
-                                       progress=progress, cancel=cancel)
+                                       progress=progress, cancel=cancel, **extra)
 
     def _all_on_card(self, plan):
         return (plan.feasible and _kept(plan) == len(self.dit_stack.layers)

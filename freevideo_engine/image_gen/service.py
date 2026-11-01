@@ -16,7 +16,8 @@ import threading
 import time
 import uuid
 
-from . import image_pack
+from . import image_pack, keep
+from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
@@ -34,7 +35,7 @@ INFERENCE_TIMEOUT = 600.
 QUEUE_TIMEOUT = 600.
 QUEUE_POLL = .1
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
-                            'invalid_media', 'invalid_points', 'too_many_images'))
+                            'invalid_media', 'invalid_points', 'too_many_images')) | LORA_ERRORS
 
 
 def comfy_server():
@@ -112,9 +113,10 @@ class Worker:
 
 
 class Service:
-    def __init__(self, installation, input_directory, *, video_busy=None, idle_seconds=45.):
+    def __init__(self, installation, input_directory, *, video_busy=None, idle_seconds=45., folders=None):
         self.installation = installation
         self.input_directory = input_directory
+        self.folders = folders
         self.video_busy = video_busy or self._video_busy
         self.idle_seconds = idle_seconds
         self.mutex = threading.RLock()
@@ -135,6 +137,7 @@ class Service:
         self.worker_restarts = 0
         self.worker_started = False
         self.queued = None
+        self.habit_root = None
         self.queue_thread = None
         self.queue_wake = threading.Event()
         self.finished = OrderedDict()
@@ -501,9 +504,18 @@ class Service:
         cast_view = value.get('cast_view')
         if cast_view is not None and (cast_view != 'back' or len(paths) != 1 or mask_path is not None):
             raise ValueError('invalid_request')
-        return dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
-                    steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
-                    **(dict(cast_view='back') if cast_view == 'back' else {}), path=self.output_path(named=True))
+        loras = resolve_selection(value.get('loras', []), folders=self.folders)
+        if loras:
+            from ..lora_triggers import apply_triggers
+            prompt = apply_triggers(prompt, loras, folders=self.folders)
+        result = dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
+                      steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
+                      **(dict(cast_view='back') if cast_view == 'back' else {}), path=self.output_path(named=True),
+                      **(dict(loras=loras) if loras else {}))
+        # Leave room for action, kind and the small size-fit record added at dispatch.
+        if loras and len(json.dumps(result, ensure_ascii=True).encode('utf-8')) > BODY_LIMIT - 1024:
+            raise ValueError('invalid_loras')
+        return result
 
     def start(self, action, value):
         if action not in ('generate', 'compose'):
@@ -882,6 +894,7 @@ class Service:
     def work(self, root, machine):
         from ..locking import runtime_lock
         from .. import processes, resident_process
+        self.habit_root = root
         session = None
         failure = 'worker_exit'
         failure_error = None
@@ -1082,6 +1095,11 @@ class Service:
     def infer(self, session, value):
         context = self.context or Context('generate', value)
         heard = False
+        habit = keep.path(self.habit_root)
+        if 'keep_seconds' not in value:
+            keep.note('image', habit)
+        # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
+        value['keep_seconds'] = keep.keep_seconds(habit)
         try:
             session.send(action='generate', **value)
         except OSError:
@@ -1194,7 +1212,7 @@ def register():
         running, pending = server.prompt_queue.get_current_queue()
         return bool(running or pending) or Service._video_busy()
 
-    service = Service(installation, folder_paths.get_input_directory, video_busy=video_busy)
+    service = Service(installation, folder_paths.get_input_directory, video_busy=video_busy, folders=folder_paths)
     server._freevideo_image_gen = service
     token = secrets.token_urlsafe(24)
 

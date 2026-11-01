@@ -143,7 +143,7 @@ def encoder_prewarm(value):
     for key in ('gpu_preload', 'worker_released', 'receipt_available'):
         if type(value.get(key)) is bool:
             result[key] = value[key]
-    if value.get('purpose') in ('encoder', 'upscale'):
+    if value.get('purpose') in ('encoder', 'upscale', 'startup'):
         result['purpose'] = value['purpose']
     # Why idle preparation stopped, as fixed words only: the receipt's reason
     # is free text and may name a path. A bare "failed" explained nothing.

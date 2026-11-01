@@ -110,10 +110,18 @@ def register():
         from .lora_check import check_installed_file
         try:
             name = request.query.get('name')
-            path = resolve_loras(json.dumps([dict(name=name)]), folder_paths.get_filename_list('loras'),
-                                 lambda n: folder_paths.get_full_path_or_raise('loras', n))[0]['path']
-            result = await asyncio.to_thread(check_installed_file, path)
+            if request.query.get('kind') == 'image':
+                from .image_gen.loras import check_named_file
+                result = await asyncio.to_thread(check_named_file, name, folders=folder_paths)
+            else:
+                path = resolve_loras(json.dumps([dict(name=name)]), folder_paths.get_filename_list('loras'),
+                                     lambda n: folder_paths.get_full_path_or_raise('loras', n))[0]['path']
+                result = await asyncio.to_thread(check_installed_file, path)
         except (OSError, ValueError, TypeError) as error:
+            if request.query.get('kind') == 'image':
+                from .image_gen.loras import MESSAGE_ZH
+                return web.json_response({'error': str(error),
+                                          'message_zh': MESSAGE_ZH.get(str(error), MESSAGE_ZH['invalid_loras'])}, status=400)
             return web.json_response({'error': str(error)}, status=400)
         return web.json_response(result, headers={'Cache-Control': 'no-store'})
 

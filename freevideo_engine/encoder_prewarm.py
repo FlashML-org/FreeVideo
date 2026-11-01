@@ -18,15 +18,23 @@ GiB = 1 << 30
 CHUNK = 8 * 1024 * 1024
 
 
-def plan(size, available, *, ram_budget=None, complete=True):
+MINIMUM_PARTIAL = 256 * 1024 * 1024
+
+
+def plan(size, available, *, ram_budget=None, complete=True, partial=False):
+    """Choose how much of the files to read. A sequential read of more than the cache holds evicts its own
+    earlier pages, so a partial read stops at the memory that is really free instead of exceeding it."""
     reserve = 2 * GiB
     limit = max(0, available - reserve)
     if ram_budget is not None:
         limit = min(limit, max(0, int(ram_budget)))
-    return dict(enabled=bool(complete and size > 0 and size <= limit), bytes=size,
+    whole = bool(complete and size > 0 and size <= limit)
+    part = bool(partial and complete and size > limit >= MINIMUM_PARTIAL)
+    return dict(enabled=whole or part, partial=part, bytes=size, read_bytes=size if whole else (limit if part else 0),
                 memory_allowance_bytes=limit, system_reserve_bytes=reserve,
                 scope='Reclaimable OS file cache; no private model copy or GPU allocation',
-                reason=('Idle RAM covers the checkpoint plus system headroom' if complete and 0 < size <= limit
+                reason=('Idle RAM covers the checkpoint plus system headroom' if whole
+                        else 'Idle RAM covers the first part of the files, read in the order of use' if part
                         else 'Leave memory for active applications; encoder loads on demand'))
 
 
@@ -43,6 +51,16 @@ def warm_target(report):
         return ('upscale', files) if files else None
     encoder = (report.get('encoding') or {}).get('encoder')
     return ('encoder', encoder) if encoder else None
+
+
+def startup_files(machine, habit):
+    """Files the first request after an engine start reads first: a rerun reads the video model blocks,
+    any other habit, or none yet, starts with the text encoder."""
+    if habit == 'rerun':
+        files = sorted(item for item in Path(machine['checkpoint']).rglob('*') if item.is_file())
+        if files:
+            return files
+    return [Path(machine['encoder_model_root']) / 'text_encoders' / machine['encoder']]
 
 
 def available_memory():
@@ -67,12 +85,14 @@ def prefetch(path, selected, cancelled, *, busy=None, notify=None, availability=
         return result
     result['state'] = 'reading'
     buffer = bytearray(CHUNK)
+    view = memoryview(buffer)
     last = 0.
+    limit = selected.get('read_bytes', sum(item.stat().st_size for item in paths))
     for item in paths:
         initial = item.stat()
         remaining = initial.st_size
         with item.open('rb', buffering=0) as stream:
-            while remaining > 0:
+            while remaining > 0 and result['done_bytes'] < limit:
                 if cancelled.is_set() or busy and busy():
                     result.update(state='cancelled', reason='A new request takes priority')
                     break
@@ -80,7 +100,7 @@ def prefetch(path, selected, cancelled, *, busy=None, notify=None, availability=
                 if not complete or available < selected['system_reserve_bytes'] + CHUNK:
                     result.update(state='released', reason='Live RAM pressure; warmed pages remain reclaimable')
                     break
-                count = stream.readinto(buffer)
+                count = stream.readinto(view[:min(CHUNK, limit - result['done_bytes'])])
                 if not count:
                     raise ValueError('A model file changed during prefetch')
                 remaining -= count
@@ -91,6 +111,9 @@ def prefetch(path, selected, cancelled, *, busy=None, notify=None, availability=
                     notify(dict(result))
                     last = elapsed
         if result['state'] != 'reading':
+            break
+        if remaining > 0:
+            result.update(state='partial', reason='The first part of the files is read; the rest loads on demand')
             break
         current = item.stat()
         if (current.st_size, current.st_mtime_ns) != (initial.st_size, initial.st_mtime_ns):
@@ -116,7 +139,7 @@ class IdlePrewarmer:
         from .encoder_diagnostics import prewarm_receipt
         return prewarm_receipt(self.report, gpu=False)
 
-    def schedule(self, path, report, *, ram_budget=None, busy=None, notify=None, purpose='encoder'):
+    def schedule(self, path, report, *, ram_budget=None, busy=None, notify=None, purpose='encoder', delay=2.):
         """Warm the encoder checkpoint, or the files an upscale of a preview reads."""
         paths = [Path(item) for item in path] if isinstance(path, (list, tuple)) else [Path(path)]
         with self.guard:
@@ -130,11 +153,11 @@ class IdlePrewarmer:
                 result = {'state': 'cancelled', 'reason': 'A new request takes priority', 'purpose': purpose}
                 try:
                     # Return the completed video to the user before doing work.
-                    if cancel.wait(2.) or busy and busy():
+                    if cancel.wait(delay) or busy and busy():
                         return
                     available, complete = available_memory()
                     selected = plan(sum(item.stat().st_size for item in paths), available,
-                                    ram_budget=ram_budget, complete=complete)
+                                    ram_budget=ram_budget, complete=complete, partial=purpose == 'startup')
                     selected['purpose'] = purpose
                     if not selected['enabled'] and purpose == 'upscale':
                         selected['reason'] = 'Leave memory for active applications; the upscale reads its files on demand'

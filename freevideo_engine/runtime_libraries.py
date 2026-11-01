@@ -168,6 +168,10 @@ def diagnose(site=None):
     except Exception as error:
         result['check_error'] = '%s: %s' % (type(error).__name__, error)
     try:
+        result['missing_files'] = {name: files for name, files in list(package_files(site).items())[:6]}
+    except Exception as error:
+        result['missing_files_error'] = '%s: %s' % (type(error).__name__, error)
+    try:
         for path in loaded():
             inside = _canonical(os.path.dirname(path)) in directories
             result['loaded'].append(dict(name=os.path.basename(path.replace('\\', '/')), inside=inside))
@@ -187,6 +191,13 @@ def summary(result, repair=REINSTALL):
     if changed:
         lines.append("Some of FreeVideo's PyTorch library files do not match the installed version (%s). %s"
                      % (', '.join(changed[:4]) + (', …' if len(changed) > 4 else ''), repair))
+    missing = result.get('missing_files')
+    if isinstance(missing, dict) and missing:
+        names = ['%s (%s)' % (name, ', '.join(str(file).rsplit('/', 1)[-1] for file in files[:2]))
+                 for name, files in list(missing.items())[:4] if isinstance(files, list) and files]
+        if names:
+            lines.append('Files of these Python packages are missing or have changed: %s%s. %s'
+                         % (', '.join(names), ', …' if len(missing) > 4 else '', repair))
     outside = sorted({str(Path(p).parent) for p in result.get('outside', [])})
     if outside:
         lines.append('cuDNN was also loaded from outside FreeVideo: %s.' % '; '.join(outside[:3]))
@@ -359,6 +370,83 @@ def incomplete(python):
                     found.add(name)
                     break
         return sorted(found)
+    except Exception:
+        return []
+
+
+def package_files(site, limit=3):
+    """Files RECORD lists inside site-packages that are missing or have another size.
+
+    Returns {distribution: [paths relative to site-packages, at most `limit`]}. Only
+    files below site-packages count: console scripts and data files sit beside it, and
+    their size depends on where the environment was created. A numpy extension that
+    cannot load is usually one of these files gone (quarantined, cleaned up, cut short),
+    which an ordinary install does not notice. No hashing, so it is cheap to run.
+    Unreadable records and checks that cannot run find nothing.
+    """
+    found = {}
+    try:
+        site = Path(site)
+        # Paths stay as RECORD spells them: a package folder that is a junction
+        # to another drive is still checked.
+        base = os.path.normcase(os.path.normpath(str(site))) + os.sep
+        for distribution in importlib.metadata.distributions(path=[str(io_path(site))]):
+            try:
+                rows = list(csv.reader(io.StringIO(distribution.read_text('RECORD') or '')))
+                name = distribution.metadata['Name']
+            except (OSError, csv.Error, UnicodeDecodeError, KeyError):
+                continue
+            if not name:
+                continue
+            for row in rows:
+                if len(row) < 3 or not row[2].isdigit():
+                    continue
+                path = os.path.normpath(os.path.join(str(site), row[0]))
+                if not os.path.normcase(path).startswith(base):
+                    continue
+                try:
+                    size = os.path.getsize(io_path(path))
+                except (FileNotFoundError, NotADirectoryError):
+                    size = None
+                except OSError:
+                    continue
+                if size != int(row[2]):
+                    files = found.setdefault(name, [])
+                    if len(files) >= limit:
+                        break
+                    files.append(row[0].replace('\\', '/'))
+    except Exception:
+        return {}
+    return found
+
+
+def gpu_family(name):
+    """The packages installed from the GPU wheels: PyTorch, its CUDA libraries and its compiler."""
+    name = normalize_name(name)
+    return name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-windows') or name.startswith('nvidia-')
+
+
+def pinned_names(constraints):
+    """Normalized names a constraints file pins, or None when it cannot be read."""
+    rows = _requirement_rows(constraints)
+    if rows is None:
+        return None
+    return {normalize_name(match[0]) for match in (re.match(r'[A-Za-z0-9][A-Za-z0-9._-]*', row) for row in rows) if match}
+
+
+def missing_packages(python, constraints):
+    """Pinned distributions of this environment whose RECORD files are missing or cut short.
+
+    Setup and repair reinstall these: uv treats a package at the pinned version
+    as installed whatever its files look like. Packages the constraints do not
+    pin (editable installs, kernels built on this machine) are left alone.
+    """
+    try:
+        site = site_for(python)
+        pinned = pinned_names(constraints)
+        if site is None or pinned is None:
+            return []
+        return sorted(name for name in package_files(site, limit=1) if normalize_name(name) in pinned)
     except Exception:
         return []
 

@@ -245,12 +245,21 @@ def vlm(*, local=False):
         ('kind', 'questions'), description='x-job-kind also checks the sum of images and sampled video frames across questions (at most 24).', **{'x-job-kind': 'vlm'})
 
 
+def image_loras():
+    from ..image_gen.loras import MAX_LORAS, MAX_NAME, MIN_STRENGTH, MAX_STRENGTH
+    # The name's rules (extension, folders, control characters) are checked by validate_selection with its own messages.
+    return array(obj(dict(name=dict(type='string', minLength=1, maxLength=MAX_NAME), strength=number(MIN_STRENGTH, MAX_STRENGTH, default=1.),
+                          enabled=dict(type='boolean', default=True)), ('name',)), high=MAX_LORAS,
+                 **{'x-image-loras': True})
+
+
 def image(*, local=False):
     return obj(dict(kind={'const': 'image', 'type': 'string'},
         prompt=dict(type='string', minLength=1, maxLength=2000),
         width=number(256, 2048, integer=True), height=number(256, 2048, integer=True),
         aspect=enum(IMAGE_ASPECTS, description='Instead of width and height; 1:1 when all three are omitted.'),
         seed=nullable(number(-2**63, 2**64 - 1, integer=True)),
+        loras=image_loras(),
         images=array({'oneOf': [FILE, obj(dict(file=FILE), ('file',))]}, high=4, description='Pictures to change '
             'or combine: input files, such as result.file of an earlier picture job. The prompt calls them image 1, image 2.'),
         people=array(obj(dict(image=FILE, cast=CAST, name=string(40), x=number(0, 1), height=number(.05, 1),
@@ -613,7 +622,8 @@ def cast_schema(name, *, local=False):
         return obj(dict(revision=number(1, integer=True), ref=REF))
     if name == 'generate':
         return obj(dict(face=dict(type='boolean', default=False, description='Also make one face close-up (video; the image model always does).'),
-                        source=enum(('image', 'video'), description='Defaults to image when the local image model is ready, otherwise video.'),
+                        loras=image_loras(),
+                        source=enum(('image', 'video'), description='Defaults to image when LoRAs are selected or the local image model is ready, otherwise video.'),
                         replace=dict(type='boolean', default=False,
                                      description='Replace pictures the user did not add; default fills empty slots.'),
                         revision=number(1, integer=True), ref=REF))
@@ -1227,6 +1237,12 @@ def cross_issues(schema, value, path):
     errors = []
     def bad(field, allowed, got=None):
         errors.append(diagnostic(path + '/' + field, allowed, got))
+    if schema.get('x-image-loras'):
+        from ..image_gen.loras import MESSAGE_ZH, validate_selection
+        try:
+            validate_selection(value)
+        except ValueError as error:
+            errors.append(diagnostic(path, MESSAGE_ZH[str(error)], None))
     flags = schema.get('x-media')
     if flags is not None:
         item = {'file': value} if isinstance(value, str) else value
@@ -1551,7 +1567,7 @@ SESSION_ARGUMENT = dict(type='string', pattern='^s[0-9a-f]{12}$',
     description='Work session; omit for latest.')
 
 
-SHAPE_MIN_BYTES = 400
+SHAPE_MIN_BYTES = 200
 RECIPE_TOOL = 'freevideo_edit_image'
 
 

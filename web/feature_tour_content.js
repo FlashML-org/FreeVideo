@@ -16,6 +16,8 @@ export const FEATURE_TOUR = [
     card('reference-image', copy('Reference image', '参考图'), copy('The same character stays consistent across scenes.', '换了场景，角色仍是同一个。'),
         [{src: 'fox-sheet.webp'}, {text: copy('A fox walks through a forest.', '狐狸走过森林。')}, {text: copy('A fox walks through snow.', '狐狸走过雪地。')}], clip('c5-forest-s1'),
         {assets: [{file: 'fox-sheet.webp', role: 'reference'}], prompt: ['The fox in {image1} walks through a sunlit forest.', '{image1} 中的狐狸走过洒满阳光的森林。'], settings: {}}, {sequence: [clip('c5-forest-s1'), clip('c5-snow-s1')]}),
+    card('replace-person', copy('Replace person', '替换人物'), copy('Put the person from an image into a video.', '把视频里的人换成图中的人物。'),
+        [{src: 'c10-source.webp'}, {src: 'c10-person.webp'}], clip('c10-s1'), {status: 'pending-assets'}, {trigger: 'media', added: '0.4.28'}),
     card('extend', copy('Extend', '接着生成'), copy('Continue from where the last clip ends.', '从上一段的结尾接着生成下一段。'),
         [{src: 'c6-s1.webp'}], clip('c6-s1'), {status: 'pending-assets', view: 'editor'}, {trigger: 'editor', previewRange: [2, 8]}),
     card('two-pass', copy('Two-pass', '二次采样'), copy('The first pass sets the composition; the second adds detail.', '第一遍定构图，第二遍补细节。'),

@@ -1,17 +1,83 @@
 """Request-aware model residency inside the isolated interactive GPU worker."""
 import gc
+import hashlib
 import json
 from pathlib import Path
 import sys
 import time
 
 import torch
+from . import usage_habit
 from .torch_compat import empty_host_cache, host_cache_release_supported
 from .device_index import device_properties
 
 GiB = 1 << 30
 # Where a preview's sampling peak is kept, apart from its complete request's.
 PREVIEW_STAGE = 'engine_preview'
+HABIT_WINDOW = 4
+
+
+def retention_order(history):
+    """Cache roles to evict first; two thirds of recent transitions wins.
+
+    History contains at most four successful requests' digests, never inputs.
+    Image changes win ties with prompt changes, then same-prompt reruns. With
+    fewer than two successes (or no dominant habit), use the old engine-first
+    order. Active stages still use make_room's existing admission rules.
+    """
+    return eviction_order(usage_habit.dominant(usage_habit.transitions(history)))
+
+
+def eviction_order(habit):
+    """Eviction order for a habit kind from usage_habit.dominant (None: default)."""
+    if habit == 'images':
+        keep = ('input_video_vae', 'encoder', 'conditioning', 'engine',
+                'input_audio_vae', 'video_vae', 'audio_vae')
+    elif habit == 'prompt':
+        keep = ('encoder', 'conditioning', 'engine', 'input_video_vae',
+                'input_audio_vae', 'video_vae', 'audio_vae')
+    elif habit == 'rerun':
+        keep = ('conditioning', 'engine', 'video_vae', 'audio_vae',
+                'input_video_vae', 'input_audio_vae', 'encoder')
+    else:
+        return ('engine', 'encoder', 'audio_vae', 'video_vae',
+                'input_audio_vae', 'input_video_vae', 'conditioning')
+    return tuple(reversed(keep))
+
+
+def _input_digest(value):
+    """Hash CPU conditioning without retaining inputs or copying mapped payloads."""
+    digest = hashlib.sha256()
+    def visit(item):
+        if isinstance(item, torch.Tensor):
+            tensor = item.detach().cpu().contiguous()
+            digest.update(str((str(tensor.dtype), list(tensor.shape))).encode())
+            digest.update(memoryview(tensor.reshape(-1).view(torch.uint8).numpy()))
+        elif isinstance(item, dict):
+            for name in sorted(item):
+                visit(name)
+                visit(item[name])
+        elif isinstance(item, (tuple, list)):
+            for child in item:
+                visit(child)
+        else:
+            digest.update(json.dumps(item, sort_keys=True).encode())
+        digest.update(b'\0')
+    visit(value)
+    return digest.hexdigest()
+
+
+class ConditioningMemo(torch.nn.Module):
+    """The engine's bounded CPU refined-text results, independently evictable."""
+    def __init__(self, memo):
+        super().__init__()
+        self.memo = memo
+
+    def to(self, device):
+        if device != 'meta':
+            raise ValueError('Conditioning memo stays on the CPU')
+        self.memo.clear()
+        return self
 
 
 def key(value):
@@ -156,6 +222,11 @@ class ModelBank:
         from .streamed_weights import ConvertedStore
         # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
         self.converted_store = ConvertedStore()
+        self.history = []
+        # Transition kinds kept across restarts (see usage_habit); history
+        # holds only this process's digests.
+        stored = usage_habit.load()
+        self.recent = stored['recent'] if stored else []
         # Set by a request that can read the whole device: bytes no process
         # holds, and the growth reserve that request keeps out of them. The
         # planning budget already excludes that reserve; the device reading
@@ -200,6 +271,11 @@ class ModelBank:
             import comfy.model_management
             encoder_discarded = release_encoder(model, comfy.model_management)
         elif role == 'engine':
+            cached = self.entries.get('conditioning')
+            if cached and getattr(model, 'refined_text_memo', None) is cached['model'].memo:
+                # Engine.close clears its dictionary; detach the independently
+                # owned results so an engine miss need only reload weights.
+                model.refined_text_memo = {}
             model.close()
         else:
             model.to('meta')
@@ -268,14 +344,15 @@ class ModelBank:
                 (self.ram_budget is None or used + need <= self.ram_budget))
 
     def settle(self, pinned=0):
-        """End of a request: keep the engine and encoder only if the next cold encoder still fits.
+        """Keep as many independent components as the next cold start permits.
 
         The RAM guard counts the whole session, so retained engine weights
         plus the next encoder's start (about 8 GiB) must stay inside the
         budget, and so must the host weights a fresh plan would pin beyond those
         the engine already holds: measured, a retained copy left no room to
-        pin and sampling took 95 s instead of 38 s. Otherwise the engine goes
-        as it did with one worker per request.
+        pin and sampling took 95 s instead of 38 s. Evict lower-priority
+        components first, checking live RAM again after each release. This does
+        not change an engine's layer layout.
         """
         # A retained engine's pinned weights are reused by the next request
         # rather than pinned again, so they count once, in the session's use.
@@ -283,8 +360,11 @@ class ModelBank:
         need = 8*GiB + max(0, int(pinned) - held)
         if not self.ram_fits(need):
             self.converted_store.clear()
-        for role in ('engine', 'encoder'):
-            if role in self.entries and not self.ram_fits(need):
+        order = eviction_order(self.habit())
+        for role in (*order, *(role for role in self.entries if role not in order)):
+            if self.ram_fits(need):
+                break
+            if role in self.entries:
                 self.drop(role, 'Retained weights leave no host room for the next request')
                 if role == 'engine':
                     need = 8*GiB + int(pinned)
@@ -294,6 +374,37 @@ class ModelBank:
             ctypes.CDLL('libc.so.6').malloc_trim(0)
         except (OSError, AttributeError):
             pass
+
+    def succeeded(self, request):
+        """Observe video successes only, locally; encoding/preloads are not jobs.
+
+        Read the existing conditioning with mmap after generation has returned,
+        so failures and cancellations do not train the policy. An unreadable
+        or legacy external input leaves the previous habit unchanged.
+        """
+        path = Path(request['conditioning'])
+        value = torch.load(path, map_location='cpu', weights_only=True, mmap=True)
+        prompt = value.get('prompt')
+        if prompt is None:
+            prompt = value['prompt_embeds'][value['text_token_tags'] == 1]
+        images = dict(anchors=value.get('keyframe_anchors'), latents=value.get('condition_latents'),
+                      references=[{k: row[k] for k in ('kind', 'latent') if k in row}
+                                  for row in value.get('references', []) if row['kind'] != 'audio'])
+        row = dict(prompt=_input_digest(prompt), images=_input_digest(images),
+                   run=key(dict(seed=request.get('seed'), options=request.get('engine_options'),
+                                geometry=request.get('geometry'), sampling=request.get('sampling_plan'))))
+        kinds = usage_habit.transition(self.history[-1], row) if self.history else None
+        self.history = (self.history + [row])[-HABIT_WINDOW:]
+        if kinds is not None:
+            self.recent = (self.recent + [kinds])[-(HABIT_WINDOW - 1):]
+        try:
+            usage_habit.record(kinds)
+        except OSError:
+            pass  # A habit that cannot be saved is only forgotten at restart.
+
+    def habit(self):
+        """The dominant kind of change, from stored transitions or this process's digests."""
+        return usage_habit.dominant(self.recent or usage_habit.transitions(self.history))
 
     def input_vae_room(self, model, canvas, *, audio=False):
         # Input encoding has its own live workspace; it cannot assume an output
@@ -311,7 +422,41 @@ class ModelBank:
         # model's host copy is released unless the live budget covers the
         # stage as well. Plentiful hosts keep it for reuse.
         host = weights + (2*GiB if audio else max(8*GiB, 26*GiB*area))
-        self.make_room('input_audio_vae' if audio else 'input_video_vae', weights + workspace, ram_need=host)
+        role = 'input_audio_vae' if audio else 'input_video_vae'
+        retained = model if self.entries.get(role, {}).get('model') is model else None
+        self.make_room(role, weights + workspace, model=retained, ram_need=host)
+
+    def input_video_encoder(self, base, canvas, *, device='cuda'):
+        """Reuse just the image/video encoder; never load the output decoder."""
+        from .vae_weights import load_video_encoder
+        directory = Path(base) / 'vae'
+        identity = key(dict(files=[file_identity(path) for path in
+                           sorted([directory/'config.json', *directory.glob('*.safetensors')])],
+                           device=str(device)))
+        found = self.take('input_video_vae', identity)
+        if found is not None:
+            self.input_vae_room(found, canvas)
+            return found
+        found, _ = load_video_encoder(base, before_upload=lambda model: self.input_vae_room(model, canvas),
+                                     device=device)
+        self.put('input_video_vae', identity, found)
+        return found
+
+    def input_audio_encoder(self, base, canvas, *, device='cuda'):
+        """Reuse the reference-audio VAE the way the image/video encoder is reused."""
+        from .vae_weights import load_audio_vae
+        directory = Path(base) / 'audio_vae'
+        identity = key(dict(files=[file_identity(path) for path in
+                           sorted([directory/'config.json', *directory.glob('*.safetensors')])],
+                           device=str(device)))
+        found = self.take('input_audio_vae', identity)
+        if found is not None:
+            self.input_vae_room(found, canvas, audio=True)
+            return found
+        found, _ = load_audio_vae(base, before_upload=lambda model: self.input_vae_room(model, canvas, audio=True),
+                                  device=device)
+        self.put('input_audio_vae', identity, found)
+        return found
 
     def device_ceiling(self):
         """What this process's allocator can hold before the device itself is full.
@@ -450,6 +595,13 @@ class ModelBank:
         if found is None:
             found = factory()
             self.put('engine', identity, found)
+        memo = getattr(found, 'refined_text_memo', None)
+        if isinstance(memo, dict):
+            cached = self.take('conditioning', identity)
+            if cached is None:
+                cached = ConditioningMemo(memo)
+                self.put('conditioning', identity, cached)
+            found.refined_text_memo = cached.memo
         return found, hit
 
     def encoder_room(self, clip, tokens, fallback_peak):

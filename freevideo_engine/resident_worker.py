@@ -68,6 +68,25 @@ def main():
                         from .worker import generate
                         bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'))
                         generate(request, resident=bank)
+                        # Only a fully returned video is a success, including its
+                        # final cleanup. Keep habit data inside this worker.
+                        try:
+                            bank.succeeded(request)
+                        except Exception:
+                            pass  # Optional observations cannot fail a finished video.
+                        try:
+                            bank.settle(float(request['engine_options'].get('pin_host_gb') or 0)*1e9)
+                        except Exception:
+                            pass  # Best-effort trimming cannot fail a finished video.
+                        if request.get('metrics'):
+                            try:
+                                from .monitoring import save
+                                path = Path(request['metrics'])
+                                metrics = json.loads(path.read_text(encoding='utf-8'))
+                                metrics.update(resident_models=bank.snapshot(), resident_admission=list(bank.decisions))
+                                save(path, metrics)
+                            except (OSError, ValueError, TypeError):
+                                pass
                     else:
                         from .encode_worker import encode
                         bank.configure(request['gpu_budget_gb']*1e9, request.get('ram_budget_bytes'))
@@ -79,7 +98,7 @@ def main():
                 if diagnostics is not None:
                     diagnostics.finish(False)
                 traceback.print_exc()
-                from .adaptive import classify_failure, commit_exhausted, cuda_runtime_error
+                from .adaptive import classify_failure, commit_exhausted, commit_limited_allocation, cuda_runtime_error
                 failure = classify_failure(error)
                 if request.get('metrics'):
                     from .monitoring import save
@@ -117,6 +136,12 @@ def main():
                 # cannot be trusted to return it, and every later request would
                 # fail the same way. A fresh worker starts from zero.
                 if commit_exhausted(error):
+                    log.flush()
+                    os._exit(75)
+                # The same holds when the driver refuses a device allocation
+                # for lack of commit while the card still has free memory: the
+                # process keeps its charge and its mappings are unreliable.
+                if commit_limited_allocation(error, failure):
                     log.flush()
                     os._exit(75)
                 failed_error = error

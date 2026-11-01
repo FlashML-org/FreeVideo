@@ -7,6 +7,7 @@ from contextvars import ContextVar
 import math
 import re
 import uuid
+from ..image_gen.loras import ERRORS as LORA_ERRORS, MESSAGE_EN as LORA_MESSAGE_EN, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 REQUEST_ID = ContextVar('agent_request_id', default=None)
 # The work session a token request belongs to (sessions.py); jobs and productions record it.
@@ -155,13 +156,14 @@ def image_failure(code, report_id=None):
     en, zh = IMAGE_REASONS.get(code, IMAGE_REASONS['invalid_request'] if code.startswith('invalid_')
                              or code == 'too_many_images' else IMAGE_REASONS['generation_failed'])
     valid = isinstance(report_id, str) and re.fullmatch(r'[0-9a-f]{32}', report_id)
-    return dict(reason=dict(en=en, zh=zh), report_id=report_id if valid and code not in (
+    return dict(reason=dict(en=en, zh=zh), report_id=report_id if valid and code not in LORA_ERRORS and code not in (
         'busy', 'cancelled', 'invalid_request', 'invalid_media', 'invalid_prompt', 'invalid_dimensions',
         'invalid_seed', 'too_many_images', 'disk_full') else None)
 
 
 # Recovery is a function of the committed task and phase, not just an error code.
 IMAGE_ERRORS = {
+    **LORA_MESSAGE_EN,
     'invalid_request': 'The picture request contains invalid fields.',
     'invalid_prompt': 'The picture prompt must contain text and be at most 2000 characters.',
     'invalid_dimensions': 'Picture width and height must be integers from 256 to 2048.',
@@ -183,6 +185,7 @@ IMAGE_ERRORS = {
     'disk_full': IMAGE_REASONS['disk_full'][0],
     'cancelled': 'The picture job was cancelled.',
 }
+IMAGE_REASONS.update({code: (LORA_MESSAGE_EN[code], LORA_MESSAGE_ZH[code]) for code in LORA_ERRORS})
 for _code, _message in IMAGE_ERRORS.items():
     if _code not in ERRORS:
         ERRORS[_code] = (503 if _code in ('pack_missing', 'closed', 'image_unavailable') else 422,
@@ -267,6 +270,7 @@ def safe_details(value):
 # One public sentence shared by conversation cards, HTTP and MCP. Backend text
 # is classified, never echoed: it can contain prompts, filenames or credentials.
 FAILURE_REASONS_ZH = {
+    **LORA_MESSAGE_ZH,
     'lan_unavailable': '局域网设置需要启动器安装记录',
     'out_of_memory': '生成时显存或内存不足',
     'insufficient_memory': '可用显存或内存不够生成这段内容',
@@ -316,6 +320,7 @@ FAILURE_REASONS_ZH = {
     'internal_error': '没有完成',
 }
 FAILURE_REASONS_EN = {
+    **LORA_MESSAGE_EN,
     'lan_unavailable': 'Phone access requires FreeVideo installed with the launcher',
     'out_of_memory': 'Graphics or system memory ran out during generation',
     'insufficient_memory': 'There is not enough free graphics or system memory for this generation',

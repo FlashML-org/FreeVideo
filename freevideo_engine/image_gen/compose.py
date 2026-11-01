@@ -137,4 +137,5 @@ def build(value, input_directory):
         load(name)
     if len(prompt) > 2000:
         raise ValueError('invalid_prompt')
-    return dict(prompt=prompt, width=width, height=height, seed=value.get('seed'), images=names)
+    return dict(prompt=prompt, width=width, height=height, seed=value.get('seed'), images=names,
+                **({'loras': value['loras']} if 'loras' in value else {}))

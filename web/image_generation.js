@@ -5,11 +5,12 @@ import {orientMatrix, rasterKinds, scaleSelection} from './image_editor_engine.j
 import {saveReport, reportIssue, showReportTip, focusReportTip} from './report_issue.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
+import {createImageLoras} from './image_lora.js';
 
 export const IMAGE_GEN_PROTOCOL = Object.freeze({
     root: '/freevideo/image-gen', header: 'X-FreeVideo-Image', upload: '/upload/image',
     installed: 'ready', phase: 'phase', bytes: 'bytes', downloading: 'downloading', checking: 'checking',
-    token: 'token', job: 'job', prompt: 'prompt', width: 'width', height: 'height', images: 'images', mask: 'mask', seed: 'seed',
+    token: 'token', job: 'job', prompt: 'prompt', width: 'width', height: 'height', images: 'images', mask: 'mask', seed: 'seed', loras: 'loras',
     stage: 'stage', fraction: 'fraction', file: 'file', error: 'error', name: 'name', subfolder: 'subfolder',
     states: {queued: 'waiting', starting: 'queued', progress: 'running', complete: 'done', failed: 'error',
         cancelling: 'running', cancelled: 'error'},
@@ -80,10 +81,10 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
     }
     return {
         info,
-        async generate({prompt, width, height, images = [], mask, seed, cast_view}) {
+        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view}) {
             const value = await post('generate', {[p.prompt]: prompt, [p.width]: width, [p.height]: height,
                 [p.images]: images, ...(mask ? {[p.mask]: mask} : {}), ...(seed === undefined ? {} : {[p.seed]: seed}),
-                ...(cast_view === 'back' ? {cast_view} : {})});
+                ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {})});
             return {...value, job: value[p.job]};
         },
         async status(job) {
@@ -156,6 +157,12 @@ export function packView(info, t) {
 }
 export function imageGenError(code, info, t) {
     const reasons = {
+        invalid_loras: ['The LoRA selection is invalid. Choose the files again.', 'LoRA 设置有误，请重新选择文件。'],
+        invalid_lora_strength: ['LoRA strength must be between -2 and 2.', 'LoRA 强度必须在 -2 到 2 之间。'],
+        duplicate_lora: ['Select each LoRA only once. Remove the duplicate.', '同一个 LoRA 只能选择一次，请移除重复项。'],
+        too_many_loras: ['Use at most eight LoRAs per picture.', '一张图片最多使用 8 个 LoRA，请减少数量。'],
+        lora_not_found: ['The LoRA file could not be found. Choose it again.', 'LoRA 文件找不到，请重新选择。'],
+        invalid_lora_model: ['This LoRA cannot be used for pictures. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
             '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
@@ -476,7 +483,9 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
             const withImages = images.length > 0;
-            const row = await client.generate({prompt: request.prompt, width: context.width, height: context.height, images, mask});
+            const row = await client.generate({prompt: request.prompt, width: context.width, height: context.height, images, mask,
+                ...(request.seed === undefined ? {} : {seed: request.seed}),
+                ...(request.loras === undefined ? {} : {loras: request.loras})});
             const {job} = row;
             if (!job) throw failure(row.error, row);
             if (row.fitted) emit({fitted: row.fitted});
@@ -548,7 +557,7 @@ export function imageJobStore(key, storage = globalThis.sessionStorage, now = Da
 
 export function createImageGeneration({client, renderer, t, getDoc, getSelection, commit, el, button, segmented,
     library = [], resolve = file => file, icon = () => '', onRatioChange, onPlace, productVersion, fetchApi, resumeKey = null}) {
-    let mode = 'edit', prompt = '', mounted = null, references = [], tier = 'standard', past = [];
+    let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', past = [];
     let promptRequired = false, attentionTimer = null;
     const copies = new Map();
     // A reference is sent no larger than the largest picture the service makes.
@@ -600,7 +609,8 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             }
             return;
         }
-        return session.start({mode, prompt, references: chosen()});
+        const chosenLoras = loras?.value() || [];
+        return session.start({mode, prompt, references: chosen(), ...(chosenLoras.length ? {loras: chosenLoras} : {})});
     }
     function drawEdited(canvas) {
         try {
@@ -779,6 +789,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             b.disabled = disabled || (empty && b.dataset.value === 'edit');
             b.setAttribute('aria-pressed', String(b.dataset.value === mode));
         }); input.disabled = disabled;
+        if (loras) { if (state.running) loras.element.setAttribute('inert', ''); else loras.element.removeAttribute('inert'); }
         renderReferences(refs, disabled);
         input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the picture', '描述画面');
         input.setAttribute('aria-label', input.placeholder);
@@ -845,7 +856,10 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         refs.setAttribute('aria-label', t('Reference images', '参考图'));
         const box = el('div', null, 'fv-ie-gen-box');
         const input = el('textarea', null, 'fv-ie-gen-prompt'); input.rows = 1; input.maxLength = 2000; input.value = prompt;
-        box.append(input); field.append(refs, box, historyMenu());
+        box.append(input);
+        loras ||= createImageLoras({t, fetchApi, el, onChange: () => mounted && update(), getPrompt: () => prompt,
+            setPrompt: value => { prompt = value; if (mounted) { mounted.input.value = value; mounted.grow(); } }});
+        field.append(refs, box, historyMenu(), loras.element);
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
@@ -858,10 +872,10 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         bar.append(group);
         if (shape) bar.append(shape);
         bar.append(field, note, action, meter);
-        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size};
         const grow = () => {
             input.style.height = '0px';
             input.style.height = (prompt.trim() ? Math.min(80, Math.max(32, input.scrollHeight + 2)) : 32) + 'px';
+            box.style.height = input.style.height;
         };
         input.oninput = () => {
             prompt = input.value;
@@ -873,6 +887,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 event.preventDefault(); void start();
             }
         };
+        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size, grow};
         grow(); update();
     }
     return {mount, drawsSelection: () => mode === 'edit' && getDoc().layers.length > 0, unmount() { clearAttention(); promptRequired = false; mounted = null; },
@@ -880,5 +895,5 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         // The blank canvas a reloaded generation was started on, to be set again by the editor.
         resumedCanvas: resumed?.context?.mode === 'new'
             ? {width: resumed.context.doc.width, height: resumed.context.doc.height} : null,
-        dispose() { clearAttention(); return session.dispose(); }, state: session.state};
+        dispose() { clearAttention(); loras?.dispose(); return session.dispose(); }, state: session.state};
 }

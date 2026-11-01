@@ -763,12 +763,6 @@ def generate(request, resident=None):
             resident.device_free, resident.device_reserve = None, 0
         if live_budget is not None:
             live_budget.close()
-        if resident is not None and metrics['success'] and engine is not None:
-            try:
-                resident.settle(float(request['engine_options'].get('pin_host_gb') or 0)*1e9)
-            except Exception:
-                # Trimming is best effort; it must not turn a finished request into a failure.
-                pass
         if resident is not None:
             metrics['resident_admission'] = list(resident.decisions)
         from .adaptive import classify_failure

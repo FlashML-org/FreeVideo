@@ -1,41 +1,68 @@
 {
   "schema": 1,
-  "product_version": "0.4.27",
+  "product_version": "0.4.28",
   "en": {
-    "summary": "The Agent can make music for a project, an update started during a generation waits for it to finish, and a preview can keep the guide clip's sound.",
+    "summary": "Image generation, editing and character generation accept LoRAs, the image model stays on the card longer for people who mostly make pictures, and Repair replaces Python packages whose files are missing.",
     "changes": [
-      "Agent: a new music tool makes a soundtrack for a project and places it on an audio track. The music model is downloaded on first use (about 20 GB); cards with little video memory use a built-in 8-bit form. If two attempts fail, the Agent synthesizes the music itself.",
-      "Updates: when \"Update now\" is pressed while a video is generating, the page shows a waiting screen instead of a failure card, and the update starts when the job ends. The wait also covers a job on a server that another program started.",
-      "Audio: a kept original audio track is written as lossless audio that browsers can play. A preview made with a guide clip keeps the clip's sound when that was requested.",
-      "Long videos: when seams cannot be joined, the notes name the seams that failed first, with the step and the format. The how-to for a long video points to \"Extend\" below the finished video.",
-      "Phone access: the password page is shown in Chinese when the browser's preferred language is Chinese.",
-      "Speed: the encoded text of a prompt is kept per encoder file and prompt, so a repeated prompt starts sooner.",
-      "Precompile: the status keeps the order of its writes, stopping responds quickly, and the diagnostic report includes the status.",
-      "Decoding and reports: a CUDA error while decoding after sampling has finished no longer fails the video; the saved result is decoded once more in a fresh process. A process that keeps running after a CUDA error is ended, so the failure is reported instead of waiting. Diagnostic reports record the polling of Agent generations.",
-      "Errors: a refused offline package says why, and a slow ComfyUI page is no longer blamed on the browser.",
-      "Install: on Windows the portable Git is used when the installed Git cannot load libcurl, and the Windows certificate store is used for HTTPS checks, skipping a certificate that cannot be read. A rejected token or address stays explained under its field until it is accepted.",
-      "Linux: on Arch, the setup names the pacman command for missing basic tools.",
-      "Mac: after two Metal command buffer failures during sampling, a third attempt runs with Torch attention."
+      "Image generation: image generation, image editing and character generation each have a LoRA control. Up to 8 LoRAs can be added, each with a file, a strength and a trigger word that is added to the prompt. Video and image LoRAs are told apart and a wrong choice is explained in one sentence. Without a LoRA the output is unchanged.",
+      "Speed: for people who mostly make pictures, the image model stays loaded for up to 10 minutes when it fits on the card, so the next picture starts sooner. It gives the card back at once when a video or another program needs it.",
+      "Speed: the usage habit that decides which model parts stay in memory (only the kind of each operation and its count, nothing from prompts or images) is now kept across restarts. When prompts change often, the text encoder is loaded while the engine is idle, as far as free video and system memory allow, and stops when a new job starts.",
+      "Speed: after the engine starts, the model files for the first request are read ahead as far as free memory allows: the video model for people who mostly generate again with the same prompt and images, and the text encoder otherwise. A new request or a busy queue stops the reading, and a machine with little free memory reads less.",
+      "Install: Repair now reinstalls Python packages whose files are missing or cut short, for example a numpy library that has gone missing, which setup did not notice before when the package was already at the required version; the repair review counts them in the download. When the hardware check before a request fails to load such a package, the message names the missing file and offers Repair.",
+      "Windows: on machines with little memory, a long video whose second pass stops for lack of system memory now retries in a fresh process, keeping the finished first pass, and can finish instead of failing.",
+      "Guide: the tutorial book covers the additions of 0.4.25 and 0.4.26 and has a new chapter on replacing a person, with a matching guide card. In the Chinese book, quoted interface names of up to eight characters and numbers with their units are no longer split across lines."
     ]
   },
   "zh": {
-    "summary": "Agent 可以为作品制作配乐；生成中点击更新会等任务结束后再更新；预览也可以保留引导片段的声音。",
+    "summary": "图片生成、改图和角色生成可以使用 LoRA；以做图为主时，图片模型在显存中保留更久；“修复”会重新安装文件缺失的 Python 包。",
     "changes": [
-      "Agent：新增配乐工具，为作品制作配乐并放到一条音频轨上。配乐模型首次使用时下载（约 20 GB）；显存较小的显卡使用内置的 8 位形式。两次尝试都失败时，由 Agent 自己合成。",
-      "更新：有视频正在生成时点击“立即更新”，页面显示等待画面，不再出现失败卡片，任务结束后开始更新。由其他程序启动的服务上的任务也会等待。",
-      "音频：保留的原始音轨以浏览器可播放的无损音频写入。使用引导片段的预览在要求保留时，也保留该片段的声音。",
-      "长视频：接缝无法衔接时，说明先列出失败的接缝及其步骤和格式。长视频的使用指引改为指向成片下方的“接着生成”。",
-      "手机访问：浏览器的首选语言为中文时，密码页显示中文。",
-      "速度：提示词的文本编码结果按编码器文件和提示词保存，重复使用同一提示词时更快开始。",
-      "预编译：状态按写入顺序保存，停止时响应更快，诊断报告包含该状态。",
-      "解码与诊断报告：采样完成后解码时出现 CUDA 错误，不再整条失败，已保存的结果会在新进程中重新解码一次；出现 CUDA 错误后仍不退出的进程会被结束，直接报告失败，不再一直等待。诊断报告记录 Agent 生成任务的轮询情况。",
-      "错误提示：离线包被拒绝时说明原因；ComfyUI 页面加载较慢时不再归咎于浏览器。",
-      "安装：Windows 上已安装的 Git 无法载入 libcurl 时改用便携版 Git；HTTPS 检查使用 Windows 证书库，遇到无法读取的证书时跳过。令牌或地址被拒绝后，说明一直显示在对应输入框下，直到输入被接受。",
-      "Linux：在 Arch 上缺少基础工具时，安装脚本给出对应的 pacman 命令。",
-      "Mac：采样时连续两次 Metal 命令缓冲区失败后，用 Torch 注意力再试第三次。"
+      "图片生成：图片生成、改图和角色生成各增加了 LoRA 控件。最多可添加 8 个 LoRA，每个可选择文件、调整强度，触发词会加入提示词。视频和图片的 LoRA 分开识别，选错时用一句话说明。不使用 LoRA 时输出不变。",
+      "速度：以做图为主的用户，图片模型在能完整放进显存时最多保留 10 分钟，下一张图开始更快；视频或其他程序需要显存时立即让出。",
+      "速度：决定哪些模型部分驻留内存的操作习惯（只记录每次操作的类型和次数，不含提示词和图片的任何内容）现在会跨重启保存。经常更换提示词时，引擎空闲期间会预先载入文本编码器，只载入空闲显存和内存放得下的部分，新任务开始即停止。",
+      "速度：引擎启动后，按空闲内存的允许范围预先读入第一次请求要用的模型文件：以相同提示词和图片反复生成为主时读视频模型，其余情况读文本编码器。新请求到来或队列忙碌时停止读取，空闲内存较少的机器读得更少。",
+      "安装：“修复”现在会重新安装文件缺失或被截短的 Python 包（例如 numpy 的某个库文件丢失）；此前包已是所需版本时，这类问题安装流程检测不到。修复审阅页会把它们计入下载量。请求前的硬件检测因此类包无法加载而失败时，失败信息会点名缺失的文件并提供“修复”。",
+      "Windows：内存较小的机器生成长视频时，第二遍因系统内存不足中断后，会保留已完成的第一遍，改在新进程里重试，可以继续完成，而不是整次失败。",
+      "教程：教程书补充了 0.4.25 和 0.4.26 新增功能的说明，并新增“替换人物”一章和对应的导览卡。中文教程书中，八个字以内的带引号界面名称以及数字与单位，不再被拆在两行。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.27",
+      "en": {
+        "summary": "The Agent can make music for a project, an update started during a generation waits for it to finish, and a preview can keep the guide clip's sound.",
+        "changes": [
+          "Agent: a new music tool makes a soundtrack for a project and places it on an audio track. The music model is downloaded on first use (about 20 GB); cards with little video memory use a built-in 8-bit form. If two attempts fail, the Agent synthesizes the music itself.",
+          "Updates: when \"Update now\" is pressed while a video is generating, the page shows a waiting screen instead of a failure card, and the update starts when the job ends. The wait also covers a job on a server that another program started.",
+          "Audio: a kept original audio track is written as lossless audio that browsers can play. A preview made with a guide clip keeps the clip's sound when that was requested.",
+          "Long videos: when seams cannot be joined, the notes name the seams that failed first, with the step and the format. The how-to for a long video points to \"Extend\" below the finished video.",
+          "Phone access: the password page is shown in Chinese when the browser's preferred language is Chinese.",
+          "Speed: the encoded text of a prompt is kept per encoder file and prompt, so a repeated prompt starts sooner.",
+          "Precompile: the status keeps the order of its writes, stopping responds quickly, and the diagnostic report includes the status.",
+          "Decoding and reports: a CUDA error while decoding after sampling has finished no longer fails the video; the saved result is decoded once more in a fresh process. A process that keeps running after a CUDA error is ended, so the failure is reported instead of waiting. Diagnostic reports record the polling of Agent generations.",
+          "Errors: a refused offline package says why, and a slow ComfyUI page is no longer blamed on the browser.",
+          "Install: on Windows the portable Git is used when the installed Git cannot load libcurl, and the Windows certificate store is used for HTTPS checks, skipping a certificate that cannot be read. A rejected token or address stays explained under its field until it is accepted.",
+          "Linux: on Arch, the setup names the pacman command for missing basic tools.",
+          "Mac: after two Metal command buffer failures during sampling, a third attempt runs with Torch attention."
+        ]
+      },
+      "zh": {
+        "summary": "Agent 可以为作品制作配乐；生成中点击更新会等任务结束后再更新；预览也可以保留引导片段的声音。",
+        "changes": [
+          "Agent：新增配乐工具，为作品制作配乐并放到一条音频轨上。配乐模型首次使用时下载（约 20 GB）；显存较小的显卡使用内置的 8 位形式。两次尝试都失败时，由 Agent 自己合成。",
+          "更新：有视频正在生成时点击“立即更新”，页面显示等待画面，不再出现失败卡片，任务结束后开始更新。由其他程序启动的服务上的任务也会等待。",
+          "音频：保留的原始音轨以浏览器可播放的无损音频写入。使用引导片段的预览在要求保留时，也保留该片段的声音。",
+          "长视频：接缝无法衔接时，说明先列出失败的接缝及其步骤和格式。长视频的使用指引改为指向成片下方的“接着生成”。",
+          "手机访问：浏览器的首选语言为中文时，密码页显示中文。",
+          "速度：提示词的文本编码结果按编码器文件和提示词保存，重复使用同一提示词时更快开始。",
+          "预编译：状态按写入顺序保存，停止时响应更快，诊断报告包含该状态。",
+          "解码与诊断报告：采样完成后解码时出现 CUDA 错误，不再整条失败，已保存的结果会在新进程中重新解码一次；出现 CUDA 错误后仍不退出的进程会被结束，直接报告失败，不再一直等待。诊断报告记录 Agent 生成任务的轮询情况。",
+          "错误提示：离线包被拒绝时说明原因；ComfyUI 页面加载较慢时不再归咎于浏览器。",
+          "安装：Windows 上已安装的 Git 无法载入 libcurl 时改用便携版 Git；HTTPS 检查使用 Windows 证书库，遇到无法读取的证书时跳过。令牌或地址被拒绝后，说明一直显示在对应输入框下，直到输入被接受。",
+          "Linux：在 Arch 上缺少基础工具时，安装脚本给出对应的 pacman 命令。",
+          "Mac：采样时连续两次 Metal 命令缓冲区失败后，用 Torch 注意力再试第三次。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.26",
       "en": {
@@ -195,39 +222,6 @@
         "changes": [
           "Agent 图片：图片任务可以指定一张场景图和一至三个人物（角色卡或图片），并设定位置、人物高度、全身或半身景别和朝向。图片以场景为第一参考图生成，不再拼贴粘图，结果可直接作首帧。",
           "页面检查：ComfyUI 的调暗或点击遮罩（首次启动的模板对话框、帮助面板等）盖在 FreeVideo 工具栏上时，不再报告工具栏被遮挡；诊断详情会写出遮挡工具栏的元素。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.20",
-      "en": {
-        "summary": "One continuous shot can now be split into up to 8 parts; generated pictures can be downloaded directly and the path of a video can be copied.",
-        "changes": [
-          "Long videos: one continuous shot can now be split into up to 8 parts instead of 5. The line below the duration in the creation panel states that each run makes one continuous shot and points to Edit or Autopilot for a storyboard; a length that needs more parts than allowed is stopped before it is submitted, and a refusal at submission is shown as a plain notice instead of an unknown error.",
-          "Reference video: fixed generation failing when a reference video is combined with a non-default upscale factor such as 1.5x.",
-          "Pictures and videos: picture cards in the Autopilot chat and the enlarged picture view have a Download button; results in the library and the creation panel have Copy path.",
-          "The desktop notification for a finished generation is now on by default: permission is requested once, the first time Generate is clicked; it stays off for anyone who has turned it off.",
-          "Edit: while the generation service has not answered, the generation bar stays visible with Generate dimmed; when the automatic checks get no answer, the status line shows \"Generation unavailable\" with a retry link, which checks again when clicked.",
-          "The edits, imports, characters, Agent conversations and Agent jobs lists now end with a line such as \"N edits could not be read\" when some records cannot be read.",
-          "Windows graphics cards with 8 to 12 GB of video memory: the first pass of FP8 two-pass videos on RTX 40 and 50 series cards, and the second pass of int8 videos longer than 10 seconds on 12 GB cards, now run attention 8 heads at a time instead of 4, within the planned memory budget. LoRA, Linux and Mac are unchanged. The same seed can give a slightly different video.",
-          "Retry after one-time errors: a second pass that stops with a one-time CUDA error resumes once from the finished first pass instead of failing or repeating it; on a Mac, a pass that stops with a Metal command-buffer error is retried once with smaller memory partitions. Failure reports name the machine, settings and retry result, and report ids stay retrievable after the service restarts.",
-          "Decoding the same request with the same seed now writes identical pixels every time. Compared with earlier versions, the same seed can give slightly different pixels.",
-          "The card shown for an unsupported graphics card now names the detected card and its compute capability, and states that FreeVideo needs compute capability 8.0 or higher (GeForce RTX 30 series or newer) regardless of VRAM. Error text no longer replaces a slash inside a sentence with a path placeholder."
-        ]
-      },
-      "zh": {
-        "summary": "一个连续镜头最多可分 8 段；生成的图片可以直接下载，作品可以复制路径。",
-        "changes": [
-          "长视频：一个连续镜头最多可分 8 段（原为 5 段）。创作面板时长下方写明每次生成一个连续镜头，有分镜剧本时可转到剪辑视图或 AI 全自动；所需段数超过上限时在提交前提示缩短时长，提交时仍被拒绝也显示为普通提示，不再显示为未知错误。",
-          "参考视频：修复参考视频配合 1.5 倍等非默认放大倍数时生成失败。",
-          "图片和作品：AI 全自动对话中的图片卡和放大查看窗增加“下载”；作品库和创作面板的结果按钮增加“复制路径”。",
-          "生成完成的桌面通知改为默认开启：第一次点生成时请求一次通知权限；已经关闭通知的保持关闭。",
-          "剪辑视图：生成服务暂时没有回答时，生成栏不再被藏起，“生成”按钮置灰；几次自动检查都没有回答时，状态行显示“生成服务暂不可用 · 重试”，点击后重新检查。",
-          "剪辑、已导入、角色、Agent 对话和 Agent 任务列表中有记录无法读取时，列表末尾写明“另有 N 个……无法读取”。",
-          "Windows 上显存 8–12 GB 的显卡：RTX 40 和 50 系列 FP8 两遍视频的第一遍，以及 12 GB 显卡上超过 10 秒的 int8 视频的第二遍，每次计算的注意力头由 4 个增加到 8 个，显存占用保持在计划预算内。LoRA、Linux 和 Mac 不变。同一个种子生成的视频可能略有不同。",
-          "一次性错误自动重试：第二遍遇到一次性的 CUDA 错误时，自动从已完成的第一遍续跑一次，不再整个请求失败或重做第一遍；Mac 上采样阶段遇到 Metal 命令缓冲区错误时，会用更小的内存分块重试一次。失败报告写明机器、设置和重试结果，报告编号在服务重启后仍可取回。",
-          "同一请求、同一种子，解码出的画面每次逐位一致。与之前的版本相比，同一种子的画面可能有细微差别。",
-          "不受支持的显卡的提示卡现在写出检测到的显卡和计算能力，并说明 FreeVideo 需要计算能力 8.0 及以上的显卡（GeForce RTX 30 系列及更新），与显存大小无关。错误文字中句子里的斜杠不再被替换成路径占位符。"
         ]
       }
     }

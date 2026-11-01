@@ -61,4 +61,6 @@ async def comfy_entrypoint():
         logging.warning('[FreeVideo] Agent routes not registered: %s', error)
     from .freevideo_engine.comfy_nodes import FreeVideoExtension, register_prompt_cleanup
     register_prompt_cleanup()
+    from .freevideo_engine.comfy_nodes import schedule_startup_prefetch
+    schedule_startup_prefetch()
     return FreeVideoExtension()

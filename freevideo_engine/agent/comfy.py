@@ -322,7 +322,11 @@ class ComfyPort:
     # Local image generation ----------------------------------------------------------------------------
     def _image(self):
         from ..image_gen.service import get_service
-        return get_service(self.server)
+        service = get_service(self.server)
+        if (service is not None and getattr(service, 'folders', None) is None
+                and getattr(self, 'folders', None) is not None):
+            service.folders = self.folders
+        return service
 
     @property
     def image(self):

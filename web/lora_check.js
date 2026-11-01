@@ -43,7 +43,7 @@ export function feedbackDraft(name, verdict, described, t = (en) => en) {
 }
 
 /** Verdicts by name. Refresh also checks the currently installed model; failures say nothing. */
-export function createVerdicts(fetchApi) {
+export function createVerdicts(fetchApi, {kind = null} = {}) {
     let known = new Map(), pending = new Map();
     return {
         peek: name => known.get(name),
@@ -53,7 +53,7 @@ export function createVerdicts(fetchApi) {
             if (!pending.has(name)) {
                 const mine = pending, request = (async () => {
                     try {
-                        const response = await fetchApi('/freevideo/lora/check?' + new URLSearchParams({name}), {cache: 'no-store'});
+                        const response = await fetchApi('/freevideo/lora/check?' + new URLSearchParams(kind ? {name, kind} : {name}), {cache: 'no-store'});
                         const verdict = response.ok ? await response.json() : null;
                         if (mine !== pending) return null;
                         if (verdict && typeof verdict.usable === 'boolean') known.set(name, verdict);
