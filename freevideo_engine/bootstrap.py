@@ -158,7 +158,7 @@ def reinstall_download_bytes(dependencies, system, *, root=None, frontend_python
     Windows wheel (torch_download), elsewhere the package's installed size, an
     upper bound for its wheel. Marks each engine environment's damaged packages."""
     from .environments import ENVIRONMENTS
-    from .runtime_libraries import damaged, incomplete, installed_bytes
+    from .runtime_libraries import damaged, incomplete, installed_bytes, missing_packages
     from .torch_download import select
     total = 0
     seen = set()
@@ -173,6 +173,9 @@ def reinstall_download_bytes(dependencies, system, *, root=None, frontend_python
         row['damaged'] = broken = damaged(row['python'])
         if frontend:
             broken = sorted(set(broken + incomplete(row['python'])))
+        else:
+            # Setup puts back pinned packages whose files are gone (Setup.repairing).
+            broken = sorted(set(broken + missing_packages(row['python'], constraints_file(name, system))))
         pins = ENVIRONMENTS.get(name, {})
         wheels = {w['package']: w for w in (select(pins['torch'], pins['cuda']) or [])} if system == 'Windows' and pins else {}
         for package in broken:
@@ -1628,10 +1631,11 @@ class Installer:
                     if install(uv, executable, role['torch'], role['cuda'], root=self.root,
                                networking=self.network, env=self.env, ui=self.ui,
                                run=lambda args, env: self.command(label + '-torch', args, env=env),
-                               constraints=['-c', constraints_file(label, self.system)], check=check):
+                               constraints=['-c', constraints_file(label, self.system)], check=check,
+                               reinstall=self.missing_files(executable, label, gpu=True, wheels=role)):
                         return
                 from .runtime_libraries import damaged, reinstall_arguments
-                fresh = self.check_runtime_libraries(executable, label)
+                fresh = sorted(set(self.check_runtime_libraries(executable, label)) | set(self.missing_files(executable, label, gpu=True)))
                 result = self.packages(label + '-torch', [*argv[:5], *reinstall_arguments(fresh), *argv[5:]], group)
                 # Files linked from a changed uv cache arrive with a new environment.
                 if not fresh:
@@ -1647,7 +1651,8 @@ class Installer:
                    '-c', constraints_file(name, self.system), 'pip', 'ninja', 'packaging', 'wheel', 'setuptools']
         if self.layout == 'unified':
             command += ['-r', SOURCE / 'constraints/encoder-runtime.txt']
-        task('runtime', lambda: self.packages(name + '-packages', command), (name + '-torch',), ('environment:' + name,))
+        task('runtime', lambda: self.packages(name + '-packages', self.repairing(command, python, name)),
+             (name + '-torch',), ('environment:' + name,))
         # Enqueue downloads as soon as their SDKs exist, before waiting for
         # source setup, encoder checks or acceleration compilation.
         task('models', lambda: self.command('models', [python, '-m', 'freevideo_engine.provision',
@@ -1657,8 +1662,9 @@ class Installer:
         encoder_after = 'runtime'
         if self.layout == 'dual':
             def encoder_packages():
-                self.packages('encoder-packages', [uv, 'pip', 'install', '--python', encoder_python,
-                    '-r', SOURCE / 'constraints/encoder-runtime.txt', '-c', constraints_file('encoder', self.system)])
+                self.packages('encoder-packages', self.repairing([uv, 'pip', 'install', '--python', encoder_python,
+                    '-r', SOURCE / 'constraints/encoder-runtime.txt', '-c', constraints_file('encoder', self.system)],
+                    encoder_python, 'encoder'))
                 self.packages('encoder-engine', [uv, 'pip', 'install', '--python', encoder_python, '--no-deps', '-e', SOURCE])
             task('encoder-runtime', encoder_packages, ('encoder-torch',), ('environment:encoder',))
             encoder_after = 'encoder-runtime'
@@ -1689,6 +1695,33 @@ class Installer:
             task('package-cache', lambda: self.release_package_cache(uv), prerequisites)
             tasks['models']['after'] = ('package-cache',)
         return tasks, pythons, comfy
+
+    def missing_files(self, python, role, *, gpu=None, wheels=None):
+        """Pinned packages of an environment whose files are gone (runtime_libraries.package_files).
+
+        gpu=True keeps the PyTorch family, which is installed from the GPU wheels (and only
+        those of `wheels`, an environment's spec, when given); gpu=False keeps the rest."""
+        from .runtime_libraries import gpu_family, missing_packages, normalize_name
+        try:
+            names = missing_packages(python, constraints_file(role, self.system))
+        except ValueError:
+            return []
+        if gpu is not None:
+            names = [name for name in names if gpu_family(name) == gpu]
+        if wheels is not None:
+            from .torch_download import select
+            catalog = {normalize_name(row['package']) for row in select(wheels['torch'], wheels['cuda']) or []}
+            names = [name for name in names if normalize_name(name) in catalog]
+        return names
+
+    def repairing(self, argv, python, role):
+        """An install command that also replaces the pinned packages whose files are gone.
+
+        Installing the pinned version again does nothing when uv finds it installed,
+        whatever state its files are in. The PyTorch family is replaced in its own step."""
+        from .runtime_libraries import reinstall_arguments
+        names = self.missing_files(python, role, gpu=False)
+        return [*argv[:5], *reinstall_arguments(names), *argv[5:]] if names else argv
 
     def check_runtime_libraries(self, python, role):
         from .runtime_libraries import damaged
