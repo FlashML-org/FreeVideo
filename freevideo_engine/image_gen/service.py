@@ -16,7 +16,7 @@ import threading
 import time
 import uuid
 
-from . import image_pack
+from . import image_pack, keep
 from ..download_settings import observed_speed
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
@@ -135,6 +135,7 @@ class Service:
         self.worker_restarts = 0
         self.worker_started = False
         self.queued = None
+        self.habit_root = None
         self.queue_thread = None
         self.queue_wake = threading.Event()
         self.finished = OrderedDict()
@@ -882,6 +883,7 @@ class Service:
     def work(self, root, machine):
         from ..locking import runtime_lock
         from .. import processes, resident_process
+        self.habit_root = root
         session = None
         failure = 'worker_exit'
         failure_error = None
@@ -1082,6 +1084,11 @@ class Service:
     def infer(self, session, value):
         context = self.context or Context('generate', value)
         heard = False
+        habit = keep.path(self.habit_root)
+        if 'keep_seconds' not in value:
+            keep.note('image', habit)
+        # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
+        value['keep_seconds'] = keep.keep_seconds(habit)
         try:
             session.send(action='generate', **value)
         except OSError:

@@ -76,6 +76,16 @@ def release_native(server, *, timeout=10.):
                 reserved_after_bytes=int(torch.cuda.memory_reserved(device)))
 
 
+def release_image_worker():
+    """Let an idle image worker give back the card; one that is making a picture is left alone."""
+    try:
+        from server import PromptServer
+        from .image_gen.service import release_idle_worker
+        release_idle_worker(PromptServer.instance)
+    except Exception:
+        pass  # Native models must load whether or not the image option is installed.
+
+
 def install(memory):
     if getattr(memory.free_memory, '_freevideo_resident_cooperation', False) is True:
         return
@@ -90,6 +100,8 @@ def install(memory):
                 OWNER.process is not None and OWNER.process.poll() is None):
             if device is None or memory_required > memory.get_free_memory(device):
                 OWNER.release('comfy_model')
+        if device is None or memory_required > memory.get_free_memory(device):
+            release_image_worker()
         return original(memory_required, device, *args, **kwargs)
 
     free_memory._freevideo_resident_cooperation = True

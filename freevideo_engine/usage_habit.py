@@ -4,6 +4,9 @@ Nothing derived from a prompt, image or seed is stored. A transition between
 two successive successful videos is one of three kinds of change, and the file
 keeps the last three transitions (the four-request window) plus running counts.
 A file that is missing, unreadable or malformed counts as no habit at all.
+
+The same file keeps the last OPS_STORED operations ('image' or 'video') under "ops", which the image
+worker reads to decide how long to stay on the card. Reading and saving the habit leave them as they are.
 """
 import json
 import os
@@ -11,14 +14,18 @@ from pathlib import Path
 
 WINDOW = 4
 KINDS = ('images', 'prompt', 'rerun')
+OPS = ('image', 'video')
+OPS_STORED = 8
 
 
-def path():
+def path(root=None):
     override = os.environ.get('FREEVIDEO_USAGE_HABIT')
     if override:
         return Path(override)
-    from .system import install_root
-    return install_root() / '.freevideo' / 'usage-habit.json'
+    if root is None:
+        from .system import install_root
+        root = install_root()
+    return Path(root) / '.freevideo' / 'usage-habit.json'
 
 
 def transition(previous, current):
@@ -64,20 +71,46 @@ def load(file=None):
                 or not isinstance(counts, dict)
                 or any(type(counts.get(name)) is not int or counts[name] < 0 for name in (*KINDS, 'requests'))):
             return None
+        ops = value.get('ops', [])
+        if not isinstance(ops, list) or len(ops) > OPS_STORED or any(kind not in OPS for kind in ops):
+            ops = []
         return dict(version=1, window=WINDOW, recent=[list(kinds) for kinds in recent],
-                    counts={name: counts[name] for name in (*KINDS, 'requests')})
+                    counts={name: counts[name] for name in (*KINDS, 'requests')}, ops=list(ops))
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def empty():
+    return dict(version=1, window=WINDOW, recent=[], counts=dict.fromkeys((*KINDS, 'requests'), 0), ops=[])
 
 
 def record(kinds, file=None):
     """Append one transition (None for the first request after a restart) and save."""
     from .monitoring import save
-    value = load(file) or dict(version=1, window=WINDOW, recent=[], counts=dict.fromkeys((*KINDS, 'requests'), 0))
+    value = load(file) or empty()
     value['counts']['requests'] += 1
     if kinds is not None:
         value['recent'] = (value['recent'] + [list(kinds)])[-(WINDOW - 1):]
         for kind in kinds:
             value['counts'][kind] += 1
-    save(Path(file or path()), value)
+    save(Path(file or path()), value if value['ops'] else {name: item for name, item in value.items() if name != 'ops'})
     return value
+
+
+def ops(file=None):
+    """The last operations ('image' or 'video'), oldest first; empty when nothing can be trusted."""
+    value = load(file)
+    return value['ops'] if value else []
+
+
+def note_op(kind, file=None):
+    """Remember one operation next to the habit. Only the kind is stored, nothing from the request."""
+    if kind not in OPS:
+        raise ValueError(kind)
+    from .monitoring import save
+    value = load(file) or empty()
+    value['ops'] = (value['ops'] + [kind])[-OPS_STORED:]
+    try:
+        save(Path(file or path()), value)
+    except OSError:
+        pass  # A habit that cannot be saved is only forgotten at restart.

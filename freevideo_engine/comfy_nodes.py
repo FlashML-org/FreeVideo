@@ -258,6 +258,11 @@ class FreeVideoGenerate(io.ComfyNode):
             stop_music_for_generation(PromptServer.instance)
         except Exception as error:
             logging.warning('[FreeVideo] Could not stop music before the video: %s', error)
+        try:   # the picture worker keeps the card longer only for people who mostly make pictures
+            from .image_gen.keep import note, path
+            note('video', path(comfy_bridge.installation_root()))
+        except Exception as error:
+            logging.warning('[FreeVideo] Could not record the video for the picture worker: %s', error)
         prewarm = {}
         result_reused = [False]
         result_report = [None]

@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 
+from . import keep
 from .failure import Context, classify_exception, exception_details, host_memory_shortage, safe_plan
 
 
@@ -71,6 +72,35 @@ def _flatten(image):
     return image.convert('RGB')
 
 
+def next_request(inbox, wait, crowding=None):
+    """The next row, or None when the pipe closed, `wait` seconds passed, or the card is crowded.
+
+    Without `crowding` this is one blocking read, as for an ordinary idle wait."""
+    if crowding is None:
+        try:
+            return inbox.rows.get(timeout=wait)
+        except queue.Empty:
+            return None
+    deadline = time.monotonic() + wait
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            return inbox.rows.get(timeout=min(remaining, keep.POLL_SECONDS))
+        except queue.Empty:
+            if crowding:
+                return None
+
+
+def hold(runner):
+    """Start the long idle wait: hand back the allocator's cached memory, then watch the card."""
+    torch = sys.modules.get('torch')
+    if torch is not None:
+        torch.cuda.empty_cache()
+    return keep.Crowding(lambda: keep.card_free_bytes(runner.device))
+
+
 def load_runner(pack_dir, device, *, progress=None):
     # Importing this module in ComfyUI or in CPU protocol tests never loads torch.
     from .image_runner import ImageRunner
@@ -92,12 +122,10 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
     runner = None
     back_detector = None
     back_detector_loaded = False
+    wait, crowding = idle_seconds, None
     try:
         while not inbox.closed.is_set():
-            try:
-                value = inbox.rows.get(timeout=idle_seconds)
-            except queue.Empty:
-                break
+            value = next_request(inbox, wait, crowding)
             if value is None or inbox.closed.is_set():
                 break
             started = time.monotonic()
@@ -195,6 +223,16 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     inbox.busy = False
                     if result is not None:
                         send(**result)
+            wait, crowding = idle_seconds, None
+            if result is not None and result.get('phase') == 'result' and runner is not None:
+                wait = keep.wait_seconds(value.get('keep_seconds'), runner, idle_seconds)
+                if wait > idle_seconds:
+                    try:
+                        crowding = hold(runner)
+                    except Exception as error:
+                        # The picture is already sent; a hold that cannot start is the normal short wait.
+                        print('image worker hold failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
+                        wait = idle_seconds
     finally:
         inbox.closed.set()
         inbox.cancel.set()
