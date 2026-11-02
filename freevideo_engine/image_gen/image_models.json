@@ -661,6 +661,29 @@
             "url": "https://www.modelscope.cn/models/ACE-Step/Ace-Step1.5/resolve/dd20ee00556360ae895e308efe9d11daf08fe9d2/vae/diffusion_pytorch_model.safetensors"
           }
         ]
+      },
+      {
+        "file": "music/silero-vad/model.onnx",
+        "component": "music",
+        "bytes": 2243022,
+        "sha256": "a4a068cd6cf1ea8355b84327595838ca748ec29a25bc91fc82e6c299ccdc5808",
+        "repo": "onnx-community/silero-vad",
+        "revision": "e71cae966052b992a7eca6b17738916ce0eca4ec",
+        "model_id": "silero-vad",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/onnx-community/silero-vad/resolve/e71cae966052b992a7eca6b17738916ce0eca4ec/onnx/model.onnx"
+          },
+          {
+            "id": "hf-mirror",
+            "url": "https://hf-mirror.com/onnx-community/silero-vad/resolve/e71cae966052b992a7eca6b17738916ce0eca4ec/onnx/model.onnx"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/onnx-community/silero-vad/resolve/2f080fcc38651e65b738157ad84c3c980beb08cc/onnx/model.onnx"
+          }
+        ]
       }
     ]
   }

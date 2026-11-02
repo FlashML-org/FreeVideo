@@ -16,6 +16,18 @@ export function audioClipFields(raw, kind) {
         if (typeof raw.detached_from !== 'string' || !/^c[1-9]\d{0,8}$/.test(raw.detached_from) || raw.detached_from === raw.id || raw.link) fail('link');
         fields.detached_from = raw.detached_from;
     }
+    // A music piece's preset (what it was made with, prefilled when it is made again) and whether it is
+    // lowered while the first sound track is heard.
+    if (raw.music !== undefined) {
+        const value = raw.music;
+        if (kind !== 'audio' || !value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join() !== 'mood,style'
+            || ![value.style, value.mood].every(name => typeof name === 'string' && /^[a-z]{1,20}$/.test(name))) fail('audio');
+        fields.music = {style: value.style, mood: value.mood};
+    }
+    if (raw.duck !== undefined) {
+        if (kind !== 'audio' || typeof raw.duck !== 'boolean') fail('audio');
+        fields.duck = raw.duck;
+    }
     return fields;
 }
 export function audioTrackFields(raw) {
@@ -94,6 +106,19 @@ export function setFades(record, ids, name, frames) {
         if (trackOf(next, id).kind !== 'audio' || !clip.source) fail('audio');
         const value = Math.min(cap, frames);
         if (value) clip[name] = value; else delete clip[name];
+    }
+    return model.parse(next);
+}
+// Lower during speech is a property of generated music only.
+export const duckable = clip => !!clip?.music && !!clip.source;
+export function setDuck(record, ids, on) {
+    if (typeof on !== 'boolean' || !ids.length) fail('audio');
+    editable(record, ids);
+    const next = model.serialize(record);
+    for (const id of ids) {
+        const clip = model.find(next, id);
+        if (trackOf(next, id)?.kind !== 'audio' || !duckable(clip)) fail('audio');
+        clip.duck = on;
     }
     return model.parse(next);
 }
@@ -205,3 +230,49 @@ export function applyTrackAudio(block, blockStart, track, tracks, {rate = 48000,
     output.forEach((channel, index) => { for (let i = 0; i < count; i++) channel[i] += added[index][i]; });
     return output;
 }
+// Lower during speech: a clip with duck true sits DUCK_DB lower wherever another audible clip has speech,
+// with DUCK_RAMP_SECONDS ramps just outside each stretch. freevideo_engine/editor_audio.py has the same rules.
+export const DUCK_DB = -8, DUCK_RAMP_SECONDS = .3;
+const changedSpeed = clip => (clip.speed ?? 1) !== 1 || !!clip.reverse;
+// spans: Map or object of 'kind:id' → [[start, end] seconds]; ranges are timeline samples [first, last).
+export function duckRanges(tracks, spans, rate = 48000, fps = 24) {
+    const found = [], lookup = key => (spans instanceof Map ? spans.get(key) : spans?.[key]) || [];
+    for (const track of tracks) {
+        if (track.kind !== 'audio' || !trackAudible(track, tracks)) continue;
+        for (const clip of track.clips) {
+            if (!clip.source || clip.duck || (clip.volume ?? 1) === 0 || !clipAudible(clip, track, tracks)) continue;
+            const first = samples(clip.start, rate, fps), last = samples(end(clip), rate, fps);
+            const origin = changedSpeed(clip) || clip.speed_phase ? (clip.in * 2000 + (clip.speed_phase || 0) * 20) * rate / 48000 : sourceStart(clip, rate, fps);
+            const speed = changedSpeed(clip) ? (clip.speed ?? 1) : 1;
+            for (const [begin, stop] of lookup(`${clip.source.kind}:${clip.source.id}`)) {
+                let a = (begin * rate - origin) / speed, b = (stop * rate - origin) / speed;
+                if (clip.reverse) [a, b] = [(last - first) - b, (last - first) - a];
+                a = Math.max(first, Math.floor(first + a + .5)); b = Math.min(last, Math.floor(first + b + .5));
+                if (b > a) found.push([a, b]);
+            }
+        }
+    }
+    found.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const gap = 2 * Math.max(1, Math.floor(DUCK_RAMP_SECONDS * rate + .5)), joined = [];
+    for (const [a, b] of found) {
+        if (joined.length && a <= joined.at(-1)[1] + gap) joined.at(-1)[1] = Math.max(joined.at(-1)[1], b);
+        else joined.push([a, b]);
+    }
+    return joined;
+}
+export function duckGain(ranges, blockStart, count, rate = 48000) {
+    const gain = new Float64Array(count).fill(1), ramp = Math.max(1, Math.floor(DUCK_RAMP_SECONDS * rate + .5)), low = 10 ** (DUCK_DB / 20);
+    for (const [first, last] of ranges) {
+        if (last + ramp <= blockStart || first - ramp >= blockStart + count) continue;
+        for (let i = 0; i < count; i++) {
+            const position = blockStart + i;
+            const into = Math.max(0, Math.min(1, (position - (first - ramp)) / ramp)), outOf = Math.max(0, Math.min(1, ((last + ramp) - position) / ramp));
+            gain[i] = Math.min(gain[i], 1 - (1 - low) * Math.min(into, outOf));
+        }
+    }
+    return gain;
+}
+// The lowered clips' sources need speech spans from the clips they sit under.
+export const duckSources = tracks => tracks.some(track => track.clips.some(clip => clip.duck && clip.source))
+    ? [...new Set(tracks.filter(track => track.kind === 'audio').flatMap(track => track.clips)
+        .filter(clip => clip.source && !clip.duck).map(clip => `${clip.source.kind}:${clip.source.id}`))] : [];

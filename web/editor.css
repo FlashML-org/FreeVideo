@@ -84,6 +84,14 @@
 .fv-editor .fv-ed-gen-retry:disabled{color:var(--fv-muted);cursor:default}
 .fv-ed-genbar .fv-request-assets{order:-2;flex:1 1 100%;min-width:0;font-size:12px;line-height:1.5}
 .fv-ed-genbar .fv-request-assets[hidden]{display:none}
+/* A stretch of the music track: a style row and a mood row above the description. */
+.fv-ed-genbar.fv-ed-genbar-music{flex-wrap:wrap}
+.fv-ed-music-presets{order:-1;flex:1 1 100%;display:flex;flex-direction:column;gap:6px;min-width:0}
+.fv-ed-music-presets[hidden]{display:none}
+.fv-ed-music-row{display:flex;align-items:center;gap:8px;min-width:0}
+.fv-ed-music-label{flex:none;min-width:2.5em;font-size:13px;color:var(--fv-muted)}
+.fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented{width:auto;flex:0 1 auto;min-width:0;flex-wrap:wrap}
+.fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented button{flex:none}
 .fv-editor:has(.fv-ed-gen-failure:not([hidden])){--fv-ed-generation-row:max-content}
 .fv-ed-genbar:has(.fv-ed-gen-failure:not([hidden])){flex-wrap:wrap;padding-top:10px;padding-bottom:10px}
 .fv-editor .fv-ed-gen-failure{display:block;flex:1 0 100%;min-width:0}

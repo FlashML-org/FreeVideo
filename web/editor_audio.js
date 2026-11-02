@@ -1,5 +1,5 @@
 import * as model from './editor_model.js';
-import {row, slider, number, disabledReason} from './editor_adjust.js';
+import {row, slider, number, toggle, disabledReason} from './editor_adjust.js';
 import * as sound from './editor_audio_model.js';
 import * as rules from './editor_audio_rules.js';
 import {replaceMode, attachReplacePicker} from './editor_audio_replace.js';
@@ -127,6 +127,11 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         onChange: gain => { const ids = selectedAudio(state).map(clip => clip.id); editingVolume = false;
             apply(t('Volume', '音量'), record => ids.reduce((next, id) => model.setVolume(next, id, gain / 100), record)); },
     });
+    // Generated music only: lowered while someone speaks in the other sound. On by default.
+    const duck = toggle(t('Lower during speech', '对白时降低音量'), {
+        onChange: on => apply(t('Lower during speech', '对白时降低音量'), record => sound.setDuck(record, selectedAudio(state).filter(sound.duckable).map(clip => clip.id), on)),
+    });
+    duck.classList.add('fv-ed-audio-duck'); form.append(duck); controls.push(duck);
     const fadeIn = input(form, 'fade-in', t('Fade in', '淡入'), 0, 5, 1 / 24, 'number', {
         onChange: seconds => apply(t('Fade in', '淡入'), record => sound.setFades(record, selectedAudio(state).map(clip => clip.id), 'fade_in', Math.round(seconds * 24))),
     });
@@ -177,6 +182,9 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         const locked = selected.some(clip => sound.trackOf(state.record, clip.id).locked);
         const reason = disabledReason(ctx, {needs: 'audio'}) || (locked ? t('This track is locked', '这条轨道已锁定') : '');
         for (const field of [volume, fadeIn, fadeOut]) { field.disabled = !!reason; field.title = ''; field.input.title = ''; }
+        const music = clips.filter(sound.duckable);
+        duck.hidden = !music.length || music.length !== clips.length; duck.disabled = !!reason;
+        if (!duck.hidden) { duck.value = music.every(clip => !!clip.duck); duck.input.indeterminate = music.some(clip => !!clip.duck) && !duck.value; }
         if (!editingVolume) {
             const gains = clips.map(clip => Math.round((clip.volume ?? 1) * 100)), mixed = gains.length > 1 && gains.some(gain => gain !== gains[0]);
             volume.value = mixed ? 100 : gains[0] ?? 100; setMixed(volume, mixed);
@@ -314,10 +322,27 @@ export function attachAudioTracks(element, {state, t = en => en, actions = {}}) 
 
 // A decoded, bounded look-ahead path gives the sample envelope to Web Audio.
 // The unchanged media path remains active for records without audio edits.
-export function createAudioPreview({state, sources, api, volumePreview = new Map(), readSamples = null, error = () => {}}) {
+// Speech spans per source for "Lower during speech": asked once, polled while the server works them out.
+// A source that cannot be read, or a server without the route, has no speech: nothing is lowered under it.
+export function createSpeechSpans(fetchSpans, {retry = 1000} = {}) {
+    const map = new Map(), asking = new Set(); let version = 0, disposed = false;
+    const ask = key => {
+        if (disposed || map.has(key) || asking.has(key)) return;
+        asking.add(key);
+        Promise.resolve().then(() => fetchSpans(key)).then(value => {
+            asking.delete(key); if (disposed) return;
+            if (value?.state === 'pending' || value?.reason === 'model_missing') { setTimeout(() => ask(key), value?.state === 'pending' ? retry : retry * 10); return; }
+            map.set(key, Array.isArray(value?.spans) ? value.spans : []); version++;
+        }).catch(() => { asking.delete(key); if (!disposed) { map.set(key, []); version++; } });
+    };
+    return {map, want(keys) { keys.forEach(ask); }, get version() { return version; }, dispose() { disposed = true; }};
+}
+export function createAudioPreview({state, sources, api, volumePreview = new Map(), readSamples = null, error = () => {}, speech = null}) {
     let context = null, generation = 0, timer = null, identity = null, pending = false, disposed = false;
     const cache = new Map(), nodes = new Set(); let origin = 0, cursor = 0, previousPosition = 0;
-    const edited = record => record.tracks.some(track => track.muted || track.solo || track.clips.some(clip => clip.fade_in || clip.fade_out || clip.crossfade));
+    const ducking = (record, rate = 48000) => speech && sound.duckSources(record.tracks).length ? sound.duckRanges(record.tracks, speech.map, rate) : [];
+    const edited = record => record.tracks.some(track => track.muted || track.solo || track.clips.some(clip => clip.fade_in || clip.fade_out || clip.crossfade))
+        || ducking(record).length > 0;
     function stop() { generation++; clearTimeout(timer); timer = null; pending = false; identity = null; nodes.forEach(node => { try { node.stop(); } catch {} }); nodes.clear(); }
     async function decoded(clip) {
         const metadata = sources.get(sourceKey(clip.source)), url = mediaURL(api, metadata?.audio);
@@ -343,7 +368,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
         return raw(await decoded(clip), clip, offset, count);
     }
     async function chunk(record, at, count) {
-        const rate = context.sampleRate, total = [new Float64Array(count), new Float64Array(count)];
+        const rate = context.sampleRate, total = [new Float64Array(count), new Float64Array(count)], lowered = ducking(record, rate);
         for (const track of record.tracks.filter(track => track.kind === 'audio')) {
             if (!sound.trackAudible(track, record.tracks)) continue;
             const block = [new Float64Array(count), new Float64Array(count)], extras = {};
@@ -353,6 +378,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
                 const a = Math.max(start, at), b = Math.min(stop, at + count);
                 if (b <= a) continue;
                 const data = await prepared(clip, a - start, b - a);
+                const duck = clip.duck && lowered.length ? sound.duckGain(lowered, a, b - a, rate) : null;
                 data.forEach((channel, c) => { for (let i = 0; i < channel.length; i++) {
                     const local = a - start + i, length = stop - start;
                     const prior = track.clips[track.clips.indexOf(clip) - 1], next = track.clips[track.clips.indexOf(clip) + 1];
@@ -360,6 +386,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
                     let gain = clip.volume ?? 1;
                     if (!clip.fade_in && (!prior?.source || prior.start + prior.frames !== clip.start || !prior.volume)) gain *= Math.min(1, local / (edge - 1));
                     if (!clip.fade_out && (!next?.source || next.start !== clip.start + clip.frames || !next.volume)) gain *= Math.min(1, (length - 1 - local) / (edge - 1));
+                    if (duck) gain *= duck[i];
                     block[c][a - at + i] = channel[i] * gain;
                 }});
             }
@@ -396,6 +423,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
     }
     return {
         render({record, position, playing, playbackRate = 1}) {
+            speech?.want(sound.duckSources(record.tracks));
             if (!edited(record)) { if (identity) stop(); return false; }
             if (volumePreview.size) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.map(clip => volumePreview.has(clip.id) ? {...clip, volume: volumePreview.get(clip.id)} : clip)}))};
             if (!playing) { stop(); previousPosition = position; return true; }
@@ -404,7 +432,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
                 if (identity !== unavailable) { stop(); identity = unavailable; error(new model.EditError('audio_prepare')); }
                 return true;
             }
-            const nextIdentity = JSON.stringify(record.tracks);
+            const nextIdentity = JSON.stringify(record.tracks) + `:${speech?.version ?? 0}`;
             if (identity !== nextIdentity || Math.abs(position - previousPosition) > 3) {
                 stop(); identity = nextIdentity;
                 try { context ||= new (window.AudioContext || window.webkitAudioContext)({sampleRate: 48000}); context.resume().catch(error); }
@@ -414,6 +442,6 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
             }
             previousPosition = position; return true;
         },
-        dispose() { disposed = true; stop(); cache.clear(); context?.close().catch(() => {}); },
+        dispose() { disposed = true; stop(); cache.clear(); speech?.dispose(); context?.close().catch(() => {}); },
     };
 }

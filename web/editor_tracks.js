@@ -13,6 +13,9 @@ import {attachAudioTracks} from './editor_audio.js';
 import {seconds as secondsText} from './editor_audio_notes.js';
 import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
+import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
+// A range drawn on the music track alone: music for that stretch.
+const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
 export const SOURCE_TYPE = 'application/x-freevideo-source';
 export const SNAP_DISTANCE = 8;
@@ -280,11 +283,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     }
     // A range cannot be drawn longer than one video may be; `fromEnd` keeps its end where it is.
     function capRange(selection, fromEnd = false, continues = false) {
-        const most = model.maxRangeFrames(state.record, {...actions.generationLimits?.(), continues});
+        const most = musicRange(selection) ? MAX_MUSIC_FRAMES : model.maxRangeFrames(state.record, {...actions.generationLimits?.(), continues});
         if (selection.frames <= most) return selection;
         return fromEnd ? {...selection, start: selection.start + selection.frames - most, frames: most} : {...selection, frames: most};
     }
     function rangeParts(selection, record = state.record) {
+        // A stretch of the music track is one piece, never split into video parts.
+        if (musicRange(selection)) return [selection.frames];
         return model.rangeParts(record, {...selection, ...actions.generationLimits?.()});
     }
     function boundaryLine(frame, index) {
@@ -806,7 +811,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const aligned = snap(frame, points, state.zoom);
             // Where it was pressed, drawn to a clip edge, marker or the playhead nearby.
             gesture.from ??= snap(gesture.anchor, points, state.zoom).frame;
-            const drawn = rangeParameters(gesture.from, aligned.frame);
+            // Drawn on the music track, the range is that track's alone: music for that stretch.
+            const drawn = rangeParameters(gesture.from, aligned.frame, gesture.track === MUSIC_TRACK ? [MUSIC_TRACK] : undefined);
             // Drawn from a clip's end, the range starts exactly there.
             if (gesture.flush != null && aligned.frame > gesture.flush) Object.assign(drawn, {start: gesture.flush,
                 frames: Math.max(2 * model.FPS, Math.round((aligned.frame - gesture.flush) / model.FPS) * model.FPS)});

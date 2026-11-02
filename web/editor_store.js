@@ -514,6 +514,33 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         installEars: () => json('/freevideo/editor/subtitle-pack', post({action: 'install', language: true})),
         cancelEarsPack: () => json('/freevideo/editor/subtitle-pack', post({action: 'cancel'})),
         watchEarsPack(fn) { return watch(() => json('/freevideo/editor/subtitle-pack'), fn); },
+        // Music for a stretch of the sound track. {available, ready}; null where the server is older.
+        musicInfo: () => json('/freevideo/editor/music'),
+        // body: {frames, text?} or {frames, style, mood}, optional seed. Refusals keep the server's reason.
+        async startMusic(body) {
+            const response = await request('/freevideo/editor/music', post(body));
+            const value = await response.json().catch(() => null);
+            if (!response.ok) throw Object.assign(errorFor(response), {reason: value?.reason || (response.status === 404 ? 'unsupported' : 'failed')});
+            return value?.job || null;
+        },
+        // A job the server no longer knows (it was restarted) reads as failed, so the planned piece does not wait forever.
+        watchMusic(id, fn, lost) {
+            return watch(async () => (await json('/freevideo/editor/music?' + new URLSearchParams({id}), undefined, {job: {id, state: 'failed', reason: 'missing'}}))?.job || null, fn, lost);
+        },
+        cancelMusic: id => json('/freevideo/editor/music/cancel', post({id})),
+        // The music model is downloaded on first use, with the download source chosen in Settings.
+        musicPack: () => json('/freevideo/editor/music-pack'),
+        // Speech spans of one source in seconds, for "Lower during speech": {spans}, {state: 'pending'} or {spans: null, reason}.
+        speech: key => json('/freevideo/editor/speech?' + new URLSearchParams({source: key})),
+        async installMusic() {
+            const response = await request('/freevideo/editor/music-pack', post({action: 'install'}));
+            const value = await response.json().catch(() => null);
+            // 507: not enough room on the disk; the state that comes back says how much is needed.
+            if (!response.ok && response.status !== 507) throw Object.assign(errorFor(response), {reason: value?.reason || 'failed'});
+            return value;
+        },
+        cancelMusicPack: () => json('/freevideo/editor/music-pack', post({action: 'cancel'})),
+        watchMusicPack(fn) { return watch(() => json('/freevideo/editor/music-pack'), fn); },
         dispose() { disposed = true; activateProject(null).catch(() => {}); session.dispose(); for (const poller of pollers) poller.dispose(); pollers.clear(); watchers.clear();
             for (const upload of [...uploads]) { upload.release(); upload.xhr.abort(); upload.reject(new Error('editor_closed')); } },
     };

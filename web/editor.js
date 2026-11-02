@@ -21,9 +21,11 @@ import {createAdjustPicture} from './editor_adjust_picture.js';
 import {pictureSession} from './editor_picture_session.js';
 import {createPictureTools} from './editor_frame.js';
 import {openExportDialog} from './editor_export_dialog.js';
-import {createAudioIntegration, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
+import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
+import {createEditorMusic} from './editor_music.js';
+import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
 import {isolateDialogKeys, topDialog} from './dialog_keys.js';
@@ -188,8 +190,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const t = (en, zh) => String(language()).toLowerCase().startsWith('zh') ? zh : en;
     const returnFocus = document.activeElement;
     const even = value => Math.max(2, Math.floor(value / 2) * 2);
-    const initial = () => model.emptyProject({width: even(panel.width || 1344), height: even(panel.height || 768), settings: panel.settings || null,
-        name: t('Untitled edit', '未命名剪辑')});
+    // A new edit opens with an empty second sound track, where music is made.
+    const initial = () => model.addAudioTrack(model.emptyProject({width: even(panel.width || 1344), height: even(panel.height || 768), settings: panel.settings || null,
+        name: t('Untitled edit', '未命名剪辑')}));
     const state = createEditorState(initial());
     const resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
     const element = el('dialog', 'fv-studio fv-editor'); element.setAttribute('aria-label', t('Edit', '剪辑视图')); element.tabIndex = -1;
@@ -374,7 +377,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }, {onStatus: () => {
         if (!queue.dirty) { discardOnSwitch = false; saveWarning.hidden = true; }
     }});
-    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing});
+    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
     function selectionClips(selection = state.selection) {
         if (selection?.kind !== 'clip') return [];
         return state.record.tracks[0].clips.filter(clip => selection.ids.includes(clip.id) || selection.ids.includes(clip.link));
@@ -515,6 +518,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function completeSources() {
         return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); });
     }
+    // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
+    const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
+    let barValue = null;
     const exportMatches = () => exportSnapshot && exportSnapshot.id === state.record.id && exportSnapshot.revision === state.record.revision && exportSnapshot.content === content(state.record);
     function explainExport() {
         if (initializing || switching) { notify(t('Opening the edit…', '正在打开…')); return true; }
@@ -655,7 +661,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         initialSelection = offerInitial = extendEntry = null;
         projectEpoch++; held.length = 0;
         player.pause(); for (const stop of jobWatchers.values()) stop(); jobWatchers.clear(); jobStatuses.clear(); progress.clear(); runProgress.clear(); failures.clear(); progressConnection?.reset();
-        mostRecentJob = null; submissionFailure = null; genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
+        mostRecentJob = null; submissionFailure = null; music.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
         suppressSave = true; try { state.replace(record); savedContent = content(record); } finally { suppressSave = false; }
         panel.onProjectLoaded?.(record);
         const width = tracksHost.clientWidth - 148; if (width > 0) state.setZoom(model.openingZoom(width, record));
@@ -689,7 +695,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             forgetPointer();
         })); if (disposed) return;
         // A restored edit remains usable offline with its existing placeholders.
-        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs();
+        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs(); music.recover();
         state.restoreView(remembered);
         // Also when generating is confirmed only after the edit has opened.
         offerInitial = () => { if (epoch === projectEpoch && !state.selection && state.record.tracks.every(track => !track.clips.length)) selectInitial(); };
@@ -844,6 +850,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         interrupted: clip => clip.pending === 'stopped' && !clip.source && !!clip.job
             && (jobStatuses.get(clip.job)?.blocks || []).some(block => block.state === 'interrupted' && model.attemptClip(state.record, block.id)?.id === clip.id),
         selectedFailure() {
+            const tune = music.failure(); if (tune) return tune;
             const clip = state.selection?.kind === 'clip' && state.record.tracks.flatMap(track => track.clips).find(clip => state.selection.ids.includes(clip.id) && clip.pending === 'failed');
             if (clip) return {id: clip.id, text: failures.text(clip.id)};
             return submissionFailure === JSON.stringify(state.selection) ? {id: 'submission', text: failures.text('submission')} : null;
@@ -875,11 +882,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The description the box shows for a choice of planned parts, and the parts it is written to; null for
         // any other choice.
         partText(selection = state.selection) {
+            if (music.target(selection)) return music.text(selection);
             const clips = selectionClips(selection).sort((a, b) => a.start - b.start);
             return clips.length && clips.every(editablePart) ? {ids: clips.map(clip => clip.id), text: clips[0].text} : null;
         },
         describeParts(ids, text) {
             text = wellFormed(text);
+            if (ids.length === 1 && music.target({kind: 'clip', ids})) return music.describe(ids[0], text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
             try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
@@ -915,6 +924,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }},
         previewRange: selection => genbar?.preview(selection),
         async estimate(selection) {
+            if (music.target(selection)) return music.estimate(selection);
             const run = partRun(selection), range = selectionRange(run ? clipChoice(run) : selection); if (!range) return null;
             let seconds = 0;
             for (const count of model.rangeParts(state.record, {...range, ...capability})) { const value = capability.estimate(count); if (value == null) return null; seconds += value; }
@@ -1012,6 +1022,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async press(text, {allowEmpty = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
+            // A stretch of the music track, or a piece of music there: music, with or without words.
+            if (music.target()) {
+                if (characters(text) > MUSIC_TEXT_LIMIT) return {say: textLongText(t, MUSIC_TEXT_LIMIT), focus: true};
+                return music.press(text);
+            }
             let selection = state.selection, said = null;
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
@@ -1076,9 +1091,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             await actions.generate({text: texts ? texts[run[0].id] : text, texts, selection, shown, allowEmpty});
             return {text, say: [said, used, busyBefore ? t('Queued. It starts after the part now generating.', '已排队，正在生成的那段完成后自动开始。') : null].filter(Boolean).join(' ') || null, queued: busyBefore};
         },
-        selectionRunning: () => busySelection(state.selection),
+        selectionRunning: () => music.target() ? music.running() : busySelection(state.selection),
         // A choice over existing clips that Generate would move to an empty spot.
-        selectionMovable: () => !actions.supportedSelection() && !!emptySpot(state.selection),
+        selectionMovable: () => !music.target() && !actions.supportedSelection() && !!emptySpot(state.selection),
         selectionSending() { const range = selectionRange(state.selection); return !!range && ([...sendingRanges].some(other => overlaps(other, range)) || [...sending].some(id => { const clip = model.find(state.record, id); return clip && overlaps(clip, range); })); },
         selectionHeld() { const ids = selectionClips(state.selection).map(clip => clip.id); return ids.length > 0 && ids.every(isHeld); },
         // Takes the selected parts out of the line; they stay as drafts.
@@ -1088,6 +1103,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             rememberView();
         },
         async cancel() {
+            if (music.target()) { await music.cancel(); return; }
             const range = selectionRange(state.selection);
             const own = range && state.record.tracks[0].clips.find(clip => clip.job && generating(clip)
                 && clip.start < range.start + range.frames && clip.start + clip.frames > range.start)?.job;
@@ -1214,7 +1230,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
+    actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
+        styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
+    {
+        // What the editor gives the bar is the video job's; a chosen piece of music being made shows its own instead.
+        const update = genbar.update;
+        genbar.update = value => { barValue = value; update(music.barStatus() || value); };
+        state.subscribe(event => { if (event.type === 'selection' || event.type === 'record') update(music.barStatus() || barValue); });
+        music.refreshInfo();
+    }
     const adjust = adjustPanel = createAdjustPanel(adjustHost, {state, t, actions});
     const pictureEdit = pictureSession(state, t);
     const notes = createBlockNotes({state, t, actions}); actions.blockNote = notes.decorate; actions.describedTrack = describedTrack;
@@ -1315,7 +1340,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const next = content(state.record);
             if (!suppressSave && !initializing && next !== savedContent && exportStatus?.state === 'done') { exportStatus = null; exportButton.textContent = t('Export', '导出'); }
             if (!suppressSave && !initializing && next !== savedContent) { savedContent = next; queue.enqueue(state.record); }
-            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs();
+            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs(); music.recover();
         }
         if (event.type === 'selection') { if (state.selection !== initialSelection) initialSelection = null; }
         if (event.type === 'record' || event.type === 'selection') { updateTop(); updateTransport(); pictureTools.update(); }
@@ -1413,7 +1438,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // A workflow without FreeVideo nodes came to the front: the editing view makes way (unsaved edits stay open).
     const collapse = () => { void handle.close(); };
     window.addEventListener('freevideo-collapse', collapse);
-    const handle = {element, state, actions, store, adjust, audio, notify,
+    const handle = {element, state, actions, store, adjust, audio, music, notify,
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             if (await handle.close() !== false) await onView(view);
@@ -1440,7 +1465,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());
@@ -1472,8 +1497,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 record = await store.byWork(id);
                 if (!record) {
                     const key = `work:${id}`; await store.getSources([key]); const metadata = store.sources.get(key), g = work.geometry || {};
-                    record = model.emptyProject({width: even(metadata?.width || g.width || panel.width || 1344), height: even(metadata?.height || g.height || panel.height || 768),
-                        settings: panel.settings || null, name: t('Untitled edit', '未命名剪辑')});
+                    record = model.addAudioTrack(model.emptyProject({width: even(metadata?.width || g.width || panel.width || 1344), height: even(metadata?.height || g.height || panel.height || 768),
+                        settings: panel.settings || null, name: t('Untitled edit', '未命名剪辑')}));
                     record = model.insertSource(record, {source: {kind: 'work', id}, frames: metadata?.frames || g.frames || Math.round((g.seconds || 15) * 24),
                         hasVideo: true, hasAudio: metadata?.has_audio ?? work.has_audio !== false, text: metadata?.text, at: 0});
                     if (!metadata) store.cache({[key]: {video: mediaURL(api, work.video), audio: mediaURL(api, work.video), frames: g.frames,

@@ -229,7 +229,9 @@ SEGMENT_NOTICE_TEXT = (b'SAM 2.1 Hiera small, Copyright (c) Meta Platforms, Inc.
                        b'https://github.com/facebookresearch/sam2\n')
 MUSIC_NOTICE_TEXT = (b'ACE-Step 1.5, Copyright (c) 2026 ACEStep. Licensed under the MIT License; see '
                      b'freevideo_engine/licenses/ACE-Step-MIT.txt.\nhttps://github.com/ace-step/ACE-Step-1.5\n'
-                     b'Qwen3-Embedding-0.6B, Copyright (c) Alibaba Cloud. Licensed under Apache-2.0.\n')
+                     b'Qwen3-Embedding-0.6B, Copyright (c) Alibaba Cloud. Licensed under Apache-2.0.\n'
+                     b'Silero VAD, Copyright (c) 2020-present Silero Team. Licensed under the MIT License; see '
+                     b'freevideo_engine/licenses/Silero-VAD-MIT.txt.\nhttps://github.com/snakers4/silero-vad\n')
 NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
            'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT)}
 
