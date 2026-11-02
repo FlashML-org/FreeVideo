@@ -205,6 +205,11 @@ def setup_command_failure(label, log, exit_code, report=None):
     return '\n'.join(lines) + STEP_OUTPUT + output
 
 
+# uv's error for an interpreter that exists but cannot be started, as in
+# "error: Failed to run `C:\...\python.exe`" then "Caused by: <system language> (os error 5)".
+PYTHON_START_DENIED = r'Failed to run [^\n]*python[^\n]*\s+Caused by:[^\n]*(?:os error 5|WinError 5)\b'
+
+
 # Leads the error of a step that needed an environment's Python file after it
 # disappeared, e.g. while security software was holding it in quarantine.
 ENVIRONMENT_PYTHON_REMOVED = 'The Python file of the FreeVideo environment is missing'
@@ -757,12 +762,21 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
           'then click "Retry installation".',
           '可能被安全软件隔离了。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
+        # uv could not start an environment's Python and Windows answered "access denied". The error code
+        # is matched, not the text, which Windows writes in the system language.
+        (PYTHON_START_DENIED, 'python-start-denied',
+         ('Windows refused to run the Python program', 'Windows 拒绝运行 Python 程序'),
+         ('Security software or a Windows protection feature is blocking the Python file of the FreeVideo environment. '
+          'Allow the FreeVideo folder there (for Windows Security: Virus & threat protection → Manage ransomware protection → '
+          'Controlled folder access, and the exclusions list), then click Retry installation.',
+          '安全软件或 Windows 的保护功能拦截了 FreeVideo 运行环境中的 Python 文件。请在其中允许 FreeVideo 所在的文件夹'
+          '（Windows 安全中心：病毒和威胁防护 → 管理勒索软件防护 → 受控文件夹访问，以及排除项），然后点“重试安装”。')),
         # Windows refuses PyTorch's unsigned DLLs under Smart App Control; reinstalling changes nothing.
         (r'WinError 4551|Application Control policy has blocked', 'app-control',
          ('Windows blocked some runtime files', 'Windows 拦截了运行组件'),
          ('Smart App Control in Windows blocked these files. Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App Control settings.',
           'Windows 的“智能应用控制”拦截了这些文件。在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”。')),
-        (r'PermissionError|Access is denied|Permission denied|WinError 5\b', 'permission',
+        (r'PermissionError|Access is denied|Permission denied|WinError 5\b|os error 5\b', 'permission',
          ('This folder is not writable', '无法写入这个目录'),
          ('Choose an installation folder you can write to, then retry.', '选择有写入权限的安装目录后重试。')),
         # A worker's own check of the cuDNN files it loaded (runtime_libraries).
