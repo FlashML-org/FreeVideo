@@ -401,6 +401,20 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
         ruler.replaceChildren(...marks);
     }
+    function syncVerticalScroll() {
+        const top = scroll.scrollTop;
+        element.dataset.verticalOverflow = String(scroll.scrollHeight > scroll.clientHeight);
+        element.style.setProperty('--fv-ed-track-offset', `${-top}px`);
+        // Keep the handle beside the fixed ruler; the line still ends at the last row.
+        playhead.style.top = `${18 + top}px`;
+        playhead.style.height = `${Math.max(0, parseFloat(content.style.height) - 34 - 18 - top)}px`;
+    }
+    function setTrackHeight(height) {
+        // The heads' 6px gap and 28px audio button belong to the same scroll extent.
+        content.style.height = `${height + 34}px`;
+        overlays.style.height = `${height}px`;
+        syncVerticalScroll();
+    }
     function layout() {
         // Defer the initial 90-second view until a detached shell is mounted.
         if (!mountedStates.has(state) && scroll.clientWidth) {
@@ -416,7 +430,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             item.element.classList.toggle('fv-ed-tiny', pixels(item.clip.frames) < 2);
             item.status.hidden = pixels(item.clip.frames) < 24;
         }
-        renderRuler(); renderSelection(); renderPlayhead(); slider.value = String(state.zoom);
+        syncVerticalScroll(); renderRuler(); renderSelection(); renderPlayhead(); slider.value = String(state.zoom);
     }
     function waveform(item, key) {
         const viewKey = `${key}/${item.clip.in}/${item.clip.frames}/${item.clip.length}`;
@@ -566,7 +580,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         addAudio.dataset.sign = addAudio.textContent.slice(0, 1); // Phone widths show the sign alone.
         addAudio.title = '';
         addAudio.setAttribute('aria-label', addAudio.textContent);
-        content.style.height = `${top - 6}px`; playhead.style.height = `${top - 24}px`;
+        setTrackHeight(top - 6);
         layout();
         const failure = openFailure && clips.get(openFailure);
         if (failure && model.clipState(failure.clip) === 'failed' && state.selection?.ids?.includes(openFailure)) failedPopover(failure);
@@ -1055,13 +1069,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const name = t('Audio 2', '声音 2'); head.title = name; head.append(icon('audio'), create('span', '', name));
             row.setAttribute('aria-label', name);
             row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = '40px';
-            const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height, oldPlayhead = playhead.style.height;
+            const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height;
             sourcePreview.restore = () => {
                 first.head.title = oldName; first.head.querySelector('span').textContent = oldName;
-                addAudio.style.top = oldTop; content.style.height = oldHeight; playhead.style.height = oldPlayhead;
+                addAudio.style.top = oldTop; setTrackHeight(parseFloat(oldHeight) - 34);
             };
             first.head.title = t('Audio 1', '声音 1'); first.head.querySelector('span').textContent = first.head.title;
-            addAudio.style.top = `${top + 46}px`; content.style.height = `${top + 40}px`; playhead.style.height = `${top + 22}px`;
+            addAudio.style.top = `${top + 46}px`; setTrackHeight(top + 40);
             heads.insertBefore(head, addAudio); content.insertBefore(row, overlays); nodes.push(head, row);
         }
         for (const {track, clip} of added) {
@@ -1192,7 +1206,15 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     });
     on(scroll, 'scroll', renderRuler, {passive: true});
     on(scroll, 'scroll', renderEmptyHints, {passive: true});
+    on(scroll, 'scroll', syncVerticalScroll, {passive: true});
     on(scroll, 'wheel', wheel, {passive: false});
+    on(heads, 'wheel', event => {
+        if (event.ctrlKey || event.metaKey) { wheel(event); return; }
+        event.preventDefault(); event.stopPropagation();
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroll.clientHeight : 1;
+        if (event.shiftKey) scroll.scrollLeft += (event.deltaX || event.deltaY) * unit;
+        else { scroll.scrollLeft += event.deltaX * unit; scroll.scrollTop += event.deltaY * unit; }
+    }, {passive: false});
     on(scroll, 'dragover', dropOver); on(scroll, 'drop', dropSource);
     on(document, 'dragstart', event => {
         clearSourcePreview();
