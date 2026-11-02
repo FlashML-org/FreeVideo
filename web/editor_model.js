@@ -11,7 +11,7 @@ export const FPS = 24;
 // followSeconds long; a video with a continuing part shorter than fullSeconds has at most shortMaxParts parts unless
 // every part sees the first frame, any other at most maxParts. A new continuation starts at continueSeconds, or at
 // shortContinueSeconds where a full part is too much for the device.
-export const RULES = Object.freeze({maxSeconds: 15, singleSeconds: 30, minSeconds: 2, tailSeconds: 5,
+export const RULES = Object.freeze({maxSeconds: 15, singleSeconds: 30, minSeconds: 2, tailSeconds: 5, lastSeconds: CHAIN_RULES.min_tail_seconds,
     followSeconds: CHAIN_RULES.min_part_seconds, fullSeconds: CHAIN_RULES.full_part_seconds,
     continueSeconds: CHAIN_RULES.continue_seconds, shortContinueSeconds: CHAIN_RULES.short_continue_seconds,
     step: 17, first: 5, overlap: 22,
@@ -644,16 +644,20 @@ export const setPictureFit = (record, id, fit) => setPicture(record, id, {fit: p
 // MIN_PART_FRAMES a continuing part is too short, below FULL_PART_FRAMES it is a short part.
 const partFrames = seconds => RULES.overlap + RULES.step * Math.ceil((FPS * seconds - (RULES.step - 1)) / RULES.step);
 export const MIN_PART_FRAMES = partFrames(RULES.followSeconds), FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
+// The last part of a video, one no other part continues, may be as short as lastSeconds.
+export const MIN_TAIL_FRAMES = partFrames(RULES.lastSeconds);
 // The most parts one video may have (chain_plan.parts_limit).
 export const partsLimit = (short, firstFrame = false) => short && !firstFrame ? Math.min(RULES.maxParts, RULES.shortMaxParts) : RULES.maxParts;
 // The shortest a part that continues another may be; a device that cannot make a part that long keeps the general minimum.
 const followLeast = maxFollowSeconds => maxFollowSeconds >= RULES.followSeconds ? RULES.followSeconds : RULES.minSeconds;
-// A length to continue by, in whole seconds, raised to one that parts of followSeconds..maxFollowSeconds can add up to.
-export function continuedSeconds(seconds, maxFollowSeconds = RULES.maxSeconds) {
+// A length to continue by, in whole seconds, raised to one that parts of followSeconds..maxFollowSeconds can add up to;
+// with `tail` (no part continues the last one) that part may be as short as lastSeconds.
+export function continuedSeconds(seconds, maxFollowSeconds = RULES.maxSeconds, {tail = true} = {}) {
     check(typeof seconds === 'number' && Number.isFinite(seconds) && typeof maxFollowSeconds === 'number' && Number.isFinite(maxFollowSeconds), 'range');
     const least = followLeast(maxFollowSeconds), follow = Math.max(least, Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)));
-    const length = Math.max(least, Math.round(seconds));
-    return Math.max(length, Math.ceil(length / follow) * least);
+    const last = tail ? Math.min(least, RULES.lastSeconds) : least;
+    const length = Math.max(last, Math.round(seconds));
+    return Math.max(length, (Math.ceil(length / follow) - 1) * least + last);
 }
 // The length a new continuation starts with: a full part, or a short one where the device cannot make a full part
 // or `short` asks for it.
@@ -661,7 +665,7 @@ export function defaultContinueSeconds(maxFollowSeconds = RULES.maxSeconds, {sho
     const full = !short && maxFollowSeconds >= RULES.fullSeconds;
     return continuedSeconds(full ? RULES.continueSeconds : RULES.shortContinueSeconds, maxFollowSeconds);
 }
-function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false) {
+function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false, tail = true) {
     check(typeof maxSeconds === 'number' && Number.isFinite(maxSeconds) && maxSeconds >= RULES.minSeconds, 'range');
     check(typeof maxFollowSeconds === 'number' && Number.isFinite(maxFollowSeconds) && maxFollowSeconds >= RULES.minSeconds, 'range');
     const max = Math.floor(Math.min(RULES.maxSeconds, maxSeconds)) * FPS, follow = Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)) * FPS, lengths = [];
@@ -673,7 +677,7 @@ function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds 
     // Every part after the first continues the one before it, as chain_plan lays them out: the parts after the first
     // share what is left evenly, and a rest too short for them comes off the first. They are fullSeconds or longer
     // whenever the length allows it, else at least followSeconds.
-    const seconds = continues && follow >= RULES.followSeconds * FPS ? continuedSeconds(left / FPS, follow / FPS) : left / FPS;
+    const seconds = continues && follow >= RULES.followSeconds * FPS ? continuedSeconds(left / FPS, follow / FPS, {tail}) : left / FPS;
     for (const least of [RULES.fullSeconds, RULES.followSeconds]) {
         if (follow < least * FPS) continue;
         const head = continues ? 0 : Math.min(max / FPS, seconds), rest = seconds - head, count = Math.ceil(rest / (follow / FPS));
@@ -687,8 +691,8 @@ function segmentLengths(frames, maxSeconds = RULES.maxSeconds, maxFollowSeconds 
     }
     while (left) { const length = Math.min(left, lengths.length || continues ? follow : max); lengths.push(length); left -= length; }
     const last = lengths.length - 1;
-    if (last > 0 && lengths[last] < Math.min(follow, RULES.tailSeconds * FPS)) {
-        const both = lengths[last - 1] + lengths[last]; lengths[last - 1] = Math.min(last === 1 && !continues ? max : follow, Math.max(both - follow, Math.ceil(both / 2 / FPS) * FPS)); lengths[last] = both - lengths[last - 1];
+    if (last > 0 && lengths[last] < Math.min(follow, RULES.tailSeconds * FPS) && !(continues && tail && follow >= RULES.followSeconds * FPS && lengths[last] >= RULES.lastSeconds * FPS)) {
+        const both = lengths[last - 1] + lengths[last]; lengths[last - 1] = Math.min(last === 1 && !continues ? max : follow, Math.max(both - follow, Math.ceil(both / 2 / FPS) * FPS, last > 1 || continues ? followLeast(follow / FPS) * FPS : 0)); lengths[last] = both - lengths[last - 1];
     }
     return lengths;
 }
@@ -737,10 +741,10 @@ export function continuesBefore(record, id) {
     return !!video && trackBy(record, 'v1').clips.includes(video) && !!partBefore(record, video);
 }
 // The lengths one range is generated in, as planRange lays them out on empty tracks.
-export const partLengths = (frames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false} = {}) => segmentLengths(frames, maxSeconds, maxFollowSeconds, continues);
+export const partLengths = (frames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false, tail = true} = {}) => segmentLengths(frames, maxSeconds, maxFollowSeconds, continues, tail);
 // One video is generated in at most partsLimit parts: the longest range that still fits. A device whose continuing
 // parts are all short has the short-part limit.
-export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame = false}) {
+export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame = record.settings?.first_frame_reference === true}) {
     const before = continues;
     const follow = Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)) * FPS;
     const parts = partsLimit(follow < RULES.fullSeconds * FPS, firstFrame);
@@ -748,34 +752,38 @@ export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.ma
     return before ? (parts - 1) * follow : Math.floor(Math.min(RULES.maxSeconds, maxSeconds)) * FPS + (parts - 1) * follow;
 }
 // Manual boundaries use device limits, not the automatic fifteen-second preference.
-export function rangeParts(record, {start, frames, parts, continues, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds}) {
+export function rangeParts(record, {start, frames, parts, continues, tail, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds}) {
     // A range that starts on a part pulled out of the one before it keeps that part's shorter limit.
     const head = trackBy(record, 'v1').clips.find(clip => clip.start === start);
     const following = continues ?? !!(head && partBefore(record, head)), first = following ? maxFollowSeconds : maxSeconds;
-    // A part that continues another is at least followSeconds long.
-    const least = index => (index || following ? followLeast(maxFollowSeconds) : RULES.minSeconds) * FPS;
+    // A part that continues another is at least followSeconds long; the last part of a video, one no part continues, lastSeconds.
+    const last = tail ?? !trackBy(record, 'v1').clips.some(clip => clip.start === start + frames && partBefore(record, clip));
+    const least = index => (Array.isArray(parts) && index === parts.length - 1 && last ? Math.min(RULES.lastSeconds, followLeast(maxFollowSeconds))
+        : index || following ? followLeast(maxFollowSeconds) : RULES.minSeconds) * FPS;
     const valid = Array.isArray(parts) && parts.length > 0 && parts.length <= RULES.maxClips
         && parts.every((count, i) => whole(count, least(i)) && count % FPS === 0
             && count <= Math.floor(i ? maxFollowSeconds : first) * FPS)
         && parts.reduce((sum, count) => sum + count, 0) === frames;
-    return valid ? [...parts] : partLengths(frames, {maxSeconds: first, maxFollowSeconds, continues: following});
+    return valid ? [...parts] : partLengths(frames, {maxSeconds: first, maxFollowSeconds, continues: following, tail: last});
 }
-export function adjustPartBoundary(parts, index, leftFrames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false} = {}) {
+export function adjustPartBoundary(parts, index, leftFrames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false, tail = false} = {}) {
     check(Array.isArray(parts) && whole(index) && index < parts.length - 1 && Number.isFinite(leftFrames), 'range');
     check(parts.every(count => whole(count, RULES.minSeconds * FPS) && count % FPS === 0), 'range');
     const minimum = RULES.minSeconds * FPS, total = parts[index] + parts[index + 1];
     const leftMax = Math.floor(index ? maxFollowSeconds : maxSeconds) * FPS, rightMax = Math.floor(maxFollowSeconds) * FPS;
     // Every part that continues another is at least followSeconds long; a pair too short for that keeps the general minimum.
+    // The part after the boundary may be as short as lastSeconds when no part continues it (`tail`).
     const follows = followLeast(maxFollowSeconds) * FPS, leftLeast = index || continues ? follows : minimum;
-    const tight = total >= leftLeast + follows;
-    const low = Math.max(tight ? leftLeast : minimum, total - rightMax), high = Math.min(leftMax, total - (tight ? follows : minimum));
+    const rightLeast = tail ? Math.min(follows, RULES.lastSeconds * FPS) : follows;
+    const tight = total >= leftLeast + rightLeast;
+    const low = Math.max(tight ? leftLeast : minimum, total - rightMax), high = Math.min(leftMax, total - (tight ? rightLeast : minimum));
     check(Number.isFinite(low) && Number.isFinite(high) && low <= high, 'range');
     const desired = Math.round(leftFrames / FPS) * FPS, left = Math.max(low, Math.min(high, desired));
     const result = [...parts]; result[index] = left; result[index + 1] = total - left;
     // The left part also stops where the part after it would fall under followSeconds.
     return {parts: result, limited: desired >= leftMax && left === leftMax ? leftMax / FPS
         : total - desired >= rightMax && total - left === rightMax ? rightMax / FPS
-            : tight && desired > left && left === total - follows ? left / FPS : null};
+            : tight && desired > left && left === total - rightLeast ? left / FPS : null};
 }
 export function resizePlannedBoundary(record, leftId, rightId, frame, limits = {}) {
     const left = find(record, leftId), right = find(record, rightId);
@@ -785,9 +793,11 @@ export function resizePlannedBoundary(record, leftId, rightId, frame, limits = {
     check(members.every(clip => clip.pending && !clip.source), 'unsupported');
     const video = trackOf(record, leftId).id === 'v1' ? left : find(record, left.link);
     const preceding = !!video && !!partBefore(record, video);
+    const rightVideo = trackOf(record, rightId).id === 'v1' ? right : find(record, right.link);
+    const tail = !trackBy(record, 'v1').clips.some(clip => continuing(clip, rightVideo));
     const maxSeconds = limits.maxSeconds ?? RULES.maxSeconds, maxFollowSeconds = limits.maxFollowSeconds ?? maxSeconds;
     const result = adjustPartBoundary([left.frames, right.frames], 0, frame - left.start,
-        {maxSeconds: preceding ? maxFollowSeconds : maxSeconds, maxFollowSeconds, continues: preceding});
+        {maxSeconds: preceding ? maxFollowSeconds : maxSeconds, maxFollowSeconds, continues: preceding, tail});
     const next = copy(record); detachAttempt(next, members.map(clip => clip.id));
     for (const old of members) find(next, old.id).part = left.part;
     for (const clip of pair(next, leftId)) { clip.frames = clip.length = result.parts[0]; clearPlan(clip); }
@@ -795,33 +805,116 @@ export function resizePlannedBoundary(record, leftId, rightId, frame, limits = {
     return finish(next);
 }
 export function resizePlanned(record, id, edge, frame, limits = {}) {
-    check(['start', 'end'].includes(edge) && whole(frame), 'range');
+    if (edge !== 'end') return layoutPlanned(record, id, edge, frame, limits);
+    return planPlannedEnd(record, id, frame, limits).record;
+}
+// Immutable records let repeated pointer previews and release share their last complete layout.
+const plannedEndCache = new WeakMap();
+export function planPlannedEnd(record, id, frame, limits = {}) {
+    check(whole(frame), 'range');
+    const geometry = plannedGeometry(record, id, limits), {primary: first, video} = geometry;
+    const most = maxRangeFrames(record, {...limits, continues: continuesBefore(record, id)});
+    const capped = Math.min(frame, first.start + most), position = Math.round(capped / FPS) * FPS;
+    const key = JSON.stringify(Object.keys(limits).sort().map(key => [key, limits[key]]));
+    const cached = plannedEndCache.get(record);
+    if (cached?.id === id && cached.position === position && cached.key === key) return cached.result;
+    const clips = trackBy(record, 'v1').clips, draft = clip => clip?.pending && !clip.source;
+    const earlier = [];
+    for (let before = video && partBefore(record, video); draft(before); before = partBefore(record, before)) earlier.unshift(before);
+    const before = partBefore(record, earlier[0] || video);
+    const lineage = before ? madeLineage(record, before) : {parts: 0, short: false};
+    const firstFrame = limits.firstFrame ?? record.settings?.first_frame_reference === true;
+    const candidates = new Map();
+    const candidate = frame => {
+        const {start, stop} = fitPlanned(geometry, 'end', frame);
+        if (candidates.has(stop)) return candidates.get(stop);
+        // Only numbers and the existing draft lineage participate in the search. No project copy, parse,
+        // finish or split occurs until a length has been chosen. Use the same generation grid as partsProblem.
+        const head = {id: (video || first).id, start, frames: stop - start, part: first.part || Symbol(),
+            follows: video?.follows, source: null, job: null};
+        const context = {tracks: [{id: 'v1', clips: [...(before ? [before] : []), ...earlier, head]}]};
+        const lengths = rangeParts(context, {start, frames: stop - start, ...limits, tail: geometry.tail});
+        lengths[lengths.length - 1] = stop - start - lengths.slice(0, -1).reduce((sum, count) => sum + count, 0);
+        const run = [...earlier]; let at = start;
+        for (const [index, frames] of lengths.entries()) {
+            const clip = {...head, id: index ? Symbol() : head.id, start: at, frames};
+            if (index) clip.follows = run.at(-1).id;
+            run.push(clip); at += frames;
+        }
+        // Resizing may detach a following draft, or reach it. Splitting transfers its follows link to the last part.
+        if (video) for (let next = clips.find(clip => clip.start === at && clip.id !== video.id); draft(next);) {
+            if (at === stop && next.follows === video.id) next = {...next, follows: run.at(-1).id};
+            if (!continuing(next, run.at(-1))) break;
+            run.push(next); at = end(next);
+            next = clips.find(clip => clip.start === at);
+        }
+        let problem = null;
+        try { if (video) problem = plannedPartsProblem(generationPlan(context, run), () => lineage, firstFrame); }
+        catch (error) {
+            if (!(error instanceof EditError) || error.code !== 'range') throw error;
+            // A frame-split tail may not fit the generation grid. Skip this candidate, including in hint bounds.
+            problem = {code: error.code};
+        }
+        const result = {frame, seconds: (stop - start) / FPS, problem,
+            allowed: !['range', 'chain_too_long', 'chain_short_parts'].includes(problem?.code)};
+        candidates.set(stop, result); return result;
+    };
+    const initial = candidate(capped), wanted = initial.seconds;
+    const least = continuesBefore(record, id)
+        ? continuedSeconds(0, limits.maxFollowSeconds ?? limits.maxSeconds) : RULES.minSeconds;
+    let chosen = initial.allowed ? initial : null;
+    for (let seconds = wanted - 1; !chosen && seconds >= least; seconds--) {
+        const next = candidate(first.start + seconds * FPS); if (next.allowed) chosen = next;
+    }
+    for (let seconds = wanted + 1; !chosen && seconds <= most / FPS; seconds++) {
+        const next = candidate(first.start + seconds * FPS); if (next.allowed) chosen = next;
+    }
+    // Bounds describe the entire feasible set, including any holes, rather than just the chosen adjustment.
+    for (let seconds = least; seconds <= most / FPS; seconds++) candidate(first.start + seconds * FPS);
+    const feasible = [...candidates.values()].filter(value => value.allowed).map(value => value.seconds);
+    const result = {record: chosen ? layoutPlanned(record, id, 'end', chosen.frame, limits) : record,
+        least: feasible.length ? Math.min(...feasible) : null, most: feasible.length ? Math.max(...feasible) : null,
+        problem: chosen ? null : initial.problem};
+    plannedEndCache.set(record, {id, position, key, result});
+    return result;
+}
+function plannedGeometry(record, id, limits) {
     const members = pair(record, id); check(members.length, 'missing'); busy(members);
     check(members.every(clip => clip.pending && !clip.source), 'unsupported');
     const primary = members[0];
-    const video = trackOf(record, id).id === 'v1' ? primary : find(record, primary.link);
+    const video = members.find(clip => trackOf(record, clip.id).id === 'v1');
     const maxFollowSeconds = limits.maxFollowSeconds ?? limits.maxSeconds ?? RULES.maxSeconds;
-    // A planned part that continues another is at least followSeconds long.
-    const minimum = (video && partBefore(record, video) ? followLeast(maxFollowSeconds) : RULES.minSeconds) * FPS;
+    // A planned part that continues another is at least followSeconds long, unless no part continues it.
+    const follows = !!video && !!partBefore(record, video), tail = !video || !trackBy(record, 'v1').clips.some(clip => continuing(clip, video));
+    const minimum = (follows ? Math.min(followLeast(maxFollowSeconds), tail ? RULES.lastSeconds : Infinity) : RULES.minSeconds) * FPS;
     const neighbors = members.flatMap(clip => trackOf(record, clip.id).clips.filter(other => other.id !== clip.id));
     const low = Math.max(0, ...neighbors.filter(clip => end(clip) <= primary.start).map(end));
     const high = Math.min(1e7, ...neighbors.filter(clip => clip.start >= end(primary)).map(clip => clip.start));
+    return {members, primary, video, minimum, low, high, maxFollowSeconds, follows, tail};
+}
+function fitPlanned({primary, minimum, low, high, maxFollowSeconds, follows, tail}, edge, frame) {
     const position = Math.round(frame / FPS) * FPS;
     let start = edge === 'start' ? Math.max(low, Math.min(end(primary) - minimum, position)) : primary.start;
     let stop = edge === 'end' ? Math.min(high, Math.max(start + minimum, position)) : end(primary);
-    if (minimum > RULES.minSeconds * FPS) {
-        // Lengths no run of continuing parts can fill (16–19 s at fifteen-second parts) are raised to the next one that fits.
-        const fitted = continuedSeconds((stop - start) / FPS, maxFollowSeconds) * FPS;
+    if (follows) {
+        // Lengths no run of continuing parts can fill are raised to the next one that fits.
+        const fitted = continuedSeconds((stop - start) / FPS, maxFollowSeconds, {tail}) * FPS;
         if (fitted > stop - start) {
             if (edge === 'end' && start + fitted <= high) stop = start + fitted;
             else if (edge === 'start' && stop - fitted >= low) start = stop - fitted;
         }
     }
+    return {start, stop};
+}
+function layoutPlanned(record, id, edge, frame, limits = {}) {
+    check(['start', 'end'].includes(edge) && whole(frame), 'range');
+    const geometry = plannedGeometry(record, id, limits), {members, primary, tail} = geometry;
+    const {start, stop} = fitPlanned(geometry, edge, frame);
     let next = copy(record); detachAttempt(next, members.map(clip => clip.id));
     const part = primary.part || freshId(next);
     for (const clip of pair(next, id)) { clip.start = start; clip.frames = clip.length = stop - start; clip.part = part; clearPlan(clip); }
     next = finish(next);
-    const lengths = rangeParts(next, {start, frames: stop - start, ...limits});
+    const lengths = rangeParts(next, {start, frames: stop - start, ...limits, tail});
     let positionAt = start, currentId = id;
     for (const count of lengths.slice(0, -1)) {
         positionAt += count; next = split(next, currentId, positionAt);
@@ -1078,12 +1171,21 @@ function madeLineage(record, clip) {
 // part shorter than followSeconds, a video continued through more than maxParts parts, or one with a short
 // continuing part through more than partsLimit allows. Parts made before the request count as the timeline shows
 // them. Returns {code, parts, limit} for the first problem, or null.
-export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true} = {}) {
+export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true, sourceLineage = {}} = {}) {
     const rows = generationPlan(record, generationClips(record, ids));
-    if (rows.some(row => row.before && row.request_frames < MIN_PART_FRAMES)) return {code: 'chain_part_too_short', parts: null, limit: RULES.followSeconds};
+    return plannedPartsProblem(rows, clip => {
+        // A video chosen from the library counts the parts it was made in, when they are known.
+        const inherited = clip.source ? sourceLineage[`${clip.source.kind}:${clip.source.id}`] : null;
+        const known = inherited && inherited.known !== false && Number.isInteger(inherited.parts) && inherited.parts > 0;
+        return known ? {parts: inherited.parts, short: inherited.short === true} : madeLineage(record, clip);
+    }, firstFrame);
+}
+function plannedPartsProblem(rows, previousLineage, firstFrame) {
+    const followed = new Set(rows.map(row => row.before?.id));
+    if (rows.some(row => row.before && row.request_frames < (followed.has(row.clip.id) ? MIN_PART_FRAMES : MIN_TAIL_FRAMES))) return {code: 'chain_part_too_short', parts: null, limit: RULES.followSeconds};
     const lineage = new Map();
     for (const row of rows) {
-        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id) ?? madeLineage(record, row.before);
+        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id) ?? previousLineage(row.before);
         lineage.set(row.clip.id, {parts: previous.parts + 1, short: previous.short || !!row.before && row.request_frames < FULL_PART_FRAMES});
     }
     const values = [...lineage.values()], parts = Math.max(...values.map(value => value.parts));
@@ -1100,7 +1202,8 @@ export function setContinuationSeconds(record, id, seconds, {maxSeconds = RULES.
     check(members.every(clip => clip.pending && !clip.source), 'unsupported');
     const video = members.find(clip => trackOf(record, clip.id).id === 'v1');
     check(!!video && !!partBefore(record, video), 'unsupported');
-    check(Number.isInteger(seconds) && seconds >= followLeast(maxFollowSeconds)
+    const last = !trackBy(record, 'v1').clips.some(clip => continuing(clip, video));
+    check(Number.isInteger(seconds) && seconds >= (last ? Math.min(RULES.lastSeconds, followLeast(maxFollowSeconds)) : followLeast(maxFollowSeconds))
         && seconds <= Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)), 'range');
     const delta = seconds * FPS - video.frames;
     if (!delta) return record;

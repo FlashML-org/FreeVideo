@@ -187,13 +187,16 @@ def part_prompt_problems(spec, prefix=''):
 
 
 def _continued_part_problem(seconds, chain):
-    """True when a video that continues another has a part the backend refuses, or is under MIN_PART_SECONDS.
+    """True when a video that continues another has a part the backend refuses, or is under MIN_TAIL_SECONDS.
 
     The backend compares each part's node input frames (overlap included); a part that
-    continues is also at least MIN_PART_SECONDS long.
+    another part continues is at least MIN_PART_SECONDS long, the last part MIN_TAIL_SECONDS.
     """
-    from ..chain_plan import MIN_PART_FRAMES, MIN_PART_SECONDS
-    return seconds < MIN_PART_SECONDS or any(block['frames'] < MIN_PART_FRAMES for block in chain['blocks'])
+    from ..chain_plan import MIN_PART_FRAMES, MIN_TAIL_FRAMES, MIN_TAIL_SECONDS
+    blocks = chain['blocks']
+    return seconds < MIN_TAIL_SECONDS or any(
+        block['frames'] < (MIN_TAIL_FRAMES if index == len(blocks) - 1 else MIN_PART_FRAMES)
+        for index, block in enumerate(blocks))
 
 
 def length_problem(seconds, continued, prefix='', *, minimum=None, frames=None):
@@ -232,7 +235,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
     """
     if spec['kind'] != 'generate' or spec.get('refine_from'):
         return []
-    from ..chain_plan import MIN_PART_SECONDS, PlanError, parts_limit, plan
+    from ..chain_plan import MIN_TAIL_SECONDS, PlanError, parts_limit, plan
     from ..chain_runner import ChainShortPartsTooMany, ChainTooLong
     from ..chain_store import reference
     continued, frames = bool(spec.get('continue_from')), single_frame_limit(spec)
@@ -243,7 +246,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
         except PlanError:
             return [length_problem(spec['seconds'], continued, prefix, frames=frames)]
         if continued and _continued_part_problem(spec['seconds'], chain):
-            return [length_problem(spec['seconds'], continued, prefix, minimum=MIN_PART_SECONDS, frames=frames)]
+            return [length_problem(spec['seconds'], continued, prefix, minimum=MIN_TAIL_SECONDS, frames=frames)]
     if runner is None:
         return []
     # A video with a continuing part shorter than full_part_frames has fewer parts, unless every part sees the first frame.
@@ -281,7 +284,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
             except ValueError:
                 return False
             return earlier + len(blocks) <= (short_limit if made_short or short_blocks(blocks) else limit)
-        shortest = MIN_PART_SECONDS if continued else 2
+        shortest = MIN_TAIL_SECONDS
         fit = next((s for s in range(int(spec['seconds']), shortest - 1, -1) if fits(s)), None)
         if fit is None:
             problem = schema.diagnostic(prefix + '/continue_from', 'a video of fewer than %d parts' % error.limit, None)
@@ -1097,6 +1100,51 @@ class Jobs:
                        finished_at=None, attempt=row.get('attempt', 1) + 1)
             replace(original, row)
             return (original, False) if replay_result else original
+
+    def again(self, row):
+        """How a conversation card offers a finished job again, or None for one that runs or succeeded.
+
+        'continue' resumes a video and keeps its finished parts, 'retry' runs the same request from its start,
+        and 'resend' leaves it to the agent: the page says the user's words again. A video the user stopped only
+        goes on from its finished parts: nothing starts it over."""
+        if row['status'] not in ('failed', 'interrupted', 'cancelled'):
+            return None
+        stopped = row['kind'] in ('generate', 'assemble') and bool(user_stop_notice(row))
+        parent = row.get('parent') or {}
+        if parent.get('production') or parent.get('cast'):
+            return None if stopped else 'resend'
+        if row['kind'] == 'image':
+            return 'retry'
+        if row['kind'] != 'generate' or row['spec'].get('refine_from'):
+            return None if stopped else 'resend'
+        try:
+            blocks = self.chain(row['chain_id'])['blocks'] if row.get('chain_id') else ()
+        except (KeyError, JobError, OSError, ValueError):
+            blocks = ()
+        if any(block.get('state') == 'done' for block in blocks):
+            return 'continue'
+        return None if stopped else 'retry'
+
+    def run_again(self, identity):
+        """The user's Retry on a conversation card: the same job again, in the same card."""
+        row = self.get(identity)
+        way = self.again(row)
+        if way in ('continue', 'retry') and row['kind'] == 'generate':
+            return self.resume(identity)
+        if way != 'retry':
+            raise chain_error('not_resumable', 'Only failed, interrupted or cancelled videos and pictures run again.',
+                              'Say it to the agent again.')
+        with self.lock:
+            if row['status'] not in ('failed', 'interrupted', 'cancelled'):
+                raise chain_error('not_resumable', 'This picture is already running.', 'Wait for it to finish.')
+            # A picture has nothing finished to keep: its request, seed included, starts over.
+            dropped = ('error', 'result', '_cancel', 'cancelled_by', '_image', '_phase', 'waiting_for')
+            candidate = deepcopy({k: v for k, v in row.items() if k not in dropped})
+            candidate.update(status='waiting', started_at=None, finished_at=None, updated_at=self.clock(),
+                             attempt=row.get('attempt', 1) + 1)
+            self.save(candidate)
+            replace(row, candidate)
+            return row
 
     def queue_view(self):
         """Describe ownership/order without exposing studio workflows or prompts."""

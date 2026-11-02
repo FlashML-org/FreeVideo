@@ -38,6 +38,13 @@ def main():
                 # (see worker.py): the session has taken this request.
                 print(json.dumps({'event': 'worker_start', 'pid': os.getpid(), 'epoch': time.time(),
                                   'resident': True}), flush=True)
+
+            def stage(name):
+                # The video worker's start-up has no other timing: a cold first
+                # request spent 49 s here before the model began to load.
+                if module == 'freevideo_engine.worker':
+                    print(json.dumps({'event': 'worker_stage', 'stage': name,
+                                      'seconds': time.perf_counter() - started, 'epoch': time.time()}), flush=True)
             metrics = None
             diagnostics = None
             try:
@@ -56,16 +63,19 @@ def main():
                     bank = ModelBank()
                 import torch
                 torch.set_grad_enabled(False)
+                stage('torch_import')
                 if diagnostics is not None:
                     diagnostics.stage('worker_cuda_setup')
                 # An explicit benchmark cap belongs to its request. A cached
                 # process must not silently carry that cap into a later job.
                 torch.cuda.set_per_process_memory_fraction(1.)
                 torch.cuda.reset_peak_memory_stats()
+                stage('cuda_setup')
                 from .processes import worker_signals
                 with worker_signals():
                     if module.endswith('.worker'):
                         from .worker import generate
+                        stage('engine_import')
                         bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'))
                         generate(request, resident=bank)
                         # Only a fully returned video is a success, including its

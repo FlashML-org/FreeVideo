@@ -26,6 +26,8 @@ export function preferredView() {
 let collapsing = false;
 
 export function viewChanged(view, node) {
+    // A local count for the diagnostic report; the page never waits for it.
+    if (view === 'nodes' && currentView !== 'nodes') try { api.fetchApi('/freevideo/node-view-opened', {method: 'POST'}).catch(() => {}); } catch { /* Counting never blocks the view. */ }
     currentView = view;
     if (node) selected = node;
     // Making way for the user's own workflow is not a choice of view: the FreeVideo workflow reopens as it was left.

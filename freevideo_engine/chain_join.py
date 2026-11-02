@@ -195,6 +195,67 @@ def _join_ending(sources, target, cancelled, frames, leads, expected, speaking, 
                            speaking=speaking, original_audio=original_audio)
 
 
+def _difference(number, shape, other):
+    """Why part `number` cannot join part 1, in words."""
+    if shape[1:3] != other[1:3]:
+        return f'Part {number} is {shape[1]}x{shape[2]} but part 1 is {other[1]}x{other[2]}'
+    for name, index in (('codec', 0), ('pixel format', 3)):
+        if shape[index] != other[index]:
+            return f'Part {number} uses {shape[index]} {name} but part 1 uses {other[index]}'
+    if shape[4:6] != other[4:6]:
+        return f'Part {number} does not have the frame rate of part 1'
+    return f'Part {number} was encoded differently from part 1'
+
+
+def _conform(source, shape, directory, cancelled):
+    """A copy of `source` with the first block's picture settings, or None when it cannot have them.
+
+    The picture is encoded again with the encoder's defaults; the sound is copied packet by packet.
+    """
+    import av
+    from .comfy_metadata import _copy_stream
+    temporary = directory / ('.join-conform-' + uuid.uuid4().hex + '.mp4')
+    try:
+        with av.open(str(source)) as container, av.open(str(temporary), 'w', format='mp4') as output:
+            video = container.streams.video[0]
+            if abs(float(video.average_rate or 0) - FPS) > .01:
+                return None
+            picture = output.add_stream('libx264', rate=FPS)
+            picture.width, picture.height, picture.pix_fmt = shape[1:4]
+            picture.time_base = shape[4]
+            sound = container.streams.audio[0] if container.streams.audio else None
+            copy = _copy_stream(output, sound) if sound is not None else None
+            number = 0
+            for packet in container.demux(video, *([sound] if sound is not None else [])):
+                _check(cancelled)
+                if packet.stream is sound:
+                    if packet.dts is not None:
+                        packet.stream = copy
+                        output.mux(packet)
+                    continue
+                for frame in packet.decode():
+                    frame = frame.reformat(width=shape[1], height=shape[2], format=shape[3])
+                    frame.pts, frame.time_base = number, Fraction(1, FPS)
+                    frame.pict_type = av.video.frame.PictureType.NONE
+                    for encoded in picture.encode(frame):
+                        output.mux(encoded)
+                    number += 1
+            for encoded in picture.encode(None):
+                output.mux(encoded)
+        with av.open(str(temporary)) as check:
+            if not number or _shape(check.streams.video[0]) != shape:
+                temporary.unlink(missing_ok=True)
+                return None
+        return temporary
+    except JoinCancelled:
+        temporary.unlink(missing_ok=True)
+        raise
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        logging.warning('[FreeVideo] A part could not be matched to the first part', exc_info=True)
+        return None
+
+
 def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expected=None, speaking=None,
                 original_audio=None):
     import av
@@ -223,6 +284,7 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
     wanted, frames, samples = frames, 0, 0
     used_tail = False
     blocks_joined = 0
+    conformed = []
     try:
         with av.open(str(sources[0])) as first:
             if len(first.streams.video) != 1:
@@ -236,6 +298,27 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
         if shape[5] != FPS or step.denominator != 1:
             raise ValueError('The blocks are not 24 frames per second videos')
         step = int(step)
+        originals = {}
+        for number, source in enumerate(sources[1:], 2):
+            with av.open(str(source)) as container:
+                if len(container.streams.video) != 1 or bool(container.streams.audio) != (sound is not None):
+                    continue
+                other = _shape(container.streams.video[0])
+            if other == shape:
+                continue
+            copy = _conform(source, shape, target.parent, cancelled)
+            if copy is None:
+                raise ValueError(_difference(number, other, shape))
+            conformed.append(copy)
+            originals[str(copy)] = str(source)
+            sources[number - 1] = copy
+        if originals:
+            # Seam sound records belong to the blocks as made, not to the matched copies.
+            lead_reader = audio_lead_in
+            if lead_reader is not None:
+                def audio_lead_in(video, previous=None):
+                    return lead_reader(originals.get(str(video), video),
+                                       originals.get(str(previous), previous) if previous is not None else None)
         voice = _voice(sources, speaking, cancelled) if sound is not None else None
         with av.open(str(temporary), 'w', format='mp4',
                      options={'movflags': 'use_metadata_tags+faststart'}) as output:
@@ -367,6 +450,8 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
         raise
     finally:
         temporary.unlink(missing_ok=True)
+        for copy in conformed:
+            copy.unlink(missing_ok=True)
 
 
 def _voice(sources, speaking, cancelled):

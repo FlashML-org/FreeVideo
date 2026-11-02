@@ -1256,7 +1256,7 @@ def register():
             name = request.match_info['action']
             if name == 'cast-views':
                 from .cast_views import page_views
-                result = page_views(value.get('description'))
+                result = page_views(value.get('description'), value.get('kind', 'character'))
             elif name == 'status':
                 result = service.status(value.get('job'))
             elif name == 'cancel':

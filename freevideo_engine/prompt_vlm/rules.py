@@ -6,6 +6,8 @@ The public guide describes a prompt format, not a released Context-IR model.
 import math
 import re
 
+from ..music_request import asks_for_no_music, writes_own_music
+
 BASE_FIELDS = ('integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music')
 REF_FIELDS = ('subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
               'overall_soundscape', 'non_diegetic_music')
@@ -180,6 +182,9 @@ def validate_output(text, value):
     for each in required:
         if each not in text:
             raise InvalidOutput('missing_picture_reference', text, value)
+    if asks_for_no_music(value['text']) and not writes_own_music(value['text']):
+        # Asked for no music, and no score of the user's own: the score section says so whatever the rewrite wrote.
+        text = re.sub(r'^non_diegetic_music:.*\Z', 'non_diegetic_music: N/A', text, flags=re.M | re.S)
     return dialogue(text, value['text'])
 
 

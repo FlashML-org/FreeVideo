@@ -189,7 +189,7 @@ GUIDE = {
                        for name, (method, path, summary) in SESSION_OPERATIONS.items()],
     'filming': [
         'Filming is for a film of several shots, each picked from takes. One video of up to 60 seconds is one generate '
-        'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate. '
+        'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate with "prompt": {"from_job": "<enhance id>"} rather than retyping the text. '
         'A film is cut into shots: see the rule "Cut by default" before making one long continued video.',
         'Use drama plan → start → get → sheet → choose/reshoot → finish; inspect todo after every change.',
         'At start tell the user the estimated total time; on over_budget decide whether to ask them; '
@@ -243,6 +243,10 @@ RULES = [
     'edited. When the user tells you to stop, stop: cancel what you started and start nothing new. '
     'When cancelled_by is "user", the user stopped this job on the page and the page already shows it as stopped: '
     'send no message about it, and do not retry or resume it unless they ask.',
+    'A user message with revises=N replaces message N and everything you wrote after it: understand it afresh '
+    'from the new message. The jobs started for the old one are already stopped; do not continue them. '
+    'A control event with action "retried" means the user ran job refs.job again on the page: do not start it '
+    'again yourself; follow it like a job you started.',
     'Cast before you shoot. Search the cast library first. Use the card the user named, or one that clearly '
     'matches; ask if you are unsure. Create a card only when none fits: from the user\'s photos if they gave any, '
     'otherwise make its reference pictures with POST /cast/{id}/generate. '
@@ -257,7 +261,7 @@ RULES = [
     'Cut by default. Wherever the film can change shot, make the new shot from the reference pictures it should '
     'have (cast cards, scene pictures) instead of continuing the previous video. Continue a video only for a '
     'long take that cannot be cut, an action that must stay unbroken, or sound that must stay unbroken, and '
-    'continuing again and again is not recommended. Each continued part is at least 5 seconds. One video has at '
+    'continuing again and again is not recommended. Each continued part is at least 5 seconds, and the last one can be as short as 2 seconds. One video has at '
     'most 8 parts (the first and 7 continuations, about 110 seconds in all) when every continued part is at '
     'least 10 seconds; with a continued part shorter than 10 seconds it has at most 4 parts, unless '
     'first_frame_reference is true. Filling that is not recommended. Past it, cut to a new shot.',
@@ -287,6 +291,8 @@ RULES_ZH = [
     '只在 FreeVideo 内工作，不要改动本机的其他文件，不要撤销用户做的修改。'
     '用户要求停止时，取消你启动的任务，不再启动新任务。'
     'cancelled_by 为 "user" 时，表示用户在页面上停止了该任务，页面已显示已停止：不要为此发消息；除非用户要求，否则不要重试或恢复。',
+    '带 revises=N 的用户消息取代 seq N 那条及其之后你写的内容，按新消息重新理解；为旧消息开的任务已被停掉，不要续旧的。'
+    'action 为 "retried" 的 control 事件表示用户在页面上重新运行了 refs.job 这个任务：不要自己再提交一次，像你自己提交的任务一样跟进。',
     '先选角，再拍摄。先搜索角色库，使用用户指定的卡片或明确符合要求的卡片；拿不准时询问用户。'
     '只有找不到合适卡片时才新建：用户提供了照片就用照片，否则通过 POST /cast/{id}/generate 生成参考图。'
     '开拍前用一句话告诉用户选角结果。后续镜头使用卡片当前的图片。保留你创建的卡片，方便以后拍片复用。',
@@ -295,7 +301,7 @@ RULES_ZH = [
     '先用 people（角色图和各自的位置）做出首帧，再用它生成视频。',
     '默认切镜头。能切镜头的地方就切：新镜头直接用对应的参考图（人物卡、场景图）生成，不接上一段视频。'
     '只有不能切镜的长镜头、必须连贯的动作、必须连贯的声音，才接着上一段生成，而且不建议一段接一段地连续接。'
-    '接着生成的每一段至少 5 秒。每段都不短于 10 秒时，一条视频最多 8 段（第一段加 7 次接着生成，总长约 110 秒）；'
+    '接着生成的每一段至少 5 秒，最后一段可短至 2 秒。每段都不短于 10 秒时，一条视频最多 8 段（第一段加 7 次接着生成，总长约 110 秒）；'
     '有短于 10 秒的段时最多 4 段，first_frame_reference 为 true 时除外。不建议接满，超过就切镜头。',
     '问话不是要求。用户问进度或状态（“在做吗”“怎么了”）时，用一句话照实回答，依据是你所知道的、任务和白模的状态，'
     '什么都不要开始；不要把问句当提示词。某条 inbox 带有 whitebox 时，说明用户刚启动了白模场景，'

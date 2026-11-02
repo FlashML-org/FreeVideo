@@ -9,6 +9,8 @@ import {createImageLoras} from './image_lora.js';
 export {imageGenerationSupported as castGenerateSupported} from './image_generation.js';
 
 export const CAST_VIEWS = Object.freeze(['front', 'three_quarter', 'side', 'back', 'face']);
+// A scene is not a sheet of views: one description is drawn three times with different seeds and the user picks one.
+export const SCENE_CANDIDATES = Object.freeze(['a', 'b', 'c']);
 const VIEW_TITLES = Object.freeze({
     front: ['Front', '正面'], three_quarter: ['Three-quarter', '四分之三'], side: ['Side', '侧面'],
     back: ['Back', '背面'], face: ['Face', '脸部'],
@@ -20,8 +22,9 @@ const failureOf = error => ({error: error?.code || 'generation_failed', report_i
 const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
 // The five pictures of one description. No DOM: the page below draws its state.
-export function createCastGenerator({client, onChange = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
-    const fresh = () => CAST_VIEWS.map(view => ({view, file: '', fraction: 0}));
+export function createCastGenerator({client, kind = 'character', onChange = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
+    const scene = kind === 'setting', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
+    const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: ''};
     let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras;
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
@@ -31,7 +34,7 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
 
     async function runOne(index, alive) {
         const view = plan[index], front = state.pictures[0].file;
-        const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed,
+        const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed: scene ? seed + index : seed,
             images: view.from_front ? [front] : [], ...(view.view === 'back' ? {cast_view: 'back'} : {}),
             ...(loras === undefined ? {} : {loras})});
         if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory});
@@ -69,7 +72,8 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
             ...(resume ? {} : {pictures: fresh(), current: 0})});
         try {
             if (!plan) {
-                plan = await client.castViews(description);
+                plan = await client.castViews(description, kind);
+                if (scene) plan = names.map(() => plan[0]);
                 if (!alive()) return;
             }
             for (let index = 0; index < plan.length; index++) {
@@ -108,7 +112,8 @@ export function createCastGenerator({client, onChange = () => {}, schedule = set
         dispose() { disposed = true; return stop(); }};
 }
 
-export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, fetchApi, client, loras}) {
+export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, onPick = () => {}, fetchApi, client, loras, kind = 'character'}) {
+    const scene = kind === 'setting', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
     const tr = t || ((en) => en);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
@@ -123,11 +128,12 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     }
 
     const root = el('div', 'fv-cg');
+    if (scene) root.dataset.kind = 'scene';
     const body = el('div', 'fv-cg-body');
     const side = el('div', 'fv-cg-side');
     const foot = el('div', 'fv-cg-foot');
     const field = el('textarea', 'fv-cg-text');
-    field.placeholder = tr('Describe the character', '描述角色');
+    field.placeholder = scene ? tr('Describe the scene', '描述场景') : tr('Describe the character', '描述角色');
     field.setAttribute('aria-label', field.placeholder);
     field.maxLength = 1000;
     const note = el('div', 'fv-cg-note'); note.setAttribute('role', 'status');
@@ -138,10 +144,16 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     foot.append(note, action);
     side.append(field, ...(picker ? [picker.element] : []), foot);
     const grid = el('div', 'fv-cg-views');
-    const cells = CAST_VIEWS.map(view => {
+    const cells = names.map((view, index) => {
         const cell = el('div', 'fv-cg-view');
-        const title = tr(...VIEW_TITLES[view]);
-        cell.title = title; cell.setAttribute('role', 'img');
+        const title = scene ? tr(`Option ${index + 1}`, `方案 ${index + 1}`) : tr(...VIEW_TITLES[view]);
+        cell.title = title; cell.setAttribute('role', scene ? 'button' : 'img');
+        if (scene) {
+            cell.tabIndex = 0;
+            const pick = () => { if (cell.dataset.state !== 'done') return; chosen = index; render(); };
+            cell.onclick = pick;
+            cell.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(); } };
+        }
         const image = el('img'); image.alt = ''; image.draggable = false;
         const percent = el('span', 'fv-cg-percent');
         const meter = el('i', 'fv-cg-meter'); const fill = el('b'); meter.append(fill);
@@ -149,12 +161,14 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
         grid.append(cell);
         return {cell, image, percent, fill, title};
     });
-    body.append(side, grid);
+    // A scene shows the chosen option large on narrow widths, where three small ones cannot show its mood.
+    const stage = el('div', 'fv-cg-stage'), stageImage = el('img'); stageImage.alt = ''; stage.append(stageImage); stage.hidden = true;
+    body.append(side, ...(scene ? [stage] : []), grid);
     root.append(body);
     container.append(root);
 
-    let info = null, infoTimer = null, disposed = false, failureKey = null, attention = null;
-    const generator = createCastGenerator({client, onChange: render});
+    let chosen = 0, picked = '', info = null, infoTimer = null, disposed = false, failureKey = null, attention = null;
+    const generator = createCastGenerator({client, kind, onChange: render});
     let last = '';
 
     function missing() { return info && !info.installed && !info.ready; }
@@ -171,18 +185,26 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
         action.dataset.primary = String(!running && !finishedAll);
         const finished = state.pictures.filter(row => row.file).length;
         const currentFraction = running && state.current >= 0 ? state.pictures[state.current]?.fraction || 0 : 0;
-        const progress = generator.done() ? 1 : (finished + currentFraction) / CAST_VIEWS.length;
+        const progress = generator.done() ? 1 : (finished + currentFraction) / names.length;
         state.pictures.forEach((row, i) => {
             const cell = cells[i];
             const active = running && i === state.current && !row.file;
             const src = row.file ? url(row.file) : '';
             if (cell.image.getAttribute('src') !== src) src ? cell.image.src = src : cell.image.removeAttribute('src');
             cell.cell.dataset.state = row.file ? 'done' : active ? 'running' : 'empty';
+            if (scene) cell.cell.setAttribute('aria-pressed', String(!!row.file && i === chosen));
             cell.cell.setAttribute('aria-label', cell.title + (row.file ? '' : active
                 ? ' ' + Math.floor(row.fraction * 100) + '%' : ''));
             cell.percent.textContent = active && !state.waiting ? Math.floor(row.fraction * 100) + '%' : '';
             cell.fill.style.width = (active ? row.fraction * 100 : 0) + '%';
         });
+        if (scene) {
+            const file = generator.done() && !running ? state.pictures[chosen]?.file || '' : '';
+            const shown = file ? url(file) : '';
+            stage.hidden = !shown; if (stageImage.getAttribute('src') !== shown) shown ? stageImage.src = shown : stageImage.removeAttribute('src');
+            if (file && file !== picked) onPick(picked = file);
+            if (!file && !running) picked = '';
+        }
         if (state.error) {
             const key = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;
             if (failureKey !== key) { renderImageFailure(note, {...state, info}, tr, {fetchApi: fetcher}); failureKey = key; }
@@ -214,13 +236,13 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
 
     function begin() {
         if (!field.value.trim()) {
-            attention = tr('Describe the character first.', '请先描述角色。');
+            attention = scene ? tr('Describe the scene first.', '请先描述场景。') : tr('Describe the character first.', '请先描述角色。');
             render(); field.focus();
             return;
         }
-        attention = null;
-        const chosen = picker ? picker.value() : loras;
-        void generator.start(field.value, picker && !chosen.length ? {} : {loras: chosen});
+        attention = null; chosen = 0;
+        const selected = picker ? picker.value() : loras;
+        void generator.start(field.value, picker && !selected.length ? {} : {loras: selected});
     }
     action.onclick = () => generator.state().running ? void generator.stop() : begin();
     field.addEventListener('input', () => {
@@ -235,7 +257,9 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     render();
     void checkInfo();
     return {
-        getPictures: () => generator.done() && !generator.state().running ? generator.state().pictures.map(row => ({file: row.file, label: row.view})) : [],
+        getPictures: () => !generator.done() || generator.state().running ? []
+            : scene ? [{file: generator.state().pictures[chosen].file, label: 'other'}]
+            : generator.state().pictures.map(row => ({file: row.file, label: row.view})),
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
         destroy() { disposed = true; picker?.dispose(); clearTimeout(infoTimer); void generator.dispose(); root.remove(); },

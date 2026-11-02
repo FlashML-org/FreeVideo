@@ -1,11 +1,13 @@
 // The editor owns its generation controls; progress can use the optional component.
 import {createFirstFrameSwitch} from './editor_first_frame.js';
+import {createDurationField} from './editor_duration.js';
 import {createEditorReferences} from './editor_references.js';
 import {createExpandButton} from './editor_expand.js';
 import {createRequestAssets} from './request_assets.js';
 import {issueButton} from './issue_button.js';
 import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
+import {segmented} from './editor_adjust.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
@@ -65,6 +67,42 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     if (assets) host.prepend(assets.element);
     const firstFrame = createFirstFrameSwitch(host, {state, t, actions});
     description.after(firstFrame.element);
+    // On the music track: a style and a mood above the description, each a row; the music's own first-use download
+    // in the same line above the bar as the video's.
+    const music = actions.music || null;
+    const presets = music ? el('div', 'fv-ed-music-presets') : null;
+    const musicAssets = music ? el('div', 'fv-request-assets fv-muted') : null;
+    let musicBytes = null, musicBytesAt = 0;
+    const size = bytes => bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + '\u00a0GB' : Math.max(1, Math.round(bytes / 1e6)) + '\u00a0MB';
+    const pickers = {};
+    if (music) {
+        for (const [key, label, options] of [['style', t('Style', '风格'), music.styles()], ['mood', t('Mood', '情绪'), music.moods()]]) {
+            const row = el('div', 'fv-ed-music-row'), name = el('span', 'fv-ed-music-label', label);
+            const picker = segmented(options.map(([value, text]) => ({value, label: text})), {onChange: value => { music.choose({[key]: value}); render(); }});
+            picker.setAttribute('aria-label', label); pickers[key] = picker;
+            row.append(name, picker); presets.append(row);
+        }
+        presets.hidden = true; musicAssets.hidden = true;
+        description.before(presets); host.prepend(musicAssets);
+    }
+    async function showMusicAssets(shown) {
+        if (!music) return;
+        if (!shown) { musicAssets.hidden = true; return; }
+        // Asked again at most every 5 s while a stretch of the music track is chosen.
+        if (musicBytes === null || Date.now() - musicBytesAt > 5000) {
+            musicBytesAt = Date.now();
+            musicBytes = await music.downloadBytes();
+            if (disposed) return;
+        }
+        musicAssets.textContent = musicBytes > 0 ? t(`Downloads before generating: music model ${size(musicBytes)}`, `生成前会先下载：配乐模型 ${size(musicBytes)}`) : '';
+        musicAssets.hidden = !(musicBytes > 0) || host.dataset.mode !== 'selected' || !music.target();
+    }
+    // How long the parts not generated yet are, between the description and the first-frame switch.
+    const duration = createDurationField({state, t, actions});
+    description.after(duration.element);
+    // Where a narrow English bar starts Generate on a line of its own (editor.css); hidden elsewhere.
+    const lineBreak = el('span', 'fv-ed-genbar-break'); lineBreak.setAttribute('aria-hidden', 'true');
+    generate.before(lineBreak); host.lang = t('en', 'zh-CN');
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
     const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
@@ -119,9 +157,11 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         }
         failure.hidden = !selectedFailure;
         failureReason.textContent = selectedFailure?.text || '';
-        report.hidden = !selectedFailure;
+        // A piece of music has no generation receipt to report.
+        report.hidden = !selectedFailure || selectedFailure.report === false;
         const running = ['queued', 'running', 'cancelling'].includes(status?.state);
-        const selected = !!selection && (!!previewSelection || (actions.supportedSelection?.() ?? true));
+        const musical = !!music?.target(selection);
+        const selected = !!selection && (!!previewSelection || musical || (actions.supportedSelection?.() ?? true));
         // While a part generates, choosing another place offers Generate again; it is queued behind.
         // A press is being sent for the parts in `pressing`; only that same selection waits for it.
         const sending = pressing.has(JSON.stringify(state.selection ?? null)), starting = pressing.size > 0 && !running;
@@ -134,13 +174,13 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const stopped = ['failed', 'cancelled', 'interrupted'].includes(status?.state);
         host.dataset.mode = busy ? 'running' : selected ? 'selected' : 'idle';
         hint.hidden = !busy && !other;
-        // The description and Generate stay where they are while a part is made, greyed, so nothing around them moves.
-        input.hidden = generate.hidden = false;
+        // The description and Generate stay where they are while a part is made, greyed, so nothing around them moves;
+        // music being made shows only its progress and Cancel.
+        input.hidden = false; generate.hidden = musical && busy;
         // A choice that will move to an empty spot can still be described first.
         const writable = selected || !previewSelection && !!selection && !!actions.selectionMovable?.();
         input.disabled = !writable || busy;
-        input.placeholder = writable ? t('Describe this part', '描述这一段')
-            : '';
+        input.placeholder = !writable ? '' : musical ? t('Describe the music', '描述配乐') : t('Describe this part', '描述这一段');
         input.setAttribute('aria-label', t('Description', '描述'));
         generate.classList.toggle('fv-primary', selected && !busy);
         // A cancel already accepted is not offered again; the bar says it is stopping until the run ends.
@@ -169,15 +209,28 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             hint.replaceChildren(...shown.map(([cls, text]) => el('span', cls, text)));
             hint.title = shown.map(([, text]) => text).join('');
         }
+        duration.update(busy);
         firstFrame.update(busy);
+        if (presets) {
+            presets.hidden = !musical || !selected && !busy;
+            if (!presets.hidden) {
+                const value = music.preset(selection);
+                for (const key of ['style', 'mood']) { pickers[key].value = value[key]; pickers[key].disabled = busy || !!previewSelection; }
+            }
+            host.classList.toggle('fv-ed-genbar-music', !presets.hidden);
+        }
         references?.update(busy, busy ? undefined : actions.references.visible() || false);
-        generate.textContent = t('Generate', '生成');
+        // A piece already made, failed or stopped is made again in place.
+        const made = musical && !!music.target(selection)?.clip && music.target(selection).clip.pending !== 'draft';
+        const verb = made ? t('Regenerate', '重新生成') : t('Generate', '生成');
+        generate.textContent = verb;
         // Never disabled for a reason the press itself can explain or fix; only until the server says it can generate.
         generate.disabled = busy || !!previewSelection || !!actions.generationWaiting?.();
         resizeDescription();
         input.dispatchEvent(new Event('change'));
         generate.title = '';
-        if (assets) { if (selected && !busy) assets.refresh(); else assets.element.hidden = true; }
+        if (assets) { if (selected && !busy && !musical) assets.refresh(); else assets.element.hidden = true; }
+        showMusicAssets(selected && !busy && musical && !previewSelection);
         if (selected && !busy) {
             const key = JSON.stringify(selection);
             if (estimateCache?.key === key) generate.textContent += estimateCache.label;
@@ -185,7 +238,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (disposed || current !== serial) return;
             const label = seconds == null ? '' : ' · ' + timeEstimate(seconds, t);
             estimateCache = {key, label};
-            generate.textContent = t('Generate', '生成') + label;
+            generate.textContent = verb + label;
         }
     }
     function resizeDescription() {
@@ -281,7 +334,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(refNoticeTimer); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

@@ -20,6 +20,7 @@ import zipfile
 import freevideo_ed25519
 import freevideo_update_keys
 
+DOMAIN = b'FreeVideo source manifest v1\x00'
 MAX_MANIFEST = 2 * 2**20
 MAX_FILES = 4096
 MAX_FILE = 32 * 2**20
@@ -260,6 +261,18 @@ def compatible(value, base):
                 (('target', 'windows-x86_64'), ('channel', None), ('packaging', None), ('track', 'stable'))))
 
 
+def signed(value):
+    """True only for a manifest carrying a valid release signature from the frozen key."""
+    try:
+        signature = bytes.fromhex(value.get('signature', ''))
+        payload = DOMAIN + canonical({k: v for k, v in value.items() if k != 'signature'})
+        return (freevideo_update_keys.ED25519_RELEASE_KEY_ENABLED and
+                freevideo_update_keys.ED25519_PUBLIC_KEY != freevideo_update_keys.PLACEHOLDER_PUBLIC_KEY and
+                freevideo_ed25519.verify(freevideo_update_keys.ED25519_PUBLIC_KEY, payload, signature))
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 def overlay_name(value):
     return value['build']['product_version'] + '-' + value['identity'][:16]
 
@@ -272,6 +285,9 @@ def validate_overlay(folder, base):
     if (receipt.get('sha256') != sha(canonical(value)) or not compatible(value, base) or
             folder.name != overlay_name(value)):
         raise ValueError('Overlay receipt changed')
+    # The receipt hash is self-made; only the release signature ties the manifest to the publisher.
+    if not signed(value):
+        raise ValueError('Overlay manifest is not signed')
     changed = {n: r for n, r in value['files'].items() if base['files'].get(n) != r}
     verify_tree(folder / 'files', changed)
     return value
@@ -318,6 +334,8 @@ def prepare(value, previous, bundle, current_source, archive, home, base):
     """Validate a single hop, then save independent cumulative sparse overlay."""
     value, previous = manifest(value), manifest(previous)
     delta = value.get('delta') or {}
+    if not signed(value):
+        raise ValueError('Source manifest is not signed')
     if (not compatible(value, base) or delta.get('from') != previous['identity'] or
             (not value['gui'] and value.get('launcher_files_changed', True))):
         raise ValueError('Incompatible source update')

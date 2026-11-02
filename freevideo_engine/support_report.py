@@ -508,6 +508,13 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
         if stalled:
             payload['agent_generation_stalls'] = stalled
         try:
+            from .comfy_host_stats import host_fields
+            host = host_fields()
+        except Exception:
+            host = None
+        if host:
+            payload['comfy_host'] = host
+        try:
             if preview:
                 previous, previous_engine, previous_encoding = preview
                 previous_summary = summarize(previous, previous_engine, previous_encoding)

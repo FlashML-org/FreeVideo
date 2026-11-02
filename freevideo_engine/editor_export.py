@@ -28,7 +28,8 @@ from .editor_limits import PROJECT_BYTES
 from .editor_text import is_text_track, has_text_data, validate_text_project, paint_project, check_export_text, MissingGlyphs
 from . import editor_export_options
 from .editor_speed import validate_clip, changed as speed_changed, audio_changed, independent_join, VideoReader, AudioReader
-from .editor_audio import clip_fields, track_fields, clip_audible, track_audible, crossfade_reads, apply_track_audio
+from .editor_audio import (clip_fields, track_fields, clip_audible, track_audible, crossfade_reads, apply_track_audio,
+                           duck_ranges, duck_gain, duck_sources)
 
 FPS = 24
 SAMPLE_RATE = 48000
@@ -693,6 +694,10 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
         audio_tracks = {track['id']: track for track in project['tracks'] if track['kind'] == 'audio'}
         envelopes = {key: _CrossfadeReads(track, resolved.__getitem__, cancelled)
                      for key, track in audio_tracks.items()}
+        # Lower during speech: the same cached spans the preview reads.
+        keys = duck_sources(project['tracks'])
+        ducking = duck_ranges(project['tracks'], _speech_spans(
+            keys, lambda key: (resolved[key] if key in resolved else resolve(key)).get('audio'), cancelled)) if keys else []
 
         def joinable(track):
             # A continuation joins its sound only where nothing else shapes that seam:
@@ -800,6 +805,8 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
                                      or not clip_audible(following, audio_tracks[track], project['tracks'])
                                      or following['start'] != clip['start'] + clip['frames'])):
                             gain *= np.clip((clip['frames'] * SAMPLES_PER_FRAME - 1 - positions) / (FADE_SAMPLES - 1), 0, 1).astype(np.float32)
+                        if clip.get('duck') and ducking:
+                            gain *= duck_gain(ducking, number * SAMPLES_PER_FRAME, SAMPLES_PER_FRAME).astype(np.float32)
                         track_block = samples * gain[None, :] * clip.get('volume', 1)
                     extras = (envelopes[track].extras(number * SAMPLES_PER_FRAME, SAMPLES_PER_FRAME)
                               if track_audible(audio_tracks[track], project['tracks']) else None)
@@ -851,6 +858,15 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
         # A cancellation in the final publish window still owns this target.
         if published and (not complete or (cancelled and cancelled())):
             target.unlink(missing_ok=True)
+
+
+def _speech_spans(keys, audio, cancelled):
+    from .editor_music import SpeechSpans
+    from .speech import SpeechError
+    try:
+        return SpeechSpans(_output_root(), resolve=audio).spans(keys, cancelled)
+    except SpeechError:
+        raise ExportCancelled() from None
 
 
 def _output_root():

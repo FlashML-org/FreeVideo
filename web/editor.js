@@ -21,9 +21,11 @@ import {createAdjustPicture} from './editor_adjust_picture.js';
 import {pictureSession} from './editor_picture_session.js';
 import {createPictureTools} from './editor_frame.js';
 import {openExportDialog} from './editor_export_dialog.js';
-import {createAudioIntegration, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
+import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
+import {createEditorMusic} from './editor_music.js';
+import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
 import {isolateDialogKeys, topDialog} from './dialog_keys.js';
@@ -48,10 +50,12 @@ export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud8
 export const characters = text => Array.from(text).length;
 export const textLongText = (t, limit) => t('The description is too long. Shorten it to %d characters or fewer.', '描述过长，请缩短到 %d 字以内。').replace('%d', limit);
 // The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
-export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts'];
+export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full'];
 export function partsLimitText(code, t = en => en, limit = null) {
     const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
-    if (code === 'chain_part_too_short') return t(`Each continued part must be at least ${least} seconds. Make it longer.`, `接着生成的每一段至少 ${least} 秒，请加长这一段。`);
+    if (code === 'chain_source_full') return t('This video already has the maximum of ' + maxParts + '\u00a0parts and cannot be extended.',
+        '这个视频已达 ' + maxParts + '\u00a0段上限，无法再接着生成。');
+    if (code === 'chain_part_too_short') return t(`A part followed by another part must be at least ${least} seconds. Make it longer.`, `后面还接着其他段时，这一段至少 ${least} 秒，请加长这一段。`);
     if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, one continuous shot can have up to ${most} parts. Make every part at least ${full} seconds long, or use fewer parts.`,
         `有短于 ${full} 秒的段时，一个连续镜头最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
     return t(`One continuous shot can have up to ${limit ?? maxParts} parts. Make it shorter.`, `一个连续镜头最多 ${limit ?? maxParts} 段，请缩短。`);
@@ -74,7 +78,7 @@ export function editorErrorText(value, t = en => en) {
     if (code === 'gpu_memory' || /out of memory|cuda.*memory|显存不足|显存不够/i.test(raw))
         return t(`${stage}: not enough GPU memory.`, `${stage}时显存不足。`);
     const known = {
-        chain_part_too_short: t(`Each continued part must be at least ${model.RULES.followSeconds} seconds.`, `接着生成的每一段至少 ${model.RULES.followSeconds} 秒。`),
+        chain_part_too_short: t(`A part followed by another part must be at least ${model.RULES.followSeconds} seconds.`, `后面还接着其他段时，这一段至少 ${model.RULES.followSeconds} 秒。`),
         chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one continuous shot can have up to ${model.RULES.shortMaxParts} parts.`,
             `有短于 ${model.RULES.fullSeconds} 秒的段时，一个连续镜头最多 ${model.RULES.shortMaxParts} 段。`),
         chain_too_long: t(`One continuous shot can have up to ${model.RULES.maxParts} parts.`, `一个连续镜头最多 ${model.RULES.maxParts} 段。`),
@@ -188,8 +192,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const t = (en, zh) => String(language()).toLowerCase().startsWith('zh') ? zh : en;
     const returnFocus = document.activeElement;
     const even = value => Math.max(2, Math.floor(value / 2) * 2);
-    const initial = () => model.emptyProject({width: even(panel.width || 1344), height: even(panel.height || 768), settings: panel.settings || null,
-        name: t('Untitled edit', '未命名剪辑')});
+    // A new edit opens with an empty second sound track, where music is made.
+    const initial = () => model.addAudioTrack(model.emptyProject({width: even(panel.width || 1344), height: even(panel.height || 768), settings: panel.settings || null,
+        name: t('Untitled edit', '未命名剪辑')}));
     const state = createEditorState(initial());
     const resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
     const element = el('dialog', 'fv-studio fv-editor'); element.setAttribute('aria-label', t('Edit', '剪辑视图')); element.tabIndex = -1;
@@ -374,7 +379,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }, {onStatus: () => {
         if (!queue.dirty) { discardOnSwitch = false; saveWarning.hidden = true; }
     }});
-    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing});
+    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
     function selectionClips(selection = state.selection) {
         if (selection?.kind !== 'clip') return [];
         return state.record.tracks[0].clips.filter(clip => selection.ids.includes(clip.id) || selection.ids.includes(clip.link));
@@ -515,6 +520,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function completeSources() {
         return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); });
     }
+    // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
+    const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
+    let barValue = null;
     const exportMatches = () => exportSnapshot && exportSnapshot.id === state.record.id && exportSnapshot.revision === state.record.revision && exportSnapshot.content === content(state.record);
     function explainExport() {
         if (initializing || switching) { notify(t('Opening the edit…', '正在打开…')); return true; }
@@ -655,7 +663,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         initialSelection = offerInitial = extendEntry = null;
         projectEpoch++; held.length = 0;
         player.pause(); for (const stop of jobWatchers.values()) stop(); jobWatchers.clear(); jobStatuses.clear(); progress.clear(); runProgress.clear(); failures.clear(); progressConnection?.reset();
-        mostRecentJob = null; submissionFailure = null; genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
+        mostRecentJob = null; submissionFailure = null; music.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
         suppressSave = true; try { state.replace(record); savedContent = content(record); } finally { suppressSave = false; }
         panel.onProjectLoaded?.(record);
         const width = tracksHost.clientWidth - 148; if (width > 0) state.setZoom(model.openingZoom(width, record));
@@ -689,7 +697,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             forgetPointer();
         })); if (disposed) return;
         // A restored edit remains usable offline with its existing placeholders.
-        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs();
+        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs(); music.recover();
         state.restoreView(remembered);
         // Also when generating is confirmed only after the edit has opened.
         offerInitial = () => { if (epoch === projectEpoch && !state.selection && state.record.tracks.every(track => !track.clips.length)) selectInitial(); };
@@ -828,6 +836,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 });
             }
             const metadata = store.sources.get(sourceKey(value.source));
+            if (metadata?.path && value.source?.kind !== 'import') void store.lineage([{key: sourceKey(value.source), reference: {work: metadata.path}}]).then(() => hintFullSource()).catch(() => {});
             try { state.apply(t('Insert clip', '放入素材'), record => model.insertSource(record, {
                 ...value, width: metadata?.width ?? value.width, height: metadata?.height ?? value.height, text: value.text ?? metadata?.text,
                 at: value.at ?? model.duration(record)}), {clearRange: state.selection !== initialSelection});
@@ -844,6 +853,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         interrupted: clip => clip.pending === 'stopped' && !clip.source && !!clip.job
             && (jobStatuses.get(clip.job)?.blocks || []).some(block => block.state === 'interrupted' && model.attemptClip(state.record, block.id)?.id === clip.id),
         selectedFailure() {
+            const tune = music.failure(); if (tune) return tune;
             const clip = state.selection?.kind === 'clip' && state.record.tracks.flatMap(track => track.clips).find(clip => state.selection.ids.includes(clip.id) && clip.pending === 'failed');
             if (clip) return {id: clip.id, text: failures.text(clip.id)};
             return submissionFailure === JSON.stringify(state.selection) ? {id: 'submission', text: failures.text('submission')} : null;
@@ -875,11 +885,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The description the box shows for a choice of planned parts, and the parts it is written to; null for
         // any other choice.
         partText(selection = state.selection) {
+            if (music.target(selection)) return music.text(selection);
             const clips = selectionClips(selection).sort((a, b) => a.start - b.start);
             return clips.length && clips.every(editablePart) ? {ids: clips.map(clip => clip.id), text: clips[0].text} : null;
         },
         describeParts(ids, text) {
             text = wellFormed(text);
+            if (ids.length === 1 && music.target({kind: 'clip', ids})) return music.describe(ids[0], text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
             try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
@@ -915,6 +927,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }},
         previewRange: selection => genbar?.preview(selection),
         async estimate(selection) {
+            if (music.target(selection)) return music.estimate(selection);
             const run = partRun(selection), range = selectionRange(run ? clipChoice(run) : selection); if (!range) return null;
             let seconds = 0;
             for (const count of model.rangeParts(state.record, {...range, ...capability})) { const value = capability.estimate(count); if (value == null) return null; seconds += value; }
@@ -953,9 +966,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const paths = Object.fromEntries([...store.sources].map(([key, value]) => [key, value.path]));
                 const request = model.generationRequest(prepared, ids, {text: texts ? undefined : text, paths, queue: true});
                 // What the engine would refuse for its continuing parts is said here, before anything is sent.
-                const problem = model.partsProblem(prepared, ids);
-                if (problem) throw Object.assign(new Error(problem.code), {code: problem.code, limit: problem.limit});
-                const beforeKeys = model.generationBefore(prepared, ids), sizes = new Map(store.sources);
+                const beforeKeys = model.generationBefore(prepared, ids);
+                const lineageWorks = beforeKeys.filter(key => key && !key.startsWith('chain:')).map(key => {
+                    const metadata = store.sources.get(key);
+                    return metadata?.path ? {key, reference: {work: metadata.path}} : null;
+                }).filter(Boolean);
+                if (lineageWorks.length) await store.lineage(lineageWorks);
+                const problem = model.partsProblem(prepared, ids, {sourceLineage: store.knownLineage()});
+                if (problem) {
+                    const full = problem.code === 'chain_too_long' && beforeKeys.some(key => store.knownLineage()[key]?.parts >= model.RULES.maxParts);
+                    throw Object.assign(new Error(full ? 'chain_source_full' : problem.code), {code: full ? 'chain_source_full' : problem.code, limit: problem.limit});
+                }
+                const sizes = new Map(store.sources);
                 for (const key of beforeKeys.filter(key => key?.startsWith('chain:'))) {
                     const job = await store.chain(key.split(':')[1]);
                     sizes.set(key, job?.generation_size);
@@ -1012,6 +1034,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async press(text, {allowEmpty = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
+            // A stretch of the music track, or a piece of music there: music, with or without words.
+            if (music.target()) {
+                if (characters(text) > MUSIC_TEXT_LIMIT) return {say: textLongText(t, MUSIC_TEXT_LIMIT), focus: true};
+                return music.press(text);
+            }
             let selection = state.selection, said = null;
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
@@ -1076,9 +1103,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             await actions.generate({text: texts ? texts[run[0].id] : text, texts, selection, shown, allowEmpty});
             return {text, say: [said, used, busyBefore ? t('Queued. It starts after the part now generating.', '已排队，正在生成的那段完成后自动开始。') : null].filter(Boolean).join(' ') || null, queued: busyBefore};
         },
-        selectionRunning: () => busySelection(state.selection),
+        selectionRunning: () => music.target() ? music.running() : busySelection(state.selection),
         // A choice over existing clips that Generate would move to an empty spot.
-        selectionMovable: () => !actions.supportedSelection() && !!emptySpot(state.selection),
+        selectionMovable: () => !music.target() && !actions.supportedSelection() && !!emptySpot(state.selection),
         selectionSending() { const range = selectionRange(state.selection); return !!range && ([...sendingRanges].some(other => overlaps(other, range)) || [...sending].some(id => { const clip = model.find(state.record, id); return clip && overlaps(clip, range); })); },
         selectionHeld() { const ids = selectionClips(state.selection).map(clip => clip.id); return ids.length > 0 && ids.every(isHeld); },
         // Takes the selected parts out of the line; they stay as drafts.
@@ -1088,6 +1115,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             rememberView();
         },
         async cancel() {
+            if (music.target()) { await music.cancel(); return; }
             const range = selectionRange(state.selection);
             const own = range && state.record.tracks[0].clips.find(clip => clip.job && generating(clip)
                 && clip.start < range.start + range.frames && clip.start + clip.frames > range.start)?.job;
@@ -1214,7 +1242,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
+    actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
+        styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
+    {
+        // What the editor gives the bar is the video job's; a chosen piece of music being made shows its own instead.
+        const update = genbar.update;
+        genbar.update = value => { barValue = value; update(music.barStatus() || value); };
+        state.subscribe(event => { if (event.type === 'selection' || event.type === 'record') update(music.barStatus() || barValue); });
+        music.refreshInfo();
+    }
     const adjust = adjustPanel = createAdjustPanel(adjustHost, {state, t, actions});
     const pictureEdit = pictureSession(state, t);
     const notes = createBlockNotes({state, t, actions}); actions.blockNote = notes.decorate; actions.describedTrack = describedTrack;
@@ -1302,7 +1339,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     updateTransport();
     const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); });
     let capabilitySize = `${state.record.width}x${state.record.height}`;
+    // The reason, said as soon as the selected continuation follows a video that already has the most parts, once per selection.
+    let hintedFor = '';
+    function hintFullSource() {
+        const ids = state.selection?.kind === 'clip' ? state.selection.ids : [];
+        const signature = ids.join(',');
+        if (!ids.length) { hintedFor = ''; return; }
+        if (signature === hintedFor) return;
+        try {
+            const known = store.knownLineage();
+            if (model.partsProblem(state.record, ids, {sourceLineage: known})?.code !== 'chain_too_long'
+                || !model.generationBefore(state.record, ids).some(key => known[key]?.parts >= model.RULES.maxParts)) return;
+        } catch { return; }
+        hintedFor = signature; genbar?.say(partsLimitText('chain_source_full', t));
+    }
     const unsubscribe = state.subscribe(event => {
+        if (event.type === 'selection') hintFullSource();
         if (event.type === 'record') {
             const size = `${state.record.width}x${state.record.height}`;
             if (!initializing && size !== capabilitySize) {
@@ -1315,7 +1367,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const next = content(state.record);
             if (!suppressSave && !initializing && next !== savedContent && exportStatus?.state === 'done') { exportStatus = null; exportButton.textContent = t('Export', '导出'); }
             if (!suppressSave && !initializing && next !== savedContent) { savedContent = next; queue.enqueue(state.record); }
-            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs();
+            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs(); music.recover();
         }
         if (event.type === 'selection') { if (state.selection !== initialSelection) initialSelection = null; }
         if (event.type === 'record' || event.type === 'selection') { updateTop(); updateTransport(); pictureTools.update(); }
@@ -1413,7 +1465,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // A workflow without FreeVideo nodes came to the front: the editing view makes way (unsaved edits stay open).
     const collapse = () => { void handle.close(); };
     window.addEventListener('freevideo-collapse', collapse);
-    const handle = {element, state, actions, store, adjust, audio, notify,
+    const handle = {element, state, actions, store, adjust, audio, music, notify,
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             if (await handle.close() !== false) await onView(view);
@@ -1440,7 +1492,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());
@@ -1469,11 +1521,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (from?.work) {
                 const work = from.work;
                 const id = work.id || work.video?.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
+                void store.getSources([`work:${id}`]).then(() => {
+                    const source = store.sources.get(`work:${id}`);
+                    if (source?.path) void store.lineage([{key: `work:${id}`, reference: {work: source.path}}]);
+                }).catch(() => {});
                 record = await store.byWork(id);
                 if (!record) {
                     const key = `work:${id}`; await store.getSources([key]); const metadata = store.sources.get(key), g = work.geometry || {};
-                    record = model.emptyProject({width: even(metadata?.width || g.width || panel.width || 1344), height: even(metadata?.height || g.height || panel.height || 768),
-                        settings: panel.settings || null, name: t('Untitled edit', '未命名剪辑')});
+                    record = model.addAudioTrack(model.emptyProject({width: even(metadata?.width || g.width || panel.width || 1344), height: even(metadata?.height || g.height || panel.height || 768),
+                        settings: panel.settings || null, name: t('Untitled edit', '未命名剪辑')}));
                     record = model.insertSource(record, {source: {kind: 'work', id}, frames: metadata?.frames || g.frames || Math.round((g.seconds || 15) * 24),
                         hasVideo: true, hasAudio: metadata?.has_audio ?? work.has_audio !== false, text: metadata?.text, at: 0});
                     if (!metadata) store.cache({[key]: {video: mediaURL(api, work.video), audio: mediaURL(api, work.video), frames: g.frames,
@@ -1554,6 +1610,25 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (from?.work && from.extend) {
             const id = from.work.id || from.work.video?.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
             const epoch = projectEpoch;
+            const showFullSourceHint = () => {
+                const key = `work:${id}`;
+                void store.getSources([key]).then(() => {
+                    const metadata = store.sources.get(key);
+                    return metadata?.path ? store.lineage([{key, reference: {work: metadata.path}}]) : null;
+                }).then(values => {
+                    if (closing || disposed || epoch !== projectEpoch) return;
+                    if (!values) return;
+                    const history = values.get(key);
+                    if (!history || history.known !== true || history.parts < model.RULES.maxParts) return;
+                    const clips = state.record.tracks[0].clips, source = clips.find(clip => sourceKey(clip.source) === key);
+                    if (!source) return;
+                    const after = clips.filter(clip => clip.pending === 'draft' && clip.start >= source.start + source.frames
+                        && model.continuesBefore(state.record, clip.id));
+                    if (!after.length) return;
+                    const problem = model.partsProblem(state.record, after.map(clip => clip.id), {sourceLineage: store.knownLineage()});
+                    if (problem?.code === 'chain_too_long') genbar?.say(partsLimitText('chain_source_full', t));
+                }).catch(() => {});
+            };
             // Selects the work and, when nothing follows it yet, adds one minimum draft. Runs once; when the
             // generation probe failed this time it runs after a later probe succeeds.
             const enter = (select = true) => {
@@ -1565,11 +1640,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
                 const waiting = after.find(other => other.pending === 'draft');
                 if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
-                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) return true;
+                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { showFullSourceHint(); return true; }
                 if (!store.generationAvailable) return false;
                 const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
                 tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
                     {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
+                showFullSourceHint();
                 return true;
             };
             await store.generationReady();

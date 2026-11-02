@@ -96,6 +96,8 @@ export function chatData(api) {
         confirm: body => agentPost(api, '/freevideo/agent/chat/confirm', body),
         abandon: session => agentPost(api, '/freevideo/agent/chat/abandon', session ? {session} : {}),
         cancel: id => retryAgentPost(api, '/freevideo/agent/activity/cancel', {id}),
+        // Once: a second try after one that went through would only be refused as already running.
+        resume: id => agentPost(api, '/freevideo/agent/activity/resume', {id}),
         activity: (cursor, options) => read('/freevideo/agent/activity' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), options),
         sendMessage: (entry, options) => sendChatMessage(api, entry, options),
         send: (body, options) => retryAgentPost(api, '/freevideo/agent/chat', body, options),

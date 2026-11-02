@@ -69,8 +69,8 @@ def view_prompt(card, view):
     """The prompt for one view of a card (a dict with name, description, kind)."""
     who = _who(card)
     if card.get('kind') == 'setting':
-        return ('%s. A wide view of the empty place, no people, even daylight, natural colours, sharp focus, '
-                'no text.' % who)
+        # The time, weather, light and colour the description gives are the point of a scene: only the people and text are barred.
+        return '%s. A wide view of the place, no people, sharp focus, no text.' % who
     if view == 'front':
         return ('%s. The person stands alone, the whole body from head to feet, facing the camera, neutral pose '
                 'with the arms relaxed, %s.' % (who, BACKDROP))
@@ -99,13 +99,16 @@ def photo_prompt():
             'add no new accessories.' % BACKDROP)
 
 
-def page_views(description):
+def page_views(description, kind='character'):
     """What the page needs to make the pictures of a new character itself: each view's prompt and size.
 
     The page runs the pictures one by one so each shows when it is done; the prompts stay here, so a
     card made from a description and these pictures are made from the same words."""
     if not isinstance(description, str) or not description.strip() or len(description) > 1000:
         raise ValueError('invalid_prompt')
-    card = dict(name=description.strip()[:120], description=description.strip(), kind='character')
+    if kind not in ('character', 'setting'):
+        raise ValueError('invalid_request')
+    card = dict(name=description.strip()[:120], description=description.strip(), kind=kind)
+    views = SETTING_VIEWS if kind == 'setting' else VIEWS
     return dict(views=[dict(view=view, prompt=view_prompt(card, view), width=SIZES[view][0],
-                            height=SIZES[view][1], from_front=uses_front(view)) for view in VIEWS])
+                            height=SIZES[view][1], from_front=uses_front(view)) for view in views])

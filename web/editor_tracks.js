@@ -13,6 +13,9 @@ import {attachAudioTracks} from './editor_audio.js';
 import {seconds as secondsText} from './editor_audio_notes.js';
 import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
+import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
+// A range drawn on the music track alone: music for that stretch.
+const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
 export const SOURCE_TYPE = 'application/x-freevideo-source';
 export const SNAP_DISTANCE = 8;
@@ -84,10 +87,10 @@ export function edgeParameters(clip, edge, frame, points, zoom, {canExtend = tru
     const sourceEnd = clip.start + clip.length - clip.in;
     if (speedEdited(clip)) return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
     if (edge === 'end' && canExtend && clip.extend && snapped.frame > sourceEnd) {
-        // What continues a video is at least followSeconds long; the preview already shows the raised length.
+        // What is added at the tail is at least lastSeconds long; the preview already shows the raised length.
         const wanted = Math.round((snapped.frame - sourceEnd) / model.FPS), seconds = model.continuedSeconds(wanted, maxFollowSeconds);
         return {kind: 'extend', frame: sourceEnd, frames: seconds * model.FPS, guide: snapped.guide, raised: seconds !== wanted,
-            least: wanted < model.RULES.followSeconds && seconds >= model.RULES.followSeconds};
+            least: wanted < model.RULES.lastSeconds && seconds >= model.RULES.lastSeconds};
     }
     return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
 }
@@ -280,11 +283,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     }
     // A range cannot be drawn longer than one video may be; `fromEnd` keeps its end where it is.
     function capRange(selection, fromEnd = false, continues = false) {
-        const most = model.maxRangeFrames(state.record, {...actions.generationLimits?.(), continues});
+        const most = musicRange(selection) ? MAX_MUSIC_FRAMES : model.maxRangeFrames(state.record, {...actions.generationLimits?.(), continues});
         if (selection.frames <= most) return selection;
         return fromEnd ? {...selection, start: selection.start + selection.frames - most, frames: most} : {...selection, frames: most};
     }
     function rangeParts(selection, record = state.record) {
+        // A stretch of the music track is one piece, never split into video parts.
+        if (musicRange(selection)) return [selection.frames];
         return model.rangeParts(record, {...selection, ...actions.generationLimits?.()});
     }
     function boundaryLine(frame, index) {
@@ -401,6 +406,20 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
         ruler.replaceChildren(...marks);
     }
+    function syncVerticalScroll() {
+        const top = scroll.scrollTop;
+        element.dataset.verticalOverflow = String(scroll.scrollHeight > scroll.clientHeight);
+        element.style.setProperty('--fv-ed-track-offset', `${-top}px`);
+        // Keep the handle beside the fixed ruler; the line still ends at the last row.
+        playhead.style.top = `${18 + top}px`;
+        playhead.style.height = `${Math.max(0, parseFloat(content.style.height) - 34 - 18 - top)}px`;
+    }
+    function setTrackHeight(height) {
+        // The heads' 6px gap and 28px audio button belong to the same scroll extent.
+        content.style.height = `${height + 34}px`;
+        overlays.style.height = `${height}px`;
+        syncVerticalScroll();
+    }
     function layout() {
         // Defer the initial 90-second view until a detached shell is mounted.
         if (!mountedStates.has(state) && scroll.clientWidth) {
@@ -416,7 +435,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             item.element.classList.toggle('fv-ed-tiny', pixels(item.clip.frames) < 2);
             item.status.hidden = pixels(item.clip.frames) < 24;
         }
-        renderRuler(); renderSelection(); renderPlayhead(); slider.value = String(state.zoom);
+        syncVerticalScroll(); renderRuler(); renderSelection(); renderPlayhead(); slider.value = String(state.zoom);
     }
     function waveform(item, key) {
         const viewKey = `${key}/${item.clip.in}/${item.clip.frames}/${item.clip.length}`;
@@ -566,7 +585,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         addAudio.dataset.sign = addAudio.textContent.slice(0, 1); // Phone widths show the sign alone.
         addAudio.title = '';
         addAudio.setAttribute('aria-label', addAudio.textContent);
-        content.style.height = `${top - 6}px`; playhead.style.height = `${top - 24}px`;
+        setTrackHeight(top - 6);
         layout();
         const failure = openFailure && clips.get(openFailure);
         if (failure && model.clipState(failure.clip) === 'failed' && state.selection?.ids?.includes(openFailure)) failedPopover(failure);
@@ -792,7 +811,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const aligned = snap(frame, points, state.zoom);
             // Where it was pressed, drawn to a clip edge, marker or the playhead nearby.
             gesture.from ??= snap(gesture.anchor, points, state.zoom).frame;
-            const drawn = rangeParameters(gesture.from, aligned.frame);
+            // Drawn on the music track, the range is that track's alone: music for that stretch.
+            const drawn = rangeParameters(gesture.from, aligned.frame, gesture.track === MUSIC_TRACK ? [MUSIC_TRACK] : undefined);
             // Drawn from a clip's end, the range starts exactly there.
             if (gesture.flush != null && aligned.frame > gesture.flush) Object.assign(drawn, {start: gesture.flush,
                 frames: Math.max(2 * model.FPS, Math.round((aligned.frame - gesture.flush) / model.FPS) * model.FPS)});
@@ -962,8 +982,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const frames = result.frame - finished.clip.start - finished.clip.frames + result.frames;
             if (extendClip(finished.id, frames) && result.raised) {
                 // Say the new length (tenths, rounded down like other durations) so the change is visible.
-                const least = model.RULES.followSeconds, length = secondsText(result.frames, model.FPS);
-                actions.notify?.(result.least ? t(`Lengthened to ${length} s. Each continued part must be at least ${least} seconds.`, `已加长到 ${length} 秒。接着生成的每一段至少 ${least} 秒。`)
+                const least = model.RULES.lastSeconds, length = secondsText(result.frames, model.FPS);
+                actions.notify?.(result.least ? t(`Lengthened to ${length} s. The last part must be at least ${least} seconds.`, `已加长到 ${length} 秒。最后一段至少 ${least} 秒。`)
                     : t(`Lengthened to ${length} s.`, `已加长到 ${length} 秒。`));
             }
         } else attempt(t('Trim', '裁短'), record => model.trim(record, finished.id, finished.edge, result.frame));
@@ -1055,13 +1075,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const name = t('Audio 2', '声音 2'); head.title = name; head.append(icon('audio'), create('span', '', name));
             row.setAttribute('aria-label', name);
             row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = '40px';
-            const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height, oldPlayhead = playhead.style.height;
+            const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height;
             sourcePreview.restore = () => {
                 first.head.title = oldName; first.head.querySelector('span').textContent = oldName;
-                addAudio.style.top = oldTop; content.style.height = oldHeight; playhead.style.height = oldPlayhead;
+                addAudio.style.top = oldTop; setTrackHeight(parseFloat(oldHeight) - 34);
             };
             first.head.title = t('Audio 1', '声音 1'); first.head.querySelector('span').textContent = first.head.title;
-            addAudio.style.top = `${top + 46}px`; content.style.height = `${top + 40}px`; playhead.style.height = `${top + 22}px`;
+            addAudio.style.top = `${top + 46}px`; setTrackHeight(top + 40);
             heads.insertBefore(head, addAudio); content.insertBefore(row, overlays); nodes.push(head, row);
         }
         for (const {track, clip} of added) {
@@ -1192,7 +1212,15 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     });
     on(scroll, 'scroll', renderRuler, {passive: true});
     on(scroll, 'scroll', renderEmptyHints, {passive: true});
+    on(scroll, 'scroll', syncVerticalScroll, {passive: true});
     on(scroll, 'wheel', wheel, {passive: false});
+    on(heads, 'wheel', event => {
+        if (event.ctrlKey || event.metaKey) { wheel(event); return; }
+        event.preventDefault(); event.stopPropagation();
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroll.clientHeight : 1;
+        if (event.shiftKey) scroll.scrollLeft += (event.deltaX || event.deltaY) * unit;
+        else { scroll.scrollLeft += event.deltaX * unit; scroll.scrollTop += event.deltaY * unit; }
+    }, {passive: false});
     on(scroll, 'dragover', dropOver); on(scroll, 'drop', dropSource);
     on(document, 'dragstart', event => {
         clearSourcePreview();

@@ -433,6 +433,15 @@ def register():
         return web.json_response({'progress': STATE.snapshot()},
                                  headers={'Cache-Control': 'no-store'})
 
+    @server.routes.post('/freevideo/node-view-opened')
+    async def node_view_opened(request):
+        from .comfy_host_stats import record_node_view
+        try:
+            await asyncio.to_thread(record_node_view)
+        except (OSError, ValueError):
+            pass  # The count is only a diagnostic aid.
+        return web.Response(status=204)
+
     @server.routes.post('/freevideo/cancel')
     async def cancel(request):
         value = await request.json()

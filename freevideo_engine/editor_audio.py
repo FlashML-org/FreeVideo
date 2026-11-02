@@ -18,6 +18,17 @@ def clip_fields(raw, kind):
                 or value == raw['id'] or raw.get('link')):
             raise ValueError('Invalid detached audio')
         result['detached_from'] = value
+    # A music piece's preset (prefilled when it is made again) and whether it is lowered under the first sound track.
+    if 'music' in raw:
+        value = raw['music']
+        if (kind != 'audio' or not isinstance(value, dict) or set(value) != {'style', 'mood'}
+                or not all(isinstance(value[k], str) and re.fullmatch(r'[a-z]{1,20}', value[k]) for k in ('style', 'mood'))):
+            raise ValueError('Invalid music preset')
+        result['music'] = {'style': value['style'], 'mood': value['mood']}
+    if 'duck' in raw:
+        if kind != 'audio' or type(raw['duck']) is not bool:
+            raise ValueError('Invalid audio ducking')
+        result['duck'] = raw['duck']
     return result
 
 
@@ -157,3 +168,82 @@ def apply_track_audio(block, block_start, track, tracks, *, rate=48000, fps=24, 
                 added[:, a - block_start:b - block_start] += (data[:, offset + a - begin:offset + b - begin]
                     * gain(np.arange(a, b))[None, :] * clip.get('volume', 1))
     return output + added
+
+
+# Lower during speech: a clip with duck=True sits DUCK_DB lower wherever another audible clip has speech,
+# with DUCK_RAMP_SECONDS ramps just outside each stretch. web/editor_audio_model.js has the same rules.
+DUCK_DB = -8.
+DUCK_RAMP_SECONDS = .3
+
+
+def _speed(clip):
+    return clip.get('speed', 1) if changed(clip) else 1
+
+
+def duck_ranges(tracks, spans, rate=48000, fps=24):
+    """Timeline sample ranges [first, last) with speech in a clip that is not itself lowered.
+
+    spans maps 'kind:id' source keys to [start, end] seconds of that source; a source without an entry
+    has no known speech. Ranges closer than two ramps are joined so the level does not bounce between them.
+    """
+    found = []
+    for track in tracks:
+        if track.get('kind') != 'audio' or not track_audible(track, tracks):
+            continue
+        for clip in track['clips']:
+            source = clip.get('source')
+            if not source or clip.get('duck') or clip.get('volume', 1) == 0 or not clip_audible(clip, track, tracks):
+                continue
+            stretches = spans.get(source['kind'] + ':' + source['id']) or ()
+            first, last = _samples(clip['start'], rate, fps), _samples(clip['start'] + clip['frames'], rate, fps)
+            origin = (source_sample_start(clip) * rate / 48000 if audio_changed(clip)
+                      else _source_start(clip, rate, fps))
+            speed = _speed(clip)
+            for begin, end in stretches:
+                a, b = (begin * rate - origin) / speed, (end * rate - origin) / speed
+                if clip.get('reverse'):
+                    a, b = (last - first) - b, (last - first) - a
+                a, b = max(first, math.floor(first + a + .5)), min(last, math.floor(first + b + .5))
+                if b > a:
+                    found.append([a, b])
+    found.sort()
+    ramp = 2 * max(1, math.floor(DUCK_RAMP_SECONDS * rate + .5))
+    joined = []
+    for a, b in found:
+        if joined and a <= joined[-1][1] + ramp:
+            joined[-1][1] = max(joined[-1][1], b)
+        else:
+            joined.append([a, b])
+    return joined
+
+
+def duck_gain(ranges, block_start, count, rate=48000):
+    """Gain per sample for a lowered clip over [block_start, block_start + count)."""
+    import numpy as np
+    gain = np.ones(count, dtype=np.float64)
+    ramp = max(1, math.floor(DUCK_RAMP_SECONDS * rate + .5))
+    low = 10. ** (DUCK_DB / 20.)
+    position = np.arange(block_start, block_start + count, dtype=np.float64)
+    for first, last in ranges:
+        if last + ramp <= block_start or first - ramp >= block_start + count:
+            continue
+        into = np.clip((position - (first - ramp)) / ramp, 0, 1)
+        out_of = np.clip(((last + ramp) - position) / ramp, 0, 1)
+        np.minimum(gain, 1 - (1 - low) * np.minimum(into, out_of), out=gain)
+    return gain
+
+
+def duck_sources(tracks):
+    """Source keys whose speech spans a lowered clip needs (none when nothing is lowered)."""
+    if not any(clip.get('duck') and clip.get('source') for track in tracks for clip in track['clips']):
+        return []
+    keys = []
+    for track in tracks:
+        if track.get('kind') != 'audio':
+            continue
+        for clip in track['clips']:
+            source = clip.get('source')
+            key = source and source['kind'] + ':' + source['id']
+            if key and not clip.get('duck') and key not in keys:
+                keys.append(key)
+    return keys

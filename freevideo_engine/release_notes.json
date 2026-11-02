@@ -1,31 +1,80 @@
 {
   "schema": 1,
-  "product_version": "0.4.28",
+  "product_version": "0.4.29",
   "en": {
-    "summary": "Image generation, editing and character generation accept LoRAs, the image model stays on the card longer for people who mostly make pictures, and Repair replaces Python packages whose files are missing.",
+    "summary": "Music can be generated on the second audio track from the generation bar (not on Mac), scenes can be added to the character library, long videos can be extended by typing a length in seconds, and Autopilot chat continues a failed or stopped video from where it left off.",
     "changes": [
-      "Image generation: image generation, image editing and character generation each have a LoRA control. Up to 8 LoRAs can be added, each with a file, a strength and a trigger word that is added to the prompt. Video and image LoRAs are told apart and a wrong choice is explained in one sentence. Without a LoRA the output is unchanged.",
-      "Speed: for people who mostly make pictures, the image model stays loaded for up to 10 minutes when it fits on the card, so the next picture starts sooner. It gives the card back at once when a video or another program needs it.",
-      "Speed: the usage habit that decides which model parts stay in memory (only the kind of each operation and its count, nothing from prompts or images) is now kept across restarts. When prompts change often, the text encoder is loaded while the engine is idle, as far as free video and system memory allow, and stops when a new job starts.",
-      "Speed: after the engine starts, the model files for the first request are read ahead as far as free memory allows: the video model for people who mostly generate again with the same prompt and images, and the text encoder otherwise. A new request or a busy queue stops the reading, and a machine with little free memory reads less.",
-      "Install: Repair now reinstalls Python packages whose files are missing or cut short, for example a numpy library that has gone missing, which setup did not notice before when the package was already at the required version; the repair review counts them in the download. When the hardware check before a request fails to load such a package, the message names the missing file and offers Repair.",
-      "Windows: on machines with little memory, a long video whose second pass stops for lack of system memory now retries in a fresh process, keeping the finished first pass, and can finish instead of failing.",
-      "Guide: the tutorial book covers the additions of 0.4.25 and 0.4.26 and has a new chapter on replacing a person, with a matching guide card. In the Chinese book, quoted interface names of up to eight characters and numbers with their units are no longer split across lines."
+      "Editor: music can be made from the generation bar by dragging a range on the second audio track, which new edits now show by default. Choose a style and a mood and optionally describe the music; if the music model is not installed yet, it is downloaded first. A selected generated piece can be regenerated in place, and one undo restores the previous piece. Generated music is lowered while someone speaks; this can be turned off with Lower during speech in the clip properties. Not available on Mac.",
+      "Editor: the timeline scrolls vertically when the second audio track, text or subtitle rows do not fit, with the ruler kept in place.",
+      "Character library: scenes can be added from your own pictures or from several AI candidates, and mentioned with @ in the prompt; the time of day, weather, light and tone written in the prompt are kept in the generated video.",
+      "Long videos: when an ungenerated draft part or a range on the picture track is selected, the generation bar shows a Duration field in whole seconds. It follows the same rules as dragging the right edge (whole seconds, at least 10 s per part, up to 8 parts); a value out of range is clamped with a short note, and one undo restores the previous length.",
+      "Long videos: joining parts no longer fails at the last step when one part differs from the first in size or encoding; such a part is now matched to the first part before the parts are joined. When that is not possible, the message names the part and the property that differs.",
+      "Long videos: a video that already has the most parts a continuous shot can have now says so as soon as it is chosen to be extended, and the limit is checked before generation starts.",
+      "Long videos: the last continuation part, including a single added part, can be as short as 2 s; parts in the middle still last at least 5 s.",
+      "Autopilot: Continue generating on a failed or stopped video picks up the same request and keeps the parts already made, also when the Agent is offline. A failed picture is submitted again with the original request. The latest message can be edited and sent again; unfinished tasks after it are stopped first.",
+      "Agent: when the Connect an agent card cannot get an address, it explains the reason, for example when the page was opened from another device or by machine name; the feedback report includes the status code and error code.",
+      "Prompt enhancement: when the Agent is asked to improve the prompt before generating, the generation uses the improved text exactly, and is no longer treated as a different prompt because quotation marks were changed while the text was copied.",
+      "Prompts: asking for no background music in the scene text now works when the prompt still has the starter prompt's music section: the unchanged starter score is replaced with N/A, and a rewritten prompt ends with N/A. A music section written by the user is kept.",
+      "Speed: the background compile also prepares portrait videos and videos with a reference picture, so their first request no longer compiles GPU programs at the first step of each pass. The one-time background compile takes about 80 seconds longer; results are unchanged.",
+      "Install: a damaged offline package is now reported by name with a request to download it again, instead of a raw decompression error.",
+      "Install: downloads over an unstable connection now continue from the part already downloaded instead of stopping after the first round.",
+      "Install: on Windows, setup now waits and creates the Python environment again when another program, such as security software, holds its Python file open, instead of failing at the first attempt.",
+      "Install: when Windows refuses to run FreeVideo's Python file, the failure message now says so in any system language and points to the security software.",
+      "Updates: a downloaded source update is verified against the release signature again every time the launcher starts, not only when it is downloaded.",
+      "Diagnostics: the diagnostic log times the video worker's start-up steps."
     ]
   },
   "zh": {
-    "summary": "图片生成、改图和角色生成可以使用 LoRA；以做图为主时，图片模型在显存中保留更久；“修复”会重新安装文件缺失的 Python 包。",
+    "summary": "可以在第二条声音轨上用生成栏生成配乐（暂不支持 Mac）；角色库可以新建场景；长视频可以直接填写秒数来接着生成；AI 全自动对话中失败或停止的视频可以从中断处继续生成。",
     "changes": [
-      "图片生成：图片生成、改图和角色生成各增加了 LoRA 控件。最多可添加 8 个 LoRA，每个可选择文件、调整强度，触发词会加入提示词。视频和图片的 LoRA 分开识别，选错时用一句话说明。不使用 LoRA 时输出不变。",
-      "速度：以做图为主的用户，图片模型在能完整放进显存时最多保留 10 分钟，下一张图开始更快；视频或其他程序需要显存时立即让出。",
-      "速度：决定哪些模型部分驻留内存的操作习惯（只记录每次操作的类型和次数，不含提示词和图片的任何内容）现在会跨重启保存。经常更换提示词时，引擎空闲期间会预先载入文本编码器，只载入空闲显存和内存放得下的部分，新任务开始即停止。",
-      "速度：引擎启动后，按空闲内存的允许范围预先读入第一次请求要用的模型文件：以相同提示词和图片反复生成为主时读视频模型，其余情况读文本编码器。新请求到来或队列忙碌时停止读取，空闲内存较少的机器读得更少。",
-      "安装：“修复”现在会重新安装文件缺失或被截短的 Python 包（例如 numpy 的某个库文件丢失）；此前包已是所需版本时，这类问题安装流程检测不到。修复审阅页会把它们计入下载量。请求前的硬件检测因此类包无法加载而失败时，失败信息会点名缺失的文件并提供“修复”。",
-      "Windows：内存较小的机器生成长视频时，第二遍因系统内存不足中断后，会保留已完成的第一遍，改在新进程里重试，可以继续完成，而不是整次失败。",
-      "教程：教程书补充了 0.4.25 和 0.4.26 新增功能的说明，并新增“替换人物”一章和对应的导览卡。中文教程书中，八个字以内的带引号界面名称以及数字与单位，不再被拆在两行。"
+      "剪辑视图：在第二条声音轨上拖出一段，即可用生成栏生成配乐；新剪辑默认显示这条声音轨。可选择风格和情绪，也可另写描述；配乐模型未安装时会先下载。选中已生成的配乐可以原位重新生成，一次撤销即可恢复原来那段。生成的配乐在有人说话处自动降低音量，可在片段属性中取消“对白时降低音量”。暂不支持 Mac。",
+      "剪辑视图：第二条声音轨、文字或字幕行放不下时，时间线可以纵向滚动，标尺保持固定。",
+      "角色库：可以用自己的图片或从 AI 生成的多张候选中新建场景，并在提示词中用 @ 引用；提示词里写的时间、天气、光线和色调会保留到生成的视频中。",
+      "长视频：选中未生成的草稿段或画面轨上的一段范围时，生成栏显示以整秒为单位的“时长”输入框。规则与拖动右边缘相同（整秒、每段至少 10 秒、最多 8 段）；超出范围时自动取到边界并给出简短提示，一次撤销即可恢复原来的时长。",
+      "长视频：某一段的尺寸或编码与第 1 段不同时，不再在最后一步接合失败：接合前会先把这样的段转换为与第 1 段一致；无法转换时，提示会指明是哪一段、哪一项不同。",
+      "长视频：已达到连续镜头最多段数的视频，选中接着生成时就会说明原因，生成前也会检查。",
+      "长视频：接着生成时，最后一个接续段（包括只补一段的情况）最短可为 2 秒，中间的接续段仍至少 5 秒。",
+      "AI 全自动：视频失败或被停止后，点“继续生成”会按原请求接着做，保留已完成的段，Agent 不在线时同样可用。图片失败时按原请求重新提交。最后一条消息可以修改后重新发送，其后未完成的任务会先停止。",
+      "Agent：“连接 Agent”卡片取不到地址时，会说明原因（例如从其他设备或用机器名打开页面）；反馈报告附带状态码和错误码。",
+      "提示词增强：让 Agent 先润色提示词再生成时，生成使用的就是润色后的原文，不会因抄写时引号被改动而被当作另一段提示词。",
+      "提示词：在场景文字里要求不要背景音乐，而提示词仍带着默认示例的配乐段时，这一要求现在会生效：没改过的默认配乐会被换成 N/A，提示词重写的结果也以 N/A 结尾。用户自己写的配乐段保持不变。",
+      "速度：后台预编译也准备竖向视频和带参考图的视频，它们的第一次请求不再在每遍的第一步现场编译 GPU 程序。一次性的后台编译多约 80 秒，结果不变。",
+      "安装：离线包损坏时，现在会指出文件名并提示重新下载，不再显示解压缩的原始错误。",
+      "安装：网络不稳定时，下载会接着已下载的部分继续，不再在第一轮失败后直接停止。",
+      "安装：在 Windows 上，Python 文件被其他程序（例如安全软件）占用时，安装程序会等待并重新创建 Python 环境，不再第一次失败就停止。",
+      "安装：Windows 拒绝运行 FreeVideo 的 Python 文件时，失败提示会说明原因并指向安全软件，不再受系统语言影响。",
+      "更新：已下载的源码更新在启动器每次启动时都会再按发布签名校验，不只在下载时校验。",
+      "诊断：诊断日志为视频 worker 的启动各步计时。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.28",
+      "en": {
+        "summary": "Image generation, editing and character generation accept LoRAs, the image model stays on the card longer for people who mostly make pictures, and Repair replaces Python packages whose files are missing.",
+        "changes": [
+          "Image generation: image generation, image editing and character generation each have a LoRA control. Up to 8 LoRAs can be added, each with a file, a strength and a trigger word that is added to the prompt. Video and image LoRAs are told apart and a wrong choice is explained in one sentence. Without a LoRA the output is unchanged.",
+          "Speed: for people who mostly make pictures, the image model stays loaded for up to 10 minutes when it fits on the card, so the next picture starts sooner. It gives the card back at once when a video or another program needs it.",
+          "Speed: the usage habit that decides which model parts stay in memory (only the kind of each operation and its count, nothing from prompts or images) is now kept across restarts. When prompts change often, the text encoder is loaded while the engine is idle, as far as free video and system memory allow, and stops when a new job starts.",
+          "Speed: after the engine starts, the model files for the first request are read ahead as far as free memory allows: the video model for people who mostly generate again with the same prompt and images, and the text encoder otherwise. A new request or a busy queue stops the reading, and a machine with little free memory reads less.",
+          "Install: Repair now reinstalls Python packages whose files are missing or cut short, for example a numpy library that has gone missing, which setup did not notice before when the package was already at the required version; the repair review counts them in the download. When the hardware check before a request fails to load such a package, the message names the missing file and offers Repair.",
+          "Windows: on machines with little memory, a long video whose second pass stops for lack of system memory now retries in a fresh process, keeping the finished first pass, and can finish instead of failing.",
+          "Guide: the tutorial book covers the additions of 0.4.25 and 0.4.26 and has a new chapter on replacing a person, with a matching guide card. In the Chinese book, quoted interface names of up to eight characters and numbers with their units are no longer split across lines."
+        ]
+      },
+      "zh": {
+        "summary": "图片生成、改图和角色生成可以使用 LoRA；以做图为主时，图片模型在显存中保留更久；“修复”会重新安装文件缺失的 Python 包。",
+        "changes": [
+          "图片生成：图片生成、改图和角色生成各增加了 LoRA 控件。最多可添加 8 个 LoRA，每个可选择文件、调整强度，触发词会加入提示词。视频和图片的 LoRA 分开识别，选错时用一句话说明。不使用 LoRA 时输出不变。",
+          "速度：以做图为主的用户，图片模型在能完整放进显存时最多保留 10 分钟，下一张图开始更快；视频或其他程序需要显存时立即让出。",
+          "速度：决定哪些模型部分驻留内存的操作习惯（只记录每次操作的类型和次数，不含提示词和图片的任何内容）现在会跨重启保存。经常更换提示词时，引擎空闲期间会预先载入文本编码器，只载入空闲显存和内存放得下的部分，新任务开始即停止。",
+          "速度：引擎启动后，按空闲内存的允许范围预先读入第一次请求要用的模型文件：以相同提示词和图片反复生成为主时读视频模型，其余情况读文本编码器。新请求到来或队列忙碌时停止读取，空闲内存较少的机器读得更少。",
+          "安装：“修复”现在会重新安装文件缺失或被截短的 Python 包（例如 numpy 的某个库文件丢失）；此前包已是所需版本时，这类问题安装流程检测不到。修复审阅页会把它们计入下载量。请求前的硬件检测因此类包无法加载而失败时，失败信息会点名缺失的文件并提供“修复”。",
+          "Windows：内存较小的机器生成长视频时，第二遍因系统内存不足中断后，会保留已完成的第一遍，改在新进程里重试，可以继续完成，而不是整次失败。",
+          "教程：教程书补充了 0.4.25 和 0.4.26 新增功能的说明，并新增“替换人物”一章和对应的导览卡。中文教程书中，八个字以内的带引号界面名称以及数字与单位，不再被拆在两行。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.27",
       "en": {

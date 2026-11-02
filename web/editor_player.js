@@ -27,7 +27,7 @@ export function selectAudioChain(chains, track, clip, position, volumePreview = 
         && !c.clips.some(id => volumePreview.has(id) && volumePreview.get(id) !== 1));
     return chain ? {chain, seconds: (position - chain.start) / 24 + (chain.offset || 0)} : null;
 }
-export function createEditorPlayer(host, transport, {state, sources, api, t, error = () => {}, readAudioSamples = null, preservePreview = () => false, prepareAudio = () => true}) {
+export function createEditorPlayer(host, transport, {state, sources, api, t, error = () => {}, readAudioSamples = null, preservePreview = () => false, prepareAudio = () => true, speech = null}) {
     const frame = el('div', 'fv-ed-picture'); frame.setAttribute('aria-label', t('Video preview', '视频预览'));
     const empty = el('div', 'fv-ed-empty-preview'), pictureIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     pictureIcon.setAttribute('viewBox', '0 0 24 24'); pictureIcon.setAttribute('aria-hidden', 'true');
@@ -54,7 +54,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const chainSeconds = (chain, position) => Math.max(0, (position - chain.start) / 24 + (chain.offset || 0));
     const playback = createPlaybackClock();
     const gains = new WeakMap(), volumePreview = new Map();
-    const audioPreview = createAudioPreview({state, sources, api, volumePreview, readSamples: readAudioSamples, error});
+    const audioPreview = createAudioPreview({state, sources, api, volumePreview, readSamples: readAudioSamples, error, speech});
     const clipVolume = clip => volumePreview.get(clip?.id) ?? clip?.volume ?? 1;
     function volume(media, value) {
         // HTMLMediaElement stops at 1. A GainNode implements the record's 0–2 range.

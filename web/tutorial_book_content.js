@@ -199,8 +199,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['接着生成的每一段至少 5 秒。一个连续镜头最多 8 段，有短于 10 秒的段时最多 4 段；创作面板中时长最长 60 秒；分镜剧本可在剪辑视图中逐个镜头添加，或用 AI 全自动。', '分段生成和接着生成需要 NVIDIA 显卡或 Mac。', '段数越多，衔接处越容易出现变化；适合切换镜头处，可直接开始新的一段。'],
-            en: ['Each continued part is at least 5 seconds. One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
+            zh: ['接着生成的每一段至少 5 秒，最后一段可短至 2 秒。一个连续镜头最多 8 段，有短于 10 秒的段时最多 4 段；创作面板中时长最长 60 秒；分镜剧本可在剪辑视图中逐个镜头添加，或用 AI 全自动。', '分段生成和接着生成需要 NVIDIA 显卡或 Mac。', '段数越多，衔接处越容易出现变化；适合切换镜头处，可直接开始新的一段。'],
+            en: ['Each continued part is at least 5 seconds, and the last one can be as short as 2 seconds. One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
         },
     },
     {

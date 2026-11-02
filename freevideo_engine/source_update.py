@@ -17,14 +17,7 @@ DOMAIN = b'FreeVideo source manifest v1\x00'
 
 
 def signed(value):
-    try:
-        signature = bytes.fromhex(value.get('signature', ''))
-        payload = DOMAIN + source.canonical({k: v for k, v in value.items() if k != 'signature'})
-        return (keys.ED25519_RELEASE_KEY_ENABLED and
-                keys.ED25519_PUBLIC_KEY != keys.PLACEHOLDER_PUBLIC_KEY and
-                ed25519.verify(keys.ED25519_PUBLIC_KEY, payload, signature))
-    except (TypeError, ValueError):
-        return False
+    return source.signed(value)
 
 
 def metadata_name(candidate):
