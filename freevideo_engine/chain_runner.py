@@ -121,6 +121,8 @@ class ChainRunner:
         self.step_lock = threading.Lock()
         self.wake = threading.Event()
         self.closed = threading.Event()
+        # The listed records stay bounded; which receipt made a saved video is indexed on first use, over every receipt on disk.
+        self.work_receipts = None
         self.records = {row['id']: row for row in store.load_all(store_dir)}
         chain_leads.prune(store_dir, self.records)
         self.starts, self.success, self.cancel_sent, self.progress_values = {}, {}, set(), {}
@@ -147,6 +149,25 @@ class ChainRunner:
     def _save(self, record):
         record['updated'] = self.wall()
         store.save(self.store_dir, record)
+        self._index_receipt(record, latest=True)
+
+    def _receipts(self):
+        if self.work_receipts is None:
+            self.work_receipts = {}
+            store.load_all(self.store_dir, visitor=self._index_receipt)  # newest first: an older receipt never replaces one
+        return self.work_receipts
+
+    def _index_receipt(self, record, latest=False):
+        if self.work_receipts is None:
+            return  # the first lookup reads every receipt, this one included
+        output = record.get('output')
+        if output:
+            target = self.work_receipts.__setitem__ if latest else self.work_receipts.setdefault
+            target(_work_key(output), (record['id'], 'output'))
+        for block in record.get('blocks', ()):
+            if block.get('output'):
+                target = self.work_receipts.__setitem__ if latest else self.work_receipts.setdefault
+                target(_work_key(block['output']), (record['id'], 'block'))
 
     def _current(self, record):
         executing = next((row for row in record['blocks'] if row['state'] in ('queued', 'running')), None)
@@ -303,17 +324,43 @@ class ChainRunner:
 
     def _work_lineage(self, work, seen):
         key = _work_key(work)
-        for record in list(self.records.values()):
-            if record['id'] in seen:
-                continue
-            if record.get('output') and _work_key(record['output']) == key:
+        receipt = self._receipts().get(key)
+        if receipt and receipt[0] not in seen:
+            identity, kind = receipt
+            record = self.records.get(identity)
+            outside = record is None
+            if outside:
+                # A receipt older than the listed ones is only read, never listed or protected as a recent chain.
+                rows = store.load_all(self.store_dir, identity=identity)
+                if not rows:
+                    return 1, False
+                record = rows[0]
+            if kind == 'output' and record.get('output') and _work_key(record['output']) == key:
+                if 'output_parts' in record and 'output_short' in record:
+                    return record['output_parts'], record['output_short']
                 names = [row['id'] for row in store.leading_blocks(record)[:record.get('output_blocks') or None]]
             else:
-                names = [row['id'] for row in record['blocks'] if row['output'] and _work_key(row['output']) == key]
+                names = [row['id'] for row in record['blocks'] if row.get('output') and _work_key(row['output']) == key]
             if names:
-                lineage = self._lineage(record, seen)
+                try:
+                    lineage = self._lineage(record, seen)
+                except (KeyError, ValueError):
+                    if not outside:
+                        raise
+                    return 1, False  # its own sources are older still and cannot be read: counted as before
                 return max(lineage[name][0] for name in names), any(lineage[name][1] for name in names)
         return 1, False
+
+    def work_lineage(self, work):
+        """Return (parts, short, known) for an output-relative saved work path."""
+        if not isinstance(work, str) or not work or '\x00' in work:
+            raise ValueError('A work path is required')
+        key = _work_key(work)
+        with self.lock:
+            if key not in self._receipts():
+                return 1, False, False
+            parts, short = self._work_lineage(work, ())
+            return parts, short, True
 
     def _check_parts(self, record):
         """Refuses, before anything is written or queued, a chain with a continuing part too short or a video
@@ -669,7 +716,9 @@ class ChainRunner:
             return final_state
         if len(blocks) == 1 and record.get('original_audio') is None:
             output = blocks[0]['output']
-            record.update(output=output, output_blocks=1 if output else 0, output_state='done', output_error=None)
+            parts, short = self._lineage(record)[blocks[0]['id']]
+            record.update(output=output, output_blocks=1 if output else 0, output_state='done', output_error=None,
+                          output_parts=parts, output_short=short)
             return final_state
         if record['output_state'] == 'done' and record['output_blocks'] == len(blocks):
             return final_state
@@ -966,8 +1015,13 @@ class ChainRunner:
                 record.update(state=final_state, output_state='failed', output_error=failure)
                 logging.warning('[FreeVideo] Chain joining failed: %s', identity)
             else:
-                record.update(state=final_state, output=output, output_blocks=len(store.leading_blocks(snapshot)),
-                              output_state='done', output_error=None, output_seams=dict(expected=promised, kept=kept))
+                # Only the blocks the joined video is made of count, as `_work_lineage` counts them for a record without these fields.
+                lineage, leading = self._lineage(snapshot), store.leading_blocks(snapshot)
+                output_parts = max((lineage[row['id']][0] for row in leading), default=1)
+                output_short = any(lineage[row['id']][1] for row in leading)
+                record.update(state=final_state, output=output, output_blocks=len(leading),
+                              output_state='done', output_error=None, output_seams=dict(expected=promised, kept=kept),
+                              output_parts=output_parts, output_short=output_short)
             if record['state'] not in store.ACTIVE:
                 self._release_active(identity)
             self._save(record)

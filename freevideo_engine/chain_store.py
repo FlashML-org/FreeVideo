@@ -254,7 +254,7 @@ def save(directory, record):
             temporary.unlink(missing_ok=True)
 
 
-def load_all(directory, limit=200, *, identity=None):
+def load_all(directory, limit=200, *, identity=None, visitor=None):
     if identity is not None and (not isinstance(identity, str) or not re.fullmatch(r'c-[0-9a-f]{12}', identity)):
         return []
     records = []
@@ -265,7 +265,9 @@ def load_all(directory, limit=200, *, identity=None):
         except OSError:
             logging.warning('[FreeVideo] Skipping inaccessible chain file: %s', path.name)
     paths.sort(key=lambda row: (row[0], row[1].name), reverse=True)
-    for _, path in paths[:limit]:
+    for position, (_, path) in enumerate(paths):
+        if limit is not None and position >= limit and visitor is None:
+            break
         try:
             record = json.loads(path.read_text(encoding='utf-8'))
             if not isinstance(record, dict) or record.get('version') != 1:
@@ -283,6 +285,11 @@ def load_all(directory, limit=200, *, identity=None):
             if (type(record['output_blocks']) is not int or not 0 <= record['output_blocks'] <= len(record['blocks'])
                     or record['output'] is None and record['output_blocks'] != 0):
                 raise ValueError('Invalid chain output block count')
+            if ('output_parts' in record) != ('output_short' in record):
+                raise ValueError('Invalid output lineage')
+            if 'output_parts' in record and (type(record['output_parts']) is not int or record['output_parts'] < 1
+                                               or type(record['output_short']) is not bool):
+                raise ValueError('Invalid output lineage')
             split = record.setdefault('split', None)
             if split is not None and (not isinstance(split, dict) or set(split) != {'state', 'reason'}
                                       or split['state'] not in SPLIT_STATES
@@ -361,7 +368,10 @@ def load_all(directory, limit=200, *, identity=None):
             for key in ('created', 'updated'):
                 if type(record[key]) not in (int, float) or not math.isfinite(record[key]):
                     raise ValueError('Invalid chain timestamp')
-            records.append(record)
+            if visitor is not None:
+                visitor(record)
+            if limit is None or position < limit:
+                records.append(record)
         except (OSError, ValueError, TypeError, KeyError, OverflowError):
             # Keep the file for inspection; never log its workflow or sentences.
             logging.warning('[FreeVideo] Skipping invalid chain file: %s', path.name)

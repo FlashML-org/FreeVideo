@@ -413,6 +413,24 @@ def register(host_factory=None):
         except ValueError as failure:
             return response({'error': str(failure), 'code': 'invalid'}, 400)
 
+    @server.routes.post('/freevideo/chain/lineage')
+    async def lineage(request):
+        try:
+            value = await body(request)
+            works = value.get('works')
+            if set(value) != {'works'} or not isinstance(works, list) or len(works) > 16:
+                raise ValueError('works must be an array of at most 16 work references')
+            result = []
+            for work in works:
+                if not isinstance(work, dict) or set(work) != {'work'} or not isinstance(work['work'], str):
+                    raise ValueError('Each work reference must contain a work path')
+                chain_store.reference(work)
+                parts, short, known = runner.work_lineage(work['work'])
+                result.append(dict(parts=parts, short=short, known=known))
+            return response({'lineage': result})
+        except ValueError as failure:
+            return response({'error': str(failure)}, 400)
+
     @server.routes.post('/freevideo/chain')
     async def create(request):
         try:

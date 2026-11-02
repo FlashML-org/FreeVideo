@@ -174,7 +174,7 @@ export function mediaURL(api, value) {
 }
 
 export function createEditorStore(api, {t = en => en, notify = () => {}, onGenerationReady = () => {}, onGenerationChecking = () => {}, clock = clockDefault, pollMs = 2000, standIn: injected = null} = {}) {
-    const sources = new Map(), sourceReads = new Map(), watchers = new Set(), pollers = new Set(), once = new Set();
+    const sources = new Map(), sourceReads = new Map(), lineage = new Map(), lineageReads = new Map(), watchers = new Set(), pollers = new Set(), once = new Set();
     let recovered = null, capabilityPoll = null;
     // The length a new continuation starts with where the engine names one (a device that continues in short parts).
     let continueSeconds = null;
@@ -381,6 +381,34 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             }
             await sourceReads.get(signature); return sources;
         },
+        lineage(works) {
+            const unique = new Map(works.filter(work => work && typeof work.key === 'string' && work.reference && !lineage.has(work.key))
+                .map(work => [work.key, work]));
+            const entries = [...unique.values()];
+            if (!entries.length) return Promise.resolve(lineage);
+            const pending = entries.filter(work => !lineageReads.has(work.key));
+            for (let offset = 0; offset < pending.length; offset += 16) {
+                const batch = pending.slice(offset, offset + 16), keys = batch.map(work => work.key);
+                const task = (async () => {
+                    try {
+                        const value = await json('/freevideo/chain/lineage', post({works: batch.map(work => work.reference)}), {lineage: []});
+                        batch.forEach((work, index) => {
+                            const item = value?.lineage?.[index];
+                            lineage.set(work.key, item && typeof item.known === 'boolean'
+                                ? {parts: item.parts, short: item.short, known: item.known}
+                                : {parts: 1, short: false, known: false});
+                        });
+                    } catch {
+                        for (const work of batch) lineage.set(work.key, {parts: 1, short: false, known: false});
+                        /* Unknown history preserves the editor's existing preflight behavior. */
+                    }
+                    finally { for (const key of keys) lineageReads.delete(key); }
+                })();
+                for (const key of keys) lineageReads.set(key, task);
+            }
+            return Promise.all(entries.map(work => lineageReads.get(work.key)).filter(Boolean)).then(() => lineage);
+        },
+        knownLineage() { return Object.fromEntries(lineage); },
         subscribeSources(fn) { watchers.add(fn); return () => watchers.delete(fn); },
         async waveform(key, points = 200) {
             return (await json('/freevideo/editor/waveform?' + new URLSearchParams({key, points}), undefined, {peaks: []})).peaks || [];

@@ -1078,12 +1078,15 @@ function madeLineage(record, clip) {
 // part shorter than followSeconds, a video continued through more than maxParts parts, or one with a short
 // continuing part through more than partsLimit allows. Parts made before the request count as the timeline shows
 // them. Returns {code, parts, limit} for the first problem, or null.
-export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true} = {}) {
+export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true, sourceLineage = {}} = {}) {
     const rows = generationPlan(record, generationClips(record, ids));
     if (rows.some(row => row.before && row.request_frames < MIN_PART_FRAMES)) return {code: 'chain_part_too_short', parts: null, limit: RULES.followSeconds};
     const lineage = new Map();
     for (const row of rows) {
-        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id) ?? madeLineage(record, row.before);
+        const inherited = row.before?.source ? sourceLineage[`${row.before.source.kind}:${row.before.source.id}`] : null;
+        const known = inherited && inherited.known !== false && Number.isInteger(inherited.parts) && inherited.parts > 0;
+        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id)
+            ?? (known ? {parts: inherited.parts, short: inherited.short === true} : madeLineage(record, row.before));
         lineage.set(row.clip.id, {parts: previous.parts + 1, short: previous.short || !!row.before && row.request_frames < FULL_PART_FRAMES});
     }
     const values = [...lineage.values()], parts = Math.max(...values.map(value => value.parts));

@@ -50,9 +50,11 @@ export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud8
 export const characters = text => Array.from(text).length;
 export const textLongText = (t, limit) => t('The description is too long. Shorten it to %d characters or fewer.', '描述过长，请缩短到 %d 字以内。').replace('%d', limit);
 // The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
-export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts'];
+export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full'];
 export function partsLimitText(code, t = en => en, limit = null) {
     const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
+    if (code === 'chain_source_full') return t('This video already has the maximum of ' + maxParts + '\u00a0parts and cannot be extended.',
+        '这个视频已达 ' + maxParts + '\u00a0段上限，无法再接着生成。');
     if (code === 'chain_part_too_short') return t(`Each continued part must be at least ${least} seconds. Make it longer.`, `接着生成的每一段至少 ${least} 秒，请加长这一段。`);
     if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, one continuous shot can have up to ${most} parts. Make every part at least ${full} seconds long, or use fewer parts.`,
         `有短于 ${full} 秒的段时，一个连续镜头最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
@@ -834,6 +836,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 });
             }
             const metadata = store.sources.get(sourceKey(value.source));
+            if (metadata?.path && value.source?.kind !== 'import') void store.lineage([{key: sourceKey(value.source), reference: {work: metadata.path}}]).then(() => hintFullSource()).catch(() => {});
             try { state.apply(t('Insert clip', '放入素材'), record => model.insertSource(record, {
                 ...value, width: metadata?.width ?? value.width, height: metadata?.height ?? value.height, text: value.text ?? metadata?.text,
                 at: value.at ?? model.duration(record)}), {clearRange: state.selection !== initialSelection});
@@ -963,9 +966,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const paths = Object.fromEntries([...store.sources].map(([key, value]) => [key, value.path]));
                 const request = model.generationRequest(prepared, ids, {text: texts ? undefined : text, paths, queue: true});
                 // What the engine would refuse for its continuing parts is said here, before anything is sent.
-                const problem = model.partsProblem(prepared, ids);
-                if (problem) throw Object.assign(new Error(problem.code), {code: problem.code, limit: problem.limit});
-                const beforeKeys = model.generationBefore(prepared, ids), sizes = new Map(store.sources);
+                const beforeKeys = model.generationBefore(prepared, ids);
+                const lineageWorks = beforeKeys.filter(key => key && !key.startsWith('chain:')).map(key => {
+                    const metadata = store.sources.get(key);
+                    return metadata?.path ? {key, reference: {work: metadata.path}} : null;
+                }).filter(Boolean);
+                if (lineageWorks.length) await store.lineage(lineageWorks);
+                const problem = model.partsProblem(prepared, ids, {sourceLineage: store.knownLineage()});
+                if (problem) {
+                    const full = problem.code === 'chain_too_long' && beforeKeys.some(key => store.knownLineage()[key]?.parts >= model.RULES.maxParts);
+                    throw Object.assign(new Error(full ? 'chain_source_full' : problem.code), {code: full ? 'chain_source_full' : problem.code, limit: problem.limit});
+                }
+                const sizes = new Map(store.sources);
                 for (const key of beforeKeys.filter(key => key?.startsWith('chain:'))) {
                     const job = await store.chain(key.split(':')[1]);
                     sizes.set(key, job?.generation_size);
@@ -1327,7 +1339,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     updateTransport();
     const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); });
     let capabilitySize = `${state.record.width}x${state.record.height}`;
+    // The reason, said as soon as the selected continuation follows a video that already has the most parts, once per selection.
+    let hintedFor = '';
+    function hintFullSource() {
+        const ids = state.selection?.kind === 'clip' ? state.selection.ids : [];
+        const signature = ids.join(',');
+        if (!ids.length) { hintedFor = ''; return; }
+        if (signature === hintedFor) return;
+        try {
+            const known = store.knownLineage();
+            if (model.partsProblem(state.record, ids, {sourceLineage: known})?.code !== 'chain_too_long'
+                || !model.generationBefore(state.record, ids).some(key => known[key]?.parts >= model.RULES.maxParts)) return;
+        } catch { return; }
+        hintedFor = signature; genbar?.say(partsLimitText('chain_source_full', t));
+    }
     const unsubscribe = state.subscribe(event => {
+        if (event.type === 'selection') hintFullSource();
         if (event.type === 'record') {
             const size = `${state.record.width}x${state.record.height}`;
             if (!initializing && size !== capabilitySize) {
@@ -1494,6 +1521,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (from?.work) {
                 const work = from.work;
                 const id = work.id || work.video?.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
+                void store.getSources([`work:${id}`]).then(() => {
+                    const source = store.sources.get(`work:${id}`);
+                    if (source?.path) void store.lineage([{key: `work:${id}`, reference: {work: source.path}}]);
+                }).catch(() => {});
                 record = await store.byWork(id);
                 if (!record) {
                     const key = `work:${id}`; await store.getSources([key]); const metadata = store.sources.get(key), g = work.geometry || {};
@@ -1579,6 +1610,25 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (from?.work && from.extend) {
             const id = from.work.id || from.work.video?.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
             const epoch = projectEpoch;
+            const showFullSourceHint = () => {
+                const key = `work:${id}`;
+                void store.getSources([key]).then(() => {
+                    const metadata = store.sources.get(key);
+                    return metadata?.path ? store.lineage([{key, reference: {work: metadata.path}}]) : null;
+                }).then(values => {
+                    if (closing || disposed || epoch !== projectEpoch) return;
+                    if (!values) return;
+                    const history = values.get(key);
+                    if (!history || history.known !== true || history.parts < model.RULES.maxParts) return;
+                    const clips = state.record.tracks[0].clips, source = clips.find(clip => sourceKey(clip.source) === key);
+                    if (!source) return;
+                    const after = clips.filter(clip => clip.pending === 'draft' && clip.start >= source.start + source.frames
+                        && model.continuesBefore(state.record, clip.id));
+                    if (!after.length) return;
+                    const problem = model.partsProblem(state.record, after.map(clip => clip.id), {sourceLineage: store.knownLineage()});
+                    if (problem?.code === 'chain_too_long') genbar?.say(partsLimitText('chain_source_full', t));
+                }).catch(() => {});
+            };
             // Selects the work and, when nothing follows it yet, adds one minimum draft. Runs once; when the
             // generation probe failed this time it runs after a later probe succeeds.
             const enter = (select = true) => {
@@ -1590,11 +1640,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
                 const waiting = after.find(other => other.pending === 'draft');
                 if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
-                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) return true;
+                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { showFullSourceHint(); return true; }
                 if (!store.generationAvailable) return false;
                 const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
                 tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
                     {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
+                showFullSourceHint();
                 return true;
             };
             await store.generationReady();
