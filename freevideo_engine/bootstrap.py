@@ -372,6 +372,8 @@ def inventory(gpu=None):
 # Windows reuses a detected Git from 2.35, the oldest tested there, and
 # otherwise installs its own MinGit.
 WINDOWS_MIN_GIT = (2, 35)
+# Seconds to wait before creating an environment again after another program held a file.
+ENVIRONMENT_BUSY_WAITS = (3, 10, 30)
 
 
 def git_floor(system=None):
@@ -1599,23 +1601,31 @@ class Installer:
             def environment(folder=venv, executable=python, label=name):
                 if executable.exists() and environment_seeded(folder):
                     return None
-                command = [uv, 'venv', '--seed', '--python', self.versions['python']]
-                # The Python file came back (restored from quarantine) without
-                # the seed packages: keep it and add them. Without the file, the
-                # folder is a leftover that uv replaces.
-                if executable.exists():
-                    command.append('--allow-existing')
-                elif folder.exists():
-                    command.append('--clear')
-                try:
-                    return self.packages(label + '-venv', [*command, folder])
-                except RuntimeError as error:
-                    from .failure_details import environment_python_removed
-                    # uv failed while the new interpreter was disappearing.
-                    removed = '' if executable.exists() else environment_python_removed([executable], [executable])
-                    if not removed:
-                        raise
-                    raise RuntimeError(removed + str(error)) from error
+                from .failure_details import environment_python_removed, file_in_use
+                for wait in (*ENVIRONMENT_BUSY_WAITS, None):
+                    command = [uv, 'venv', '--seed', '--python', self.versions['python']]
+                    # The Python file came back (restored from quarantine) without
+                    # the seed packages: keep it and add them. Without the file, the
+                    # folder is a leftover that uv replaces.
+                    if executable.exists():
+                        command.append('--allow-existing')
+                    elif folder.exists():
+                        command.append('--clear')
+                    try:
+                        return self.packages(label + '-venv', [*command, folder])
+                    except RuntimeError as error:
+                        # Another program (usually security software scanning the
+                        # Python file just unpacked) held it open while uv copied it.
+                        if wait is not None and file_in_use(error) and not self.cancel.is_set():
+                            self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                            if not self.cancel.wait(wait):
+                                continue
+                            raise
+                        # uv failed while the new interpreter was disappearing.
+                        removed = '' if executable.exists() else environment_python_removed([executable], [executable])
+                        if not removed:
+                            raise
+                        raise RuntimeError(removed + str(error)) from error
             task(name + '-venv', environment, ('python',), writer)
             command = [uv, 'pip', 'install', '--python', python, *spec['torch'], '-c', constraints_file(name, self.system)]
             family = 'torch-' + spec['cuda'] + '-' + spec['torch'][0].split('==')[1]

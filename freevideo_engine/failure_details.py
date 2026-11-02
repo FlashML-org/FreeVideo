@@ -219,6 +219,15 @@ def environment_python_removed(args, pythons):
     return ''
 
 
+# Windows sharing violation: another program (often security software scanning
+# a file that was just written) holds a file open. It is usually released within seconds.
+FILE_IN_USE = r'os error 32\b|WinError 32\b|being used by another process|另一个程序正在使用'
+
+
+def file_in_use(text):
+    return re.search(FILE_IN_USE, str(text)) is not None
+
+
 # Checked before free space: freeing space cannot fix a disk that cannot hold the installation.
 PLACE_RULES = (
     (r'Git is unavailable\. Check the network connection', 'git-unavailable',
@@ -738,6 +747,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          _joined(CHANGED_WHY['files'], CHANGED_REPAIR)),
         (r'The installation plan changed\. Detect configuration again', 'plan-changed', CHANGED_TITLE,
          _joined(CHANGED_WHY['other'], CHANGED_REPAIR)),
+        (FILE_IN_USE, 'file-in-use',
+         ('A file is in use by another program', '文件被其他程序占用'),
+         ('Security software or another program is holding a file that setup needs. Wait a moment and click Retry installation; '
+          'if it happens again, allow the FreeVideo folder in the security software.',
+          '安全软件或其他程序正在占用安装所需的文件。请稍候后点“重试安装”；仍然失败时，请在安全软件中允许 FreeVideo 所在的文件夹。')),
         (ENVIRONMENT_PYTHON_REMOVED, 'environment-python-removed',
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
