@@ -19,6 +19,7 @@ from . import processes
 from .geometry import geometry
 from .locking import LOCK_ENV, runtime_lock
 from .monitoring import save
+from .music_request import without_music
 from .paths import data_root
 
 GiB = 2**30
@@ -278,9 +279,13 @@ def run(args):
                 if not prompt.strip() and not getattr(args, 'allow_empty_prompt', False):
                     raise ValueError('A nonempty prompt is required')
                 prompt_file = Path(args.prompt_file).resolve()
+                encoder_prompt = prompt
                 if report.get('first_frame_reference', {}).get('used'):
                     from .continuation import first_frame_prompt
-                    prompt = first_frame_prompt(prompt)
+                    encoder_prompt = first_frame_prompt(encoder_prompt)
+                encoder_prompt = without_music(encoder_prompt)
+                if encoder_prompt != prompt:
+                    prompt = encoder_prompt
                     prompt_file = artifacts / 'encoder-prompt.txt'
                     prompt_file.write_text(prompt, encoding='utf-8')
                 checkpoint = encoder_checkpoint(args)

@@ -21,6 +21,7 @@ from .locking import runtime_lock, LOCK_ENV
 from .paths import vdn_root, comfy_root
 from .monitoring import save
 from .encoder_checkpoint import preflight_encoder
+from .music_request import without_music
 from . import tuning
 from . import processes
 from .system import (inference_headroom, inference_memory_sample, inference_environment, memory_sample,
@@ -841,6 +842,7 @@ def _run(args):
                     # The saved prompt stays the user's own; the model is also told what the picture is.
                     from .continuation import first_frame_prompt
                     prompt_text = first_frame_prompt(prompt_text)
+                prompt_text = without_music(prompt_text)
                 encoding = {'prompt': prompt_text, 'encoder': args.encoder,
                             'comfy_root': str(args.comfy_root or comfy_root()),
                             'model_paths': str(args.model_paths.resolve()) if args.model_paths else None,

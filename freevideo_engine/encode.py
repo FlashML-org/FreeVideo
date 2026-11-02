@@ -8,6 +8,7 @@ from .generate import child
 from .hardware import detect
 from .kernel_capabilities import available_backends
 from .locking import runtime_lock, LOCK_ENV
+from .music_request import without_music
 from .paths import comfy_root
 from .policy import choose
 from . import processes
@@ -31,7 +32,7 @@ def run(args):
     try:
         with runtime_lock() as descriptor, tempfile.TemporaryDirectory(prefix='freevideo-encode-', dir=destination.parent) as directory:
             request = Path(directory) / 'request.json'
-            request.write_text(json.dumps({'prompt': args.prompt_file.read_text(encoding='utf-8'), 'encoder': args.encoder,
+            request.write_text(json.dumps({'prompt': without_music(args.prompt_file.read_text(encoding='utf-8')), 'encoder': args.encoder,
                 'comfy_root': str(args.comfy_root or comfy_root()),
                 'model_paths': str(args.model_paths.resolve()) if args.model_paths else None,
                 'output': str(destination), 'gpu_budget_gb': policy.gpu_budget_bytes / 1e9,
