@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import zipfile
+import zlib
 import traceback
 import logging
 
@@ -150,8 +151,24 @@ def check_runtime_platform():
         raise ValueError('The Windows runtime package cannot be used on macOS.')
 
 
+# A damaged download shows up as a bad CRC or directory (BadZipFile), a broken
+# compressed stream (zlib.error) or a cut-off one (EOFError).
+DAMAGED = (zipfile.BadZipFile, zlib.error, EOFError)
+
+
+def damaged(path):
+    return ValueError('离线包已损坏，请重新下载：' + Path(path).name)
+
+
 def inspect_archive(path):
     """Read only bounded metadata; file contents are checked during import."""
+    try:
+        return _inspect_archive(path)
+    except DAMAGED as error:
+        raise damaged(path) from error
+
+
+def _inspect_archive(path):
     path = io_path(path)
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
@@ -327,8 +344,8 @@ def _import_archive(path, destination, progress, cancelled):
                         output.write(data); done += len(data)
                         digest.update(data)
                         progress(done=done, total=total, detail=path.name)
-            except zipfile.BadZipFile as error:
-                raise ValueError('离线包已损坏，请重新下载：' + path.name) from error
+            except DAMAGED as error:
+                raise damaged(path) from error
             if partial.stat().st_size != row['bytes'] or digest.hexdigest() != row['sha256']:
                 raise ValueError('离线包校验失败，已保留文件：' + path.name)
             partial.replace(target)
