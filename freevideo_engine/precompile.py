@@ -21,6 +21,7 @@ compile what is missing, as it always did.
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -40,7 +41,16 @@ DEFAULT_SHAPE = dict(task='t2va', width=1344, height=768, frames=243, two_pass=T
 # Medium starts from a larger first pass, which is another canvas to compile. An
 # installation with no request on record has not shown which level it uses.
 MEDIUM_SHAPE = dict(DEFAULT_SHAPE, upscale_factor=1.5)
-DEFAULT_SHAPES = [DEFAULT_SHAPE, MEDIUM_SHAPE]
+# A portrait canvas and a picture-referenced request are other compiled shapes
+# (the frame count too, so portrait is compiled at 5.2 s, the length it is made
+# at), and a first request of either compiled its own on the spot. The picture
+# is one 1008-row reference with a prompt of 460 rows beside it.
+REFERENCE_ROWS = 1008
+PORTRAIT_SHAPE = dict(DEFAULT_SHAPE, width=768, height=1344, frames=124)
+REFERENCE_SHAPE = dict(DEFAULT_SHAPE, task='ref2va', reference_video_tokens=REFERENCE_ROWS,
+                       text_tokens=(460 + REFERENCE_ROWS,))
+DEFAULT_SHAPES = [DEFAULT_SHAPE, MEDIUM_SHAPE, PORTRAIT_SHAPE, REFERENCE_SHAPE,
+                  dict(REFERENCE_SHAPE, width=768, height=1344, frames=124)]
 SHAPES = 2
 LENGTHS = 2
 TIMEOUT_SECONDS = 600
@@ -106,6 +116,21 @@ def recent_shapes(history, limit=SHAPES):
             for shape, lengths in shapes.values()]
 
 
+def with_other_defaults(recent):
+    """The recent shapes, then the portrait and picture-referenced defaults they lack.
+
+    A request of one of those shapes is as likely to come next as a repeat, and
+    its first compile waits at the first step. With no recent shape there is
+    nothing to add them to: the caller compiles every default.
+    """
+    if not recent:
+        return recent
+    def kind(shape):
+        return {name: value for name, value in shape.items() if name != 'text_tokens'}
+    seen = [kind(shape) for shape in recent]
+    return recent + [shape for shape in DEFAULT_SHAPES[2:] if kind(shape) not in seen]
+
+
 def plan_request(machine, shape, history, identity):
     """The worker request a generation of this shape would start with."""
     from .compatibility import Store, apply
@@ -117,6 +142,9 @@ def plan_request(machine, shape, history, identity):
     canvas = geometry(shape['width'], shape['height'], frames=shape['frames'])
     if shape['base_steps'] != 8:
         canvas['steps'] = shape['base_steps']
+    if shape.get('reference_video_tokens'):
+        # A request's canvas carries its pictures' packed rows, which the plan counts.
+        canvas.update(reference_video_tokens=shape['reference_video_tokens'], reference_audio_tokens=0)
     from .resource_settings import read as read_resources
     # The installation's capacity caps and the user's saved reserve, as a
     # request's managed command line carries them.
@@ -193,7 +221,7 @@ def run(machine, *, environment=None, timeout=TIMEOUT_SECONDS, background=False,
         hardware = detect()
         history = ResourceHistory(history_path())
         identity = local_identity(hardware, Path(machine['cache']))
-        shapes = recent_shapes(history) or DEFAULT_SHAPES
+        shapes = with_other_defaults(recent_shapes(history)) or DEFAULT_SHAPES
     except Exception as error:
         hardware, history, identity, shapes = None, None, None, DEFAULT_SHAPES
         receipt['history_error'] = repr(error)
@@ -391,7 +419,8 @@ def compile_plan(receipt, shape, request, profile, index, folder, environment, d
     receipt['shapes'].append(row)
     tick = time.perf_counter()
     try:
-        request['conditioning'] = [str(zero_conditioning(folder, tokens)) for tokens in shape['text_tokens']]
+        request['conditioning'] = [str(zero_conditioning(folder, tokens, shape.get('reference_video_tokens', 0)))
+                                   for tokens in shape['text_tokens']]
         request['receipt'] = str(folder / ('shape-%d.json' % index))
         path = folder / ('request-%d.json' % index)
         save(path, request)
@@ -499,13 +528,24 @@ def worker_options(options):
     return dict(options, pin_host_gb=0., pin_host_weights=False, preload_host=False)
 
 
-def zero_conditioning(folder, tokens):
-    """A text-to-video prompt of `tokens` rows; only its length reaches a kernel."""
+def zero_conditioning(folder, tokens, reference_rows=0):
+    """A prompt of `tokens` rows; only its length reaches a kernel.
+
+    With reference rows the last of them are the picture's vision tokens, and the
+    picture is a zero latent that packs into as many rows before the video.
+    """
     import torch
-    path = folder / ('zero-%d.pt' % tokens)
+    path = folder / ('zero-%d-%d.pt' % (tokens, reference_rows) if reference_rows else 'zero-%d.pt' % tokens)
     if not path.exists():
-        torch.save({'prompt_embeds': torch.zeros(tokens, 5120, dtype=torch.bfloat16),
-                    'text_token_tags': torch.ones(tokens, dtype=torch.long), 'task': 't2va'}, path)
+        tags = torch.ones(tokens, dtype=torch.long)
+        value = {'prompt_embeds': torch.zeros(tokens, 5120, dtype=torch.bfloat16), 'text_token_tags': tags, 'task': 't2va'}
+        if reference_rows:
+            tags[tokens - reference_rows:] = 0
+            # Even sides, as the H3 patches need: rows = (height / 2) x (width / 2).
+            high = next(n for n in range(math.isqrt(reference_rows), 0, -1) if reference_rows % n == 0)
+            value.update(task='ref2va', references=[dict(kind='image', latent=torch.zeros(
+                1, 24, 1, 2 * high, 2 * reference_rows // high))])
+        torch.save(value, path)
     return path
 
 
