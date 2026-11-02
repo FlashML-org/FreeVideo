@@ -189,7 +189,7 @@ GUIDE = {
                        for name, (method, path, summary) in SESSION_OPERATIONS.items()],
     'filming': [
         'Filming is for a film of several shots, each picked from takes. One video of up to 60 seconds is one generate '
-        'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate. '
+        'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate with "prompt": {"from_job": "<enhance id>"} rather than retyping the text. '
         'A film is cut into shots: see the rule "Cut by default" before making one long continued video.',
         'Use drama plan → start → get → sheet → choose/reshoot → finish; inspect todo after every change.',
         'At start tell the user the estimated total time; on over_budget decide whether to ask them; '
