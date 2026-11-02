@@ -6,6 +6,7 @@ to ComfyUI without a CORS preflight that ComfyUI does not grant.
 """
 import asyncio
 import base64
+from datetime import datetime
 import binascii
 import json
 import hashlib
@@ -27,7 +28,7 @@ from . import private_file
 from . import spec as specs
 from .. import tiers as quality_tiers
 from . import schema as contract, errors, access
-from .jobs import ACTIVE, DONE, JobError, Jobs, chain_error, library_view
+from .jobs import ACTIVE, DONE, JobError, Jobs, chain_error, library_view, user_stop_notice
 
 PREFIX = '/freevideo/agent/v1'
 from .whitebox import MAX_VIDEO_BYTES as MAX_WHITEBOX_VIDEO
@@ -880,6 +881,11 @@ def register():
         estimate = jobs.estimate(row)
         if estimate:
             card['progress']['estimate'] = estimate
+        again = jobs.again(row)
+        if again:
+            card['again'] = again
+        # The user stopped it here: a video card says so, with no report to download.
+        card.update({k: v for k, v in user_stop_notice(row).items() if k == 'cancelled_by'})
         return card
 
     def chat_fold(store, sid):
@@ -899,7 +905,8 @@ def register():
                 base = dict(seq=row['seq'], at=row['at'], type=row['type'])
                 if row['type'] == 'message':
                     fold['items'].append(dict(base, role='user' if row['by'] == 'user' else 'agent', text=row['text'],
-                                              **({'attachments': row['attachments']} if row.get('attachments') else {})))
+                                              **({'attachments': row['attachments']} if row.get('attachments') else {}),
+                                              **({'revises': row['revises']} if row.get('revises') else {})))
                     if row['by'] == 'user':
                         fold['said'] = row['text']
                         if row.get('mid'):
@@ -1097,6 +1104,30 @@ def register():
                 raise error from None
         return result
 
+    def rewrite_from(store, sid, fold, said):
+        """The user rewrites their last message: stop what was started after it and decline what it still asks.
+
+        Jobs and films begun before it keep running. Raises when a job cannot be stopped; nothing is said then."""
+        since = datetime.fromisoformat(said['at'].replace('Z', '+00:00')).timestamp()
+        for row in jobs.active():
+            # Where the job shows in the conversation; one not shown yet goes by when it was made.
+            place = fold['jobs'].get(row['id'])
+            if not (place > said['seq'] if place is not None else row.get('session') == sid and row['created_at'] >= since):
+                continue
+            try:
+                jobs.cancel(row['id'], by='user')
+            except KeyError:
+                pass  # Gone already.
+        for item in fold['items']:
+            if item['seq'] > said['seq'] and item.get('entity') and fold['entities'].get(item['entity']) == 'production':
+                try:
+                    jobs.productions.pause(item['entity'], by='user')
+                except JobError:
+                    pass  # Finished, stopped or paused already.
+        for identity, item in list(fold['asked'].items()):
+            if item['seq'] > said['seq'] and item['state'] == 'asked':
+                store.append(sid, dict(type='confirm', id=identity, state='declined'), by='user')
+
     @routes.post('/freevideo/agent/chat')
     @guarded
     async def chat_say(request):
@@ -1116,6 +1147,13 @@ def register():
             pictures = chat_attachments(value.get('attachments', []))
             sid = sid or store.create(client=client, by='user')['id']
             fold = fold or chat_fold(store, sid)
+            revised = value.get('revises')
+            if revised is not None:
+                said = [i for i in fold['items'] if i['type'] == 'message' and i['role'] == 'user']
+                if not said or said[-1]['seq'] != revised:
+                    raise specs.SpecError(contract.diagnostic('/revises', 'the seq of the last user message (%s)' % (
+                        said[-1]['seq'] if said else 'none yet'), revised))
+                rewrite_from(store, sid, fold, said[-1])
             if store.stopped(sid):
                 # Speaking again continues a conversation the user stopped earlier.
                 store.append(sid, dict(type='control', action='resumed'), by='user')
@@ -1124,6 +1162,8 @@ def register():
                 message['attachments'] = pictures
             if value.get('whitebox'):
                 message['whitebox'] = True
+            if revised is not None:
+                message['revises'] = revised
             row = store.append(sid, message, by='user')
             fold['sent'][value['id']] = row['seq']
             fold['ids'][row['seq']] = value['id']
@@ -1328,6 +1368,30 @@ def register():
         except KeyError:
             return problem('not_found', 'No such job', 404)
         return reply(dict(id=row['id'], status=row['status']))
+
+    @routes.post('/freevideo/agent/activity/resume')
+    @guarded
+    async def activity_resume(request):
+        # The page's Retry: the same job again, keeping a video's finished parts. Only the page may ask.
+        if request.content_type != 'application/json':
+            return problem('unsupported_media_type', 'Send JSON', 415)
+        value = await body(request)
+        def work():
+            row = jobs.run_again(value['id'])
+            store = work_sessions()
+            if store is not None and row.get('session'):
+                try:
+                    # The agent hears it was the user, and does not plan that job again.
+                    store.append(row['session'], dict(type='control', action='retried', refs=dict(job=row['id'])), by='user')
+                except JobError:
+                    pass  # A deleted or full conversation: the job runs again all the same.
+            return dict(id=row['id'], status=row['status'])
+        try:
+            answer = await asyncio.to_thread(work)
+        except KeyError:
+            return problem('not_found', 'No such job', 404)
+        await jobs.tick()
+        return reply(answer)
 
     @routes.get('/freevideo/agent/connect')
     @guarded

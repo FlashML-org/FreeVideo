@@ -300,6 +300,8 @@ class Sessions:
                 raise SessionError('forbidden', 'Only the user may answer a confirmation')
             if kind == 'control' and event['action'] != 'renamed' and by != 'user':
                 raise SessionError('forbidden', 'Only the user may stop or continue')
+            if kind == 'message' and 'revises' in event and by != 'user':
+                raise SessionError('forbidden', 'Only the user may rewrite a message')
             result = dict(event, seq=meta['last_seq'] + 1, at=_stamp(self.clock()), by=by)
             if client is not None:
                 result['client'] = client
@@ -516,7 +518,7 @@ class Sessions:
             rows = self._events(sid, after, self.max_events)
             return [row for row in rows if row['by'] == 'user' and (row['type'] == 'message'
                     or row['type'] == 'confirm' and row['state'] in ('approved', 'declined')
-                    or row['type'] == 'control' and row['action'] == 'abandoned')]
+                    or row['type'] == 'control' and row['action'] in ('abandoned', 'retried'))]
 
 
 class Confirmations:

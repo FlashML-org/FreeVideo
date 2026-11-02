@@ -243,6 +243,10 @@ RULES = [
     'edited. When the user tells you to stop, stop: cancel what you started and start nothing new. '
     'When cancelled_by is "user", the user stopped this job on the page and the page already shows it as stopped: '
     'send no message about it, and do not retry or resume it unless they ask.',
+    'A user message with revises=N replaces message N and everything you wrote after it: understand it afresh '
+    'from the new message. The jobs started for the old one are already stopped; do not continue them. '
+    'A control event with action "retried" means the user ran job refs.job again on the page: do not start it '
+    'again yourself; follow it like a job you started.',
     'Cast before you shoot. Search the cast library first. Use the card the user named, or one that clearly '
     'matches; ask if you are unsure. Create a card only when none fits: from the user\'s photos if they gave any, '
     'otherwise make its reference pictures with POST /cast/{id}/generate. '
@@ -287,6 +291,8 @@ RULES_ZH = [
     '只在 FreeVideo 内工作，不要改动本机的其他文件，不要撤销用户做的修改。'
     '用户要求停止时，取消你启动的任务，不再启动新任务。'
     'cancelled_by 为 "user" 时，表示用户在页面上停止了该任务，页面已显示已停止：不要为此发消息；除非用户要求，否则不要重试或恢复。',
+    '带 revises=N 的用户消息取代 seq N 那条及其之后你写的内容，按新消息重新理解；为旧消息开的任务已被停掉，不要续旧的。'
+    'action 为 "retried" 的 control 事件表示用户在页面上重新运行了 refs.job 这个任务：不要自己再提交一次，像你自己提交的任务一样跟进。',
     '先选角，再拍摄。先搜索角色库，使用用户指定的卡片或明确符合要求的卡片；拿不准时询问用户。'
     '只有找不到合适卡片时才新建：用户提供了照片就用照片，否则通过 POST /cast/{id}/generate 生成参考图。'
     '开拍前用一句话告诉用户选角结果。后续镜头使用卡片当前的图片。保留你创建的卡片，方便以后拍片复用。',

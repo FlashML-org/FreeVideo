@@ -1098,6 +1098,51 @@ class Jobs:
             replace(original, row)
             return (original, False) if replay_result else original
 
+    def again(self, row):
+        """How a conversation card offers a finished job again, or None for one that runs or succeeded.
+
+        'continue' resumes a video and keeps its finished parts, 'retry' runs the same request from its start,
+        and 'resend' leaves it to the agent: the page says the user's words again. A video the user stopped only
+        goes on from its finished parts: nothing starts it over."""
+        if row['status'] not in ('failed', 'interrupted', 'cancelled'):
+            return None
+        stopped = row['kind'] in ('generate', 'assemble') and bool(user_stop_notice(row))
+        parent = row.get('parent') or {}
+        if parent.get('production') or parent.get('cast'):
+            return None if stopped else 'resend'
+        if row['kind'] == 'image':
+            return 'retry'
+        if row['kind'] != 'generate' or row['spec'].get('refine_from'):
+            return None if stopped else 'resend'
+        try:
+            blocks = self.chain(row['chain_id'])['blocks'] if row.get('chain_id') else ()
+        except (KeyError, JobError, OSError, ValueError):
+            blocks = ()
+        if any(block.get('state') == 'done' for block in blocks):
+            return 'continue'
+        return None if stopped else 'retry'
+
+    def run_again(self, identity):
+        """The user's Retry on a conversation card: the same job again, in the same card."""
+        row = self.get(identity)
+        way = self.again(row)
+        if way in ('continue', 'retry') and row['kind'] == 'generate':
+            return self.resume(identity)
+        if way != 'retry':
+            raise chain_error('not_resumable', 'Only failed, interrupted or cancelled videos and pictures run again.',
+                              'Say it to the agent again.')
+        with self.lock:
+            if row['status'] not in ('failed', 'interrupted', 'cancelled'):
+                raise chain_error('not_resumable', 'This picture is already running.', 'Wait for it to finish.')
+            # A picture has nothing finished to keep: its request, seed included, starts over.
+            dropped = ('error', 'result', '_cancel', 'cancelled_by', '_image', '_phase', 'waiting_for')
+            candidate = deepcopy({k: v for k, v in row.items() if k not in dropped})
+            candidate.update(status='waiting', started_at=None, finished_at=None, updated_at=self.clock(),
+                             attempt=row.get('attempt', 1) + 1)
+            self.save(candidate)
+            replace(row, candidate)
+            return row
+
     def queue_view(self):
         """Describe ownership/order without exposing studio workflows or prompts."""
         runner = self.port.chain_runner()

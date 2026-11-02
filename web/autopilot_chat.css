@@ -202,3 +202,18 @@
 .fv-chat-refs{width:max-content;max-width:100%;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin:0 0 6px auto;padding:0;list-style:none}
 .fv-chat-refs>li{width:96px;height:96px;border-radius:10px;overflow:hidden}
 @media(max-width:560px){.fv-chat-refs>li{width:64px;height:64px}}
+
+/* The newest sentence can be rewritten in place. Its Edit row keeps its height, so showing it moves nothing. */
+.fv-chat-edit-row{display:flex;justify-content:flex-end;min-height:28px;margin-top:4px}
+.fv-chat-edit-row[hidden]{display:none}
+.fv-studio .fv-chat-log .fv-chat-edit{min-height:0;padding:4px 8px;border:0;border-radius:7px;background:none;color:var(--fv-muted);font-size:12.5px;font-weight:var(--fv-regular);opacity:0;transition:opacity var(--fv-quick)}
+.fv-studio .fv-chat-log .fv-chat-edit:hover:not(:disabled){background:var(--fv-raised);color:var(--fv-ink)}
+.fv-chat-me:is(:hover,:focus-within) .fv-chat-edit,.fv-studio .fv-chat-log .fv-chat-edit:focus-visible{opacity:1}
+@media(hover:none),(max-width:480px){.fv-studio .fv-chat-log .fv-chat-edit{opacity:1}}
+.fv-chat-me[data-editing=true]{width:min(500px,88%)}
+.fv-studio .fv-chat-log .fv-chat-edit-box{box-sizing:border-box;display:block;width:100%;min-height:44px;max-height:40vh;padding:10px 14px;border:1px solid var(--fv-accent-dim);border-radius:14px;background:#1d3550;color:var(--fv-ink);font:inherit;font-size:14.5px;line-height:22px;resize:none;outline:none;overflow-y:auto}
+.fv-chat-me>.fv-chat-edit-actions{margin-top:8px;justify-content:flex-end}
+.fv-chat-edit-actions>.fv-chat-error{text-align:right}
+.fv-studio .fv-chat-log .fv-chat-edit-send{border-color:transparent;background:var(--fv-accent);color:var(--fv-bg)}
+.fv-studio .fv-chat-log .fv-chat-edit-send:hover:not(:disabled){background:var(--fv-accent-hover)}
+@media(max-width:480px){.fv-studio .fv-chat-log .fv-chat-edit-box{font-size:16px}}

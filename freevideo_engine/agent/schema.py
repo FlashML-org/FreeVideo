@@ -82,7 +82,7 @@ def chat_request():
     # Upload metadata supplied by the page is ignored; only the stored name is authoritative.
     attachment = obj(dict(name=CHAT_ATTACHMENT_NAME, original_name={}, width={}, height={}, bytes={}), ('name',))
     return obj(dict(text=dict(type='string', minLength=0, maxLength=8000), id=CHAT_ID,
-                    session=SESSION, whitebox={'type': 'boolean'},
+                    session=SESSION, whitebox={'type': 'boolean'}, revises=number(1, integer=True),
                     attachments=array(attachment, 0, MAX_CHAT_ATTACHMENTS)), ('text', 'id'),
                **{'if': {'required': ['attachments'], 'properties': {'attachments': {'minItems': 1}}},
                   'else': {'properties': {'text': string(8000)}}})
@@ -491,7 +491,8 @@ def contracts(*, local=False):
             'Only the user may stop or continue a film (local Studio control)',
             body=obj({'ref': REF}), path=obj({'id': PRODUCTION}, ('id',)), auth=False, local=True, idempotent=True)
     for suffix, method, body in (('', 'GET', None), ('/session', 'GET', None), ('/activity', 'GET', None),
-            ('/activity/cancel', 'POST', obj({'id': JOB}, ('id',))), ('/connect', 'GET', None),
+            ('/activity/cancel', 'POST', obj({'id': JOB}, ('id',))), ('/activity/resume', 'POST', obj({'id': JOB}, ('id',))),
+            ('/connect', 'GET', None),
             ('/connect/reset', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
             ('/chat/video', 'GET', None), ('/chat/list', 'GET', None), ('/chat/new', 'POST', EMPTY),
             ('/chat/delete', 'POST', obj({'session': SESSION, 'stop': {'type': 'boolean'}}, ('session',))),
@@ -502,7 +503,7 @@ def contracts(*, local=False):
                                            'session': SESSION}, ('id', 'approve')))):
         routes[(method, '/freevideo/agent' + suffix)] = route('Studio Agent controls', body=body, auth=False, local=True,
             lan=suffix in ('/chat', '/chat/now', '/chat/confirm', '/chat/abandon', '/chat/list', '/chat/new', '/chat/video',
-                           '/activity', '/activity/cancel'))
+                           '/activity', '/activity/cancel', '/activity/resume'))
     # These existing ComfyUI handlers are registered outside the Agent dispatcher.
     # /chain is a creation POST; monitoring reads /chains and /chain/{id}.
     for suffix in ('/freevideo/progress', '/freevideo/chains', '/freevideo/chain/{id}'):
@@ -908,6 +909,9 @@ def session_event(*, stored=False, agent_only=False):
         variants[0]['properties']['mid'] = CHAT_ID
         variants[0]['properties']['attachments'] = array(CHAT_ATTACHMENT, 1, MAX_CHAT_ATTACHMENTS)
         variants[0]['properties']['whitebox'] = {'type': 'boolean', 'description': 'The user chose a white-model preview for this request.'}
+        variants[0]['properties']['revises'] = dict(number(1, integer=True), description=(
+            'The user rewrote their message with this seq: this one replaces it and what was written after it. '
+            'The jobs started for it are stopped.'))
         from .errors import ERRORS
         variants += [obj(dict(type={'const': 'step'}, id=string(12, pattern=r'^st[0-9a-f]{10}$'),
             tool=string(200), summary=text, state=enum(('started', 'done', 'failed')),
@@ -923,8 +927,10 @@ def session_event(*, stored=False, agent_only=False):
                 digest=string(64, pattern=r'^[0-9a-f]{64}$')),
                 ('type', 'id', 'state'), **{'if': {'properties': {'state': {'const': 'asked'}}},
                                         'then': {'required': ['question']}}),
-            obj(dict(type={'const': 'control'}, action=enum(('stopped', 'resumed', 'renamed', 'abandoned')),
-                title=dict(type='string', maxLength=120)), ('type', 'action'),
+            obj(dict(type={'const': 'control'}, action=enum(('stopped', 'resumed', 'renamed', 'abandoned', 'retried')),
+                title=dict(type='string', maxLength=120),
+                refs=obj(dict(job=JOB), ('job',), description='retried: the job the user ran again on the page.')),
+                ('type', 'action'),
                 **{'if': {'properties': {'action': {'const': 'renamed'}}},
                    'then': {'required': ['title']}, 'else': {'not': {'required': ['title']}}})]
     if stored:
