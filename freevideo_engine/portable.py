@@ -123,6 +123,8 @@ def verify(root, value, progress=lambda **kw: None):
     for row in value['files']:
         found = present.get(row['path'])
         if found is None or found[0] != row['bytes']:
+            if found is not None and row['path'].startswith('models/'):
+                raise ValueError('Bundled model file has incorrect size: ' + row['path'])
             raise ValueError('Missing or incomplete bundled file: ' + row['path'])
         stamp = dict(bytes=found[0], mtime_ns=found[1], sha256=row['sha256'])
         entry = prior.get(row['path'])

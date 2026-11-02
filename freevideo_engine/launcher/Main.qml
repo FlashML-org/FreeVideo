@@ -43,7 +43,7 @@ ApplicationWindow {
     readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
     // An imported environment can take its models from packages or download them.
     readonly property bool offlineSelected: s.form.model_method === "manual" && !s.image_only
-    readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && (usingRuntime || s.form.model_dirs.length === 0)
+    readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && s.form.model_dirs.length === 0
     readonly property int step: s.page === "comfy" ? 0 : s.page === "models" ? 1 : 2
     property string previousPage: ""
     property bool errorDetailsOpen: false
@@ -247,6 +247,7 @@ ApplicationWindow {
     function keepTogether(text) { return String(text).replace("自动继续", "自\u2060动\u2060继\u2060续") }
     function primaryText() {
         if (s.retry_kind) return retryText()
+        if (s.offline.status === "review") return t("Confirm & continue", "确认并继续")
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
@@ -559,7 +560,9 @@ ApplicationWindow {
                         FText { text: s.form.new_comfy ? t("Install location", "安装位置") : t("ComfyUI folder", "ComfyUI 目录"); font.weight: Font.DemiBold }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 8
-                            FField { objectName: "installationPath"; Layout.fillWidth: true; value: s.form.new_comfy ? s.form.destination : s.form.comfy; placeholderText: t("Choose a folder", "选择文件夹"); enabled: s.can_manage; onEditingFinished: backend.edit(s.form.new_comfy ? "destination" : "comfy", text) }
+                            FField { objectName: "installationPath"; Layout.fillWidth: true; value: s.form.new_comfy ? s.form.destination : s.form.comfy; placeholderText: t("Choose a folder", "选择文件夹"); enabled: s.can_manage; onEditingFinished: backend.edit(s.form.new_comfy ? "destination" : "comfy", text)
+                                // Keep the recognizable end visible; hovering reveals the whole path.
+                                hoverEnabled: true; ToolTip.text: text; ToolTip.delay: 500; ToolTip.visible: hovered && text.length > 0 }
                             FButton { objectName: "installationBrowse"; text: t("Browse…", "浏览…"); enabled: s.can_manage; implicitHeight: theme.height + 4; onClicked: backend.browse(s.form.new_comfy ? "destination" : "comfy") }
                         }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
@@ -635,7 +638,7 @@ ApplicationWindow {
                         }
                     }
                     FCard {
-                        objectName: "modelLibraries"; visible: !usingRuntime && !s.image_only; Layout.fillWidth: true; padding: 20; spacing: 10
+                        objectName: "modelLibraries"; visible: !s.image_only; Layout.fillWidth: true; padding: 20; spacing: 10
                         RowLayout {
                             Layout.fillWidth: true; spacing: 12
                             ColumnLayout {
@@ -876,7 +879,7 @@ ApplicationWindow {
                                 }
                                 // What this group downloads, as in the plan; nothing for one already here.
                                 FText { objectName: "modelSize-" + modelData.id; visible: modelData.download > 0; text: bytes(modelData.download).replace(" ", "\u00a0"); font.pixelSize: theme.micro; color: theme.muted; font.features: { "tnum": 1 } }
-                                FButton { objectName: "modelFiles-" + modelData.id; text: downloads.copy.title + "  ›"; implicitHeight: theme.heightSm; flat: true; font.pixelSize: theme.micro + 1; visible: s.form.model_method === "manual"; onClicked: { backend.setDownloadScope(modelData.id === "image" ? "image" : "video"); modelInfoOpen = true } }
+                                FButton { objectName: "modelFiles-" + modelData.id; text: downloads.copy.title + "  ›"; implicitHeight: theme.heightSm; flat: true; font.pixelSize: theme.micro + 1; visible: s.form.model_method === "manual" && modelData.links !== false; onClicked: { backend.setDownloadScope(modelData.id === "image" ? "image" : "video"); modelInfoOpen = true } }
                             }
                         }
                     }

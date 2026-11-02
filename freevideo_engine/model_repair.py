@@ -21,6 +21,12 @@ REVIEW = (
     '{file}（{size}）与 FreeVideo 测试过的版本不同：将改名为 {keep_as} 保留，'
     '再下载测试过的版本（{expected_size}）。',
 )
+REVIEW_OFFLINE = (
+    '{file} ({size}) differs from the version FreeVideo tests: it will be renamed to {keep_as} and kept, '
+    'then replaced with the version in the offline package ({expected_size}).',
+    '{file}（{size}）与 FreeVideo 测试过的版本不同：将改名为 {keep_as} 保留，'
+    '再换成离线包里的版本（{expected_size}）。',
+)
 PROGRESS = ('Keeping the original file: ', '正在保留原文件：')
 FAILURE_TITLE = ('An existing model differs from the tested version', '已有模型与 FreeVideo 测试过的版本不同')
 FAILURE = (
@@ -40,9 +46,9 @@ UNCHANGED = ('{file} differs from the tested version and was left unchanged.',
 BUSY = ('When the current task ends, a Repair button appears here; after you click it and confirm, '
         'FreeVideo renames and keeps this file, then downloads the tested version.',
         '当前任务结束后，这里会出现“修复”按钮；点击并确认后，FreeVideo 会把这个文件改名保留，再下载测试过的版本。')
-OFFLINE = ('This offline-package installation cannot switch back in one step yet. Move or rename the file below, '
-           'then import the Prompt model package (FreeVideo-文本编码器.zip) again on the Installation page.',
-           '离线包安装暂时不能一键换回。请把下面这个文件移走或改名，再在“安装”页重新导入“提示词模型（FreeVideo-文本编码器.zip）”包。')
+OFFLINE = ('Import the “{package}” package again on the Installation page: the confirmation page will list this file, '
+           'and after you confirm, it is renamed and kept, then replaced with the version in the package.',
+           '请在“安装”页重新导入“{package}”包：确认页会列出这个文件，确认后会将它改名保留，再换成包里的版本。')
 FIRST_INSTALL = (
     '{file} differs from the tested version and was left unchanged. Click Retry installation below: '
     'the confirmation page will list this file, and after you confirm, it is renamed and kept, '
@@ -69,9 +75,10 @@ CHANGED_WAYS = dict(
 IDENTITY = ('bytes', 'mtime_ns', 'st_dev', 'st_ino', 'parent_realpath')
 
 
-def review_lines(rows, zh=False):
-    return [dict(text=REVIEW[zh].format(file=row['file'], size=size_text(row['bytes']), keep_as=row['keep_as'],
-                                       expected_size=size_text(row['expected_bytes'])), path=row['path']) for row in rows]
+def review_lines(rows, zh=False, offline=False):
+    copy = REVIEW_OFFLINE if offline else REVIEW
+    return [dict(text=copy[zh].format(file=row['file'], size=size_text(row['bytes']), keep_as=row['keep_as'],
+                                       expected_size=size_text(row['expected_bytes'])), path=plain(row['path'])) for row in rows]
 
 
 def identity(path):
@@ -138,7 +145,7 @@ def record(root, path, row, before):
 
 def check(path, approved):
     if not same_identity(identity(path), approved):
-        raise ValueError(FILE_CHANGED + ' ' + str(path))
+        raise ValueError(FILE_CHANGED + ' ' + plain(path))
 
 
 def reuse_names(current, reviewed):
@@ -206,7 +213,7 @@ def rename_noreplace(source, target):
         # Another file arrived at source in between: it goes back, and both stay.
         os.link(spare, source)
         os.unlink(spare)
-        raise ValueError(FILE_CHANGED + ' ' + str(source))
+        raise ValueError(FILE_CHANGED + ' ' + plain(source))
     try:
         os.unlink(spare)
     except OSError:
@@ -224,22 +231,24 @@ def retain(root, path, approved):
         raise ValueError(CHANGED)
     target = path.with_name(approved['keep_as'])
     if target.exists() or target.is_symlink():
-        raise ValueError(FILE_CHANGED + ' ' + str(target))
+        raise ValueError(FILE_CHANGED + ' ' + plain(target))
     check(path, approved)
     try:
         rename_noreplace(path, target)
     except FileExistsError as error:
-        raise ValueError(FILE_CHANGED + ' ' + str(target)) from error
+        raise ValueError(FILE_CHANGED + ' ' + plain(target)) from error
     if not same_identity(identity(target), approved):
         # Another file had replaced the approved one just before the move: put it back.
         try:
             rename_noreplace(target, path)
         except (OSError, ValueError):
             pass
-        raise ValueError(FILE_CHANGED + ' ' + str(path))
+        raise ValueError(FILE_CHANGED + ' ' + plain(path))
     values = read(root)
-    if str(path) in values:
-        del values[str(path)]
+    keys = [key for key in {str(path), plain(path)} if key in values]
+    for key in keys:
+        del values[key]
+    if keys:
         save(Path(root) / 'logs/model-mismatches.json', values)
     return target
 
@@ -257,3 +266,51 @@ def restore(root, path, retained, approved, prior=None):
         values = read(root)
         values[str(path)] = prior
         save(Path(root) / 'logs/model-mismatches.json', values)
+
+
+def file_id(path):
+    info = os.lstat(path)
+    return info.st_dev, info.st_ino
+
+
+def restore_kept(root, kept, ledger=None, owned=None):
+    """Put kept originals back under their names after a failed replacement.
+
+    ``kept`` holds (original path, name it was kept under, identity of the kept
+    file). Only a file this run created (``owned``: path -> identity) is removed
+    from the original's place; anything else that arrived there stays, and so
+    does the kept original, since nothing proves which one the user wants. The
+    original returns only if its place is free, and only while the kept file is
+    still the one that was set aside. Returns (restored, left).
+    """
+    owned = owned or {}
+    restored, left = [], []
+    for path, target, ident in reversed(kept):
+        try:
+            if ident is not None and file_id(target) != ident:
+                left.append(path)
+                continue
+            try:
+                here = file_id(path)
+            except FileNotFoundError:
+                here = None
+            if here is not None:
+                if owned.get(plain(path)) != here:
+                    left.append(path)
+                    continue
+                os.unlink(path)
+            rename_noreplace(target, path)
+            restored.append(path)
+        except (OSError, ValueError):
+            left.append(path)
+    if ledger and restored:
+        try:
+            values = read(root)
+            for path in restored:
+                for key in {str(path), plain(path)}:
+                    if key in ledger:
+                        values[key] = ledger[key]
+            save(Path(root) / 'logs/model-mismatches.json', values)
+        except (OSError, ValueError):
+            pass
+    return restored, left

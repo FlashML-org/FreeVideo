@@ -357,7 +357,7 @@ WITHOUT_REPAIR = {
                                   '整合包版不能一键换回。' + _EXTRACT[1])),
         offline=_model_unchanged(MODEL_OFFLINE),
         none=MODEL_FIRST_INSTALL),
-    # Confirmed, then something changed: setup stops (offline installations never get here).
+    # Confirmed, then something changed: setup stops.
     **{kind: dict(busy=_joined(CHANGED_WHY[why], CHANGED_WAYS['busy']),
                   **dict.fromkeys(('bundled', 'offline', 'none'), _joined(CHANGED_WHY[why], CHANGED_WAYS['none'])))
        for kind, why in (('plan-changed-files', 'files'), ('plan-changed', 'other'))},
@@ -444,6 +444,14 @@ def _without_ready_curl_diagnostics(text):
                     continue
         lines.append(line)
     return ''.join(lines)
+
+
+def model_mismatch_package(value, zh=False):
+    """Keep only the package's display name before diagnostic paths are redacted."""
+    from .model_repair import MISMATCH_PATH
+    from .offline_packages import pack_title
+    paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', str(value))
+    return pack_title(paths[-1], zh) if paths else pack_title('models/encoder/', zh)
 
 
 # Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
@@ -544,7 +552,7 @@ def launcher_failure(value, *, zh=False, **options):
 
 
 def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                      unavailable='none'):
+                      unavailable='none', model_package=''):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
@@ -589,15 +597,20 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     detail=detail, action='', kind='older-launcher', manual=True)
     from .model_repair import MISMATCH, MISMATCH_PATH, FAILURE_TITLE, FAILURE, CHANGED_TITLE, CHANGED_REPAIR
     mismatches = re.findall(MISMATCH + r': ([^\r\n]+)', text)
-    if mismatches:
+    bundled_models = re.findall(r'Bundled (?:file failed verification|model file has incorrect size): (models/[^\r\n]+)', summary)
+    if mismatches or bundled_models:
+        from .offline_packages import pack_title
+        paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', text)
+        path = bundled_models[-1] if bundled_models else paths[-1] if paths else 'models/encoder/' + mismatches[-1]
+        file = path.replace('\\', '/').split('/')[-1] if bundled_models else mismatches[-1]
         rows = WITHOUT_REPAIR['model-mismatch']
-        action = (FAILURE[zh].format(file=mismatches[-1], entry='修复' if zh else 'Repair') if can_repair else
-                  rows.get(unavailable, rows['none'])[zh].format(file=mismatches[-1]))
+        action = (FAILURE[zh].format(file=file, entry='修复' if zh else 'Repair') if can_repair else
+                  rows.get(unavailable, rows['none'])[zh].format(
+                      file=file, package=pack_title(path, zh) if bundled_models else model_package or pack_title(path, zh)))
         failure = dict(title=FAILURE_TITLE[zh], detail='', kind='model-mismatch', action=action)
-        if not can_repair and unavailable == 'offline':
-            # The text points at the file below it.
-            paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', text)
-            failure['path'] = paths[-1] if paths else mismatches[-1]
+        if not can_repair and unavailable in ('offline', 'bundled'):
+            # The way out is by hand (import again, or extract again): retrying the start does not help.
+            failure['manual'] = True
         return failure
     if disk_name and 'on a disk that is not connected' in summary:
         return dict(title='这块硬盘没有连接' if zh else 'The disk is not connected', kind='disk-missing', detail='',
