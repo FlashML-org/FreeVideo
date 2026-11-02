@@ -75,7 +75,7 @@
 .fv-ed-track-zoom button:hover{background:var(--fv-card);color:var(--fv-ink)}
 .fv-ed-zoom-slider{width:64px;height:24px;margin:0;accent-color:var(--fv-accent);cursor:pointer}
 .fv-ed-track-zoom .fv-ed-fit{padding:0 7px;white-space:nowrap;font-size:12px;margin-left:4px}
-.fv-ed-drag-label{position:absolute;z-index:9;padding:4px 7px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:6px;font-size:12px;white-space:pre;line-height:1.5;pointer-events:none}
+.fv-ed-drag-label,.fv-ed-duration-hint{position:absolute;z-index:9;padding:4px 7px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:6px;font-size:12px;white-space:pre;line-height:1.5;pointer-events:none}
 .fv-ed-clip-popover{position:absolute;z-index:10;width:280px;max-width:calc(100% - 16px);padding:10px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-card)}
 .fv-ed-clip-popover p{margin:0 0 8px;font-size:13px;overflow-wrap:anywhere}
 .fv-ed-clip-popover button{min-height:32px;padding:4px 10px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);cursor:pointer}

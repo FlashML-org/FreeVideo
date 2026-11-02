@@ -1,5 +1,6 @@
 // The editor owns its generation controls; progress can use the optional component.
 import {createFirstFrameSwitch} from './editor_first_frame.js';
+import {createDurationField} from './editor_duration.js';
 import {createEditorReferences} from './editor_references.js';
 import {createExpandButton} from './editor_expand.js';
 import {createRequestAssets} from './request_assets.js';
@@ -96,6 +97,12 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         musicAssets.textContent = musicBytes > 0 ? t(`Downloads before generating: music model ${size(musicBytes)}`, `生成前会先下载：配乐模型 ${size(musicBytes)}`) : '';
         musicAssets.hidden = !(musicBytes > 0) || host.dataset.mode !== 'selected' || !music.target();
     }
+    // How long the parts not generated yet are, between the description and the first-frame switch.
+    const duration = createDurationField({state, t, actions});
+    description.after(duration.element);
+    // Where a narrow English bar starts Generate on a line of its own (editor.css); hidden elsewhere.
+    const lineBreak = el('span', 'fv-ed-genbar-break'); lineBreak.setAttribute('aria-hidden', 'true');
+    generate.before(lineBreak); host.lang = t('en', 'zh-CN');
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
     const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
@@ -202,6 +209,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             hint.replaceChildren(...shown.map(([cls, text]) => el('span', cls, text)));
             hint.title = shown.map(([, text]) => text).join('');
         }
+        duration.update(busy);
         firstFrame.update(busy);
         if (presets) {
             presets.hidden = !musical || !selected && !busy;
@@ -326,7 +334,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(refNoticeTimer); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

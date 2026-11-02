@@ -744,7 +744,7 @@ export function continuesBefore(record, id) {
 export const partLengths = (frames, {maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, continues = false, tail = true} = {}) => segmentLengths(frames, maxSeconds, maxFollowSeconds, continues, tail);
 // One video is generated in at most partsLimit parts: the longest range that still fits. A device whose continuing
 // parts are all short has the short-part limit.
-export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame = false}) {
+export function maxRangeFrames(record, {continues = false, maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds, firstFrame = record.settings?.first_frame_reference === true}) {
     const before = continues;
     const follow = Math.floor(Math.min(RULES.maxSeconds, maxFollowSeconds)) * FPS;
     const parts = partsLimit(follow < RULES.fullSeconds * FPS, firstFrame);
@@ -805,11 +805,84 @@ export function resizePlannedBoundary(record, leftId, rightId, frame, limits = {
     return finish(next);
 }
 export function resizePlanned(record, id, edge, frame, limits = {}) {
-    check(['start', 'end'].includes(edge) && whole(frame), 'range');
+    if (edge !== 'end') return layoutPlanned(record, id, edge, frame, limits);
+    return planPlannedEnd(record, id, frame, limits).record;
+}
+// Immutable records let repeated pointer previews and release share their last complete layout.
+const plannedEndCache = new WeakMap();
+export function planPlannedEnd(record, id, frame, limits = {}) {
+    check(whole(frame), 'range');
+    const geometry = plannedGeometry(record, id, limits), {primary: first, video} = geometry;
+    const most = maxRangeFrames(record, {...limits, continues: continuesBefore(record, id)});
+    const capped = Math.min(frame, first.start + most), position = Math.round(capped / FPS) * FPS;
+    const key = JSON.stringify(Object.keys(limits).sort().map(key => [key, limits[key]]));
+    const cached = plannedEndCache.get(record);
+    if (cached?.id === id && cached.position === position && cached.key === key) return cached.result;
+    const clips = trackBy(record, 'v1').clips, draft = clip => clip?.pending && !clip.source;
+    const earlier = [];
+    for (let before = video && partBefore(record, video); draft(before); before = partBefore(record, before)) earlier.unshift(before);
+    const before = partBefore(record, earlier[0] || video);
+    const lineage = before ? madeLineage(record, before) : {parts: 0, short: false};
+    const firstFrame = limits.firstFrame ?? record.settings?.first_frame_reference === true;
+    const candidates = new Map();
+    const candidate = frame => {
+        const {start, stop} = fitPlanned(geometry, 'end', frame);
+        if (candidates.has(stop)) return candidates.get(stop);
+        // Only numbers and the existing draft lineage participate in the search. No project copy, parse,
+        // finish or split occurs until a length has been chosen. Use the same generation grid as partsProblem.
+        const head = {id: (video || first).id, start, frames: stop - start, part: first.part || Symbol(),
+            follows: video?.follows, source: null, job: null};
+        const context = {tracks: [{id: 'v1', clips: [...(before ? [before] : []), ...earlier, head]}]};
+        const lengths = rangeParts(context, {start, frames: stop - start, ...limits, tail: geometry.tail});
+        lengths[lengths.length - 1] = stop - start - lengths.slice(0, -1).reduce((sum, count) => sum + count, 0);
+        const run = [...earlier]; let at = start;
+        for (const [index, frames] of lengths.entries()) {
+            const clip = {...head, id: index ? Symbol() : head.id, start: at, frames};
+            if (index) clip.follows = run.at(-1).id;
+            run.push(clip); at += frames;
+        }
+        // Resizing may detach a following draft, or reach it. Splitting transfers its follows link to the last part.
+        if (video) for (let next = clips.find(clip => clip.start === at && clip.id !== video.id); draft(next);) {
+            if (at === stop && next.follows === video.id) next = {...next, follows: run.at(-1).id};
+            if (!continuing(next, run.at(-1))) break;
+            run.push(next); at = end(next);
+            next = clips.find(clip => clip.start === at);
+        }
+        let problem = null;
+        try { if (video) problem = plannedPartsProblem(generationPlan(context, run), () => lineage, firstFrame); }
+        catch (error) {
+            if (!(error instanceof EditError) || error.code !== 'range') throw error;
+            // A frame-split tail may not fit the generation grid. Skip this candidate, including in hint bounds.
+            problem = {code: error.code};
+        }
+        const result = {frame, seconds: (stop - start) / FPS, problem,
+            allowed: !['range', 'chain_too_long', 'chain_short_parts'].includes(problem?.code)};
+        candidates.set(stop, result); return result;
+    };
+    const initial = candidate(capped), wanted = initial.seconds;
+    const least = continuesBefore(record, id)
+        ? continuedSeconds(0, limits.maxFollowSeconds ?? limits.maxSeconds) : RULES.minSeconds;
+    let chosen = initial.allowed ? initial : null;
+    for (let seconds = wanted - 1; !chosen && seconds >= least; seconds--) {
+        const next = candidate(first.start + seconds * FPS); if (next.allowed) chosen = next;
+    }
+    for (let seconds = wanted + 1; !chosen && seconds <= most / FPS; seconds++) {
+        const next = candidate(first.start + seconds * FPS); if (next.allowed) chosen = next;
+    }
+    // Bounds describe the entire feasible set, including any holes, rather than just the chosen adjustment.
+    for (let seconds = least; seconds <= most / FPS; seconds++) candidate(first.start + seconds * FPS);
+    const feasible = [...candidates.values()].filter(value => value.allowed).map(value => value.seconds);
+    const result = {record: chosen ? layoutPlanned(record, id, 'end', chosen.frame, limits) : record,
+        least: feasible.length ? Math.min(...feasible) : null, most: feasible.length ? Math.max(...feasible) : null,
+        problem: chosen ? null : initial.problem};
+    plannedEndCache.set(record, {id, position, key, result});
+    return result;
+}
+function plannedGeometry(record, id, limits) {
     const members = pair(record, id); check(members.length, 'missing'); busy(members);
     check(members.every(clip => clip.pending && !clip.source), 'unsupported');
     const primary = members[0];
-    const video = trackOf(record, id).id === 'v1' ? primary : find(record, primary.link);
+    const video = members.find(clip => trackOf(record, clip.id).id === 'v1');
     const maxFollowSeconds = limits.maxFollowSeconds ?? limits.maxSeconds ?? RULES.maxSeconds;
     // A planned part that continues another is at least followSeconds long, unless no part continues it.
     const follows = !!video && !!partBefore(record, video), tail = !video || !trackBy(record, 'v1').clips.some(clip => continuing(clip, video));
@@ -817,6 +890,9 @@ export function resizePlanned(record, id, edge, frame, limits = {}) {
     const neighbors = members.flatMap(clip => trackOf(record, clip.id).clips.filter(other => other.id !== clip.id));
     const low = Math.max(0, ...neighbors.filter(clip => end(clip) <= primary.start).map(end));
     const high = Math.min(1e7, ...neighbors.filter(clip => clip.start >= end(primary)).map(clip => clip.start));
+    return {members, primary, video, minimum, low, high, maxFollowSeconds, follows, tail};
+}
+function fitPlanned({primary, minimum, low, high, maxFollowSeconds, follows, tail}, edge, frame) {
     const position = Math.round(frame / FPS) * FPS;
     let start = edge === 'start' ? Math.max(low, Math.min(end(primary) - minimum, position)) : primary.start;
     let stop = edge === 'end' ? Math.min(high, Math.max(start + minimum, position)) : end(primary);
@@ -828,6 +904,12 @@ export function resizePlanned(record, id, edge, frame, limits = {}) {
             else if (edge === 'start' && stop - fitted >= low) start = stop - fitted;
         }
     }
+    return {start, stop};
+}
+function layoutPlanned(record, id, edge, frame, limits = {}) {
+    check(['start', 'end'].includes(edge) && whole(frame), 'range');
+    const geometry = plannedGeometry(record, id, limits), {members, primary, tail} = geometry;
+    const {start, stop} = fitPlanned(geometry, edge, frame);
     let next = copy(record); detachAttempt(next, members.map(clip => clip.id));
     const part = primary.part || freshId(next);
     for (const clip of pair(next, id)) { clip.start = start; clip.frames = clip.length = stop - start; clip.part = part; clearPlan(clip); }
@@ -1091,14 +1173,19 @@ function madeLineage(record, clip) {
 // them. Returns {code, parts, limit} for the first problem, or null.
 export function partsProblem(record, ids, {firstFrame = record.settings?.first_frame_reference === true, sourceLineage = {}} = {}) {
     const rows = generationPlan(record, generationClips(record, ids));
+    return plannedPartsProblem(rows, clip => {
+        // A video chosen from the library counts the parts it was made in, when they are known.
+        const inherited = clip.source ? sourceLineage[`${clip.source.kind}:${clip.source.id}`] : null;
+        const known = inherited && inherited.known !== false && Number.isInteger(inherited.parts) && inherited.parts > 0;
+        return known ? {parts: inherited.parts, short: inherited.short === true} : madeLineage(record, clip);
+    }, firstFrame);
+}
+function plannedPartsProblem(rows, previousLineage, firstFrame) {
     const followed = new Set(rows.map(row => row.before?.id));
     if (rows.some(row => row.before && row.request_frames < (followed.has(row.clip.id) ? MIN_PART_FRAMES : MIN_TAIL_FRAMES))) return {code: 'chain_part_too_short', parts: null, limit: RULES.followSeconds};
     const lineage = new Map();
     for (const row of rows) {
-        const inherited = row.before?.source ? sourceLineage[`${row.before.source.kind}:${row.before.source.id}`] : null;
-        const known = inherited && inherited.known !== false && Number.isInteger(inherited.parts) && inherited.parts > 0;
-        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id)
-            ?? (known ? {parts: inherited.parts, short: inherited.short === true} : madeLineage(record, row.before));
+        const previous = !row.before ? {parts: 0, short: false} : lineage.get(row.before.id) ?? previousLineage(row.before);
         lineage.set(row.clip.id, {parts: previous.parts + 1, short: previous.short || !!row.before && row.request_frames < FULL_PART_FRAMES});
     }
     const values = [...lineage.values()], parts = Math.max(...values.map(value => value.parts));
