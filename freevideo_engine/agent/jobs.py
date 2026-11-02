@@ -187,13 +187,16 @@ def part_prompt_problems(spec, prefix=''):
 
 
 def _continued_part_problem(seconds, chain):
-    """True when a video that continues another has a part the backend refuses, or is under MIN_PART_SECONDS.
+    """True when a video that continues another has a part the backend refuses, or is under MIN_TAIL_SECONDS.
 
     The backend compares each part's node input frames (overlap included); a part that
-    continues is also at least MIN_PART_SECONDS long.
+    another part continues is at least MIN_PART_SECONDS long, the last part MIN_TAIL_SECONDS.
     """
-    from ..chain_plan import MIN_PART_FRAMES, MIN_PART_SECONDS
-    return seconds < MIN_PART_SECONDS or any(block['frames'] < MIN_PART_FRAMES for block in chain['blocks'])
+    from ..chain_plan import MIN_PART_FRAMES, MIN_TAIL_FRAMES, MIN_TAIL_SECONDS
+    blocks = chain['blocks']
+    return seconds < MIN_TAIL_SECONDS or any(
+        block['frames'] < (MIN_TAIL_FRAMES if index == len(blocks) - 1 else MIN_PART_FRAMES)
+        for index, block in enumerate(blocks))
 
 
 def length_problem(seconds, continued, prefix='', *, minimum=None, frames=None):
@@ -232,7 +235,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
     """
     if spec['kind'] != 'generate' or spec.get('refine_from'):
         return []
-    from ..chain_plan import MIN_PART_SECONDS, PlanError, parts_limit, plan
+    from ..chain_plan import MIN_TAIL_SECONDS, PlanError, parts_limit, plan
     from ..chain_runner import ChainShortPartsTooMany, ChainTooLong
     from ..chain_store import reference
     continued, frames = bool(spec.get('continue_from')), single_frame_limit(spec)
@@ -243,7 +246,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
         except PlanError:
             return [length_problem(spec['seconds'], continued, prefix, frames=frames)]
         if continued and _continued_part_problem(spec['seconds'], chain):
-            return [length_problem(spec['seconds'], continued, prefix, minimum=MIN_PART_SECONDS, frames=frames)]
+            return [length_problem(spec['seconds'], continued, prefix, minimum=MIN_TAIL_SECONDS, frames=frames)]
     if runner is None:
         return []
     # A video with a continuing part shorter than full_part_frames has fewer parts, unless every part sees the first frame.
@@ -281,7 +284,7 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
             except ValueError:
                 return False
             return earlier + len(blocks) <= (short_limit if made_short or short_blocks(blocks) else limit)
-        shortest = MIN_PART_SECONDS if continued else 2
+        shortest = MIN_TAIL_SECONDS
         fit = next((s for s in range(int(spec['seconds']), shortest - 1, -1) if fits(s)), None)
         if fit is None:
             problem = schema.diagnostic(prefix + '/continue_from', 'a video of fewer than %d parts' % error.limit, None)

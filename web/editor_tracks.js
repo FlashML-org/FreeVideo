@@ -87,10 +87,10 @@ export function edgeParameters(clip, edge, frame, points, zoom, {canExtend = tru
     const sourceEnd = clip.start + clip.length - clip.in;
     if (speedEdited(clip)) return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
     if (edge === 'end' && canExtend && clip.extend && snapped.frame > sourceEnd) {
-        // What continues a video is at least followSeconds long; the preview already shows the raised length.
+        // What is added at the tail is at least lastSeconds long; the preview already shows the raised length.
         const wanted = Math.round((snapped.frame - sourceEnd) / model.FPS), seconds = model.continuedSeconds(wanted, maxFollowSeconds);
         return {kind: 'extend', frame: sourceEnd, frames: seconds * model.FPS, guide: snapped.guide, raised: seconds !== wanted,
-            least: wanted < model.RULES.followSeconds && seconds >= model.RULES.followSeconds};
+            least: wanted < model.RULES.lastSeconds && seconds >= model.RULES.lastSeconds};
     }
     return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
 }
@@ -982,8 +982,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const frames = result.frame - finished.clip.start - finished.clip.frames + result.frames;
             if (extendClip(finished.id, frames) && result.raised) {
                 // Say the new length (tenths, rounded down like other durations) so the change is visible.
-                const least = model.RULES.followSeconds, length = secondsText(result.frames, model.FPS);
-                actions.notify?.(result.least ? t(`Lengthened to ${length} s. Each continued part must be at least ${least} seconds.`, `已加长到 ${length} 秒。接着生成的每一段至少 ${least} 秒。`)
+                const least = model.RULES.lastSeconds, length = secondsText(result.frames, model.FPS);
+                actions.notify?.(result.least ? t(`Lengthened to ${length} s. The last part must be at least ${least} seconds.`, `已加长到 ${length} 秒。最后一段至少 ${least} 秒。`)
                     : t(`Lengthened to ${length} s.`, `已加长到 ${length} 秒。`));
             }
         } else attempt(t('Trim', '裁短'), record => model.trim(record, finished.id, finished.edge, result.frame));

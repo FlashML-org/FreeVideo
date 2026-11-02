@@ -69,9 +69,9 @@ class ChainPartTooShort(ValueError):
     code = 'chain_part_too_short'
 
     def __init__(self, seconds, limit):
-        super().__init__('Each continued part must be at least %d seconds. Make it longer.' % limit)
+        super().__init__('A part followed by another part must be at least %d seconds. Make it longer.' % limit)
         self.seconds, self.limit = seconds, limit
-        self.message_zh = '接着生成的每一段至少 %d 秒，请加长这一段。' % limit
+        self.message_zh = '后面还接着其他段时，这一段至少 %d 秒，请加长这一段。' % limit
 
 
 def _work_key(path):
@@ -365,9 +365,13 @@ class ChainRunner:
     def _check_parts(self, record):
         """Refuses, before anything is written or queued, a chain with a continuing part too short or a video
         continued through too many parts."""
+        # The last part of a video, one no other block continues, may be shorter than the parts before it.
+        followed = {row['after'] for row in record['blocks'] if isinstance(row['after'], str)}
         short = [row['inputs']['frames'] for row in record['blocks']
                  if (row['after'] is not None or row['before'] is not None)
-                 and row['inputs']['frames'] < self.min_part_frames]
+                 and row['inputs']['frames'] < (min(self.min_part_frames, chain_plan.MIN_TAIL_FRAMES)
+                                                if row['before'] is None and row['id'] not in followed
+                                                else self.min_part_frames)]
         if short:
             raise ChainPartTooShort(min(short) / chain_plan.FPS, chain_plan.MIN_PART_SECONDS)
         lineage = self._lineage(record).values()

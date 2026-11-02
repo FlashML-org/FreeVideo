@@ -24,6 +24,8 @@ MIN_PART_SECONDS, FULL_PART_SECONDS = RULES['min_part_seconds'], RULES['full_par
 MAX_PARTS, SHORT_MAX_PARTS = RULES['max_parts'], RULES['short_max_parts']
 # The length a new continuation starts with, and its length on devices that cannot continue with a full part.
 CONTINUE_SECONDS, SHORT_CONTINUE_SECONDS = RULES['continue_seconds'], RULES['short_continue_seconds']
+# The last part of a video, and nothing that another part continues, may be as short as MIN_TAIL_SECONDS.
+MIN_TAIL_SECONDS = RULES['min_tail_seconds']
 
 
 def part_frames(seconds):
@@ -35,9 +37,24 @@ def part_frames(seconds):
 
 # Continuing blocks below MIN_PART_FRAMES are too short; below FULL_PART_FRAMES they are short parts.
 MIN_PART_FRAMES, FULL_PART_FRAMES = part_frames(MIN_PART_SECONDS), part_frames(FULL_PART_SECONDS)
+MIN_TAIL_FRAMES = part_frames(MIN_TAIL_SECONDS)
 SHORTEST_FIRST = 2  # whole seconds: what the first part keeps when the continuing parts take the rest
 MAX_SECONDS = 7200
 MAX_BLOCKS = MAX_SECONDS // SHORTEST_BLOCK
+
+
+def _tail_lengths(total, following):
+    """Lengths of a video that continues a saved one when no even split gives every part MIN_PART_SECONDS: parts as
+    long as the device allows, and a last part of MIN_TAIL_SECONDS or more for the rest. None if no such split."""
+    count = math.ceil(round(total, 6) / following)
+    if count > MAX_BLOCKS or total < MIN_TAIL_SECONDS + MIN_PART_SECONDS * (count - 1):
+        return None
+    lengths = [following] * (count - 1)
+    lengths.append(round(total - sum(lengths), 6))
+    if lengths[-1] < MIN_TAIL_SECONDS:  # take what the last part lacks from the one before it
+        lengths[-2] = round(lengths[-2] - (MIN_TAIL_SECONDS - lengths[-1]), 6)
+        lengths[-1] = MIN_TAIL_SECONDS
+    return lengths if all(length >= MIN_PART_SECONDS for length in lengths[:-1]) else None
 
 
 def parts_limit(short, first_frame=False, max_parts=MAX_PARTS):
@@ -154,6 +171,9 @@ def plan(seconds, single=False, max_frames=None, single_limit_seconds=None, bloc
     if lengths is None:
         if fits and seconds < SINGLE_SECONDS:
             return alone  # a requested block length never makes a part this device cannot do
+        if continued and following >= MIN_PART_SECONDS:
+            lengths = _tail_lengths(total, following)  # the last part may be shorter than the others
+    if lengths is None:
         if first < (MIN_PART_SECONDS if continued else SHORTEST_BLOCK) or following < MIN_PART_SECONDS:
             raise PlanError('device_limit', 'This device cannot generate this length at this size')
         raise PlanError('length_not_splittable', 'This length cannot be cut into parts of the requested length')

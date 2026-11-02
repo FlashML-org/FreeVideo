@@ -55,7 +55,7 @@ export function partsLimitText(code, t = en => en, limit = null) {
     const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
     if (code === 'chain_source_full') return t('This video already has the maximum of ' + maxParts + '\u00a0parts and cannot be extended.',
         '这个视频已达 ' + maxParts + '\u00a0段上限，无法再接着生成。');
-    if (code === 'chain_part_too_short') return t(`Each continued part must be at least ${least} seconds. Make it longer.`, `接着生成的每一段至少 ${least} 秒，请加长这一段。`);
+    if (code === 'chain_part_too_short') return t(`A part followed by another part must be at least ${least} seconds. Make it longer.`, `后面还接着其他段时，这一段至少 ${least} 秒，请加长这一段。`);
     if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, one continuous shot can have up to ${most} parts. Make every part at least ${full} seconds long, or use fewer parts.`,
         `有短于 ${full} 秒的段时，一个连续镜头最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
     return t(`One continuous shot can have up to ${limit ?? maxParts} parts. Make it shorter.`, `一个连续镜头最多 ${limit ?? maxParts} 段，请缩短。`);
@@ -78,7 +78,7 @@ export function editorErrorText(value, t = en => en) {
     if (code === 'gpu_memory' || /out of memory|cuda.*memory|显存不足|显存不够/i.test(raw))
         return t(`${stage}: not enough GPU memory.`, `${stage}时显存不足。`);
     const known = {
-        chain_part_too_short: t(`Each continued part must be at least ${model.RULES.followSeconds} seconds.`, `接着生成的每一段至少 ${model.RULES.followSeconds} 秒。`),
+        chain_part_too_short: t(`A part followed by another part must be at least ${model.RULES.followSeconds} seconds.`, `后面还接着其他段时，这一段至少 ${model.RULES.followSeconds} 秒。`),
         chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one continuous shot can have up to ${model.RULES.shortMaxParts} parts.`,
             `有短于 ${model.RULES.fullSeconds} 秒的段时，一个连续镜头最多 ${model.RULES.shortMaxParts} 段。`),
         chain_too_long: t(`One continuous shot can have up to ${model.RULES.maxParts} parts.`, `一个连续镜头最多 ${model.RULES.maxParts} 段。`),

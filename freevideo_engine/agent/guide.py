@@ -261,7 +261,7 @@ RULES = [
     'Cut by default. Wherever the film can change shot, make the new shot from the reference pictures it should '
     'have (cast cards, scene pictures) instead of continuing the previous video. Continue a video only for a '
     'long take that cannot be cut, an action that must stay unbroken, or sound that must stay unbroken, and '
-    'continuing again and again is not recommended. Each continued part is at least 5 seconds. One video has at '
+    'continuing again and again is not recommended. Each continued part is at least 5 seconds, and the last one can be as short as 2 seconds. One video has at '
     'most 8 parts (the first and 7 continuations, about 110 seconds in all) when every continued part is at '
     'least 10 seconds; with a continued part shorter than 10 seconds it has at most 4 parts, unless '
     'first_frame_reference is true. Filling that is not recommended. Past it, cut to a new shot.',
@@ -301,7 +301,7 @@ RULES_ZH = [
     '先用 people（角色图和各自的位置）做出首帧，再用它生成视频。',
     '默认切镜头。能切镜头的地方就切：新镜头直接用对应的参考图（人物卡、场景图）生成，不接上一段视频。'
     '只有不能切镜的长镜头、必须连贯的动作、必须连贯的声音，才接着上一段生成，而且不建议一段接一段地连续接。'
-    '接着生成的每一段至少 5 秒。每段都不短于 10 秒时，一条视频最多 8 段（第一段加 7 次接着生成，总长约 110 秒）；'
+    '接着生成的每一段至少 5 秒，最后一段可短至 2 秒。每段都不短于 10 秒时，一条视频最多 8 段（第一段加 7 次接着生成，总长约 110 秒）；'
     '有短于 10 秒的段时最多 4 段，first_frame_reference 为 true 时除外。不建议接满，超过就切镜头。',
     '问话不是要求。用户问进度或状态（“在做吗”“怎么了”）时，用一句话照实回答，依据是你所知道的、任务和白模的状态，'
     '什么都不要开始；不要把问句当提示词。某条 inbox 带有 whitebox 时，说明用户刚启动了白模场景，'
