@@ -7,13 +7,18 @@ const MAX = 32;
 // The engine keeps three references of a part that continues: the first three, or, with two or more characters,
 // the last picture of each (the face) and then the others (continuation.pick_pictures).
 const CONTINUE_MAX = 3;
-const personOf = ({row}) => typeof row.cast?.id === 'string' && row.cast.id ? row.cast.id : null;
+const personOf = ({row}) => typeof row.cast?.id === 'string' && row.cast.id && row.cast.setting !== true ? row.cast.id : null;
+const placeOf = ({row}) => row.cast?.setting === true;
 function pickContinued(list) {
+    // A scene's picture keeps one place after the others (continuation.pick_pictures).
+    const places = list.filter(placeOf), place = places[places.length - 1];
+    if (place) list = list.filter(entry => !placeOf(entry));
+    const room = CONTINUE_MAX - (place ? 1 : 0);
     const last = new Map();
     list.forEach((entry, at) => { const person = personOf(entry); if (person) last.set(person, at); });
-    if (last.size < 2) return list.slice(0, CONTINUE_MAX);
-    const faces = [...last.values()].sort((a, b) => a - b).map(at => list[at]);
-    return [...faces, ...list.filter(entry => !personOf(entry))].slice(0, CONTINUE_MAX);
+    const chosen = last.size < 2 ? list.slice(0, room)
+        : [...[...last.values()].sort((a, b) => a - b).map(at => list[at]), ...list.filter(entry => !personOf(entry))].slice(0, room);
+    return place ? [...chosen, place] : chosen;
 }
 export function createEditorReferences({t, source, size = () => null, error = () => {}, notify = () => {}}) {
     const root = el('div', 'fv-ed-refs'), chips = el('div', 'fv-ed-ref-chips');

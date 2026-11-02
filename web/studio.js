@@ -698,7 +698,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
     const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
     // Library characters offered in the @ list; a mention puts the character's pictures in the media list.
-    let castLibrary = null;
+    let castLibrary = null, sceneLibrary = null;
     const castAssets = () => { const owner = upstream(node, 'media'); const field = owner && widget(owner, 'assets'); return field ? {owner, field} : null; };
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
@@ -749,20 +749,23 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function castChoices() {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
-        return castLibrary.list().filter(card => card.name).map(card => {
+        const places = (sceneLibrary?.list() || []).map(card => ({...card, kind: 'setting'}));
+        return [...castLibrary.list(), ...places].filter(card => card.name).map(card => {
             const state = mentionState(rows, card, Math.min(MAX_PICTURES_EACH, Number(card.images) || 0), {continued: Boolean(extension.source)});
             return {id: card.id, name: card.name, handle: mentionHandle(rows, card, castPending), thumb: card.thumbnail?.file ? view(card.thumbnail.file) : card.thumbnail?.url || '',
-                blocked: state.ok ? '' : castBlocked(state.reason)};
+                ...(card.kind === 'setting' ? {setting: true} : {}), blocked: state.ok ? '' : castBlocked(state.reason) || true};
         });
     }
     // The name goes into the text at once; the card's pictures follow when the full card has been read.
     function mentionCharacter(person) {
         if (!castLibrary) return false;
         if (castInRows(mediaRows(node)).some(entry => entry.id === person.id)) return true;
-        if (!mentionState(mediaRows(node), {id: person.id}, 1, {continued: Boolean(extension.source)}).ok) return false;
+        const library = person.setting ? sceneLibrary : castLibrary;
+        if (!library) return false;
+        if (!mentionState(mediaRows(node), {id: person.id, ...(person.setting ? {kind: 'setting'} : {})}, 1, {continued: Boolean(extension.source)}).ok) return false;
         const typed = person.handle || person.name;
         castPending.set(person.id, typed);
-        castLibrary.get(person.id).then(card => {
+        library.get(person.id).then(card => {
             if (disposed) return;
             const rows = mediaRows(node), target = castAssets();
             if (!target || !mentionState(rows, card, undefined, {continued: Boolean(extension.source)}).ok) return;
@@ -816,9 +819,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const castChanged = event => { if (String(event.detail) === String(mediaNode?.id)) { castOverlay.refresh(); references.refresh(); announceCast(); } };
     window.addEventListener('freevideo-media', castChanged);
     node.freevideoContinues = () => Boolean(extension.source);
-    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; });
+    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, onChange: () => { castOverlay.refresh(); references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else castLibrary = library; });
+    openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'setting', onChange: () => { references.refresh(); }})
+        .then(library => { if (disposed) library?.destroy?.(); else sceneLibrary = library; });
     let requestAssets = null, rewriteSubjects = [];
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.

@@ -110,7 +110,7 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         async historyDeleteMany(files) { const answer = await post('history-delete-many', {files}); return {items: answer.items || [], failed: answer.failed || []}; },
         historyOpen: () => post('history-open', {}),
         // The prompts and sizes of a new character's five pictures (the Agent's cards use the same ones).
-        castViews: async description => (await post('cast-views', {description})).views,
+        castViews: async (description, kind = 'character') => (await post('cast-views', {description, kind})).views,
         async upload(file) {
             // ComfyUI's existing image upload stores this at input/<unique name>.
             // FreeVideo's media upload uses subdirectories the image worker rejects.

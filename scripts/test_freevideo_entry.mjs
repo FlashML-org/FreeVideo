@@ -520,8 +520,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         await extension.beforeRegisterNodeDef(MediaNode, {name: 'FreeVideoMedia'});
         const media = new MediaNode(); media.onNodeCreated();
         const panel = media.dom.find(row => row.name === 'freevideo_media').element;
-        const [castRow, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [castRow, sceneRow, toolbar, mode, note, audioHelp, connections] = panel.children;
         assert.equal(castRow, casts[0].element);
+        assert.equal(sceneRow, casts[1].element);
+        assert.equal(casts[1].options.kind, 'setting');
         assert.equal(casts[0].options.api, api);
         assert.equal(typeof casts[0].options.uploadOne, 'function');
         assert.equal(typeof casts[0].options.viewURL, 'function');
@@ -558,10 +560,11 @@ test('main browser entry registers both views and preserves node hooks', async t
         await imagePicker.onchange();
         assert.deepEqual(JSON.parse(media.widgets[0].value).map(row => row.role), ['reference', 'first']);
         media.onRemoved();
-        assert.equal(casts[0].destroyed, true);
+        assert.equal(casts[0].destroyed, true); assert.equal(casts[1].destroyed, true);
         const mounted = new Element('mount'), disposeMedia = media.freevideoCreateMediaEditor(mounted);
-        assert.equal(mounted.children[0].children[0], casts[1].element);
-        disposeMedia(); assert.equal(casts[1].destroyed, true);
+        assert.equal(mounted.children[0].children[0], casts[2].element);
+        assert.equal(mounted.children[0].children[1], casts[3].element);
+        disposeMedia(); assert.equal(casts[2].destroyed, true); assert.equal(casts[3].destroyed, true);
 
         await t.test('Generate node removal preserves the original hook when setSize throws', async () => {
             const previousInterval = globalThis.setInterval, previousClear = globalThis.clearInterval;

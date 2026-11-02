@@ -44,10 +44,15 @@ function pictureNumbers(rows, continued = false) {
     });
     let kept = picked;
     if (continued) {
+        // The picture of a scene keeps its place after the others (continuation.pick_pictures).
+        const places = picked.filter(index => rows[index].cast?.setting === true);
+        const place = places.length ? places[places.length - 1] : null;
+        const rest = place === null ? picked : picked.filter(index => rows[index].cast?.setting !== true);
         const last = new Map();
-        picked.forEach(index => { if (rows[index].cast?.id) last.set(rows[index].cast.id, index); });
-        kept = last.size < 2 ? picked : [...last.values()].sort((a, b) => a - b).concat(picked.filter(index => !rows[index].cast?.id));
-        kept = kept.slice(0, CONTINUE_PICTURES);
+        rest.forEach(index => { if (rows[index].cast?.id) last.set(rows[index].cast.id, index); });
+        kept = last.size < 2 ? rest : [...last.values()].sort((a, b) => a - b).concat(rest.filter(index => !rows[index].cast?.id));
+        kept = kept.slice(0, CONTINUE_PICTURES - (place === null ? 0 : 1));
+        if (place !== null) kept.push(place);
     }
     return new Map(kept.map((index, at) => [index, at + 1]));
 }
@@ -59,7 +64,7 @@ export function castInRows(rows) {
         if (!enabled(row) || !row.cast?.id || row.role !== 'reference' || !IMAGE.test(row.file || '')) return;
         const name = row.cast.name || '';
         // `handle` is what the text says after the @: the name, or "name (2)" when another present character has the same name.
-        const person = people.get(row.cast.id) || {id: row.cast.id, name, handle: row.cast.handle || name, description: row.cast.description || '', rows: []};
+        const person = people.get(row.cast.id) || {id: row.cast.id, name, handle: row.cast.handle || name, description: row.cast.description || '', setting: row.cast.setting === true, rows: []};
         person.rows.push(index); people.set(row.cast.id, person);
     });
     return [...people.values()];
@@ -101,6 +106,7 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
     const people = castInRows(list);
     const ranges = mentionRanges(text, people);
     if (!ranges.length) return {text, subjects: []};
+    const placed = [];
     if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) active = false;
     const numbers = pictureNumbers(list, continued);
     const order = [];
@@ -108,6 +114,11 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
     for (const range of ranges) {
         result += text.slice(at, range.start); at = range.end;
         const person = people.find(p => (p.handle ?? p.name) === range.name);
+        if (person?.setting) {
+            // A scene is not a subject: its name stays in the sentence and one line says which pictures show the place.
+            if (active && !placed.includes(person) && person.rows.some(index => numbers.has(index))) placed.push(person);
+            result += person.name; continue;
+        }
         if (!active || !person || !person.rows.some(index => numbers.has(index))) { result += person ? person.name : range.name; continue; }
         let number = order.indexOf(person) + 1;
         if (!number) {
@@ -117,7 +128,12 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         result += `<Subject ${number}>`;
     }
     result += text.slice(at);
-    if (!order.length) return {text: result, subjects: []};
+    const places = placed.slice(0, 1).map(place => {
+        const number = place.rows.map(index => numbers.get(index)).filter(Boolean)[0];
+        const description = String(place.description || '').trim().replace(/\.+$/, '');
+        return `setting: ${place.name}${description ? ': ' + description : ''}. <Picture ${number}> shows the place.`;
+    });
+    if (!order.length && !places.length) return {text: result, subjects: []};
     const subjects = order.map(person => {
         // Consecutive picture numbers make one range; a person whose pictures are apart gets several.
         const ranges = [];
@@ -127,7 +143,8 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         }
         return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: null};
     });
-    return {text: subjectDefinitions(subjects) + '\n\n' + result, subjects};
+    const definitions = [...(subjects.length ? [subjectDefinitions(subjects)] : []), ...places].join(' ');
+    return {text: definitions + '\n\n' + result, subjects};
 }
 
 // The rewrite of an expanded prompt, written back with the names the box had: <Subject N> becomes "@handle" of the
@@ -166,7 +183,9 @@ export function mentionState(rows, card, count = cardPictures(card).length, {con
     const people = castInRows(list);
     if (people.some(person => person.id === card.id)) return {ok: true, present: true};
     if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) return {ok: false, reason: 'frames'};
-    if (people.length >= MAX_PEOPLE) return {ok: false, reason: 'people'};
+    if (card.kind === 'setting' ? people.some(person => person.setting) : people.filter(person => !person.setting).length >= MAX_PEOPLE) {
+        return {ok: false, reason: card.kind === 'setting' ? 'place' : 'people'};
+    }
     if (continued && pictureNumbers(list).size >= CONTINUE_PICTURES) return {ok: false, reason: 'continued'};
     if (list.filter(enabled).length + count > MAX_REFERENCES) return {ok: false, reason: 'full'};
     return {ok: true, present: false};
@@ -190,6 +209,6 @@ export function withCharacter(rows, card, typed = '') {
     const list = Array.isArray(rows) ? rows.map(row => ({...row})) : [];
     if (castInRows(list).some(person => person.id === card.id)) return list;
     const handle = typed || mentionHandle(list, card);
-    const cast = {id: card.id, name: card.name, description: card.description || '', ...(handle === card.name ? {} : {handle})};
+    const cast = {id: card.id, name: card.name, description: card.description || '', ...(card.kind === 'setting' ? {setting: true} : {}), ...(handle === card.name ? {} : {handle})};
     return [...list, ...cardPictures(card).map(file => ({file, role: 'reference', enabled: true, cast}))];
 }

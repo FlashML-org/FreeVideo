@@ -57,8 +57,7 @@ def reference_prompt(card, *, face=False):
     """The one place the reference clip prompts are written."""
     who = (card.get('description') or card['name']).strip().rstrip('.')
     if card['kind'] == 'setting':
-        return ('%s. A slow, steady camera pan across the empty place, no people, even daylight, '
-                'sharp focus, no text.' % who)
+        return ('%s. A slow, steady camera pan across the place, no people, sharp focus, no text.' % who)
     if face:
         return ('%s. A close-up of the face and shoulders, looking straight at the camera with a neutral '
                 'expression, in front of a plain light grey studio backdrop. The person stays still. '

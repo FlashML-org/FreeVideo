@@ -42,22 +42,35 @@ UNSUPPORTED_MEDIA = UNSUPPORTED + ' Connect up to 3 pictures as references, and 
 PICTURES_MAX = 3
 
 
-def pick_pictures(rows, person):
+def pick_pictures(rows, person, scene=None):
     """The pictures a continued part keeps from image rows in panel order: at most PICTURES_MAX.
 
     person(row) is the id of the character a row belongs to, or None. With two or more characters each keeps
     only the last of its rows (the face close-up, or the one picture its card has) so that everyone is seen; the
-    other pictures follow. With none or one character the first rows are kept."""
+    other pictures follow. With none or one character the first rows are kept.
+    scene(row) is true for the picture of a setting card: the last such row keeps one place, after the others, so the
+    part still shows the same place."""
     rows = list(rows)
+    place = None
+    if scene is not None:
+        places = [row for row in rows if scene(row)]
+        if places:
+            place = places[-1]
+            rows = [row for row in rows if not scene(row)]
     last = {}
     for index, row in enumerate(rows):
         if person(row) is not None:
             last[person(row)] = index
+    room = PICTURES_MAX - (place is not None)
     if len(last) < 2:
-        return rows[:PICTURES_MAX]
-    faces = [rows[index] for index in sorted(last.values())]
-    others = [row for row in rows if person(row) is None]
-    return (faces + others)[:PICTURES_MAX]
+        chosen = rows[:room]
+    else:
+        faces = [rows[index] for index in sorted(last.values())]
+        others = [row for row in rows if person(row) is None]
+        chosen = (faces + others)[:room]
+    return chosen + ([place] if place is not None else [])
+
+
 INVALID_FRAMES = 'Frame count must be 5 + 17n and at least 39 (39, 56, 73, 90, ...).'
 INVALID_FILE = 'Choose an existing MP4 video using its absolute path.'
 
