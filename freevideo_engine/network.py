@@ -1146,6 +1146,9 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     measured_rates = {}
     left_slow = set()
     for cycle in range(cycles):
+        # Per round: a source refused the retained prefix / another was only slow,
+        # stalled or interrupted (those may still finish from the same bytes).
+        resume_refused = retryable = False
         # Once every route has been tried, keep the fastest observed route even
         # if the user's entire connection is slow. Do not oscillate forever.
         if cycle and updating and not left_slow:
@@ -1360,6 +1363,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     break
                 if offset and (process.returncode == 33 or process.returncode == 22 and status == '416') and restart == 0:
                     if model or keep_partial:
+                        resume_refused = True
                         note_failure(name, route, 'source-does-not-support-range', address=url)
                         event(network, category=category, source=name, file=path.name,
                               action='resume-refused', resume_bytes=offset, reason='source-does-not-support-range')
@@ -1373,6 +1377,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                 interrupted = process.returncode not in (0, 22, 33, 63) and current_size > offset
                 transient = (stalled or interrupted or process.returncode in (5, 6, 7, 18, 28, 35, 52, 55, 56, 92, 95)
                              or status in ('429', '500', '502', '503', '504'))
+                retryable = retryable or transient or slow or faster is not None
                 if model and transient and restart < 2 and candidate_index + 1 == len(candidates) and process.returncode not in (5, 7):
                     retry_wait(network, restart, category=category, source=name, file=path.name,
                                resume_bytes=current_size, reason='no-progress' if stalled else 'connection-interrupted')
@@ -1391,12 +1396,18 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     event(network, category=category, source=name, route=route, file=path.name, action='fallback', reason=reason, http_status=status, resume_bytes=current_size,
                           **(dict(detail=curl_message) if curl_message else {}))
                 break
-        if model and partial.exists() and partial.stat().st_size:
+        # Pause or start over only when a source refused the retained prefix and
+        # no other source was merely slow, stalled or interrupted (it may still
+        # finish from the same bytes in the next round). The last round never
+        # starts over, since nothing would download afterwards.
+        if (model and resume_refused and (not retryable or cycle + 1 == cycles)
+                and partial.exists() and partial.stat().st_size):
             if not network.get('allow_model_restart'):
                 pause_download(network, name, path, partial.stat().st_size, 'sources could not continue the retained prefix')
-            event(network, category=category, source=name, file=path.name, action='restart-approved',
-                  retained_bytes=partial.stat().st_size, reason='resume-unavailable')
-            retain_partial(partial, 'restart-approved')
+            if cycle + 1 < cycles:
+                event(network, category=category, source=name, file=path.name, action='restart-approved',
+                      retained_bytes=partial.stat().st_size, reason='resume-unavailable')
+                retain_partial(partial, 'restart-approved')
     message = 'Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name
     error = DownloadError(message + sources_text(failures.values()))
     error.attempts = [dict(source=source, route=route, reason=reason) for (source, route), reason in attempts.items()]
