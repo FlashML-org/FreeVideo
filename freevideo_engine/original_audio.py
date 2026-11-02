@@ -18,6 +18,7 @@ MESSAGES = {
     'audio_original_long': ('This audio is longer than 30 seconds. Generate it in the Create view, or use an audio file of 30 seconds or less.', '这段音频超过 30 秒，请到创作面板里生成，或换一段 30 秒以内的音频。'),
     'audio_original_limit': ('This audio is longer than 2 hours. Use an audio file of 2 hours or less.', '这段音频超过 2 小时，请换一段 2 小时以内的音频。'),
     'audio_original_part': ('With "Use as is", each part can be up to 30 seconds.', '用“原样使用”时，每一段最长 30 秒。'),
+    'audio_original_passes': ('Audio longer than 30 seconds used as is is made in parts, which needs "Two-pass acceleration". Turn it on or set the audio to "Reference".', '超过 30 秒的音频选“原样使用”时会分段生成，需要“二次采样加速”。请打开“二次采样加速”，或把音频改选“参考”。'),
     'audio_original_route': ('"Use as is" is not available here yet. Set the audio to "Reference".', '这里还不能用“原样使用”的音频，请改选“参考”。'),
     'audio_original_backend': ('"Use as is" is not available on this computer yet.', '这台电脑上还不能用“原样使用”。'),
     'audio_original_slot': ('The selected audio is longer than this part. Make the part longer or select less audio.', '所选音频比这一段长，请把这一段拉长，或少选一些音频。'),

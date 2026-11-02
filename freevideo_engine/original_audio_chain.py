@@ -96,9 +96,11 @@ def bind(record, selected):
         raise AudioUseError('audio_original_range')
     blocks = record['blocks']
     inputs = record['snapshot']['prompt'][record['node']]['inputs']
-    if len(blocks) > 1 and (inputs.get('two_pass', True) is not True
-                           or inputs.get('preview') or inputs.get('refine_from')):
-        raise AudioUseError('audio_original_route')
+    if len(blocks) > 1:
+        if inputs.get('two_pass', True) is not True:
+            raise AudioUseError('audio_original_passes')
+        if inputs.get('preview') or inputs.get('refine_from'):
+            raise AudioUseError('audio_original_route')
     for index, block in enumerate(blocks):
         if block['before'] is not None or block['after'] != (blocks[index - 1]['id'] if index else None):
             raise AudioUseError('audio_original_route')

@@ -56,7 +56,7 @@ import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
-import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
+import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow, partsNeedTwoPassText } from './audio_original.js';
 import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
@@ -1952,7 +1952,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
         // Once the server has taken a request it stays taken; only a request it never took is undone.
-        let held = null, accepted = false;
+        let held = null, accepted = false, snapshot = null;
         const onAccepted = () => { accepted = true; };
         try {
             stopNote = ''; lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
@@ -1964,6 +1964,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
             if (lengthControl.absent && !seconds.reportValidity()) return;
+            if (originalOn && lengthPlan?.count > 1 && !twoPass.checked) { status.dataset.error = 'true'; status.textContent = partsNeedTwoPassText(t); return; }
             if (lengthPlan?.count > 1 && chosenMode !== 'single') { status.textContent = t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。'); return; }
             const lengthOptions = lengthControl.options();
             const usageContext = capabilityContext(node, {custom: true});
@@ -1989,7 +1990,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             held = turnNodeOn(node);
             const graph = cleanOptionalPrompt(clonePrompt(await app.graphToPrompt()));
             if (emptyAllowed && !prompt.value.trim() && !extension.source) allowEmptyPrompt(graph, node.id);
-            const snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
+            snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
@@ -2013,7 +2014,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             if (!queueController.state().error) status.textContent = held
                 ? t('The FreeVideo node was off in Nodes view. It has been turned back on.', 'FreeVideo 节点在节点视图里是关闭的，已自动打开。') : '';
-        } catch (error) { showQueueError(createErrorReport(error, {stage: 'submission', node, graph: app.graph})); }
+        } catch (error) { showQueueError(createErrorReport(error, {stage: 'submission', snapshot, node, graph: app.graph})); }
         finally {
             if (accepted) held?.done(); else held?.restore();
             capturing = false;
