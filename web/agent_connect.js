@@ -23,6 +23,15 @@ export async function agentInterfaceState(api) {
     } catch { return 'unknown'; }
 }
 
+// What to tell the user when the address lookup is refused: only refusals that say what to do are named; any other
+// failure keeps the plain "could not get address".
+export function refusalHint(code, t) {
+    if (code === 'origin_forbidden') return t('Open FreeVideo on this computer with a localhost address, then retry.', '请在本机使用 localhost 地址打开 FreeVideo，然后重试。');
+    if (code === 'local_only') return t('Agents can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接 Agent。');
+    if (code === 'not_ready') return t('The agent connection service is not ready. Restart FreeVideo, then retry.', 'Agent 连接服务尚未就绪，请重启 FreeVideo 后重试。');
+    return '';
+}
+
 export async function agentInterfaceEnabled(api) { return await agentInterfaceState(api) === 'on'; }
 
 const ICONS = {plug: ['M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5', 1.8], copy: ['M11 9h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM5 15V5a2 2 0 0 1 2-2h8', 2]};
@@ -56,17 +65,17 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const status = el('p', 'fv-agent-connect-status', t('Getting the connection address…', '正在获取连接地址…')); status.setAttribute('role', 'status');
     body.append(mark, title, intro, subtitle, actions, sentence, status);
 
-    let feedback = false, text = '', failures = 0;
+    let feedback = false, text = '', failures = 0, refusal = null;
     let timer, feedbackTimer, controller, generation = 0;
     const active = () => body.isConnected && shown();
     const render = () => {
         label.textContent = !text && failures >= 3 ? t('Could not get address. Retry', '获取失败，重试') : feedback ? t('Copied', '已复制') : t('Copy', '复制');
         if (!text && failures >= 3) {
-            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: label.textContent})); button.after(issue); }
+            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''})` : label.textContent, kind: refusal?.code || null})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
         button.disabled = !text && failures < 3;
         button.title = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
-        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
+        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) : '';
     };
     render();
 
@@ -92,15 +101,18 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     // Only the sentence is read here, until it is known; who is connected comes from the surface that holds the card.
     async function load() {
         const current = generation;
-        const request = new AbortController(); controller = request;
+        const request = new AbortController(); controller = request; refusal = null;
         try {
             // The sentence carries no parameter: the server gives the agent the language this card showed.
             const response = await api.fetchApi('/freevideo/agent/connect?lang=' + t('en', 'zh'), {cache: 'no-store', signal: request.signal});
-            const connect = response.ok ? await response.json() : null;
+            const connect = await response.json().catch(() => null);
             if (current !== generation) return;
-            if (!connect?.address) throw new Error('Missing address');
+            if (!response.ok || !connect?.address) {
+                refusal = !response.ok ? {status: response.status, code: String(connect?.error?.code || '').slice(0, 40) || null} : null;
+                throw new Error('Missing address');
+            }
             text = connectionSentence(connect.address, t);
-            failures = 0; render();
+            failures = 0; refusal = null; render();
             if (await state === 'unknown') { state = agentInterfaceState(api); changed(await state); }
         } catch { if (current === generation) { failures++; render(); } }
         finally {
