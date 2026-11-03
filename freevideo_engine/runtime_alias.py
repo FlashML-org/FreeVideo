@@ -719,6 +719,14 @@ def _starts_as_it_is(root):
             and path_chars(root) + 1 + _longest(root, PROGRAMS) <= WINDOWS_PATH_LIMIT)
 
 
+@lru_cache(maxsize=1)
+def _reclaim_once():
+    try:
+        reclaim_views()
+    except Exception:  # Tidying up must never stop a launch.
+        pass
+
+
 def runtime_view(root, longest=None) -> Path:
     if not _backend.windows():
         return Path(root)
@@ -728,7 +736,9 @@ def runtime_view(root, longest=None) -> Path:
             return root
         try:
             with _backend.coordinate(root):
-                return _runtime_view(root)
+                view = _runtime_view(root)
+            _reclaim_once()
+            return view
         except OSError:
             # No short folder can be made. A runtime whose programs start from where they are
             # runs as it did before there was a short folder; only one that cannot is refused.
@@ -793,6 +803,57 @@ def _runtime_view(root):
                 last, reason = error, _reason(error)
                 continue
     raise AliasUnavailable(reason, last) from last
+
+
+def _orphan_target(alias):
+    """The folder a short folder of ours points to, when that folder is gone."""
+    with _backend.parent(alias.parent):
+        io = _backend.io(alias)
+        if not _backend.junction(io):
+            return None
+        target = _ordinary(_backend.readlink(io))
+    if not target.is_absolute() or not any(_normal(alias) == _normal(item) for item in _candidates(target, alias.parent)):
+        return None
+    try:
+        # Only a folder that is missing from a place that can be read counts as gone.
+        if not _backend.io(target.parent).is_dir():
+            return None
+        _backend.io(target).lstat()
+    except FileNotFoundError:
+        return target
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def reclaim_views():
+    """Remove short folders whose runtime folder no longer exists; returns how many."""
+    if not _backend.windows():
+        return 0
+    removed = 0
+    for parent in _backend.locations():
+        parent = _ordinary(parent)
+        try:
+            if is_junction(parent):
+                continue
+            names = [name for name in os.listdir(_backend.io(parent)) if _NAME.fullmatch(name)]
+        except (OSError, ValueError):
+            continue
+        for name in names:
+            alias = parent / name
+            try:
+                target = _orphan_target(alias)
+                if target is None:
+                    continue
+                # Look again under the lock that creating a view of this folder takes:
+                # a reinstall may have brought the folder back since the first look.
+                with _backend.coordinate(target):
+                    if _orphan_target(alias) == target and _backend.remove(alias, target):
+                        removed += 1
+            except (OSError, ValueError):
+                # Busy, unreadable or changed objects remain untouched.
+                pass
+    return removed
 
 
 def drop_view(root):
