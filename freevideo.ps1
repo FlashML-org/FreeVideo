@@ -137,10 +137,14 @@ try {
                   if ($pythonExit -eq 0) { $installed = $true; break }
                   if (-not (Test-FreeVideoSlowDownloadFailure $pythonOutput)) { $allNetworkFailures = $false }
                   Write-Host "Python install source $attempt returned exit code $pythonExit. Details retained in $bootstrapLog"
+                  $pythonReason = Get-FreeVideoFailureReason $pythonOutput
+                  if ($pythonReason) { Write-Host "uv reported: $pythonReason" }
                 }
               }
             }
-            if (-not $installed) { throw "Python installation failed (uv exit $pythonExit). Check your network or connection mode in Downloads. See $bootstrapLog and retry." }
+            $pythonDetail = ''
+            if ($pythonReason) { $pythonDetail = " uv reported: $pythonReason." }
+            if (-not $installed) { throw "Python installation failed (uv exit $pythonExit).$pythonDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry." }
             $freevideoPython = (& $uv python find --managed-python $versions.python | Select-Object -Last 1).Trim()
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $freevideoPython)) { throw 'Managed Python could not be located.' }
         } finally {

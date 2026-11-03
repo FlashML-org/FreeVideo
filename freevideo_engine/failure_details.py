@@ -860,7 +860,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
     detail = causes[-1] if causes else next((line for line in reversed(lines)
-        if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Rerun the same setup command'))), '')
+        if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Existing files are retained.', 'Rerun the same setup command'))), '')
     detail = re.sub(r'^(?:ValueError|RuntimeError|OSError):\s*', '', detail)
     from .launcher_copy import lan_error
     title = '暂时未能完成' if zh else 'Couldn’t complete this step'
