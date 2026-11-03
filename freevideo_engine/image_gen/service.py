@@ -1053,9 +1053,12 @@ class Service:
         return True
 
     @staticmethod
-    def worker_gone(session, heard, requested_stop=False):
-        """The error for a worker pipe that ended; it carries the exit code for the report."""
-        error = Service.worker_gone_error(session, heard)
+    def worker_gone(session, heard, requested_stop=False, loading=False):
+        """The error for a worker pipe that ended; it carries the exit code for the report.
+
+        ``loading`` is true while the worker has reported nothing beyond loading its weights.
+        """
+        error = Service.worker_gone_error(session, heard, loading=loading, requested_stop=requested_stop)
         code = getattr(error, 'exit_code', None)
         if code is not None:
             # The worker cannot report its memory once it is gone: read this process's view now.
@@ -1069,7 +1072,7 @@ class Service:
         return error
 
     @staticmethod
-    def worker_gone_error(session, heard):
+    def worker_gone_error(session, heard, loading=False, requested_stop=False):
         try:
             code = session.process.wait(timeout=2)
         except subprocess.TimeoutExpired:
@@ -1088,7 +1091,11 @@ class Service:
         message = 'worker_exit (exit code %d%s)' % (code, ', ' + kind if kind else '')
         # A worker that ended with an error before answering never ran the request; one
         # fresh worker gets it, and a second exit is reported with its own last words.
-        error = (WorkerEarlyExit if not heard and code > 0 else RuntimeError)(message)
+        # A native crash while the weights were still loading ran nothing of the request either.
+        from ..exit_diagnostics import exit_reading
+        crashed_loading = (loading and code != 0 and not requested_stop
+                           and exit_reading(code).get('exit_class') == 'native_crash')
+        error = (WorkerEarlyExit if (not heard and code > 0) or crashed_loading else RuntimeError)(message)
         error.exit_code = code
         return error
 
@@ -1100,6 +1107,7 @@ class Service:
             keep.note('image', habit)
         # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
         value['keep_seconds'] = keep.keep_seconds(habit)
+        loading = True
         try:
             session.send(action='generate', **value)
         except OSError:
@@ -1121,11 +1129,12 @@ class Service:
             except queue.Empty:
                 continue
             if row is None:
-                raise self.worker_gone(session, heard, self.stop.is_set())
+                raise self.worker_gone(session, heard, self.stop.is_set(), loading=loading)
             heard = True
             phase = row.get('phase')
             if phase == 'progress':
                 stage, fraction = row.get('stage'), row.get('fraction')
+                loading = loading and stage in ('start', 'load')
                 if (stage in STAGES and type(fraction) in (int, float)
                         and math.isfinite(fraction) and 0 <= fraction <= 1):
                     # The limit is for a worker that stops reporting, not for a slow first load.
