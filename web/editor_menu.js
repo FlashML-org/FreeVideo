@@ -41,6 +41,7 @@ export function menuItems(context) {
         command('x', t('Cut', '剪切'), `${modifier}+X`, copyable && !generating),
         command('d', t('Duplicate', '创建副本'), `${modifier}+D`, copyable),
         command('delete', t('Delete', '删除'), 'Delete', !generating),
+        command('ripple', t('Ripple delete', '波纹删除'), 'Shift+Delete', !generating),
         command('b', t('Split', '剪开'), `${modifier}+B`, !splitBusy && canSplit, 'split'),
     ] : [
         command('v', t('Paste', '粘贴'), `${modifier}+V`, commands.canPaste()),

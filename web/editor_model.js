@@ -654,15 +654,20 @@ export function closeGap(record, trackId, frame) {
     check(whole(frame), 'range');
     const gap = gaps(record, trackId).find(item => frame >= item.start && frame < item.start + item.frames);
     if (!gap) return parse(record);
-    const from = gap.start + gap.frames;
+    return closeSpan(record, gap.start + gap.frames, gap.frames);
+}
+// Move everything that starts at `from` or later `frames` earlier on every track, the way a closed gap does.
+// Content that would land on a part that stays, a locked track or a generating part refuses the whole move.
+export function closeSpan(record, from, frames) {
+    check(whole(from) && whole(frames, 1) && frames <= from, 'range');
     for (const track of record.tracks) {
         const moving = track.clips.filter(clip => clip.start >= from), fixed = track.clips.filter(clip => clip.start < from);
         const code = moving.some(clip => ['queued', 'running'].includes(clip.pending)) ? 'busy'
             : moving.length && track.locked ? 'locked'
-                : moving.some(clip => fixed.some(other => overlaps(other, clip.start - gap.frames, clip.frames))) ? 'overlap' : null;
+                : moving.some(clip => fixed.some(other => overlaps(other, clip.start - frames, clip.frames))) ? 'overlap' : null;
         if (code) { const error = new EditError(code); error.track = track.id; throw error; }
     }
-    const next = copy(record); shift(next, from, -gap.frames); return finish(next);
+    const next = copy(record); shift(next, from, -frames); return finish(next);
 }
 export function setVolume(record, id, volume) {
     const next = copy(record), track = trackOf(next, id); check(track, 'missing'); check(track.kind === 'audio', 'track');

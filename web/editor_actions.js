@@ -3,6 +3,7 @@
 // splitAt        (record, ids, frame, {by})    <-> Split (B)
 // trimAt         (record, ids, frame, edge, {by}) <-> Trim before/after (Q/W)
 // removeParts    (record, ids)                 <-> Delete / Backspace / Cut
+// rippleRemoveParts (record, ids)              <-> Ripple delete (Shift+Delete / Shift+Backspace)
 // removeGaps     (record, gap|null)            <-> Remove gaps / Delete a gap
 // duplicateParts (record, ids)                 <-> Duplicate (D)
 // copyTo         (record, ids, at)             <-> Copy + Paste at the playhead
@@ -12,7 +13,7 @@
 // an explicit track must be an original lane of the group. No snapping here.
 // A cut by the user (the default) takes the block from the agent; by: 'agent' keeps its mark.
 import * as model from './editor_model.js';
-import {assertUnlocked} from './editor_text_model.js';
+import {assertUnlocked, isText} from './editor_text_model.js';
 import {copyContent, pasteContent, playheadTargets, removableGaps} from './editor_room.js';
 
 const end = clip => clip.start + clip.frames;
@@ -48,6 +49,28 @@ export function trimAt(record, ids, frame, edge, {by = 'user'} = {}) {
 }
 export function removeParts(record, ids) {
     return edit(() => model.remove(record, linkedIds(record, ids)));
+}
+// Delete the parts, then close only the time they took (a gap that was already there stays), right to left
+// so earlier spans keep their frames. A span that cannot close stays open and is listed in `skipped`.
+// Text and subtitles only lie over the picture, so deleting them closes nothing.
+export function rippleRemoveParts(record, ids) {
+    ids = linkedIds(record, ids);
+    const taken = record.tracks.flatMap(track => track.clips).filter(clip => ids.includes(clip.id) && !isText(clip))
+        .sort((a, b) => a.start - b.start), spans = [];
+    for (const clip of taken) {
+        const last = spans.at(-1);
+        if (last && clip.start <= last.end) last.end = Math.max(last.end, end(clip));
+        else spans.push({start: clip.start, end: end(clip)});
+    }
+    let next = removeParts(record, ids); const skipped = [];
+    for (const span of spans.reverse()) {
+        try { next = edit(() => model.closeSpan(next, span.end, span.end - span.start)); }
+        catch (error) {
+            if (!(error instanceof model.EditError) || !['busy', 'locked', 'overlap'].includes(error.code)) throw error;
+            skipped.push({start: span.start, track: error.track, code: error.code});
+        }
+    }
+    return {record: next, closed: spans.length - skipped.length, skipped: skipped.reverse()};
 }
 export function removeGaps(record, gap) {
     if (gap !== null) {

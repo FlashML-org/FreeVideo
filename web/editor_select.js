@@ -82,6 +82,8 @@ export function createSelectionActions({state, t = en => en, actions = {}, clipb
     }
     function run(key) {
         try {
+            // Ripple delete only differs for parts; a selected gap or range is deleted as with Delete.
+            if (key === 'ripple' && state.selection?.kind !== 'clip') key = 'delete';
             const ids = selectedIds(state.record, state.selection);
             if (key === 'a') { state.select(selection(unlockedIds(state.record))); return {ok: true}; }
             if (['b', 'q', 'w'].includes(key) && !playheadIds(state.record, state.selection, state.playhead).length) {
@@ -98,6 +100,14 @@ export function createSelectionActions({state, t = en => en, actions = {}, clipb
                 state.apply(t('Remove gaps', '移除空隙'), () => result.record,
                     result.removed && state.selection?.kind === 'gap' ? {selectionAfter: null} : {});
                 return {ok: !!result.removed, ...(result.removed ? {} : {reason: result.skipped[0]?.code || 'no_gap'}), removed: result.removed, skipped: result.skipped};
+            }
+            if (key === 'ripple') {
+                const status = deletionStatus(state.record, state.selection);
+                if (!status.ok) return status.reason === 'busy' ? report(new model.EditError(status.reason)) : status;
+                const result = actionsModel.rippleRemoveParts(state.record, ids);
+                state.apply(t('Ripple delete', '波纹删除'), () => result.record, {selectionAfter: null});
+                if (result.skipped.length) actions.notify?.(t('Deleted. The content after it cannot move earlier, so the gap remains.', '已删除。后面的内容无法前移，空隙已保留。'));
+                return {ok: true, closed: result.closed, skipped: result.skipped};
             }
             if (key === 'delete' || key === 'backspace') {
                 const status = deletionStatus(state.record, state.selection);
@@ -137,7 +147,7 @@ export function createSelectionActions({state, t = en => en, actions = {}, clipb
         const deleting = ['delete', 'backspace'].includes(key) && ['clip', 'gap', 'range'].includes(state.selection?.kind);
         const trimming = !event.ctrlKey && !event.metaKey && !event.shiftKey && ['q', 'w'].includes(key);
         if (!command && !deleting && !trimming) return false;
-        event.preventDefault(); event.stopPropagation(); run(key); return true;
+        event.preventDefault(); event.stopPropagation(); run(deleting && event.shiftKey ? 'ripple' : key); return true;
     }};
 }
 
