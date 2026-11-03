@@ -777,7 +777,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Smart App Control in Windows blocked these files. Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App Control settings.',
           'Windows 的“智能应用控制”拦截了这些文件。在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”。')),
         (r'PermissionError|Access is denied|Permission denied|WinError 5\b|os error 5\b', 'permission',
-         ('This folder is not writable', '无法写入这个目录'),
+         ('Access denied', '访问被拒绝'),
          ('Choose an installation folder you can write to, then retry.', '选择有写入权限的安装目录后重试。')),
         # A worker's own check of the cuDNN files it loaded (runtime_libraries).
         (r"FreeVideo's PyTorch library files do not match", 'runtime-libraries',

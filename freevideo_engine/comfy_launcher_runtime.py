@@ -1026,7 +1026,7 @@ class Controller:
             # A link check in flight finishes first, so it cannot overwrite this task's state.
             poll.join()
         self.cancelled.clear()
-        self.state = dict(self.state, status='running', action=operation, error=None, exception=None, task={}, overall={},
+        self.state = dict(self.state, status='running', action=operation, error=None, exception=None, denied=None, task={}, overall={},
                           model_groups=[] if operation == 'inspect' else self.state.get('model_groups', []))
         if operation in ('connect', 'launch', 'configure_access'):
             self.sections = [('open', 1)]
@@ -1041,8 +1041,13 @@ class Controller:
                     # A remembered URL alone cannot prove the local page is usable.
                     opened = bool(self.state.get('url')) and server_info(self.state['url'].split('/?')[0])['status'] == 'freevideo'
                 status = 'open' if opened else 'failed'
+                from .denied_access import describe
+                # Inspection fails before a selection exists, so the requested folder stands in.
+                engine = (self.selection or {}).get('engine') or (
+                    args[0].get('engine') if args and isinstance(args[0], dict) else None)
+                roots = [('INSTALL', engine)] if engine else []
                 self.state = dict(self.state, status='cancelled' if self.cancelled.is_set() else status,
-                                  error=str(error), exception=exception_details(error))
+                                  error=str(error), exception=exception_details(error), denied=describe(error, roots))
         self.thread = threading.Thread(target=work, daemon=True)
         self.thread.start()
 
