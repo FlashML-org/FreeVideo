@@ -415,6 +415,12 @@ def host_compiler_choice(below, path=None, env=None, find=shutil.which, major=gc
     return None
 
 
+def pinned_compiler_identity(spec=None):
+    """How FreeVideo's own GCC is named in the wheel cache key and in a build record."""
+    spec = spec or json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8'))
+    return 'conda-forge gcc ' + spec['version'] + ' static-libstdc++'
+
+
 def existing_parent(path):
     while not path.exists():
         path = path.parent
@@ -1907,6 +1913,9 @@ class Installer:
             build_env = dict(self.env, CUDA_HOME=str(toolkit), PATH=str(toolkit / 'bin') + os.pathsep + self.env['PATH'],
                 CPATH=headers, TORCH_CUDA_ARCH_LIST=identity['arch'], MAX_JOBS=str(build['jobs']),
                 EXT_PARALLEL='1', NVCC_APPEND_FLAGS='--threads=' + str(build['nvcc_threads']))
+            headers_conflict = compiler['env'] is not None and self.host_headers_conflict(toolkit, dict(build_env, **compiler['env']))
+            if headers_conflict:
+                compiler = dict(compiler, env=None, built_with=pinned_compiler_identity())
             build_env.update(compiler['env'] if compiler['env'] is not None else self.install_compiler_linux())
             if compiler['env'] is None:
                 # The private compiler is newer than an older system's libstdc++, which the Python process loads first.
@@ -1922,12 +1931,38 @@ class Installer:
             wheel = wheels[0]
             record = {'identity': identity, 'filename': wheel.name, 'sha256': digest(wheel),
                       'bytes': wheel.stat().st_size, 'build_run': str(self.run_dir), 'kernel_validation': 'pending'}
+            if headers_conflict:
+                record.update(headers='private sysroot', built_with=compiler['built_with'])
             save(manifest, record)
         # Install from the verified wheel path, avoiding architecture-blind source caches.
         self.command('sage2-wheel-install', [uv, 'pip', 'install', '--python', python, '--no-deps',
                                            '--reinstall-package', 'sageattention', wheel])
         save(self.run_dir / 'sage-wheel.json', dict(record, reused=cached, cache=str(wheel_dir)))
         return manifest
+
+    def host_headers_conflict(self, toolkit, env):
+        """Whether the system's C library headers clash with the toolkit's, so only a private sysroot can build Sage2.
+
+        A new glibc (rsqrt from 2.42, sinpi and cospi from 2.41) declares math functions noexcept, which
+        the toolkit declares without. Every compiler that reads the system headers fails on it, whatever its
+        version, so a small CUDA file that includes <cmath> is compiled with the chosen compiler first. Any
+        other outcome, including a probe that cannot run, leaves the build as it was.
+        """
+        probe = self.run_dir / 'host-headers-probe.cu'
+        probe.write_text('#include <cmath>\n__global__ void probe(double* p) { p[0] = rsqrt(p[0]); }\n', encoding='utf-8')
+        command = [str(toolkit / 'bin' / 'nvcc'), '-std=c++17', '-cuda', str(probe), '-o', str(probe.with_suffix('.cpp'))]
+        if env.get('CC'):
+            command[1:1] = ['-ccbin', env['CC']]
+        try:
+            output, conflict = subprocess_output.output_external(command, env=env, stderr=subprocess.STDOUT, timeout=300), False
+        except subprocess.CalledProcessError as error:
+            output = error.output if isinstance(error.output, str) else str(error.output or '')
+            conflict = 'exception specification is incompatible' in output
+        except (OSError, subprocess.SubprocessError) as error:
+            output, conflict = str(error), False
+        save(self.run_dir / 'sage-host-headers.json', {'conflict': conflict, 'compiler': env.get('CC', 'g++'), 'glibc': list(platform.libc_ver()),
+                                                      'output': output[-4000:]})
+        return conflict
 
     def host_compiler(self, cuda):
         """The compiler pair Sage is built with: the system's, a versioned one beside it, or FreeVideo's own.
@@ -1943,7 +1978,7 @@ class Installer:
         else:
             choice = host_compiler_choice(below, self.env['PATH'], self.env) if below else {}
         if choice is None:
-            return {'env': None, 'identity': 'conda-forge gcc ' + spec['version'] + ' static-libstdc++'}
+            return {'env': None, 'identity': pinned_compiler_identity(spec)}
         cxx = choice.get('CXX', 'g++')
         return {'env': choice, 'identity': subprocess_output.output_external([cxx, '--version']).splitlines()[0]}
 
