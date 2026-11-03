@@ -472,6 +472,7 @@ def verify(root=None, progress=None, check=None, *, group='image'):
 
 def _verify(folder, root, progress, check, full=False, *, group='image'):
     ledger = _read(folder, LEDGER)
+    snapshot = json.dumps(ledger, sort_keys=True)
     todo = []
     total = sum(r['bytes'] for r in rows(group=group))
     done = 0
@@ -495,7 +496,8 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
                 model_repair.record(folder, path, row, before)
             todo.append(row)
         done += row['bytes']
-    save(_path(folder, LEDGER), ledger)
+    if json.dumps(ledger, sort_keys=True) != snapshot or not _path(folder, LEDGER).is_file():
+        save(_path(folder, LEDGER), ledger)
     return ledger, todo
 
 
@@ -537,6 +539,8 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             details.update(verification='mismatch', method='sha256')
         if diagnostic:
             diagnostic(dict(phase='diagnostic', diagnostic=details))
+            if value.get('action') == 'verifying':
+                diagnostic(dict(phase='verify'))  # A finished file is being hashed: say so, not "downloading".
         if prior_event:
             prior_event(value)
     plan['event_callback'] = event

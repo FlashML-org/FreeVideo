@@ -812,6 +812,8 @@ class Session:
             labels = {'install': ('Downloading', '正在下载'), 'repair': ('Repairing', '正在修复'),
                       'remove': ('Removing', '正在删除'), 'verify': ('Checking', '正在检查')}
             detail = self.t(*labels[active['action']])
+            if active.get('action') == 'install' and active.get('phase') == 'verify':
+                detail = self.t('Checking', '正在校验')
         elif active.get('state') == 'paused_for_generation':
             detail = self.t('Paused while generating', '生成时暂停')
         elif active.get('state') == 'cancelled':
