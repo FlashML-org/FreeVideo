@@ -30,7 +30,7 @@ from .editor_frames import frame_not_after, last_frame_end
 from .editor_limits import PROJECT_BYTES
 from .editor_speed import validate_clip, register_reverse
 from .editor_transport import marker_fields
-from .editor_audio import clip_fields, track_fields
+from .editor_audio import STEM_TRACKS, clip_fields, track_fields
 
 FPS = 24
 MAX_IMPORT_BYTES = 8 * 1024**3
@@ -187,13 +187,15 @@ def validate(record):
     if not _text(json.dumps(settings, ensure_ascii=False, allow_nan=False, separators=(',', ':')), 1024 * 1024):
         raise ValueError('Settings are too large')
     raw_tracks = record.get('tracks')
-    expected = [('v1', 'video'), ('a1', 'audio'), ('a2', 'audio')]
-    if not isinstance(raw_tracks, list) or len(raw_tracks) not in (2, 3):
+    expected = [('v1', 'video'), ('a1', 'audio'), ('a2', 'audio'), ('a3', 'audio'), ('a4', 'audio'), ('a5', 'audio'), ('a6', 'audio')]
+    if not isinstance(raw_tracks, list) or len(raw_tracks) not in (2, 3, 7):
         raise ValueError('Invalid tracks')
     tracks, seen = [], {}
     for raw_track, (track_id, kind) in zip(raw_tracks, expected):
         if (not isinstance(raw_track, dict) or raw_track.get('id') != track_id or raw_track.get('kind') != kind
                 or not isinstance(raw_track.get('clips'), list) or len(raw_track['clips']) > 500):
+            raise ValueError('Invalid track')
+        if (raw_track.get('stem') != (STEM_TRACKS[len(tracks) - 4] if len(tracks) >= 4 else None)):
             raise ValueError('Invalid track')
         clips, end = [], 0
         for raw in raw_track['clips']:

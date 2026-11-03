@@ -22,6 +22,7 @@ import {pictureSession} from './editor_picture_session.js';
 import {createPictureTools} from './editor_frame.js';
 import {openExportDialog} from './editor_export_dialog.js';
 import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
+import {createStemsIntegration} from './editor_stems.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
 import {createEditorMusic} from './editor_music.js';
@@ -254,7 +255,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let discardOnSwitch = false, initialSelection = null, offerInitial = null, extendEntry = null;
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
-    let disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
+    let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map();
@@ -1141,6 +1142,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         },
         async cancel() {
             if (music.target()) { await music.cancel(); return; }
+            if (stems?.active()) { await stems.cancel(); return; }
             const range = selectionRange(state.selection);
             const own = range && state.record.tracks[0].clips.find(clip => clip.job && generating(clip)
                 && clip.start < range.start + range.frames && clip.start + clip.frames > range.start)?.job;
@@ -1314,9 +1316,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify});
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
-    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom'});
+    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button'});
     actions.speech.ability().then(value => { if (!disposed) textTools.speech(value); }).catch(() => {});
     const audio = createAudioIntegration({state, player, t, error, adjust, library: libraryHost, store});
+    stems = createStemsIntegration({state, api, queue, store, t, error, notify, toolbar, show: job => genbar?.update(job),
+        restore: () => genbar?.update(mostRecentJob ? barJob(jobStatuses.get(mostRecentJob)) : null)});
     registerEditorShortcuts(AUDIO_SHORTCUTS, speedShortcuts);
     adjust.register('speed', createSpeedComponent({state, t, onError: error}));
     function selectedContent() {
@@ -1521,7 +1525,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 await store.activateProject(null).catch(() => {});
                 rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
-                audio.dispose(); headerFit.dispose();
+                audio.dispose(); stems?.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());
                 for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
                 unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();

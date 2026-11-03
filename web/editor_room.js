@@ -100,7 +100,7 @@ export function pasteContent(record, content, at) {
         if (isText(clip) && track.clips.some(other => other.start < end(clip) && end(other) > clip.start)) throw new EditError('overlap');
         track.clips.push(clip);
     }
-    next.tracks.sort((a,b) => ['v1','a1','a2','t1','s1'].indexOf(a.id) - ['v1','a1','a2','t1','s1'].indexOf(b.id));
+    next.tracks.sort((a,b) => ['v1','a1','a2','a3','a4','a5','a6','t1','s1'].indexOf(a.id) - ['v1','a1','a2','a3','a4','a5','a6','t1','s1'].indexOf(b.id));
     next.tracks.forEach(track => track.clips.sort((a, b) => a.start - b.start));
     return {record: model.parse(next), ids: [...ids.values()], end: Math.max(...entries.map(item => end(item.clip)))};
 }

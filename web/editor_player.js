@@ -39,7 +39,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const closeIcon = document.createElementNS(pictureIcon.namespaceURI, 'svg'), closePath = document.createElementNS(pictureIcon.namespaceURI, 'path');
     closeIcon.setAttribute('viewBox', '0 0 16 16'); closeIcon.setAttribute('aria-hidden', 'true'); closePath.setAttribute('d', 'm4 4 8 8M12 4l-8 8'); closeIcon.append(closePath); closePreview.append(closeIcon); frame.append(closePreview);
     const videos = [el('video'), el('video')]; videos.forEach(video => { video.playsInline = true; video.preload = 'auto'; video.controls = false; video.setAttribute('aria-hidden', 'true'); frame.append(video); });
-    const audio = [el('audio'), el('audio')]; audio.forEach(value => { value.preload = 'auto'; frame.append(value); });
+    // One element per sound track (a1–a6): the three separated parts play together with the voice and music tracks.
+    const audio = Array.from({length: 6}, () => el('audio')); audio.forEach(value => { value.preload = 'auto'; frame.append(value); });
     const chainAudio = new Map(); // Separate players keep the other track's media slot stable.
     const allMedia = () => [...videos, ...audio, ...chainAudio.values()];
     const pictureGuide = createPictureGuide(host, frame, {state, t});

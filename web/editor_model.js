@@ -15,7 +15,7 @@ export const RULES = Object.freeze({maxSeconds: 15, singleSeconds: 30, minSecond
     followSeconds: CHAIN_RULES.min_part_seconds, fullSeconds: CHAIN_RULES.full_part_seconds,
     continueSeconds: CHAIN_RULES.continue_seconds, shortContinueSeconds: CHAIN_RULES.short_continue_seconds,
     step: 17, first: 5, overlap: 22,
-    maxTracks: 3, maxClips: 500, maxText: 8000, maxParts: CHAIN_RULES.max_parts, shortMaxParts: CHAIN_RULES.short_max_parts});
+    maxTracks: 7, maxClips: 500, maxText: 8000, maxParts: CHAIN_RULES.max_parts, shortMaxParts: CHAIN_RULES.short_max_parts});
 // Slice and bound user text by Unicode code points, never UTF-16 halves.
 export const truncateText = (text, limit) => Array.from(text).slice(0, limit).join('');
 export const copyName = (name, suffix) => truncateText(name, RULES.maxText - Array.from(suffix).length) + suffix;
@@ -137,11 +137,14 @@ export function parse(value) {
     check(value.settings === null || object(value.settings), 'settings');
     const settings = jsonData(value.settings);
     check(JSON.stringify(settings).length <= 1024 * 1024, 'settings');
-    check(Array.isArray(value.tracks) && value.tracks.length >= 2 && value.tracks.length <= RULES.maxTracks, 'track');
+    check(Array.isArray(value.tracks) && value.tracks.length >= 2 && value.tracks.length <= RULES.maxTracks
+        && value.tracks.length !== 4 && value.tracks.length !== 5 && value.tracks.length !== 6, 'track');
     const ids = new Set();
     const tracks = value.tracks.map((raw, index) => {
-        const id = ['v1', 'a1', 'a2'][index], kind = index === 0 ? 'video' : 'audio';
+        const id = ['v1', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6'][index], kind = index === 0 ? 'video' : 'audio';
         check(object(raw) && raw.id === id && raw.kind === kind, 'track');
+        // The three tracks after a3 are the separated sound of one clip each: all of them or none.
+        check(index < 4 ? raw.stem === undefined : raw.stem === STEM_TRACKS[index - 4], 'track');
         check(Array.isArray(raw.clips) && raw.clips.length <= RULES.maxClips, 'track');
         let boundary = 0;
         const clips = raw.clips.map(item => {
@@ -188,7 +191,7 @@ export function parse(value) {
             Object.assign(clip, parseSpeedData(item, kind));
             return clip;
         });
-        return {id, kind, clips, ...audioTrackFields(raw)};
+        return {id, kind, clips, ...audioTrackFields(raw), ...(raw.stem !== undefined ? {stem: raw.stem} : {})};
     });
     const byId = new Map(tracks.flatMap(track => track.clips.map(clip => [clip.id, {clip, track}])));
     for (const {clip, track} of byId.values()) if (clip.link) {
@@ -497,6 +500,32 @@ export function insertSource(record, {source, frames, hasVideo, hasAudio, width,
     // The description is a convenience: a project it would make too large to save takes the video without it.
     if (words && storedSize(result) > STORED_ROOM) return insertSource(record, {source: given, frames, hasVideo, hasAudio, width, height, at: position, targetTrack});
     return result;
+}
+// The separated sound of an audio clip: three tracks after a2 hold one clip each (dialogue, music, ambience)
+// over the parent's range, and the parent goes silent. Deleting every stem clip gives the parent its volume back
+// (normalizeAudioEdits), so the silence needs no separate undo.
+export const STEM_TRACKS = Object.freeze(['dialogue', 'music', 'ambience']);
+export function placeStems(record, id, sources) {
+    const next = copy(record), parent = find(next, id);
+    check(parent && trackOf(next, id).kind === 'audio' && parent.source && !parent.pending, 'missing');
+    check(!trackOf(next, id).locked, 'locked');
+    check(!all(next).some(clip => clip.stem_of === id), 'stems');
+    check(object(sources) && STEM_TRACKS.every(name => object(sources[name])), 'source');
+    audioTrack(next, 'a2'); audioTrack(next, 'a3');
+    const rows = ['a4', 'a5', 'a6'].map((track, index) => {
+        const row = audioTrack(next, track); row.stem = STEM_TRACKS[index];
+        check(!row.locked && !row.clips.some(clip => overlaps(clip, parent.start, parent.frames)), 'audio_full');
+        return row;
+    });
+    const volume = parent.volume;
+    rows.forEach((row, index) => {
+        const clip = newClip(next, row, {source: sourceData(sources[STEM_TRACKS[index]]), start: parent.start, frames: parent.frames});
+        for (const name of ['in', 'length', 'splice', 'speed', 'speed_audio', 'reverse', 'fade_in', 'fade_out'])
+            if (parent[name] !== undefined) clip[name] = JSON.parse(JSON.stringify(parent[name]));
+        clip.stem_of = id;
+    });
+    parent.stem_volume = volume; parent.volume = 0;
+    return finish(next);
 }
 export function move(record, id, start, {targetTrack} = {}) {
     if (isText(find(record, id))) return changeText(record, id, {start});

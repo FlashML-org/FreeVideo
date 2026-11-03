@@ -4,6 +4,8 @@ import re
 
 from .editor_speed import changed, audio_changed, source_sample_start
 
+STEM_TRACKS = ('dialogue', 'music', 'ambience')
+
 
 def clip_fields(raw, kind):
     result = {}
@@ -29,6 +31,17 @@ def clip_fields(raw, kind):
         if kind != 'audio' or type(raw['duck']) is not bool:
             raise ValueError('Invalid audio ducking')
         result['duck'] = raw['duck']
+    if 'stem_of' in raw:
+        value = raw['stem_of']
+        if (kind != 'audio' or not isinstance(value, str) or not re.fullmatch(r'c[1-9]\d{0,8}', value)
+                or value == raw['id'] or raw.get('link')):
+            raise ValueError('Invalid separated sound')
+        result['stem_of'] = value
+    if 'stem_volume' in raw:
+        value = raw['stem_volume']
+        if kind != 'audio' or type(value) not in (int, float) or not 0 <= value <= 2:
+            raise ValueError('Invalid separated sound')
+        result['stem_volume'] = value
     return result
 
 
@@ -39,6 +52,10 @@ def track_fields(raw):
             if type(raw[name]) is not bool:
                 raise ValueError('Invalid audio track flag')
             result[name] = raw[name]
+    if 'stem' in raw:
+        if raw['stem'] not in STEM_TRACKS:
+            raise ValueError('Invalid audio track flag')
+        result['stem'] = raw['stem']
     return result
 
 

@@ -59,7 +59,7 @@ export function readTextProject(raw, parseMedia) {
     }
     const style = cleanStyle(raw.subtitle_style, 'subtitle');
     if (Object.keys(style).length && result.tracks.some(t => t.kind === 'subtitle')) result.subtitle_style = style;
-    result.tracks.sort((a,b) => ['v1','a1','a2','t1','s1'].indexOf(a.id) - ['v1','a1','a2','t1','s1'].indexOf(b.id));
+    result.tracks.sort((a,b) => ['v1','a1','a2','a3','a4','a5','a6','t1','s1'].indexOf(a.id) - ['v1','a1','a2','a3','a4','a5','a6','t1','s1'].indexOf(b.id));
     return freeze(result);
 }
 export function assertUnlocked(record, ids) {

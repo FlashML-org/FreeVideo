@@ -46,6 +46,8 @@
 .fv-ed-block-progress{display:none}
 .fv-ed-clip[data-state=running] .fv-ed-block-progress,.fv-ed-block-progress[data-queued=true]{display:block}
 .fv-ed-clip[data-state=failed]{border:1px solid color-mix(in srgb,var(--fv-warning) 60%,transparent);background:color-mix(in srgb,var(--fv-warning) 12%,transparent);cursor:grab}
+.fv-ed-clip[data-split=true]{background:repeating-linear-gradient(to bottom,color-mix(in srgb,var(--fv-ink) 6%,transparent) 0 33.33%,transparent 33.33% 66.66%,color-mix(in srgb,var(--fv-ink) 6%,transparent) 66.66% 100%)}
+.fv-ed-clip[data-split=true] .fv-ed-clip-media{opacity:.35}
 .fv-ed-clip-status{position:absolute;left:10px;right:4px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;overflow:hidden;color:var(--fv-warning);pointer-events:none}
 .fv-ed-clip-status svg{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
 .fv-ed-clip-failure-reason{overflow:hidden;text-overflow:ellipsis}
@@ -82,7 +84,7 @@
 .fv-ed-clip-popover button+button{margin-left:6px}
 .fv-ed-clip-popover{max-height:calc(100% - 16px);overflow:auto}
 .fv-ed-track-view [hidden]{display:none!important}
-@media(max-width:520px){.fv-ed-track-view{--fv-ed-head-width:32px}.fv-ed-track-head>span:first-of-type{display:none}.fv-ed-track-zoom{right:8px}.fv-ed-clip-status{left:5px;font-size:11px}}
+@media(max-width:520px){.fv-ed-track-view,.fv-studio.fv-editor .fv-ed-track-view[data-track-switches],.fv-studio.fv-editor[data-text-tracks] .fv-ed-track-view{--fv-ed-head-width:52px}.fv-studio.fv-editor .fv-ed-track-head>svg{display:none}.fv-ed-track-head{padding:0 2px;box-sizing:border-box}.fv-ed-track-head>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.fv-ed-track-zoom{right:8px}.fv-ed-clip-status{left:5px;font-size:11px}}
 @media(forced-colors:active){.fv-ed-clip,.fv-ed-selection,.fv-ed-gesture-preview{border-color:Highlight}.fv-ed-playhead,.fv-ed-snap-line{background:CanvasText}}
 
 /* Gesture affordances; track slots and heads are owned by the track layout. */
@@ -106,3 +108,9 @@
 .fv-ed-selection.fv-ed-range-blocked .fv-ed-planned-label{color:var(--fv-danger)}
 .fv-ed-track-view[data-cursor=not-allowed] .fv-ed-track-content,.fv-ed-track-view[data-cursor=not-allowed] .fv-ed-track-content *{cursor:not-allowed}
 .fv-ed-clip.fv-ed-tiny{z-index:3;border-radius:0}
+.fv-editor .fv-ed-toolbar .fv-ed-stems-button{width:auto;padding:0 10px}
+.fv-editor .fv-ed-toolbar .fv-ed-stems-button[hidden]{display:none}
+.fv-editor .fv-ed-toolbar .fv-ed-stems-button .fv-ed-glyph{width:16px;height:16px;flex:none}
+@media(max-width:520px){.fv-editor .fv-ed-toolbar .fv-ed-stems-button{width:32px;padding:0}.fv-ed-stems-label{display:none}}
+.fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:-8px}.fv-editor .fv-ed-toolbar .fv-ed-stems-group:before{display:none}.fv-ed-stems-group[hidden]{display:none}
+@media(max-width:480px){.fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:0}}

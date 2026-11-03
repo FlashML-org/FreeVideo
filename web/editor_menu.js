@@ -119,6 +119,7 @@ export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTes
             const label = document.createElement('span'), shortcut = document.createElement('span');
             label.className = 'fv-ed-menu-label'; label.textContent = item.label;
             shortcut.className = 'fv-ed-menu-shortcut'; shortcut.textContent = item.shortcut;
+            if (item.tourId) button.dataset.tourId = item.tourId;
             button.append(label, shortcut);
             // Keep disabled items discoverable without explanatory tooltips.
             button.onclick = () => {
@@ -133,7 +134,9 @@ export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTes
         const width = window.innerWidth || document.documentElement?.clientWidth || 1440;
         const height = window.innerHeight || document.documentElement?.clientHeight || 900;
         element.style.left = `${Math.max(8, Math.min(event.clientX, width - bounds.width - 8))}px`;
-        element.style.top = `${Math.max(8, Math.min(event.clientY, height - bounds.height - 8))}px`;
+        // Without room below the pointer the menu opens upward from it, so it never slides over the toolbar beside it.
+        const below = event.clientY + bounds.height + 8 <= height;
+        element.style.top = `${Math.max(8, below ? event.clientY : event.clientY - bounds.height)}px`;
         (buttons[0] || element).focus({preventScroll: true});
     };
     const outside = event => { if (!element.contains(event.target)) close(); }, closeMenu = () => close();

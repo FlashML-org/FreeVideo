@@ -337,6 +337,20 @@ def music(*, local=False):
         **{'x-job-kind': 'music'})
 
 
+STEMS_FIELDS = dict(
+    clip_id=string(64))
+# False leaves the three parts unplaced: the editor page lays them itself so its own saves never clash with the job's.
+STEMS_LAY = dict(lay={'type': 'boolean', 'default': True})
+
+
+def stems(*, local=False):
+    return obj(dict(kind={'const': 'stems', 'type': 'string'},
+        editor_project=string(34, pattern=r'^e-[0-9a-f]{32}$'),
+        revision=number(1, 2**53 - 1, integer=True),
+        **STEMS_FIELDS, **STEMS_LAY, **common()), ('kind', 'editor_project', 'revision', 'clip_id'),
+        **{'x-job-kind': 'stems'})
+
+
 def image_edit(*, local=False):
     return obj(dict(kind={'const': 'image_edit', 'type': 'string'},
         image=dict(IMAGE, description='The image session to render (POST /images).'),
@@ -347,12 +361,12 @@ def image_edit(*, local=False):
 
 
 KINDS = dict(generate=generate, assemble=assemble, vlm=vlm, enhance=enhance, image=image,
-             export=export, listen=listen, music=music, image_edit=image_edit)
+             export=export, listen=listen, music=music, stems=stems, image_edit=image_edit)
 
 
 def job_schema(*, local=False, refs=False, batch=False):
     # Music scores a joined cut, so it is not a storyboard row.
-    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind == 'music')], 'x-discriminator': 'kind',
+    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind in ('music', 'stems'))], 'x-discriminator': 'kind',
              'description': 'x-discriminator selects field diagnostics by kind; all accepted branches use standard oneOf.'}
     return batch_references(value) if refs else value
 
@@ -469,7 +483,7 @@ def contracts(*, local=False):
         if method == 'GET':
             extra['query'] = shape
         else:
-            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music') else {}))
+            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music', 'stems') else {}))
         routes[method, suffix] = route(summary, **extra)
     for name, (method, suffix, summary) in WHITEBOX_OPERATIONS.items():
         extra = dict(path=obj({'id': WHITEBOX}, ('id',))) if '{id}' in suffix else {}
@@ -546,6 +560,10 @@ def contracts(*, local=False):
                                             auth=False, page_or_token=True)
     routes['PUT', '/confirmations'] = route('Only the page user may change which operations need approval.',
                                             body=confirm_settings(), auth=False, page_or_token=True)
+    # The editor page separates sound itself: these four also accept its page session, which never holds the token.
+    for key in (('POST', '/projects/{id}/stems'), ('POST', '/projects/{id}/stems/export'),
+                ('GET', '/jobs/{id}'), ('POST', '/jobs/{id}/cancel')):
+        routes[key]['page_ok'] = True
     return routes
 
 
@@ -854,12 +872,15 @@ PROJECT_OPERATIONS = {
     'generate': ('POST', '/projects/{id}/generate', 'Make new picture and sound for selected clips or a frame range, as the page Generate does. First get revision and clip IDs; the parts are reserved at once and fill in as the returned job finishes.'),
     'export': ('POST', '/projects/{id}/export', 'Render one saved revision to an MP4 in the saved videos. First get the revision; wait for the returned job, then read its result video.'),
     'listen': ('POST', '/projects/{id}/listen', 'Listen to the timeline sound for subtitles: mode align times lines you give, transcribe writes down what is said. First get the revision; wait for the returned job, then add the lines with the subtitles edit. Nothing is saved; with no speech model for the language the call fails with no_speech_model, so write the lines by hand.'),
+    'stems': ('POST', '/projects/{id}/stems', 'Split one clip\'s sound into dialogue, music and ambience on tracks a4-a6. First get the revision and clip ID; wait for the job, then read result.parts.'),
+    'stems_export': ('POST', '/projects/{id}/stems/export', 'Save the separated dialogue, music and ambience of a split clip, with its original mix, as four wav files in the saved sounds. First get the revision and the split clip\'s ID; the answer lists the files at once.'),
     'music': ('POST', '/projects/{id}/music', 'Compose music as long as the joined cut and lay it on sound track a2 at frame 0, under the video sound. First get the revision; a2 must be empty. Wait for the returned job; the first use downloads the model (20 GB).'),
 }
 PROJECT_TOOLS = dict(list='freevideo_projects', get='freevideo_project_read', create='freevideo_project_create',
                      write='freevideo_project_write', operations='freevideo_editor_operations',
                      generate='freevideo_project_generate', export='freevideo_export',
-                     listen='freevideo_project_listen', music='freevideo_project_music')
+                     listen='freevideo_project_listen', music='freevideo_project_music',
+                     stems='freevideo_project_stems', stems_export='freevideo_project_stems_export')
 
 SESSION_OPERATIONS = {
     'create': ('POST', '/sessions', 'Create a work conversation for messages and plans shared with the user.'),
@@ -980,6 +1001,8 @@ def project_schema(name):
         return obj(dict(revision=revision, **LISTEN_FIELDS, ref=REF), ('revision', 'mode'))
     if name == 'music':
         return obj(dict(revision=revision, **MUSIC_FIELDS, ref=REF), ('revision', 'caption'))
+    if name in ('stems', 'stems_export'):
+        return obj(dict(revision=revision, **STEMS_FIELDS, **(STEMS_LAY if name == 'stems' else {}), ref=REF), ('revision', 'clip_id'))
     if name != 'operations':
         return EMPTY
     fields = {
@@ -1433,6 +1456,8 @@ def openapi():
         if contract.get('raw_body'):
             operation['requestBody'] = dict(required=True, content={'application/octet-stream': {'schema': {
                 'type': 'string', 'format': 'binary', 'maxLength': MAX_CHAT_ATTACHMENT_BYTES}}})
+        if contract.get('page_ok'):
+            operation['security'] = [{'bearer': []}, {'page': []}]
         if contract.get('page_or_token'):
             operation['security'] = [{'page': []}] if suffix.endswith(('/stop', '/resume')) else [{'bearer': []}, {'page': []}]
         if contract['body'] is not None:
@@ -1452,6 +1477,9 @@ def openapi():
         if suffix == '/freevideo/agent/chat/attach':
             operation['parameters'].append(dict(name='X-FreeVideo-CSRF', **{'in': 'header'}, required=True,
                 schema=string(128), description='The page session CSRF token.'))
+        if contract.get('page_ok'):
+            operation['parameters'].append(dict(name='X-FreeVideo-CSRF', **{'in': 'header'}, required=False,
+                schema=string(128), description='With the freevideo_agent_page cookie, in place of the token.'))
         if contract.get('page_or_token'):
             operation['parameters'].append(dict(name='X-FreeVideo-CSRF', **{'in': 'header'}, required=False,
                 schema=string(128), description='Required with the freevideo_agent_page cookie, including reads.'))

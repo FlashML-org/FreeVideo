@@ -121,6 +121,10 @@ ERRORS.update({
                               'submit the music job again with a new ref; if it fails again, write the score yourself.'),
     'music_failed': (409, True, 'Composing the music did not finish.',
                      'Read the project, then submit the music job again with a new ref; if it fails again, write the score yourself.'),
+    'stems_download_failed': (409, True, 'The sound separation model could not be downloaded.',
+                              'Tell the user the model needs a network connection, then submit the job again with a new ref.'),
+    'stems_failed': (409, True, 'Splitting the sound did not finish.',
+                     'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
     'clip_source_unusable': (409, False, 'A clip\'s source is missing, or cannot be read as far as the clip uses it.',
                              'Read the project and check each clip\'s source: it must exist and play, and in + frames must stay '
                              'within its real length. Correct the project, then export the new revision.'),
@@ -235,6 +239,8 @@ def recovery(code, *, kind=None, stage='request', resumable=True):
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
     if kind == 'music' and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the music job again with a new ref.'
+    if kind == 'stems' and code == 'out_of_memory':
+        return 'Close other GPU applications, then submit the job again with a new ref.'
     if kind == 'image' and code == 'no_memory':
         return 'Lower the picture dimensions or use fewer reference pictures, then submit with a new ref.'
     if kind in RECOVERY and stage == 'terminal':

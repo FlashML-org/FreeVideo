@@ -140,7 +140,7 @@ def validate_catalog(spec):
             raise PackError('invalid_catalog')
         image_rows = spec['groups']['image']
         # A group of its own holds only its own component; the image group holds neither.
-        own = {group: spec['groups'].get(group, []) for group in ('segment', 'music')}
+        own = {group: spec['groups'].get(group, []) for group in ('segment', 'music', 'stems')}
         found = image_rows + [row for found in own.values() for row in found]
         if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own}
                 or any(row['component'] in own for row in image_rows)
@@ -150,7 +150,7 @@ def validate_catalog(spec):
             _relative(row['file'])
             if (type(row['bytes']) is not int or row['bytes'] <= 0
                     or not re.fullmatch('[0-9a-f]{64}', row['sha256'])
-                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'segment', 'music')):
+                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'segment', 'music', 'stems')):
                 raise PackError('invalid_catalog')
             ids = [s['id'] for s in row['sources']]
             required = {'official', 'modelscope'}
@@ -233,8 +233,13 @@ MUSIC_NOTICE_TEXT = (b'ACE-Step 1.5, Copyright (c) 2026 ACEStep. Licensed under 
                      b'freevideo_engine/licenses/Qwen3-Embedding-Apache-2.0.txt.\nhttps://huggingface.co/Qwen/Qwen3-Embedding-0.6B\n'
                      b'Silero VAD, Copyright (c) 2020-present Silero Team. Licensed under the MIT License; see '
                      b'freevideo_engine/licenses/Silero-VAD-MIT.txt.\nhttps://github.com/snakers4/silero-vad\n')
+STEMS_NOTICE_TEXT = (b'Bandit Plus (cocktail-party separation model). Weights: Watcharasupat et al., CC BY-NC 4.0; see '
+                     b'freevideo_engine/licenses/Bandit-CC-BY-NC-4.0.txt.\nhttps://zenodo.org/records/10160698\n'
+                     b'Code: Copyright (c) the Bandit authors, Apache-2.0; see freevideo_engine/licenses/Bandit-Apache-2.0.txt.\n'
+                     b'https://github.com/kwatcharasupat/source-separation\n')
 NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
-           'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT)}
+           'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT),
+           'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT)}
 
 
 def _notice():
@@ -929,7 +934,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     download = commands.add_parser('download')
     download.add_argument('--background', action='store_true')
-    download.add_argument('--group', choices=('image', 'segment'), default='image')
+    download.add_argument('--group', choices=('image', 'segment', 'music', 'stems'), default='image')
     download.add_argument('--root', type=Path)
     download.add_argument('--engine-root', type=Path)
     download.add_argument('--status-file', type=Path, required=True)
