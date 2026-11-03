@@ -1234,6 +1234,8 @@ def reusable_kernel_receipt(path, hardware_data):
 class Installer:
     def __init__(self, value, ui=None):
         self.locks = ExitStack()
+        self.uv_lock = threading.Lock()
+        self.uv_failure = None
         try:
             self.initialize(value, ui)
         except BaseException:
@@ -1470,6 +1472,32 @@ class Installer:
             raise
         self.ui.end(key, detail='Verified and ready')
 
+    def ensure_uv(self):
+        """Fetch uv again when security software or a cleaner removed it after it was prepared."""
+        uv = Path(self.env['FREEVIDEO_UV'])
+        def usable():
+            try:
+                return uv.is_file() and uv.stat().st_size > 0
+            except OSError:
+                return False
+        if usable():
+            return uv
+        with self.uv_lock:
+            # One attempt per installation: concurrent steps and later commands report the same failure.
+            if self.uv_failure:
+                raise RuntimeError(self.uv_failure)
+            if not usable():
+                self.ui.event('setup_cache', key='uv', detail='Downloading the uv tool again; it was missing')
+                try:
+                    self.env['FREEVIDEO_UV'] = str(self.prepare_tools())
+                except BaseException:
+                    self.uv_failure = 'The uv tool is missing at %s and could not be restored.' % uv
+                    raise
+                if not usable():
+                    self.uv_failure = 'The uv tool is missing at %s and could not be restored.' % uv
+                    raise RuntimeError(self.uv_failure)
+        return uv
+
     def command(self, label, args, env=None, cwd=None):
         from .ram import ProcessMemory
         from .package_progress import PackageOutput
@@ -1480,6 +1508,8 @@ class Installer:
         env = dict(env, FREEVIDEO_INSTALL_PROGRESS='1')
         env = with_private_compiler(self.root, env)
         args, cwd = uv_file_arguments(args, cwd)
+        if args and str(args[0]) == self.env.get('FREEVIDEO_UV'):
+            self.ensure_uv()
         env = uv_build_environment(args, self.root, env)
         with self.state_lock:
             index = len(self.state['steps'])
@@ -1792,6 +1822,7 @@ class Installer:
         # and unpack another copy. Existing installations keep their own base.
         if prepared.is_dir() and not any(current.glob('cpython-' + self.versions['python'] + '-*')):
             env = dict(self.env, UV_PYTHON_INSTALL_DIR=str(prepared))
+            uv = self.ensure_uv() if str(uv) == self.env.get('FREEVIDEO_UV') else uv
             found = subprocess_output.run_external([str(uv), '--no-config', 'python', 'find', '--managed-python',
                                     '--no-python-downloads', self.versions['python']],
                                    env=env, capture_output=True, timeout=30)
