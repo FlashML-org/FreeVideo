@@ -113,13 +113,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');
     meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
     // The shared "Report a problem" button, handed in by the page.
-    const report = issueButton ? issueButton(t, () => ({where: ['Prompt enhancement', '提示词增强'], message: statusText.textContent})) : document.createElement('span');
+    // Feedback quotes the line without the names of the user's other programs.
+    let quoted = '';
+    const report = issueButton ? issueButton(t, () => ({where: ['Prompt enhancement', '提示词增强'], message: quoted, facts: memoryFacts})) : document.createElement('span');
     report.hidden = true;
     meter.append(fill); status.append(statusText, meter, report);
     // One place sets what the status line says and how it looks.
-    function show(text, state = '', fraction = null) {
+    function show(text, state = '', fraction = null, quote = text) {
         if (downloadOnly) { publishModel({text: text || ''}); return; }
         statusText.textContent = text || '';
+        quoted = quote || '';
         status.dataset.state = text ? state : '';
         report.hidden = !text || state !== 'error';
         meter.hidden = state !== 'progress';
@@ -163,6 +166,13 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     if (versions.value.enabled) void prestart.request();
     // Available RAM the model needs; the server knows the usual case for this card.
     let ramBytes = 11 * 2 ** 30;
+    // Memory readings of a failed rewrite for the feedback form: numbers and states only.
+    let memoryFacts = null;
+    const MEMORY_FACTS = ['gpu_total_bytes', 'gpu_free_before_load_bytes', 'gpu_allocator_budget_bytes', 'gpu_free_needed_text_only_bytes', 'gpu_free_needed_with_images_bytes',
+        'placement_refused', 'gpu_free_bytes', 'gpu_allocator_ooms', 'idle_release', 'idle_release_seconds',
+        'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes'];
+    const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
+        .map(key => [key, diagnostics[key]]));
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const lengthOf = (error, english) => {
@@ -171,6 +181,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             : `提示词${error.expanded ? '连同角色描述' : ''}共 ${number} 字符`;
     };
     // Unknown codes keep the server's own reason, without paths, so the user can quote it.
+    // Other programs holding graphics memory, as the server measured them; no-break spaces keep name, size and unit on one line.
+    const holderNames = holders => (Array.isArray(holders) ? holders : []).slice(0, 3)
+        .map(row => `${String(row?.name || '').slice(0, 60)}\u00a0${((row?.bytes || 0) / 2 ** 30).toFixed(1)}\u00a0GiB`).join(t(', ', '、'));
     const reasonOf = error => String(error?.message || '').replace(/[A-Za-z]:[\\/][^\s'"]*|\/[^\s'"]+\/[^\s'"]*/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
     // A dropped request names a browser extension only when the error carries evidence of one.
     const networkText = error => {
@@ -195,7 +208,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
-        out_of_memory: t('Not enough memory to rewrite. Close other GPU apps or use the original.', '改写时内存不足，请关闭其他显卡程序或使用原文。'),
+        out_of_memory: holderNames(error?.holders)
+            ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs and rewrite again, or use the original.`,
+                `显存不足，无法改写。正在占用：${holderNames(error.holders)}。关闭上述程序后可重新改写，或使用原文。`)
+            : t('Not enough memory to rewrite. Close other GPU apps or use the original.', '改写时内存不足，请关闭其他显卡程序或使用原文。'),
         timeout: t('Rewriting took too long. Retry or use the original.', '改写超时，请重试或使用原文。'),
         stale: t('The prompt or references changed. Rewrite again to use the current scene.', '原文或素材已更改，可按当前内容重新改写。'),
         cancelled: t('Cancelled. Your original prompt is retained.', '已取消，原文已保留。'),
@@ -215,7 +231,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete.', '改写结果不完整。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
-        out_of_memory: t('Not enough memory to rewrite. Close other GPU apps before rewriting again.', '改写时内存不足，关闭其他显卡程序后可再改写。'),
+        out_of_memory: holderNames(error?.holders)
+            ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs before rewriting again.`,
+                `显存不足，无法改写。正在占用：${holderNames(error.holders)}。关闭上述程序后可重新改写。`)
+            : t('Not enough memory to rewrite. Close other GPU apps before rewriting again.', '改写时内存不足，关闭其他显卡程序后可再改写。'),
         timeout: t('Rewriting took too long.', '改写超时。'),
         unsupported_media: errorText(error), too_many_images: errorText(error), stale: errorText(error),
         connected_media: errorText(error), audio_media: errorText(error), unreadable_video: errorText(error),
@@ -295,11 +314,19 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     onReport(row);
                 }
                 if (row.phase === 'complete') return row;
-                if (row.phase === 'failed') throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes});
+                if (row.phase === 'failed') {
+                    memoryFacts = row.error === 'out_of_memory' ? factsOf(row.diagnostics) : null;
+                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders});
+                }
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
                 if (row.phase === 'download') {
                     showDownload(row.done || 0, row.total || 0);
+                } else if (row.phase === 'waiting_gpu') {
+                    // The rewrite starts by itself once enough graphics memory is free.
+                    const short = Math.max(0.1, (row.gpu_short_bytes || 0) / 2 ** 30).toFixed(1), names = holderNames(row.gpu_holders);
+                    show(names ? t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite. In use: ${names}.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。正在占用：${names}。`)
+                        : t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。`), 'progress');
                 } else if (action !== 'install') {
                     // The ellipsis says "still going" until the seconds start counting.
                     const [en, zh] = row.phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
@@ -369,7 +396,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             waiting = true; show(errorText({message: 'prompt_required'}), 'note'); input.focus();
             throw new Error('prompt_required');
         }
-        cancelling = false;
+        cancelling = false; memoryFacts = null;
         const execute = async () => {
             if (disposed || cancelling) throw new Error('cancelled');
             versions.value.useOriginal = false;
@@ -391,7 +418,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             apply(); show('');
         };
         running = Promise.resolve().then(execute).catch(error => {
-            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : error?.message === 'stale' ? 'note' : 'error');
+            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : error?.message === 'stale' ? 'note' : 'error', null,
+                errorText({name: error?.name, message: error?.message, ramBytes: error?.ramBytes, characters: error?.characters, expanded: error?.expanded}));
             throw error;
         }).finally(() => { running = null; cancelling = false; install.hidden = true; render(); });
         render();

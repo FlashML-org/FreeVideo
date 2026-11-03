@@ -14,6 +14,10 @@ import uuid
 
 from . import assets, rules
 
+# How long a rewrite that does not fit waits for other programs to free the
+# GPU (the page names them) before it fails; the user can cancel meanwhile.
+GPU_WAIT_SECONDS = 300
+
 
 class Worker:
     """One pipe owner across idle imports and the subsequent rewrite."""
@@ -70,6 +74,30 @@ class Worker:
                 stream.close()
 
 
+def release_resident_models(env, descriptor):
+    """Release the generation worker's idle models before the rewrite model loads.
+
+    Returns the readings for the rewrite report: a state, how long the release took and the
+    card's free memory around it (numbers and states only, never paths)."""
+    from .. import resident_process
+    release = dict(idle_release='no_resident_process')
+    if not (env.get(resident_process.ENV) and Path(env[resident_process.ENV]).is_file()):
+        return release
+    before, releasing = resident_process.gpu_memory(None), time.monotonic()
+    release['idle_release'] = 'released'
+    try:
+        resident_process.release_idle_cache(env, descriptor)
+        resident_process.OWNER.record(action='released', reason='prompt_model')
+    except resident_process.SessionRestarted:
+        release['idle_release'] = 'already_exited'  # That worker already exited, which is the release we need.
+    env.pop(resident_process.ENV, None)
+    after = resident_process.gpu_memory(None)
+    release.update(idle_release_seconds=time.monotonic() - releasing,
+                   idle_release_gpu_free_before_bytes=before[1] - before[0] if before else None,
+                   idle_release_gpu_free_after_bytes=after[1] - after[0] if after else None)
+    return release
+
+
 class Service:
     def __init__(self, installation, input_directory):
         self.installation = installation
@@ -91,6 +119,7 @@ class Service:
         self.closed = False
         self.request_epoch = None
         self.active_worker = None
+        self.release_readings = None
         atexit.register(self.close)
 
     def prestart(self, root, machine, *, generating=False):
@@ -420,7 +449,7 @@ class Service:
                 else:
                     with tempfile.TemporaryDirectory(prefix='freevideo-prompt-', ignore_cleanup_errors=True) as frames:
                         self.video_frames(value, frames)
-                        self.infer(root, machine, descriptor, value)
+                        self.infer(root, machine, descriptor, value, wait=action == 'rewrite')
         except InterruptedError:
             self.progress(dict(phase='cancelled'))
         except BlockingIOError:
@@ -444,7 +473,7 @@ class Service:
             # Output rejections contain condition IDs, counts, typed media labels and retry flags only.
             report = {key: item for key, item in self.state.items()
                       if key in ('phase', 'error', 'exception', 'error_details', 'timings', 'diagnostics',
-                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection')}
+                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'gpu_wait')}
             try:
                 spec = assets.catalog()
             except (OSError, ValueError):
@@ -465,20 +494,90 @@ class Service:
             except OSError:
                 pass
 
-    def infer(self, root, machine, descriptor, value):
-        # A claimed idle worker has no inherited lease. Keep the parent's lease
-        # through bounded cleanup, including failures before request submission.
+    def infer(self, root, machine, descriptor, value, *, wait=False):
+        """Run the worker; when the model does not fit the GPU, name the programs
+        holding it and, for a rewrite, wait for them to free enough and run again."""
+        until = time.monotonic() + GPU_WAIT_SECONDS
+        waited = dict(waits=0, seconds=0., freed=0)
+        self.release_readings = None
+        while True:
+            # A claimed idle worker has no inherited lease. Keep the parent's lease
+            # through bounded cleanup, including failures before request submission.
+            try:
+                self._infer(root, machine, descriptor, value)
+            finally:
+                session = self.active_worker
+                if session is not None:
+                    from .. import processes
+                    processes.stop(session.process, grace=5)
+                    session.process.wait()
+                    session.close()
+                    self.active_worker = None
+                    self.process = None
+            if self.state.get('phase') != 'failed' or self.state.get('error') != 'out_of_memory':
+                return
+            stats = self.state.get('diagnostics') or {}
+            needed, free = stats.get('gpu_free_needed_bytes'), stats.get('gpu_allocator_budget_bytes')
+            short = needed - free if type(needed) is int and type(free) is int and needed > free else None
+            freed = False
+            if wait and short is not None:
+                waiting = time.monotonic()
+                try:
+                    freed = self.wait_for_gpu(machine, short, until)
+                finally:
+                    # Counts and seconds only: the programs' names stay on the page.
+                    waited.update(waits=waited['waits'] + 1, seconds=waited['seconds'] + time.monotonic() - waiting,
+                                  freed=waited['freed'] + freed)
+                    self.progress(dict(gpu_wait=dict(waited)))
+            if not freed:
+                self.progress(dict(phase='failed', error='out_of_memory', gpu_holders=self.gpu_holders(machine)))
+                return
+            with self.mutex:
+                for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                    self.state.pop(key, None)
+                self.state['phase'] = 'loading'
+
+    @staticmethod
+    def gpu_holders(machine):
+        """Other programs holding GPU memory, for the page only; None when unknown."""
+        from ..gpu_holders import holders
         try:
-            self._infer(root, machine, descriptor, value)
+            return holders(machine.get('gpu_uuid'))
+        except Exception:
+            return None
+
+    def wait_for_gpu(self, machine, short, until):
+        """True once the GPU has `short` more bytes free than now; False at `until`
+        or when free memory cannot be read. Raises InterruptedError on cancel."""
+        from ..background_room import Gpu
+        try:
+            gpu = Gpu(machine.get('gpu_uuid'))
+        except Exception:
+            return False
+        try:
+            reading = gpu.memory()
+            if reading is None:
+                return False
+            # The worker measured its shortfall against what it could use; ask
+            # for that much more than is free now, after it has exited.
+            target = reading[1] - reading[0] + short
+            listed = 0.
+            while time.monotonic() < until:
+                self.check()
+                reading = gpu.memory()
+                if reading is None:
+                    return False
+                free = reading[1] - reading[0]
+                if free >= target:
+                    return True
+                if time.monotonic() - listed >= 2:
+                    listed = time.monotonic()
+                    self.progress(dict(phase='waiting_gpu', gpu_short_bytes=target - free,
+                                       gpu_holders=self.gpu_holders(machine)))
+                self.stop.wait(1)
+            return False
         finally:
-            session = self.active_worker
-            if session is not None:
-                from .. import processes
-                processes.stop(session.process, grace=5)
-                session.process.wait()
-                session.close()
-                self.active_worker = None
-                self.process = None
+            gpu.close()
 
     def _infer(self, root, machine, descriptor, value):
         from .. import processes
@@ -490,13 +589,12 @@ class Service:
         owner = resident_process.OWNER
         if owner.process is not None and owner.process.poll() is None and owner.endpoint:
             env[resident_process.ENV] = str(owner.endpoint)
-        if env.get(resident_process.ENV) and Path(env[resident_process.ENV]).is_file():
-            try:
-                resident_process.release_idle_cache(env, descriptor)
-                resident_process.OWNER.record(action='released', reason='prompt_model')
-            except resident_process.SessionRestarted:
-                pass  # That worker already exited, which is the release we need.
-            env.pop(resident_process.ENV, None)
+        release = release_resident_models(env, descriptor)
+        # A run again after waiting has nothing left to release; the report keeps the first attempt's.
+        if release['idle_release'] != 'no_resident_process':
+            self.release_readings = release
+        elif self.release_readings:
+            release = self.release_readings
         expired = None
         with self.mutex:
             session, self.prewarm = self.prewarm, None
@@ -517,7 +615,7 @@ class Service:
         diagnostics = dict(prewarm=prewarm, prewarm_reason=reason if prewarm == 'cold' else 'none',
                            prewarm_age_seconds=time.monotonic() - session.started if session else None,
                            prewarm_import_seconds=session.import_seconds if session else None,
-                           request_to_first_output_seconds=None)
+                           request_to_first_output_seconds=None, **release)
         footprint = dict(prewarm_rss_bytes=None, prewarm_private_bytes=None)
         if session is not None:
             try:

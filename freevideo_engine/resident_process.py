@@ -628,17 +628,22 @@ def held_summary(decisions):
     return {'held': sorted(held), 'evicted': evicted}
 
 
-def gpu_used(gpu):
+def gpu_memory(gpu):
+    """(used, total) bytes of the whole device, other programs included; None when unreadable."""
     try:
         from .background_room import Gpu
         device = Gpu(gpu)
         try:
-            memory = device.memory()
+            return device.memory() or None
         finally:
             device.close()
-        return memory[0] if memory else None
     except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
         return None
+
+
+def gpu_used(gpu):
+    memory = gpu_memory(gpu)
+    return memory[0] if memory else None
 
 
 def gpu_own(gpu):
