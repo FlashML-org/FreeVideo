@@ -12,6 +12,10 @@ from .torch_compat import empty_host_cache, host_cache_release_supported
 from .device_index import device_properties
 
 GiB = 1 << 30
+# Allocator overhead beside a measured decode peak: 5% reserved but unallocated at the limit
+# plus a split block of one clip tile, on a 960x544 decode that failed with 4% room left.
+DECODE_SLACK_BYTES = 256 << 20
+DECODE_SLACK_FRACTION = 0.1
 # Where a preview's sampling peak is kept, apart from its complete request's.
 PREVIEW_STAGE = 'engine_preview'
 HABIT_WINDOW = 4
@@ -652,9 +656,34 @@ class ModelBank:
                     + 4*GiB)
         else:
             need = 15*GiB + max(0, (canvas.get('video_tokens', 72576)-72576)*30000)
-        need = self.peaks.get(('decode', key(dict(options=options, canvas=canvas))), need)
+        observed = self.peaks.get(('decode', key(dict(options=options, canvas=canvas))))
+        if observed is not None:
+            need = observed
+            if options.get('offload'):
+                options, need = self.fit_observed_decoder(options, observed)
         self.make_room('video_vae', min(self.gpu_budget, need),
                        model=self.entries.get('video_vae', {}).get('model'), ram_need=2*GiB)
+        return options
+
+    def fit_observed_decoder(self, options, observed):
+        """Options and peak for a decoder that has run before, with the allocator's slack.
+
+        The models kept for the next request are admitted against the measured
+        peak, which leaves out the caching allocator's own overhead: a peak
+        that only just fits leaves the allocator fragmented at its limit and
+        the first clip fails. Leave that slack by dropping resident decoder
+        blocks first, which only moves weight transfers and decodes the same
+        values, so a kept model is evicted only when no block is left to drop.
+        """
+        slack = max(DECODE_SLACK_BYTES, int(observed * DECODE_SLACK_FRACTION))
+        planned = options.get('resident_blocks', 0)
+        if planned:
+            from .policy import decoder_block_bytes
+            block = decoder_block_bytes(linear_compute_cache=bool(options.get('linear_compute_cache')))
+            cut = min(planned, max(0, -(-(observed + slack - self.available()) // block)))
+            if cut:
+                options, observed = dict(options, resident_blocks=planned - cut), observed - cut * block
+        return options, observed + slack
 
     def snapshot(self):
         if not torch.cuda.is_initialized():
