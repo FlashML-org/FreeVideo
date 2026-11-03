@@ -24,7 +24,7 @@ def geometry(width=1344, height=768, frames=None, seconds=None):
                 alignment='Pinned H3 VAE: round up to 17*n+5 frames; no resampling or hidden resolution reduction.')
 
 
-def sampler_for_canvas(sampler, width, height):
+def sampler_for_canvas(sampler, width, height, scheduler=None):
     """Bind canvas constants in an isolated globals dict, preserving upstream code.
 
     Engine.sample supplies no_grad. Never edit the upstream file or mutate its
@@ -32,7 +32,10 @@ def sampler_for_canvas(sampler, width, height):
     The upstream sampler builds its schedulers by name; it gets the engine's,
     whose step grid is the one the modulation tables were made with.
     """
-    from .step_grid import scheduler
+    from .step_grid import scheduler as engine_scheduler
+    # A caller may supply a factory that adds a start step or an observer to the
+    # same engine scheduler; the default is that scheduler itself.
+    scheduler = scheduler or engine_scheduler
     original = inspect.unwrap(sampler)
     bound = types.FunctionType(original.__code__,
         dict(original.__globals__, LATENT_H=height // 16, LATENT_W=width // 16,
