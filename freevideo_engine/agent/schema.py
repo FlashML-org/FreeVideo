@@ -120,12 +120,12 @@ def edit_recipe():
                           'then': {'required': ['from', 'to']}, 'else': {'required': ['width', 'height']}})
         operations.append(obj(props, ['op'] + required.get(name, []), **({'allOf': rules} if rules else {})))
     return obj({'operations': array({'oneOf': operations}, 1, MAX_OPERATIONS)}, ('operations',),
-               description='x-editor-recipe uses the shared CSS colour/ratio parsers. Source geometry and layer references also require editor preflight.',
+               description='Colours and ratios use CSS syntax; geometry and layer links are checked on submit.',
                **{'x-editor-recipe': True})
 
 
 def edit_document():
-    return {'type': 'object', 'required': ['version', 'layers'], 'properties': {'version': {'const': 2}}, 'description': 'Editor document version 2; x-editor-document uses the renderer pure document validator (geometry and layer relationships).',
+    return {'type': 'object', 'required': ['version', 'layers'], 'properties': {'version': {'const': 2}}, 'description': 'Editor document version 2.',
             'x-editor-document': True}
 
 
@@ -155,11 +155,11 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
             rules.append({'if': {'anyOf': [{'required': [k]} for k in ('from_job', 'library')]},
                           'then': {'required': ['frame']}})
     return {'oneOf': [FILE, obj(properties, allOf=rules)], 'x-media': dict(image=image, clip=clip, video=video),
-            'description': 'Exactly one source. x-media additionally checks clip end > start, a comparison JSON Schema cannot express.'}
+            'description': 'Exactly one source; end after start.' if clip else 'Exactly one source.'}
 
 
 def common():
-    return dict(label=string(120), project=SLUG, metadata={'x-json-bytes': 16 * 1024, 'description': 'x-json-bytes: serialized finite JSON of at most 16384 bytes.'},
+    return dict(label=string(120), project=SLUG, metadata={'x-json-bytes': 16 * 1024, 'description': 'Finite JSON, at most 16384 bytes.'},
                 after=array(JOB), ref=REF)
 
 
@@ -1604,7 +1604,7 @@ SESSION_ARGUMENT = dict(type='string', pattern='^s[0-9a-f]{12}$',
     description='Work session; omit for latest.')
 
 
-SHAPE_MIN_BYTES = 200
+SHAPE_MIN_BYTES = 60
 RECIPE_TOOL = 'freevideo_edit_image'
 
 
@@ -1663,9 +1663,10 @@ def mcp_tool_schema(name):
         node = dict(node)
         for keyword, index, child in list(schema_children(node)):
             here, text = path + [(keyword, index)], key(child)
-            if counts.get(text, 0) > 1 and text in first:
-                child = dict({'type': child['type']} if 'type' in child else {},
-                             description='Same shape as %s.' % first[text])
+            named = text in first and dict({'type': child['type']} if 'type' in child else {},
+                                            description='Same as %s.' % first[text])
+            if named and len(json.dumps(named, ensure_ascii=False)) < len(json.dumps(child, ensure_ascii=False)):
+                child = named
             else:
                 if counts.get(text, 0) > 1:
                     first[text] = shape_label(here)
