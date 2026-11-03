@@ -632,7 +632,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     function watchJob(id) {
         if (disposed) return;
-        if (!jobWatchers.has(id)) jobWatchers.set(id, store.watchChain(id, deliverChain));
+        if (!jobWatchers.has(id)) jobWatchers.set(id, store.watchChain(id, job => job ? deliverChain(job) : chainGone(id)));
+    }
+    // The engine no longer has this job: its unfinished parts stop where they are, as if the engine had dropped them.
+    function chainGone(id) {
+        if (disposed) return false;
+        const previous = jobStatuses.get(id);
+        if (previous) return deliverChain({...previous, state: 'interrupted',
+            blocks: (previous.blocks || []).map(block => ['pending', 'queued', 'running'].includes(block.state) ? {...block, state: 'interrupted'} : block)});
+        jobWatchers.delete(id);
+        const ids = state.record.tracks[0].clips.filter(clip => clip.job === id && ['queued', 'running'].includes(clip.pending)).map(clip => clip.id);
+        if (ids.length) state.settle(record => pinStoppedJob(record, ids, id));
+        updateTop(); updateTransport();
+        return false;
     }
     function recoverJobs() {
         for (const id of new Set(state.record.tracks[0].clips.map(clip => clip.job).filter(Boolean))) watchJob(id);
@@ -1166,7 +1178,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
             },
-            watch: (id, fn) => store.watchEars(id, fn),
+            watch: (id, fn, lost) => store.watchEars(id, fn, lost),
             cancel: id => store.cancelEars(id),
             // Whether speech can be recognised here now, and how many bytes must be downloaded first.
             async ability() {
@@ -1179,7 +1191,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     if (install?.state !== 'running') { resolve(install?.state === 'done' || install?.reason || false); return false; }
                     report(install.total > 0 ? install.done / install.total : 0); return true;
                 };
-                store.installEars().then(value => { if (step(value)) store.watchEarsPack(step); }, reject);
+                store.installEars().then(value => { if (step(value)) store.watchEarsPack(step, reject); }, reject);
             }),
             cancelDownload: () => store.cancelEarsPack(),
         },
@@ -1227,7 +1239,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         notify(t('Lost the connection to FreeVideo, so the export progress cannot be read. Export again once it is back.', '与 FreeVideo 的连接已断开，无法读取导出进度。恢复后请重新导出。'), EXPORT_ISSUE, 'export:lost');
     }
     function updateExport(value) {
-        if (!value) return false;
+        // A running export the engine no longer knows was lost in a restart: free the button and say so.
+        if (!value) { if (!disposed && exportStatus?.state === 'running') { exportStatus = null; exportCancel.hidden = true; updateTop();
+            notify(t('FreeVideo restarted and the export stopped. Export again.', 'FreeVideo 已重启，导出已中断。请重新导出。'), EXPORT_ISSUE, 'export:gone'); } return false; }
         if (exportSnapshot) exportSnapshot = {...exportSnapshot, id: value.project_id, revision: value.revision};
         exportStatus = value; const running = value.state === 'running' || value.state === 'queued';
         if (disposed) { if (!running) window.FreeVideoNotifyTaskDone?.({kind: 'export', id: value.id, ok: value.state === 'done'}); return running; }

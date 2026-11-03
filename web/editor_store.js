@@ -535,13 +535,13 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         // Subtitles from speech. What this computer can recognise; null where it cannot or the server is older.
         async ears() { return (await json('/freevideo/editor/ears'))?.available || null; },
         async startEars(id, revision) { return (await json('/freevideo/editor/ears', post({kind: 'transcribe', id, revision})))?.job || null; },
-        watchEars(id, fn) { return watch(async () => (await json('/freevideo/editor/ears?' + new URLSearchParams({id})))?.job || null, fn); },
+        watchEars(id, fn, lost) { return watch(async () => (await json('/freevideo/editor/ears?' + new URLSearchParams({id})))?.job || null, fn, lost); },
         cancelEars: id => json('/freevideo/editor/ears/cancel', post({id})),
         // What recognising speech needs is downloaded on first use; null where the server has no such download.
         earsPack: () => json('/freevideo/editor/subtitle-pack'),
         installEars: () => json('/freevideo/editor/subtitle-pack', post({action: 'install', language: true})),
         cancelEarsPack: () => json('/freevideo/editor/subtitle-pack', post({action: 'cancel'})),
-        watchEarsPack(fn) { return watch(() => json('/freevideo/editor/subtitle-pack'), fn); },
+        watchEarsPack(fn, lost) { return watch(() => json('/freevideo/editor/subtitle-pack'), fn, lost); },
         // Music for a stretch of the sound track. {available, ready}; null where the server is older.
         musicInfo: () => json('/freevideo/editor/music'),
         // body: {frames, text?} or {frames, style, mood}, optional seed. Refusals keep the server's reason.
