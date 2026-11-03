@@ -382,7 +382,7 @@ class SessionOwner:
             rows, self.decisions = self.decisions, []
         return rows
 
-    def finished(self, *, next_part=None, agent=False, gpu=None, warm=False):
+    def finished(self, *, next_part=None, agent=False, gpu=None, warm=False, decisions=None):
         """Release the idle worker now, or keep it for the next request.
 
         A successful request (warm) keeps its settled caches above HOST_FLOOR while the card's use can be read, so
@@ -413,7 +413,8 @@ class SessionOwner:
             self.own = gpu_own(gpu) if warm else None
             threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu),
                              name='freevideo-resident-hold', daemon=True).start()
-            return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid)
+            return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid,
+                               **(held_summary(decisions) if decisions else {}))
 
     def _tight(self):
         from .system import windows
@@ -611,6 +612,20 @@ class SessionOwner:
         if self.process is not None:
             processes.stop(self.process, grace=2)
             self.process = None
+
+
+def held_summary(decisions):
+    """Roles the worker still holds after a request and why others were given back (fields for the kept event)."""
+    held, evicted = {}, []
+    for row in decisions if isinstance(decisions, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get('role'), str):
+            continue
+        if row.get('action') in ('admit', 'park', 'reuse', 'unpark'):
+            held[row['role']] = True
+        elif row.get('action') == 'evict':
+            held.pop(row['role'], None)
+            evicted.append({'role': row['role'], 'reason': str(row.get('reason') or '')[:120]})
+    return {'held': sorted(held), 'evicted': evicted}
 
 
 def gpu_used(gpu):
