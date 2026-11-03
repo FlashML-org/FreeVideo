@@ -48,6 +48,29 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'timed-lines',
+        title: {zh: '按时间写台词和镜头', en: 'Write lines and cuts by time'},
+        summary: {zh: '在描述中按时间写台词和切镜，镜头会在写定的时间切换。', en: 'Write lines and cuts with times in the prompt, and the shot changes at the times you set.'},
+        media: {
+            type: 'image',
+            src: {zh: 'timed-lines-1.webp', en: 'timed-lines-2.webp'},
+            alt: {zh: '创作面板：按时间书写台词和切镜的描述已用红框标出。', en: 'The creation panel, with a prompt of timed lines and a cut outlined in red.'},
+        },
+        steps: {
+            zh: ['在描述中另起一行，以“分:秒”开头，例如“0:02”。', '时间后写“名字：台词”，表示这个人按顺序说这句话；直接写一句话，表示这时发生的事。', '时间后写“切：”再写新镜头的画面，镜头会在这个时间切换。'],
+            en: ['Start a new line in the prompt with minutes:seconds, for example "0:02".', 'After the time, write "Name: line" for a line the person says in turn, or a plain sentence for something that happens.', 'After the time, write "Cut:" and the new shot, and the shot changes at that time.'],
+        },
+        example: {
+            assets: [],
+            prompt: ['A small platform at dawn. Lin hurries in with a bag; Jay stands by the bench.\n0:01 Jay: You\'re late.\n0:02 Lin: The train was delayed.\n0:04 Cut: The two walk side by side to the train, tracking from the side.', '清晨的小站台，小林提着包快步走来，阿杰站在长椅旁。\n0:01 阿杰：你迟到了。\n0:02 小林：车晚点了。\n0:04 切：两人并肩走向列车，侧面跟拍'],
+            settings: {seconds: 8},
+        },
+        limits: {
+            zh: ['时间必须在视频时长以内。', '没有写“切：”的地方不会切镜。'],
+            en: ['Each time must be within the video length.', 'Without "Cut:", the shot does not change.'],
+        },
+    },
+    {
         id: 'first-last-frame',
         title: {zh: '首帧和尾帧', en: 'First and last frames'},
         summary: {zh: '指定视频从哪张图开始、到哪张图结束。', en: 'Choose the image the video starts from and the one it ends on.'},

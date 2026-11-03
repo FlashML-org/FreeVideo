@@ -387,7 +387,7 @@ def rewrite(folder, value, stats):
                  persistent_model=False)
     torch, checkpoint = begin(stats)
     from transformers import AutoProcessor
-    from .rules import DIALOGUE_RETRY, TIMESTAMP_RETRY, InvalidOutput, fit_time_points, instruction, label, language, missing_lines, user_text
+    from .rules import DIALOGUE_RETRY, TIMESTAMP_RETRY, TIMING_RETRY, InvalidOutput, fit_time_points, instruction, label, language, lost_marks, missing_lines, user_text
     checkpoint('preprocess')
     preparing = time.monotonic()
     processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
@@ -421,7 +421,7 @@ def rewrite(folder, value, stats):
     if len(ids) >= 1800:
         raise ValueError('context_length')
     text = processor.decode(ids, skip_special_tokens=True)
-    missing = missing_lines(text, value['text'])
+    missing, marks = missing_lines(text, value['text']), lost_marks(text, value['text'])
     rewritten, rejected = None, None
     references, late, last = [], False, text
     try:
@@ -434,8 +434,8 @@ def rewrite(folder, value, stats):
         if late:
             # Time points are checked first; ask for any media reference the draft also left out.
             references = error.details['missing_references']
-    if missing or references or late:
-        # Both corrections share one turn and the existing context/cache allowance.
+    if missing or marks or references or late:
+        # Every correction shares one turn and the existing context/cache allowance.
         correction = ''
         if references:
             labels = ', '.join(references)
@@ -445,7 +445,9 @@ def rewrite(folder, value, stats):
         if late:
             correction += TIMESTAMP_RETRY % ((value['seconds'],) * 3)
         if missing:
-            correction += DIALOGUE_RETRY + '\n'.join('- [%s] %s' % (language(line), line) for line in missing)
+            correction += DIALOGUE_RETRY + '\n'.join('- [%s] %s' % (language(line), line) for line in missing) + '\n'
+        if marks:
+            correction += TIMING_RETRY + ', '.join(marks) + '\n'
         retry = messages + [{'role': 'assistant', 'content': text}, {'role': 'user', 'content': correction}]
         retry_inputs = tokenize(processor, retry)
         if retry_allowed(retry_inputs.input_ids.shape[-1], stats):
@@ -454,7 +456,7 @@ def rewrite(folder, value, stats):
             # A cut-off correction is never used, not even to scale: fall back to the first draft.
             last = second if len(again) < 1800 else text
             stats.update(retry_output_tokens=len(again), rewrite_seconds=time.monotonic() - loaded)
-            if missing:
+            if missing or marks:
                 stats['dialogue_retry'] = True
             if late:
                 stats['timestamp_retry'] = True
@@ -469,7 +471,7 @@ def rewrite(folder, value, stats):
                     error.details['retried'] = True
                     stats['output_rejections'].append(error.details)
                     raise error
-                if len(again) < 1800 and (references or late or len(missing_lines(second, value['text'])) < len(missing)):
+                if len(again) < 1800 and (references or late or len(missing_lines(second, value['text'])) + len(lost_marks(second, value['text'])) < len(missing) + len(marks)):
                     rewritten = candidate
             except InvalidOutput:
                 if references and not late:
@@ -495,6 +497,9 @@ def rewrite(folder, value, stats):
     if rewritten is None:
         rejected.details = dict(rejected.details, retried=bool(stats.get('media_retry') or stats.get('dialogue_retry') or stats.get('timestamp_retry')))
         raise rejected
+    if lost_marks(rewritten, value['text']):
+        # Fixed times that survive neither pass: the caller falls back to the converted original.
+        raise InvalidOutput('timing_lost', rewritten, value)
     stats['stage'] = 'complete'
     emit(phase='complete', text=rewritten, diagnostics=dict(stats))
 

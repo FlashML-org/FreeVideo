@@ -24,6 +24,7 @@ import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
+import { problem as timedProblem, timedText } from './timed_prompt.js';
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
@@ -820,7 +821,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const castChanged = event => { if (String(event.detail) === String(mediaNode?.id)) { castOverlay.refresh(); references.refresh(); announceCast(); } };
     window.addEventListener('freevideo-media', castChanged);
     node.freevideoContinues = () => Boolean(extension.source);
-    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; });
+    // Time lines are read for one video made in a single run; parts of a long video keep the typed text.
+    const timedRun = () => !extension.source && (lengthControl?.plan ? lengthControl.plan.count === 1 : Number(value(node, 'seconds')) <= 15);
+    node.freevideoSingleRun = timedRun;
+    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; delete node.freevideoSingleRun; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, onChange: () => { castOverlay.refresh(); references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else castLibrary = library; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'setting', onChange: () => { references.refresh(); }})
@@ -828,7 +832,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let requestAssets = null, rewriteSubjects = [];
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
-        prepare: text => { const out = expandCast(text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
+        prepare: text => { const out = expandCast(timedRun() ? timedText(text, Number(value(node, 'seconds'))) : text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
         restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
@@ -1916,6 +1920,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const missing = swapMissing(swapState(mediaNode));
             if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
         }
+        const timedNote = !prompt.disabled && timedRun() ? timedProblem(prompt.value, Number(value(node, 'seconds')), t) : '';
+        if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.

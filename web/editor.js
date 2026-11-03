@@ -38,6 +38,7 @@ import {optionalText, clonePrompt, allowEmptyPrompt} from './optional_inputs.js'
 import {outputNotWritable} from './error_panel.js';
 import {repairAction} from './repair_hint.js';
 import {expandCast} from './cast_mention.js';
+import {problem as timedProblem, timedText} from './timed_prompt.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
@@ -333,6 +334,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const text = textLongText(t, Number.isInteger(value.limit) ? value.limit : 8000);
             out(text); return {ok: false, reason: code, say: text};
         }
+        if (code === 'timed_text') { out(value.say); return {ok: false, reason: code, say: value.say}; }
         if (PARTS_LIMIT_CODES.includes(code)) {
             const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
             const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
@@ -517,7 +519,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 // Each part goes with its own description, as written while it waited.
                 const texts = Object.fromEntries(clips.map(clip => [clip.id, clip.text.trim() || entry.text]));
                 try { await actions.generate({text: texts[clips[0].id], texts, selection, allowEmpty: entry.allowEmpty === true}); }
-                catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason)) genbar?.say(reason.say); }
+                catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason) && reason.reason !== 'timed_text') genbar?.say(reason.say); }
             }
         } finally { startingHeld = false; }
     }
@@ -993,6 +995,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     const full = problem.code === 'chain_too_long' && beforeKeys.some(key => store.knownLineage()[key]?.parts >= model.RULES.maxParts);
                     throw Object.assign(new Error(full ? 'chain_source_full' : problem.code), {code: full ? 'chain_source_full' : problem.code, limit: problem.limit});
                 }
+                // Times in a description are read on the ruler; a part that continues keeps its text as typed.
+                const timedSpan = block => ({offset: (model.find(prepared, block.id)?.start ?? 0) / model.FPS, seconds: block.frames / model.FPS});
+                for (const block of request.blocks.filter(block => !block.after)) {
+                    const {offset, seconds} = timedSpan(block), say = timedProblem(block.text, seconds, t, offset);
+                    if (say) throw Object.assign(new Error('timed_text'), {code: 'timed_text', say});
+                }
                 const sizes = new Map(store.sources);
                 for (const key of beforeKeys.filter(key => key?.startsWith('chain:'))) {
                     const job = await store.chain(key.split(':')[1]);
@@ -1016,7 +1024,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 // continues carries only the pictures the engine keeps for it, and is numbered among them.
                 const castRows = panel.references?.available() ? panel.references.rows?.() ?? [] : [];
                 const blocks = request.blocks.map(({before, ...block}, i) => ({...block, seed: seed + i,
-                    text: expandCast(block.text, castRows, {continued: Boolean(block.after)}).text}));
+                    text: expandCast(block.after ? block.text : (({seconds, offset}) => timedText(block.text, seconds, offset))(timedSpan(block)),
+                        castRows, {continued: Boolean(block.after)}).text}));
                 const job = await store.startChain({...frozen, blocks, queue: true});
                 if (!job && !store.generationAvailable) {
                     if (epoch === projectEpoch) {
@@ -1038,7 +1047,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (epoch === projectEpoch) {
                     if (ids.length) state.settle(record => model.settle(record, ids, 'draft'));
                     // A length limit is the user's to change and is said once in the notice; there is nothing to report.
-                    if (!PARTS_LIMIT_CODES.includes(value?.code)) {
+                    if (!PARTS_LIMIT_CODES.includes(value?.code) && value?.code !== 'timed_text') {
                         failures.submission(value, frozen, text); submissionFailure = JSON.stringify(state.selection);
                     }
                     genbar?.update(null);

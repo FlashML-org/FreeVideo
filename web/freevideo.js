@@ -19,6 +19,7 @@ import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
 import { requestText } from './prompt_sections.js';
+import { timedText } from './timed_prompt.js';
 import { outputDownloadURL } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
@@ -829,8 +830,11 @@ app.registerExtension({
                     const owner = this;
                     // Replace person asks for its prefix here, where every way of running the node reads the text.
                     prompt.serializeValue = () => {
-                        const body = expandCast(requestText(prompt.value, owner.properties?.freevideo_prompt_versions),
-                            mediaRows(owner), {continued: Boolean(owner.freevideoContinues?.())}).text;
+                        const continued = Boolean(owner.freevideoContinues?.());
+                        // Subtitle-style time lines become H3's timed prompt; a long video made in parts keeps the typed text.
+                        const typed = requestText(prompt.value, owner.properties?.freevideo_prompt_versions);
+                        const timed = !continued && owner.freevideoSingleRun?.() ? timedText(typed, Number(owner.widgets?.find(w => w.name === 'seconds')?.value)) : typed;
+                        const body = expandCast(timed, mediaRows(owner), {continued}).text;
                         return swapState(mediaNodeOf(owner)) ? withPrefix(body) : body;
                     };
                 }
