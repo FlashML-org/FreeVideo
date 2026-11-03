@@ -9,6 +9,7 @@ from .long_paths import io_path, resolved, plain, plain_text, plain_data
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
@@ -45,6 +46,28 @@ ARCHIVE_FAILURES = {
     'in-use': ('Another program is using it, or this account does not have permission to delete it.', '正被其他程序使用，或当前账户没有删除权限。'),
     'failed': ('It could not be deleted.', '未能删除。'),
 }
+# Report exports that failed for a reason the user can act on; anything else keeps its own words.
+EXPORT_FAILURES = {
+    'exists': ('A file with this name already exists. Choose another name.', '已有同名文件，请换一个文件名。'),
+    'permission': ('This folder cannot be written to. Choose another folder.', '该文件夹无法写入，请换一个位置保存。'),
+    'in-use': ('The existing file is open in another program or is read-only, so it was not replaced. '
+               'Close that program, or choose another name.',
+               '原文件正被其他程序打开或为只读，未被替换。请关闭该程序，或换一个文件名。'),
+    'disk': ('Not enough disk space. Free up space, then export again.', '磁盘空间不足，请释放空间后再导出。'),
+}
+
+
+def export_reason(error):
+    """The EXPORT_FAILURES key for an export error, or '' when its words are the only explanation."""
+    import errno
+    code, winerror = getattr(error, 'errno', None), getattr(error, 'winerror', None)
+    if isinstance(error, FileExistsError):
+        return 'exists'
+    if code in (errno.ENOSPC, getattr(errno, 'EDQUOT', None)) or winerror in (39, 112):
+        return 'disk'
+    if isinstance(error, PermissionError) or code in (errno.EACCES, errno.EPERM, errno.EROFS):
+        return 'permission'
+    return ''
 
 
 
@@ -1169,7 +1192,8 @@ class Session:
             raw += ('\n\n' if raw else '') + 'Image model diagnostic report:\n' + json.dumps(pack_report, ensure_ascii=False, indent=2)
         return redacted_launcher_error(raw, [(self.token, '<REDACTED>')] if self.token else [])
 
-    def export_report(self, output):
+    def export_report(self, output, overwrite=False):
+        """Write the report ZIP; overwrite replaces a file the save dialog already asked about."""
         if self.report['status'] == 'running':
             return
         from .diagnostics import collect, Redactor
@@ -1182,14 +1206,30 @@ class Session:
         self.report = dict(status='running', path=str(output), error='')
 
         def work():
+            target = Path(output)
+            # Collection never writes over a file; a confirmed replacement is built beside it and swapped in whole.
+            partial = target.with_name('.%s.%s.partial' % (target.name, uuid.uuid4().hex[:8])) if overwrite else target
+            replacing = False
             try:
-                result = collect(root, root / 'machine.json', None, Path(output),
+                result = collect(root, root / 'machine.json', None, partial,
                                  complete=True, extra_files=logs, notes=notes)
+                if partial != target:
+                    replacing = True
+                    os.replace(io_path(partial), io_path(target))
                 self.report = dict(status='complete', path=str(output), error='',
                                    collection_errors=len(result['errors']))
             except Exception as error:
-                self.report = dict(status='error', path=str(output),
+                # The new file was already written beside the old one, so the folder is writable:
+                # Windows refuses the swap when the old file is open elsewhere or read-only.
+                reason = 'in-use' if replacing and isinstance(error, PermissionError) else export_reason(error)
+                self.report = dict(status='error', path=str(output), reason=reason,
                                    error=Redactor(replacements).text(str(error)))
+            finally:
+                if partial != target:
+                    try:
+                        io_path(partial).unlink()
+                    except OSError:
+                        pass
 
         threading.Thread(target=work, name='freevideo-export-report', daemon=True).start()
 
@@ -2371,7 +2411,8 @@ class Session:
             field_error=dict(self.field_error or {}), retry_kind=self.retry_kind(), notice=self.notice,
             # Qt reads a list as an array; LEVELS is a tuple.
             compatibility=dict(self.compatibility, levels=list(self.compatibility.get('levels') or ())),
-            report=dict(self.report),
+            report=dict(self.report, error=self.t(*EXPORT_FAILURES[self.report['reason']])
+                        if self.report.get('reason') in EXPORT_FAILURES else self.report.get('error', '')),
             models=models, overall=overall, progress=progress, detail=detail,
             progress_text=file_text, remaining_seconds=remaining,
             # The elapsed row is only shown while working. An idle clock would

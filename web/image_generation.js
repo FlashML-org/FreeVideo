@@ -2,7 +2,7 @@
 // owns its document/history; this module inserts a result through its commands.
 import * as commands from './image_commands.js';
 import {orientMatrix, rasterKinds, scaleSelection} from './image_editor_engine.js';
-import {saveReport, reportIssue, showReportTip, focusReportTip} from './report_issue.js';
+import {saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError} from './report_issue.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
@@ -220,6 +220,7 @@ export const REPORT_LABELS = Object.freeze({
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
     preparing: ['Preparing…', '正在整理…'],
     unavailable: ['Report unavailable · retry', '报告暂不可用 · 重试'],
+    gone: REPORT_GONE,
 });
 
 // Shared by the editor and the other image entry points. Only the opaque report
@@ -240,7 +241,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     if (!report_id) return card;
     const fetchReport = async () => {
         const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});
-        if (!response.ok) throw new Error('report_unavailable');
+        if (!response.ok) throw reportFetchError(response);
         return response.blob();
     };
     const version = () => typeof productVersion === 'function' ? productVersion() : productVersion;
@@ -256,14 +257,17 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
         const restoreFocus = doc.activeElement === anchor;
         issue.hidden = true;
         anchor.disabled = true; anchor.textContent = t(...REPORT_LABELS.preparing);
+        let gone = false;
         try {
             await saveReport(await fetchReport());
             if (card.isConnected) showReportTip(bar, anchor, t, {mode: 'downloaded',
                 submit: () => reportIssue(fetchReport, version(), {save: false}), onHide: () => anchor.focus()});
             anchor.textContent = t(...REPORT_LABELS.download);
-        } catch { anchor.textContent = t(...REPORT_LABELS.unavailable); issue.hidden = false; }
-        finally {
-            anchor.disabled = false;
+        } catch (error) {
+            gone = Boolean(error?.gone);
+            anchor.textContent = t(...(gone ? REPORT_LABELS.gone : REPORT_LABELS.unavailable)); issue.hidden = gone;
+        } finally {
+            anchor.disabled = gone;
             if (restoreFocus && card.isConnected && doc.activeElement === doc.body) anchor.focus({preventScroll: true});
         }
     };

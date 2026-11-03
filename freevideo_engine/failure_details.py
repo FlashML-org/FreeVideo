@@ -599,6 +599,19 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         from .model_guidance import DOWNLOAD_COPY
         return dict(title=DOWNLOAD_COPY['error_read'][zh], detail='', action='', kind='download-list-read')
     rules = (
+        (r'This port is in use by another application', 'port-taken',
+         ('The ComfyUI port is in use', 'ComfyUI 端口被占用'),
+         ('Another program is using this port. Change the ComfyUI address in Settings, then start again.',
+          '有其他程序占用了这个端口。请在设置里换一个 ComfyUI 地址，再重新启动。')),
+        # Windows reserves whole port ranges (Hyper-V, WSL), so the ports after it may be unusable too.
+        (r'This port and the next ones are in use or reserved by the system', 'port-taken',
+         ('The ComfyUI port cannot be used', 'ComfyUI 端口无法使用'),
+         ('This port and the next ones are in use or reserved by the system. Change the ComfyUI address in Settings, '
+          'then start again.', '这个端口和后面的端口都已被占用或被系统保留。请在设置里换一个 ComfyUI 地址，再重新启动。')),
+        (r'The ports for LAN access are in use or reserved by the system', 'port-taken',
+         ('The LAN access port cannot be used', '局域网访问的端口无法使用'),
+         ('The ports for LAN access are in use or reserved by the system. Change the ComfyUI port in Settings, '
+          'then start again.', '局域网访问要用的端口已被占用或被系统保留。请在设置里换一个 ComfyUI 端口，再重新启动。')),
         (r'The previous video has no usable continuation data', 'continuation-missing',
          ('This video cannot be continued', '这个视频暂时不能接续'),
          ('Generate the previous video again, then continue it.', '请重新生成上一段视频，再接续。')),

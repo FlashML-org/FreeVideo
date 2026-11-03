@@ -188,6 +188,7 @@ LAN_ERRORS = {
     'This address does not belong to this computer. Enter one of its IP addresses or 0.0.0.0.': '这个地址不属于本机。请填写本机的 IP 地址或 0.0.0.0。',
     'This port and the next ones are in use or reserved by the system. Set a different local ComfyUI address.': '这个端口和后面的端口都已被占用或被系统保留，请换一个本机 ComfyUI 地址。',
     'The ports for LAN access are in use or reserved by the system. Choose another ComfyUI port.': '局域网访问要用的端口已被占用或被系统保留，请换一个 ComfyUI 端口。',
+    'This port is in use by another application. Set a different local ComfyUI address.': '这个端口已被其他程序占用，请换一个本机 ComfyUI 地址。',
     'A generation is running. Change the address after it finishes.': '正在生成，完成后可修改地址。',
     'The ComfyUI already running does not use this address. After its jobs finish, restart it with this address and connect again.': '已在运行的 ComfyUI 没有使用这个地址。请在任务完成后用这个地址重新启动 ComfyUI，再重新连接。',
     'The ComfyUI already running is open to the network directly. After its jobs finish, restart it on 127.0.0.1, then turn on LAN access.': '已在运行的 ComfyUI 正在直接对局域网开放。请在任务完成后改用 127.0.0.1 重新启动它，再开启局域网访问。',

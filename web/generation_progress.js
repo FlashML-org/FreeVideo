@@ -1,5 +1,5 @@
 // One whole-video estimate and the same five rows in Studio and the node view.
-import { saveReport, reportIssue, showReportTip, focusReportTip } from './report_issue.js';
+import { saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError } from './report_issue.js';
 import { issueButton } from './issue_button.js';
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./generation_progress.css', import.meta.url).href;
@@ -386,6 +386,7 @@ export function createDiagnosticReportControl(t, {api = null, fallback = null, t
         if (message.new_request === true || message.overall?.reset === true || message.reset === true && !message.phase) {
             problem?.remove();
             reportId = null; revision++; report.hidden = true; pinned = false; pinnedBlob = null;
+            report.disabled = false; report.textContent = label();
         }
         if (typeof message.report_id === 'string' && /^[a-f0-9]{32}$/.test(message.report_id)) {
             if (reportId !== message.report_id) { problem?.remove(); revision++; pinned = false; pinnedBlob = null; report.disabled = false; report.textContent = label(); }
@@ -399,7 +400,7 @@ export function createDiagnosticReportControl(t, {api = null, fallback = null, t
             if (pinned && pinnedBlob) return pinnedBlob;
             const id = reportId, path = `/freevideo/report/${id}`;
             const response = await (api ? api.fetchApi(path) : fetch(path));
-            if (!response.ok) throw new Error('Report unavailable');
+            if (!response.ok) throw reportFetchError(response);
             const blob = await response.blob();
             if (pinned && reportId === id) pinnedBlob = blob;
             return blob;
@@ -414,6 +415,7 @@ export function createDiagnosticReportControl(t, {api = null, fallback = null, t
         problem?.remove();
         const current = revision;
         report.disabled = true; report.textContent = t('Preparing report…', '正在整理报告…');
+        let gone = false;
         try {
             await downloadReport();
             if (current === revision) {
@@ -421,13 +423,15 @@ export function createDiagnosticReportControl(t, {api = null, fallback = null, t
                 if (tip && report.isConnected) showReportTip(report.parentElement, report, t, {mode: 'downloaded',
                     submit: () => reportIssue(fetchReport, typeof version === 'function' ? version() : version, {save: false})});
             }
-        } catch {
-            if (current === revision) {
+        } catch (error) {
+            gone = Boolean(error?.gone);
+            if (current === revision && gone) report.textContent = t(...REPORT_GONE);
+            else if (current === revision) {
                 report.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试');
                 problem = issueButton(t, () => ({where: ['Diagnostic report', '诊断报告'], message: report.textContent}));
                 report.after(problem);
             }
-        } finally { if (current === revision) report.disabled = false; }
+        } finally { if (current === revision) report.disabled = gone; }
     };
     return {report, updateReport, fetchReport, downloadReport, hasReport: () => reportId !== null, pin: () => { pinned = true; }};
 }
