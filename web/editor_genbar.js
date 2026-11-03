@@ -220,9 +220,10 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             host.classList.toggle('fv-ed-genbar-music', !presets.hidden);
         }
         references?.update(busy, busy ? undefined : actions.references.visible() || false);
-        // A piece already made, failed or stopped is made again in place.
-        const made = musical && !!music.target(selection)?.clip && music.target(selection).clip.pending !== 'draft';
-        const verb = made ? t('Regenerate', '重新生成') : t('Generate', '生成');
+        // A piece already made, failed or stopped is made again in place; separated music is replaced in place.
+        const aimed = musical ? music.target(selection) : null;
+        const made = !!aimed?.clip && aimed.clip.pending !== 'draft';
+        const verb = aimed?.replace ? t('Replace music', '替换配乐') : made ? t('Regenerate', '重新生成') : t('Generate', '生成');
         generate.textContent = verb;
         // Never disabled for a reason the press itself can explain or fix; only until the server says it can generate.
         generate.disabled = busy || !!previewSelection || !!actions.generationWaiting?.();

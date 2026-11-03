@@ -514,6 +514,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 row = {element: node, head, empty}; rows.set(track.id, row); parted ||= !!track.stem;
             }
             row.head.title = name; row.head.querySelector('span').textContent = name;
+            // Guide targets ("take me there"): the lanes where a range is dragged out for speech or music, and the
+            // separated music lane where new music replaces the old.
+            const tourId = track.stem === 'music' ? 'audio-music-stem' : track.stem ? '' : {a1: 'audio-a1-track', a2: 'audio-a2-track'}[track.id] || '';
+            if (tourId) row.element.dataset.tourId = tourId; else delete row.element.dataset.tourId;
             row.empty.hidden = track.clips.length > 0;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
@@ -590,6 +594,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         addAudio.dataset.sign = addAudio.textContent.slice(0, 1); // Phone widths show the sign alone.
         addAudio.title = '';
         addAudio.setAttribute('aria-label', addAudio.textContent);
+        // Without Audio 2 the guide points at the button that adds it.
+        if (twoAudio) delete addAudio.dataset.tourId; else addAudio.dataset.tourId = 'audio-a2-track';
         setTrackHeight(top - 6);
         layout();
         // The parts of a fresh split appear under the sound they came from: show them from the top.
