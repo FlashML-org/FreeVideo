@@ -60,8 +60,8 @@ class Screenplay(ValueError):
 CAPTIONED = 3  # the score of a take with unwanted captions
 CARD = re.compile(r'c[0-9a-f]{12}')  # characters.<key>.card names a cast library card
 # How a shot carries its cast cards. Change these after the reference tests; nothing else needs to.
-# Each person is two pictures: one sheet of every view (made by the cast library when the card has none), then
-# the face close-up. A continuing shot with several people has no room for two each: it carries one picture a person.
+# A fresh shot carries every picture of each person, the one standing for the person last. A continuing shot has room
+# for three pictures: one person carries the sheet of every view then the face, several people one picture each.
 FACE_ORDER = ('face', 'front', 'three_quarter')  # the one picture standing for a person, then any other label, in card order
 MAX_VOICES = 3      # voice clips per shot, the model limit
 MAX_REFERENCES = 32
@@ -266,7 +266,8 @@ def prompt(play, shot):
 def subject_definitions(subjects):
     """The prompt prefix tying cast cards to their reference tags; the one place its wording lives.
 
-    subjects: [{'name', 'description', 'pictures': (first, last), a list of such pairs, or None, 'audio': number or None}].
+    subjects: [{'name', 'description', 'pictures': (first, last), a list of such pairs, or None, 'captions': [(picture,
+    text)], 'audio': number or None}].
     The page writes the same prompt from the same wording (web/cast_mention.js); tests/fixtures/subject_definitions.json
     holds the cases both sides must reproduce exactly."""
     parts = []
@@ -282,6 +283,10 @@ def subject_definitions(subjects):
                                  for a, b in ranges)
             single = len(ranges) == 1 and ranges[0][0] == ranges[0][1]
             tags.append('%s show%s its appearance' % (pictures, 's' if single else ''))
+            for picture, caption in subject.get('captions') or ():
+                caption = (caption or '').strip().rstrip('.')
+                if caption:
+                    tags.append('<Picture %d> shows %s' % (picture, caption))
         if subject.get('audio'):
             tags.append('<Audio %d> is its voice' % subject['audio'])
         if tags:
@@ -305,17 +310,28 @@ def sheet_of(card):
 
 
 def person_pictures(card, *, alone=True, continues=False):
-    """The pictures one person carries into a shot, in order: the sheet, then the face close-up (the front view
-    when there is no face). Two of them on every device. A card that has no sheet (one picture, or none could be
-    made) carries its face alone (else the front view). A shot that continues the previous one with several
-    people carries only the face (else the front view) of each, with no sheet."""
+    """The pictures one person carries into a shot, in order. A fresh shot carries every picture of the card in card
+    order, the one standing for the person (the face, else the front view) moved last. A shot that continues the
+    previous one carries the sheet then that picture, or that picture alone when the card has no sheet (one picture,
+    or none could be made); with several people it carries only that picture of each (else the sheet)."""
     views = _views(card)
-    if continues and not alone:
+    if not continues:
+        pictures = [row['media'] for row in card.get('images') or []]
+        if not views:
+            return pictures
+        return [media for media in pictures if media is not views[0]] + views[:1]
+    if not alone:
         return views[:1] or ([sheet_of(card)] if sheet_of(card) else [])
     sheet = sheet_of(card)
     if sheet is None:
         return views[:1]
     return [sheet] + [view for view in views[:1] if view.get('file') != sheet.get('file')]
+
+
+def picture_captions(card, pictures):
+    """The card's caption of each of these pictures; None for one without a caption or not on the card (a sheet)."""
+    captions = {row['media'].get('file'): row.get('caption') for row in card.get('images') or []}
+    return [captions.get(item.get('file')) for item in pictures]
 
 
 def cast_references(play, shot, cards, *, continues=False):
@@ -328,7 +344,8 @@ def cast_references(play, shot, cards, *, continues=False):
     names its own first frame or references; an empty list means no pictures), 'missing' (a card was deleted),
     'partial' (not everyone fit) or 'cards'. 'omitted' lists people left out
     entirely; 'voice_omitted' lists people whose pictures are carried but whose
-    voice did not fit. A shot that continues the previous one carries no voice
+    voice did not fit. A person whose pictures do not all fit in the references
+    left carries the first ones and the one standing for the person. A shot that continues the previous one carries no voice
     clip (its voices carry on from the previous shot) and at most CONTINUED_PICTURES
     pictures: two for a single person, else one for each of up to that many people."""
     characters = play.get('characters', {})
@@ -362,9 +379,12 @@ def cast_references(play, shot, cards, *, continues=False):
                 result['omitted'].append(key)
             continue
         voice = card.get('voice') is not None and voices < MAX_VOICES
-        if pictures + len(images) + voices + voice > MAX_REFERENCES:
+        room = MAX_REFERENCES - pictures - voices - voice
+        if room < min(len(images), 1):
             result['omitted'].append(key)
             continue
+        if len(images) > room:
+            images = images[:room - 1] + images[-1:]
         if card.get('voice') is not None and not voice:
             result['voice_omitted'].append(key)  # shown, without the voice that did not fit
         pictures, voices = pictures + len(images), voices + voice
@@ -381,6 +401,9 @@ def cast_references(play, shot, cards, *, continues=False):
         subject = dict(name=person.get('name') or key, description=card.get('description'),
                        pictures=(picture + 1, picture + len(images)) if images else None,
                        audio=len(clips) if voice else None)
+        captions = [(picture + n, text) for n, text in enumerate(picture_captions(card, images), 1) if text]
+        if captions:
+            subject['captions'] = captions
         picture += len(images)
         if images or voice:
             subjects.append(subject)
@@ -403,15 +426,16 @@ DESCRIPTION_CUTS = (500, 250, 120, 0)
 def with_cast(text, resolved, *, limit=PROMPT_LIMIT):
     """The submitted prompt: the subject definitions, then the shot's own prompt.
 
-    Cards can grow after a plan; when the whole prompt would pass the limit, the card descriptions are
-    shortened (the pictures still show each person). Plan previews and submissions both call this."""
+    Cards can grow after a plan; when the whole prompt would pass the limit, the card descriptions and picture
+    captions are shortened (the pictures still show each person). Plan previews and submissions both call this."""
     if not resolved.get('prefix'):
         return text
     full = resolved['prefix'] + '\n\n' + text
     if len(full) <= limit or not resolved.get('subjects'):
         return full
     for cut in DESCRIPTION_CUTS:
-        subjects = [dict(s, description=(s.get('description') or '')[:cut].rstrip() or None)
+        subjects = [dict(s, description=(s.get('description') or '')[:cut].rstrip() or None,
+                         captions=[(n, text[:cut].rstrip()) for n, text in s.get('captions') or ()])
                     for s in resolved['subjects']]
         short = subject_definitions(subjects) + '\n\n' + text
         if len(short) <= limit:
