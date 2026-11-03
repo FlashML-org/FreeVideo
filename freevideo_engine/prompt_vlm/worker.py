@@ -387,7 +387,7 @@ def rewrite(folder, value, stats):
                  persistent_model=False)
     torch, checkpoint = begin(stats)
     from transformers import AutoProcessor
-    from .rules import DIALOGUE_RETRY, InvalidOutput, instruction, label, language, missing_lines, user_text
+    from .rules import DIALOGUE_RETRY, TIMESTAMP_RETRY, InvalidOutput, fit_time_points, instruction, label, language, missing_lines, user_text
     checkpoint('preprocess')
     preparing = time.monotonic()
     processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
@@ -423,14 +423,18 @@ def rewrite(folder, value, stats):
     text = processor.decode(ids, skip_special_tokens=True)
     missing = missing_lines(text, value['text'])
     rewritten, rejected = None, None
-    references = []
+    references, late, last = [], False, text
     try:
         rewritten = validate_rewrite(text, value, stats)
     except InvalidOutput as error:
         rejected = error
         if error.details['condition'] == 'missing_picture_reference':
             references = error.details['missing_references']
-    if missing or references:
+        late = error.details['condition'] == 'timestamp_not_before_duration'
+        if late:
+            # Time points are checked first; ask for any media reference the draft also left out.
+            references = error.details['missing_references']
+    if missing or references or late:
         # Both corrections share one turn and the existing context/cache allowance.
         correction = ''
         if references:
@@ -438,6 +442,8 @@ def rewrite(folder, value, stats):
             correction = (f'Your rewrite omitted these required media references: {labels}. '
                           'Preserve all existing content and add each missing reference where it belongs. '
                           'Return the complete prompt in the same required section format.\n')
+        if late:
+            correction += TIMESTAMP_RETRY % ((value['seconds'],) * 3)
         if missing:
             correction += DIALOGUE_RETRY + '\n'.join('- [%s] %s' % (language(line), line) for line in missing)
         retry = messages + [{'role': 'assistant', 'content': text}, {'role': 'user', 'content': correction}]
@@ -445,31 +451,49 @@ def rewrite(folder, value, stats):
         if retry_allowed(retry_inputs.input_ids.shape[-1], stats):
             again, _ = generate(torch, model, retry_inputs.to(device), 1800, time.monotonic(), lambda timing: None)
             second = processor.decode(again, skip_special_tokens=True)
+            # A cut-off correction is never used, not even to scale: fall back to the first draft.
+            last = second if len(again) < 1800 else text
             stats.update(retry_output_tokens=len(again), rewrite_seconds=time.monotonic() - loaded)
             if missing:
                 stats['dialogue_retry'] = True
+            if late:
+                stats['timestamp_retry'] = True
             if references:
                 stats['media_retry'] = True
                 if any(each.startswith('<Picture ') for each in references):
                     stats['picture_retry'] = True  # Retain the existing image diagnostic.
             try:
                 candidate = validate_rewrite(second, value, stats, retried=True)
-                if references and len(again) >= 1800:
+                if (references or late) and len(again) >= 1800:
                     error = InvalidOutput('output_token_limit', second, value)
                     error.details['retried'] = True
                     stats['output_rejections'].append(error.details)
                     raise error
-                if len(again) < 1800 and (references or len(missing_lines(second, value['text'])) < len(missing)):
+                if len(again) < 1800 and (references or late or len(missing_lines(second, value['text'])) < len(missing)):
                     rewritten = candidate
             except InvalidOutput:
-                if references:
+                if references and not late:
                     raise
-        elif references:
-            stats['media_retry_skipped'] = stats.get('dialogue_retry_skipped', 'context_length')
-            if any(each.startswith('<Picture ') for each in references):
-                stats['picture_retry_skipped'] = stats['media_retry_skipped']
+        elif late or references:
+            skipped = stats.get('dialogue_retry_skipped', 'context_length')
+            if late:
+                stats['timestamp_retry_skipped'] = skipped
+            if references:
+                stats['media_retry_skipped'] = skipped
+                if any(each.startswith('<Picture ') for each in references):
+                    stats['picture_retry_skipped'] = skipped
+    if rewritten is None and late:
+        # Still late after the correction (or no room for one): scale the time points, change nothing else.
+        for each in dict.fromkeys((last, text)):
+            try:
+                rewritten = validate_rewrite(fit_time_points(each, value['seconds']), value, stats,
+                                             retried=bool(stats.get('timestamp_retry')))
+            except InvalidOutput:
+                continue
+            stats['timestamp_rescaled'] = True
+            break
     if rewritten is None:
-        rejected.details = dict(rejected.details, retried=bool(stats.get('media_retry') or stats.get('dialogue_retry')))
+        rejected.details = dict(rejected.details, retried=bool(stats.get('media_retry') or stats.get('dialogue_retry') or stats.get('timestamp_retry')))
         raise rejected
     stats['stage'] = 'complete'
     emit(phase='complete', text=rewritten, diagnostics=dict(stats))

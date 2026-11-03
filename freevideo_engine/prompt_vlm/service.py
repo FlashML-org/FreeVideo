@@ -617,7 +617,7 @@ class Service:
                     except rules.InvalidOutput as error:
                         stats = result.get('diagnostics') or {}
                         error.details['retried'] = bool(stats.get('media_retry') or stats.get('picture_retry')
-                                                       or stats.get('dialogue_retry'))
+                                                       or stats.get('dialogue_retry') or stats.get('timestamp_retry'))
                         self.progress(dict(diagnostics=stats))
                         raise
             self.progress(dict(result, worker_returncode=child.returncode))
