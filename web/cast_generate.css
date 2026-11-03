@@ -13,6 +13,7 @@
 .fv-cg-text:read-only{opacity:.7}
 .fv-cg-text::placeholder{color:var(--fv-muted,#7d8794)}
 .fv-cg-note{grid-column:1/-1;font-size:12px;line-height:1.6;color:var(--fv-muted,#aaaeb9)}
+.fv-cg-side>.fv-other-usage{color:var(--fv-muted,#aaaeb9);line-height:1.6}
 /* A failure is the reason on one line, then the report button left and the retry right on the next. */
 .fv-cg-note[data-failed=true],.fv-cg-note[data-failed=true] .fv-result-links,.fv-cg-note[data-failed=true] .fv-actions{display:contents}
 .fv-cg-note .fv-image-failure-reason{grid-column:1/-1}

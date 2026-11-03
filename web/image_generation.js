@@ -6,6 +6,7 @@ import {saveReport, reportIssue, showReportTip, focusReportTip} from './report_i
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
+import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
 
 export const IMAGE_GEN_PROTOCOL = Object.freeze({
     root: '/freevideo/image-gen', header: 'X-FreeVideo-Image', upload: '/upload/image',
@@ -51,6 +52,7 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
     fitted: info.fitted || null, memory: info.memory || '',
+    other_usage: info.other_usage || null,
 });
 
 export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThis)) {
@@ -181,7 +183,8 @@ export function imageGenError(code, info, t) {
         small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
     };
-    const say = (en, zh) => t(...memoryWords([en, zh], info?.unified));
+    const fact = ['no_memory', 'small_memory'].includes(code) ? otherUsageText(info?.other_usage, t, true) : '';
+    const say = (en, zh) => t(...memoryWords([en, zh], info?.unified)) + (fact ? t(' ', '') + fact : '');
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
     if (code === 'no_memory' && info?.memory === 'host')
         return t('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system settings, then try again.',
@@ -221,7 +224,7 @@ export const REPORT_LABELS = Object.freeze({
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis)} = {}) {
     host.replaceChildren();
     if (!error || error === 'cancelled') return null;
@@ -232,7 +235,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage}, t);
     card.append(reason); host.append(card);
     if (!report_id) return card;
     const fetchReport = async () => {
@@ -411,6 +414,7 @@ export function imageGenProgress(stage, fraction, withImages = false) {
 // An epoch rejects late uploads/status/results. A generate response arriving
 // after Stop still has to be cancelled, even though its job was not known yet.
 export function createImageGenSession({client, prepare, apply, onChange = () => {},
+    beforeGenerate = async () => {},
     schedule = setTimeout, unschedule = clearTimeout, store = null,
     visible = () => globalThis.document?.visibilityState !== 'hidden'}) {
     let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null;
@@ -419,7 +423,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
         : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '',
-            memory: error.memory || '', ...(error.fitted ? {fitted: error.fitted} : {})};
+            memory: error.memory || '', other_usage: error.other_usage || null, ...(error.fitted ? {fitted: error.fitted} : {})};
     const cancelJob = job => Promise.resolve().then(() => client.cancel(job)).catch(() => {});
     const forget = () => { try { store?.clear(); } catch { /* the job is only not resumed after a reload */ } };
     function scheduleInfo() {
@@ -483,6 +487,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
             const withImages = images.length > 0;
+            await beforeGenerate({kind: 'image', width: context.width, height: context.height, image_references: images.length});
+            if (!alive()) return;
             const row = await client.generate({prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
                 ...(request.loras === undefined ? {} : {loras: request.loras})});
@@ -571,6 +577,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     let store = null;
     try { if (resumeKey != null && globalThis.sessionStorage) store = imageJobStore(resumeKey); } catch { /* no storage */ }
     const session = createImageGenSession({client, store,
+        beforeGenerate: query => mounted?.otherUsage.check(query),
         prepare: async (request, alive) => {
             const context = generationContext(getDoc(), getSelection(), request.mode);
             const images = request.mode === 'edit' ? [await uploadGenerationReference(renderer, client, context, alive),
@@ -872,6 +879,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         bar.append(group);
         if (shape) bar.append(shape);
         bar.append(field, note, action, meter);
+        const otherUsage = createOtherUsageNotice(bar, t, fetchApi);
         const grow = () => {
             input.style.height = '0px';
             input.style.height = (prompt.trim() ? Math.min(80, Math.max(32, input.scrollHeight + 2)) : 32) + 'px';
@@ -887,13 +895,13 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 event.preventDefault(); void start();
             }
         };
-        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size, grow};
+        mounted = {bar, input, action, note, meter, fill, group, refs, ratio, size, otherUsage, grow};
         grow(); update();
     }
-    return {mount, drawsSelection: () => mode === 'edit' && getDoc().layers.length > 0, unmount() { clearAttention(); promptRequired = false; mounted = null; },
+    return {mount, drawsSelection: () => mode === 'edit' && getDoc().layers.length > 0, unmount() { clearAttention(); promptRequired = false; mounted?.otherUsage.dispose(); mounted = null; },
         selected: () => session.check(), cancel: session.cancel,
         // The blank canvas a reloaded generation was started on, to be set again by the editor.
         resumedCanvas: resumed?.context?.mode === 'new'
             ? {width: resumed.context.doc.width, height: resumed.context.doc.height} : null,
-        dispose() { clearAttention(); loras?.dispose(); return session.dispose(); }, state: session.state};
+        dispose() { clearAttention(); loras?.dispose(); mounted?.otherUsage.dispose(); return session.dispose(); }, state: session.state};
 }

@@ -38,7 +38,8 @@ import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
-import { createCapabilityView } from './capability_view.js';
+import { createCapabilityView, capabilityContext } from './capability_view.js';
+import { createOtherUsageNotice } from './other_usage.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
 import { createFirstRunGuide, createFirstStart } from './first_run_guide.js';
@@ -1678,6 +1679,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         resumeChain.hidden = !['cancelled', 'failed', 'interrupted'].includes(chainController?.state?.state) || partList.resumes();
         queueActions.hidden = !chainController?.active && !busy && !queueState?.looping && resumeChain.hidden;
     };
+    const otherUsage = createOtherUsageNotice(runbar, t, api.fetchApi.bind(api));
+    cleanup.push(() => otherUsage.dispose());
     runbar.append(requestAssets.element, runrow, queueActions); controls.append(runbar);
     const queueError = error => ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
@@ -1931,6 +1934,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (lengthControl.absent && !seconds.reportValidity()) return;
             if (lengthPlan?.count > 1 && chosenMode !== 'single') { status.textContent = t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。'); return; }
             const lengthOptions = lengthControl.options();
+            const usageContext = capabilityContext(node, {custom: true});
+            const usageQuery = usageContext && !extension.source && !seconds.disabled ? new URLSearchParams(usageContext) : null;
+            // Missing material dimensions or linked settings cannot describe the same request reliably.
+            if (usageQuery && (!usageQuery.get('task').startsWith('ref2va') || usageQuery.has('references'))) {
+                for (const [key, val] of Object.entries({width: value(node, 'width'), height: value(node, 'height'),
+                    seconds: lengthPlan?.partSeconds?.[0] ?? Number(seconds.value), base_steps: baseSteps.value,
+                    refine_steps: refineSteps.value, two_pass: twoPass.checked ? '1' : '0',
+                    step_cache: stepCacheNow(), upscale_factor: upscaleNow()})) usageQuery.set(key, val);
+                await otherUsage.check(usageQuery);
+            } else await otherUsage.check(null);
+            if (disposed) return;
             const source = extension.source;
             const sourceState = source ? await extendSourceState(api, source) : 'ok';
             if (sourceState !== 'ok') throw new Error(extendSourceProblem(t, sourceState));

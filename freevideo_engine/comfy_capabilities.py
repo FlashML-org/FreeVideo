@@ -27,7 +27,7 @@ def _hash(value):
                                      ensure_ascii=False, allow_nan=False).encode()).hexdigest()[:12]
 
 
-def _context(output_directory):
+def _machine_context():
     from .background_compile import compile_owed
     from .comfy_bridge import installation
     root, machine = installation()
@@ -52,6 +52,12 @@ def _context(output_directory):
     machine['hardware'] = observed
     # Receipt read only: tells the page the first run still compiles.
     machine['compile_owed'] = compile_owed(root)
+    return machine
+
+
+def _context(output_directory):
+    machine = _machine_context()
+    device = machine.get('device_identity') if machine.get('device_backend') == 'mps' else machine.get('gpu_uuid')
     # Do not inherit the sampling-estimate route's 15-second history cache:
     # reopening the grid after a generation must notice the new timing record.
     rows = local_records(output_directory, device, system=machine.get('system'), stage_details=True, refresh=True)
@@ -270,6 +276,56 @@ def _query(query):
     return aspect, size, task, query.get('adapters') == '1', normalize_references(task, references)
 
 
+def _usage_query(query):
+    """Same canvas/material fields as capabilities, plus this request's duration/profile."""
+    from .geometry import geometry
+    from .tiers import TIERS, STEP_CACHES
+    kind = query.get('kind', 'video')
+    if kind not in ('video', 'image'):
+        raise ValueError('Unsupported generation kind.')
+    if kind == 'image':
+        width, height = int(query.get('width', 1024)), int(query.get('height', 1024))
+        if not 256 <= width <= 2048 or not 256 <= height <= 2048:
+            raise ValueError('Use image dimensions from 256 to 2048.')
+        count = int(query.get('image_references', '0'))
+        if not 0 <= count <= 4:
+            raise ValueError('Use at most four image references.')
+        # Image preflight normalizes each reference to 1024**2 pixels.
+        return dict(kind=kind, width=width, height=height, reference_pixels=count * 1024**2)
+    _, size, task, _, references = _query(query)
+    width, height = size or (1344, 768)
+    tier = query.get('tier', 'light')
+    if tier not in (*TIERS, 'custom'):
+        raise ValueError('Unsupported tier.')
+    defaults = TIERS.get(tier, TIERS['light'])
+    flag = query.get('two_pass', '1' if defaults['two_pass'] else '0')
+    if flag not in ('0', '1'):
+        raise ValueError('Use a boolean two_pass flag.')
+    steps, refine = int(query.get('base_steps', defaults['steps'])), int(query.get('refine_steps', 3))
+    cache = query.get('step_cache', defaults['step_cache'])
+    cache = None if cache in (None, 'none', '') else cache
+    upscale = float(query.get('upscale_factor', defaults['upscale']))
+    if not 1 <= steps <= 32 or not 0 <= refine <= 31 or cache not in STEP_CACHES or upscale not in (1.2, 1.5, 2):
+        raise ValueError('Unsupported sampling profile.')
+    if 'frames' in query and 'seconds' in query:
+        raise ValueError('Specify frames or seconds, not both.')
+    shape = geometry(width, height, frames=int(query['frames'])) if 'frames' in query else geometry(
+        width, height, seconds=float(query.get('seconds', 10.125)))
+    return dict(kind=kind, width=width, height=height, frames=shape['frames'], steps=steps,
+                two_pass=flag == '1', task=task, refine=refine, references=reference_parameters(references),
+                step_cache=cache, upscale=upscale)
+
+
+def _other_usage(params, failure=False):
+    from . import other_usage
+    try:
+        machine = _machine_context()
+        usage = other_usage.read(machine)
+        return other_usage.notice(other_usage.net(usage, machine)) if failure else other_usage.for_request(machine, usage, **params)
+    except Exception:
+        return None
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -280,6 +336,17 @@ def register():
     mac = _apple_silicon()
     cache = None if mac else CapabilityCache(folder_paths.get_output_directory(), server)
     server._freevideo_capabilities = cache if cache is not None else True
+
+    @server.routes.get('/freevideo/other-usage')
+    async def other_usage(request):
+        result = None
+        if not mac:
+            try:
+                params = _usage_query(request.query)
+            except (ValueError, TypeError, OverflowError, RecursionError) as error:
+                raise web.HTTPBadRequest(text=str(error)) from error
+            result = await asyncio.to_thread(_other_usage, params, request.query.get('failure') == '1')
+        return web.json_response(dict(status='ok', notice=result), headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/capabilities')
     async def capabilities(request):

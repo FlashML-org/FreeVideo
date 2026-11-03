@@ -763,6 +763,9 @@ class Service:
             if code == 'no_memory' and (isinstance(row, dict) and row.get('memory') == 'host'
                                         or error is not None and host_memory_shortage(error)):
                 result.update(memory='host', message_zh=HOST_MESSAGE_ZH)
+        if code in ('no_memory', 'small_memory'):
+            from .failure import append_other_usage
+            append_other_usage(result, context.machine)
         if code not in NO_REPORT:
             if video_busy is None:
                 try:
@@ -1287,7 +1290,7 @@ def register():
                     raise ValueError('invalid_request')
                 result = await asyncio.to_thread(service.history_open)
             else:
-                result = service.start(name, value)
+                result = await asyncio.to_thread(service.start, name, value)
             return web.json_response(result)
         except FailureError as error:
             return web.json_response(error.status, status=400)

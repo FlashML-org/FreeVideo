@@ -5,6 +5,7 @@
 import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, renderImageFailure,
     IMAGE_GEN_POLL_MS, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createImageLoras} from './image_lora.js';
+import {createOtherUsageNotice} from './other_usage.js';
 
 export {imageGenerationSupported as castGenerateSupported} from './image_generation.js';
 
@@ -18,11 +19,11 @@ const VIEW_TITLES = Object.freeze({
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const failureOf = error => ({error: error?.code || 'generation_failed', report_id: error?.report_id || null,
-    stage: error?.stage || '', fitted: error?.fitted || null, memory: error?.memory || ''});
+    stage: error?.stage || '', fitted: error?.fitted || null, memory: error?.memory || '', other_usage: error?.other_usage || null});
 const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
 // The five pictures of one description. No DOM: the page below draws its state.
-export function createCastGenerator({client, kind = 'character', onChange = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
+export function createCastGenerator({client, kind = 'character', onChange = () => {}, beforeGenerate = async () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
     const scene = kind === 'setting', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: ''};
@@ -34,6 +35,8 @@ export function createCastGenerator({client, kind = 'character', onChange = () =
 
     async function runOne(index, alive) {
         const view = plan[index], front = state.pictures[0].file;
+        await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: view.from_front ? 1 : 0});
+        if (!alive()) return null;
         const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed: scene ? seed + index : seed,
             images: view.from_front ? [front] : [], ...(view.view === 'back' ? {cast_view: 'back'} : {}),
             ...(loras === undefined ? {} : {loras})});
@@ -47,7 +50,7 @@ export function createCastGenerator({client, kind = 'character', onChange = () =
             if (!alive()) return null;
             if (status.state === 'error') {
                 throw Object.assign(new Error(status.error), {code: status.error, report_id: status.report_id,
-                    stage: status.stage, fitted: status.fitted, memory: status.memory});
+                    stage: status.stage, fitted: status.fitted, memory: status.memory, other_usage: status.other_usage});
             }
             if (status.state === 'done') {
                 if (!status.file) throw new Error('generation_failed');
@@ -168,7 +171,8 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     container.append(root);
 
     let chosen = 0, picked = '', info = null, infoTimer = null, disposed = false, failureKey = null, attention = null;
-    const generator = createCastGenerator({client, kind, onChange: render});
+    const otherUsage = createOtherUsageNotice(side, tr, fetcher);
+    const generator = createCastGenerator({client, kind, onChange: render, beforeGenerate: query => otherUsage.check(query)});
     let last = '';
 
     function missing() { return info && !info.installed && !info.ready; }
@@ -262,7 +266,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
             : generator.state().pictures.map(row => ({file: row.file, label: row.view})),
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
-        destroy() { disposed = true; picker?.dispose(); clearTimeout(infoTimer); void generator.dispose(); root.remove(); },
+        destroy() { disposed = true; picker?.dispose(); clearTimeout(infoTimer); otherUsage.dispose(); void generator.dispose(); root.remove(); },
         element: root,
     };
 }
