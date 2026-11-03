@@ -324,6 +324,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return {ok: false, reason: code};
         }
         if (['audio_prepare', 'speed_pending', 'speed_locked', 'speed'].includes(code)) return {ok: false, reason: code};
+        if (value?.code === 'playback') {
+            const text = t('This clip cannot be played.', '这段素材无法播放。');
+            out(text, EDITOR_ISSUE, failureKind('playback', value)); return {ok: false, reason: code, say: text};
+        }
         if (code === 'unsupported') { genbar?.update(null); return; }
         if (code === 'text_long') {
             const text = textLongText(t, Number.isInteger(value.limit) ? value.limit : 8000);
