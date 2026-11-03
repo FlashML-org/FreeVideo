@@ -21,6 +21,7 @@ class ResidualState:
         self.stored = False
         self.closed = False
         self.copies = {'to_host': 0, 'to_device': 0}
+        self.pinned_fallbacks = 0
         self.copy_wall_seconds = 0.
         # Set by the block loop: collect reference cycles once this block has
         # dropped its input (packing.install_streamed_forward).
@@ -43,7 +44,15 @@ class ResidualState:
         tick = time.perf_counter()
         if self.host is None:
             self.host = self._allocate()
-        self.host.copy_(tensor, non_blocking=self.pinned)
+        try:
+            self.host.copy_(tensor, non_blocking=self.pinned)
+        except torch.cuda.OutOfMemoryError:
+            raise
+        except RuntimeError as error:
+            if not self.pinned:
+                raise
+            self._leave_locked_pages(keep=False, error=error)
+            self.host.copy_(tensor)
         self.stored = True
         self.copies['to_host'] += 1
         self.copy_wall_seconds += time.perf_counter()-tick
@@ -70,12 +79,36 @@ class ResidualState:
                 return host
         return torch.empty(self.shape, dtype=self.dtype, device='cpu')
 
+    def _leave_locked_pages(self, keep, error):
+        # A copy through the locked buffer was refused (Windows can fail a
+        # queued copy with "invalid argument" when the system takes pages back).
+        # Finish the queued work first, so a sticky error is raised as itself
+        # rather than hidden by the retry, then continue in pageable memory,
+        # which holds the same bytes and is read back unchanged.
+        from .activation_staging import record_refusal
+        record_refusal('residual', 'to_device' if keep else 'to_host', error)
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize(self.device)
+        host = torch.empty(self.shape, dtype=self.dtype, device='cpu')
+        if keep:
+            host.copy_(self.host)
+        self.host, self.pinned = host, False
+        self.pinned_fallbacks += 1
+
     def restore(self):
         if self.closed or not self.stored:
             raise RuntimeError('No complete host residual is available')
         tick = time.perf_counter()
         # copy=True also makes CPU contract checks use independent storage.
-        tensor = self.host.to(self.device, copy=True, non_blocking=self.pinned)
+        try:
+            tensor = self.host.to(self.device, copy=True, non_blocking=self.pinned)
+        except torch.cuda.OutOfMemoryError:
+            raise
+        except RuntimeError as error:
+            if not self.pinned:
+                raise
+            self._leave_locked_pages(keep=True, error=error)
+            tensor = self.host.to(self.device, copy=True)
         self.copies['to_device'] += 1
         self.copy_wall_seconds += time.perf_counter()-tick
         return tensor
@@ -89,7 +122,7 @@ class ResidualState:
     def stats(self):
         host_bytes = self.host.numel()*self.host.element_size() if self.host is not None else 0
         return dict(host_buffer_bytes=host_bytes, pinned_host_bytes=host_bytes if self.pinned else 0,
-                    copies=dict(self.copies), blocking_copy_wall_seconds=self.copy_wall_seconds,
+                    copies=dict(self.copies), pinned_fallbacks=self.pinned_fallbacks, blocking_copy_wall_seconds=self.copy_wall_seconds,
                     timing_scope=('Locked-page copies are queued asynchronously; this is the time spent issuing them.'
                                   if self.pinned else
                                   'Blocking copy calls can include waiting for prior compute; not pure PCIe transfer time.'))

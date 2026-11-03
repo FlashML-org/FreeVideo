@@ -59,7 +59,7 @@ def release_readouts(policy):
     a 16 GiB machine failed cudaHostAlloc at the refine pass's first layer.
     """
     held = [getattr(policy, name, None) for name in ('group_readouts', 'host_outputs')]
-    for name in ('group_readouts', 'host_outputs', 'host_output_key'):
+    for name in ('group_readouts', 'host_outputs', 'host_output_key', 'host_copies'):
         if hasattr(policy, name):
             delattr(policy, name)
     if any(value is not None for value in held):
@@ -135,12 +135,14 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                                              for rows in (len(x), linear_shape[0]))
             soft, linear = policy.group_readouts
         elif cpu_outputs:
+            from .activation_staging import LockedCopies
             key = (soft_shape, linear_shape, x.dtype)
             if getattr(policy, 'host_output_key', None) != key:
                 release_readouts(policy)
                 policy.host_outputs = (torch.empty(soft_shape, dtype=x.dtype, pin_memory=True),
                                        torch.empty(linear_shape, dtype=x.dtype, pin_memory=True))
                 policy.host_output_key = key
+                policy.host_copies = LockedCopies()
             soft, linear = policy.host_outputs
         elif reuses_input(attn, x, projections):
             # Measured second-pass peak: the head groups, with x, both output planes,
@@ -201,8 +203,10 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                 soft.store(start // chunk, attended.flatten(1))
             elif taken:
                 soft.write(channels, attended.flatten(1))
+            elif cpu_outputs:
+                policy.host_copies.to_host(soft[:, channels], attended.flatten(1))
             else:
-                soft[:, channels].copy_(attended.flatten(1), non_blocking=cpu_outputs)
+                soft[:, channels].copy_(attended.flatten(1))
             del attended
             if not taken:
                 beta = torch.sigmoid(F.linear(x[video], branch.beta_proj.weight[heads]))
@@ -221,8 +225,10 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                 linear_scale.update(readout)
             if grouped_outputs:
                 linear.store(start // chunk, readout.contiguous())
+            elif cpu_outputs:
+                policy.host_copies.to_host(linear[:, linear_channels], readout)
             else:
-                linear[:, linear_channels].copy_(readout, non_blocking=cpu_outputs)
+                linear[:, linear_channels].copy_(readout)
             del raw, readout, gate, beta, text_beta
 
         # Keep the exact projection/head/window shapes. Merely widening the
@@ -293,13 +299,13 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
             out = x.new_empty((len(x), output_width))
             for row in range(0, len(x), projection_chunk):
                 rows = slice(row, row + projection_chunk)
-                part = soft[rows].to(x.device, non_blocking=True)
+                part = policy.host_copies.to_device(soft[rows], x.device)
                 scale = row_scale(soft_scale, rows) if soft_scale is not None else None
                 out[rows] = orig.to_out[1](project_with_scale(orig.to_out[0], part, scale))
                 del part
             for row in range(0, len(linear), projection_chunk):
                 rows = slice(row, row + projection_chunk)
-                part = linear[rows].to(x.device, non_blocking=True)
+                part = policy.host_copies.to_device(linear[rows], x.device)
                 scale = row_scale(linear_scale, rows) if linear_scale is not None else None
                 out[video][rows].add_(project_with_scale(attn.to_out_linear, part, scale))
                 del part

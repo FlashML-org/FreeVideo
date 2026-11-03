@@ -809,6 +809,8 @@ class Engine:
         pass_cache = dict(gpu_budget_bytes=pass_cache_budget_bytes, admitted_bytes=0,
                           requested_resident_blocks=pass_resident_blocks)
         residual_steps = []
+        from .activation_staging import refusals_mark, refusals_since
+        refusals_before = refusals_mark()
         attention_before = dict(self.attention.backend_calls) if self.attention is not None else None
         gemm_before = None
         if self.config.get('fp8_gemm'):
@@ -880,6 +882,7 @@ class Engine:
                 # weights through VAE loading. Reports own plain numbers only.
                 sampled = {'sample_seconds': time.perf_counter() - started, 'step_seconds': list(step_seconds),
                            'offload': stats, 'residual_offload_steps': residual_steps,
+                           'locked_copy_refusals': refusals_since(refusals_before),
                            'pass_cache_admission': pass_cache,
                            'compute_configuration': {key: planned.get(key) for key in
                                ('head_chunk', 'window_batch', 'ff_chunk', 'projection_chunk', 'prefetch',

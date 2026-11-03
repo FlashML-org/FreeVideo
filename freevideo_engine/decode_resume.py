@@ -20,7 +20,7 @@ DECODER_PLACEMENT = frozenset(('offload', 'prefetch', 'preload', 'pin_weights',
 COMPUTE_PARTITION = frozenset(('head_chunk', 'window_batch', 'ff_chunk', 'projection_chunk', 'head_parallelism',
     'attention_cpu_outputs', 'grouped_attention_outputs', 'fp8_ff_recompute', 'residual_offload', 'query_chunk'))
 SAMPLE_FIELDS = ('config', 'sample_seconds', 'step_seconds', 'finite_latents', 'geometry',
-    'conditioning_info', 'conditioning_shape', 'offload', 'residual_offload_steps',
+    'conditioning_info', 'conditioning_shape', 'offload', 'residual_offload_steps', 'locked_copy_refusals',
     'attention_backend_calls', 'head_execution', 'text_refinement', 'sampling_memory',
     'load_seconds', 'load_breakdown', 'load_peak_allocated_bytes', 'load_peak_reserved_bytes',
     'torch_peak_allocated_bytes', 'torch_peak_reserved_bytes', 'latent_save_seconds', 'sample_metrics_scope',
