@@ -46,6 +46,10 @@ export function menuItems(context) {
         command('v', t('Paste', '粘贴'), `${modifier}+V`, commands.canPaste()),
         command('a', t('Select all', '全选'), `${modifier}+A`, record.tracks.some(track => track.clips.length)),
     ];
+    // Only a whole preview part offers its second pass; it replaces the part in place.
+    const preview = context.where === 'part' && context.actions.secondPassTarget?.(context.state.selection);
+    if (preview && context.actions.runSecondPass) items.push({group: 'generate', label: t('Run second pass', '继续二采'), shortcut: '',
+        enabled: !context.actions.generationSending?.(), run: () => context.actions.runSecondPass(context.state.selection)});
     const value = field => typeof field === 'function' ? field(context) : field;
     for (const item of registered) if (item.where === context.where) items.push({...item,
         label: value(item.label), shortcut: value(item.shortcut) || '', enabled: item.enabled ? !!item.enabled(context) : true,

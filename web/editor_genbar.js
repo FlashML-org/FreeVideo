@@ -8,6 +8,7 @@ import {issueButton} from './issue_button.js';
 import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
+import {createPassMode} from './pass_mode.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
@@ -53,6 +54,20 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     input.dataset.fvGuide = 'editor-describe'; generate.dataset.fvGuide = 'editor-generate';
     for (const button of [generate, cancel, resume]) button.type = 'button';
     host.append(hint, note, description, generate, cancel, resume);
+    // Beside Generate, as beside the creative panel's Generate video: the panel's own two-pass choices, the same setting.
+    const passMenu = actions.passMode ? el('details', 'fv-ed-pass-options') : null;
+    // The editor routes keys itself and calls a control's onkeydown, as for the toolbar's ⋯ panel.
+    const routed = (target, type, handler) => { target.onkeydown = handler; return () => { target.onkeydown = null; }; };
+    const passControl = passMenu ? createPassMode({t, onChoose: mode => { actions.choosePass(mode); render(); }, listen: routed}) : null;
+    let stopPass = null;
+    if (passMenu) {
+        const toggle = el('summary'); toggle.setAttribute('aria-label', t('Two-pass', '二次采样')); toggle.append(el('span', 'fv-chevron'));
+        const panel = el('div', 'fv-ed-pass-menu'); panel.append(el('strong', null, t('Two-pass', '二次采样')), passControl.element);
+        passMenu.append(toggle, panel); passMenu.hidden = true; generate.after(passMenu);
+        stopPass = actions.onPass?.(() => render()) || null;
+    }
+    const closePass = event => { if (passMenu?.open && !passMenu.contains(event.target)) passMenu.open = false; };
+    document.addEventListener('pointerdown', closePass, true);
     // The line's own "check again", shown whenever nothing else is said there.
     const retryService = el('button', 'fv-ed-gen-retry', t('Generation unavailable · retry', '生成服务暂不可用 · 重试')); retryService.type = 'button';
     let service = null;
@@ -223,8 +238,20 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // A piece already made, failed or stopped is made again in place; separated music is replaced in place.
         const aimed = musical ? music.target(selection) : null;
         const made = !!aimed?.clip && aimed.clip.pending !== 'draft';
-        const verb = aimed?.replace ? t('Replace music', '替换配乐') : made ? t('Regenerate', '重新生成') : t('Generate', '生成');
+        // "Preview first" names the press after what it makes; a part already made is made again as a preview.
+        const previewing = !musical && !!actions.previewFirst?.(selection);
+        const remade = previewing && selection?.kind === 'clip' && state.record.tracks[0].clips.some(clip =>
+            (selection.ids.includes(clip.id) || selection.ids.includes(clip.link)) && clip.source);
+        const verb = aimed?.replace ? t('Replace music', '替换配乐') : made ? t('Regenerate', '重新生成')
+            : remade ? t('Regenerate preview', '重新生成预览') : previewing ? t('Generate preview', '生成预览') : t('Generate', '生成');
         generate.textContent = verb;
+        if (passMenu) {
+            const pass = actions.passMode();
+            // While a part generates, the bar shows its progress and Cancel; the choice waits for the next press.
+            passMenu.hidden = !pass || musical || generate.hidden || busy;
+            if (pass) passControl.sync(pass);
+            if (passMenu.hidden) passMenu.open = false;
+        }
         // Never disabled for a reason the press itself can explain or fix; only until the server says it can generate.
         generate.disabled = busy || !!previewSelection || !!actions.generationWaiting?.();
         resizeDescription();
@@ -329,13 +356,19 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         if (event.type === 'selection' || event.type === 'record') render();
     });
     render();
-    return {element: host, say, downloadFailure, commit,
+    // Escape arrives through the editor's popup chain: an open two-pass menu closes first.
+    function dismiss(event) {
+        if (!passMenu?.open) return false;
+        event.preventDefault(); event.stopPropagation(); passMenu.open = false; passMenu.querySelector('summary').focus();
+        return true;
+    }
+    return {element: host, say, downloadFailure, commit, dismiss,
         service(value) {
             service = value;
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

@@ -438,6 +438,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return run;
     }
     const clipChoice = clips => ({kind: 'clip', ids: clips.flatMap(clip => clip.link ? [clip.id, clip.link] : [clip.id])});
+    // A part at range.start whose first frames come from the finished clip right before it.
+    function continuesEarlier(range) {
+        const head = state.record.tracks[0].clips.find(clip => clip.start === range.start);
+        return !!head && model.continuesBefore(state.record, head.id) && state.record.tracks[0].clips.some(clip =>
+            clip.start + clip.frames === range.start && clip.source && clip.extend && clip.in + clip.frames === clip.length);
+    }
     function busySelection(selection) {
         const range = selectionRange(selection); if (!range) return false;
         if ([...sendingRanges].some(other => overlaps(other, range))) return true;
@@ -934,6 +940,56 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 clip.start + clip.frames === range.start && clip.source && clip.extend && clip.in + clip.frames === clip.length);
             return before || model.rangeParts(state.record, {...range, ...capability}).length > 1;
         },
+        // The creative panel's two-pass choices as this edit uses them: the edit's own two-pass setting decides
+        // off or on, and the panel's "Preview first" applies when it samples twice. Null without an open panel.
+        passMode() {
+            const shared = panel.passMode; if (!shared) return null;
+            const value = shared.state(), twoPass = state.record.settings?.two_pass ?? value.mode !== 'off';
+            return {...value, mode: !twoPass ? 'off' : value.mode === 'off' ? 'on' : value.mode};
+        },
+        // One choice for both places: the panel takes it, and the edit takes the sampling settings it leaves.
+        choosePass(mode) {
+            const shared = panel.passMode; if (!shared) return;
+            shared.choose(mode);
+            const now = panel.sampling?.() || {}, set = state.record.settings || {};
+            if (Object.entries(now).some(([key, value]) => set[key] !== value)) state.settle(record => model.setSampling(record, now));
+            else genbar?.update(mostRecentJob ? jobStatuses.get(mostRecentJob) ?? null : null);
+        },
+        onPass: listener => panel.passMode?.subscribe(listener) || (() => {}),
+        // A part made as a half-resolution preview: only one that stands alone, as the next part continues from
+        // this one's last frames, which the second pass changes.
+        previewFirst(selection = state.selection) {
+            if (actions.passMode()?.mode !== 'preview' || music.target(selection)) return false;
+            if ((state.record.settings?.base_steps ?? 8) !== 8) return false;
+            const run = partRun(selection), chosen = run ? clipChoice(run) : selection, range = selectionRange(chosen); if (!range) return false;
+            if (continuesEarlier(range)) return false;
+            try {
+                // The parts Generate would send, planned as it plans them.
+                const selected = selectionClips(chosen), planned = selected.length && selected.every(clip => clip.pending && !clip.source);
+                const next = planned ? state.record : model.planRange(state.record, {...range, target: 'both', maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds});
+                const ids = planned ? selected.map(clip => clip.id) : next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames
+                    && clip.pending && !['queued', 'running'].includes(clip.pending)).map(clip => clip.id);
+                return ids.length === 1 && !model.generationBefore(model.prepare(next, ids), ids).some(Boolean);
+            } catch (value) { if (value instanceof model.EditError) return false; throw value; }
+        },
+        // The chosen preview part, shown from its first frame, whose second pass can replace it in place.
+        secondPassTarget(selection = state.selection) {
+            if (selection?.kind !== 'clip' || !store.generationAvailable) return null;
+            const clips = selectionClips(selection);
+            if (clips.length !== 1) return null;
+            const clip = clips[0], mate = clip.link ? model.find(state.record, clip.link) : null;
+            // From the start of the preview: the second pass makes the same frames again, so a part cut short at its end still shows the same moment.
+            if (!clip.source || clip.pending || mate?.pending || clip.in !== 0 || clip.frames > clip.length) return null;
+            const metadata = store.sources.get(sourceKey(clip.source));
+            return metadata?.preview === true && metadata.path ? {clip, path: metadata.path} : null;
+        },
+        generationSending: () => generationBusy,
+        async secondPass(selection = state.selection) {
+            const found = actions.secondPassTarget(selection); if (!found) return;
+            const choice = clipChoice([found.clip]);
+            await actions.generate({text: found.clip.text || '', selection: choice, shown: selection === state.selection,
+                label: t('Run second pass', '继续二采'), secondPass: found.path, allowEmpty: true});
+        },
         // Pictures that guide a new part: the creative panel's media rows; a part that continues shows only its references.
         references: panel.references ? {source: panel.references, notify, size: () => capability.generationSize || generationSize(state.record),
             visible: () => store.generationAvailable && actions.supportedSelection() ? partStart() : null} : null,
@@ -953,13 +1009,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return seconds;
         },
         // texts: a description for each planned part, by the part's picture; otherwise text is every part's.
-        async generate({target = 'both', text = '', texts = null, label = t('Generate', '生成'), selection = state.selection, shown = selection === state.selection, allowEmpty = false} = {}) {
+        // secondPass: the preview video whose second pass replaces it; the engine continues that preview's own request.
+        async generate({target = 'both', text = '', texts = null, label = t('Generate', '生成'), selection = state.selection, shown = selection === state.selection, allowEmpty = false, secondPass = null} = {}) {
             if (target !== 'both' || !actions.supportedSelection(selection)) throw new model.EditError('unsupported');
             // A half of a pair left by a cut or a paste is dropped; a description over the limit is said before anything is sent.
             text = wellFormed(text);
             // Only the user's own choice to go on without a description lets an empty one through.
             if (!(allowEmpty === true && !text.trim() && store.generationAvailable && actions.needsText(selection)) && !actions.canGenerate(text, selection)) throw new model.EditError('text');
             if (characters(text) > model.RULES.maxText) throw Object.assign(new model.EditError('text_long'), {limit: model.RULES.maxText});
+            const previewing = !secondPass && actions.previewFirst(selection);
             submissionFailure = null; genbar?.update(null);
             const chosen = state.selection;
             generationBusy = true; updateTop(); updateTransport();
@@ -1009,6 +1067,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const follow = continuedSize(beforeKeys, sizes), edit = capability.generationSize || generationSize(state.record);
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
+                // A preview is one part that continues nothing; any other part samples both passes, whatever the panel shows.
+                const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && !beforeKeys.some(Boolean);
+                if (secondPass) {
+                    if (!alone) throw new model.EditError('unsupported');
+                    Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
+                } else {
+                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone;
+                    if ('refine_from' in inputs) inputs.refine_from = '';
+                }
                 if (allowEmpty === true && [text, ...Object.values(texts ?? {})].some(value => !value.trim())) allowEmptyPrompt({output: frozen.prompt}, frozen.node);
                 // Parts made at another size than the edit's have that size's limit.
                 const limit = (follow && (follow.width !== edit.width || follow.height !== edit.height)
@@ -1310,13 +1377,38 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const clip = selectedContent().find(clip => clip.versions.length);
         if (clip) try { state.apply(t('Previous version', '上一版'), record => model.restoreVersion(record, clip.id, 0)); } catch (value) { error(value, null, undefined, 'restore'); }
     }, 'fv-ed-previous');
+    // A whole preview part continues to its full-resolution video in place; any other part shows nothing here.
+    const secondPassButton = toolButton(t('Run second pass', '继续二采'), 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9',
+        () => { void runSecondPass(); }, 'fv-ed-second-pass');
+    const secondPassLabel = el('span', 'fv-ed-second-pass-label');
+    secondPassButton.classList.remove('fv-ed-icon'); secondPassButton.append(secondPassLabel); secondPassButton.hidden = true;
+    let secondPassFailed = null;
+    function updateSecondPass() {
+        const found = actions.secondPassTarget();
+        secondPassButton.hidden = !found;
+        if (!found) { secondPassFailed = null; return; }
+        if (secondPassFailed !== found.clip.id) secondPassFailed = null;
+        const words = secondPassFailed ? t('Second pass did not start · retry', '二采没有开始 · 重试') : t('Run second pass', '继续二采');
+        secondPassLabel.textContent = words; secondPassButton.setAttribute('aria-label', words); secondPassButton.title = words;
+        secondPassButton.disabled = generationBusy;
+    }
+    async function runSecondPass(selection = state.selection) {
+        const found = actions.secondPassTarget(selection);
+        if (!found || generationBusy) return;
+        secondPassFailed = null;
+        try { await actions.secondPass(selection); }
+        catch (value) { if (!disposed) { secondPassFailed = found.clip.id; error(value); } }
+        finally { if (!disposed) updateSecondPass(); }
+    }
+    actions.runSecondPass = runSecondPass;
     historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous);
     const pictureTools = createPictureTools({state, sources: store.sources, t, capabilities: () => capability, error});
     toolbar.append(historyTools, editTools, zoomHost); element.insertBefore(toolbar, tracksHost);
     const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify});
+    editTools.append(secondPassButton);
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
-    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button'});
+    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass'});
     actions.speech.ability().then(value => { if (!disposed) textTools.speech(value); }).catch(() => {});
     const audio = createAudioIntegration({state, player, t, error, adjust, library: libraryHost, store});
     stems = createStemsIntegration({state, api, queue, store, t, error, notify, toolbar, show: job => genbar?.update(job),
@@ -1365,10 +1457,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const multiple = isMultiple(state.record, clips.map(clip => clip.id));
         previous.disabled = busy || multiple || !clips.some(clip => clip.versions.length);
         previous.title = t('Previous version', '上一版');
+        updateSecondPass();
         updateZoom();
     }
     updateTransport();
-    const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); });
+    const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); updateSecondPass(); });
     let capabilitySize = `${state.record.width}x${state.record.height}`;
     // The reason, said as soon as the selected continuation follows a video that already has the most parts, once per selection.
     let hintedFor = '';
@@ -1411,6 +1504,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (pictureEdit.keyboard(event)) return true;
         if (adjust.dismiss(event)) return true;
         if (toolbarMore.dismiss(event)) return true;
+        if (genbar?.dismiss(event)) return true;
         if (menu.hidden) return false;
         event.preventDefault(); event.stopPropagation();
         if (!menu.hidden) { menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus(); }

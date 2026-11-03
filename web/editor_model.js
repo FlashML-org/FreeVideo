@@ -110,6 +110,16 @@ export function setFlag(record, key, value) {
     if (JSON.stringify(next.settings) !== JSON.stringify(record.settings)) next.keep_empty = true;
     return parse(next);
 }
+// The sampling settings a two-pass choice sets, copied from the creative panel so this edit makes its parts the same way.
+const SAMPLING_KEYS = ['two_pass', 'base_steps', 'refine_steps', 'step_cache', 'upscale_factor'];
+export function setSampling(record, values) {
+    check(object(values) && Object.entries(values).every(([key, value]) => SAMPLING_KEYS.includes(key)
+        && ['boolean', 'number', 'string'].includes(typeof value)), 'settings');
+    const next = serialize(record), settings = {...(next.settings || {}), ...values};
+    next.settings = settings;
+    if (JSON.stringify(next.settings) !== JSON.stringify(record.settings)) next.keep_empty = true;
+    return parse(next);
+}
 export function addAudioTrack(record) {
     const next = serialize(record);
     check(!next.tracks.some(track => track.id === 'a2'), 'track');

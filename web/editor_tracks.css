@@ -112,5 +112,10 @@
 .fv-editor .fv-ed-toolbar .fv-ed-stems-button[hidden]{display:none}
 .fv-editor .fv-ed-toolbar .fv-ed-stems-button .fv-ed-glyph{width:16px;height:16px;flex:none}
 @media(max-width:520px){.fv-editor .fv-ed-toolbar .fv-ed-stems-button{width:32px;padding:0}.fv-ed-stems-label{display:none}}
+.fv-editor .fv-ed-toolbar .fv-ed-second-pass{width:auto;padding:0 10px;background:var(--fv-accent);border-color:var(--fv-accent);color:var(--fv-bg);font-weight:var(--fv-semibold)}
+.fv-editor .fv-ed-toolbar .fv-ed-second-pass:not(:disabled):hover{background:var(--fv-accent-hover);border-color:var(--fv-accent-hover)}
+.fv-editor .fv-ed-toolbar .fv-ed-second-pass[hidden]{display:none}
+.fv-editor .fv-ed-toolbar .fv-ed-second-pass svg{width:16px;height:16px;flex:none}
+@media(max-width:520px){.fv-editor .fv-ed-toolbar .fv-ed-second-pass{width:32px;padding:0}.fv-ed-second-pass-label{display:none}}
 .fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:-8px}.fv-editor .fv-ed-toolbar .fv-ed-stems-group:before{display:none}.fv-ed-stems-group[hidden]{display:none}
 @media(max-width:480px){.fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:0}}

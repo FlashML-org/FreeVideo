@@ -78,6 +78,14 @@
 .fv-ed-genbar[data-mode=running]>button:not(.fv-ed-generate){order:2}
 .fv-ed-gen-note{font-size:13px;color:var(--fv-ink);flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-ed-gen-note[hidden]{display:none}
+.fv-ed-genbar .fv-ed-generate{flex:none;white-space:nowrap}
+.fv-ed-pass-options{position:relative;flex:none;margin-left:-8px}.fv-ed-pass-options[hidden]{display:none}
+.fv-ed-pass-options>summary{display:grid;place-items:center;width:32px;height:var(--fv-h);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);cursor:pointer;list-style:none}
+.fv-ed-pass-options>summary::-webkit-details-marker{display:none}
+.fv-ed-pass-options>summary:focus-visible{outline:2px solid var(--fv-accent);outline-offset:1px}
+.fv-editor .fv-ed-pass-options[open] .fv-chevron{transform:rotate(225deg)}
+.fv-ed-pass-menu{position:absolute;bottom:calc(100% + 10px);right:0;width:max-content;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 14px 45px #0006;animation:fv-preview-appear .16s ease;z-index:10}
+.fv-ed-pass-menu>strong{display:block;padding:0 2px 8px;font-size:var(--fv-micro);color:var(--fv-muted);font-weight:var(--fv-medium)}
 .fv-ed-gen-note:has(.fv-issue-button){white-space:normal;overflow:visible}
 .fv-ed-gen-note .fv-issue-button,.fv-ed-library-message .fv-issue-button{margin-left:8px}
 .fv-editor .fv-ed-gen-retry{height:auto;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}

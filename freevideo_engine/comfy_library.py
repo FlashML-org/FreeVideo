@@ -207,6 +207,23 @@ def prompt_text(output_directory, identity):
     return data.decode('utf-8').strip() if len(data) <= _PROMPT_BYTES else None
 
 
+def prompt_seed(output_directory, identity):
+    """The seed a saved video was generated with, or None (an export, an import, an old or damaged receipt)."""
+    path = _video(output_directory, identity)
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    saved = path.with_name('comfy-request.json')
+    try:
+        if saved.is_symlink() or not saved.resolve().is_relative_to(root):
+            return None
+        with os.fdopen(os.open(saved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
+            data = stream.read(4 * 1024**2 + 1)
+        state = json.loads(data) if len(data) <= 4 * 1024**2 else None
+    except (OSError, ValueError):
+        return None
+    seed = state.get('seed') if isinstance(state, dict) and state.get('status') == 'complete' else None
+    return seed if type(seed) is int and 0 <= seed < 2**64 else None
+
+
 def thumbnail(output_directory, identity):
     path = _video(output_directory, identity)
     saved = path.with_suffix('.thumbnail.jpg')
@@ -1238,7 +1255,9 @@ def register():
             text = await asyncio.to_thread(prompt_text, folder_paths.get_output_directory(), request.query.get('id'))
         except (OSError, ValueError, UnicodeDecodeError):
             raise web.HTTPNotFound(text='Prompt unavailable') from None
-        return web.json_response(dict(prompt=text), headers={'Cache-Control': 'no-store'})
+        # The seed is optional: without it, reusing the settings fills only the prompt and the size.
+        seed = await asyncio.to_thread(prompt_seed, folder_paths.get_output_directory(), request.query.get('id'))
+        return web.json_response(dict(prompt=text, **({} if seed is None else {'seed': seed})), headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/library/favorite')
     async def favorite(request):

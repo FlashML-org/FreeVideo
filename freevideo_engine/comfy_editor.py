@@ -742,6 +742,8 @@ def sources(root, keys):
                 text = _work_text(root, relative)
                 if text:
                     media['text'] = text
+            if source['kind'] in ('work', 'generated') and _is_preview(root, relative):
+                media['preview'] = True
             if source['kind'] == 'import':
                 metadata = _read_import(root, source['id'])
                 media.update(preview_width=media['width'], preview_height=media['height'])
@@ -769,6 +771,16 @@ def sources(root, keys):
             pass
         result[key] = info
     return result
+
+
+def _is_preview(root, relative):
+    """A finished first-pass preview whose second pass can be run from its saved request."""
+    try:
+        from .comfy_bridge import preview_request
+        preview_request(root, relative)
+        return True
+    except (ImportError, OSError, ValueError, TypeError):
+        return False
 
 
 def _work_text(root, relative):
