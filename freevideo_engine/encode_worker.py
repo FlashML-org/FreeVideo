@@ -568,11 +568,15 @@ def _encode(args, request, resident, trace):
             comfy.model_management.unload_all_models()
         gc.collect()
         comfy.model_management.soft_empty_cache()
-        from .paths import data_root
         from .input_cache import digest
         from .media_encoding import _latent_cache, _cached_latent, _remember_latent, make_latent_cache_key
-        cache_root = request.get('reference_latent_cache') or (data_root() / 'input-cache')
-        cache = _latent_cache(cache_root, request['base'], 'cuda')
+        # Only a request that names a cache root caches; profiling runs stay uncached.
+        cache = None
+        if request.get('reference_latent_cache'):
+            try:
+                cache = _latent_cache(request['reference_latent_cache'], request['base'], 'cuda')
+            except Exception:
+                cache = None
         conditions = [None, None]
         keys = []
         files = [keyframes['first'], keyframes['last']]
@@ -585,7 +589,7 @@ def _encode(args, request, resident, trace):
                 width=width,
                 height=height,
                 frames=1,
-                crop_mode='put_on_canvas',
+                crop_mode='put_on_canvas_first' if idx == 0 else 'put_on_canvas_last',  # stretched vs cropped
                 base=request['base'],
                 device='cuda',
                 dtype='float32',
