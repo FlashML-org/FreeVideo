@@ -162,10 +162,11 @@ class Engine:
         validate_catalog(manifest, len(model.transformer_blocks))
         # Locked buffers allocated after the weights must also fit the Windows
         # non-local budget: CPU attention readouts grow with this request's rows.
-        from .windows_gpu_memory import NONLOCAL_PIN_RESERVE, nonlocal_readout_bytes
+        from .windows_gpu_memory import NONLOCAL_PIN_RESERVE, nonlocal_readout_bytes, nonlocal_residual_bytes
         readouts = (nonlocal_readout_bytes(self.canvas, model.config.num_attention_heads * model.config.attention_head_dim)
                     if attention_cpu_outputs else 0)
-        self.nonlocal_reserve_bytes = NONLOCAL_PIN_RESERVE + readouts
+        self.nonlocal_reserve_bytes = NONLOCAL_PIN_RESERVE + readouts + (
+            nonlocal_residual_bytes(residual_host_headroom(self.canvas)) if residual_offload else 0)
         # RAM views fill during the first pass; leave what the refine pass will
         # still allocate. A 20 s request that let views take that room drove
         # physical availability to 0.01 GiB when its full-size readouts arrived.
