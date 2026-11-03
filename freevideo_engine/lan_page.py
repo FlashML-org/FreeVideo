@@ -1,9 +1,45 @@
 """Local page LAN settings, independent of the HTTP server."""
+import json
+from pathlib import Path
 import socket
 import time
 
 from . import lan_auth, lan_password
 from .launcher_settings import Store, default_language
+
+# Why the launcher could not open phone access, for the page's phone panel.
+# The launcher writes it when opening fails; turning the switch from the page clears it.
+FAILURE_FILE = 'lan-failure.json'
+REASONS = ('ports_in_use', 'comfy_on_network', 'failed')
+# An older note belongs to an earlier session; the panel then just shows the switch off.
+FAILURE_SECONDS = 600
+
+
+def note_failure(engine, reason):
+    try:
+        path = Path(engine) / 'launcher' / FAILURE_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(reason=reason if reason in REASONS else 'failed')), encoding='utf-8')
+    except OSError:
+        pass
+
+
+def forget_failure(engine):
+    try:
+        (Path(engine) / 'launcher' / FAILURE_FILE).unlink()
+    except OSError:
+        pass
+
+
+def failure(engine):
+    path = Path(engine) / 'launcher' / FAILURE_FILE
+    try:
+        if not 0 <= time.time() - path.stat().st_mtime <= FAILURE_SECONDS:
+            return ''
+        reason = json.loads(path.read_text(encoding='utf-8')).get('reason')
+    except (OSError, ValueError, AttributeError):
+        return ''
+    return reason if reason in REASONS else ''
 
 
 class LanUnavailable(RuntimeError):
@@ -35,9 +71,12 @@ def read(engine):
         from .comfy_launcher_runtime import lan_access_links
         links = lan_access_links(engine, port, password_set=password_set)
         link = links[0] if links else ''
-    return dict(available=installation is not None, enabled=enabled, starting=flag and not enabled,
+    # Listening without a network address, or the launcher's last attempt failed.
+    reason = ('no_address' if enabled and not link else '' if enabled or installation is None
+              else failure(engine))
+    return dict(available=installation is not None, enabled=enabled, starting=flag and not enabled and not reason,
                 link=link, password_set=password_set, devices=len(auth.devices(time.time())),
-                min_length=lan_password.MIN_LENGTH)
+                min_length=lan_password.MIN_LENGTH, reason=reason)
 
 
 def apply(engine, body):
@@ -68,6 +107,8 @@ def apply(engine, body):
             else:
                 lan_password.set_password(engine, body['password'])
         if 'enabled' in body:
+            # A new attempt (or turning it off) replaces the last failure.
+            forget_failure(engine)
             installation = dict(installation, lan_access=body['enabled'])
             # access.lan_enabled() checks the current top-level permission copies.
             saved['lan_access'] = body['enabled']

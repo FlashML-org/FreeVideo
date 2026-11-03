@@ -18,9 +18,36 @@ const t = (en, zh) => cn ? zh : en;
 const INSTALLED_HINT = {en: 'Already installed. To reinstall, click Detect & review first.', zh: '已装好。要重装，请先点“检测并预览”。'};
 const gib = n => Number.isFinite(n) ? (n / 2 ** 30).toFixed(1) + " GiB" : "—";
 const SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".';
-const reportable = value => !/The installation plan changed\. Detect configuration again|MODEL_MISMATCH_REPAIR:/.test(String(value || ''));
+// Setup refusals whose cause and next step are known. Repair goes where the server's sentence pointed: the launcher when it watches.
+const repairStep = text => text.includes('In the FreeVideo launcher, open Settings and click Repair.')
+    ? t('In the FreeVideo launcher, open Settings and click Repair.', '请在 FreeVideo 启动器的设置里点“修复”。')
+    : t('Click Detect & review, then Install / repair.', '请先点“检测并预览”，再点“安装／修复”。');
+const SETUP_ERRORS = [
+    [/^Choose an engine installation folder$/, () => t('Choose a FreeVideo installation folder first.', '请先选择 FreeVideo 安装目录。')],
+    [/^Use a dedicated FreeVideo folder, not the ComfyUI root or its parent$/,
+        () => t('Choose a separate folder for FreeVideo, not the ComfyUI folder or the folder that contains it.',
+            '请给 FreeVideo 单独选一个文件夹，不要用 ComfyUI 文件夹或它的上一级。')],
+    [/^Finish or cancel queued ComfyUI requests before installing$/,
+        () => t('Generations are running or queued. Install after they finish, or cancel them first.', '仍有生成正在进行或排队。请等待完成或先取消，再安装。')],
+    [/^Finish or cancel queued ComfyUI requests before calibrating$/,
+        () => t('Generations are running or queued. Run the test after they finish, or cancel them first.', '仍有生成正在进行或排队。请等待完成或先取消，再运行放置测试。')],
+    [/^Wait for setup to finish$/, () => t('Installation is still running. Try again after it finishes.', '安装仍在进行，请在完成后重试。')],
+    [/^Inspect this installation again before installing$/, () => t('Click Detect & review again, then Install / repair.', '请重新点“检测并预览”，再点“安装／修复”。')],
+    [/^Review the plan and accept its model\/toolkit licenses first$/, () => t('Tick the agreement above to enable Install / repair.', '勾选上方的同意选项后，可点击“安装／修复”。')],
+    [/^FreeVideo setup is missing\./, text => t('This folder has no finished FreeVideo installation. ', '该文件夹中没有已安装的 FreeVideo。') + repairStep(text)],
+    [/^FreeVideo setup is incomplete in /, text => t('The installation in this folder is not finished. ', '该文件夹中的安装尚未完成。') + repairStep(text)
+        + t(' Existing files are reused.', '已有文件会继续使用。')],
+    [/^FreeVideo device configuration is missing\./, text => t('This installation has not checked the GPU yet. ', '该安装尚未检查显卡。') + repairStep(text)],
+    [/^The FreeVideo installation was moved\./, text => t('This installation was moved from another folder. ', '该安装是从其他文件夹移动过来的。') + repairStep(text)],
+    [/^The FreeVideo Python environment is missing\./, text => t('This installation is missing its Python environment. ', '该安装缺少 Python 环境。') + repairStep(text)],
+];
+const setupError = text => SETUP_ERRORS.find(([pattern]) => pattern.test(text))?.[1](text);
+const reportable = value => !/The installation plan changed\. Detect configuration again|MODEL_MISMATCH_REPAIR:/.test(String(value || ''))
+    && setupError(String(value || '')) === undefined;
 const failureText = value => {
     const text = String(value || ''), matches = [...text.matchAll(/MODEL_MISMATCH_REPAIR: ([^\r\n]+)/g)];
+    const known = setupError(text);
+    if (known !== undefined) return known;
     if (!matches.length && text.includes('The installation plan changed. Detect configuration again')) {
         const files = text.includes('A file in the installation folder changed after the review');
         return files
@@ -407,7 +434,9 @@ export async function openSetup() {
         catch (error) { fail(error); }
     };
     use.onclick = async () => {
-        try { const result = await request("use", {root: root.value}); ready = Boolean(result.ready); state.textContent = result.ready ? t("Existing installation connected. Ready to generate.", "已连接现有安装，可以生成。") : result.detail; state.className = "fv-ready"; invalidate(); }
+        try { const result = await request("use", {root: root.value}); ready = Boolean(result.ready); if (result.ready) { state.textContent = t("Existing installation connected. Ready to generate.", "已连接现有安装，可以生成。"); state.className = "fv-ready"; }
+              else { fault(state, result.detail); state.className = "fv-failure"; }
+              invalidate(); }
         catch (error) { fail(error); }
     };
     cancel.onclick = async () => { try { render(await request("cancel")); poll(); } catch (error) { fail(error); } };

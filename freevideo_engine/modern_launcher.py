@@ -286,9 +286,11 @@ def create_ui(session, *, show=True):
                 'freevideo-diagnostics-' + time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '.zip',
                 'ZIP (*.zip)')
             if path:
-                if not path.lower().endswith('.zip'):
+                # The dialog asked before replacing the name it returned; a name we extend was never asked about.
+                confirmed = path.lower().endswith('.zip')
+                if not confirmed:
                     path += '.zip'
-                self.invoke(session.export_report, path)
+                self.invoke(session.export_report, path, confirmed)
 
         @Slot(str)
         def link(self, value):

@@ -465,12 +465,13 @@ ApplicationWindow {
                                       text: t("Other disks…", "其他硬盘…"); onClicked: diskDialogOpen = true }
                             FButton { objectName: "diskCleanupButton"; visible: s.failure.kind === "disk"; enabled: s.can_cleanup; text: t("Clean download cache", "清理缓存"); onClicked: { settingsTab = "general"; settingsOpen = true; backend.cleanupDownloads(false) } }
                             FButton { objectName: "changeSource"; visible: s.failure.kind === "download" || s.failure.kind === "model-source"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
+                            FButton { objectName: "changeAddress"; visible: s.failure.kind === "port-taken"; text: t("Change address", "更改地址"); onClicked: { settingsTab = "advanced"; settingsOpen = true } }
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             FButton { objectName: "copyError"; visible: !diskFailure; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && s.failure.kind !== "port-taken"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             FButton { objectName: "exportError"; visible: !diskFailure; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
@@ -481,6 +482,7 @@ ApplicationWindow {
                 }
 
                 FText {
+                    objectName: "reportStatus"
                     visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro
                     color: s.report.status === "error" ? theme.danger : theme.muted
                     text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :

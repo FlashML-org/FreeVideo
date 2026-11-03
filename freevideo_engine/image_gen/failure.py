@@ -66,6 +66,15 @@ def host_memory_shortage(error):
     return commit_exhausted(error)
 
 
+def append_other_usage(result, machine):
+    from ..other_usage import at_failure, fact, join
+    value = at_failure(result.get('error'), machine)
+    result['other_usage'] = value
+    if value and result.get('message_zh'):
+        result['message_zh'] = join(result['message_zh'], fact(value, zh=True), zh=True)
+    return result
+
+
 class FailureError(ValueError):
     """Admission rejection with the same safe status as the HTTP reply."""
     def __init__(self, status):

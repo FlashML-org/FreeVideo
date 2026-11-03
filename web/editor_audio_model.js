@@ -232,7 +232,8 @@ export function applyTrackAudio(block, blockStart, track, tracks, {rate = 48000,
 }
 // Lower during speech: a clip with duck true sits DUCK_DB lower wherever another audible clip has speech,
 // with DUCK_RAMP_SECONDS ramps just outside each stretch. freevideo_engine/editor_audio.py has the same rules.
-export const DUCK_DB = -8, DUCK_RAMP_SECONDS = .3;
+export const DUCK_DB = -8;
+export const DUCK_RAMP_SECONDS = .3;
 const changedSpeed = clip => (clip.speed ?? 1) !== 1 || !!clip.reverse;
 // spans: Map or object of 'kind:id' → [[start, end] seconds]; ranges are timeline samples [first, last).
 export function duckRanges(tracks, spans, rate = 48000, fps = 24) {

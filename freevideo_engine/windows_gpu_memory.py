@@ -117,6 +117,20 @@ def nonlocal_readout_bytes(canvas, attention_width, text_rows=1024):
     return int(1.25 * (rows + video) * attention_width * 2)
 
 
+def nonlocal_residual_bytes(headroom_bytes):
+    """Non-local room the locked residual staging buffer needs beyond the base reserve.
+
+    The base reserve was sized with the 1 GiB residual of a 72,576-row request.
+    A 1920x1088 request (147,721 rows, 2.04 GiB residual) on a 31.9 GB machine
+    pinned weights up to the base reserve, then failed with
+    cudaErrorMemoryAllocation at the first full-resolution step with non-local
+    usage at 13.9 of 15.2 GiB: the residual plus the transfer slots no longer
+    fit. Larger requests need the extra room, with half again for the
+    slots and driver allocations that grow beside it.
+    """
+    return int(1.5 * max(0, headroom_bytes - 2**30))
+
+
 def nonlocal_pin_capacity(reserve=NONLOCAL_PIN_RESERVE):
     """Bytes this process may still page-lock inside its non-local budget, or None if unreadable."""
     reader = None

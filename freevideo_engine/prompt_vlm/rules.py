@@ -170,7 +170,7 @@ def validate_output(text, value):
         section = text.split(marker + ':', 1)[1].split('\n\n', 1)[0].strip()
         if not section:
             raise InvalidOutput('empty_section', text, value)
-    for minutes, seconds in re.findall(r'\bAt (\d{2}):(\d{2}\.\d{3})', text):
+    for minutes, seconds in TIME_POINT.findall(text):
         if int(minutes) * 60 + float(seconds) >= value['seconds']:
             raise InvalidOutput('timestamp_not_before_duration', text, value)
     # Only the labels the scene itself uses: the media given, plus audio and connected media it cannot see.
@@ -351,6 +351,30 @@ def missing_lines(text, scene):
 
 DIALOGUE_RETRY = ('Your rewrite left out these spoken lines. Rewrite the whole prompt again in the same format and '
                   'include each line once, verbatim, at the moment it is spoken, as (S1) <d>[Language] ...</d>:\n')
+
+TIME_POINT = re.compile(r'\bAt (\d{2}):(\d{2}\.\d{3})')
+# A rewritten prompt that keeps time points from an earlier, longer version ("At 00:07.000" in a 5 s video)
+# is rejected; one correction turn asks for the same story fitted inside the requested length.
+TIMESTAMP_RETRY = ('Your rewrite has time points at or after the end of the %g-second video. Rewrite the whole prompt '
+                   'again in the same format with the same story fitted inside %g seconds: every "At MM:SS.mmm" time '
+                   'point must be earlier than %g seconds, so move later actions earlier or merge them. Keep every '
+                   'other detail and the required section format.\n')
+
+
+def fit_time_points(text, seconds):
+    """The same text with every "At MM:SS.mmm" scaled so the latest one falls at 90% of the video, order kept.
+
+    Used only for a rewrite that was rejected for time points at or after the end of the video and still has
+    them after the correction turn; the story and every other word are untouched.
+    """
+    points = TIME_POINT.findall(text)
+    latest = max((int(minutes) * 60 + float(second) for minutes, second in points), default=0.)
+    if latest < seconds:
+        return text
+    def scaled(match):
+        milliseconds = round((int(match.group(1)) * 60 + float(match.group(2))) * .9 * seconds / latest * 1000)
+        return 'At %02d:%06.3f' % (milliseconds // 60000, milliseconds % 60000 / 1000)
+    return TIME_POINT.sub(scaled, text)
 
 
 def user_text(value):

@@ -17,6 +17,7 @@ from . import image_policy
 from .image_stream import ResidentStack, StreamedStack
 
 GiB = 2**30
+COMMIT_FLOOR = 2 * GiB   # commit that must remain after private copies of the weights
 _DIT_FILE = 'diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors'
 _TE_FILE = 'text_encoders/qwen3vl_8b_int8_convrot.safetensors'
 _VAE_FILE = 'vae/qwen_image_2.1_vae_bf16.safetensors'
@@ -141,9 +142,15 @@ class ImageRunner:
         # An Apple GPU shares the host's memory: its layers stay views of the mapped files (mapped.py).
         self.mapped = self.device.type == 'mps'
         self.full_card = not self.mapped and self._fits_whole_model()
+        # The weights are read from read-only mappings of the files, not copied into private memory,
+        # on a Mac and on a Windows machine whose commit cannot hold the copies. Such a machine pins
+        # nothing: the commit left after the weights is what the card's own allocations are charged to.
+        low_commit = not self.mapped and self._copies_exceed_commit()
+        mapped_files = {'mapped': True} if self.mapped or low_commit else {}
+        self.low_commit = low_commit
         self.transformer = load_dit(self.pack_dir / _DIT_FILE, device=self.device if self.full_card else 'cpu',
                                     progress=lambda done, total: loading.report('dit', done, total),
-                                    **({'mapped': True} if self.mapped else {}))
+                                    **mapped_files)
         self.load_seconds['dit'] = time.monotonic() - started
         loading.complete('dit')
         started = time.monotonic()
@@ -156,7 +163,7 @@ class ImageRunner:
         processor_dir = self.pack_dir / 'processor'
         text = load_text_encoder(self.pack_dir / _TE_FILE, config_path=config_dir / 'config.json', device='cpu',
                                  progress=lambda done, total: loading.report('text', done, total),
-                                 **({'mapped': True} if self.mapped else {}))
+                                 **mapped_files)
         from transformers import Qwen3VLProcessor
         processor = Qwen3VLProcessor.from_pretrained(str(processor_dir), local_files_only=True)
         self.load_seconds['text'] = time.monotonic() - started
@@ -206,10 +213,10 @@ class ImageRunner:
         else:
             with torch.no_grad():   # LayerOffloader refuses to be built with autograd on
                 self.dit_stack = StreamedStack(stacks[0], name='dit', device=self.device,
-                                               progress=pin_progress(0))
+                                               pin=not low_commit, progress=pin_progress(0))
                 loading.report('pin', stack_bytes[0], pin_total)
                 self.te_stack = StreamedStack(stacks[1], name='text_encoder', device=self.device,
-                                              progress=pin_progress(1))
+                                              pin=not low_commit, progress=pin_progress(1))
         self.load_seconds['pin'] = time.monotonic() - started
         loading.complete('pin')
 
@@ -223,6 +230,25 @@ class ImageRunner:
         self.generator.sample_sigmas = load_sample_sigmas(self.pack_dir / _DIT_FILE)
         self.last_plan = None
         loading.finish()
+
+    def _copies_exceed_commit(self):
+        """True on Windows when private copies of the DiT and encoder would leave too little commit.
+
+        System commit is charged for every private byte: with 15.8 GB of RAM, 11.7 GB of commit free
+        and 16.5 GB of weights, the encoder's read failed with an access violation. A read-only
+        mapping costs no commit; the pages are re-read from the file when the system needs the
+        memory, and pinning (which checks live commit itself) still locks what fits.
+        """
+        from ..system import windows
+        if not windows():
+            return False
+        try:
+            from ..system import system_memory
+            commit = system_memory().get('commit_available_bytes')
+            copies = sum((self.pack_dir / name).stat().st_size for name in (_DIT_FILE, _TE_FILE, _VAE_FILE))
+        except Exception:
+            return False
+        return commit is not None and commit < copies + COMMIT_FLOOR
 
     def _lookup_on_host(self, embedding):
         device = self.device
@@ -320,7 +346,8 @@ class ImageRunner:
 
     def stats(self):
         return dict(dit=self.dit_stack.stats(), text_encoder=self.te_stack.stats(),
-                    plan=self.last_plan.to_dict() if self.last_plan else None, load_seconds=self.load_seconds)
+                    plan=self.last_plan.to_dict() if self.last_plan else None, load_seconds=self.load_seconds,
+                    low_commit_load=self.low_commit)
 
     def close(self):
         for hook in self._embed_hooks:

@@ -229,7 +229,8 @@ SEGMENT_NOTICE_TEXT = (b'SAM 2.1 Hiera small, Copyright (c) Meta Platforms, Inc.
                        b'https://github.com/facebookresearch/sam2\n')
 MUSIC_NOTICE_TEXT = (b'ACE-Step 1.5, Copyright (c) 2026 ACEStep. Licensed under the MIT License; see '
                      b'freevideo_engine/licenses/ACE-Step-MIT.txt.\nhttps://github.com/ace-step/ACE-Step-1.5\n'
-                     b'Qwen3-Embedding-0.6B, Copyright (c) Alibaba Cloud. Licensed under Apache-2.0.\n'
+                     b'Qwen3-Embedding-0.6B, Copyright (c) Alibaba Cloud. Licensed under Apache-2.0; see '
+                     b'freevideo_engine/licenses/Qwen3-Embedding-Apache-2.0.txt.\nhttps://huggingface.co/Qwen/Qwen3-Embedding-0.6B\n'
                      b'Silero VAD, Copyright (c) 2020-present Silero Team. Licensed under the MIT License; see '
                      b'freevideo_engine/licenses/Silero-VAD-MIT.txt.\nhttps://github.com/snakers4/silero-vad\n')
 NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
@@ -471,6 +472,7 @@ def verify(root=None, progress=None, check=None, *, group='image'):
 
 def _verify(folder, root, progress, check, full=False, *, group='image'):
     ledger = _read(folder, LEDGER)
+    snapshot = json.dumps(ledger, sort_keys=True)
     todo = []
     total = sum(r['bytes'] for r in rows(group=group))
     done = 0
@@ -494,7 +496,8 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
                 model_repair.record(folder, path, row, before)
             todo.append(row)
         done += row['bytes']
-    save(_path(folder, LEDGER), ledger)
+    if json.dumps(ledger, sort_keys=True) != snapshot or not _path(folder, LEDGER).is_file():
+        save(_path(folder, LEDGER), ledger)
     return ledger, todo
 
 
@@ -536,6 +539,8 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             details.update(verification='mismatch', method='sha256')
         if diagnostic:
             diagnostic(dict(phase='diagnostic', diagnostic=details))
+            if value.get('action') == 'verifying':
+                diagnostic(dict(phase='verify'))  # A finished file is being hashed: say so, not "downloading".
         if prior_event:
             prior_event(value)
     plan['event_callback'] = event

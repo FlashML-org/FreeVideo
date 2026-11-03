@@ -73,9 +73,12 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         const current = () => !disposed && media._editorRunning && media._editorPlay === attempt && media.dataset.source === attempt.url;
         // A rejected play() is usually an interruption (a seek or load in flight), so the clip
         // holds off for a moment and then tries again; only a source change or stop resets it sooner.
-        const rejected = () => {
+        // A refused start or an unplayable file never succeeds by asking again, nor does a run of refusals.
+        const rejected = reason => {
             if (!current()) return;
             media._editorPlay = null; media._editorPlayFailed = true;
+            if (reason?.name === 'NotAllowedError') { media._editorPlayStuck = 'blocked'; return; }
+            if (reason?.name === 'NotSupportedError' || (media._editorPlayTries = (media._editorPlayTries || 0) + 1) > 25) { media._editorPlayStuck = 'failed'; return; }
             setTimeout(() => {
                 if (disposed || media.dataset.source !== attempt.url) return;
                 media._editorPlayFailed = false; startMedia(media);
@@ -84,16 +87,17 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         try {
             Promise.resolve(media.play()).then(() => {
                 if (!current()) { if (disposed || !media._editorRunning) media.pause(); return; }
-                media._editorPlay = null;
+                media._editorPlay = null; media._editorPlayTries = 0;
             }, rejected);
-        } catch { rejected(); }
+        } catch (reason) { rejected(reason); }
     }
+    const freshStart = media => { media._editorPlayFailed = false; media._editorPlayTries = 0; media._editorPlayStuck = null; };
     function seekMedia(media, url, seconds, running, gain = 1, force = forcePosition) {
         media.playbackRate *= Math.max(1, playback.rate); if (media.tagName === 'AUDIO') media.muted ||= playback.rate < 0;
         running = running && playback.rate > 0;
         const changed = media.dataset.source !== url;
-        if (changed) { stopMedia(media); media.dataset.source = url; media.src = url; media._editorPlayFailed = false; media.load(); }
-        if (running && !media._editorRunning) media._editorPlayFailed = false;
+        if (changed) { stopMedia(media); media.dataset.source = url; media.src = url; freshStart(media); media.load(); }
+        if (running && !media._editorRunning) freshStart(media);
         media._editorTime = Math.max(0, seconds); media._editorRunning = running;
         volume(media, gain);
         const drift = Math.abs(media.currentTime - media._editorTime);
@@ -381,11 +385,18 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             return media.ended && position < clip.start + clip.frames - .01 ? null : position;
         }
         // A native decoder buffering at a new entry keeps its requested frame.
-        // Failed or missing media continues through the ordinary fallback.
+        // Missing media continues through the ordinary fallback; failed media has already stopped playback.
         return original.some(usable) ? state.playhead : null;
     }
     function tick(now) {
         if (!playing || disposed) return;
+        // Picture or sound this spot needs cannot play: stop here rather than let time run over black or silence.
+        // A refused start stops quietly; pressing Play again is the gesture the browser asks for.
+        const broken = [...videos, ...audio].find(media => media._editorRunning && (media.error || media._editorPlayStuck));
+        if (broken) {
+            const reason = broken.error ? 'media_' + broken.error.code : broken._editorPlayStuck;
+            pause(); if (reason !== 'blocked') error({code: 'playback', reason}); return;
+        }
         const emitted = mediaFrame();
         if (emitted !== null && Number.isFinite(emitted)) {
             clockStart = now; frameStart = Math.max(state.playhead, Math.floor(emitted + .0001)); playback.reset(clockStart, frameStart);

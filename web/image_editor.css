@@ -115,6 +115,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-generation[data-failed=true]>.fv-ie-gen-note{grid-column:1/-1;grid-row:2;max-width:none}
 .fv-ie-generation[data-failed=true]>.fv-ie-button{grid-row:1}
 .fv-ie-gen-note>.fv-result-links{display:grid;gap:8px}
+.fv-ie-generation>.fv-other-usage{grid-column:1/-1;font-size:var(--fv-micro);color:var(--fv-muted);line-height:1.5}
 .fv-ie-gen-note .fv-image-failure-reason{color:var(--fv-danger)}
 .fv-ie-gen-note>.fv-result-links>.fv-actions{justify-content:flex-start}
 /* Same accent ramp and easing as the shared generation progress meters. */

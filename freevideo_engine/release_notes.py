@@ -22,6 +22,29 @@ def _text(value, limit):
             and not any(ord(c) < 32 for c in value))
 
 
+def problems(value):
+    """Why a notes block is rejected, naming the language and item; [] when it is usable."""
+    if not isinstance(value, dict) or value.get('schema') != 1:
+        return ['schema must be 1']
+    found = []
+    for language in ('en', 'zh'):
+        row = value.get(language)
+        if not isinstance(row, dict):
+            found.append('%s: missing' % language)
+            continue
+        if not _text(row.get('summary'), 400):
+            found.append('%s: summary is empty or over 400 characters' % language)
+        changes = row.get('changes')
+        if not isinstance(changes, list) or not 1 <= len(changes) <= 12:
+            found.append('%s: needs 1-12 changes, has %s' % (language, len(changes) if isinstance(changes, list) else 'none'))
+            continue
+        found += ['%s: change %d is empty, over 600 characters or has a control character' % (language, number)
+                  for number, item in enumerate(changes, 1) if not _text(item, 600)]
+    if not found and not notes(value):
+        found.append('total is over %d bytes' % MAX_NOTES_BYTES)
+    return found
+
+
 def notes(value):
     """Ignore malformed optional metadata so legacy/update checks still work."""
     if not isinstance(value, dict) or value.get('schema') != 1:
@@ -112,7 +135,9 @@ def catalog(package=None):
     value = json.loads((package / 'release_notes.json').read_text(encoding='utf-8'))
     version, release = product_version(value.get('product_version')), notes(value)
     if not version or not release:
-        raise ValueError('Release notes need a product version and complete English/Chinese text')
+        raise ValueError('Release notes need a product version and complete English/Chinese text'
+                         + ('' if version else ' (product_version is missing or invalid)')
+                         + ''.join('; ' + why for why in problems(value)))
     earlier = history(value.get('history'), before=version)
     if len(earlier) != len(value.get('history') or []):
         raise ValueError('Every earlier version in release_notes.json needs complete English/Chinese text')

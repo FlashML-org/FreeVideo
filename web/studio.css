@@ -117,6 +117,7 @@
 .fv-studio .fv-stats[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fv-studio .fv-result-links{animation:fv-panel-enter .35s ease;display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap}
 .fv-studio .fv-runbar{position:sticky;bottom:0;padding:16px 0 22px;background:linear-gradient(transparent,var(--fv-bg) 12%);z-index:2}
+.fv-studio .fv-runbar>.fv-other-usage{margin-bottom:8px}
 .fv-studio .fv-runbar .fv-primary{width:100%;min-height:var(--fv-h-lg);font-size:14px}
 .fv-studio .fv-runrow{display:flex;gap:6px;align-items:stretch}
 .fv-studio .fv-runrow>.fv-primary{flex:1;min-width:0}

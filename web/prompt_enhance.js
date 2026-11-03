@@ -78,6 +78,9 @@ export function promptPrestart(api, nodeId, enabled, alive = () => true) {
     }};
 }
 
+// The longest prompt the rewrite service accepts (freevideo_engine/prompt_vlm/rules.py).
+const PROMPT_LIMIT = 12000;
+
 // An empty box is never rewritten, the untouched starter prompt included:
 // enhancement waits for the user's own scene.
 // `prepare` turns the user's text into what the model reads (character mentions written out with their pictures);
@@ -161,6 +164,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     // Available RAM the model needs; the server knows the usual case for this card.
     let ramBytes = 11 * 2 ** 30;
     const gib = value => String(Math.round(value / 2 ** 30));
+    // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
+    const lengthOf = (error, english) => {
+        const number = error.characters.toLocaleString('en-US');
+        return english ? `The prompt${error.expanded ? ' and character descriptions' : ''} ha${error.expanded ? 've' : 's'} ${number} characters`
+            : `提示词${error.expanded ? '连同角色描述' : ''}共 ${number} 字符`;
+    };
     // Unknown codes keep the server's own reason, without paths, so the user can quote it.
     const reasonOf = error => String(error?.message || '').replace(/[A-Za-z]:[\\/][^\s'"]*|\/[^\s'"]+\/[^\s'"]*/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
     // A dropped request names a browser extension only when the error carries evidence of one.
@@ -181,12 +190,14 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         audio_media: t('Enhancement cannot read audio. Add images or videos in Media, or use the original.', '增强读不到音频，请在素材中添加图片或视频，或使用原文。'),
         unreadable_video: t('Could not read a frame from this video. Replace it with another video or an image, or use the original.', '读不出这个视频的画面，请换一个视频或图片，或使用原文。'),
         too_many_images: t('Use up to 8 reference images for enhancement.', '增强暂支持最多 8 张参考图。'),
-        invalid_prompt: t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
+        invalid_prompt: error?.characters
+            ? t(`${lengthOf(error, true)}; enhancement supports up to 12,000. Shorten it or use the original.`, `${lengthOf(error, false)}，增强最多支持 12,000 字符，请精简或使用原文。`)
+            : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: t('Not enough memory to rewrite. Close other GPU apps or use the original.', '改写时内存不足，请关闭其他显卡程序或使用原文。'),
         timeout: t('Rewriting took too long. Retry or use the original.', '改写超时，请重试或使用原文。'),
-        stale: t('The prompt or references changed. Rewrite again for the new scene.', '原文或素材已改变，请按新内容重新改写。'),
+        stale: t('The prompt or references changed. Rewrite again to use the current scene.', '原文或素材已更改，可按当前内容重新改写。'),
         cancelled: t('Cancelled. Your original prompt is retained.', '已取消，原文已保留。'),
         worker_cleanup_failed: t('The rewrite process could not close. Restart FreeVideo before generating.', '改写进程未能退出，请重启 FreeVideo 后再生成。'),
     }[error?.message] || t(`Could not enhance the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Retry or switch enhancement off to use the original.`,
@@ -199,7 +210,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         download_failed: t('The optional model download paused. Retry to resume.', '可选模型下载已暂停，重试可继续下载。'),
         disk_space: t('Not enough disk space for the optional model.', '磁盘空间不足，无法安装可选模型。'),
         ram_space: t(`The rewrite model needs about ${gib(error?.ramBytes || ramBytes)} GiB of available RAM to load.`, `改写模型加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存。`),
-        invalid_prompt: t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
+        invalid_prompt: error?.characters
+            ? t(`${lengthOf(error, true)}; rewriting supports up to 12,000. Shorten it before rewriting again.`, `${lengthOf(error, false)}，改写最多支持 12,000 字符，精简后可再改写。`)
+            : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete.', '改写结果不完整。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: t('Not enough memory to rewrite. Close other GPU apps before rewriting again.', '改写时内存不足，关闭其他显卡程序后可再改写。'),
@@ -361,6 +374,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             if (disposed || cancelling) throw new Error('cancelled');
             versions.value.useOriginal = false;
             const scene = context(), key = versions.key(scene), original = versions.value.original, edits = versions.value.edits;
+            // The server counts what it receives, which includes the character descriptions the mentions are written out as.
+            const text = prepare(original), characters = [...text].length;
+            if (characters > PROMPT_LIMIT) throw Object.assign(new Error('invalid_prompt'), {characters, expanded: text !== original});
             const info = await readModel();
             if (disposed || cancelling) throw new Error('cancelled');
             if (!await installModel(info)) {
@@ -368,7 +384,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 versions.select('original'); apply();
                 throw new Error('cancelled');
             }
-            const result = await poll('rewrite', {text: prepare(original), ...scene});
+            const result = await poll('rewrite', {text, ...scene});
             if (disposed || cancelling) throw new Error('cancelled');
             const restored = restore(result.text);
             if (edits !== versions.value.edits || !versions.accept(key, context(), display(restored), restored)) throw new Error('stale');
@@ -389,9 +405,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     redo.onclick = () => enhance().catch(() => {});
     show(''); save(false); render();
     function useOriginal(error) {
-        console.warn('FreeVideo prompt rewrite failed; using the original prompt.', error?.message);
+        // A successful rewrite discarded after an edit is a draft notice, not a failure.
+        const stale = error?.message === 'stale';
+        if (!stale) console.warn('FreeVideo prompt rewrite failed; using the original prompt.', error?.message);
         versions.value.selected = 'original'; apply();
-        show(t(`Generated with the original prompt. ${fallbackText(error)}`, `已用原文生成。${fallbackText(error)}`), 'note');
+        show(t(`Generated with the original prompt. ${stale ? errorText(error) : fallbackText(error)}`, `已用原文生成。${stale ? errorText(error) : fallbackText(error)}`), 'note');
     }
     return {element, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);

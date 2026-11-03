@@ -40,8 +40,20 @@ export function createLanAccess(t, api) {
     const error = el('p', 'fv-lan-error', t('Please try again.', '请重试。')); error.hidden = true; error.setAttribute('role', 'status');
     content.append(qr, el('p', 'fv-lan-scan', t('Connect to the same Wi-Fi, then scan', '手机连同一个 Wi-Fi 后扫码')), copy, passwordRow, form);
     const tip = el('span', 'fv-lan-tip', label); tip.setAttribute('role', 'tooltip'); tip.hidden = true;
-    panel.append(head, starting, content, error); element.append(trigger, panel, tip);
-    let state = {enabled: false, link: '', password_set: false}, seen = false, disposed = false, writing = false, desired = null, reading = false, timer = null, copied = null, drawn = '';
+    // Why phone access is not open: the launcher's reason, or no link after openWait.
+    const problem = el('div', 'fv-lan-problem'), problemText = el('p', 'fv-lan-reason'), retry = button('fv-lan-retry', t('Try again', '重试'), () => open());
+    problem.append(problemText, retry); problem.hidden = true; problemText.setAttribute('role', 'status');
+    const reasons = {
+        ports_in_use: t('The ports for phone access are in use or reserved by the system.', '手机连接所需的端口已被占用或被系统保留。'),
+        comfy_on_network: t('This ComfyUI is already open to the network. Restart it on this computer only, then try again.', 'ComfyUI 已直接对网络开放。请改为仅在本机打开后重试。'),
+        no_address: t('No LAN address found. Connect to Wi-Fi or a wired network first.', '未找到局域网地址，请先连接 Wi-Fi 或有线网络。'),
+        failed: t('Phone access could not be opened.', '手机连接无法打开。'),
+        late: t('Phone access has not opened yet. Make sure the FreeVideo launcher is running.', '手机连接尚未打开。请确认 FreeVideo 启动器正在运行。'),
+        unavailable: t('Phone access needs FreeVideo started from its launcher on this computer.', '手机连接需要通过本机的 FreeVideo 启动器启动。'),
+    };
+    const openWait = 30000;
+    panel.append(head, starting, problem, content, error); element.append(trigger, panel, tip);
+    let state = {enabled: false, link: '', password_set: false}, seen = false, disposed = false, writing = false, desired = null, reading = false, timer = null, copied = null, drawn = '', since = 0;
     try { seen = localStorage.getItem(seenKey) === '1'; } catch {}
     const windows = /Win/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
     function fail() { error.hidden = false; }
@@ -51,9 +63,14 @@ export function createLanAccess(t, api) {
         panel.style.left = `${Math.max(8, Math.min(box.right - 264, window.innerWidth - 272))}px`;
     }
     function render() {
-        const on = desired ?? state.enabled, pending = on && (!state.enabled || !state.link);
-        toggleButton.setAttribute('aria-checked', String(!!on)); toggleButton.disabled = writing || desired != null;
-        content.hidden = !on || pending; starting.hidden = !pending;
+        // No launcher installation: the switch cannot work from this page, so say why instead of "Please try again".
+        const unavailable = state.available === false, reason = unavailable ? 'unavailable' : reasons[state.reason] ? state.reason : '', on = desired ?? (state.enabled || state.starting);
+        const linked = !!(state.enabled && state.link), waiting = on && !linked && !reason;
+        if (!waiting) since = 0; else if (!since) since = Date.now();
+        const late = waiting && Date.now() - since >= openWait, pending = waiting && !late, shown = reason || (late ? 'late' : '');
+        toggleButton.setAttribute('aria-checked', String(!!on)); toggleButton.disabled = writing || desired != null || unavailable;
+        content.hidden = !on || !linked; starting.hidden = !pending;
+        problem.hidden = !shown; problemText.textContent = shown ? reasons[shown] : ''; retry.disabled = writing; retry.hidden = unavailable;
         starting.replaceChildren();
         if (pending && windows) {
             if (t('en', 'zh') === 'zh') { starting.append(document.createTextNode('Windows 会弹出确认框，'), el('br'), el('span', '', '请勾选“专用网络”，再点“允许访问”。')); }
@@ -61,7 +78,7 @@ export function createLanAccess(t, api) {
         } else if (pending) starting.textContent = t('Opening…', '正在打开…');
         passwordState.textContent = state.password_set ? t('Password: on', '密码：已设置') : t('Password: not set', '密码：未设置');
         set.textContent = state.password_set ? t('Change', '修改') : t('Set', '设置');
-        if (on && !pending && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(); } }
+        if (!content.hidden && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(); } }
         position();
     }
     async function read() {
@@ -69,7 +86,7 @@ export function createLanAccess(t, api) {
         try {
             const response = await agentGet(api, '/freevideo/lan', {signal: AbortSignal.timeout(10000)});
             if (!response.ok) throw new Error(); const value = await response.json(); if (disposed || writing) return;
-            state = value; if (desired === state.enabled && (!desired || state.link)) desired = null;
+            state = value; if (state.reason || desired === state.enabled && (!desired || state.link)) desired = null;
             error.hidden = true; render();
         } catch { if (!disposed) fail(); }
         finally { reading = false; if (!disposed && !panel.hidden) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
@@ -88,13 +105,16 @@ export function createLanAccess(t, api) {
     async function write(body) {
         writing = true; error.hidden = true; render();
         try {
-            const response = await agentPost(api, '/freevideo/lan', body); if (!response.ok) throw new Error();
+            const response = await agentPost(api, '/freevideo/lan', body);
+            if (response.status === 409 && (await response.json().catch(() => null))?.error?.code === 'lan_unavailable') { if (!disposed) state = {...state, available: false}; return false; }
+            if (!response.ok) throw new Error();
             const value = await response.json(); if (disposed) return false;
             if (typeof value.enabled === 'boolean') state = {...state, ...value}; return true;
         } catch { if (!disposed) fail(); return false; }
         finally { writing = false; if (!disposed) render(); }
     }
-    async function changeEnabled() { desired = !state.enabled; if (!await write({enabled: desired})) desired = null; render(); read(); }
+    async function changeEnabled() { await open(!(state.enabled || state.starting)); }
+    async function open(enabled = true) { since = 0; desired = enabled; if (!await write({enabled})) desired = null; render(); read(); }
     form.onsubmit = async event => { event.preventDefault(); if (save.disabled || writing) return; save.disabled = true; if (await write({password: password.value})) { password.value = ''; form.hidden = true; set.focus(); read(); } else password.oninput(); };
     function observe(value) { if (!seen && longGeneration(value)) dot.hidden = false; }
     const opened = () => { seen = true; dot.hidden = true; };

@@ -12,6 +12,7 @@ from ..image_gen.loras import ERRORS as LORA_ERRORS, MESSAGE_EN as LORA_MESSAGE_
 REQUEST_ID = ContextVar('agent_request_id', default=None)
 # The work session a token request belongs to (sessions.py); jobs and productions record it.
 SESSION = ContextVar('agent_session', default=None)
+_UNREAD_USAGE = object()
 # The operation digest a confirmation approves: method, route, path values and body without ref.
 CONFIRM = ContextVar('agent_confirm', default=None)
 # code: HTTP status, retryable, public message, concrete recovery action
@@ -128,6 +129,8 @@ ERRORS.update({
 
 # Static bilingual image reasons; backend exception strings never enter the API.
 IMAGE_REASONS = {
+    'small_memory': ('This Mac has less than 16 GB of memory and cannot generate pictures.',
+                     '这台 Mac 的内存不足 16 GB，无法生成图片。'),
     'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
                   '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'),
     'busy_video': ('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'),
@@ -164,6 +167,7 @@ def image_failure(code, report_id=None):
 # Recovery is a function of the committed task and phase, not just an error code.
 IMAGE_ERRORS = {
     **LORA_MESSAGE_EN,
+    'small_memory': IMAGE_REASONS['small_memory'][0],
     'invalid_request': 'The picture request contains invalid fields.',
     'invalid_prompt': 'The picture prompt must contain text and be at most 2000 characters.',
     'invalid_dimensions': 'Picture width and height must be integers from 256 to 2048.',
@@ -413,7 +417,26 @@ def failure_reason_en(error):
 
 
 def reasons(error):
-    return dict(error_zh=failure_reason(error), error_en=failure_reason_en(error))
+    from ..other_usage import fact, join
+    result = dict(error_zh=failure_reason(error), error_en=failure_reason_en(error))
+    for key, zh in (('error_zh', True), ('error_en', False)):
+        suffix = fact(error.get('other_usage'), zh=zh)
+        if suffix and suffix not in result[key]:
+            result[key] = join(result[key], suffix, zh=zh)
+    return result
+
+
+def capture_other_usage(error):
+    from ..other_usage import at_failure, fact, join, MEMORY_ERRORS
+    if error and error.get('code') in MEMORY_ERRORS and 'other_usage' not in error:
+        error = dict(error, other_usage=at_failure(error['code']))
+    if error and error.get('other_usage') and error.get('reason'):
+        error = dict(error, reason=dict(error['reason']))
+        for lang in ('en', 'zh'):
+            suffix = fact(error['other_usage'], zh=lang == 'zh')
+            if suffix and suffix not in error['reason'].get(lang, ''):
+                error['reason'][lang] = join(error['reason'].get(lang, ''), suffix, zh=lang == 'zh')
+    return error
 
 
 def with_reason(error):
@@ -422,7 +445,7 @@ def with_reason(error):
 
 def build(code, *, details=None, request=None, validation=False, message=None, next_action=None,
           action_required=True, retry_after_seconds=None, owner=None, kind=None, stage='request', resumable=True,
-          report_id=None, memory=None):
+          report_id=None, memory=None, other_usage=_UNREAD_USAGE):
     code = code if code in ERRORS else 'internal_error'
     _, retryable, default_message, _ = ERRORS[code]
     action = recovery(code, kind=kind, stage=stage, resumable=resumable)
@@ -438,6 +461,9 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
         result.update(image_failure(code, report_id))
         if code == 'no_memory' and memory == 'host':
             result['memory'] = 'host'
+    if other_usage is not _UNREAD_USAGE:
+        result['other_usage'] = other_usage
+    result = capture_other_usage(result)
     if action_required:
         result['next'] = next_action if validation and next_action else action
     if code == 'busy':

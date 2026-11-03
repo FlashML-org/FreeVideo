@@ -29,6 +29,7 @@ def combine(first, second, upscale, sampling_plan):
         result[key] = ({name: sum(row.get(name, 0) for row in rows)
                         for name in set().union(*(row.keys() for row in rows))} if rows else None)
     result['residual_offload_steps'] = list(first.get('residual_offload_steps', [])) + list(second.get('residual_offload_steps', []))
+    result['locked_copy_refusals'] = list(first.get('locked_copy_refusals', [])) + list(second.get('locked_copy_refusals', []))
     if first.get('head_execution') and second.get('head_execution'):
         result['head_execution'] = dict(second['head_execution'])
         for name in ('parallel_head_calls', 'parallel_head_warmups'):

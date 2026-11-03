@@ -6,6 +6,11 @@ const TIP_KEY = 'freevideo.report-tip';
 
 const gb = bytes => Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 2 ** 30) : null;
 
+// A 404 means the server no longer keeps this run's report (FreeVideo restarted, or many runs followed):
+// asking again cannot bring it back, so the button says so and stays off, with nothing to report.
+export const REPORT_GONE = ['Report expired', '报告已过期'];
+export const reportFetchError = response => Object.assign(new Error('Report unavailable'), {gone: response?.status === 404});
+
 // The issue form, prefilled from the redacted report. The report carries no
 // prompt, reference or video, so neither does the address.
 export function reportIssueURL(report, productVersion = null) {
@@ -225,7 +230,10 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         if (send.disabled) return;
         send.disabled = true; sendText.textContent = t('Preparing…', '正在整理…');
         try { const address = await submit(); closeForGood(); sent(address); }
-        catch { send.disabled = false; sendText.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试'); }
+        catch (error) {
+            send.disabled = Boolean(error?.gone);
+            sendText.textContent = error?.gone ? t(...REPORT_GONE) : t('Report unavailable · retry', '报告暂不可用 · 重试');
+        }
     };
     row.append(send);
     text.append(title, lead, note);

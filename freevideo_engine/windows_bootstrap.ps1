@@ -64,6 +64,16 @@ function Invoke-FreeVideoBootstrapCommand {
     }
 }
 
+function Get-FreeVideoFailureReason {
+    param([string]$Output)
+    # The last two lines of a child's output on one short line, so the console and
+    # the setup report carry what the tool said, not only its exit code.
+    $lines = @($Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Last 2)
+    $reason = $lines -join ' | '
+    if ($reason.Length -gt 400) { $reason = $reason.Substring(0, 400) }
+    return $reason
+}
+
 function Test-FreeVideoSlowDownloadFailure {
     param([string]$Detail)
     # Keep the patient-round gate aligned with network.slow_download_failure.

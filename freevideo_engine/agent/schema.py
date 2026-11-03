@@ -1538,6 +1538,9 @@ def openapi():
                            'description': 'Image diagnostic report ID, or null when no report exists.'},
                 request_id=string(), docs=string(), retry_after_seconds=number(0), card={'type': 'object'}, job=JOB,
                 project={'type': 'object'}, current_revision=number(1, integer=True),
+                other_usage=nullable(obj(dict(vram_gib=number(0), ram_gib=number(0),
+                    kinds={'type': 'array', 'items': enum(('gpu', 'ram'))}, signature=string()),
+                    ('vram_gib', 'ram_gib', 'kinds', 'signature'))),
                 error_zh=string(), error_en=string()),
                 ('code', 'message', 'details', 'retryable', 'request_id', 'docs'))}))
 

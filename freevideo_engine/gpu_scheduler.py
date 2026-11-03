@@ -129,7 +129,12 @@ class Scheduler:
                     if self._running:
                         break
                 elif not self._ledger.try_reserve(task.id, task.envelope):
-                    continue
+                    if self._running or binding is not None:
+                        continue
+                    # Alone on an idle host the loose whole-task envelope may exceed
+                    # every byte the machine has. The task then runs exclusively, as on
+                    # a single card, and its own planner admits or refuses it. A retry keeps waiting.
+                    task = replace(task, envelope=None)
                 self._running[task.id] = (task, device)
                 self._bindings[task.id] = device.uuid
                 del self._pending[task.id]

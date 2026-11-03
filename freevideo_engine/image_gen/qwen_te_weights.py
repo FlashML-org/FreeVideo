@@ -20,6 +20,16 @@ from .load_progress import TensorProgress
 _CONVROT = {"format": "int8_tensorwise", "convrot": True, "convrot_groupsize": 256}
 
 
+def _open(path):
+    """The encoder file, opened like the DiT and VAE (streamed_weights._open_safetensors).
+
+    Windows charges a copy-on-write mapping of a whole file to system commit, 9.35 GB for this
+    one, however little of it is read; the pread backend reads only the requested tensors.
+    """
+    from ..system import windows
+    return safe_open(str(path), framework="pt", device="cpu", **({"backend": "pread"} if windows() else {}))
+
+
 def _quant_metadata(st, name):
     value = st.get_tensor(name + ".comfy_quant")
     if value.dtype != torch.uint8 or value.ndim != 1:
@@ -168,6 +178,7 @@ def load_text_encoder(path, *, config=None, config_path=None, device="cpu", dtyp
     ``load_vision(device='cpu')`` method installs only BF16 visual tensors and
     returns that module, allowing the caller's placement policy to own moves.
     CPU supports loading/inspection; Int8Linear execution requires CUDA.
+    ``mapped`` leaves tensors stored as they are on disk as views of a read-only mapping of the file.
     ``progress(done_bytes, total_bytes)`` counts language source bytes, including
     vocabulary chunks, and excludes the deferred vision tensors and logits head.
     """
@@ -194,7 +205,7 @@ def load_text_encoder(path, *, config=None, config_path=None, device="cpu", dtyp
     vision_type = type(model.model.visual)
     model.model.visual = None
     model.lm_head = torch.nn.Identity()
-    with safe_open(str(path), framework="pt", device="cpu") as st:
+    with _open(path) as st:
         reads = (TensorProgress(st, progress, (key for key in st.keys()
                  if not key.startswith(("model.visual.", "lm_head.")))) if progress is not None else None)
         if mapped:   # CPU only: tensors stored as they are on disk stay views of the mapped file
@@ -212,7 +223,7 @@ def load_text_encoder(path, *, config=None, config_path=None, device="cpu", dtyp
             return owner.model.visual
         with init_empty_weights():
             visual = vision_type(config.vision_config)
-        with safe_open(str(path), framework="pt", device="cpu") as st:
+        with _open(path) as st:
             visual_keys = [key for key in st.keys() if key.startswith("model.visual.")]
             for key in sorted(visual_keys):
                 value = st.get_tensor(key)

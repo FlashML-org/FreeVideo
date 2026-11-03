@@ -176,7 +176,13 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
         const id = chain.id, version = epoch;
         poller = createPoller(async () => (await json(chainRoute(id)))?.chain || null,
             value => version === epoch && !disposed ? deliver(value, fresh) : false,
-            {interval: pollMs, clock});
+            // The engine no longer has this chain: stop asking and show it stopped, so Continue is offered.
+            {interval: pollMs, clock, onError: error => {
+                if (error?.status !== 404 || version !== epoch || disposed || chain?.id !== id) return;
+                poller?.dispose();
+                deliver({...chain, state: 'interrupted', joining: false, output_state: chain.output_state === 'joining' ? null : chain.output_state,
+                    blocks: (chain.blocks || []).map(block => ['pending', 'queued', 'running'].includes(block.state) ? {...block, state: 'interrupted'} : block)});
+            }});
     }
     function adopt(value, metadata = null) {
         if (chain?.id !== value.id) { epoch++; previous = {}; lastMessage = {}; delivered = errorShown = null; corrected = false; etaAt = 0; lastIndex = -1; }

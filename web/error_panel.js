@@ -1,4 +1,5 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
+import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {repairAction} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
@@ -632,10 +633,19 @@ export function createErrorPanel(t, route = null) {
         }
     };
     disclosure.append(summary, detailLocation, detailCause, details, copyInside, privacyInside);
-    head.append(title, actions); element.append(head, explanation, location, cause, action, disclosure, privacy, downloadStatus);
+    const occupancy = document.createElement('p'); occupancy.className = 'fv-muted fv-other-usage-failure'; occupancy.hidden = true;
+    head.append(title, actions); element.append(head, explanation, location, cause, action, occupancy, disclosure, privacy, downloadStatus);
     return {element, show(value, popup = true, context = {}) {
         const report = createErrorReport(value, context); currentReport = report;
         const {advice, generated} = adviceFor(report, t, value);
+        occupancy.hidden = true; occupancy.textContent = '';
+        if (['vram', 'ram', 'commit', 'resources'].includes(advice.kind)) {
+            void readOtherUsage({failure: '1'}).then(notice => {
+                if (currentReport !== report) return;
+                occupancy.textContent = otherUsageText(notice, t, true);
+                occupancy.hidden = !occupancy.textContent;
+            });
+        }
         title.textContent = advice.title; explanation.textContent = advice.summary; explanation.hidden = !advice.summary; action.textContent = advice.action;
         element.querySelector('.fv-extension-steps')?.remove();
         if (advice.kind === 'browser-extension') action.after(extensionSteps(advice));

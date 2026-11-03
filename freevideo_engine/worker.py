@@ -220,6 +220,16 @@ def generate(request, resident=None):
                     decoder = dict(decoder, resident_blocks=fit)
                     metrics.setdefault('decoder_residency', dict(planned_resident_blocks=planned))
                     metrics['decoder_residency'].update(resident_blocks=fit, allocator_limit_bytes=int(limit))
+        def room_decoder():
+            # Models kept for the next request stay only where the decoder still fits beside them with
+            # the allocator's slack; the room step drops resident blocks before it evicts one.
+            nonlocal decoder
+            planned = decoder.get('resident_blocks', 0)
+            fitted = resident.decoder_room(decoder, canvas)
+            if isinstance(fitted, dict) and fitted.get('resident_blocks', 0) < planned:
+                decoder = fitted
+                metrics.setdefault('decoder_residency', dict(planned_resident_blocks=planned))
+                metrics['decoder_residency'].update(resident_blocks=fitted['resident_blocks'], room='kept models')
         resume = request.get('resume_decode') is not None
         if not resume and (options.get('task', 't2va') != 't2va' or request.get('geometry', {}).get('early_reference')):
             from .media_conditioning import describe
@@ -291,7 +301,7 @@ def generate(request, resident=None):
             print(json.dumps(dict(event='decode_resume', sampling_source_attempt=metrics['sampling_source_attempt'])), flush=True)
             fit_decoder()
             if resident is not None:
-                resident.decoder_room(decoder, canvas)
+                room_decoder()
             latents, audio = latents.to('cuda'), audio.to('cuda')
             metrics['latent_reload_seconds'] = time.perf_counter() - tick
             metrics['transformer_released_before_decode'] = resident is None or not resident.engine_on_gpu()
@@ -637,7 +647,7 @@ def generate(request, resident=None):
             # keeps it if live memory also covers decoding, otherwise evicts it.
             fit_decoder()
             if resident is not None:
-                resident.decoder_room(decoder, canvas)
+                room_decoder()
             else:
                 engine.close()
             metrics['transformer_released_before_decode'] = released(engine)

@@ -424,6 +424,13 @@ def bind_check(hostname, port):
             raise
 
 
+def lan_error(reason, message):
+    """The launcher's message, with the lan_page reason code the phone panel shows."""
+    error = ValueError(message)
+    error.lan_reason = reason
+    return error
+
+
 def address(hostname, port):
     return 'http://%s:%d' % ('[%s]' % hostname if ':' in hostname else hostname, port)
 
@@ -1026,7 +1033,7 @@ class Controller:
             # A link check in flight finishes first, so it cannot overwrite this task's state.
             poll.join()
         self.cancelled.clear()
-        self.state = dict(self.state, status='running', action=operation, error=None, exception=None, task={}, overall={},
+        self.state = dict(self.state, status='running', action=operation, error=None, exception=None, denied=None, task={}, overall={},
                           model_groups=[] if operation == 'inspect' else self.state.get('model_groups', []))
         if operation in ('connect', 'launch', 'configure_access'):
             self.sections = [('open', 1)]
@@ -1041,8 +1048,13 @@ class Controller:
                     # A remembered URL alone cannot prove the local page is usable.
                     opened = bool(self.state.get('url')) and server_info(self.state['url'].split('/?')[0])['status'] == 'freevideo'
                 status = 'open' if opened else 'failed'
+                from .denied_access import describe
+                # Inspection fails before a selection exists, so the requested folder stands in.
+                engine = (self.selection or {}).get('engine') or (
+                    args[0].get('engine') if args and isinstance(args[0], dict) else None)
+                roots = [('INSTALL', engine)] if engine else []
                 self.state = dict(self.state, status='cancelled' if self.cancelled.is_set() else status,
-                                  error=str(error), exception=exception_details(error))
+                                  error=str(error), exception=exception_details(error), denied=describe(error, roots))
         self.thread = threading.Thread(target=work, daemon=True)
         self.thread.start()
 
@@ -1258,6 +1270,18 @@ class Controller:
         self._configure_access(dict(lan_access=(self.selection or {}).get('lan_access')), connect=True)
 
     def _start_access_proxy(self):
+        from . import lan_page
+        engine = self.selection['engine']
+        try:
+            self._open_access_proxy()
+        except Exception as error:
+            # The page's phone panel shows why instead of waiting; a launcher closing is not a failure.
+            if not (self._closed or self.cancelled.is_set()):
+                lan_page.note_failure(engine, getattr(error, 'lan_reason', 'failed'))
+            raise
+        lan_page.forget_failure(engine)
+
+    def _open_access_proxy(self):
         from .comfy_service import TOKEN, check_proxy, folder, start_proxy, token
         self.selection = selected = dict(self.selection, lan_access=False)
         self.state = dict(self.state, selection=dict(selected))
@@ -1265,7 +1289,7 @@ class Controller:
             info = server_info(selected['url'])
             hosts = (info.get('listen') or '').split(',')
             if not hosts or not all(loopback_host(host) for host in hosts):
-                raise ValueError('The ComfyUI already running is open to the network directly. After its jobs finish, restart it on 127.0.0.1, then turn on LAN access.')
+                raise lan_error('comfy_on_network', 'The ComfyUI already running is open to the network directly. After its jobs finish, restart it on 127.0.0.1, then turn on LAN access.')
         configuration = tuple(selected[k] for k in ('root', 'engine', 'source', 'python', 'url'))
         if (self.access_configuration != configuration or
                 self.access_proxy is not None and self.access_proxy.poll() is not None):
@@ -1276,7 +1300,7 @@ class Controller:
                 port = (urlsplit(selected['url']).port or 80) + 1
             candidate = next_free_address(address('0.0.0.0', port - 1)) if port <= 65535 else None
             if candidate is None:
-                raise ValueError('The ports for LAN access are in use or reserved by the system. Choose another ComfyUI port.')
+                raise lan_error('ports_in_use', 'The ports for LAN access are in use or reserved by the system. Choose another ComfyUI port.')
             port = urlsplit(candidate).port
             self.selection = selected = dict(selected, lan_port=port)
             self.state = dict(self.state, selection=dict(selected))

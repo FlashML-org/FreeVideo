@@ -4,6 +4,7 @@ import { shareButton } from './share.js';
 import { canExtend, extendText, extendSourceProblem, extendSourceState } from './studio_extend.js';
 import { issueButton } from './issue_button.js';
 import { savedSettings, differs } from './result_reuse.js';
+import { REPORT_GONE } from './report_issue.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./result_actions.css', import.meta.url).href; document.head.append(css);
@@ -287,13 +288,17 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
             if (report.disabled) return;
             problem?.remove();
             report.disabled = true; text.textContent = t('Preparing…', '正在整理…');
+            let gone = false;
             try { await diagnostic(); text.textContent = reportLabel; }
-            catch {
-                text.textContent = t('Report unavailable · retry', '报告暂不可用 · 重试');
-                problem = issueButton(t, () => ({where: ['Diagnostic report', '诊断报告'], message: text.textContent}));
-                report.after(problem);
+            catch (error) {
+                gone = Boolean(error?.gone);
+                text.textContent = gone ? t(...REPORT_GONE) : t('Report unavailable · retry', '报告暂不可用 · 重试');
+                if (!gone) {
+                    problem = issueButton(t, () => ({where: ['Diagnostic report', '诊断报告'], message: text.textContent}));
+                    report.after(problem);
+                }
             }
-            finally { report.disabled = false; }
+            finally { report.disabled = gone; }
         };
         bar.append(report);
     }

@@ -599,6 +599,19 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         from .model_guidance import DOWNLOAD_COPY
         return dict(title=DOWNLOAD_COPY['error_read'][zh], detail='', action='', kind='download-list-read')
     rules = (
+        (r'This port is in use by another application', 'port-taken',
+         ('The ComfyUI port is in use', 'ComfyUI 端口被占用'),
+         ('Another program is using this port. Change the ComfyUI address in Settings, then start again.',
+          '有其他程序占用了这个端口。请在设置里换一个 ComfyUI 地址，再重新启动。')),
+        # Windows reserves whole port ranges (Hyper-V, WSL), so the ports after it may be unusable too.
+        (r'This port and the next ones are in use or reserved by the system', 'port-taken',
+         ('The ComfyUI port cannot be used', 'ComfyUI 端口无法使用'),
+         ('This port and the next ones are in use or reserved by the system. Change the ComfyUI address in Settings, '
+          'then start again.', '这个端口和后面的端口都已被占用或被系统保留。请在设置里换一个 ComfyUI 地址，再重新启动。')),
+        (r'The ports for LAN access are in use or reserved by the system', 'port-taken',
+         ('The LAN access port cannot be used', '局域网访问的端口无法使用'),
+         ('The ports for LAN access are in use or reserved by the system. Change the ComfyUI port in Settings, '
+          'then start again.', '局域网访问要用的端口已被占用或被系统保留。请在设置里换一个 ComfyUI 端口，再重新启动。')),
         (r'The previous video has no usable continuation data', 'continuation-missing',
          ('This video cannot be continued', '这个视频暂时不能接续'),
          ('Generate the previous video again, then continue it.', '请重新生成上一段视频，再接续。')),
@@ -777,7 +790,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Smart App Control in Windows blocked these files. Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App Control settings.',
           'Windows 的“智能应用控制”拦截了这些文件。在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”。')),
         (r'PermissionError|Access is denied|Permission denied|WinError 5\b|os error 5\b', 'permission',
-         ('This folder is not writable', '无法写入这个目录'),
+         ('Access denied', '访问被拒绝'),
          ('Choose an installation folder you can write to, then retry.', '选择有写入权限的安装目录后重试。')),
         # A worker's own check of the cuDNN files it loaded (runtime_libraries).
         (r"FreeVideo's PyTorch library files do not match", 'runtime-libraries',
@@ -847,7 +860,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
     detail = causes[-1] if causes else next((line for line in reversed(lines)
-        if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Rerun the same setup command'))), '')
+        if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Existing files are retained.', 'Rerun the same setup command'))), '')
     detail = re.sub(r'^(?:ValueError|RuntimeError|OSError):\s*', '', detail)
     from .launcher_copy import lan_error
     title = '暂时未能完成' if zh else 'Couldn’t complete this step'

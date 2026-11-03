@@ -96,6 +96,10 @@ def _checkpoint_storage(path, expected):
     return expected, expanded
 
 
+# Longest request one prompt can carry: a 30 s video, the chain planner's first split.
+MAX_FRAMES = 721 + 22
+
+
 class PromptEnvelope:
     """Estimate literal, text-only FreeVideo requests up to the policy reference.
 
@@ -122,34 +126,38 @@ class PromptEnvelope:
         if len(generators) != 1:
             return None
         node = generators[0]
-        empty_media = set()
+        media_nodes, assets = set(), []
         for identity, other in prompt.items():
             if other is node:
                 continue
             media = other.get('inputs', {})
             if (other.get('class_type') != 'FreeVideoMedia' or set(media) - {'assets'}
-                    or not isinstance(media.get('assets', '[]'), str)
-                    or json.loads(media.get('assets', '[]')) != []):
+                    or not isinstance(media.get('assets', '[]'), str)):
                 return None
-            empty_media.add(identity)
+            rows = json.loads(media.get('assets', '[]'))
+            if (not isinstance(rows, list) or len(rows) > 32
+                    or any(not isinstance(row, dict) or not isinstance(row.get('file'), str) for row in rows)):
+                return None
+            assets += [row for row in rows if row.get('enabled', True) is True]
+            media_nodes.add(identity)
         inputs = dict(node['inputs'])
         link = inputs.get('media')
-        if isinstance(link, list) and len(link) == 2 and link[0] in empty_media and link[1] == 0:
+        if isinstance(link, list) and len(link) == 2 and link[0] in media_nodes and link[1] == 0:
             del inputs['media']
+        elif link is not None or media_nodes:
+            return None
         allowed = {'text', 'width', 'height', 'seconds', 'seed', 'two_pass', 'base_steps',
                    'refine_steps', 'force_regenerate', 'preview', 'frames', 'step_cache',
                    'upscale_factor', 'refine_from', 'continue_from', 'first_frame_reference',
-                   'voice_reference', 'hide_tail'}
+                   'voice_reference', 'hide_tail', 'allow_empty_prompt'}
         if (set(inputs) - allowed or any(isinstance(v, (list, dict)) for v in inputs.values())
-                or inputs.get('refine_from') or inputs.get('continue_from')
-                or inputs.get('hide_tail') or inputs.get('first_frame_reference')
-                or inputs.get('voice_reference') or inputs.get('step_cache', 'none') != 'none'):
+                or inputs.get('refine_from') or inputs.get('step_cache', 'none') != 'none'):
             return None
         from .geometry import geometry
         canvas = geometry(inputs.get('width', 1344), inputs.get('height', 768),
                           frames=inputs['frames'] if inputs.get('frames') else None,
                           seconds=None if inputs.get('frames') else inputs.get('seconds', 10.))
-        if canvas['width'] > 1344 or canvas['height'] > 768 or canvas['frames'] > 243:
+        if (canvas['width'] * canvas['height'] > 1920 * 1088 or canvas['frames'] > MAX_FRAMES):
             return None
         machine = json.loads((self.root / 'machine.json').read_text(encoding='utf-8'))
         manifest = json.loads(Path(__file__).with_name('model_files.json').read_text(encoding='utf-8'))
@@ -207,6 +215,14 @@ class PromptEnvelope:
         workspace = (HOST_WEIGHT_HEADROOM + ENCODER_HOST_BYTES + residual
                      + decoder_workspace(canvas) + 3 * output
                      + UPSCALER_HOST_BYTES + adaln_extra_bytes(canvas))
+        # Every picture, clip or sound keeps a full set of decoded frames and may add
+        # a reference residual of its own. A continued part also decodes its overlap.
+        from .comfy_assets import media_kind
+        for row in assets:
+            kind = media_kind(row['file'])
+            workspace += output + (0 if kind == 'audio' else residual) + (2 * output if kind == 'video' else 0)
+        if inputs.get('continue_from'):
+            workspace += output
         # Charge every private/workspace byte as potentially pinned, including
         # attention readouts and decoder/encoder transfer buffers.
         pinned = expanded + prepared + workspace

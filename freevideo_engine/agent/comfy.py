@@ -354,7 +354,8 @@ class ComfyPort:
             code = getattr(error, 'code', str(error))
             code = code if code in IMAGE_ERRORS else 'invalid_request'
             raise JobError(code, IMAGE_ERRORS[code], retryable=code in IMAGE_WAIT_ERRORS,
-                           kind='image', report_id=getattr(error, 'report_id', None)) from None
+                           kind='image', report_id=getattr(error, 'report_id', None),
+                           other_usage=getattr(error, 'status', {}).get('other_usage')) from None
 
     def image_status(self, key):
         return self.image.status(key)

@@ -363,6 +363,9 @@ def nonlocal_exhausted(failure):
     Page-locked host memory counts against that budget. A 20 s request failed
     with non-local usage at 13.14 of 13.24 GiB, 10.68 GiB of VRAM free and no
     caching-allocator OOM; the failed allocation itself is not in the usage.
+    A 1920x1088 request failed with usage at 13.9 of 15.2 GiB: the allocation
+    that did not fit was the 2 GiB residual buffer, so the margin is the pin
+    reserve rather than one GiB.
     """
     gpu = failure.get('gpu') if isinstance(failure.get('gpu'), dict) else {}
     values = [gpu.get(key) for key in ('nonlocal_budget_bytes', 'nonlocal_usage_bytes',
@@ -370,7 +373,8 @@ def nonlocal_exhausted(failure):
     if not all(type(value) is int and value >= 0 for value in values) or not values[0]:
         return False
     budget, usage, local_budget, local_usage = values
-    return (usage >= budget - 2**30 and local_usage <= local_budget - 2 * 2**30
+    from .windows_gpu_memory import NONLOCAL_PIN_RESERVE
+    return (usage >= budget - NONLOCAL_PIN_RESERVE and local_usage <= local_budget - 2 * 2**30
             and not gpu.get('allocator_ooms'))
 
 

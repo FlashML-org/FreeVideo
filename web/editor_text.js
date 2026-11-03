@@ -105,7 +105,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             if(run!==speech.run){if(job?.id)Promise.resolve(actions.speech.cancel(job.id)).catch(()=>{});return;}
             if(!job){speechEnd(speechFailed(),SPEECH_ISSUE);return;}
             speech.job=job.id??null;
-            if(speechResult(job))speech.stop=actions.speech.watch(job.id,value=>{if(run!==speech.run)return false;if(!value){speechEnd(speechFailed(),SPEECH_ISSUE);return false;}return speechResult(value);});
+            if(speechResult(job))speech.stop=actions.speech.watch(job.id,value=>{if(run!==speech.run)return false;if(!value){speechEnd(speechFailed(),SPEECH_ISSUE);return false;}return speechResult(value);},()=>{if(run===speech.run)speechEnd(speechFailed(),SPEECH_ISSUE);});
         }catch{if(run===speech.run)speechEnd(speech.loading?t('Could not download. Try again.','没能下载，请再试一次。'):speechFailed(),SPEECH_ISSUE);}
     }
     function commitDraft(){if(draft){const change=draft.change;apply(t('Text','文字'),change);const c=selectedText();if(c?.text_kind==='text')lastStyle={...styleOf(state.record,c)};}}
