@@ -186,7 +186,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: t('Not enough memory to rewrite. Close other GPU apps or use the original.', '改写时内存不足，请关闭其他显卡程序或使用原文。'),
         timeout: t('Rewriting took too long. Retry or use the original.', '改写超时，请重试或使用原文。'),
-        stale: t('The prompt or references changed. Rewrite again for the new scene.', '原文或素材已改变，请按新内容重新改写。'),
+        stale: t('The prompt or references changed. Rewrite again to use the current scene.', '原文或素材已更改，可按当前内容重新改写。'),
         cancelled: t('Cancelled. Your original prompt is retained.', '已取消，原文已保留。'),
         worker_cleanup_failed: t('The rewrite process could not close. Restart FreeVideo before generating.', '改写进程未能退出，请重启 FreeVideo 后再生成。'),
     }[error?.message] || t(`Could not enhance the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Retry or switch enhancement off to use the original.`,
@@ -389,9 +389,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     redo.onclick = () => enhance().catch(() => {});
     show(''); save(false); render();
     function useOriginal(error) {
-        console.warn('FreeVideo prompt rewrite failed; using the original prompt.', error?.message);
+        // A successful rewrite discarded after an edit is a draft notice, not a failure.
+        const stale = error?.message === 'stale';
+        if (!stale) console.warn('FreeVideo prompt rewrite failed; using the original prompt.', error?.message);
         versions.value.selected = 'original'; apply();
-        show(t(`Generated with the original prompt. ${fallbackText(error)}`, `已用原文生成。${fallbackText(error)}`), 'note');
+        show(t(`Generated with the original prompt. ${stale ? errorText(error) : fallbackText(error)}`, `已用原文生成。${stale ? errorText(error) : fallbackText(error)}`), 'note');
     }
     return {element, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);
