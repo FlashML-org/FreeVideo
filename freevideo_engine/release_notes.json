@@ -1,41 +1,74 @@
 {
   "schema": 1,
-  "product_version": "0.4.29",
+  "product_version": "0.4.30",
   "en": {
-    "summary": "Music can be generated on the second audio track from the generation bar (not on Mac), scenes can be added to the character library, long videos can be extended by typing a length in seconds, and Autopilot chat continues a failed or stopped video from where it left off.",
+    "summary": "Image generation on Windows machines with little memory no longer stops while the model loads, large requests are steadier in the second pass, and the editor, the launcher and phone access now explain what stopped and what to do next.",
     "changes": [
-      "Editor: music can be made from the generation bar by dragging a range on the second audio track, which new edits now show by default. Choose a style and a mood and optionally describe the music; if the music model is not installed yet, it is downloaded first. A selected generated piece can be regenerated in place, and one undo restores the previous piece. Generated music is lowered while someone speaks; this can be turned off with Lower during speech in the clip properties. Not available on Mac.",
-      "Editor: the timeline scrolls vertically when the second audio track, text or subtitle rows do not fit, with the ruler kept in place.",
-      "Character library: scenes can be added from your own pictures or from several AI candidates, and mentioned with @ in the prompt; the time of day, weather, light and tone written in the prompt are kept in the generated video.",
-      "Long videos: when an ungenerated draft part or a range on the picture track is selected, the generation bar shows a Duration field in whole seconds. A typed length follows the same rules as dragging the right edge; a value out of range is clamped with a short note, and one undo restores the previous length. When a video is extended, the last continuation part, including a single added part, can be as short as 2 s; parts in the middle still last at least 5 s.",
-      "Long videos: joining parts no longer fails at the last step when one part differs from the first in size or encoding; such a part is now matched to the first part before the parts are joined, and when that is not possible, the message names the part and the property that differs. A video that already has the most parts a continuous shot can have now says so as soon as it is chosen to be extended, and the limit is checked before generation starts.",
-      "Autopilot: Continue generating on a failed or stopped video picks up the same request and keeps the parts already made, also when the Agent is offline. A failed picture is submitted again with the original request. The latest message can be edited and sent again; unfinished tasks after it are stopped first.",
-      "Agent: when the Connect an agent card cannot get an address, it explains the reason, for example when the page was opened from another device or by machine name; the feedback report includes the status code and error code.",
-      "Prompts: when the Agent is asked to improve the prompt before generating, the generation uses the improved text exactly, and is no longer treated as a different prompt because quotation marks were changed while the text was copied. Asking for no background music in the scene text now works when the prompt still has the starter prompt's music section: the unchanged starter score is replaced with N/A, and a rewritten prompt ends with N/A. A music section written by the user is kept.",
-      "Speed: the background compile also prepares portrait videos and videos with a reference picture, so their first request no longer compiles GPU programs at the first step of each pass. The one-time background compile takes about 80 seconds longer; results are unchanged.",
-      "Install: a damaged offline package is now reported by name with a request to download it again, instead of a raw decompression error, and downloads over an unstable connection continue from the part already downloaded instead of stopping after the first round.",
-      "Install: on Windows, when another program, such as security software, holds FreeVideo's Python file open, setup now waits and creates the Python environment again instead of failing at the first attempt. When Windows refuses to run that file, the failure message says so in any system language and points to the security software.",
-      "Start-up: a downloaded source update is verified against the release signature again every time the launcher starts, not only when it is downloaded, and the diagnostic log times each start-up step of the video worker."
+      "Image generation: on Windows machines with little free memory, loading the image model no longer crashes. If loading is interrupted anyway, FreeVideo retries the request once automatically.",
+      "Generation: large requests on Windows are less likely to run out of memory in the second pass, and when they do, the retry is aimed at the memory that actually ran short instead of falling back to much slower settings. A generation also no longer stops when a memory copy is refused during sampling.",
+      "Creation panel: a note appears when other programs are using enough GPU memory or RAM to slow a generation down, and a generation that fails because of that shortage says so.",
+      "Prompt enhancement: a prompt over the 12,000-character limit now shows its current length, counting expanded @character descriptions, before anything is sent. When the prompt or references change while a rewrite is running, a plain note says so instead of a red error. Time points later than the end of the video no longer cause an error; they are fitted within the video's length.",
+      "Editor: playback stops with a notice at a clip that cannot be played, instead of running on over a black picture. After FreeVideo restarts, interrupted exports, multi-part generations and subtitle jobs no longer show as in progress, and can be started again or continued.",
+      "Phone access: when phone access cannot be opened, the page says why and offers \"Try again\", instead of showing \"Opening…\" indefinitely.",
+      "Start-up: the launcher's failure cards now explain the cause and the next step. An access-denied error is titled \"Access denied\" and shows where access was denied; a port in use offers \"Change address\"; a refused setup step, an expired diagnostic report and a failed report export also show the next step. When Python fails to install during setup, the card shows the installer's own error message instead of only an exit code. Exporting a report can replace an existing file.",
+      "Install: while a downloaded image model file is being verified, its card says \"Checking\". On Windows, entry folders left in the shared FV folder by removed installations are cleaned up. If the setup tool has gone missing before an install step, it is downloaded again instead of the step failing.",
+      "Multi-GPU machines: requests from the Creation panel and the Agent that include images, continue a clip or are longer now run on a free card alongside other generations. A single very large task runs on its own instead of waiting in the queue indefinitely.",
+      "GPU memory: very long second passes, such as ones with large reference videos, need less GPU memory on smaller cards. When other programs take GPU memory during a run, decoding adapts instead of failing and starting over. Results are unchanged."
     ]
   },
   "zh": {
-    "summary": "可以在第二条声音轨上用生成栏生成配乐（暂不支持 Mac）；角色库可以新建场景；长视频可以直接填写秒数来接着生成；AI 全自动对话中失败或停止的视频可以从中断处继续生成。",
+    "summary": "内存较小的 Windows 机器生成图片时，不再在加载模型时中断；大画面请求的第二遍更稳定；剪辑视图、启动器和手机访问出问题时，会说明原因和下一步。",
     "changes": [
-      "剪辑视图：在第二条声音轨上拖出一段，即可用生成栏生成配乐；新剪辑默认显示这条声音轨。可选择风格和情绪，也可另写描述；配乐模型未安装时会先下载。选中已生成的配乐可以原位重新生成，一次撤销即可恢复原来那段。生成的配乐在有人说话处自动降低音量，可在片段属性中取消“对白时降低音量”。暂不支持 Mac。",
-      "剪辑视图：第二条声音轨、文字或字幕行放不下时，时间线可以纵向滚动，标尺保持固定。",
-      "角色库：可以用自己的图片或从 AI 生成的多张候选中新建场景，并在提示词中用 @ 引用；提示词里写的时间、天气、光线和色调会保留到生成的视频中。",
-      "长视频：选中未生成的草稿段或画面轨上的一段范围时，生成栏显示以整秒为单位的“时长”输入框。填写的时长与拖动右边缘规则相同；超出范围时自动取到边界并给出简短提示，一次撤销即可恢复原来的时长。接着生成时，最后一个接续段（包括只补一段的情况）最短可为 2 秒，中间的接续段仍至少 5 秒。",
-      "长视频：某一段的尺寸或编码与第 1 段不同时，不再在最后一步接合失败：接合前会先把这样的段转换为与第 1 段一致；无法转换时，提示会指明是哪一段、哪一项不同。已达到连续镜头最多段数的视频，选中接着生成时就会说明原因，生成前也会检查。",
-      "AI 全自动：视频失败或被停止后，点“继续生成”会按原请求接着做，保留已完成的段，Agent 不在线时同样可用。图片失败时按原请求重新提交。最后一条消息可以修改后重新发送，其后未完成的任务会先停止。",
-      "Agent：“连接 Agent”卡片取不到地址时，会说明原因（例如从其他设备或用机器名打开页面）；反馈报告附带状态码和错误码。",
-      "提示词：让 Agent 先润色提示词再生成时，生成使用的就是润色后的原文，不会因抄写时引号被改动而被当作另一段提示词。在场景文字里要求不要背景音乐，而提示词仍带着默认示例的配乐段时，这一要求现在会生效：没改过的默认配乐会被换成 N/A，提示词重写的结果也以 N/A 结尾。用户自己写的配乐段保持不变。",
-      "速度：后台预编译也准备竖向视频和带参考图的视频，它们的第一次请求不再在每遍的第一步现场编译 GPU 程序。一次性的后台编译多约 80 秒，结果不变。",
-      "安装：离线包损坏时，现在会指出文件名并提示重新下载，不再显示解压缩的原始错误；网络不稳定时，下载会接着已下载的部分继续，不再在第一轮失败后直接停止。",
-      "安装：在 Windows 上，FreeVideo 的 Python 文件被其他程序（例如安全软件）占用时，安装程序会等待并重新创建 Python 环境，不再第一次失败就停止；Windows 拒绝运行这个文件时，失败提示会说明原因并指向安全软件，不受系统语言影响。",
-      "启动：已下载的源码更新在启动器每次启动时都会再按发布签名校验，不只在下载时校验；诊断日志也为视频 worker 的启动各步计时。"
+      "图像生成：可用内存较小的 Windows 机器加载图像模型时不再崩溃。加载仍意外中断时，FreeVideo 会自动重试一次。",
+      "生成：Windows 上的大画面请求在第二遍更不容易出现内存不足；出现时，重试会针对实际不足的那部分内存，不再退到慢得多的设置。采样中途内存拷贝被拒绝时，生成也不再中止。",
+      "创作面板：其他程序占用的显存或内存会使生成变慢时，面板会提示；因此类不足导致生成失败时，失败卡片同样说明这一点。",
+      "提示词增强：提示词超过 12,000 字符上限时，发送前会显示当前字数，展开的 @角色描述一并计入。改写过程中原文或素材有改动时，改为普通提示，不再显示红色错误。提示词里晚于视频结尾的时间点不再报错，会调整到视频时长以内。",
+      "剪辑视图：播放到无法播放的素材时会停下并提示，不再黑屏空走。FreeVideo 重启后，中断的导出、分段生成和字幕任务不再显示为进行中，可以重新开始或继续。",
+      "手机访问：手机连接无法打开时，网页会说明原因并提供“重试”，不再一直显示“正在打开…”。",
+      "启动：启动器的失败卡片会说明原因和下一步。拒绝访问类错误的标题为“访问被拒绝”，并写出被拒绝的位置；端口被占用时提供“更改地址”；安装步骤被拒绝、诊断报告过期和导出报告失败时，也会给出下一步。安装过程中 Python 安装失败时，失败卡片会显示安装器的报错，而不只是退出码。导出报告时可以覆盖已有文件。",
+      "安装：下载完成的图像模型文件在校验时，卡片显示“正在校验”。Windows 上，已删除的安装在共用 FV 目录里留下的入口目录会被清理。安装步骤开始前如果安装工具缺失，会重新下载，安装步骤不再因此失败。",
+      "多显卡机器：创作面板和 Agent 发出的带图、续接或较长的请求，现在可以在空闲的显卡上与其他生成同时运行。单个很大的任务改为单独运行，不再一直排队。",
+      "显存：较长的第二遍（例如参考视频很大的请求）在小显存显卡上占用的显存更少。运行中其他程序占用显存时，解码会自行调整，不再失败后重新开始。结果不变。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.29",
+      "en": {
+        "summary": "Music can be generated on the second audio track from the generation bar (not on Mac), scenes can be added to the character library, long videos can be extended by typing a length in seconds, and Autopilot chat continues a failed or stopped video from where it left off.",
+        "changes": [
+          "Editor: music can be made from the generation bar by dragging a range on the second audio track, which new edits now show by default. Choose a style and a mood and optionally describe the music; if the music model is not installed yet, it is downloaded first. A selected generated piece can be regenerated in place, and one undo restores the previous piece. Generated music is lowered while someone speaks; this can be turned off with Lower during speech in the clip properties. Not available on Mac.",
+          "Editor: the timeline scrolls vertically when the second audio track, text or subtitle rows do not fit, with the ruler kept in place.",
+          "Character library: scenes can be added from your own pictures or from several AI candidates, and mentioned with @ in the prompt; the time of day, weather, light and tone written in the prompt are kept in the generated video.",
+          "Long videos: when an ungenerated draft part or a range on the picture track is selected, the generation bar shows a Duration field in whole seconds. A typed length follows the same rules as dragging the right edge; a value out of range is clamped with a short note, and one undo restores the previous length. When a video is extended, the last continuation part, including a single added part, can be as short as 2 s; parts in the middle still last at least 5 s.",
+          "Long videos: joining parts no longer fails at the last step when one part differs from the first in size or encoding; such a part is now matched to the first part before the parts are joined, and when that is not possible, the message names the part and the property that differs. A video that already has the most parts a continuous shot can have now says so as soon as it is chosen to be extended, and the limit is checked before generation starts.",
+          "Autopilot: Continue generating on a failed or stopped video picks up the same request and keeps the parts already made, also when the Agent is offline. A failed picture is submitted again with the original request. The latest message can be edited and sent again; unfinished tasks after it are stopped first.",
+          "Agent: when the Connect an agent card cannot get an address, it explains the reason, for example when the page was opened from another device or by machine name; the feedback report includes the status code and error code.",
+          "Prompts: when the Agent is asked to improve the prompt before generating, the generation uses the improved text exactly, and is no longer treated as a different prompt because quotation marks were changed while the text was copied. Asking for no background music in the scene text now works when the prompt still has the starter prompt's music section: the unchanged starter score is replaced with N/A, and a rewritten prompt ends with N/A. A music section written by the user is kept.",
+          "Speed: the background compile also prepares portrait videos and videos with a reference picture, so their first request no longer compiles GPU programs at the first step of each pass. The one-time background compile takes about 80 seconds longer; results are unchanged.",
+          "Install: a damaged offline package is now reported by name with a request to download it again, instead of a raw decompression error, and downloads over an unstable connection continue from the part already downloaded instead of stopping after the first round.",
+          "Install: on Windows, when another program, such as security software, holds FreeVideo's Python file open, setup now waits and creates the Python environment again instead of failing at the first attempt. When Windows refuses to run that file, the failure message says so in any system language and points to the security software.",
+          "Start-up: a downloaded source update is verified against the release signature again every time the launcher starts, not only when it is downloaded, and the diagnostic log times each start-up step of the video worker."
+        ]
+      },
+      "zh": {
+        "summary": "可以在第二条声音轨上用生成栏生成配乐（暂不支持 Mac）；角色库可以新建场景；长视频可以直接填写秒数来接着生成；AI 全自动对话中失败或停止的视频可以从中断处继续生成。",
+        "changes": [
+          "剪辑视图：在第二条声音轨上拖出一段，即可用生成栏生成配乐；新剪辑默认显示这条声音轨。可选择风格和情绪，也可另写描述；配乐模型未安装时会先下载。选中已生成的配乐可以原位重新生成，一次撤销即可恢复原来那段。生成的配乐在有人说话处自动降低音量，可在片段属性中取消“对白时降低音量”。暂不支持 Mac。",
+          "剪辑视图：第二条声音轨、文字或字幕行放不下时，时间线可以纵向滚动，标尺保持固定。",
+          "角色库：可以用自己的图片或从 AI 生成的多张候选中新建场景，并在提示词中用 @ 引用；提示词里写的时间、天气、光线和色调会保留到生成的视频中。",
+          "长视频：选中未生成的草稿段或画面轨上的一段范围时，生成栏显示以整秒为单位的“时长”输入框。填写的时长与拖动右边缘规则相同；超出范围时自动取到边界并给出简短提示，一次撤销即可恢复原来的时长。接着生成时，最后一个接续段（包括只补一段的情况）最短可为 2 秒，中间的接续段仍至少 5 秒。",
+          "长视频：某一段的尺寸或编码与第 1 段不同时，不再在最后一步接合失败：接合前会先把这样的段转换为与第 1 段一致；无法转换时，提示会指明是哪一段、哪一项不同。已达到连续镜头最多段数的视频，选中接着生成时就会说明原因，生成前也会检查。",
+          "AI 全自动：视频失败或被停止后，点“继续生成”会按原请求接着做，保留已完成的段，Agent 不在线时同样可用。图片失败时按原请求重新提交。最后一条消息可以修改后重新发送，其后未完成的任务会先停止。",
+          "Agent：“连接 Agent”卡片取不到地址时，会说明原因（例如从其他设备或用机器名打开页面）；反馈报告附带状态码和错误码。",
+          "提示词：让 Agent 先润色提示词再生成时，生成使用的就是润色后的原文，不会因抄写时引号被改动而被当作另一段提示词。在场景文字里要求不要背景音乐，而提示词仍带着默认示例的配乐段时，这一要求现在会生效：没改过的默认配乐会被换成 N/A，提示词重写的结果也以 N/A 结尾。用户自己写的配乐段保持不变。",
+          "速度：后台预编译也准备竖向视频和带参考图的视频，它们的第一次请求不再在每遍的第一步现场编译 GPU 程序。一次性的后台编译多约 80 秒，结果不变。",
+          "安装：离线包损坏时，现在会指出文件名并提示重新下载，不再显示解压缩的原始错误；网络不稳定时，下载会接着已下载的部分继续，不再在第一轮失败后直接停止。",
+          "安装：在 Windows 上，FreeVideo 的 Python 文件被其他程序（例如安全软件）占用时，安装程序会等待并重新创建 Python 环境，不再第一次失败就停止；Windows 拒绝运行这个文件时，失败提示会说明原因并指向安全软件，不受系统语言影响。",
+          "启动：已下载的源码更新在启动器每次启动时都会再按发布签名校验，不只在下载时校验；诊断日志也为视频 worker 的启动各步计时。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.28",
       "en": {
