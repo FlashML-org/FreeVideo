@@ -6,3 +6,4 @@
 .fv-lan-tip{position:fixed;z-index:1001;background:var(--fv-raised);color:var(--fv-ink);font-size:var(--fv-micro);padding:6px 10px;border:1px solid var(--fv-border);border-radius:6px;white-space:nowrap;pointer-events:none;box-shadow:0 4px 12px #0004}
 /* The extra tool must not take the readable project name out of a narrow editor. */
 @media(max-width:680px){.fv-studio.fv-editor .fv-header[data-fit~=wrap][data-fit~=compact] .fv-wordmark{display:none}}
+.fv-lan-problem{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:12px 0 0}.fv-lan-reason{font-size:var(--fv-body);color:var(--fv-muted);line-height:1.65;margin:0}.fv-lan.fv-lan .fv-lan-retry{flex:none;color:var(--fv-accent);background:none;height:32px;padding:0 4px}
