@@ -785,6 +785,11 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
         output_frames = (count * canvas['fps'] + rate - 1) // rate
         if hidden or not 0 < output_frames <= expected:
             raise ValueError('Original audio exceeds the generated canvas')
+        if isinstance(original_audio.get('segment'), dict):
+            # A chain part keeps its whole picture grid; the join trims the tail.
+            output_frames = expected
+        if hidden or not 0 < output_frames <= expected:
+            raise ValueError('Original audio exceeds the generated canvas')
     if continuation is not None:
         from .continuation import OVERLAP_FRAMES
         if (not isinstance(continuation, dict) or continuation.get('overlap_frames') != OVERLAP_FRAMES
