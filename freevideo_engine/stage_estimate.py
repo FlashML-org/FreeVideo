@@ -25,6 +25,13 @@ TOKEN_UNIT = 72576.
 # (B200: linear in the row count, 1.4x at 960x544 and 1.85x at 1664x960);
 # canvases past the measured size keep the largest measured weight.
 REFERENCE_VIDEO_PAIR_WEIGHT = 4.
+# The B200 weights above were measured up to 8,696 reference rows on a 73,320-row
+# canvas (12% of its rows). Past that share a row adds less: an 8 s reference video
+# (50,928 rows) on a 5060 Ti, first pass 25,536 and second pass 57,456 generated
+# rows, ran at 110 s and 173 s a step, which a constant 1.6 to 1.7 rows per
+# reference row reproduces and the 2.4 and 4.2 above overshoot 1.6 and 2.6 times.
+REFERENCE_CALIBRATED_SHARE = .12
+REFERENCE_VIDEO_BEYOND_WEIGHT = 1.45
 DEFAULT_INTERVAL = [.45, 2.2]
 STAGES = ('encode', 'load', 'pass1', 'upscale', 'pass2', 'decode_save')
 PARAMS_PATH = Path(__file__).with_name('stage_estimate_params.json')
@@ -220,9 +227,13 @@ def stream_features(h, r, i):
 
 def _reference_rows(h, r, x):
     # Measured on NVIDIA only; the Apple fit keeps one row per reference token.
-    weight = 1. if _apple(h) else 1. + REFERENCE_VIDEO_PAIR_WEIGHT*min(x, 1.)
-    return (weight*float(_num(r, 'reference_video_tokens', 0.))
-            + float(_num(r, 'reference_audio_tokens', 0.)))
+    video, audio = float(_num(r, 'reference_video_tokens', 0.)), float(_num(r, 'reference_audio_tokens', 0.))
+    if _apple(h):
+        return video + audio
+    weight = 1. + REFERENCE_VIDEO_PAIR_WEIGHT*min(x, 1.)
+    # Rows inside the measured share keep the measured weight; the rest never weigh more.
+    measured = min(video, REFERENCE_CALIBRATED_SHARE*x*TOKEN_UNIT)
+    return weight*measured + min(weight, REFERENCE_VIDEO_BEYOND_WEIGHT)*(video-measured) + audio
 
 
 def step_parts(h, r, i, p):
