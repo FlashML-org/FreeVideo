@@ -126,9 +126,10 @@ function saveReason(failure) {
     if (!failure) return 'unsaved';
     return failure.reason || (failure.status ? 'http_' + failure.status : isNetworkTypeError(failure) ? 'network' : undefined);
 }
-// Names the failed delete for the report: the server's reason, else the HTTP status, a lost connection or the error's own code or name, prefixed with the step when it was not the delete request itself.
+// Names the failed delete for the report: a reason given by the server or the page as it is, else the HTTP status, a lost connection or the error's own code or name, prefixed with the step when it was not the delete request itself.
 function deleteReason(value, step = 'delete') {
-    const code = value?.reason || (value?.status ? 'http_' + value.status : isNetworkTypeError(value) ? 'network' : value?.code || value?.name);
+    if (value?.reason) return value.reason;
+    const code = value?.status ? 'http_' + value.status : isNetworkTypeError(value) ? 'network' : value?.code || value?.name;
     return code && step !== 'delete' ? step + '_' + code : code;
 }
 function restoreGeneration(record, before, prepared) {
