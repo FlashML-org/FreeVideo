@@ -126,6 +126,11 @@ function saveReason(failure) {
     if (!failure) return 'unsaved';
     return failure.reason || (failure.status ? 'http_' + failure.status : isNetworkTypeError(failure) ? 'network' : undefined);
 }
+// Names the failed delete for the report: the server's reason, else the HTTP status, a lost connection or the error's own code or name, prefixed with the step when it was not the delete request itself.
+function deleteReason(value, step = 'delete') {
+    const code = value?.reason || (value?.status ? 'http_' + value.status : isNetworkTypeError(value) ? 'network' : value?.code || value?.name);
+    return code && step !== 'delete' ? step + '_' + code : code;
+}
 function restoreGeneration(record, before, prepared) {
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const entries = value => new Map(value.tracks.flatMap(track => track.clips.map(clip => [clip.id, {track: track.id, clip}])));
@@ -851,22 +856,27 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     async function deleteCurrentProject() {
         if (switching || closing) return;
         switching = true; element.inert = true; updateTop();
+        let step = 'flush';
         try {
             const words = deleteEditText(t);
             if (jobActive()) throw {reason: 'generation_active'};
             await queue.flush(); releaseStamp();
             if (queue.dirty) { notify(saveErrorText(queue.failure, t), EDITOR_ISSUE, failureKind('save', {reason: saveReason(queue.failure)})); return; }
             // Load the replacement before deleting, so a read failure keeps the edit open.
+            step = 'list';
             const rows = (await store.projects()).filter(row => row.id !== state.record.id);
             // Most recently used: the order the edits were opened, then the last save.
             const order = id => { try { return Number(localStorage.getItem(usedPrefix + id)) || 0; } catch { return 0; } };
             rows.sort((a, b) => order(b.id) - order(a.id) || String(b.updated_at).localeCompare(String(a.updated_at)));
+            step = 'load';
             const record = rows.length ? await store.load(rows[0].id) : initial();
-            if (!record) throw new Error(words.delete_failed);
+            if (!record) throw Object.assign(new Error(words.delete_failed), {code: 'no_replacement'});
+            step = 'delete';
             await discardProject();
+            step = 'open';
             await replaceProject(record); menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus();
         } catch (value) {
-            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: value?.reason}));
+            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}));
         } finally { switching = false; element.inert = false; updateTop(); }
     }
     function confirmDelete() {
@@ -1698,7 +1708,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (!queue.dirty && emptyEdit()) {
                     try { await discardProject({automatic: true}); }
                     catch (value) {
-                        notify(deleteEditText(t)[value?.reason] || deleteEditText(t).delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: value?.reason}));
+                        notify(deleteEditText(t)[value?.reason] || deleteEditText(t).delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value)}));
                         closing = false; element.inert = false; closePromise = null; return false;
                     }
                 }

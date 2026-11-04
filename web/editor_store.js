@@ -256,7 +256,8 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         activateProject,
         get uploading() { return uploads.size > 0; },
         async deleteProject(id) {
-            await sessionWrites;
+            // A lease that could not be renewed must not stop the delete: the server checks the leases itself.
+            await sessionWrites.catch(() => {});
             const response = await request('/freevideo/editor/project/delete', post({id, session: session.session}));
             if (!response.ok) throw await saveFailure(response);
             memoryProjects.delete(id);
