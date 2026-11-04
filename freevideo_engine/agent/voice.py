@@ -414,6 +414,7 @@ def _round(jobs, row, items, reference, seed, pace, base, count, done, poll=.25)
             except ValueError:
                 raise JobError('voice_failed', 'The dubbing service lost the job') from None
             phase = state.get('phase')
+            folder = service.folder
             made = state.get('lines') or []
             while seen < len(made):
                 pace.mark()
@@ -433,7 +434,6 @@ def _round(jobs, row, items, reference, seed, pace, base, count, done, poll=.25)
         waited = time.monotonic()
         while service.busy() and time.monotonic() - waited < 60:
             time.sleep(.1)
-        folder = service.folder
         try:
             if phase == 'failed':
                 if state.get('error') == 'busy' and waits < BUSY_WAITS:
