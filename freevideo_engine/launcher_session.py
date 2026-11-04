@@ -224,8 +224,10 @@ class Session:
             try:
                 self.bridge = create(launcher_root())
                 self.controller.update_bridge = self.bridge
-            except OSError:
+            except (OSError, ValueError) as error:
+                # Only updates started from the web page are lost; the launcher still opens.
                 self.bridge = None
+                print('Launcher bridge unavailable: %s' % (error if isinstance(error, ValueError) else type(error).__name__), file=sys.stderr)
         if self.form['environment_method'] == 'manual' and self.form['offline_runtime'] and not controller:
             root = io_path(self.form['offline_runtime'])
             if (root / 'portable.json').is_file():
@@ -1182,7 +1184,7 @@ class Session:
         raw = self._raw_error()
         for state in (self.cleaner.state, self.importer.state, self.upgrade.state):
             value = state.get('error') or ''
-            if alias_failure(value) and value not in raw:
+            if (alias_failure(value) or (state is self.upgrade.state and state.get('status') == 'failed')) and value not in raw:
                 raw += ('\n' if raw else '') + value
         pack_report = self.image_pack_report()
         if pack_report:

@@ -206,7 +206,7 @@ ApplicationWindow {
             return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : u.error ? u.error.split("\n")[0] + "\n" : "")
                 + (u.step === "release" ? t("The faster model is in use; the old model files are kept for now.", "已在用更快的模型，旧模型文件暂时保留。")
                    : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Select \"Retry\" on the setup page to restore it.", "原来的模型文件都还在，在安装页点“重试”可恢复。")
-                   : t("Your previous model is unchanged and still works.", "原来的模型没有变化，可以继续使用。"))
+                   : t("Your previous model is unchanged and still works. Select \"Try again\", or report a problem.", "原来的模型没有变化，可以继续使用。可以点“重试”，或提交问题。"))
         return ""
     }
     function updateHeadline() {
