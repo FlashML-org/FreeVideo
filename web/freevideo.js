@@ -34,7 +34,7 @@ import { uploadMedia } from './media_upload.js';
 import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
-import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked } from './audio_original.js';
+import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -262,21 +262,40 @@ function mediaPanel(node, mount = null) {
         rows[at] = {...rest, file: source}; update(rows);
         message(text('Restored the original image. Edit it again to reapply the changes.', '已恢复原图；再次编辑可以重新应用修改。'));
     }
+    // The one-line note under an audio card's Reference | Use as is switch: what a click changed, or why it cannot.
+    let useNote = null;
+    const paintUseNote = box => { box.textContent = useNote.value; box.classList.toggle('fv-error', useNote.error); box.hidden = false; };
+    const clearUseNote = () => { useNote = null; for (const box of cards.querySelectorAll('.fv-audio-use-note')) box.hidden = true; };
+    window.addEventListener('freevideo-audio-blocked', clearUseNote);
     // Reference | Use as is: the choice is checked against the file before it is kept.
     function useSwitch(row) {
+        const say = (value, error = false) => {
+            useNote = {file: row.file, value, error};
+            const box = [...cards.querySelectorAll('.fv-audio-use-note')].find(b => b.dataset.file === row.file); // the card may have been drawn again since the click
+            if (box) { paintUseNote(box); box.scrollIntoView({block: 'nearest'}); }
+        };
         const group = createUseSwitch({t: text, use: usesOriginal(row) ? AUDIO_USE.original : AUDIO_USE.reference, onPick: async value => {
             const current = read(), at = current.findIndex(r => r.file === row.file);
             if (at < 0) return;
+            clearUseNote();
             if (value === AUDIO_USE.reference) { const {use: _use, range: _range, ...rest} = current[at]; current[at] = rest; update(current); return; }
             if (current.some((other, i) => i !== at && other.enabled !== false && usesOriginal(other))) { message(multipleText(text), true); return; }
+            // A continued video cannot be lifted from here: say why. A preview is turned off once the clip passes its check.
+            if (stuckText(text)) { say(stuckText(text), true); return; }
+            const lifting = originalBlocked();
             group.set(AUDIO_USE.original, true);
             const result = await checkOriginal(api, {...current[at], use: AUDIO_USE.original});
             const latest = read(), now = latest.findIndex(r => r.file === row.file);
             if (now < 0) return;
             if (!result.ok) { group.set(AUDIO_USE.reference); message(failureText(result, text), true); return; }
-            // A preview or a continued video turned on while the clip was checked: it stays a reference.
-            if (originalBlocked()) { group.set(AUDIO_USE.reference); return; }
+            let note = '';
+            if (lifting) {
+                const lifted = liftBlock(text);
+                if (!lifted.ok) { group.set(AUDIO_USE.reference); say(lifted.text, true); return; }
+                note = lifted.note;
+            } else if (originalBlocked()) { group.set(AUDIO_USE.reference); return; } // a preview or a continued video turned on while the clip was checked: it stays a reference
             latest[now] = {...latest[now], use: AUDIO_USE.original}; update(latest);
+            if (note) say(note);
         }});
         return group;
     }
@@ -335,6 +354,11 @@ function mediaPanel(node, mount = null) {
             if (row.source) top.append(el('span', text('Edited', '已编辑'), 'fv-edited'));
             if (kind === "audio") top.append(useSwitch(row)); else top.append(select);
             card.append(top);
+            if (kind === "audio") {
+                const useBox = el('div', '', 'fv-audio-use-note'); useBox.setAttribute('role', 'status'); useBox.dataset.file = row.file; useBox.hidden = true;
+                if (useNote?.file === row.file) paintUseNote(useBox);
+                card.append(useBox);
+            }
             const preview = el(kind === "image" ? "img" : kind); preview.className = "fv-preview";
             preview.src = viewURL(row.file);
             if (kind === "image") {
@@ -448,7 +472,7 @@ function mediaPanel(node, mount = null) {
     panel.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
     panel.ondrop = event => { event.preventDefault(); event.stopPropagation(); upload(event.dataTransfer.files); };
     panel.onpaste = event => { if (event.clipboardData?.files.length) { event.preventDefault(); event.stopPropagation(); upload(event.clipboardData.files); } };
-    const dispose = () => { window.removeEventListener('freevideo-media', changed); cast.destroy(); places.destroy(); };
+    const dispose = () => { window.removeEventListener('freevideo-media', changed); window.removeEventListener('freevideo-audio-blocked', clearUseNote); cast.destroy(); places.destroy(); };
     if (mount) { mount.append(panel); render(); return dispose; }
     node.freevideoCreateMediaEditor = target => mediaPanel(node, target);
     node.addDOMWidget("freevideo_media", "freevideo_media", panel, {serialize: false, getMinHeight: () => 300, getMaxHeight: () => 520});

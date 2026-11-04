@@ -1146,7 +1146,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (runButtonReady) updateRunButton();
         }
         previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
-        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled);
+        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled, {release() { choosePassMode('on'); return ['Preview first was turned off for "Use as is".', '已为“原样使用”关闭“先出预览”。']; }});
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -2172,7 +2172,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source));
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while continuing a video. Remove "Continues this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;
