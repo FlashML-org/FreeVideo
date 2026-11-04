@@ -191,7 +191,7 @@ def validate(record):
     if not isinstance(raw_tracks, list) or len(raw_tracks) not in (2, 3, 4, 7):
         raise ValueError('Invalid tracks')
     later = [raw.get('id') if isinstance(raw, dict) else None for raw in raw_tracks[2:]]
-    if later not in ([], ['a2'], ['a3'], ['a2', 'a3']):
+    if later not in ([], ['a2'], ['a3'], ['a2', 'a3'], ['a2', 'a3', 'a4', 'a5', 'a6']):
         raise ValueError('Invalid tracks')
     expected = [('v1', 'video'), ('a1', 'audio')] + [(track_id, 'audio') for track_id in later]
     tracks, seen = [], {}
