@@ -118,11 +118,12 @@ def plan(request, *, fields=True):
         problems.extend(dict(path='/screenplay' + p['path'], message=_rule(p)) for p in error.problems)
     if fields:
         _fields(play, problems)
-    count = request.get('takes_per_shot', 1)
-    count_ok = _count(count, '/takes_per_shot', problems)
     director = request.get('director', 'agent')
     if director not in ('agent', 'builtin'):
         problems.append(dict(path='/director', message='must be "agent" or "builtin"'))
+    # The built-in director judges takes as they arrive and withdraws the rest once one is chosen, so two cost little.
+    count = request.get('takes_per_shot', 2 if director == 'builtin' else 1)
+    count_ok = _count(count, '/takes_per_shot', problems)
     rows = play.get('shots', []) if isinstance(play, dict) else []
     total = 0
     if isinstance(rows, list):
@@ -530,6 +531,22 @@ def resume(state, *, by, now):
     _commit(state, draft, now)
 
 
+def _withdraw_others(row, chosen):
+    """Stop the shot's other unfinished takes and unsent manual batches once one is chosen.
+
+    Finished takes stay, so the choice can still change; automatic reconnects are not ours to drop.
+    """
+    for other in row['takes']:
+        if other['take'] == chosen or other['stale'] or other['cancel_requested']:
+            continue
+        if other['state'] == 'paused':
+            other['state'] = 'cancelled'
+            other['cancel_requested'] = True
+        elif other['state'] in ACTIVE:
+            other['cancel_requested'] = True
+    row['pending'] = [g for g in row['pending'] if g[0].get('automatic')]
+
+
 def choose(state, shot, take, *, by, reason=None, cascade=True, now):
     """Choose a current take, optionally reconnecting descendants automatically."""
     _editable(state, by)
@@ -550,6 +567,7 @@ def choose(state, shot, take, *, by, reason=None, cascade=True, now):
             _commit(state, draft, now)
         return
     row['chosen'], row['chosen_by'] = take, by
+    _withdraw_others(row, take)
     _refresh(draft)
     if by != 'user':
         affected = [dict(shot=old['id']) for old, child in zip(state['shots'], draft['shots'])
