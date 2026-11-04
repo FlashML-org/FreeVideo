@@ -85,7 +85,7 @@ ZH = dict([
     ('Checking configuration', '检查配置'), ('Check installation', '检查安装'),
     ('Verify bundled files', '校验离线包'), ('Check local files', '检查本地文件'),
     ('All bundled files verified', '离线包校验完成'),
-    ('Detecting your GPU and testing acceleration', '检测显卡与加速组件'),
+    ('Detecting the GPU', '正在检测显卡'), ('Testing acceleration', '正在测试加速组件'),
     ('Start ComfyUI', '启动 ComfyUI'), ('Open FreeVideo workflow', '打开 FreeVideo 工作流'),
     ('Ready', '已就绪'), ('Verified and ready', '已就绪'),
     ('Stopped; files retained', '已暂停，下载进度已保留'),

@@ -217,7 +217,7 @@ def initialize(root, progress=lambda **kw: None):
     from .locking import runtime_lock
     with runtime_lock(root/'engine/engine.lock', inherit=False) as descriptor, child_lease(descriptor):
         verify(root, value, progress)
-        progress(stage='gpu', detail='Detecting your GPU and testing acceleration', done=0, total=1)
+        progress(stage='gpu', detail='Detecting the GPU', done=0, total=1)
         from .hardware import detect
         hardware = detect()
         machine = configuration(root, value, hardware)
@@ -227,6 +227,7 @@ def initialize(root, progress=lambda **kw: None):
         # Reuse only this device/driver/runtime's local kernel receipt. No
         # foreign ready machine.json or precompiled GPU cache ships in a ZIP.
         from .kernel_capabilities import available_backends, readiness, receipt_path
+        progress(stage='gpu', detail='Testing acceleration', done=0, total=1)
         available_backends(hardware)
         if machine['prepared_format'] == 'int8_convrot':
             rows = json.loads(io_path(receipt_path()).read_text(encoding='utf-8')).get('kernel_probes', [])
