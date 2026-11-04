@@ -1202,6 +1202,7 @@ class Controller:
             if queue_busy(loopback_url(self.server_address or self.selection['url'])):
                 raise RuntimeError(ENGINE_UPDATE_WAITS + '. Try again after it finishes; the job is left running.')
             self._stop_server_for_setup(selected['url'])
+        self.stage('nodes', label='Connecting workflow nodes')
         engine_binding.rebind(selected['engine'], machine, selected['source'])
         self.stage('nodes', label='Install FreeVideo workflow')
         deployed = deploy(selected['root'], selected['source'], selected['engine'])

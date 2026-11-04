@@ -485,7 +485,7 @@ ApplicationWindow {
                     objectName: "reportStatus"
                     visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro
                     color: s.report.status === "error" ? theme.danger : theme.muted
-                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
                         s.report.status === "error" ? t("Export failed: ", "导出失败：") + s.report.error :
                         t("Report saved locally: ", "报告已保存到本机：") + s.report.path +
                         (s.report.collection_errors ? t("\nReport saved with some diagnostic information missing.", "\n报告已保存，部分诊断信息未能收集。") : "")
@@ -1481,7 +1481,7 @@ ApplicationWindow {
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted
-                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
                                     s.report.status === "error" ? s.report.error : t("Saved: ", "已保存：") + s.report.path
                             }
                         }

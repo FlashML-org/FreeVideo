@@ -1205,7 +1205,13 @@ class Session:
         notes = self.diagnostic_error()
         logs = tuple(path for _, path in self.controller.terminal_sources())
         replacements = [(self.token, '<REDACTED>')] if self.token else []
-        self.report = dict(status='running', path=str(output), error='')
+        started = time.monotonic()
+        self.report = dict(status='running', path=str(output), error='', files=0)
+
+        def packed(count):
+            # The count is shown only when packing takes longer than a few seconds.
+            if self.report.get('status') == 'running':
+                self.report = dict(self.report, files=count if time.monotonic() - started > 5 else 0)
 
         def work():
             target = Path(output)
@@ -1214,7 +1220,7 @@ class Session:
             replacing = False
             try:
                 result = collect(root, root / 'machine.json', None, partial,
-                                 complete=True, extra_files=logs, notes=notes)
+                                 complete=True, extra_files=logs, notes=notes, progress=packed)
                 if partial != target:
                     replacing = True
                     os.replace(io_path(partial), io_path(target))

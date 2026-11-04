@@ -78,7 +78,7 @@ ZH = dict([
     ('Install ComfyUI packages', '安装 ComfyUI 组件'), ('Check ComfyUI dependencies', '检查 ComfyUI 环境'),
     ('Finish ComfyUI setup', '完成 ComfyUI 安装'), ('ComfyUI ready', 'ComfyUI 已就绪'),
     ('Prepare ComfyUI', '准备 ComfyUI'), ('Update ComfyUI packages', '更新 ComfyUI 组件'),
-    ('Install FreeVideo workflow', '安装 FreeVideo 工作流'),
+    ('Install FreeVideo workflow', '安装 FreeVideo 工作流'), ('Connecting workflow nodes', '正在连接工作流节点'),
     ('Open ComfyUI', '打开 ComfyUI'), ('Starting ComfyUI', '启动 ComfyUI'),
     ('Loading nodes and the web interface', '正在加载界面'),
     ('Still loading. This may take a few more minutes.', '仍在加载，可能还需要几分钟'),
