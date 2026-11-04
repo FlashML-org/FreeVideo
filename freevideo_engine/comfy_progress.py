@@ -428,6 +428,19 @@ def register():
         info = await asyncio.to_thread(feedback.collect, request.query.get('report_id'))
         return web.json_response(info, headers={'Cache-Control': 'no-store'})
 
+    @server.routes.get('/freevideo/stems-support')
+    async def stems_support(request):
+        # The editor page asks once whether to offer sound separation; the agent feature list needs a token the page never holds.
+        def offered():
+            from .agent.editor_runtime import available
+            from .agent.routes import stems_supported
+            from .comfy_bridge import installation
+            try:
+                return bool(available() and stems_supported(installation()[1]))
+            except (OSError, ValueError):
+                return False
+        return web.json_response({'available': await asyncio.to_thread(offered)}, headers={'Cache-Control': 'no-store'})
+
     @server.routes.get('/freevideo/progress')
     async def progress(request):
         return web.json_response({'progress': STATE.snapshot()},

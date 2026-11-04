@@ -263,6 +263,11 @@ class FreeVideoGenerate(io.ComfyNode):
             note('video', path(comfy_bridge.installation_root()))
         except Exception as error:
             logging.warning('[FreeVideo] Could not record the video for the picture worker: %s', error)
+        try:   # nor splitting a clip's sound, which starts again after the video
+            from .stems.service import stop_for_generation as stop_stems_for_generation
+            stop_stems_for_generation(PromptServer.instance)
+        except Exception as error:
+            logging.warning('[FreeVideo] Could not stop sound separation before the video: %s', error)
         prewarm = {}
         result_reused = [False]
         result_report = [None]
@@ -422,7 +427,11 @@ class FreeVideoGenerate(io.ComfyNode):
             gpu = comfy_bridge.installation()[1].get('gpu_uuid')
         except (OSError, ValueError, KeyError, TypeError):
             gpu = None
-        kept = OWNER.finished(next_part=next_part, gpu=gpu, warm=True,
+        try:
+            admission = json.loads(output.with_suffix('.engine.json').read_text(encoding='utf-8')).get('resident_admission')
+        except (OSError, ValueError, AttributeError):
+            admission = None
+        kept = OWNER.finished(next_part=next_part, gpu=gpu, warm=True, decisions=admission,
                               agent=server is not None and str(getattr(server, 'client_id', '') or '').startswith('agent:'))
         from .comfy_environment import executor_device
         if target and not result_reused[0] and not executor_device():

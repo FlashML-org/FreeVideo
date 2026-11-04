@@ -1,4 +1,6 @@
 """Bound the pending Metal work and the live tensors of the original FP32 input-video encoder."""
+import json
+import time
 from contextlib import contextmanager
 
 
@@ -175,12 +177,13 @@ def _lean_encoder(encoder, torch):
     return forward
 
 
-def _residency(model, device, torch):
+def _residency(model, target, torch):
     """Hooks that hold each encoder stage's weights on `device` only while it runs.
 
     The weights are the same FP32 values read from the checkpoint; only the
     stage being computed is resident on the device, so the large late-stage
     weights are not alive while the early stages hold the largest activations.
+    `target` holds the device the stages upload to and whether a CPU rescue runs.
     Returns (hooks, host copies still on the device, uploaded byte counter).
     """
     encoder = model.encoder
@@ -194,8 +197,9 @@ def _residency(model, device, torch):
             # A failed run leaves its stage here with the device copy in place;
             # the host copy kept from the first upload stays the source.
             host.setdefault(parameter, parameter.data)
-            parameter.data = host[parameter].to(device)
-            uploaded[0] += parameter.numel() * parameter.element_size()
+            parameter.data = host[parameter].to(target['device'])
+            if not target['rescue']:
+                uploaded[0] += parameter.numel() * parameter.element_size()
     def release(unit, inputs, output):
         for parameter in unit.parameters():
             parameter.data = host.pop(parameter)
@@ -203,6 +207,92 @@ def _residency(model, device, torch):
         handles.append(unit.register_forward_pre_hook(upload))
         handles.append(unit.register_forward_hook(release))
     return handles, host, uploaded
+
+
+CPU_TILE_LIMIT = 6
+
+
+def _finite(tensor):
+    return bool(tensor.isfinite().all())
+
+
+def _guarded_tiles(encoder, patched, target, device, staged, stats, torch):
+    """Check every tile the encoder returns and recompute a non-finite one.
+
+    A reference clip takes many minutes to encode and the pinned H3 pipeline
+    only notices a non-finite latent after the last tile. Each tile output is
+    checked here instead. A tile with non-finite values is recomputed from the
+    same input: once more on the device (a transient fault), then with the
+    original operators and the same weights, then in FP32 on the CPU for a
+    bounded number of tiles. The first level that succeeds stays in use for the
+    following tiles, except the CPU, which is only ever a per-tile rescue. A
+    tile that no level makes finite stops the encode at once with a clear error.
+    Tile numbers and the CPU limit count over every reference encoded in the
+    same `bounded_encoder` context. Only the encoder's own output is checked;
+    the layers after it (quant_conv, sampling, stitching) are not.
+    """
+    inner = encoder.forward
+    levels = ['device'] + (['plain'] if stats.get('lean_resnet_blocks') else []) + (['cpu'] if staged else [])
+    stats.update(nonfinite_tiles=0, nonfinite_recoveries={})
+    state = {'start': 0, 'tile': 0}
+    def sweep():
+        torch.mps.synchronize()
+        torch.mps.empty_cache()
+    def run(level, hidden_states):
+        if level == 'device':
+            return inner(hidden_states)
+        saved = {m: m.__dict__.pop('forward') for m in patched if 'forward' in m.__dict__}
+        try:
+            if level == 'plain':
+                return encoder(hidden_states)
+            target.update(device='cpu', rescue=True)
+            try:
+                return encoder(hidden_states.to('cpu')).to(device)
+            finally:
+                target.update(device=device, rescue=False)
+        finally:
+            encoder.__dict__.pop('forward', None)
+            for module, forward in saved.items():
+                module.__dict__['forward'] = forward
+    def forward(hidden_states):
+        state['tile'] += 1
+        output = inner(hidden_states) if state['start'] == 0 else run(levels[state['start']], hidden_states)
+        if _finite(output):
+            return output
+        del output
+        stats['nonfinite_tiles'] += 1
+        first = stats.setdefault('nonfinite_first_tile', dict(index=state['tile'], shape=list(hidden_states.shape),
+                                                              level=levels[state['start']]))
+        if first['index'] == state['tile']:
+            print(json.dumps(dict(event='encoder_nonfinite_tile', **first)), flush=True)
+        attempts = [(0, 'device-retry')] if state['start'] == 0 else []
+        attempts += [(index, level) for index, level in enumerate(levels) if index > state['start']]
+        tried = []
+        for index, level in attempts:
+            if level == 'cpu' and stats.get('cpu_tiles', 0) >= CPU_TILE_LIMIT:
+                break
+            tried.append(level)
+            sweep()
+            started = time.monotonic()
+            if level == 'cpu':
+                stats['cpu_tiles'] = stats.get('cpu_tiles', 0) + 1
+                print(json.dumps(dict(event='encoder_cpu_rescue', phase='start', tile=state['tile'],
+                                      rescued=stats['cpu_tiles'])), flush=True)
+            output = run(levels[index], hidden_states)
+            if level == 'cpu':
+                print(json.dumps(dict(event='encoder_cpu_rescue', phase='end', tile=state['tile'],
+                                      seconds=round(time.monotonic() - started, 1))), flush=True)
+            if _finite(output):
+                stats['nonfinite_recoveries'][level] = stats['nonfinite_recoveries'].get(level, 0) + 1
+                if level == 'plain':
+                    state['start'] = 1
+                return output
+            del output
+        raise RuntimeError('The reference video encoder returned non-finite values for tile %d since the reference '
+                           'encoder was prepared (%s) at every level tried (%s); the encode was stopped instead of finishing '
+                           'the remaining tiles.'
+                           % (state['tile'], 'x'.join(str(n) for n in hidden_states.shape), ', '.join(tried) or 'none'))
+    return forward
 
 
 @contextmanager
@@ -227,6 +317,7 @@ def bounded_encoder(model, device=None):
     if not modules:
         raise ValueError('Expected the H3 input encoder convolution modules')
     handles, patched, host, staged, uploaded = [], [], {}, None, [0]
+    target = dict(device=device, rescue=False)
     stats = dict(policy='Complete original FP32 convolutions and release unused MPS allocations',
                  convolution_completions=0, convolution_modules=len(modules), lean_resnet_blocks=0,
                  staged_weight_bytes=0)
@@ -253,13 +344,18 @@ def bounded_encoder(model, device=None):
             patched.append(model.encoder)
             stats['lean_resnet_blocks'] = sum(len(b.resnets) for b in model.encoder.down_blocks)
             if device is not None:
-                staged = _residency(model, device, torch)
+                staged = _residency(model, target, torch)
                 if staged is not None:
                     hooks, host, uploaded = staged
                     handles.extend(hooks)
         if device is not None and staged is None:
             # Not the pinned structure: whole model on the device, fences only.
             model.to(device)
+        encoder = getattr(model, 'encoder', None)
+        if device is not None and isinstance(encoder, torch.nn.Module):
+            if encoder not in patched:
+                patched.append(encoder)
+            encoder.forward = _guarded_tiles(encoder, patched, target, device, staged is not None, stats, torch)
         yield stats
     finally:
         if staged is not None:

@@ -495,15 +495,27 @@ def windows_int8_refinement_heads(engine, canvas, allocator_limit, *, windows=Fa
     return {'head_chunk': 2} if need is not None and need > allocator_limit else None
 
 
-def int8_gpu_output_need(tokens, windows=False, full_tail=False):
+# Windows has no measurement below 72576 tokens, so int8_gpu_output_need holds
+# the 72576 figure there. Whether the outputs stay on the card is decided with
+# the PRO 6000 curve carried over instead: it measures 0.78 GiB less at 55944
+# tokens than at 72576, and the Windows figures run 0.03 GiB above it at 72576.
+# The 16-step reference schedule charges 0.22 GiB of modulation tables to the
+# budget, which moved a 56721-token request on a 4.75 GiB budget to host
+# outputs for a 0.18 GiB shortfall against the clamped figure.
+INT8_GPU_OUTPUT_PEAKS_WINDOWS_LOW = ((55944, 3.43),) + INT8_GPU_OUTPUT_PEAKS_WINDOWS
+
+
+def int8_gpu_output_need(tokens, windows=False, full_tail=False, below_measured=False):
     """Bytes the int8 staging path needs with its attention outputs on the GPU.
 
     Windows has no full-tail measurement, so it returns None there: the caller
-    keeps the FP8-derived estimate 0.3.3 used."""
+    keeps the FP8-derived estimate 0.3.3 used. ``below_measured`` carries the
+    PRO 6000 curve under the first Windows measurement instead of holding it."""
     if full_tail and windows:
         return None
     peaks = (INT8_GPU_OUTPUT_PEAKS_FULL_TAIL if full_tail
-             else INT8_GPU_OUTPUT_PEAKS_WINDOWS if windows else INT8_GPU_OUTPUT_PEAKS)
+             else (INT8_GPU_OUTPUT_PEAKS_WINDOWS_LOW if below_measured else INT8_GPU_OUTPUT_PEAKS_WINDOWS) if windows
+             else INT8_GPU_OUTPUT_PEAKS)
     margin = INT8_GPU_OUTPUT_MARGIN_WINDOWS if windows else INT8_GPU_OUTPUT_MARGIN
     tokens = 72576 if tokens is None else tokens
     if tokens <= peaks[0][0]:
@@ -1386,7 +1398,7 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
             # was an FP8 surcharge absorbed by that path's larger estimate.
             # Windows has its own measurement (INT8_GPU_OUTPUT_PEAKS_WINDOWS)
             # and keeps the FP8-derived estimate wherever that one is lower.
-            need = int8_gpu_output_need(effective_tokens, windows=desktop, full_tail=lora)
+            need = int8_gpu_output_need(effective_tokens, windows=desktop, full_tail=lora, below_measured=desktop)
             if desktop:
                 need = min(fp8_residual_need + GPU_ATTENTION_OUTPUT_BYTES, need or float('inf'))
             cpu_outputs = gpu_budget < need

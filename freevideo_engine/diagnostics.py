@@ -237,7 +237,7 @@ def web_files(root, machine):
     return dict(error='No FreeVideo source is recorded')
 
 
-def collect(root, config, run, output, *, complete=False, extra_files=(), notes=''):
+def collect(root, config, run, output, *, complete=False, extra_files=(), notes='', progress=None):
     root, config = resolved(root.expanduser()), io_path(config.expanduser().absolute())
     run = io_path(run) if run is not None else None
     output = io_path(output)
@@ -270,6 +270,8 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
             manifest['files'].append({'file': name, 'bytes': len(data), 'truncated': truncated,
                                       'sha256': hashlib.sha256(data).hexdigest()})
             manifest['payload_bytes'] += len(data)
+            if progress is not None:
+                progress(len(manifest['files']))
 
         def add_path(name, path):
             if Path(path).name.lower() in SENSITIVE_FILES:

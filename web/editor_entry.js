@@ -8,10 +8,19 @@ import {openAutopilot, viewChanged} from './view_navigation.js';
 import {mediaReferences} from './editor_media_references.js';
 import {turnNodeOn} from './studio_queue.js';
 function editorPanel(node) {
-    const values = Object.fromEntries((node.widgets || []).filter(widget => widget.name).map(widget => [widget.name, widget.value]));
+    const read = () => Object.fromEntries((node.widgets || []).filter(widget => widget.name).map(widget => [widget.name, widget.value]));
+    const values = read();
     return {node: node.id, width: values.width, height: values.height, text: values.text || '', settings: Object.fromEntries(Object.entries({
         two_pass: values.two_pass, base_steps: values.base_steps, refine_steps: values.refine_steps,
         step_cache: values.step_cache, upscale_factor: values.upscale_factor, seed: values.seed, sampling_effort: values.sampling_effort}).filter(([, value]) => value !== undefined)),
+        // The creative panel's two-pass choices, which the generation bar shows too; null without an open panel.
+        get passMode() { return node.freevideoPassMode || null; },
+        // What a two-pass choice leaves in the panel's sampling settings now.
+        sampling() {
+            const now = read();
+            return Object.fromEntries(Object.entries({two_pass: now.two_pass, base_steps: now.base_steps, refine_steps: now.refine_steps,
+                step_cache: now.step_cache, upscale_factor: now.upscale_factor}).filter(([, value]) => value !== undefined));
+        },
         references: mediaReferences(node),
         async snapshot() {
             if (node.freevideoEditorLooping?.()) throw new Error('loop_active');

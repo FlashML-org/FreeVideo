@@ -5,6 +5,7 @@ import {clickSelection, createSelectionActions, isTyping, selectedIds, playheadI
 const registered = new Set();
 // Groups appear in first-registration order; matching groups stay together.
 // Built-ins use 'edit' and 'split'. Return the disposer when unloading an extension.
+// visible(context), when given, leaves the item out of menus it does not belong in.
 // label/shortcut accept a string or (context) => string, so extensions can use context.t.
 export function registerMenuItem(item) {
     if (!['part', 'empty'].includes(item.where) || item.group == null || !item.label || typeof item.run !== 'function')
@@ -41,13 +42,18 @@ export function menuItems(context) {
         command('x', t('Cut', '剪切'), `${modifier}+X`, copyable && !generating),
         command('d', t('Duplicate', '创建副本'), `${modifier}+D`, copyable),
         command('delete', t('Delete', '删除'), 'Delete', !generating),
+        command('ripple', t('Ripple delete', '波纹删除'), 'Shift+Delete', !generating),
         command('b', t('Split', '剪开'), `${modifier}+B`, !splitBusy && canSplit, 'split'),
     ] : [
         command('v', t('Paste', '粘贴'), `${modifier}+V`, commands.canPaste()),
         command('a', t('Select all', '全选'), `${modifier}+A`, record.tracks.some(track => track.clips.length)),
     ];
+    // Only a whole preview part offers its second pass; it replaces the part in place.
+    const preview = context.where === 'part' && context.actions.secondPassTarget?.(context.state.selection);
+    if (preview && context.actions.runSecondPass) items.push({group: 'generate', label: t('Run second pass', '继续二采'), shortcut: '',
+        enabled: !context.actions.generationSending?.(), run: () => context.actions.runSecondPass(context.state.selection)});
     const value = field => typeof field === 'function' ? field(context) : field;
-    for (const item of registered) if (item.where === context.where) items.push({...item,
+    for (const item of registered) if (item.where === context.where && (!item.visible || item.visible(context))) items.push({...item,
         label: value(item.label), shortcut: value(item.shortcut) || '', enabled: item.enabled ? !!item.enabled(context) : true,
         run: () => item.run(context)});
     const groups = new Map();
@@ -119,6 +125,7 @@ export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTes
             const label = document.createElement('span'), shortcut = document.createElement('span');
             label.className = 'fv-ed-menu-label'; label.textContent = item.label;
             shortcut.className = 'fv-ed-menu-shortcut'; shortcut.textContent = item.shortcut;
+            if (item.tourId) button.dataset.tourId = item.tourId;
             button.append(label, shortcut);
             // Keep disabled items discoverable without explanatory tooltips.
             button.onclick = () => {
@@ -133,7 +140,9 @@ export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTes
         const width = window.innerWidth || document.documentElement?.clientWidth || 1440;
         const height = window.innerHeight || document.documentElement?.clientHeight || 900;
         element.style.left = `${Math.max(8, Math.min(event.clientX, width - bounds.width - 8))}px`;
-        element.style.top = `${Math.max(8, Math.min(event.clientY, height - bounds.height - 8))}px`;
+        // Without room below the pointer the menu opens upward from it, so it never slides over the toolbar beside it.
+        const below = event.clientY + bounds.height + 8 <= height;
+        element.style.top = `${Math.max(8, below ? event.clientY : event.clientY - bounds.height)}px`;
         (buttons[0] || element).focus({preventScroll: true});
     };
     const outside = event => { if (!element.contains(event.target)) close(); }, closeMenu = () => close();

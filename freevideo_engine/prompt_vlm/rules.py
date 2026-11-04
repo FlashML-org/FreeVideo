@@ -93,6 +93,9 @@ untranslated; each speaker keeps one ID and different speakers get different IDs
 The young woman (S1) says softly: <d>[Chinese] 再见了。</d> The man (S2) replies: <d>[English] Wait.</d>
 Dialogue belongs only in the first section, not in the sound sections.
 """
+    if TIMED_MARK.search(value['text']):
+        rule += ('The scene has fixed times. Keep every "At MM:SS.mmm" sentence and every [Shot n] At MM:SS.mmm cut '
+                 'exactly as given, in the same order and at the same time; add the picture, camera and sound around them.\n')
     if value['mode'] == 'ref2va':
         rule += """subject_definitions: Name each visible subject literally <Subject 1>, <Subject 2>, etc.,
 with its appearance and source <Picture N> or <Video N>. Preserve the supplied numbering.
@@ -343,10 +346,28 @@ def dialogue(text, scene):
     return text
 
 
+TIMED_MARK = re.compile(r'\bAt (\d{2}:\d{2}\.\d{3})')
+TAGGED = re.compile(r'<d>(?:\[[A-Za-z]+\])?\s*([^<\n]{1,400}?)\s*</d>')
+
+
 def missing_lines(text, scene):
     """The user's spoken lines that the rewrite does not contain at all."""
     have = plain(text)
-    return [line for line in dict.fromkeys(spoken_lines(scene)) if plain(line) not in have]
+    lines = spoken_lines(scene)
+    if TIMED_MARK.search(scene):
+        # A timed scene already wraps its dialogue as <d>[Language] ...</d>; those lines are as fixed as quoted ones.
+        lines += [line for line in TAGGED.findall(scene) if plain(line)]
+    return [line for line in dict.fromkeys(lines) if plain(line) not in have]
+
+
+def lost_marks(text, scene):
+    """The scene's fixed times (At MM:SS.mmm) that the rewrite dropped or moved out of order."""
+    have = iter(TIMED_MARK.findall(text))
+    return [mark for mark in TIMED_MARK.findall(scene) if mark not in have]
+
+
+TIMING_RETRY = ('Your rewrite lost or reordered these fixed times. Keep every sentence that starts with "At MM:SS.mmm" '
+                'and every [Shot n] At MM:SS.mmm cut exactly as given, in the same order: ')
 
 
 DIALOGUE_RETRY = ('Your rewrite left out these spoken lines. Rewrite the whole prompt again in the same format and '

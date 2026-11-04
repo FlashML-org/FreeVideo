@@ -147,6 +147,7 @@ LABEL_KEYS = frozenset((
     'Hugging Face',
     'Importing offline packages',
     'Install FreeVideo workflow',
+    'Connecting workflow nodes',
     'Installing sampling cache',
     'Leaving more GPU memory for text encoding',
     'Load cached blocks and upload resident weights',

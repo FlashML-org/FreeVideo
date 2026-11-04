@@ -222,7 +222,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     };
     const audioTargetAt = (source, event) => {
         const track = pointerTrackAt(event);
-        return !source.hasVideo && source.hasAudio && ['a1', 'a2'].includes(track) ? track : undefined;
+        return !source.hasVideo && source.hasAudio && ['a1', 'a2', 'a3'].includes(track) ? track : undefined;
     };
     const sourceInfo = key => typeof sources === 'function' ? sources(key) : sources.get?.(key) || sources[key];
     // The snapping switch lives in the transport model: it empties the point list (and Alt flips it per gesture).
@@ -492,12 +492,16 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const openFailure = !popover.hidden && failedPopoverId;
         selectGestures.finish(null, true);
         cachedPlan = ''; popover.hidden = true;
-        const record = state.record, retained = new Set(), tracks = displayTracks(record);
+        const record = state.record, retained = new Set();
+        // The model keeps a2 and a3 so the separated parts sit at fixed places; while they hold nothing they stay out of sight.
+        const separated = record.tracks.some(track => track.stem);
+        const tracks = displayTracks(record).filter(track => !(separated && track.kind === 'audio' && !track.stem && track.id !== 'a1' && !track.clips.length));
         const twoAudio = tracks.some(track => track.id === 'a2');
-        let top = 24;
+        const STEM_NAMES = {dialogue: t('Dialogue', '人声'), music: t('Music', '音乐'), ambience: t('Ambience', '环境声')};
+        let top = 24, parted = false;
         for (const track of tracks) {
-            const name = track.kind === 'text' ? t('Text', '文字') : track.kind === 'subtitle' ? t('Subtitles', '字幕') : track.kind === 'video' ? t('Video', '画面') : twoAudio
-                ? t(`Audio ${track.id === 'a1' ? 1 : 2}`, `声音 ${track.id === 'a1' ? 1 : 2}`) : t('Audio', '声音');
+            const name = track.kind === 'text' ? t('Text', '文字') : track.kind === 'subtitle' ? t('Subtitles', '字幕') : track.kind === 'video' ? t('Video', '画面') : track.stem ? STEM_NAMES[track.stem] : track.id === 'a3'
+                ? t('Voice', '录音') : twoAudio ? t(`Audio ${track.id.slice(1)}`, `声音 ${track.id.slice(1)}`) : t('Audio', '声音');
             let row = rows.get(track.id);
             if (!row) {
                 const node = create('div', 'fv-ed-track-row'); node.dataset.track = track.id;
@@ -507,9 +511,14 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const head = create('div', 'fv-ed-track-head'); head.dataset.track = track.id;
                 head.title = name; head.append(icon(track.kind), create('span', '', name));
                 heads.append(head); content.insertBefore(node, overlays);
-                row = {element: node, head, empty}; rows.set(track.id, row);
+                row = {element: node, head, empty}; rows.set(track.id, row); parted ||= !!track.stem;
             }
             row.head.title = name; row.head.querySelector('span').textContent = name;
+            // Guide targets ("take me there"): the lanes where a range is dragged out for speech or music, and the
+            // separated music lane where new music replaces the old.
+            const tourId = track.stem === 'music' ? 'audio-music-stem' : track.stem ? '' : {a1: 'audio-a1-track', a2: 'audio-a2-track'}[track.id] || '';
+            if (tourId) row.element.dataset.tourId = tourId; else delete row.element.dataset.tourId;
+            row.head.dataset.sub = row.element.dataset.sub = String(track.id === 'a3');
             row.empty.hidden = track.clips.length > 0;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
@@ -537,6 +546,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 previous = item.element;
                 const visual = model.clipState(clip), key = sourceKey(clip);
                 item.element.dataset.state = visual; item.element.dataset.track = track.id;
+                item.element.dataset.split = String(track.kind === 'audio' && clip.stem_of === undefined && state.record.tracks.some(row => row.stem && row.clips.some(other => other.stem_of === clip.id)));
                 item.element.dataset.busy = String(busy(clip)); item.element.dataset.extend = String(clip.extend && actions.generationAvailable?.() !== false && !busy(clip));
                 // A part not generated yet is attached only to the part it continues; drawn on its own it stays a separate block.
                 // Touching blocks are one video only when the later one continues the earlier one, or both are consecutive stretches of one source;
@@ -585,8 +595,12 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         addAudio.dataset.sign = addAudio.textContent.slice(0, 1); // Phone widths show the sign alone.
         addAudio.title = '';
         addAudio.setAttribute('aria-label', addAudio.textContent);
+        // Without Audio 2 the guide points at the button that adds it.
+        if (twoAudio) delete addAudio.dataset.tourId; else addAudio.dataset.tourId = 'audio-a2-track';
         setTrackHeight(top - 6);
         layout();
+        // The parts of a fresh split appear under the sound they came from: show them from the top.
+        if (parted) scroll.scrollTop = 0;
         const failure = openFailure && clips.get(openFailure);
         if (failure && model.clipState(failure.clip) === 'failed' && state.selection?.ids?.includes(openFailure)) failedPopover(failure);
         if (gesture?.type === 'move' && pointerEvent) updatePointer(pointerEvent);
@@ -825,8 +839,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const result = moveParameters(gesture.clip, gesture.anchor, frame, dragPoints(desired, gesture.clip.frames), state.zoom);
             result.track = isText(gesture.clip) ? pointerHit(event).track : null;
             const pointedTrack = pointerTrackAt(event);
-            result.targetTrack = gesture.ids.length === 1 && ['a1', 'a2'].includes(gesture.track)
-                && ['a1', 'a2'].includes(pointedTrack) ? pointedTrack : undefined;
+            result.targetTrack = gesture.ids.length === 1 && ['a1', 'a2', 'a3'].includes(gesture.track)
+                && ['a1', 'a2', 'a3'].includes(pointedTrack) ? pointedTrack : undefined;
             gesture.result = result;
             const track = state.record.tracks.find(row => row.id === (result.targetTrack || gesture.track));
             const drop = isText(gesture.clip) ? {hit: false} : insertionPoint(track.clips, result.frame, gesture.ids);
@@ -1114,7 +1128,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             if (draggedSource) try {
                 const preview = model.insertSource(state.record, {...draggedSource, at: frame.frame, targetTrack: audioTargetAt(draggedSource, event)});
                 const added = previewSourcePlacement(preview), sound = added.find(item => item.track !== 'v1');
-                const name = sound ? preview.tracks.length === 3
+                const name = sound ? !preview.tracks.some(track => track.id === 'a3') && preview.tracks.length === 3
                     ? t(`Audio ${sound.track === 'a1' ? 1 : 2}`, `声音 ${sound.track === 'a1' ? 1 : 2}`) : t('Audio', '声音') : '';
                 dropPoint = {frame: added[0].clip.start, label: `${clock(added[0].clip.start)} – ${clock(added[0].clip.start + draggedSource.frames)}${name ? ` · ${name}` : ''}`};
             } catch (error) {

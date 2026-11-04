@@ -28,6 +28,14 @@ export function audioClipFields(raw, kind) {
         if (kind !== 'audio' || typeof raw.duck !== 'boolean') fail('audio');
         fields.duck = raw.duck;
     }
+    if (raw.stem_of !== undefined) {
+        if (kind !== 'audio' || typeof raw.stem_of !== 'string' || !/^c[1-9]\d{0,8}$/.test(raw.stem_of) || raw.stem_of === raw.id || raw.link) fail('stems');
+        fields.stem_of = raw.stem_of;
+    }
+    if (raw.stem_volume !== undefined) {
+        if (kind !== 'audio' || typeof raw.stem_volume !== 'number' || !(raw.stem_volume >= 0 && raw.stem_volume <= 2)) fail('stems');
+        fields.stem_volume = raw.stem_volume;
+    }
     return fields;
 }
 export function audioTrackFields(raw) {
@@ -39,6 +47,11 @@ export function audioTrackFields(raw) {
     return fields;
 }
 export function normalizeAudioEdits(record) {
+    // A clip silenced for its separated sound speaks again once no stem clip refers to it.
+    const stemmed = new Set(record.tracks.flatMap(track => track.clips).map(clip => clip.stem_of));
+    for (const track of record.tracks) for (const clip of track.clips) {
+        if (clip.stem_volume !== undefined && !stemmed.has(clip.id)) { clip.volume = clip.stem_volume; delete clip.stem_volume; }
+    }
     for (const track of record.tracks) for (const clip of track.clips) {
         for (const name of ['fade_in', 'fade_out']) if (clip[name] !== undefined) clip[name] = Math.min(clip[name], Math.floor(clip.frames / 2));
     }

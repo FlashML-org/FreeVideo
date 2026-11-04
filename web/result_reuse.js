@@ -14,17 +14,20 @@ export async function savedSettings(api, record) {
     try {
         const reply = await api.fetchApi('/freevideo/library/prompt?' + new URLSearchParams({id}), {cache: 'no-store'});
         if (!reply.ok) return null;
-        const {prompt} = await reply.json();
+        const {prompt, seed} = await reply.json();
         if (typeof prompt !== 'string' || !prompt) return null;
         // The panel keeps seconds to three decimals, so the frames it will ask for are those of that rounded duration.
         const raw = Number(g.frames) > 0 ? Number(g.frames) / 24 : Number(g.seconds);
         const seconds = raw > 0 ? Math.floor(raw * 1000) / 1000 : null;
-        return {text: prompt, width: Number(g.width), height: Number(g.height), seconds, frames: seconds === null ? null : framesOf(seconds)};
+        // The seed comes back once, so the same prompt and size make the same video; an older video kept none.
+        return {text: prompt, width: Number(g.width), height: Number(g.height), seconds, frames: seconds === null ? null : framesOf(seconds),
+            seed: Number.isSafeInteger(seed) && seed >= 0 ? seed : null};
     } catch { return null; }
 }
 
 // Whether filling the saved settings would change anything the panel can still change.
 export function differs(saved, now) {
     return saved.text !== now.text || saved.width !== now.width || saved.height !== now.height
-        || (saved.frames !== null && saved.frames !== now.frames);
+        || (saved.frames !== null && saved.frames !== now.frames)
+        || (saved.seed != null && now.seed != null && saved.seed !== now.seed);
 }

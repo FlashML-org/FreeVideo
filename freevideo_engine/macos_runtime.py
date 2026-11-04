@@ -495,7 +495,7 @@ class Engine:
             return result
 
     def _sample(self, conditioning, seed, *, width, height, frames, progress_offset=0, progress_total=None,
-               initial_latents=None, refine_steps=None, refine_schedule=None, continuation=None):
+               initial_latents=None, refine_steps=None, refine_schedule=None, continuation=None, step_state=None):
         import torch
         from .geometry import geometry, sampler_for_canvas
         from .system import system_memory
@@ -531,9 +531,19 @@ class Engine:
             from .reference_sampler import generate_latents
         active_steps = refine_steps if refining else self.steps
         canvas = geometry(width, height, frames=frames)
-        sampler = sampler_for_canvas(generate_latents, width, height)
-        progress = MacSamplingProgress(active_steps, len(self.model.transformer_blocks),
-                                    offset=progress_offset, total=progress_total)
+        # Only the plain first pass without a step cache saves its steps; a retry
+        # of it continues after the last saved one.
+        resumable = (step_state is not None and not refining and self.task == 't2va'
+                     and continuation is None and not self.step_cache)
+        resumed = step_state.load() if resumable else None
+        start = step_state.start if resumed else 0
+        sampler = sampler_for_canvas(generate_latents, width, height,
+                                     scheduler=step_state.scheduler if resumable else None)
+        progress = MacSamplingProgress(active_steps - start, len(self.model.transformer_blocks),
+                                    offset=progress_offset + start,
+                                    total=progress_total if progress_total is not None else active_steps + progress_offset)
+        if start:
+            print(json.dumps(dict(event='step_resume', completed_steps=start, total=active_steps)), flush=True)
         prefix = None
         class StepTimes(list):
             def append(owner, duration):
@@ -541,6 +551,8 @@ class Engine:
                     prefix.restore_video()
                 super().append(duration)
                 progress.complete(duration)
+                if resumable:
+                    step_state.completed(duration)
         durations = StepTimes()
         previous_calls = dict(self.attention.backend_calls)
         previous_kernel_calls = {name: dict(counts) for name, counts in
@@ -568,7 +580,7 @@ class Engine:
                                                      + 2 * continuation['audio'].shape[2])
                 self._plan_compute(canvas, prompt.shape[0])
                 previous_block_calls = self._block_metrics()
-                self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else 0)
+                self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else start)
                 progress.start()
                 resident = getattr(self, 'resident_bytes', 0)
                 retention = (dict(resident_bytes=resident, working_reserve_bytes=self.reserve_bytes)
@@ -589,7 +601,7 @@ class Engine:
                         audio_offset=canvas.get('reference_audio_tokens', 0)) as prefix, \
                         progress.layers(self.model.transformer_blocks), \
                         frame_preview.observing(latent_frames=canvas['latent_frames'], frame_h=height // 32,
-                                                frame_w=width // 32, step_offset=progress_offset,
+                                                frame_w=width // 32, step_offset=progress_offset + start,
                                                 total=progress_total if progress_total is not None else active_steps):
                     self.residency = residency
                     from .step_cache import begin_pass, end_pass
@@ -597,12 +609,16 @@ class Engine:
                     if not refining and self.step_cache:
                         begin_pass(self.model, active_steps, self.step_cache)
                     try:
+                        if resumable:
+                            step_state.attach(self.model, self.backend.device)
                         video, audio = sampler(self.model, prompt, tags, canvas['frames'], self.steps,
                                               seed, self.backend.device, step_seconds=durations,
                                               **(dict(conditions=conditions) if conditions else {}),
                                               **(dict(initial_latents=initial_latents, refine_steps=refine_steps, refine_schedule=refine_schedule)
                                                  if refining else {}))
                     finally:
+                        if resumable:
+                            step_state.detach()
                         step_cache = end_pass(self.model)
                     if prefix is not None:
                         video, audio = prefix.finish(video, audio)
@@ -628,7 +644,8 @@ class Engine:
                                               max_bytes=max(self.allocator_limits)),
                         attention_calls={name: value - previous_calls[name]
                                          for name, value in self.attention.backend_calls.items()},
-                        step_seconds=list(durations), step_cache=step_cache,
+                        step_seconds=list(step_state.previous_seconds if resumable else durations), step_cache=step_cache,
+                        **(dict(resumed_from_step=start) if start else {}),
                         block_seconds=progress.block_seconds, block_seconds_scope=BLOCK_SECONDS_SCOPE,
                         conditions=progress.conditions,
                         load_seconds=self.load_seconds, residency=self._residency_metrics(residency, previous_residency),

@@ -12,7 +12,7 @@ import sys
 import time
 import traceback
 
-from . import processes
+from . import processes, step_resume
 from .locking import LOCK_ENV, runtime_lock
 from .monitoring import save
 
@@ -182,6 +182,9 @@ def run(value):
                     continue
                 result['phase'] = stage
                 save(path, result)
+                if stage == 'first-pass':
+                    # Steps saved by an earlier request's pass must never be resumed.
+                    step_resume.discard(artifacts)
                 request = artifacts / (stage + '-request.json')
                 receipt = artifacts / (stage + '-result.json')
                 while True:
@@ -198,6 +201,13 @@ def run(value):
                             pass_fds=(descriptor,), check=True)
                     except subprocess.CalledProcessError:
                         failed = read_receipt(receipt)
+                        if failed.get('error_type') == 'ResumeRejected' and (artifacts / 'first-pass-step.pt').is_file():
+                            # The saved step did not reach the sampler. Start the pass
+                            # over without spending the retry.
+                            step_resume.discard(artifacts)
+                            result.setdefault('resume_rejections', []).append(failed.get('error_message'))
+                            receipt.unlink(missing_ok=True)
+                            continue
                         if not memory_exhausted(stage, failed):
                             raise
                         metal = METAL_FAILURE in str(failed.get('error_message', ''))
@@ -246,6 +256,8 @@ def run(value):
                     if stage in ('first-pass', 'refinement'):
                         # A later pass's failure is not a consecutive failed retry.
                         metal_retry = False
+                    if stage == 'first-pass':
+                        step_resume.discard(artifacts)
                     break
                 if stage == 'first-pass' and retained_joined:
                     continue
@@ -440,6 +452,14 @@ def worker(value):
                 # A memory retry keeps each pass in its own process.
                 admission = (joined_admission(engine, value) if not refining and not retry
                              and value.get('preview') is not True else dict(selected=False))
+                # A first pass saves each step so that a retry can continue after the last one.
+                step_state = None
+                if not refining and not admission['selected']:
+                    try:
+                        step_state = step_resume.StepState(step_resume.step_path(artifacts),
+                            first_pass_identity(value), sampling['base_steps'])
+                    except (OSError, KeyError, ValueError):
+                        step_state = None
                 result['sampling_admission'] = admission
                 if admission['selected']:
                     result.update(joined_sampling=True, sampling_passes=[], latent_save_seconds=0.)
@@ -471,6 +491,7 @@ def worker(value):
                 else:
                     video, audio, measured = engine.sample(value['conditioning'],
                         value['seed'] + (sampling['restart_seed_offset'] if refining else 0),
+                        **(dict(step_state=step_state) if step_state is not None else {}),
                         **sampling['second' if refining else 'first'],
                         **(dict(continuation=chain.load(continuation, 'final' if refining else 'first'))
                            if continuation is not None else {}),

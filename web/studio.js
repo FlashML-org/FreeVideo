@@ -24,6 +24,7 @@ import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
+import { problem as timedProblem, timedText } from './timed_prompt.js';
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
@@ -55,6 +56,7 @@ import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked
 import { waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
+import { createPassMode } from './pass_mode.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -820,7 +822,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const castChanged = event => { if (String(event.detail) === String(mediaNode?.id)) { castOverlay.refresh(); references.refresh(); announceCast(); } };
     window.addEventListener('freevideo-media', castChanged);
     node.freevideoContinues = () => Boolean(extension.source);
-    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; });
+    // Time lines are read for one video made in a single run; parts of a long video keep the typed text.
+    const timedRun = () => !extension.source && (lengthControl?.plan ? lengthControl.plan.count === 1 : Number(value(node, 'seconds')) <= 15);
+    node.freevideoSingleRun = timedRun;
+    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; delete node.freevideoSingleRun; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, onChange: () => { castOverlay.refresh(); references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else castLibrary = library; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'setting', onChange: () => { references.refresh(); }})
@@ -828,7 +833,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let requestAssets = null, rewriteSubjects = [];
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
-        prepare: text => { const out = expandCast(text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
+        prepare: text => { const out = expandCast(timedRun() ? timedText(text, Number(value(node, 'seconds'))) : text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
         restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
@@ -906,26 +911,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     twoPassLabel.title = t('Generates at a lower resolution, then upscales. Faster.', '先用低分辨率生成，再放大成片，更快。');
     const twoPassStatus = el('small', '', 'fv-two-pass-status');
     // Off, on, or on and paused after the first pass: a preview is one way to run two-pass.
-    const passMode = el('div', null, 'fv-pass-mode'); passMode.setAttribute('role', 'radiogroup');
-    passMode.setAttribute('aria-label', t('Two-pass sampling', '二次采样'));
-    const passOptions = [['off', t('Off', '关闭')], ['on', t('On', '开启')], ['preview', t('Preview first', '先出预览')]].map(([mode, label]) => {
-        const option = el('button', label); option.type = 'button'; option.dataset.mode = mode; option.setAttribute('role', 'radio');
-        option.onclick = () => choosePassMode(mode);
-        return option;
-    });
-    passOptions[2].title = t('Stops at a half-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
+    const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
+    const passMode = passControl.element;
+    cleanup.push(passControl.dispose);
+    const previewPassHint = t('Stops at a half-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出半分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
-    const previewPassHint = passOptions[2].title;
-    passMode.append(...passOptions);
-    cleanup.push(listenDialogKey(passMode, 'keydown', event => {
-        const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key];
-        if (!step) return;
-        event.preventDefault();
-        const enabled = passOptions.filter(option => !option.disabled && !option.hidden);
-        const current = enabled.findIndex(option => option.getAttribute('aria-checked') === 'true');
-        const next = enabled[(current + step + enabled.length) % enabled.length];
-        if (next) { next.click(); next.focus(); }
-    }));
     twoPassLabel.append(el('span', t('Two-pass', '二次采样')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null, lengthControl = null, chainController = null;
     // A level's step cache; custom steps and workflows without the input sample every step.
@@ -962,19 +952,24 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (previewFirst.checked !== wantsPreview) { previewFirst.checked = wantsPreview; set(node, 'preview', wantsPreview); }
         syncSamplingSteps(); updateRunButton();
     }
-    function syncPassMode() {
-        const mode = !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on';
+    function passState() {
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
-        for (const option of passOptions) {
-            const selected = option.dataset.mode === mode;
-            option.setAttribute('aria-checked', String(selected)); option.tabIndex = selected ? 0 : -1;
-            option.title = !(passLinked || (option.dataset.mode === 'preview' && previewLinked)) && option.dataset.mode === 'preview' ? previewPassHint : '';
-        }
-        passOptions[0].disabled = Boolean(extension.source) || passLinked || !widget(node, 'two_pass');
-        passOptions[1].disabled = twoPass.disabled;
-        passOptions[2].disabled = Boolean(extension.source) || twoPass.disabled || previewLinked || !widget(node, 'preview');
-        passOptions[2].hidden = !widget(node, 'preview');
+        return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
+            disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
+                preview: Boolean(extension.source) || twoPass.disabled || previewLinked || !widget(node, 'preview')},
+            hidden: {preview: !widget(node, 'preview')}, hint: passLinked || previewLinked ? '' : previewPassHint};
     }
+    // The editor's generation bar shows the same choices; it hears every change made here and chooses through here.
+    const passListeners = new Set();
+    function syncPassMode() {
+        const value = passState();
+        passControl.sync(value);
+        for (const listener of [...passListeners]) listener(value);
+    }
+    const sharedPass = {state: passState, choose: mode => choosePassMode(mode),
+        subscribe(listener) { passListeners.add(listener); return () => passListeners.delete(listener); }};
+    node.freevideoPassMode = sharedPass;
+    cleanup.push(() => { passListeners.clear(); if (node.freevideoPassMode === sharedPass) delete node.freevideoPassMode; });
     samplingSettings.append(effort.element, twoPassLabel);
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
@@ -1151,7 +1146,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (runButtonReady) updateRunButton();
         }
         previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
-        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled);
+        blockOriginal('preview', previewFirst.checked && !previewFirst.disabled, {release() { choosePassMode('on'); return ['Preview first was turned off for "Use as is".', '已为“原样使用”关闭“先出预览”。']; }});
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -1463,7 +1458,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const sizeLocked = dimensionsLinked || Boolean(extension.source), lengthLocked = linked(node, 'seconds') || Boolean(extension.source);
             return {text: prompt.disabled ? saved.text : requestText(prompt.value, node.properties?.freevideo_prompt_versions), width: sizeLocked ? saved.width : Number(value(node, 'width')),
                 height: sizeLocked ? saved.height : Number(value(node, 'height')),
-                frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value)};
+                frames: lengthLocked ? saved.frames : framesOf(seconds.value), seconds: Number(seconds.value),
+                seed: linked(node, 'seed') || !widget(node, 'seed') ? saved.seed ?? null : Number(value(node, 'seed'))};
         },
         apply: saved => {
             reuseApplying = true;
@@ -1474,6 +1470,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     seconds.value = String(saved.seconds);
                     seconds.dispatchEvent(new Event('input')); seconds.dispatchEvent(new Event('change'));
                 }
+                // The next run uses this seed; after it, the panel's own "after generating" choice moves it as usual.
+                if (saved.seed != null && !linked(node, 'seed') && widget(node, 'seed')) { set(node, 'seed', saved.seed); seed.value = String(saved.seed); }
             } finally { reuseApplying = false; }
         },
         onEdit: listener => {
@@ -1916,6 +1914,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const missing = swapMissing(swapState(mediaNode));
             if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
         }
+        const timedNote = !prompt.disabled && timedRun() ? timedProblem(prompt.value, Number(value(node, 'seconds')), t) : '';
+        if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
         const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
@@ -2172,7 +2172,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source));
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while continuing a video. Remove "Continues this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;

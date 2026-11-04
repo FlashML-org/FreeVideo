@@ -11,6 +11,7 @@ from copy import deepcopy
 import hashlib
 import json
 import logging
+from pathlib import Path
 import re
 import secrets
 import threading
@@ -412,6 +413,70 @@ class Projects:
             result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
             self._remember(ref, digest, result, client)
             return result
+
+    def stems(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue a sound-splitting job for one sound clip of the revision the caller read."""
+        schema.validate(schema.project_schema('stems'), value)
+        with self.listen_lock:
+            digest, replay = self._receipt('projects:stems', dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            clip = _clips(stored).get(value['clip_id'])
+            if clip is None or not clip.get('source') or clip.get('stem_of'):
+                raise _invalid('/clip_id', 'a sound clip with media that is not itself a separated part', value['clip_id'])
+            job = jobs.submit(dict(kind='stems', editor_project=identity,
+                                   **{k: v for k, v in value.items() if k != 'ref'}), client=client)[0]
+            result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
+            self._remember(ref, digest, result, client)
+            return result
+
+    def stems_export(self, identity, value, *, ref=None, client=None):
+        """Copy the four wav files of a split clip into the saved sounds; the clip must be one that was split."""
+        from ..stems.separate import SeparationError, export_tracks
+        schema.validate(schema.project_schema('stems_export'), value)
+        with self.listen_lock:
+            digest, replay = self._receipt('projects:stems_export', dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            parts = [clip for clip in _clips(stored).values() if clip.get('stem_of') == value['clip_id']]
+            if not parts:
+                raise _invalid('/clip_id', 'a clip that was split into dialogue, music and ambience', value['clip_id'])
+            folder = parts[0]['source']['id'].rsplit('/', 1)[0]
+            if not folder.startswith('freevideo-stems/') or folder.count('/') != 1:
+                raise _invalid('/clip_id', 'a clip split by this version', value['clip_id'])
+            name = folder.split('/', 1)[1]
+            try:
+                files = export_tracks(Path(self.root) / folder, Path(self.root) / 'freevideo-stems-saved' / name)
+            except SeparationError as error:
+                raise JobError('stems_failed', 'The separated sound cannot be saved (%s)' % error) from error
+            result = dict(editor_project=identity, revision=stored['revision'], clip_id=value['clip_id'],
+                          folder='freevideo-stems-saved/' + name, files=files)
+            self._remember(ref, digest, result, client)
+            return result
+
+    def lay_stems(self, identity, clip_id, sources):
+        """Put the three parts on sub-tracks under the clip and silence the clip; returns the save and the new clip IDs."""
+        before, refused = {}, {}
+        def change(project):
+            before['ids'] = set(_clips(project))
+            reply = editor_runtime.runtime().call('placeStems', project, [clip_id, {
+                name: dict(kind='generated', id=source.split(':', 1)[1]) for name, source in sources.items()}],
+                module='model', serialize=True)[0]
+            if not reply['ok']:
+                refused.update(reply['error'])
+                return dict(ok=True, project=project)
+            return dict(ok=True, project=reply['value'])
+        saved = self._update(identity, change)
+        if refused:
+            code = STATE_CODES.get(refused.get('code'), 'stems_failed')
+            raise JobError(code, 'The separated sound cannot be laid under the clip (%s)' % refused.get('code'))
+        return saved, sorted(set(_clips(saved)) - before['ids'])
 
     def lay_music(self, identity, source):
         """Put a finished score on a2 from frame 0 of the project as it is now; returns the save and the new clip IDs."""

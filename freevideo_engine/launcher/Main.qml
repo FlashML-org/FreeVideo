@@ -206,7 +206,7 @@ ApplicationWindow {
             return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : u.error ? u.error.split("\n")[0] + "\n" : "")
                 + (u.step === "release" ? t("The faster model is in use; the old model files are kept for now.", "已在用更快的模型，旧模型文件暂时保留。")
                    : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Select \"Retry\" on the setup page to restore it.", "原来的模型文件都还在，在安装页点“重试”可恢复。")
-                   : t("Your previous model is unchanged and still works.", "原来的模型没有变化，可以继续使用。"))
+                   : t("Your previous model is unchanged and still works. Select \"Try again\", or report a problem.", "原来的模型没有变化，可以继续使用。可以点“重试”，或提交问题。"))
         return ""
     }
     function updateHeadline() {
@@ -485,7 +485,7 @@ ApplicationWindow {
                     objectName: "reportStatus"
                     visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro
                     color: s.report.status === "error" ? theme.danger : theme.muted
-                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
                         s.report.status === "error" ? t("Export failed: ", "导出失败：") + s.report.error :
                         t("Report saved locally: ", "报告已保存到本机：") + s.report.path +
                         (s.report.collection_errors ? t("\nReport saved with some diagnostic information missing.", "\n报告已保存，部分诊断信息未能收集。") : "")
@@ -1481,7 +1481,7 @@ ApplicationWindow {
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted
-                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") :
+                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
                                     s.report.status === "error" ? s.report.error : t("Saved: ", "已保存：") + s.report.path
                             }
                         }

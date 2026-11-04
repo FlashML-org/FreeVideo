@@ -5,6 +5,10 @@
 .fv-audio-use button:last-child{border-radius:0 var(--fv-r-sm,8px) var(--fv-r-sm,8px) 0}
 .fv-audio-use button[aria-pressed=true]{background:var(--fv-selected);color:var(--fv-accent);border-color:var(--fv-accent);position:relative}
 .fv-audio-use button:disabled{cursor:default}
+.fv-audio-use button[data-blocked]{opacity:.6}
 .fv-audio-lock{display:inline-flex;margin-left:6px;vertical-align:-3px;color:var(--fv-muted)}
 .fv-audio-lock svg{width:13px;height:13px}
 .fv-audio-lock[hidden]{display:none}
+.fv-audio-use-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:6px 0 0;text-align:left}
+.fv-audio-use-note.fv-error{color:var(--fv-danger)}
+.fv-audio-use-note[hidden]{display:none}

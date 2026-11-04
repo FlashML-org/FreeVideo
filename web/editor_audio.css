@@ -3,8 +3,8 @@
 .fv-ed-audio-panel [hidden]{display:none!important}
 .fv-ed-track-view .fv-ed-track-head{justify-content:space-between;gap:4px;padding:0 6px}
 .fv-ed-track-head>svg{display:none}
-.fv-ed-track-head>span:not(.fv-ed-audio-track-controls){white-space:nowrap}
-.fv-ed-audio-track-controls{display:flex;gap:1px}
+.fv-ed-track-head>span:not(.fv-ed-audio-track-controls){white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fv-ed-audio-track-controls{display:flex;gap:1px;flex:none}
 .fv-ed-track-view .fv-ed-audio-track-switch{display:grid;place-items:center;padding:2px;width:24px;height:28px;border:0;border-radius:4px;background:transparent;opacity:.5;cursor:pointer}
 .fv-ed-audio-track-switch:hover,.fv-ed-audio-track-switch[aria-pressed=true]{opacity:1!important}
 .fv-ed-audio-track-switch[aria-pressed=true]{color:var(--fv-accent)!important}

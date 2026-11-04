@@ -90,3 +90,10 @@
 .fv-library .fv-library-unreadable{margin:8px;text-align:center}.fv-library .fv-library-unreadable:empty{display:none}
 @media(max-width:680px){.fv-library-tools{gap:0}.fv-library .fv-library-header{grid-template-columns:auto minmax(0,1fr) auto}.fv-library-header h2{text-align:center}.fv-library-header button{white-space:nowrap}.fv-studio.fv-library .fv-library-header button{padding-left:6px;padding-right:6px}}
 .fv-library-message .fv-issue-button{margin:4px 0 4px 8px;vertical-align:middle}
+/* Videos of one task fold under the newest: its picture shows one more edge behind it. Opened, the cover and each video of the task sit on their own raised ground, with a gap between them. */
+.fv-library-card[hidden]{display:none}
+.fv-library-card.fv-task-head:not(.fv-task-open) .fv-library-picture{box-shadow:4px -4px 0 0 var(--fv-sheen)}
+.fv-library .fv-library-card.fv-task-open,.fv-library .fv-library-card.fv-task-member{background:var(--fv-raised);border-radius:var(--fv-r-md)}
+.fv-library .fv-library-card.fv-task-member{animation:fv-task-reveal .2s ease}
+@keyframes fv-task-reveal{from{opacity:0;transform:translateY(-4px)}}
+@media(prefers-reduced-motion:reduce){.fv-library .fv-library-card.fv-task-member{animation:none}}

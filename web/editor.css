@@ -55,6 +55,7 @@
 .fv-ed-preview-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 .fv-editor .fv-ed-play:disabled{opacity:.4}
 .fv-editor:has(.fv-ed-track-row[data-track=a2]){--fv-ed-tracks-min:220px}
+.fv-editor:has(.fv-ed-track-row[data-track=a4]){--fv-ed-tracks-min:330px}
 .fv-editor .fv-ed-track-view{height:100%}
 .fv-ed-picture>video{position:absolute;width:100%;height:100%;inset:0;object-fit:contain;opacity:0;pointer-events:none}
 .fv-ed-picture>video.fv-ed-visible{opacity:1}
@@ -77,6 +78,14 @@
 .fv-ed-genbar[data-mode=running]>button:not(.fv-ed-generate){order:2}
 .fv-ed-gen-note{font-size:13px;color:var(--fv-ink);flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-ed-gen-note[hidden]{display:none}
+.fv-ed-genbar .fv-ed-generate{flex:none;white-space:nowrap}
+.fv-ed-pass-options{position:relative;flex:none;margin-left:-8px}.fv-ed-pass-options[hidden]{display:none}
+.fv-ed-pass-options>summary{display:grid;place-items:center;width:32px;height:var(--fv-h);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);cursor:pointer;list-style:none}
+.fv-ed-pass-options>summary::-webkit-details-marker{display:none}
+.fv-ed-pass-options>summary:focus-visible{outline:2px solid var(--fv-accent);outline-offset:1px}
+.fv-editor .fv-ed-pass-options[open] .fv-chevron{transform:rotate(225deg)}
+.fv-ed-pass-menu{position:absolute;bottom:calc(100% + 10px);right:0;width:max-content;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 14px 45px #0006;animation:fv-preview-appear .16s ease;z-index:10}
+.fv-ed-pass-menu>strong{display:block;padding:0 2px 8px;font-size:var(--fv-micro);color:var(--fv-muted);font-weight:var(--fv-medium)}
 .fv-ed-gen-note:has(.fv-issue-button){white-space:normal;overflow:visible}
 .fv-ed-gen-note .fv-issue-button,.fv-ed-library-message .fv-issue-button{margin-left:8px}
 .fv-editor .fv-ed-gen-retry{height:auto;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
@@ -200,7 +209,8 @@
 .fv-editor .fv-ed-name-menu .fv-ed-delete-confirm{color:var(--fv-danger)}
 .fv-editor .fv-ed-name-menu .fv-ed-delete-confirm:not(:disabled):is(:hover,:focus-visible){background:var(--fv-danger-subtle)}
 .fv-ed-delete-question{margin:6px 10px 10px;line-height:1.5;overflow-wrap:anywhere;white-space:normal}
-.fv-ed-notice{position:absolute;bottom:340px;right:16px;max-width:min(560px,calc(100vw - 32px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:8px;z-index:9;color:var(--fv-ink)}
+.fv-ed-notice{position:absolute;bottom:362px;right:300px;max-width:min(560px,calc(100vw - 32px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:8px;z-index:9;color:var(--fv-ink)}
+@media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
  .fv-studio.fv-editor{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(max(0px,calc(180px - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,auto) 40px 236px;overflow:hidden}

@@ -1,5 +1,6 @@
 """Browse completed FreeVideo outputs across ComfyUI/browser restarts."""
 import asyncio
+import hashlib
 from contextlib import nullcontext
 import io
 import json
@@ -64,6 +65,77 @@ def _agent(folder):
     if not isinstance(value, dict):
         return None
     return {key: str(value[key])[:120] for key in ('job', 'label', 'project', 'client') if value.get(key)}
+
+
+def _identity_of(root, value):
+    """The library identity of a video path named by a run, or None for a file elsewhere."""
+    try:
+        relative = Path(value).resolve().relative_to(Path(root).resolve() / 'FreeVideo')
+    except (OSError, ValueError, TypeError):
+        return None
+    identity = '/'.join(relative.parts[:2])
+    return identity if len(relative.parts) == 3 and relative.name == 'video.mp4' and _ID.fullmatch(identity) else None
+
+
+def _source_identity(root, folder, report):
+    """The saved video this run started from: the preview it upscales, or the footage it continues."""
+    source = (report.get('upscaled_preview') or {}).get('output') if isinstance(report.get('upscaled_preview'), dict) else None
+    if not source:
+        try:
+            with (folder / 'comfy-request.json').open('rb') as stream:
+                data = stream.read(1024 * 1024 + 1)
+            command = json.loads(data).get('command') if len(data) <= 1024 * 1024 else None
+            if isinstance(command, list) and '--continue-from' in command:
+                source = command[command.index('--continue-from') + 1]
+        except (OSError, ValueError, AttributeError, IndexError):
+            pass
+    return _identity_of(root, source) if isinstance(source, str) else None
+
+
+def _prompt_digest(folder):
+    try:
+        with os.fdopen(os.open(folder / 'prompt.txt', os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+                                | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
+            data = stream.read(_PROMPT_BYTES + 1)
+        text = data.decode('utf-8').strip() if len(data) <= _PROMPT_BYTES else ''
+    except (OSError, ValueError):
+        return None
+    return hashlib.sha256(text.encode('utf-8')).hexdigest() if text else None
+
+
+def _tasks(root, rows, folders, reports):
+    """Name each row's task: the earliest video connected to it by a preview and its upscale, a continuation,
+    one agent job, or the same prompt text on the same day. A video with no such link is its own task."""
+    parent = {row['id']: row['id'] for row in rows}
+    def find(item):
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+    seen = {}
+    for row in rows:
+        identity = row['id']
+        tokens = ['id:' + identity]
+        source = _source_identity(root, folders[identity], reports[identity])
+        if source:
+            tokens.append('id:' + source)
+        if row.get('agent', {}).get('job'):
+            tokens.append('job:' + row['agent']['job'])
+        digest = _prompt_digest(folders[identity])
+        if digest:
+            tokens.append('prompt:%s:%s' % (identity.split('/', 1)[0], digest))
+        for token in tokens:
+            if token in seen:
+                parent[find(identity)] = find(seen[token])
+            else:
+                seen[token] = identity
+    groups = {}
+    for row in rows:
+        groups.setdefault(find(row['id']), []).append(row)
+    for members in groups.values():
+        earliest = min(members, key=lambda row: (row['created_at'], row['id']))['id']
+        for row in members:
+            row['task'] = earliest
 
 
 def _favorite(path):
@@ -133,7 +205,7 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
                 candidates.append((key, path, info))
         except (OSError, ValueError):
             continue
-    rows, unreadable = [], []
+    rows, unreadable, folders, reports = [], [], {}, {}
     for key, path, info in sorted(candidates, key=lambda item: item[0], reverse=True):
         relative = Path('FreeVideo') / key[1] / 'video.mp4'
         if relative.as_posix() in hidden:
@@ -171,6 +243,7 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
                 agent = None
             if agent:
                 summary['agent'] = agent
+            folders[key[1]], reports[key[1]] = path.parent, report
             rows.append(dict(summary, id=key[1], bytes=info.st_size, favorite=is_favorite,
                              created_at=datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),
                              cursor=str(key[0]) + ':' + key[1]))
@@ -182,6 +255,7 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
             break
     more = len(rows) > limit
     rows = rows[:limit]
+    _tasks(root, rows, folders, reports)
     next_cursor = rows[-1]['cursor'] if more else None
     for row in rows:
         row.pop('cursor')
@@ -205,6 +279,23 @@ def prompt_text(output_directory, identity):
         return None
     # Longer than the prompt box takes: its beginning alone is not the prompt.
     return data.decode('utf-8').strip() if len(data) <= _PROMPT_BYTES else None
+
+
+def prompt_seed(output_directory, identity):
+    """The seed a saved video was generated with, or None (an export, an import, an old or damaged receipt)."""
+    path = _video(output_directory, identity)
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    saved = path.with_name('comfy-request.json')
+    try:
+        if saved.is_symlink() or not saved.resolve().is_relative_to(root):
+            return None
+        with os.fdopen(os.open(saved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
+            data = stream.read(4 * 1024**2 + 1)
+        state = json.loads(data) if len(data) <= 4 * 1024**2 else None
+    except (OSError, ValueError):
+        return None
+    seed = state.get('seed') if isinstance(state, dict) and state.get('status') == 'complete' else None
+    return seed if type(seed) is int and 0 <= seed < 2**64 else None
 
 
 def thumbnail(output_directory, identity):
@@ -1238,7 +1329,9 @@ def register():
             text = await asyncio.to_thread(prompt_text, folder_paths.get_output_directory(), request.query.get('id'))
         except (OSError, ValueError, UnicodeDecodeError):
             raise web.HTTPNotFound(text='Prompt unavailable') from None
-        return web.json_response(dict(prompt=text), headers={'Cache-Control': 'no-store'})
+        # The seed is optional: without it, reusing the settings fills only the prompt and the size.
+        seed = await asyncio.to_thread(prompt_seed, folder_paths.get_output_directory(), request.query.get('id'))
+        return web.json_response(dict(prompt=text, **({} if seed is None else {'seed': seed})), headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/library/favorite')
     async def favorite(request):

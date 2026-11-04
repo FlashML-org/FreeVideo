@@ -39,6 +39,7 @@ registerShortcuts([
     row('redo', 'Ctrl / Cmd + Shift + Z', 'Redo', '重做', 'edit'),
     row('split', 'Ctrl / Cmd + B', 'Split', '剪开', 'edit'),
     row('delete', 'Delete / Backspace', 'Delete', '删除', 'edit'),
+    row('ripple', 'Shift + Delete / Backspace', 'Delete the selected clip and close the gap', '删除选中的片段并合上空隙', 'edit'),
     row('fit', 'Shift + Z', 'Fit all', '看全部', 'timeline', event => !event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === 'z'),
 ]);
 export function registerEditorShortcuts(audioRows = [], speedRows = []) {

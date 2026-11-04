@@ -119,7 +119,7 @@ export function createEditorMusic({state, store, t, completeSources = async () =
             if (!found?.clip || api.running({kind: 'clip', ids: [id]}) || found.clip.text === text) return false;
             state.apply(t('Edit description', '修改说明'), record => {
                 const next = JSON.parse(JSON.stringify(record));
-                next.tracks.find(track => track.id === music.MUSIC_TRACK).clips.find(clip => clip.id === id).text = text;
+                next.tracks.flatMap(track => track.clips).find(clip => clip.id === id).text = text;
                 return next;
             });
             return true;
@@ -152,7 +152,7 @@ export function createEditorMusic({state, store, t, completeSources = async () =
                 const pack = await Promise.resolve().then(() => store.musicPack()).catch(() => null);
                 if (pack && !pack.ready && pack.disk_ok === false) return {say: musicFailureText('disk_space', t)};
                 const pick = preset(); words = text.trim();
-                state.apply(t('Generate', '生成'), record => {
+                state.apply(found.replace ? t('Replace music', '替换配乐') : t('Generate', '生成'), record => {
                     const next = music.rememberPreset(record, pick);
                     if (id) return music.remakeMusic(next, id, {text: words, ...pick});
                     const planned = music.planMusic(next, {start: found.start, frames: found.frames, text: words, ...pick});

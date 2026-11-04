@@ -1,0 +1,43 @@
+.fv-ed-record{grid-column:1/-1;grid-row:4;z-index:8;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:16px;min-height:60px;padding:10px 16px;border-top:1px solid var(--fv-border);border-bottom:1px solid var(--fv-border);background:var(--fv-card);color:var(--fv-ink);font:13px/1.4 var(--fv-font,system-ui);min-width:0}
+.fv-ed-record[hidden]{display:none}
+.fv-ed-record-side{display:flex;min-width:0}
+.fv-ed-record-center{display:flex;align-items:center;gap:14px;min-width:0}
+.fv-ed-record-close{justify-self:end}
+.fv-ed-record-device{appearance:none;flex:0 1 auto;width:auto;max-width:min(100%,260px);height:32px;padding:0 12px;border:1px solid var(--fv-border);border-radius:16px;background:var(--fv-card);color:var(--fv-muted);font:inherit;text-overflow:ellipsis;cursor:pointer}
+.fv-ed-record-device:hover:not(:disabled){color:var(--fv-ink)}
+.fv-ed-record-device:disabled{opacity:.5;cursor:default}
+/* The level is a row of dots that is always drawn, so it reads as a meter before anything is said; the lit part follows the voice. */
+.fv-ed-record-meter{flex:0 0 132px;height:8px;overflow:hidden;background:color-mix(in srgb,var(--fv-ink) 16%,transparent);-webkit-mask:repeating-linear-gradient(90deg,#000 0 4px,transparent 4px 8px);mask:repeating-linear-gradient(90deg,#000 0 4px,transparent 4px 8px)}
+.fv-ed-record-level{width:100%;height:100%;background:var(--fv-accent);transform:scaleX(0);transform-origin:left;transition:transform .08s linear}
+.fv-editor .fv-ed-record .fv-ed-record-main{flex:none;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 18px 0 14px;border:1px solid color-mix(in srgb,var(--fv-danger,#d33) 55%,transparent);border-radius:18px;background:color-mix(in srgb,var(--fv-danger,#d33) 12%,var(--fv-card));color:var(--fv-ink);font:inherit;font-weight:var(--fv-semibold,600);cursor:pointer}
+.fv-ed-record-main::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--fv-danger,#d33)}
+.fv-editor .fv-ed-record .fv-ed-record-main:hover:not(:disabled){background:color-mix(in srgb,var(--fv-danger,#d33) 20%,var(--fv-card))}
+.fv-editor .fv-ed-record[data-phase=recording] .fv-ed-record-main,.fv-editor .fv-ed-record[data-phase=counting] .fv-ed-record-main,.fv-editor .fv-ed-record[data-phase=saving] .fv-ed-record-main{border-color:transparent;background:#e5484d;color:#fff}
+.fv-ed-record:is([data-phase=recording],[data-phase=counting],[data-phase=saving]) .fv-ed-record-main::before{width:9px;height:9px;border-radius:2px;background:#fff}
+.fv-ed-record[data-phase=recording] .fv-ed-record-main::before{animation:fv-ed-record-pulse 1.2s ease-in-out infinite}
+.fv-editor .fv-ed-record .fv-ed-record-main:disabled{border-color:transparent;background:color-mix(in srgb,var(--fv-ink) 12%,transparent);color:var(--fv-muted);cursor:not-allowed}
+.fv-ed-record-main:disabled::before{background:var(--fv-muted)}
+.fv-ed-record-note{min-width:2.4em;color:var(--fv-muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fv-ed-record[data-phase=counting] .fv-ed-record-note{color:var(--fv-ink);font-size:22px;font-weight:var(--fv-semibold,600);line-height:1}
+.fv-ed-record[data-phase=recording] .fv-ed-record-note{color:var(--fv-ink);font-size:15px}
+.fv-editor .fv-ed-record .fv-ed-record-close{flex:none;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--fv-muted);font-size:18px;line-height:1;cursor:pointer}
+.fv-ed-record-close:hover{background:color-mix(in srgb,var(--fv-ink) 10%,transparent)}
+@keyframes fv-ed-record-pulse{50%{opacity:.45}}
+@keyframes fv-ed-record-land{from{box-shadow:0 0 0 3px var(--fv-accent)}to{box-shadow:0 0 0 3px transparent}}
+.fv-ed-clip[data-landed=true]{animation:fv-ed-record-land 1.4s ease-out}
+@media (prefers-reduced-motion:reduce){.fv-ed-record-main::before,.fv-ed-clip[data-landed=true]{animation:none!important}.fv-ed-record-level{transition:none}}
+@media (max-width:760px){
+ .fv-ed-record{grid-column:1;grid-template-columns:minmax(0,1fr) auto;row-gap:8px;padding:10px 12px}
+ .fv-ed-record-center{grid-column:1;grid-row:1;gap:10px}
+ .fv-ed-record-close{grid-column:2;grid-row:1}
+ .fv-ed-record-side{grid-column:1/-1;grid-row:2}
+ .fv-ed-record-side:has(.fv-ed-record-device[hidden]){display:none}
+ .fv-ed-record-meter{flex:1 1 48px;min-width:48px}
+}
+
+/* The recording sub-track sits one level under a1, with the same head as the other sound tracks. */
+.fv-ed-track-row[data-sub=true] .fv-ed-track-empty{opacity:.8}
+/* The bar takes the generation bar's place while it is open, so the row is only as tall as the bar. */
+.fv-studio.fv-editor:has(.fv-ed-record:not([hidden])) .fv-ed-genbar{display:none}
+.fv-ed-audio-track-switch:disabled{opacity:.35;cursor:default}
+.fv-ed-record-meter[hidden]{display:none}

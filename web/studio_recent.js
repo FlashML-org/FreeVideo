@@ -1,5 +1,6 @@
 import { libraryPage, videoTimestamp, videoDimensions, videoThumbnailURL } from './library.js';
 import { icon } from './result_actions.js';
+import { applyTasks, toggledTask } from './task_groups.js';
 
 const KEY = 'fv-studio-recent-rail';
 const el = (tag, text, cls) => {
@@ -23,7 +24,8 @@ export function createRecentVideos(t, {body, onSelect}) {
     // as a panel over the preview; it starts closed each time, so a saved column never covers the picture.
     const wide = window.matchMedia('(min-width:1680px)');
     let expanded = true, open = false, selected = null, disposed = false, request = null, resizeTimer = null;
-    const cards = new Map();
+    const cards = new Map(), byVideo = new Map();
+    let order = [], unfolded = null;
     try { expanded = localStorage.getItem(KEY) !== 'false'; } catch {}
     function visibility() {
         const shown = wide.matches ? expanded : open;
@@ -85,9 +87,14 @@ export function createRecentVideos(t, {body, onSelect}) {
             target.src = target.dataset.src; thumbnails.unobserve(target);
         }
     }, {root: list, rootMargin: '80px'});
+    const cardLabel = video => `${videoTimestamp(byVideo.get(video), t)} · ${videoDimensions(byVideo.get(video))}`;
+    function fold() {
+        applyTasks({cards, rows: byVideo, order, open: unfolded, selected, t, label: cardLabel});
+    }
     function setSelected(video) {
         selected = video;
         for (const [file, card] of cards) card.setAttribute('aria-pressed', String(file === selected));
+        fold();
     }
     async function refresh() {
         if (disposed) return [];
@@ -96,22 +103,30 @@ export function createRecentVideos(t, {body, onSelect}) {
         try {
             const data = await libraryPage(t, {limit: 24, signal: controller.signal});
             if (disposed || controller.signal.aborted) return [];
-            thumbnails.disconnect(); cards.clear(); list.replaceChildren();
+            thumbnails.disconnect(); cards.clear(); byVideo.clear(); list.replaceChildren();
             // The library API returns newest first, with the same preview metadata.
             const rows = (data.items || []).filter(row => row?.video).slice(0, 24);
             for (const row of rows) {
                 const card = el('button', null, 'fv-recent-card'); card.type = 'button';
                 const date = videoTimestamp(row, t), dimensions = videoDimensions(row);
                 card.setAttribute('aria-label', `${date} · ${dimensions}`);
-                card.onclick = () => { onSelect(row); hidePanel({restoreFocus: true}); };
+                card.onclick = () => {
+                    // A cover with others under it opens them in place and keeps the panel; any other card is the choice.
+                    const next = toggledTask(byVideo, order, row.video, unfolded);
+                    onSelect(row);
+                    if (next !== unfolded || card.classList.contains('fv-task-head')) { unfolded = next; fold(); return; }
+                    hidePanel({restoreFocus: true});
+                };
                 const picture = el('div', null, 'fv-library-picture');
                 const image = el('img'); image.alt = ''; image.decoding = 'async';
                 image.dataset.src = videoThumbnailURL(row);
                 image.onerror = () => { image.hidden = true; };
                 picture.append(image);
                 card.append(picture, el('span', date), el('small', dimensions));
-                cards.set(row.video, card); list.append(card); thumbnails.observe(image);
+                cards.set(row.video, card); byVideo.set(row.video, row); list.append(card); thumbnails.observe(image);
             }
+            order = rows.map(row => row.video);
+            if (!order.some(video => byVideo.get(video).task === unfolded)) unfolded = null;
             message.textContent = t('Videos you generate appear here.', '生成的视频会显示在这里。');
             message.hidden = rows.length > 0; list.append(message);
             setSelected(selected);

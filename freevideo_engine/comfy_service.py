@@ -29,6 +29,8 @@ from . import execution_paths
 from .monitoring import save
 from . import engine_binding
 
+DIAGNOSE = 'If it keeps failing, run ./freevideo diagnose and send the report.'
+
 DEFAULT_PORT = 8188
 RECORD = 'comfyui-cli.json'
 STATE = 'service.json'
@@ -151,10 +153,10 @@ def install(root, source, machine, port, out=say):
         out('Installing ComfyUI for FreeVideo. This happens once; the next start takes seconds.')
         if host_setup(root, source, machine, comfy, download=not (comfy / 'main.py').is_file()):
             raise RuntimeError('ComfyUI could not be installed. Run the same command again to continue; '
-                               'downloaded files are kept.')
+                               'downloaded files are kept. ' + DIAGNOSE)
         python = managed_python(Path(root), comfy)
         if python is None:
-            raise RuntimeError('ComfyUI was installed, but its environment is incomplete. Run the same command again.')
+            raise RuntimeError('ComfyUI was installed, but its environment is incomplete. Run the same command again. ' + DIAGNOSE)
     else:
         add_node_packages(root, source, machine, comfy, out)
     if switching:
@@ -434,7 +436,7 @@ def wait_until_open(root, process, *, timeout=300, out=say):
     state_file = folder(root) / STATE
     deadline = time.monotonic() + timeout
     shown = time.monotonic()
-    interactive = sys.stdout.isatty()
+    interval = 15 if sys.stdout.isatty() else 30  # A log file gets a sign of life too, less often than a terminal.
     out('Starting ComfyUI ...')
     while time.monotonic() < deadline:
         state = read_json(state_file) or {}
@@ -445,12 +447,12 @@ def wait_until_open(root, process, *, timeout=300, out=say):
             raise RuntimeError(state.get('error') or 'ComfyUI could not start.')
         if process.poll() is not None:
             raise RuntimeError(state.get('error') if mine and state.get('error') else
-                               'The FreeVideo service stopped while starting. See %s.' % (folder(root) / 'service.log'))
-        if interactive and time.monotonic() - shown >= 15:
+                               'The FreeVideo service stopped while starting. See %s. %s' % (folder(root) / 'service.log', DIAGNOSE))
+        if time.monotonic() - shown >= interval:
             shown = time.monotonic()
             out('  still starting (%d s) ...' % (timeout - (deadline - time.monotonic())))
         time.sleep(.3)
-    raise RuntimeError('ComfyUI is still starting after %d s. See %s.' % (timeout, folder(root) / 'service.log'))
+    raise RuntimeError('ComfyUI is still starting after %d s. See %s. %s' % (timeout, folder(root) / 'service.log', DIAGNOSE))
 
 
 def respawn(root, state, *, port=None):
@@ -700,18 +702,22 @@ def open_command(root, *, port=None, browser=True, restart=False, out=say):
 
 def wait_for_running(root, timeout=300, absent=0., out=say):
     """Wait while the service starts; `absent` allows for one that a service manager starts shortly."""
-    started = time.monotonic()
+    started = shown = time.monotonic()
+    interval = 15 if sys.stdout.isatty() else 30
     while time.monotonic() - started < timeout:
         state = running(root)
         if state is not None and state.get('status') == 'open':
             return state
+        if state is not None and time.monotonic() - shown >= interval:
+            shown = time.monotonic()
+            out('  still starting (%d s) ...' % (shown - started))
         if state is None and time.monotonic() - started >= absent:
             previous = read_json(folder(root) / STATE) or {}
             if previous.get('status') == 'failed':
                 raise RuntimeError(previous.get('error') or 'ComfyUI could not start.')
             return None
         time.sleep(.3)
-    raise RuntimeError('ComfyUI is still starting. Check freevideo status.')
+    raise RuntimeError('ComfyUI is still starting. Check freevideo status. ' + DIAGNOSE)
 
 
 def status_command(root, out=say):

@@ -1,0 +1,10 @@
+Bandit Plus cocktail-party separation weights (speech / music / effects).
+
+Credit: Karn N. Watcharasupat, Chih-Wei Wu, Iroro Orife, "Divide and Remaster / Banquet / Bandit:
+Source Separation for the Cocktail Party Problem" (Bandit, Bandit Plus), and the Divide and Remaster
+v3 dataset authors. Weights released at https://zenodo.org/records/10160698
+Code: https://github.com/kwatcharasupat/source-separation (Apache-2.0, see Bandit-Apache-2.0.txt).
+
+The weights are licensed under the Creative Commons Attribution-NonCommercial 4.0 International
+License (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/legalcode
+FreeVideo converts the checkpoint to a plain state dictionary without changing any value.

@@ -91,7 +91,7 @@ def validate_text_project(raw, validate_media):
         if row['clips']: result['tracks'].append(row)
     style = clean_style(raw.get('subtitle_style',{}),'subtitle')
     if style and any(t['kind'] == 'subtitle' for t in result['tracks']): result['subtitle_style'] = style
-    result['tracks'].sort(key=lambda t: ['v1','a1','a2','t1','s1'].index(t['id']))
+    result['tracks'].sort(key=lambda t: ['v1','a1','a2','a3','a4','a5','a6','t1','s1'].index(t['id']))
     return result
 
 

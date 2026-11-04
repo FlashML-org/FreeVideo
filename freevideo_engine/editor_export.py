@@ -113,7 +113,7 @@ def _layout(project):
         project = validate(project)
         raw_tracks = [t for t in project['tracks'] if not is_text_track(t)]
     if not isinstance(raw_tracks, list) or [t.get('id') for t in raw_tracks if isinstance(t, dict)] not in (
-            ['v1', 'a1'], ['v1', 'a1', 'a2']):
+            ['v1', 'a1'], ['v1', 'a1', 'a2'], ['v1', 'a1', 'a3'], ['v1', 'a1', 'a2', 'a3'], ['v1', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6']):
         raise ExportError()
     tracks, seen = {}, set()
     for raw in raw_tracks:
@@ -777,7 +777,7 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
                         if progress:
                             progress(written / total * .99)
                 mixed = np.zeros((2, SAMPLES_PER_FRAME), dtype=np.float32)
-                for track in ('a1', 'a2'):
+                for track in ('a1', 'a2', 'a3', 'a4', 'a5', 'a6'):
                     clip = active.get(track)
                     if track not in audio_tracks:
                         continue

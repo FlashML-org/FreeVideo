@@ -685,6 +685,27 @@
           }
         ]
       }
+    ],
+    "stems": [
+      {
+        "file": "stems/bandit_plus_cocktail.pt",
+        "component": "stems",
+        "bytes": 148724733,
+        "sha256": "02ad94875ae060e03428af0e667a5a5cbfa1a6c2355f07f32c499be8d615ba1c",
+        "repo": "BowenXue/FreeVideo-models",
+        "revision": "2ed0b3b98ea92dec01699dc97d96e15cfe208d69",
+        "model_id": "bandit-plus-cocktail",
+        "sources": [
+          {
+            "id": "official",
+            "url": "https://huggingface.co/BowenXue/FreeVideo-models/resolve/2ed0b3b98ea92dec01699dc97d96e15cfe208d69/stems/bandit_plus_cocktail.pt"
+          },
+          {
+            "id": "modelscope",
+            "url": "https://www.modelscope.cn/models/BowenXue/FreeVideo-models/resolve/master/stems/bandit_plus_cocktail.pt"
+          }
+        ]
+      }
     ]
   }
 }

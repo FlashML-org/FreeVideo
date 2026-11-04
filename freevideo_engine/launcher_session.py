@@ -224,8 +224,10 @@ class Session:
             try:
                 self.bridge = create(launcher_root())
                 self.controller.update_bridge = self.bridge
-            except OSError:
+            except (OSError, ValueError) as error:
+                # Only updates started from the web page are lost; the launcher still opens.
                 self.bridge = None
+                print('Launcher bridge unavailable: %s' % type(error).__name__, file=sys.stderr)
         if self.form['environment_method'] == 'manual' and self.form['offline_runtime'] and not controller:
             root = io_path(self.form['offline_runtime'])
             if (root / 'portable.json').is_file():
@@ -1182,7 +1184,7 @@ class Session:
         raw = self._raw_error()
         for state in (self.cleaner.state, self.importer.state, self.upgrade.state):
             value = state.get('error') or ''
-            if alias_failure(value) and value not in raw:
+            if (alias_failure(value) or (state is self.upgrade.state and state.get('status') == 'failed')) and value not in raw:
                 raw += ('\n' if raw else '') + value
         pack_report = self.image_pack_report()
         if pack_report:
@@ -1203,7 +1205,13 @@ class Session:
         notes = self.diagnostic_error()
         logs = tuple(path for _, path in self.controller.terminal_sources())
         replacements = [(self.token, '<REDACTED>')] if self.token else []
-        self.report = dict(status='running', path=str(output), error='')
+        started = time.monotonic()
+        self.report = dict(status='running', path=str(output), error='', files=0)
+
+        def packed(count):
+            # The count is shown only when packing takes longer than a few seconds.
+            if self.report.get('status') == 'running':
+                self.report = dict(self.report, files=count if time.monotonic() - started > 5 else 0)
 
         def work():
             target = Path(output)
@@ -1212,7 +1220,7 @@ class Session:
             replacing = False
             try:
                 result = collect(root, root / 'machine.json', None, partial,
-                                 complete=True, extra_files=logs, notes=notes)
+                                 complete=True, extra_files=logs, notes=notes, progress=packed)
                 if partial != target:
                     replacing = True
                     os.replace(io_path(partial), io_path(target))

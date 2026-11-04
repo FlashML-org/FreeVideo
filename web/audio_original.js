@@ -50,13 +50,28 @@ export function failureText(result, t) {
 }
 
 // Where the engine refuses Use as is (continuing a video, a first-pass preview), the Studio
-// names that state here and the option is greyed out on every audio card until it ends.
-const blockers = new Set();
+// names that state here. The option stays clickable: a click first lifts the cause where the
+// Studio can (`release()` returns the one-line note of what it changed) and otherwise says
+// why it cannot (`text`, an [English, Chinese] pair).
+const blockers = new Map();
 export const originalBlocked = () => blockers.size > 0;
-export function blockOriginal(reason, on) {
-    const before = blockers.size > 0;
-    if (on) blockers.add(reason); else blockers.delete(reason);
-    if (before !== blockers.size > 0) window.dispatchEvent(new CustomEvent('freevideo-audio-blocked'));
+// Blocked by something a click cannot lift: the card is drawn dimmed, not disabled.
+export const originalStuck = () => [...blockers.values()].some(how => !how.release);
+export function blockOriginal(reason, on, how = {}) {
+    const before = blockers.size > 0, stuckBefore = originalStuck();
+    if (on) blockers.set(reason, how); else blockers.delete(reason);
+    if (before !== blockers.size > 0 || stuckBefore !== originalStuck()) window.dispatchEvent(new CustomEvent('freevideo-audio-blocked'));
+}
+// Why a click cannot lift the block, or '' when it can.
+export function stuckText(t) {
+    const how = [...blockers.values()].find(entry => !entry.release);
+    return how ? t(...(how.text || ['"Use as is" is not available here.', '这里不能“原样使用”。'])) : '';
+}
+// Lifts every cause that a click can lift: {ok: true, note} with what was changed, else {ok: false, text}.
+export function liftBlock(t) {
+    const notes = [];
+    for (const how of [...blockers.values()]) if (how.release) { const note = how.release(); if (note) notes.push(t(...note)); }
+    return originalBlocked() ? {ok: false, text: stuckText(t)} : {ok: true, note: notes.join(' ')};
 }
 
 export const multipleText = t => t('Choose "Use as is" for only one audio file.', '一次只能有一段音频选择“原样使用”。');
@@ -77,7 +92,10 @@ export function createUseSwitch({t, use, onPick}) {
     const apply = () => {
         for (const [name, b] of Object.entries(buttons)) {
             b.setAttribute('aria-pressed', String(name === chosen));
-            b.disabled = working || (name === AUDIO_USE.original && originalBlocked());
+            b.disabled = working;
+            const stuck = name === AUDIO_USE.original && originalStuck();
+            b.toggleAttribute('data-blocked', stuck);
+            if (stuck) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
         }
     };
     group.set = (value, busy = false) => { chosen = value; working = busy; apply(); };

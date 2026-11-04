@@ -5,7 +5,7 @@ import {createPreviewPicture} from './editor_preview_picture.js';
 import {sourceKey, mediaURL} from './editor_store.js';
 import {clipPictureSize, createPictureGuide} from './editor_frame.js';
 import {createPlaybackClock} from './editor_transport_model.js';
-import {createAudioPreview} from './editor_audio.js';
+import {createAudioPreview, isOriginalSound} from './editor_audio.js';
 import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.js';
 import {sourceFrame, percent} from './editor_speed_model.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
@@ -39,7 +39,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const closeIcon = document.createElementNS(pictureIcon.namespaceURI, 'svg'), closePath = document.createElementNS(pictureIcon.namespaceURI, 'path');
     closeIcon.setAttribute('viewBox', '0 0 16 16'); closeIcon.setAttribute('aria-hidden', 'true'); closePath.setAttribute('d', 'm4 4 8 8M12 4l-8 8'); closeIcon.append(closePath); closePreview.append(closeIcon); frame.append(closePreview);
     const videos = [el('video'), el('video')]; videos.forEach(video => { video.playsInline = true; video.preload = 'auto'; video.controls = false; video.setAttribute('aria-hidden', 'true'); frame.append(video); });
-    const audio = [el('audio'), el('audio')]; audio.forEach(value => { value.preload = 'auto'; frame.append(value); });
+    // One element per sound track (a1–a6): the three separated parts play together with the voice and music tracks.
+    const audio = Array.from({length: 6}, () => el('audio')); audio.forEach(value => { value.preload = 'auto'; frame.append(value); });
     const chainAudio = new Map(); // Separate players keep the other track's media slot stable.
     const allMedia = () => [...videos, ...audio, ...chainAudio.values()];
     const pictureGuide = createPictureGuide(host, frame, {state, t});
@@ -47,7 +48,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const picturePreview = createPreviewPicture(host, frame, {state, t});
     const playButton = el('button', 'fv-ed-play'); playButton.type = 'button'; playButton.title = t('Space', '空格');
     const time = el('span', 'fv-ed-time'); time.setAttribute('aria-live', 'off'); transport.append(playButton, time);
-    let active = 0, clipId = null, playing = false, disposed = false, raf = null, clockStart = 0, frameStart = 0, ticking = false, preview = null, previewSize = null, previewProject = null;
+    let active = 0, clipId = null, silenced = false, playing = false, disposed = false, raf = null, clockStart = 0, frameStart = 0, ticking = false, preview = null, previewSize = null, previewProject = null;
     let audioContext = null, textRenderer = null, chains = [], chainSignature = null, chainRequest = null, chainEpoch = 0;
     const failedChains = new Set(), entries = new Map();
     let seekGeneration = 0, forcePosition = false, pictureView = null, processedSound = false;
@@ -298,19 +299,19 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             clipId = clip.id;
         }
         const linked = hasPicture ? [...map.values()].find(row => row.clip.id === clip.link) : null;
-        const processedAudio = audioPreview.render({record, position, playing: playing && playback.rate > 0, playbackRate: playback.rate});
+        const processedAudio = audioPreview.render({record, position, playing: playing && playback.rate > 0, playbackRate: playback.rate, silenceOriginal: silenced});
         processedSound = !!processedAudio;
         // The joined sound is the plain forward path only: sound edits, changed speed and
         // backward playback keep their own routes and the original sound.
         const plainSpeed = id => !separateSpeedAudio(model.find(record, id));
-        const availableChains = processedAudio || playback.rate !== 1 ? [] : chains.filter(c => !failedChains.has(c.key) && c.clips.every(plainSpeed));
+        const availableChains = processedAudio || silenced || playback.rate !== 1 ? [] : chains.filter(c => !failedChains.has(c.key) && c.clips.every(plainSpeed));
         const selected = new Map([...map].filter(([track]) => track !== 'v1').map(([track, row]) =>
             [track, useChain(selectAudioChain(availableChains, track, row.clip, position, volumePreview), track)]));
         const linkedChain = linked && [...selected.values()].some(value => value?.chain.clips.includes(linked.clip.id));
         const originalSeparate = processedAudio || !!linked?.clip.splice || !hasPicture || separateSpeedAudio(linked?.clip);
         const separate = originalSeparate || linkedChain;
         if (hasPicture) {
-            const video = videos[active], speedPlayback = previewSpeed(video, clip, playing, linked?.clip); video.muted = !linked || separate || playback.rate < 0 || speedPlayback.muted;
+            const video = videos[active], speedPlayback = previewSpeed(video, clip, playing, linked?.clip); video.muted = !linked || separate || silenced || playback.rate < 0 || speedPlayback.muted;
             video._timelineClip = clip;
             delete video.dataset.preparedClip;
             seekMedia(video, mediaURL(api, source.video), (videoRow.frame + (playing && playback.rate > 0 ? 0 : .5)) / 24, speedPlayback.running && map.get('v1')?.clip.id === clip.id, clipVolume(linked?.clip));
@@ -335,7 +336,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             }
             if (carriedByVideo || slot >= audio.length) continue;
             const url = mediaURL(api, metadata.audio); if (!url) continue;
-            const media = audio[slot++], speed = previewSpeed(media, row.clip, playing); delete media.dataset.audioChain; media.muted = speed.muted;
+            const media = audio[slot++], speed = previewSpeed(media, row.clip, playing); delete media.dataset.audioChain; media.muted = speed.muted || silenced && isOriginalSound(row.clip);
             media._timelineClip = row.clip;
             seekMedia(media, url, audioSeconds(row.clip, speedAudioFrame(row.clip, shown - row.clip.start)), speed.running, clipVolume(row.clip));
         }
@@ -448,7 +449,9 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         else if ((row?.clip.id || null) !== clipId) render();
     });
     render();
-    return {element: frame, playback, picturePreview, play, pause, toggle: () => playing ? pause() : play(), refresh: render,
+    return {element: frame, playback, picturePreview, play, pause,
+        // While a take is recorded the picture's own sound stays off, so the microphone does not pick it up.
+        silenceOriginal(on) { if (silenced === !!on) return; silenced = !!on; resetEntries(); forcePosition = true; render(); }, toggle: () => playing ? pause() : play(), refresh: render,
         clearPreview() { clearPreview(); render(); },
         get playing() { return playing; },
         setTextRenderer(callback) { textRenderer = callback; },

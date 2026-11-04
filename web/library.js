@@ -5,6 +5,7 @@ import { videoUnavailableText } from './studio_extend.js';
 import { topDialog } from './dialog_keys.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
+import { applyTasks, toggledTask } from './task_groups.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -321,6 +322,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
                 remove: () => remove(row)}));
             notice.textContent = '';
             for (const [file, card] of cards) card.setAttribute('aria-pressed', String(selecting ? picked.has(file) : file === selected));
+            fold();
         }
         // These are the saved generation's measurements, including when the
         // same MP4 has since been reused. Never substitute the active request.
@@ -414,7 +416,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         // Other views of the library (the studio's Recent videos) drop it too.
         window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row.video}}));
         if (disposed) return;
-        rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video);
+        rows.delete(row.video); cards.get(row.video)?.remove(); cards.delete(row.video); fold();
         if (selected === row.video) {
             selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = '';
             stats.hidden = true; stats.replaceChildren(); budget.textContent = '';
@@ -427,6 +429,13 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     // --- Selecting several creations ---
     const gb = bytes => `${(bytes / 2 ** 30).toFixed(bytes < 2 ** 30 ? 2 : 1)} GB`;
     const ordered = () => [...grid.querySelectorAll('.fv-library-card')];
+    // The videos of one task fold under the newest; one task is unfolded at a time, and picking shows every card.
+    let unfolded = null;
+    function fold() {
+        const order = ordered().map(card => card.dataset.video);
+        if (!order.some(video => rows.get(video)?.task === unfolded)) unfolded = null;
+        applyTasks({cards, rows, order, open: unfolded, selecting, selected, t, label: video => cardLabel(rows.get(video))});
+    }
     const dayOf = video => (rows.get(video)?.id || '').slice(0, 10);
     const lastDay = () => dayOf(ordered().at(-1)?.dataset.video);
     const dayName = day => {
@@ -499,6 +508,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
             card.classList.toggle('fv-picked', selecting && picked.has(video));
             card.setAttribute('aria-pressed', String(selecting ? picked.has(video) : video === selected));
         }
+        fold();
         pickAll.disabled = deleting; pickNone.disabled = deleting || !picked.size;
         for (const heading of grid.querySelectorAll('.fv-library-day')) {
             const videos = ordered().map(card => card.dataset.video).filter(video => dayOf(video) === heading.dataset.day);
@@ -623,7 +633,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
                 removed.add(video);
                 window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video}}));
                 if (disposed) continue;
-                rows.delete(video); cards.get(video)?.remove(); cards.delete(video);
+                rows.delete(video); cards.get(video)?.remove(); cards.delete(video); fold();
             }
         };
         let undoFor = 10;
@@ -715,7 +725,12 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         if (!row?.video || (favoritesOnly && !row.favorite)) return;
         rows.set(row.video, row);
         if (cards.has(row.video)) { syncFavorite(row); return; }
-        const card = button('', event => selecting ? pick(row.video, event.shiftKey) : select(rows.get(row.video)), 'fv-library-card');
+        const card = button('', event => {
+            if (selecting) { pick(row.video, event.shiftKey); return; }
+            // A cover with others under it also opens them in place.
+            unfolded = toggledTask(rows, ordered().map(item => item.dataset.video), row.video, unfolded);
+            select(rows.get(row.video)); fold();
+        }, 'fv-library-card');
         card.dataset.video = row.video;
         card.setAttribute('aria-label', cardLabel(row));
         card.setAttribute('aria-pressed', String(selecting ? picked.has(row.video) : row.video === selected));
@@ -737,7 +752,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
         }
         card.append(picture, el('span', row.agent?.label || timestamp(row)), el('small', row.agent?.label ? timestamp(row) : dimensions(row)));
         cards.set(row.video, card); first ? grid.prepend(card) : grid.append(card); thumbnails.observe(image);
-        if (selecting) regroup();
+        if (selecting) regroup(); else if (first) fold();
     }
     async function load(appendPage) {
         if (disposed || (loading && appendPage)) return false;
@@ -761,7 +776,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
                 if (!narrow.matches && rows.size) select(rows.values().next().value, false);
                 else dialog.dataset.detail = 'false';
             } else select(rows.get(selected), false);
-            ok = true; regroup();
+            ok = true; regroup(); fold();
             if (selectedWork) { const row = [...rows.values()].find(row => row.id === selectedWork || row.video === selectedWork); if (row) { select(row); selectedWork = null; } else if (next) queueMicrotask(() => load(true)); }
         } catch (error) {
             if (!disposed && round === loadRound && error.name !== 'AbortError') {
@@ -799,7 +814,7 @@ export function openLibrary(t, {upscale = null, selectedWork = null, extend = nu
     const deletedElsewhere = event => {
         const video = event.detail?.video;
         if (!video || !rows.has(video)) return;
-        rows.delete(video); cards.get(video)?.remove(); cards.delete(video);
+        rows.delete(video); cards.get(video)?.remove(); cards.delete(video); fold();
         if (selected === video) { selected = null; frame.replaceChildren(); links.replaceChildren(); date.textContent = geometry.textContent = ''; stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; dialog.dataset.detail = 'false'; }
         picked.delete(video);
     };

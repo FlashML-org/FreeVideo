@@ -218,13 +218,13 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             if (row?.state !== 'ready') continue;
             const value = metadata(row, 'import'), at = head.place.at;
             if (value.hasVideo) head.place.at += value.frames;
-            const insert = {source: {kind: 'import', id: row.id}, at, frames: value.frames, hasVideo: value.hasVideo, hasAudio: value.hasAudio};
+            const insert = {source: {kind: 'import', id: row.id}, at, frames: value.frames, hasVideo: value.hasVideo, hasAudio: value.hasAudio, ...(!value.hasVideo && head.place.track ? {targetTrack: head.place.track, replace: head.place.replace === true} : {})};
             placed = placed.then(() => disposed ? null : actions.insertSource(insert, {loadMetadata: true})).catch(actions.error);
         }
     }
-    async function importFiles(files, {at} = {}) {
+    async function importFiles(files, {at, track, replace = false} = {}) {
         choose('import');
-        const place = Number.isSafeInteger(at) && at >= 0 ? {at} : null;
+        const place = Number.isSafeInteger(at) && at >= 0 ? {at, ...(['a1', 'a2', 'a3'].includes(track) ? {track, replace} : {})} : null;
         for (const value of files) {
             if (disposed) break;
             const id = 'upload-' + Math.random(), row = {id, name: value.name, kind: value.type.startsWith('audio') ? 'audio' : 'video', state: 'preparing', fraction: 0, sending: true};
