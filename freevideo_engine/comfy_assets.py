@@ -65,6 +65,25 @@ def media_kind(filename):
     raise ValueError('Choose a supported image, video or audio file')
 
 
+def media_kind_of(path):
+    """The kind of an existing file: the extension, except that a video container without a picture
+    stream but with sound (an audio-only mp4) is audio. An unreadable file keeps its extension's kind."""
+    kind = media_kind(Path(path).name)
+    if kind != 'video':
+        return kind
+    try:
+        import av
+        import av.stream
+        attached = getattr(getattr(av.stream, 'Disposition', None), 'attached_pic', 0)
+        with av.open(str(path)) as container:
+            if (container.streams.audio
+                    and all(attached and stream.disposition & attached for stream in container.streams.video)):
+                return 'audio'
+    except Exception:
+        pass
+    return kind
+
+
 def resolve_assets(serialized, input_directory):
     serialized = optional_text(serialized, '[]')
     if not isinstance(serialized, str) or len(serialized) > 128 * 1024:
@@ -75,7 +94,7 @@ def resolve_assets(serialized, input_directory):
     root = Path(input_directory).resolve()
     result = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'depth',
+        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'voice_only', 'keep_source_audio', 'depth',
                                                     'use', 'range', 'segment'}:
             raise ValueError('Invalid media item')
         if 'depth' in row:
@@ -105,7 +124,7 @@ def resolve_assets(serialized, input_directory):
             raise ValueError('Media link points outside ComfyUI input') from None
         if not path.is_file():
             raise ValueError('Upload or select the missing media file: ' + name)
-        kind = media_kind(name)
+        kind = media_kind_of(path)
         from .original_audio import fields
         audio_fields = fields(dict(row, kind=kind))
         if role in ('first', 'last'):
@@ -136,6 +155,11 @@ def resolve_assets(serialized, input_directory):
                 validate_guide(dict(row, kind=kind))
                 if row['guide']:
                     reference['guide'] = True
+            if 'voice_only' in row:
+                from .media_request import validate_voice_only
+                validate_voice_only(dict(row, kind=kind))
+                if row['voice_only']:
+                    reference['voice_only'] = True
             if 'keep_source_audio' in row:
                 from .media_request import validate_keep_source_audio
                 validate_keep_source_audio(dict(row, kind=kind), path)

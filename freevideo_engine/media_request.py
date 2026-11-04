@@ -55,7 +55,7 @@ def read(path):
                 raise ValueError('Invalid ' + field + ' entry')
             if field != 'references' and 'early_steps' in entry:
                 raise ValueError('early_steps is only allowed on video references')
-            allowed = ({'path', 'kind', 'early_steps', 'sound', 'guide', 'keep_source_audio', 'use', 'range', 'segment'} if field == 'references'
+            allowed = ({'path', 'kind', 'early_steps', 'sound', 'guide', 'voice_only', 'keep_source_audio', 'use', 'range', 'segment'} if field == 'references'
                        else {'path', 'strength', 'alpha'})
             if set(entry) - allowed:
                 raise ValueError('Unknown ' + field + ' fields')
@@ -77,6 +77,10 @@ def read(path):
                     # keep exactly the same rows and cache key as before.
                     if entry['guide']:
                         row['guide'] = True
+                if 'voice_only' in entry:
+                    validate_voice_only(entry)
+                    if entry['voice_only']:
+                        row['voice_only'] = True
                 if 'keep_source_audio' in entry:
                     validate_keep_source_audio(entry, row['path'])
                     if entry['keep_source_audio']:
@@ -147,6 +151,16 @@ def validate_guide(row):
         raise ValueError('Video reference guide must be true or false')
     if row['guide'] and 'early_steps' in row:
         raise ValueError('A guide clip cannot use early_steps')
+
+
+def validate_voice_only(row):
+    """A voice-only video supplies its sound; its picture is kept small and slow because only the voice is wanted."""
+    if row.get('kind') != 'video':
+        raise ValueError('voice_only is only allowed on video references')
+    if type(row['voice_only']) is not bool:
+        raise ValueError('Video reference voice_only must be true or false')
+    if row['voice_only'] and (row.get('guide') or row.get('sound') is False or 'early_steps' in row):
+        raise ValueError('A voice-only clip cannot be a guide, silent or use early_steps')
 
 
 def validate_keep_source_audio(row, path):
