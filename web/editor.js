@@ -26,6 +26,7 @@ import {createStemsIntegration} from './editor_stems.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
 import {createEditorMusic} from './editor_music.js';
+import {createEditorRecord, RECORD_ICON} from './editor_record.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
@@ -457,7 +458,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // The nearest spot at or after the chosen one where a part of the same length fits.
     function emptySpot(selection) {
         if (!['range', 'gap'].includes(selection?.kind)) return null;
-        const range = selectionRange(selection), clips = state.record.tracks.filter(track => ['v1', 'a1', 'a2'].includes(track.id)).flatMap(track => track.clips);
+        const range = selectionRange(selection), clips = state.record.tracks.filter(track => ['v1', 'a1', 'a2', 'a3'].includes(track.id)).flatMap(track => track.clips);
         const starts = [range.start, ...clips.map(clip => clip.start + clip.frames).filter(at => at > range.start)].sort((a, b) => a - b);
         for (const start of starts) {
             if (clips.some(clip => clip.start < start + range.frames && clip.start + clip.frames > start)) continue;
@@ -470,7 +471,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function flushSpot(selection) {
         if (selection?.kind !== 'range') return null;
         const range = selectionRange(selection), most = model.RULES.minSeconds * model.FPS;
-        const clips = state.record.tracks.filter(track => ['v1', 'a1', 'a2'].includes(track.id)).flatMap(track => track.clips);
+        const clips = state.record.tracks.filter(track => ['v1', 'a1', 'a2', 'a3'].includes(track.id)).flatMap(track => track.clips);
         const end = Math.max(-1, ...state.record.tracks[0].clips.map(clip => clip.start + clip.frames).filter(at => at < range.start));
         if (end < 0 || range.start - end >= most || clips.some(clip => clip.start < range.start && clip.start + clip.frames > end)) return null;
         const moved = {kind: 'range', start: end, frames: range.frames, tracks: ['v1', 'a1']};
@@ -1401,7 +1402,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         finally { if (!disposed) updateSecondPass(); }
     }
     actions.runSecondPass = runSecondPass;
-    historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous);
+    const recordTool = toolButton(t('Record', '录音'), RECORD_ICON, () => {}, 'fv-ed-record-toggle'); recordTool.setAttribute('aria-pressed', 'false'); recordTool.dataset.tourId = 'record-entry';
+    historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous, recordTool);
     const pictureTools = createPictureTools({state, sources: store.sources, t, capabilities: () => capability, error});
     toolbar.append(historyTools, editTools, zoomHost); element.insertBefore(toolbar, tracksHost);
     const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify});
@@ -1413,6 +1415,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const audio = createAudioIntegration({state, player, t, error, adjust, library: libraryHost, store});
     stems = createStemsIntegration({state, api, queue, store, t, error, notify, toolbar, show: job => genbar?.update(job),
         restore: () => genbar?.update(mostRecentJob ? barJob(jobStatuses.get(mostRecentJob)) : null)});
+    const recording = createEditorRecord({state, player, t, error, notify, button: recordTool, bar: element, library: {importFiles: (files, options) => actions.importFiles(files, options)}});
+    element.insertBefore(recording.element, tracksHost);
     registerEditorShortcuts(AUDIO_SHORTCUTS, speedShortcuts);
     adjust.register('speed', createSpeedComponent({state, t, onError: error}));
     function selectedContent() {
@@ -1552,6 +1556,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (tracks?.cancelGesture()) { event.preventDefault(); return; }
             if (document.fullscreenElement) { event.preventDefault(); document.exitFullscreen().catch(() => {}); return; }
         }
+        if (recording.keyboard(event)) return;
         if (inside && event.target.closest?.('.fv-ed-refs')) {
             // The reference pictures' own buttons and menu keep their keys: no timeline, audio or transport shortcut.
             for (let target = event.target; target && target !== element; target = target.parentNode) target.onkeydown?.(event);
@@ -1619,7 +1624,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 await store.activateProject(null).catch(() => {});
                 rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
-                audio.dispose(); stems?.dispose(); headerFit.dispose();
+                audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());
                 for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
                 unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();

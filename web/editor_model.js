@@ -124,6 +124,7 @@ export function addAudioTrack(record) {
     const next = serialize(record);
     check(!next.tracks.some(track => track.id === 'a2'), 'track');
     next.tracks.push({id: 'a2', kind: 'audio', clips: []});
+    next.tracks.sort((a, b) => TRACK_ORDER.indexOf(a.id) - TRACK_ORDER.indexOf(b.id));
     return parse(next);
 }
 export function removeAudioTrack(record) {
@@ -148,11 +149,13 @@ export function parse(value) {
     const settings = jsonData(value.settings);
     check(JSON.stringify(settings).length <= 1024 * 1024, 'settings');
     check(Array.isArray(value.tracks) && value.tracks.length >= 2 && value.tracks.length <= RULES.maxTracks
-        && value.tracks.length !== 4 && value.tracks.length !== 5 && value.tracks.length !== 6, 'track');
+        && value.tracks.length !== 5 && value.tracks.length !== 6, 'track');
     const ids = new Set();
     const tracks = value.tracks.map((raw, index) => {
-        const id = ['v1', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6'][index], kind = index === 0 ? 'video' : 'audio';
+        // v1 and a1 by position; then an optional second sound track, the recording sub-track under a1 and the three separated-sound tracks, in that order.
+        const id = index < 2 ? ['v1', 'a1'][index] : object(raw) ? raw.id : null, kind = index === 0 ? 'video' : 'audio';
         check(object(raw) && raw.id === id && raw.kind === kind, 'track');
+        check(index < 2 || LATER_TRACKS.some(later => later.length === value.tracks.length - 2 && later[index - 2] === id), 'track');
         // The three tracks after a3 are the separated sound of one clip each: all of them or none.
         check(index < 4 ? raw.stem === undefined : raw.stem === STEM_TRACKS[index - 4], 'track');
         check(Array.isArray(raw.clips) && raw.clips.length <= RULES.maxClips, 'track');
@@ -344,8 +347,12 @@ function rollback(record, id, pending, reason = null) {
     tx.rolledBack = true;
     return finish(next);
 }
+const TRACK_ORDER = ['v1', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6'];
 function audioTrack(record, id = 'a1') {
-    if (!record.tracks.some(track => track.id === id)) record.tracks.push({id, kind: 'audio', clips: []});
+    if (!record.tracks.some(track => track.id === id)) {
+        record.tracks.push({id, kind: 'audio', clips: []});
+        record.tracks.sort((a, b) => TRACK_ORDER.indexOf(a.id) - TRACK_ORDER.indexOf(b.id));
+    }
     return trackBy(record, id);
 }
 const freshId = record => `c${++record.serial}`;
@@ -483,15 +490,27 @@ function storedSize(record) {
     return size;
 }
 // A saved video brings the description it was generated from; one that cannot be kept is left out.
-export function insertSource(record, {source, frames, hasVideo, hasAudio, width, height, at: position = 0, text = '', by = 'user', targetTrack}) {
+// Empties [start, start + frames) on one track by cutting the clips that cross its edges and removing what lies inside; the rest stays.
+function clearStretch(record, trackId, start, frames) {
+    let next = record;
+    for (const frame of [start, start + frames]) {
+        const hit = trackBy(next, trackId).clips.find(clip => clip.start < frame && end(clip) > frame);
+        if (hit) next = split(next, hit.id, frame);
+    }
+    const inside = trackBy(next, trackId).clips.filter(clip => clip.start >= start && end(clip) <= start + frames).map(clip => clip.id);
+    return inside.length ? remove(next, inside) : next;
+}
+export function insertSource(record, {source, frames, hasVideo, hasAudio, width, height, at: position = 0, text = '', by = 'user', targetTrack, replace = false}) {
     const given = source; source = sourceData(source); check(whole(frames, 1) && whole(position), 'range');
     check(typeof hasVideo === 'boolean' && typeof hasAudio === 'boolean' && (hasVideo || hasAudio), 'source');
     check(TEXT_BY.includes(by), 'text');
     const words = hasVideo && typeof text === 'string' && validText(text.trim()) ? text.trim() : '';
+    // A take that is recorded again over an older one replaces what it covers, at the same place as the picture.
+    if (replace && !hasVideo && targetTrack === 'a3' && record.tracks.some(row => row.id === 'a3')) record = clearStretch(record, 'a3', position, frames);
     const next = copy(record);
     if (hasVideo) followFirstSize(next, width, height);
     const explicitAudioTrack = !hasVideo && targetTrack !== undefined;
-    if (explicitAudioTrack) check(['a1', 'a2'].includes(targetTrack), 'track');
+    if (explicitAudioTrack) check(['a1', 'a2', 'a3'].includes(targetTrack), 'track');
     let track = explicitAudioTrack ? audioTrack(next, targetTrack) : trackBy(next, hasVideo ? 'v1' : 'a1');
     if (!hasVideo && !explicitAudioTrack && track.clips.some(clip => overlaps(clip, position, frames))) track = audioTrack(next, 'a2');
     check(!explicitAudioTrack || !track.locked, 'locked');
@@ -508,12 +527,14 @@ export function insertSource(record, {source, frames, hasVideo, hasAudio, width,
     }
     const result = finish(next);
     // The description is a convenience: a project it would make too large to save takes the video without it.
-    if (words && storedSize(result) > STORED_ROOM) return insertSource(record, {source: given, frames, hasVideo, hasAudio, width, height, at: position, targetTrack});
+    if (words && storedSize(result) > STORED_ROOM) return insertSource(record, {source: given, frames, hasVideo, hasAudio, width, height, at: position, targetTrack, replace});
     return result;
 }
 // The separated sound of an audio clip: three tracks after a2 hold one clip each (dialogue, music, ambience)
 // over the parent's range, and the parent goes silent. Deleting every stem clip gives the parent its volume back
 // (normalizeAudioEdits), so the silence needs no separate undo.
+// The tracks after a1, in order: a second sound track, the recording sub-track, and the separated sound that needs both.
+const LATER_TRACKS = [[], ['a2'], ['a3'], ['a2', 'a3'], ['a2', 'a3', 'a4', 'a5', 'a6']];
 export const STEM_TRACKS = Object.freeze(['dialogue', 'music', 'ambience']);
 export function placeStems(record, id, sources) {
     const next = copy(record), parent = find(next, id);
@@ -545,7 +566,7 @@ export function move(record, id, start, {targetTrack} = {}) {
     let track = trackOf(next, primary.id);
     // Only independent audio changes rows; linked pairs keep automatic routing.
     if (clips.length === 1 && track.kind === 'audio' && targetTrack !== undefined) {
-        check(['a1', 'a2'].includes(targetTrack), 'track');
+        check(['a1', 'a2', 'a3'].includes(targetTrack), 'track');
         assertUnlocked(record, [primary.id]);
         track = audioTrack(next, targetTrack);
         check(!track.locked, 'locked');
@@ -975,7 +996,7 @@ export function planRange(record, {start, frames, parts, target = 'both', text =
     if (!record.tracks.some(track => track.clips.some(clip => overlaps(clip, start, frames)))) frames = Math.max(RULES.minSeconds, Math.round(frames / FPS)) * FPS;
     const videoHits = trackBy(record, 'v1').clips.filter(clip => overlaps(clip, start, frames));
     const audioHits = trackBy(record, 'a1').clips.filter(clip => overlaps(clip, start, frames));
-    const otherHits = record.tracks.find(track => track.id === 'a2')?.clips.filter(clip => overlaps(clip, start, frames)) || [];
+    const otherHits = record.tracks.filter(track => track.id === 'a2' || track.id === 'a3').flatMap(track => track.clips.filter(clip => overlaps(clip, start, frames)));
     const hits = [...videoHits, ...audioHits];
     if (hits.length || otherHits.length) {
         check(hits.length > 0, 'unsupported');

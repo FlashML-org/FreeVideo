@@ -187,9 +187,13 @@ def validate(record):
     if not _text(json.dumps(settings, ensure_ascii=False, allow_nan=False, separators=(',', ':')), 1024 * 1024):
         raise ValueError('Settings are too large')
     raw_tracks = record.get('tracks')
-    expected = [('v1', 'video'), ('a1', 'audio'), ('a2', 'audio'), ('a3', 'audio'), ('a4', 'audio'), ('a5', 'audio'), ('a6', 'audio')]
-    if not isinstance(raw_tracks, list) or len(raw_tracks) not in (2, 3, 7):
+    # v1 and a1, then an optional second sound track (a2), the recording sub-track under a1 (a3) and, only together with both, the three separated-sound tracks (a4-a6), in that order.
+    if not isinstance(raw_tracks, list) or len(raw_tracks) not in (2, 3, 4, 7):
         raise ValueError('Invalid tracks')
+    later = [raw.get('id') if isinstance(raw, dict) else None for raw in raw_tracks[2:]]
+    if later not in ([], ['a2'], ['a3'], ['a2', 'a3']):
+        raise ValueError('Invalid tracks')
+    expected = [('v1', 'video'), ('a1', 'audio')] + [(track_id, 'audio') for track_id in later]
     tracks, seen = [], {}
     for raw_track, (track_id, kind) in zip(raw_tracks, expected):
         if (not isinstance(raw_track, dict) or raw_track.get('id') != track_id or raw_track.get('kind') != kind

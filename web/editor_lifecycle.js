@@ -7,7 +7,7 @@ export function discardEmptyEdit(record, initial, {busy = false, hasMedia = fals
         || record.tracks.some(track => track.clips.length) || record.replacements?.length) return false;
     // Compare settings, track controls and sparse project fields with initial().
     // An untouched empty second sound track does not make an edit differ from a new one.
-    const bare = track => track.id === 'a2' && !track.clips.length && Object.keys(track).every(key => ['id', 'kind', 'clips'].includes(key));
+    const bare = track => ['a2', 'a3'].includes(track.id) && !track.clips.length && Object.keys(track).every(key => ['id', 'kind', 'clips'].includes(key));
     const content = value => {
         const {id, revision, serial, name, ...rest} = value;
         return {...rest, tracks: rest.tracks.filter(track => !bare(track))};

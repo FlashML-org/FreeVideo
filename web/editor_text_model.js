@@ -7,7 +7,9 @@ export const SUBTITLE_DEFAULTS = Object.freeze({font: 'sans', size: 44 / 1080, c
 export const isText = clip => ['text', 'subtitle'].includes(clip?.text_kind);
 export const isTextTrack = track => ['text', 'subtitle'].includes(track?.kind);
 export const hasTextData = record => record?.subtitle_style !== undefined || record?.tracks?.some(isTextTrack);
-export const displayTracks = record => [...record.tracks.filter(t => t.kind === 'subtitle'), ...record.tracks.filter(t => t.kind === 'text'), ...record.tracks.filter(t => !isTextTrack(t))];
+// The recording sub-track (a3) is drawn directly under a1.
+const media = rows => { const sub = rows.find(t => t.id === 'a3'); return sub ? rows.filter(t => t !== sub).flatMap(t => t.id === 'a1' ? [t, sub] : [t]) : rows; };
+export const displayTracks = record => [...record.tracks.filter(t => t.kind === 'subtitle'), ...record.tracks.filter(t => t.kind === 'text'), ...media(record.tracks.filter(t => !isTextTrack(t)))];
 export const defaults = kind => kind === 'subtitle' ? SUBTITLE_DEFAULTS : TEXT_DEFAULTS;
 export const styleOf = (record, clip) => ({...defaults(clip.text_kind), ...(clip.text_kind === 'subtitle' ? record.subtitle_style : clip.text_style)});
 const check = (ok, code = 'text') => { if (!ok) throw new model.EditError(code); };

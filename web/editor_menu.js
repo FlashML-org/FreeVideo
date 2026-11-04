@@ -5,6 +5,7 @@ import {clickSelection, createSelectionActions, isTyping, selectedIds, playheadI
 const registered = new Set();
 // Groups appear in first-registration order; matching groups stay together.
 // Built-ins use 'edit' and 'split'. Return the disposer when unloading an extension.
+// visible(context), when given, leaves the item out of menus it does not belong in.
 // label/shortcut accept a string or (context) => string, so extensions can use context.t.
 export function registerMenuItem(item) {
     if (!['part', 'empty'].includes(item.where) || item.group == null || !item.label || typeof item.run !== 'function')
@@ -52,7 +53,7 @@ export function menuItems(context) {
     if (preview && context.actions.runSecondPass) items.push({group: 'generate', label: t('Run second pass', '继续二采'), shortcut: '',
         enabled: !context.actions.generationSending?.(), run: () => context.actions.runSecondPass(context.state.selection)});
     const value = field => typeof field === 'function' ? field(context) : field;
-    for (const item of registered) if (item.where === context.where) items.push({...item,
+    for (const item of registered) if (item.where === context.where && (!item.visible || item.visible(context))) items.push({...item,
         label: value(item.label), shortcut: value(item.shortcut) || '', enabled: item.enabled ? !!item.enabled(context) : true,
         run: () => item.run(context)});
     const groups = new Map();

@@ -238,7 +238,10 @@ export function attachAudioTracks(element, {state, t = en => en, actions = {}}) 
             for (const name of track.kind === 'audio' ? ['muted', 'solo', 'locked'] : ['muted', 'locked']) {
                 const active = !!track[name], button = el('button', 'fv-ed-audio-track-switch'); button.type = 'button'; button.dataset.flag = name; button.dataset.track = track.id;
                 const labels = {muted: active ? t('Unmute', '取消静音') : t('Mute this track', '静音这条轨道'), solo: active ? t('Hear all tracks', '恢复全部轨道') : t('Solo this track', '只听这条轨道'), locked: active ? t('Unlock', '解除锁定') : t('Lock this track', '锁定这条轨道')};
-                button.title = labels[name]; button.setAttribute('aria-label', button.title); button.setAttribute('aria-pressed', String(active));
+                button.title = labels[name];
+                // The recording track is mixed like the others but is only ever heard or muted: solo and lock stay in place, unavailable.
+                if (track.id === 'a3' && name !== 'muted') { button.disabled = true; button.title = name === 'solo' ? t('Not available on the recording track', '录音轨不能单独试听') : t('Not available on the recording track', '录音轨不能锁定'); }
+                button.setAttribute('aria-label', button.title); button.setAttribute('aria-pressed', String(active));
                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), path = document.createElementNS(svg.namespaceURI, 'path'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); path.setAttribute('d', paths[name]); svg.append(path); button.append(svg);
                 // Switches are view settings: they change every snapshot alike and never enter the undo history.
                 const activate = () => { try { state.settle(record => sound.setTrackFlag(record, track.id, name, !active)); } catch (error) { actions.editError?.(error); } };
@@ -337,6 +340,8 @@ export function createSpeechSpans(fetchSpans, {retry = 1000} = {}) {
     };
     return {map, want(keys) { keys.forEach(ask); }, get version() { return version; }, dispose() { disposed = true; }};
 }
+// A picture's own sound: still joined to it, or taken from it and kept.
+export const isOriginalSound = clip => !!clip.link || !!clip.detached_from;
 export function createAudioPreview({state, sources, api, volumePreview = new Map(), readSamples = null, error = () => {}, speech = null}) {
     let context = null, generation = 0, timer = null, identity = null, pending = false, disposed = false;
     const cache = new Map(), nodes = new Set(); let origin = 0, cursor = 0, previousPosition = 0;
@@ -422,10 +427,12 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
         finally { pending = false; }
     }
     return {
-        render({record, position, playing, playbackRate = 1}) {
+        render({record, position, playing, playbackRate = 1, silenceOriginal = false}) {
             speech?.want(sound.duckSources(record.tracks));
             if (!edited(record)) { if (identity) stop(); return false; }
             if (volumePreview.size) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.map(clip => volumePreview.has(clip.id) ? {...clip, volume: volumePreview.get(clip.id)} : clip)}))};
+            // While a take is recorded the picture's own sound stays out of the mix.
+            if (silenceOriginal) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.filter(clip => !isOriginalSound(clip))}))};
             if (!playing) { stop(); previousPosition = position; return true; }
             if (playbackRate !== 1) {
                 const unavailable = `shuttle:${playbackRate}`;
