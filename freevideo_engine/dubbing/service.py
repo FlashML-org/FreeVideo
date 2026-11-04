@@ -125,6 +125,8 @@ class Service:
         self.process = None
         self.result_expires = 0.
         self.report = {}
+        self.keep = False
+        self.folder = None
         self.closed = False
         import atexit
         atexit.register(self.close)
@@ -153,7 +155,10 @@ class Service:
         with self.mutex:
             self.state.update(row)
 
-    def start(self, action, value):
+    def start(self, action, value, *, trusted=False, keep=False):
+        """`trusted`: reference files are absolute paths the caller has already checked (the voice change reads
+        its own separated files); `keep`: a cancelled or failed run leaves the finished lines in its folder,
+        and the caller removes the folder."""
         if action not in ('install', 'dub'):
             raise ValueError('invalid_request')
         if self.busy():
@@ -168,7 +173,7 @@ class Service:
             value = request(value)
             for item in [value.get('reference')] + [line.get('reference') for line in value['lines']]:
                 if item:
-                    item['path'] = self.resolve(item['file'])
+                    item['path'] = item['file'] if trusted and os.path.isabs(item['file']) else self.resolve(item['file'])
         with self.mutex:
             if self.busy():
                 raise ValueError('busy')
@@ -177,6 +182,8 @@ class Service:
             self.result_expires = 0.
             self.state = dict(phase='starting')
             self.report = {}
+            self.keep = keep
+            self.folder = None
             self.thread = threading.Thread(target=self.work, args=(root, machine, action, value),
                                            name='freevideo-dubbing', daemon=True)
             self.thread.start()
@@ -325,6 +332,7 @@ class Service:
         env = self.environment(root)
         key_id = uuid.uuid4().hex[:12]
         folder = self.output_folder(key_id)
+        self.folder = folder
         self.progress(dict(phase='preparing'))
         extracted = {}
 
@@ -456,8 +464,8 @@ class Service:
             if surviving:
                 psutil.wait_procs(surviving, timeout=5)
                 self.progress(dict(error='worker_cleanup_failed'))
-            # Failed or cancelled runs leave nothing behind.
-            if self.state.get('phase') != 'complete':
+            # Failed or cancelled runs leave nothing behind, unless the caller keeps the finished lines.
+            if self.state.get('phase') != 'complete' and not self.keep:
                 shutil.rmtree(folder, ignore_errors=True)
 
 
