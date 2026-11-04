@@ -663,11 +663,30 @@ export function split(record, id, frame, {by = 'user'} = {}) {
     if (rights.length === 2) { rights[0].link = rights[1].id; rights[1].link = rights[0].id; }
     return finish(next);
 }
+// The sound under a picture planned to follow it: the imported sound, not a clip of its own.
+const soundMate = (record, clip) => {
+    // A placeholder of a replacement is held by its transaction; this one has none and borrows the sound's source.
+    const mate = clip.pending && clip.link && !(record.replacements || []).some(tx => [...tx.originals, ...tx.clips].some(t => t.clips.some(c => c.id === clip.id))) ? find(record, clip.link) : null;
+    return mate?.source?.kind === 'import' && mate.pending && clip.source && key(clip.source) === key(mate.source) && trackBy(record, 'a1').clips.includes(mate) ? mate : null;
+};
 export function remove(record, ids) {
     assertUnlocked(record, ids);
     check(Array.isArray(ids), 'id'); const selected = linkedIds(record, ids);
     busy(all(record).filter(clip => selected.has(clip.id)));
-    const next = copy(record); for (const track of next.tracks) track.clips = track.clips.filter(clip => !selected.has(clip.id));
+    // Discarding a planned picture that follows imported sound leaves the sound as it was before the plan.
+    const kept = new Set(trackBy(record, 'v1').clips.filter(clip => selected.has(clip.id)).map(clip => soundMate(record, clip)?.id).filter(Boolean));
+    const next = copy(record);
+    for (const track of next.tracks) track.clips = track.clips.filter(clip => !selected.has(clip.id) || kept.has(clip.id));
+    if (kept.size) {
+        for (const id of kept) Object.assign(find(next, id), {link: null, part: null, text: '', pending: null, reason: null, job: null});
+        const a1 = trackBy(next, 'a1'), plain = clip => kept.has(clip.id) || isSound(clip);
+        a1.clips.sort((a, b) => a.start - b.start);
+        for (let i = a1.clips.length - 1; i > 0; i--) {
+            const [a, b] = [a1.clips[i - 1], a1.clips[i]];
+            if ((kept.has(a.id) || kept.has(b.id)) && plain(a) && plain(b) && end(a) === b.start && key(a.source) === key(b.source)
+                && a.in + a.frames === b.in && a.volume === b.volume && a.length === b.length) { a.frames += b.frames; a1.clips.splice(i, 1); }
+        }
+    }
     return finish(next);
 }
 export function closeGap(record, trackId, frame) {
@@ -987,6 +1006,23 @@ function layoutPlanned(record, id, edge, frame, limits = {}) {
     }
     return next;
 }
+// Imported sound with no picture of its own, on the first sound row.
+const isSound = clip => clip.source?.kind === 'import' && !clip.link && !clip.pending;
+// Whether [start, start + frames) is empty on the picture row and lies within one piece of imported sound.
+export function soundRange(record, start, frames) {
+    if (!whole(start) || !whole(frames, 1) || trackBy(record, 'v1').clips.some(clip => overlaps(clip, start, frames))) return null;
+    const clips = trackBy(record, 'a1').clips.filter(clip => overlaps(clip, start, frames));
+    if (!clips.length || !clips.every(isSound) || record.tracks.find(track => track.id === 'a2')?.clips.some(clip => overlaps(clip, start, frames))) return null;
+    return clips.length === 1 && clips[0].start <= start && end(clips[0]) >= start + frames ? clips[0] : null;
+}
+function cutSound(record, start, frames) {
+    let next = record;
+    for (const frame of [start, start + frames]) {
+        const clip = trackBy(next, 'a1').clips.find(item => item.start < frame && end(item) > frame);
+        if (clip) next = split(next, clip.id, frame);
+    }
+    return next;
+}
 export function planRange(record, {start, frames, parts, target = 'both', text = '', by = 'user', maxSeconds = RULES.maxSeconds, maxFollowSeconds = maxSeconds}) {
     check(TEXT_BY.includes(by), 'text');
     check(whole(start) && whole(frames, 1), 'range'); check(['both', 'video', 'audio'].includes(target), 'target');
@@ -994,14 +1030,21 @@ export function planRange(record, {start, frames, parts, target = 'both', text =
     check(typeof maxSeconds === 'number' && Number.isFinite(maxSeconds) && maxSeconds >= RULES.minSeconds, 'range');
     check(target === 'both', 'unsupported');
     if (!record.tracks.some(track => track.clips.some(clip => overlaps(clip, start, frames)))) frames = Math.max(RULES.minSeconds, Math.round(frames / FPS)) * FPS;
+    // A range with no picture over imported sound is drawn to follow that sound: the sound is cut at the range.
+    const ledBySound = !!soundRange(record, start, frames);
+    if (ledBySound) record = cutSound(record, start, frames);
     const videoHits = trackBy(record, 'v1').clips.filter(clip => overlaps(clip, start, frames));
     const audioHits = trackBy(record, 'a1').clips.filter(clip => overlaps(clip, start, frames));
     const otherHits = record.tracks.filter(track => track.id === 'a2' || track.id === 'a3').flatMap(track => track.clips.filter(clip => overlaps(clip, start, frames)));
     const hits = [...videoHits, ...audioHits];
+    const followsSound = ledBySound && !videoHits.length && audioHits.length > 0 && audioHits.every(isSound);
     if (hits.length || otherHits.length) {
         check(hits.length > 0, 'unsupported');
-        check(videoHits.length && audioHits.length === videoHits.length, 'unsupported');
+        check(followsSound || videoHits.length && audioHits.length === videoHits.length, 'unsupported');
         let boundary = start;
+        if (followsSound) {
+            for (const clip of audioHits) { check(clip.start === boundary && end(clip) <= start + frames && !otherHits.length, 'unsupported'); boundary = end(clip); }
+        }
         for (const clip of videoHits) {
             const mate = find(record, clip.link);
             check(clip.start === boundary && end(clip) <= start + frames && mate && audioHits.includes(mate)

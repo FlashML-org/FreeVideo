@@ -6,13 +6,15 @@ import {isText} from './editor_text_model.js';
 import {viewSwitch, viewChanged} from './view_navigation.js';
 import {wordmark} from './wordmark.js';
 import {openSetup} from './setup.js';
-import {feedbackButton} from './feedback.js';
+import {feedbackButton, guideButton} from './feedback.js';
 import {issueButton} from './issue_button.js';
 import * as model from './editor_model.js';
 import {discardEmptyEdit, hiddenEmptyEdit, deleteEditText} from './editor_lifecycle.js';
 import {createEditorState} from './editor_state.js';
 import {createEditorStore, sourceKey, mediaURL} from './editor_store.js';
 import {generationSize, continuedSize} from './editor_generation.js';
+import {uploadMedia} from './media_upload.js';
+import {checkOriginal} from './audio_original.js';
 import {createEditorLibrary} from './editor_library.js';
 import {createEditorPlayer} from './editor_player.js';
 import {createEditorTransport, registerEditorShortcuts} from './editor_transport.js';
@@ -209,7 +211,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const top = el('header', 'fv-header fv-ed-top'), libraryHost = el('aside', 'fv-ed-library'), preview = el('section', 'fv-ed-preview'),
         transport = el('div', 'fv-ed-transport'), genHost = el('div', 'fv-ed-genbar'), tracksHost = el('div', 'fv-ed-tracks'), zoomHost = el('div', 'fv-ed-zoom');
     const adjustHost = el('aside', 'fv-ed-adjust-host');
-    tracksHost.dataset.fvGuide = 'editor-timeline';
+    tracksHost.dataset.fvGuide = 'editor-timeline'; tracksHost.dataset.tourId = 'editor-timeline';
     const button = (label, action, cls = '') => { const value = el('button', cls, label); value.type = 'button'; value.onclick = action; return value; };
     const navigation = viewSwitch('editor', () => handle.switchView('studio'), () => handle.switchView('nodes'), () => {}, () => handle.switchView('autopilot'));
     for (const control of navigation.querySelectorAll('button')) control.removeAttribute('title');
@@ -230,7 +232,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     exportBox.append(exportHint, exportButton, exportCancel); brand.append(wordmark(), title);
     const phoneAccess = createLanAccess(t, api);
     listeners.push(phoneAccess.dispose);
-    headerActions.append(exportBox, phoneAccess.element, feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
+    headerActions.append(exportBox, phoneAccess.element, guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
     top.append(brand, navigation, headerActions);
     const headerFit = fitEditorHeader(top, brand, title, navigation, headerActions);
     const menu = el('div', 'fv-ed-name-menu'); menu.hidden = true; menu.setAttribute('role', 'menu');
@@ -259,7 +261,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
-    const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map();
+    const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
     const failures = createEditorFailures({api, state, jobStatuses, reasonText: value => editorErrorText(value, t)});
     let submissionFailure = null;
     let blockStates = null, progressObserver = null, progressConnection = null;
@@ -586,6 +588,28 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         delete inputs.continue_from; delete inputs.continue_to;
         return {node: String(value.node), prompt: value.prompt, ...(value.extra_data ? {extra_data: value.extra_data} : {}), ...(api.clientId ? {client_id: api.clientId} : {})};
     }
+    // A part drawn over imported sound follows that sound as it is: the picture is made for the range of the file the
+    // parts cover, and the sound itself is kept.
+    async function followSound(frozen, record, ids) {
+        const videos = ids.map(id => model.find(record, id)).filter(Boolean).sort((a, b) => a.start - b.start);
+        const sound = videos.map(clip => model.find(record, clip.link));
+        if (!videos.length || sound.some(clip => clip?.source?.kind !== 'import' || store.sources.get(sourceKey(clip.source))?.has_video !== false)) return;
+        const source = sound[0].source, metadata = store.sources.get(sourceKey(source));
+        const blob = await (await fetch(metadata.audio)).blob(), extension = /\.[a-z0-9]{1,5}$/i.exec(String(metadata.name || metadata.path || ''))?.[0] || '.wav';
+        const {file} = await uploadMedia(api, new File([blob], `editor-${source.id}${extension}`, {type: blob.type}));
+        const rate = (await checkOriginal(api, {file})).sample_rate;
+        if (!(rate > 0)) throw new Error('audio_unusable');
+        const first = Math.round(sound[0].in * rate / model.FPS), frames = videos.reduce((sum, clip) => sum + clip.frames, 0);
+        const row = {file, role: 'reference', use: 'original', range: {start_sample: first, end_sample: first + Math.round(frames * rate / model.FPS)}};
+        const inputs = frozen.prompt[frozen.node].inputs, held = frozen.prompt[String(inputs.media?.[0])];
+        if (held?.class_type === 'FreeVideoMedia') {
+            const rows = JSON.parse(held.inputs.assets || '[]').filter(item => item.use !== 'original');
+            held.inputs.assets = JSON.stringify([...rows, row]);
+        } else {
+            const id = String(1 + Math.max(0, ...Object.keys(frozen.prompt).map(Number).filter(Number.isFinite)));
+            frozen.prompt[id] = {class_type: 'FreeVideoMedia', inputs: {assets: JSON.stringify([row])}}; inputs.media = [id, 0];
+        }
+    }
     function pinStoppedJob(record, ids, job) {
         return model.settle(record, ids.filter(id => model.attemptClip(record, id)?.job === job), 'stopped');
     }
@@ -596,6 +620,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return ['queued', 'running', 'cancelling'].includes(previous.state);
         failures.reconcile(job, previous);
         mostRecentJob = job.id; jobStatuses.set(job.id, job); paintJob(job);
+        if (!startPlayheads.has(job.id)) startPlayheads.set(job.id, state.playhead);
+        // Whether the job follows imported sound is read before a result replaces the sound's link target.
+        if (!soundJobs.has(job.id) && (job.blocks || []).some(block => { const heard = model.find(state.record, model.attemptClip(state.record, block.id)?.link);
+            return heard?.source?.kind === 'import' && store.sources.get(sourceKey(heard.source))?.has_video === false; })) soundJobs.add(job.id);
         genbar?.update(barJob(job));
         const completed = new Set();
         for (const block of job.blocks || []) {
@@ -616,6 +644,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     // Validate the current clip first so a bad receipt is visible.
                     model.fill(state.record, block.id, result);
                     state.settle(record => model.fill(record, block.id, result));
+                    // A sound-led result the playhead has not reached is shown from its first frame, once per job and unless the viewer moved on meanwhile.
+                    const done = model.find(state.record, block.id), picked = state.selection;
+                    if (done && soundJobs.has(job.id) && !shownJobs.has(job.id)) {
+                        shownJobs.add(job.id);
+                        if (picked?.kind === 'clip' && picked.ids.includes(block.id) && !player.playing && state.playhead === startPlayheads.get(job.id)
+                            && !(state.playhead >= done.start && state.playhead < done.start + done.frames)) state.seek(done.start);
+                    }
                 } catch (value) {
                     if (!(value instanceof model.EditError)) throw value;
                     state.settle(record => model.fail(record, block.id, 'result_mismatch', job.id));
@@ -904,6 +939,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
             catch (value) { if (value instanceof model.EditError) return value.code === 'busy'; throw value; }
         },
+        // A range with no picture over imported sound: the picture is made to follow that sound.
+        soundLed(selection = state.selection) {
+            const range = selection?.kind === 'range' && selectionRange(selection);
+            return !!range && !!model.soundRange(state.record, range.start, range.frames);
+        },
         // Another part generating is no reason: the server runs parts one after another.
         canGenerate(text, selection = state.selection) {
             return store.generationAvailable && actions.supportedSelection(selection) && (!!text.trim() || !actions.needsText(selection));
@@ -1077,6 +1117,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     if ('preview' in inputs || previewing) inputs.preview = previewing && alone;
                     if ('refine_from' in inputs) inputs.refine_from = '';
                 }
+                await followSound(frozen, prepared, ids);
                 if (allowEmpty === true && [text, ...Object.values(texts ?? {})].some(value => !value.trim())) allowEmptyPrompt({output: frozen.prompt}, frozen.node);
                 // Parts made at another size than the edit's have that size's limit.
                 const limit = (follow && (follow.width !== edit.width || follow.height !== edit.height)

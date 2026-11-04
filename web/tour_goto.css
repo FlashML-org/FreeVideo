@@ -1,0 +1,4 @@
+.fv-tour-ring{position:fixed;z-index:2147483000;box-sizing:border-box;border:2px solid var(--fv-accent,#6db8fa);border-radius:var(--fv-r-md,10px);pointer-events:none;box-shadow:0 0 0 0 color-mix(in srgb,var(--fv-accent,#6db8fa) 25%,transparent);animation:fv-tour-ring-pulse .4s ease-out 1 forwards;transition:opacity .3s}
+.fv-tour-ring-out{opacity:0}
+@keyframes fv-tour-ring-pulse{to{box-shadow:0 0 0 6px color-mix(in srgb,var(--fv-accent,#6db8fa) 25%,transparent)}}
+@media(prefers-reduced-motion:reduce){.fv-tour-ring{animation:none;box-shadow:0 0 0 6px color-mix(in srgb,var(--fv-accent,#6db8fa) 25%,transparent);transition:none}}

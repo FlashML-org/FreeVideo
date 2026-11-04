@@ -48,7 +48,7 @@ function selectedContext(state, t, actions) {
 export function createAdjustPanel(host, {state, t, actions}) {
     const shell = host.closest('.fv-editor'), uid = `fv-ed-adjust-${++serial}`;
     host.classList.add('fv-ed-adjust-host');
-    const element = el('section', 'fv-ed-adjust'); element.id = uid;
+    const element = el('section', 'fv-ed-adjust'); element.id = uid; element.dataset.tourId = 'editor-inspector';
     element.setAttribute('aria-label', t('Adjust', '调整'));
     const tabs = el('div', 'fv-ed-tabs fv-pass-mode'); tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', t('Adjust', '调整'));
@@ -56,7 +56,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
     const buttons = new Map(), panes = new Map(), entries = new Map();
     const toggleButton = button('', {onClick: () => overlay ? close({restoreFocus: true}) : open()});
     toggleButton.append(editorIcon('adjust')); toggleButton.setAttribute('aria-label', t('Adjust', '调整')); toggleButton.title = t('Adjust', '调整');
-    toggleButton.classList.add('fv-ed-adjust-toggle'); toggleButton.setAttribute('aria-controls', uid);
+    toggleButton.classList.add('fv-ed-adjust-toggle'); toggleButton.dataset.tourToggle = 'editor-inspector'; toggleButton.setAttribute('aria-controls', uid);
     const labels = {video: t('Video', '画面'), audio: t('Audio', '声音'), speed: t('Speed', '速度'), text: t('Text', '文字'), subtitle: t('Subtitles', '字幕')};
     for (const kind of kinds) {
         const tab = button(labels[kind], {onClick: () => activate(kind)});

@@ -42,7 +42,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     const avatars = el('div', 'fv-cast-avatars');
     const skipped = el('div', 'fv-cast-unreadable'); skipped.hidden = true;
     const add = button('fv-cast-add', '+', () => openDialog());
-    add.setAttribute('aria-label', word(text('New character', '新建角色'), text('New scene', '新建场景')));
+    add.setAttribute('aria-label', word(text('New character', '新建角色'), text('New scene', '新建场景'))); add.dataset.tourId = 'cast-add';
     element.append(heading, avatars, add, skipped);
 
     async function value(response) {

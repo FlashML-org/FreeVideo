@@ -195,7 +195,9 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // A choice that will move to an empty spot can still be described first.
         const writable = selected || !previewSelection && !!selection && !!actions.selectionMovable?.();
         input.disabled = !writable || busy;
-        input.placeholder = !writable ? '' : musical ? t('Describe the music', '描述配乐') : t('Describe this part', '描述这一段');
+        const sound = writable && !musical && !!actions.soundLed?.();
+        input.placeholder = !writable ? '' : musical ? t('Describe the music', '描述配乐') : sound ? t('Describe the picture', '描述画面') : t('Describe this part', '描述这一段');
+        if (sound) host.dataset.tourId = 'video-empty-range'; else delete host.dataset.tourId;
         input.setAttribute('aria-label', t('Description', '描述'));
         generate.classList.toggle('fv-primary', selected && !busy);
         // A cancel already accepted is not offered again; the bar says it is stopping until the run ends.

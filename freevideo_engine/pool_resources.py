@@ -231,4 +231,35 @@ class PromptEnvelope:
         # Reserve the full device capacity for future WDDM allocation, following
         # runtime.gpu_commit_reserve, with no credit for already reserved VRAM.
         gpu_commit = max(device.total_bytes for device in self.devices) if windows() else 0
+        if len(self.devices) >= 2:
+            # The measured private peak is for the reference request; larger canvases,
+            # attached media and continuations add what the workspace estimate adds.
+            reference = geometry(1344, 768, frames=243)
+            reference_workspace = (HOST_WEIGHT_HEADROOM + ENCODER_HOST_BYTES + residual_host_headroom(reference)
+                                   + decoder_workspace(reference) + 3 * (1344 * 768 * 243 * 3)
+                                   + UPSCALER_HOST_BYTES + adaln_extra_bytes(reference))
+            return multi_gpu_envelope(self.devices, gpu_commit, max(0, workspace - reference_workspace))
         return Envelope(host, host - pinned + gpu_commit, pinned)
+
+
+GIB = 1 << 30
+# Two or more GPUs: measured per-task host use of one resident worker. Private
+# anonymous memory peaked at 6.4 GiB on the largest admitted request; pinned
+# weights follow each card's placement, 16.9 GiB on 16 GB-class cards and
+# 8.9 GiB on 24 GB-class cards, and cards of 32 GB and above are bounded by the
+# 24 GB figure. Mapped weight files add 0.3-0.5 GiB of page cache once per machine.
+PRIVATE_TASK_BYTES = int(7.5 * GIB)
+MAPPED_ONCE_BYTES = GIB // 2
+PINNED_SMALL_CARD_BYTES = 17 * GIB
+PINNED_LARGE_CARD_BYTES = 9 * GIB
+SMALL_CARD_LIMIT_BYTES = 20 * GIB
+multi_gpu_calls = 0
+
+
+def multi_gpu_envelope(devices, gpu_commit, extra_private=0):
+    global multi_gpu_calls
+    multi_gpu_calls += 1
+    smallest = min(device.total_bytes for device in devices)
+    pinned = PINNED_SMALL_CARD_BYTES if smallest < SMALL_CARD_LIMIT_BYTES else PINNED_LARGE_CARD_BYTES
+    host = PRIVATE_TASK_BYTES + extra_private + MAPPED_ONCE_BYTES + pinned
+    return Envelope(host, host - pinned + gpu_commit, pinned)

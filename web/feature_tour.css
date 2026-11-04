@@ -43,3 +43,5 @@
 .fv-feature-tour .fv-tour-close{position:relative;font-size:0}
 .fv-tour-close::before,.fv-tour-close::after{content:'';position:absolute;left:10px;top:17px;width:16px;height:1px;background:currentColor;transform:rotate(45deg)}
 .fv-tour-close::after{transform:rotate(-45deg)}
+.fv-tour-book{background:none;border:0;padding:6px 4px;color:inherit;font:inherit;text-decoration:underline;opacity:.75;cursor:pointer;flex:none;margin-right:auto;margin-left:12px}.fv-tour-book:hover,.fv-tour-book:focus-visible{opacity:1}
+@media (max-width:680px){.fv-tour-book{margin:0;align-self:center}}

@@ -19,7 +19,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
     'toolbar_position.js', 'updates.js', 'view_navigation.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
-    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js'];
+    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {
