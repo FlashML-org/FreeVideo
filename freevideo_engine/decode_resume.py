@@ -388,3 +388,57 @@ def load_refine_input(request, torch, *, continuation_tail_callback=None):
     if continuation_tail_callback is not None:
         continuation_tail_callback(value.get('continuation_first'))
     return value['video'], value['audio'], first, lifted, receipt
+
+
+def save_refine_progress(value, artifacts, torch):
+    """Retain the second pass's state after a completed step, atomically."""
+    artifacts = Path(artifacts)
+    artifacts.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix='refine-progress.', suffix='.tmp', dir=artifacts, delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        torch.save(value, temporary)
+        temporary.replace(artifacts / 'refine-progress.pt')
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_refine_progress(request, torch, resume, rows_shape):
+    """Verified (step, rows, step_seconds) of an interrupted second pass, else None.
+
+    Resuming is an optimization over repeating the pass: any doubt returns None
+    and the caller samples every refinement step again. The file must sit next
+    to the retained first pass this request already validated, carry the same
+    first-pass identity, restart seed and canvas, and hold finite rows of the
+    shape the next step expects.
+    """
+    try:
+        source = resume.get('progress') if isinstance(resume, dict) else None
+        if not isinstance(source, str) or not source:
+            return None
+        path = Path(source).resolve()
+        if path.name != 'refine-progress.pt' or not path.is_file() or path.stat().st_size <= 0:
+            return None
+        if path.parent.parent != Path(resume['input']).resolve().parent.parent:
+            return None  # a retained attempt of this request
+        plan = request['sampling_plan']
+        steps = plan['refine_steps']
+        provenance = refine_provenance(request)
+        value = torch.load(str(path), map_location='cpu', weights_only=True)
+        restart = (request['seed'] + plan['restart_seed_offset']) % (1 << 64)
+        if (not isinstance(value, dict) or type(value.get('seed')) is not int or value['seed'] != restart
+                or not same_canvas(value.get('geometry'), request['geometry'])
+                or not same_identity(value.get('refine_provenance'), provenance)):
+            return None
+        done, seconds, rows = value.get('step'), value.get('step_seconds'), value.get('video')
+        if type(done) is not int or not 0 < done < steps:
+            return None
+        if (not isinstance(seconds, list) or len(seconds) != done
+                or any(type(item) not in (int, float) or not math.isfinite(item) or item <= 0 for item in seconds)):
+            return None
+        if (not isinstance(rows, torch.Tensor) or rows.device.type != 'cpu' or rows.dtype != torch.float32
+                or tuple(rows.shape) != tuple(rows_shape) or not bool(torch.isfinite(rows).all())):
+            return None
+        return done, rows, [float(item) for item in seconds]
+    except Exception:  # corrupt pickles raise many types; an unusable file only costs the shortcut
+        return None
