@@ -869,7 +869,7 @@ def list_imports(root, unreadable=None):
                 value = _read_import(root, child.name)
                 stamp = _import_path(root, child.name).stat().st_mtime_ns
                 fields = ('id', 'name', 'kind', 'state', 'fraction', 'reason', 'frames', 'fps', 'width', 'height',
-                          'preview_width', 'preview_height', 'has_audio')
+                          'preview_width', 'preview_height', 'has_audio', 'detail')
                 row = {k: value.get(k) for k in fields}
                 row['started'] = bool(value.get('started'))
                 for side in ('width', 'height'):
@@ -984,7 +984,7 @@ def transcode(root, identity):
                     aout.codec_context.thread_count = 1
                     resampler = av.AudioResampler(format='fltp', layout='stereo', rate=32000)
                 next_video, previous, previous_time, previous_end = 0, None, 0., 0.
-                audio_pos, decoded_audio = None, 0
+                audio_pos, decoded_audio, damaged = None, 0, 0
                 last_update, fraction = 0., 0.
 
                 def emit_video(until):
@@ -1011,8 +1011,22 @@ def transcode(root, identity):
                     for packet in aout.encode(frame):
                         writer.mux(packet)
 
-                for packet in reader.demux([s for s in (vin, ain) if s is not None]):
-                    for frame in packet.decode():
+                packets = reader.demux([s for s in (vin, ain) if s is not None])
+                while True:
+                    try:
+                        packet = next(packets)
+                    except StopIteration:
+                        break
+                    except av.error.InvalidDataError:
+                        # A file cut off or damaged part-way keeps what was read before the damage.
+                        damaged += 1
+                        break
+                    try:
+                        frames = packet.decode()
+                    except av.error.InvalidDataError:
+                        damaged += 1  # Skip a packet the decoder rejects; the rest of the file still plays.
+                        continue
+                    for frame in frames:
                         frame_time = Fraction(frame.pts) * frame.time_base - origin if frame.pts is not None else 0.
                         if packet.stream == vin:
                             picture = display_frame(frame)
@@ -1064,6 +1078,8 @@ def transcode(root, identity):
                         width=original_info['width'], height=original_info['height'], original_size=True)
             if kind == 'video':
                 info['frames'] = next_video
+            if damaged:
+                _LOG.warning('Editor import kept the readable part of a damaged file (%d unreadable packets).', damaged)
             _import_update(root, identity, **info, state='ready', fraction=1., reason=None)
     finally:
         partial.unlink(missing_ok=True)
@@ -1089,8 +1105,12 @@ class ImportManager:
         except Exception as error:
             # A full disk is not the file's fault, so the page says so instead of listing formats.
             reason = _disk_full(error).get('reason', 'unreadable')
+            if reason == 'unreadable':
+                _LOG.warning('Editor import could not be read (%s).', type(error).__name__)  # The message may carry a path.
             try:
-                _import_update(self.root, identity, state='failed', reason=reason)
+                # The class of the error (never its message, which can name a path) goes with the page's report button.
+                _import_update(self.root, identity, state='failed', reason=reason,
+                               detail=type(error).__name__ if reason == 'unreadable' else None)
             except (OSError, ValueError):
                 pass  # The terminal snapshot is retained and retried by the worker/reads.
 
