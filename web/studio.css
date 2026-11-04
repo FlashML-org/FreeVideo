@@ -290,3 +290,9 @@
 .fv-studio .fv-swap-meter[data-indeterminate=true]>i{width:32%;animation:fv-swap-sweep 1.4s ease-in-out infinite}
 @keyframes fv-swap-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
 @media (max-width:480px){.fv-studio .fv-swap-slots{grid-template-columns:1fr}.fv-studio .fv-swap-source{order:1}.fv-studio .fv-swap-sound{order:2}.fv-studio .fv-swap-person{order:3}}
+/* Recent videos: the same folding as Creations; the videos under an opened cover are indented. */
+.fv-studio .fv-recent-card[hidden]{display:none}
+.fv-recent-card.fv-task-head:not(.fv-task-open) .fv-library-picture{box-shadow:4px -4px 0 0 var(--fv-sheen)}
+.fv-studio .fv-recent-card.fv-task-member{margin-left:12px;animation:fv-task-reveal .2s ease}
+@keyframes fv-task-reveal{from{opacity:0;transform:translateY(-4px)}}
+@media(prefers-reduced-motion:reduce){.fv-studio .fv-recent-card.fv-task-member{animation:none}}
