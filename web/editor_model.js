@@ -558,6 +558,14 @@ export function placeStems(record, id, sources) {
     parent.stem_volume = volume; parent.volume = 0;
     return finish(next);
 }
+// A replaced voice: the part keeps its id, place and range and takes a file of the same length as its sound.
+export function replaceSource(record, id, source) {
+    const next = copy(record), clip = find(next, id);
+    check(clip && trackOf(next, id).kind === 'audio' && clip.source && !clip.pending, 'missing');
+    check(!trackOf(next, id).locked, 'locked');
+    clip.source = sourceData(source);
+    return finish(next);
+}
 export function move(record, id, start, {targetTrack} = {}) {
     if (isText(find(record, id))) return changeText(record, id, {start});
     check(whole(start), 'range'); const selected = pair(record, id); check(selected.length, 'missing'); busy(selected);

@@ -351,6 +351,58 @@ def stems(*, local=False):
         **{'x-job-kind': 'stems'})
 
 
+VOICE_SELECTION = obj(dict(clip_id=string(64), start=number(0, 36000, description='Seconds from the clip start; default 0.'),
+                           end=number(0, 36000, description='Seconds from the clip start; default the clip end.')), ('clip_id',),
+                      description='The sound clip, or part of it, whose voice to change: the original sound, or its dialogue sub-track.')
+VOICE_LANGUAGE = string(8, pattern=r'^(auto|[a-z]{2,3})$', default='auto')
+VOICE_LINE = obj(dict(id=string(16, pattern=r'^l[0-9]{3,5}$'), start=number(0, 36000), end=number(0, 36000),
+                      text=string(2000, description='The line as the user wants it said.'),
+                      original_text=string(2000, description='The line as it was recognised.'),
+                      rate=number(.1, 60, description='Units spoken per second, from voice_lines.')),
+                 ('id', 'start', 'end', 'text', 'original_text'))
+VOICE_REFERENCE = obj(dict(clip_id=string(64), start=number(0, 36000), end=number(0, 36000), text=string(1000)),
+                      ('clip_id', 'start', 'text'), description='A stretch of a sound clip whose voice every line takes.')
+VOICE_LINES_FIELDS = dict(
+    selection=VOICE_SELECTION, language=VOICE_LANGUAGE,
+    separate_first={'type': 'boolean', 'default': False,
+                    'description': 'Separate the sound first and recognise on the dialogue alone.'})
+VOICE_FIELDS = dict(
+    selection=VOICE_SELECTION, language=VOICE_LANGUAGE,
+    lines=array(VOICE_LINE, 1, 200, description='The lines voice_lines gave, with the edited ones changed; only those are made again.'),
+    voice=obj(dict(preset=string(64), reference=VOICE_REFERENCE),
+              description='Omit for each line to keep its own speaker\'s voice.'),
+    recognition=string(64, description='The recognition voice_lines gave (required); the lines are checked against it. When it is no longer kept, run voice_lines again.'),
+    seed=number(0, 2**31 - 1, integer=True, description='Same seed and lines, same voice.'),
+    lay={'type': 'boolean', 'default': True,
+         'description': 'False leaves the new voice unplaced: result.apply says how the page puts it on the timeline.'})
+VOICE_SHORTEN_FIELDS = dict(
+    line=obj(dict(id=string(16, pattern=r'^l[0-9]{3,5}$'), text=string(2000), seconds=number(.1, 600)), ('id', 'text', 'seconds')),
+    target_seconds=number(.1, 600), language=VOICE_LANGUAGE,
+    context=array(string(2000), 0, 6, description='The lines before and after, for sense.'))
+VOICE_ESTIMATE_FIELDS = dict(
+    lines=array(obj(dict(id=string(16, pattern=r'^l[0-9]{3,5}$'), text=string(2000), original_text=string(2000),
+                         rate=number(.1, 60), start=number(0, 36000), end=number(0, 36000)),
+                    ('id', 'text', 'original_text')), 1, 200,
+                description='Every line of the selection; with start and end on the lines, each changed line also gets the room it has.'),
+    limit=number(0, 36000, description='The end of the selection in seconds, where the last line may reach; with the lines\' start and end.'))
+
+
+def voice_lines(*, local=False):
+    return obj(dict(kind={'const': 'voice_lines', 'type': 'string'},
+        editor_project=string(34, pattern=r'^e-[0-9a-f]{32}$'), revision=number(1, 2**53 - 1, integer=True),
+        **VOICE_LINES_FIELDS, **common()), ('kind', 'editor_project', 'revision', 'selection'),
+        description='Write down the lines of a selection with the local speech model; nothing is saved.',
+        **{'x-job-kind': 'voice_lines'})
+
+
+def voice(*, local=False):
+    return obj(dict(kind={'const': 'voice', 'type': 'string'},
+        editor_project=string(34, pattern=r'^e-[0-9a-f]{32}$'), revision=number(1, 2**53 - 1, integer=True),
+        **VOICE_FIELDS, **common()), ('kind', 'editor_project', 'revision', 'selection', 'lines'),
+        description='Say the edited lines again in the voice of the original and put them where the originals were.',
+        **{'x-job-kind': 'voice'})
+
+
 def image_edit(*, local=False):
     return obj(dict(kind={'const': 'image_edit', 'type': 'string'},
         image=dict(IMAGE, description='The image session to render (POST /images).'),
@@ -361,12 +413,12 @@ def image_edit(*, local=False):
 
 
 KINDS = dict(generate=generate, assemble=assemble, vlm=vlm, enhance=enhance, image=image,
-             export=export, listen=listen, music=music, stems=stems, image_edit=image_edit)
+             export=export, listen=listen, music=music, stems=stems, voice_lines=voice_lines, voice=voice, image_edit=image_edit)
 
 
 def job_schema(*, local=False, refs=False, batch=False):
     # Music scores a joined cut, so it is not a storyboard row.
-    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind in ('music', 'stems'))], 'x-discriminator': 'kind',
+    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind in ('music', 'stems', 'voice_lines', 'voice'))], 'x-discriminator': 'kind',
              'description': 'x-discriminator selects field diagnostics by kind; all accepted branches use standard oneOf.'}
     return batch_references(value) if refs else value
 
@@ -483,7 +535,7 @@ def contracts(*, local=False):
         if method == 'GET':
             extra['query'] = shape
         else:
-            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music', 'stems') else {}))
+            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music', 'stems', 'voice_lines', 'voice_replace') else {}))
         routes[method, suffix] = route(summary, **extra)
     for name, (method, suffix, summary) in WHITEBOX_OPERATIONS.items():
         extra = dict(path=obj({'id': WHITEBOX}, ('id',))) if '{id}' in suffix else {}
@@ -874,13 +926,19 @@ PROJECT_OPERATIONS = {
     'listen': ('POST', '/projects/{id}/listen', 'Listen to the timeline sound for subtitles: mode align times lines you give, transcribe writes down what is said. First get the revision; wait for the returned job, then add the lines with the subtitles edit. Nothing is saved; with no speech model for the language the call fails with no_speech_model, so write the lines by hand.'),
     'stems': ('POST', '/projects/{id}/stems', 'Split one clip\'s sound into dialogue, music and ambience on tracks a4-a6. First get the revision and clip ID; wait for the job, then read result.parts.'),
     'stems_export': ('POST', '/projects/{id}/stems/export', 'Save the separated dialogue, music and ambience of a split clip, with its original mix, as four wav files in the saved sounds. First get the revision and the split clip\'s ID; the answer lists the files at once.'),
+    'voice_lines': ('POST', '/projects/{id}/voice/lines', 'Write down the lines of a selected sound clip, each with its start and end. First get the revision and clip ID; wait for the job, then read result.lines. Nothing is saved.'),
+    'voice_replace': ('POST', '/projects/{id}/voice/replace', 'Say the lines you changed again in the original voice and put them where the originals were; unchanged lines keep their sound. Send the lines voice_lines gave, with text changed; wait for the job, then read result.lines for where each new line starts and ends.'),
+    'voice_shorten': ('POST', '/projects/{id}/voice/shorten', 'Shorten one line to fit a number of seconds. The answer is a text; nothing is saved or spoken.'),
+    'voice_estimate': ('POST', '/projects/{id}/voice/estimate', 'Estimate the seconds the changed lines take to make. The answer comes at once.'),
     'music': ('POST', '/projects/{id}/music', 'Compose music as long as the joined cut and lay it on sound track a2 at frame 0, under the video sound. First get the revision; a2 must be empty. Wait for the returned job; the first use downloads the model (20 GB).'),
 }
 PROJECT_TOOLS = dict(list='freevideo_projects', get='freevideo_project_read', create='freevideo_project_create',
                      write='freevideo_project_write', operations='freevideo_editor_operations',
                      generate='freevideo_project_generate', export='freevideo_export',
                      listen='freevideo_project_listen', music='freevideo_project_music',
-                     stems='freevideo_project_stems', stems_export='freevideo_project_stems_export')
+                     stems='freevideo_project_stems', stems_export='freevideo_project_stems_export',
+                     voice_lines='freevideo_project_voice_lines', voice_replace='freevideo_project_voice_replace',
+                     voice_shorten='freevideo_project_voice_shorten', voice_estimate='freevideo_project_voice_estimate')
 
 SESSION_OPERATIONS = {
     'create': ('POST', '/sessions', 'Create a work conversation for messages and plans shared with the user.'),
@@ -1003,6 +1061,14 @@ def project_schema(name):
         return obj(dict(revision=revision, **MUSIC_FIELDS, ref=REF), ('revision', 'caption'))
     if name in ('stems', 'stems_export'):
         return obj(dict(revision=revision, **STEMS_FIELDS, **(STEMS_LAY if name == 'stems' else {}), ref=REF), ('revision', 'clip_id'))
+    if name == 'voice_lines':
+        return obj(dict(revision=revision, **VOICE_LINES_FIELDS, ref=REF), ('revision', 'selection'))
+    if name == 'voice_replace':
+        return obj(dict(revision=revision, **VOICE_FIELDS, ref=REF), ('revision', 'selection', 'lines', 'recognition'))
+    if name == 'voice_shorten':
+        return obj(dict(revision=revision, **VOICE_SHORTEN_FIELDS, ref=REF), ('revision', 'line', 'target_seconds'))
+    if name == 'voice_estimate':
+        return obj(dict(revision=revision, **VOICE_ESTIMATE_FIELDS, ref=REF), ('lines',))
     if name != 'operations':
         return EMPTY
     fields = {

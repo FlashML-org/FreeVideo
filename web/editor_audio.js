@@ -342,12 +342,12 @@ export function createSpeechSpans(fetchSpans, {retry = 1000} = {}) {
 }
 // A picture's own sound: still joined to it, or taken from it and kept.
 export const isOriginalSound = clip => !!clip.link || !!clip.detached_from;
-export function createAudioPreview({state, sources, api, volumePreview = new Map(), readSamples = null, error = () => {}, speech = null}) {
+export function createAudioPreview({state, sources, api, volumePreview = new Map(), sourcePreview = new Map(), readSamples = null, error = () => {}, speech = null}) {
     let context = null, generation = 0, timer = null, identity = null, pending = false, disposed = false;
     const cache = new Map(), nodes = new Set(); let origin = 0, cursor = 0, previousPosition = 0;
     const ducking = (record, rate = 48000) => speech && sound.duckSources(record.tracks).length ? sound.duckRanges(record.tracks, speech.map, rate) : [];
     const edited = record => record.tracks.some(track => track.muted || track.solo || track.clips.some(clip => clip.fade_in || clip.fade_out || clip.crossfade))
-        || ducking(record).length > 0;
+        || sourcePreview.size > 0 || ducking(record).length > 0;
     function stop() { generation++; clearTimeout(timer); timer = null; pending = false; identity = null; nodes.forEach(node => { try { node.stop(); } catch {} }); nodes.clear(); }
     async function decoded(clip) {
         const metadata = sources.get(sourceKey(clip.source)), url = mediaURL(api, metadata?.audio);
@@ -430,6 +430,7 @@ export function createAudioPreview({state, sources, api, volumePreview = new Map
         render({record, position, playing, playbackRate = 1, silenceOriginal = false}) {
             speech?.want(sound.duckSources(record.tracks));
             if (!edited(record)) { if (identity) stop(); return false; }
+            if (sourcePreview.size) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.map(clip => sourcePreview.has(clip.id) ? {...clip, source: sourcePreview.get(clip.id)} : clip)}))};
             if (volumePreview.size) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.map(clip => volumePreview.has(clip.id) ? {...clip, volume: volumePreview.get(clip.id)} : clip)}))};
             // While a take is recorded the picture's own sound stays out of the mix.
             if (silenceOriginal) record = {...record, tracks: record.tracks.map(track => ({...track, clips: track.clips.filter(clip => !isOriginalSound(clip))}))};

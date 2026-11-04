@@ -74,6 +74,11 @@ class ProjectError(JobError):
         return value
 
 
+def _as_expected(project, clip_id, expect):
+    from .voice import signature
+    return signature(_clips(project).get(clip_id)) == expect
+
+
 def _invalid(path, expected, received=None):
     return spec.SpecError([schema.diagnostic(path, expected, received)])
 
@@ -460,11 +465,75 @@ class Projects:
             self._remember(ref, digest, result, client)
             return result
 
-    def lay_stems(self, identity, clip_id, sources):
-        """Put the three parts on sub-tracks under the clip and silence the clip; returns the save and the new clip IDs."""
+    def _voice_job(self, name, kind, identity, value, *, jobs, ref, client):
+        """Queue a voice job for the revision the caller read; the selected clip must be a sound clip with media."""
+        schema.validate(schema.project_schema(name), value)
+        with self.listen_lock:
+            digest, replay = self._receipt('projects:' + name, dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            selection = value['selection']
+            clip = _clips(stored).get(selection['clip_id'])
+            if clip is None or not clip.get('source'):
+                raise _invalid('/selection/clip_id', 'a sound clip with media', selection['clip_id'])
+            if 'end' in selection and selection['end'] <= selection.get('start', 0):
+                raise _invalid('/selection/end', 'a time after the start', selection['end'])
+            if kind == 'voice':
+                ids = [line['id'] for line in value['lines']]
+                if len(set(ids)) != len(ids):
+                    raise _invalid('/lines', 'lines with different ids', ids[:3])
+                for i, line in enumerate(value['lines']):
+                    if line['end'] <= line['start']:
+                        raise _invalid('/lines/%d/end' % i, 'a time after the start', line['end'])
+                from . import voice
+                if not value.get('recognition'):
+                    raise _invalid('/recognition', 'the recognition voice_lines gave for these lines; run voice_lines first')
+                wrong = voice.check(value['recognition'], identity, selection['clip_id'], value['lines'])
+                if wrong:
+                    raise _invalid(*wrong)
+                reference = (value.get('voice') or {}).get('reference')
+                if reference and reference['clip_id'] not in _clips(stored):
+                    raise _invalid('/voice/reference/clip_id', 'a clip of this project', reference['clip_id'])
+            job = jobs.submit(dict(kind=kind, editor_project=identity,
+                                   **{k: v for k, v in value.items() if k != 'ref'}), client=client)[0]
+            result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
+            self._remember(ref, digest, result, client)
+            return result
+
+    def voice_lines(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue the writing down of a selection's lines (what is said, and when)."""
+        return self._voice_job('voice_lines', 'voice_lines', identity, value, jobs=jobs, ref=ref, client=client)
+
+    def voice_replace(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue the new voice for the lines the caller changed."""
+        return self._voice_job('voice_replace', 'voice', identity, value, jobs=jobs, ref=ref, client=client)
+
+    def voice_estimate(self, identity, value, *, ref=None, client=None):
+        """Seconds the changed lines take to make; asked at once, nothing is stored."""
+        from . import voice
+        schema.validate(schema.project_schema('voice_estimate'), value)
+        self._load(identity)
+        return voice.estimate(value['lines'], value.get('limit'))
+
+    def voice_shorten(self, identity, value, *, ref=None, client=None):
+        """Rewriting a line to a length needs a text model; none is wired in this version."""
+        schema.validate(schema.project_schema('voice_shorten'), value)
+        self._load(identity)
+        raise JobError('shorten_unavailable', 'No text model is available to shorten the line')
+
+    def lay_stems(self, identity, clip_id, sources, *, expect=None):
+        """Put the three parts on sub-tracks under the clip and silence the clip; returns the save and the new clip IDs.
+
+        `expect` (voice.signature of the clip) makes it a no-op that raises project_changed when the clip is not as it was."""
         before, refused = {}, {}
         def change(project):
             before['ids'] = set(_clips(project))
+            if expect is not None and not _as_expected(project, clip_id, expect):
+                refused['stale'] = True
+                return dict(ok=True, project=project)
             reply = editor_runtime.runtime().call('placeStems', project, [clip_id, {
                 name: dict(kind='generated', id=source.split(':', 1)[1]) for name, source in sources.items()}],
                 module='model', serialize=True)[0]
@@ -473,10 +542,35 @@ class Projects:
                 return dict(ok=True, project=project)
             return dict(ok=True, project=reply['value'])
         saved = self._update(identity, change)
+        if refused.get('stale'):
+            raise JobError('project_changed', 'The clip changed while the voice was made')
         if refused:
             code = STATE_CODES.get(refused.get('code'), 'stems_failed')
             raise JobError(code, 'The separated sound cannot be laid under the clip (%s)' % refused.get('code'))
         return saved, sorted(set(_clips(saved)) - before['ids'])
+
+    def replace_voice_source(self, identity, clip_id, source, *, expect=None):
+        """The dialogue clip takes the file with the replaced voice; its place and range stay. Returns the save.
+
+        `expect` (voice.signature of the clip) makes it a no-op that raises project_changed when the clip is not as it was."""
+        refused = {}
+        def change(project):
+            if expect is not None and not _as_expected(project, clip_id, expect):
+                refused['stale'] = True
+                return dict(ok=True, project=project)
+            reply = editor_runtime.runtime().call('replaceSource', project, [clip_id, dict(
+                kind='generated', id=source.split(':', 1)[1])], module='model', serialize=True)[0]
+            if not reply['ok']:
+                refused.update(reply['error'])
+                return dict(ok=True, project=project)
+            return dict(ok=True, project=reply['value'])
+        saved = self._update(identity, change)
+        if refused.get('stale'):
+            raise JobError('project_changed', 'The clip changed while the voice was made')
+        if refused:
+            code = STATE_CODES.get(refused.get('code'), 'voice_failed')
+            raise JobError(code, 'The replaced voice cannot be put on the sound track (%s)' % refused.get('code'))
+        return saved
 
     def lay_music(self, identity, source):
         """Put a finished score on a2 from frame 0 of the project as it is now; returns the save and the new clip IDs."""

@@ -54,8 +54,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     let seekGeneration = 0, forcePosition = false, pictureView = null, processedSound = false;
     const chainSeconds = (chain, position) => Math.max(0, (position - chain.start) / 24 + (chain.offset || 0));
     const playback = createPlaybackClock();
-    const gains = new WeakMap(), volumePreview = new Map();
-    const audioPreview = createAudioPreview({state, sources, api, volumePreview, readSamples: readAudioSamples, error, speech});
+    const gains = new WeakMap(), volumePreview = new Map(), sourcePreview = new Map();
+    const audioPreview = createAudioPreview({state, sources, api, volumePreview, sourcePreview, readSamples: readAudioSamples, error, speech});
     const clipVolume = clip => volumePreview.get(clip?.id) ?? clip?.volume ?? 1;
     function volume(media, value) {
         // HTMLMediaElement stops at 1. A GainNode implements the record's 0–2 range.
@@ -457,6 +457,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         setTextRenderer(callback) { textRenderer = callback; },
         previewVolume(id, value) { volumePreview.set(id, value); render(); },
         clearVolumePreview() { volumePreview.clear(); render(); },
+        previewClipSource(id, source) { if (source) sourcePreview.set(id, source); else sourcePreview.delete(id); render(); },
         async previewSource(source) {
             if (disposed) return;
             const previousSize = previewSize || {width: state.record.width, height: state.record.height};

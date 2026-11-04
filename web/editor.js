@@ -29,6 +29,8 @@ import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortc
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
 import {createEditorMusic} from './editor_music.js';
 import {createEditorRecord, RECORD_ICON} from './editor_record.js';
+import {createEditorVoice} from './editor_voice.js';
+import {createVoiceStore, voiceAvailable} from './editor_voice_store.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
@@ -538,6 +540,40 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
+    // Dubbing lines of a stretch of speech.
+    let voiceReady = false;
+    const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
+    // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
+    let lineStop = null;
+    function playVoiceLine(line) {
+        const found = voice.target(); if (!found) return;
+        lineStop?.();
+        const from = Math.round(found.clip.start + (found.start + line.start) * model.FPS), to = Math.round(found.clip.start + (found.start + line.end) * model.FPS);
+        state.seek(from); player.play();
+        const finish = () => { unwatch(); if (lineStop === finish) lineStop = null; };
+        const unwatch = state.subscribe(event => { if ((event.type ?? event) !== 'playhead') return; if (state.playhead >= to) { player.pause(); finish(); } else if (!player.playing) finish(); });
+        lineStop = finish;
+    }
+    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
+        // Hearing the other take changes nothing in the edit: only the preview swaps the sound.
+        const source = generatedSource(name);
+        if (!source) { player.previewClipSource(clipId, null); return; }
+        await store.getSources([sourceKey(source)]);
+        player.previewClipSource(clipId, source);
+    }, place: async result => {
+        // What to put into the project is what the service says in `apply`; the plain shape is the same as replacing a source.
+        const apply = result.apply || {op: 'replaceSource', clip_id: result.clip_id, source: result.sources?.new};
+        const dubbed = generatedSource(result.sources?.new);
+        if (!dubbed || !apply.clip_id) throw new model.EditError('source');
+        if (apply.op === 'placeStems' && !model.placeStems) throw new model.EditError('source');
+        const stems = apply.op === 'placeStems' ? Object.fromEntries(model.STEM_TRACKS.map(name => [name, generatedSource(apply.sources?.[name])])) : null;
+        if (stems && (!model.placeStems || !Object.values(stems).every(Boolean))) throw new model.EditError('source');
+        const single = !stems && (generatedSource(apply.source) || dubbed);
+        await store.getSources([...(stems ? Object.values(stems) : [single])].map(sourceKey));
+        state.apply(t('Redub', '重新配音'), record => stems ? model.placeStems(record, apply.clip_id, stems) : model.replaceSource(record, apply.clip_id, single));
+        const found = stems && state.record.tracks.flatMap(track => track.clips).find(clip => clip.stem_of === apply.clip_id && clip.source?.id === stems.dialogue.id);
+        return {voiceClip: stems ? found?.id : apply.clip_id};
+    }});
     let barValue = null;
     const exportMatches = () => exportSnapshot && exportSnapshot.id === state.record.id && exportSnapshot.revision === state.record.revision && exportSnapshot.content === content(state.record);
     function explainExport() {
@@ -1169,6 +1205,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async press(text, {allowEmpty = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
+            if (voice.session() && ['ready', 'done'].includes(voice.session().phase)) { await voice.redub(); return {}; }
             // A stretch of the music track, or a piece of music there: music, with or without words.
             if (music.target()) {
                 if (characters(text) > MUSIC_TEXT_LIMIT) return {say: textLongText(t, MUSIC_TEXT_LIMIT), focus: true};
@@ -1252,6 +1289,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async cancel() {
             if (music.target()) { await music.cancel(); return; }
             if (stems?.active()) { await stems.cancel(); return; }
+            if (voice.session()?.phase === 'dubbing') { voice.cancel(); return; }
             const range = selectionRange(state.selection);
             const own = range && state.record.tracks[0].clips.find(clip => clip.job && generating(clip)
                 && clip.start < range.start + range.frames && clip.start + clip.frames > range.start)?.job;
@@ -1380,6 +1418,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
+    voiceAvailable(api).then(value => { voiceReady = value; if (!disposed) voice.refresh(); });
+    actions.voice = {controller: voice};
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
@@ -1663,7 +1703,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); voice.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());

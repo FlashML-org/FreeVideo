@@ -17,6 +17,11 @@ SAMPLE_RATE = 44100
 CHUNK_SECONDS = 6.0
 HOP_SECONDS = 3.0
 BATCH = 4
+# The network leaves speech in the music part when the whole track is quiet (an old recording at -37 dBFS comes
+# back with an empty voice part). A quiet track is lifted to this level for the model; the parts are scaled back.
+QUIET_RMS = .04
+TARGET_RMS = .08
+MAX_LIFT = 12.
 MIX_NAME = 'mix.wav'
 
 # Model output name -> track name. The order is the order of the sub-tracks in the editor.
@@ -51,6 +56,14 @@ def model_function(model, device):
             _, output = model({'audio': {'mixture': chunks.to(device)}})
         return {name: output['audio'][name].float().cpu() for name, _ in STEMS}
     return run
+
+
+def lift_for_model(audio):
+    """The gain that brings a quiet track (float [channels, samples]) to the level the model separates well; 1 otherwise."""
+    level = float(np.sqrt(np.mean(np.square(audio, dtype=np.float64)))) if audio.size else 0.
+    if level <= 1e-5 or level >= QUIET_RMS:
+        return 1.
+    return min(TARGET_RMS / level, MAX_LIFT)
 
 
 def separate_array(function, audio, *, chunk=None, hop=None, batch=BATCH, progress=lambda fraction: None):
@@ -111,11 +124,12 @@ def read_audio(path):
     return audio, audio.shape[1] / SAMPLE_RATE
 
 
-def write_wav(path, audio):
-    """Atomically write float [2, samples] as 16-bit PCM at 44.1 kHz."""
+def write_wav(path, audio, *, exact=False):
+    """Atomically write float [2, samples] as 16-bit PCM at 44.1 kHz. `exact` scales by 32768, the divisor the readers use,
+    so samples read from a 16-bit file are written back unchanged (the default scales by 32767)."""
     path = Path(path)
     audio = np.asarray(audio)
-    pcm = np.rint(np.clip(audio.T, -1, 1) * 32767).astype('<i2')
+    pcm = (np.clip(np.rint(audio.T * 32768), -32768, 32767) if exact else np.rint(np.clip(audio.T, -1, 1) * 32767)).astype('<i2')
     temporary = path.with_name('.' + path.name + '.partial')
     try:
         with wave.open(str(temporary), 'wb') as output:
@@ -164,7 +178,10 @@ def separate_file(source, out_dir, weights, *, device='cuda', progress=lambda fr
     model = load_model(weights, device)
     if device == 'cuda':
         torch.cuda.reset_peak_memory_stats()
-    stems = separate_array(model_function(model, device), torch.from_numpy(audio), progress=progress)
+    lift = lift_for_model(audio)
+    stems = separate_array(model_function(model, device), torch.from_numpy(audio * np.float32(lift)), progress=progress)
+    if lift != 1.:
+        stems = {name: track / lift for name, track in stems.items()}
     peak = torch.cuda.max_memory_allocated() / 2 ** 30 if device == 'cuda' else None
     write_wav(out_dir / MIX_NAME, audio)  # the original mix, exported next to the separated tracks
     paths = {}
