@@ -1,0 +1,159 @@
+{
+  "format": 1,
+  "id": "cosyvoice3",
+  "name": "Fun-CosyVoice3-0.5B-2512",
+  "license": "Apache-2.0",
+  "source": "https://github.com/FunAudioLLM/CosyVoice",
+  "modelscope": {
+    "repo": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+    "revision": "master"
+  },
+  "huggingface": {
+    "repo": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+  },
+  "files": [
+    {
+      "file": "llm.pt",
+      "bytes": 2024669519,
+      "sha256": "69f43bd545131c30e98947fb360ea8b4dc9916d8e83dded7757c7ea4f5a24970"
+    },
+    {
+      "file": "flow.pt",
+      "bytes": 1329116148,
+      "sha256": "a6fab32a7825e5b0bc855ddd948f8db9370b0a786fbc249caa4595e95b608e4b"
+    },
+    {
+      "file": "hift.pt",
+      "bytes": 83202622,
+      "sha256": "b279d7641eb97ae55b3b540cfba4f953c26492a2df758328a89a4d007ab87a65"
+    },
+    {
+      "file": "campplus.onnx",
+      "bytes": 28303423,
+      "sha256": "a6ac6a63997761ae2997373e2ee1c47040854b4b759ea41ec48e4e42df0f4d73"
+    },
+    {
+      "file": "speech_tokenizer_v3.onnx",
+      "bytes": 969451503,
+      "sha256": "23236a74175dbdda47afc66dbadd5bcb41303c467a57c261cb8539ad9db9208d"
+    },
+    {
+      "file": "CosyVoice-BlankEN/config.json",
+      "bytes": 659,
+      "sha256": "168aa1bd401abc3bc262ba15ba4e499627a8b4e006e9d050b47c22de20660185"
+    },
+    {
+      "file": "CosyVoice-BlankEN/generation_config.json",
+      "bytes": 242,
+      "sha256": "e558847a8b4402616f1273797b015104dc266fe4b520056fca88823ba8f8ebe6"
+    },
+    {
+      "file": "CosyVoice-BlankEN/merges.txt",
+      "bytes": 1402109,
+      "sha256": "ac8ff86a72bee70828fbc1119bc4398c6f3a9a6e490d7b0dbe917be025478bd0"
+    },
+    {
+      "file": "CosyVoice-BlankEN/tokenizer_config.json",
+      "bytes": 1287,
+      "sha256": "482bd979881423375ca5414e4e0d94cd7c5349dbb17fffd46b4d36d71e62a1bc"
+    },
+    {
+      "file": "CosyVoice-BlankEN/vocab.json",
+      "bytes": 2776833,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    }
+  ],
+  "runtime": {
+    "python": "cp312",
+    "note": "Hash-locked PyPI wheels, downloaded when the voice pack is installed; not part of the installer.",
+    "wheels": {
+      "linux-x86_64": [
+        {
+          "name": "onnxruntime",
+          "version": "1.31.1",
+          "license": "MIT",
+          "file": "onnxruntime-1.31.1-cp312-cp312-manylinux_2_28_x86_64.whl",
+          "bytes": 23760988,
+          "sha256": "1f3dea47f2f0e5117c2404cea7d21fd253ae7836a3bf167a501cdfbb2600d536",
+          "path": "eb/27/c6a823bac55b2977bea2027c3ec9393a2c1002cb9a09eb40354563e02730/onnxruntime-1.31.1-cp312-cp312-manylinux_2_28_x86_64.whl"
+        },
+        {
+          "name": "flatbuffers",
+          "version": "25.12.19",
+          "license": "Apache-2.0",
+          "file": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+          "bytes": 26661,
+          "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+          "path": "e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl"
+        },
+        {
+          "name": "protobuf",
+          "version": "7.36.2",
+          "license": "BSD-3-Clause",
+          "file": "protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl",
+          "bytes": 343223,
+          "sha256": "89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2",
+          "path": "db/f3/3996583dd2906297a637af12114deddf7658af6e683fedb83be061983fb5/protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl"
+        }
+      ],
+      "windows-x64": [
+        {
+          "name": "onnxruntime",
+          "version": "1.31.1",
+          "license": "MIT",
+          "file": "onnxruntime-1.31.1-cp312-cp312-win_amd64.whl",
+          "bytes": 14888466,
+          "sha256": "ae8a9a351efda685cc59a66226cdefaa37a126c1d66872ca23a2de9425326130",
+          "path": "45/b2/793b4051d8dc6acb379ead9b72050f0ffa283ca49a6904add2e218b83e2e/onnxruntime-1.31.1-cp312-cp312-win_amd64.whl"
+        },
+        {
+          "name": "flatbuffers",
+          "version": "25.12.19",
+          "license": "Apache-2.0",
+          "file": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+          "bytes": 26661,
+          "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+          "path": "e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl"
+        },
+        {
+          "name": "protobuf",
+          "version": "7.36.2",
+          "license": "BSD-3-Clause",
+          "file": "protobuf-7.36.2-cp310-abi3-win_amd64.whl",
+          "bytes": 456514,
+          "sha256": "a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353",
+          "path": "8a/55/b77bda4e5e5f5971fb51b07663694690e9afdb9402136c16a522bd621cad/protobuf-7.36.2-cp310-abi3-win_amd64.whl"
+        }
+      ],
+      "macos-arm64": [
+        {
+          "name": "onnxruntime",
+          "version": "1.31.1",
+          "license": "MIT",
+          "file": "onnxruntime-1.31.1-cp312-cp312-macosx_14_0_arm64.whl",
+          "bytes": 20882125,
+          "sha256": "96dd2564b10ea7153ad9c207e7cd8e5917cb3ba521e0e0a62ac03486fdc8d56c",
+          "path": "0e/f7/cecc0efeeea83bff2f7789ae1b80f27fa0f0210d6d9d66d1f0031a6b5e47/onnxruntime-1.31.1-cp312-cp312-macosx_14_0_arm64.whl"
+        },
+        {
+          "name": "flatbuffers",
+          "version": "25.12.19",
+          "license": "Apache-2.0",
+          "file": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+          "bytes": 26661,
+          "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+          "path": "e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl"
+        },
+        {
+          "name": "protobuf",
+          "version": "7.36.2",
+          "license": "BSD-3-Clause",
+          "file": "protobuf-7.36.2-cp310-abi3-macosx_10_9_universal2.whl",
+          "bytes": 456039,
+          "sha256": "cbc70b17ee27e28894c7fee8bb04be1abead49e936bc70eb60052531eee2079e",
+          "path": "32/72/98342feb672507c8f3a69e34b4fa8961f608edba5c1a48a6f47156d92cb5/protobuf-7.36.2-cp310-abi3-macosx_10_9_universal2.whl"
+        }
+      ]
+    }
+  }
+}

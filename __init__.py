@@ -31,6 +31,12 @@ async def comfy_entrypoint():
     except Exception as error:
         import logging
         logging.warning('[FreeVideo] Image generation routes not registered: %s', error)
+    try:
+        from .freevideo_engine.dubbing.service import register as dubbing_routes
+        dubbing_routes()
+    except Exception as error:
+        import logging
+        logging.warning('[FreeVideo] Dubbing routes not registered: %s', error)
     from .freevideo_engine.comfy_launcher_api import register as launcher_routes
     launcher_routes()
     from .freevideo_engine.comfy_updates import register as update_routes
