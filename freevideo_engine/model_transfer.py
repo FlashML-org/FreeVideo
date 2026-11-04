@@ -709,6 +709,7 @@ def download(row, path, plan, progress_callback, headers_for, *, transfer_comple
                     # run_sdk/curl have joined their workers before this point.
                     # Reuse known byte ranges, including disjoint MS parts.
                     from .transfer_handoff import migrate
+                    network.event(networking,category=network.model_family(row),source=selected,file=path.name,action='switching')
                     # An explicit switch applies to this file even when the
                     # old provider has no portable resume map. Preserve those
                     # fragments on disk and report the restart separately.

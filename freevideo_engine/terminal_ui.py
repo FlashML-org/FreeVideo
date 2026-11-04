@@ -200,7 +200,7 @@ class TerminalUI:
                            estimated_step_seconds=row.get('estimated_step_seconds'),
                            step_elapsed_seconds=row.get('step_elapsed_seconds'))
                 row['event_tick'] = now
-            if not self.live and time.monotonic() - row['heartbeat'] >= 30:
+            if not self.live and time.monotonic() - row['heartbeat'] >= 10:
                 self.write('  … %s · %s · %s%s\n' % (row['label'], duration(time.monotonic() - row['started']),
                     row['detail'] + self.eta_text(row), ' · ' + self.resource if self.resource else ''))
                 row['heartbeat'] = time.monotonic()
@@ -539,6 +539,10 @@ class LogProgress:
             elif kind == 'network' and event.get('action') == 'backend':
                 self.model_backend = {'hf-xet': 'HF Xet', 'modelscope-ranges': 'ModelScope parallel',
                                       'http-ranges': 'Parallel HTTP', 'hf-http': 'HF HTTP'}.get(event.get('method'), '')
+            elif kind == 'network' and event.get('action') == 'switching':
+                self.model_backend=''
+                update(done=0,total=0,rate=None,scope='switching',unit='bytes',
+                       detail='Switching current download to '+event.get('source','')+' · '+event.get('file',''))
             elif kind == 'network' and event.get('action') == 'manual-switch':
                 self.model_source=event.get('source','')
                 self.model_backend=''

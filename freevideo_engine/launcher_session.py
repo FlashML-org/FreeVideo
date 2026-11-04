@@ -227,7 +227,7 @@ class Session:
             except (OSError, ValueError) as error:
                 # Only updates started from the web page are lost; the launcher still opens.
                 self.bridge = None
-                print('Launcher bridge unavailable: %s' % (error if isinstance(error, ValueError) else type(error).__name__), file=sys.stderr)
+                print('Launcher bridge unavailable: %s' % type(error).__name__, file=sys.stderr)
         if self.form['environment_method'] == 'manual' and self.form['offline_runtime'] and not controller:
             root = io_path(self.form['offline_runtime'])
             if (root / 'portable.json').is_file():

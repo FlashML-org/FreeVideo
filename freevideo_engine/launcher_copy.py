@@ -43,7 +43,7 @@ ZH = dict([
     ('Preparing installation', '准备安装'), ('Checking the environment', '正在检查运行环境'),
     ('Testing download sources', '正在测试下载源'), ('Preparing download tools', '正在准备下载工具'),
     ('GitHub mirror', 'GitHub 镜像'), ('attempt', '正在连接'),
-    ('fallback', '正在切换下载源'), ('route-retry', '正在切换连接'),
+    ('fallback', '正在切换下载源'), ('switching', '正在切换下载源'), ('route-retry', '正在切换连接'),
     ('verifying', '正在检查'), ('no-progress', '下载无进展'),
     ('slow-transfer', '持续低速'), ('resume-refused', '当前下载源不支持续传'),
     ('Download PyTorch + CUDA', '下载运行组件'),
