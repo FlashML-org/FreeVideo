@@ -69,6 +69,26 @@ CALIBRATION_PROMPT = ('A neon-lit alley after heavy rain. The camera drifts forw
                       'on wet stone.')
 
 
+def inspection_failed(value):
+    """The first line of a failed inspection: what ran, how it ended and how much the child printed.
+
+    Only integers, fixed words and an exception class name, so a report keeps it whole however the rest is cut."""
+    code, failed = value.get('returncode'), value.get('failed_with')
+    parts = [value.get('action') if value.get('action') in ('plan', 'setup') else 'other']
+    if isinstance(code, int):
+        # Windows reports a crash as a large unsigned code; its hex form is the one people search for
+        parts.append('exit %d' % code + (' (0x%08X)' % code if 0xFFFF < code <= 0xFFFFFFFF else ''))
+    else:
+        parts.append('no exit code')
+    parts.append('%d output lines' % int(value.get('lines') or 0))
+    # A cancelled run never gets here: only a complete or failed plan is read, so cancelling is not a failure to report.
+    if failed in ('TimeoutExpired', 'TimeoutError'):
+        parts.append('timed out')
+    if isinstance(failed, str) and failed.isidentifier() and len(failed) <= 60:
+        parts.append(failed)
+    return 'Setup inspection failed (%s)' % ', '.join(parts)
+
+
 class SetupRunner(Runner):
     token = ''
 
@@ -433,7 +453,7 @@ class Setup:
                         self.plan = preflight_json(value['output'])
                         self.state.update(plan=self.plan, plan_id=uuid.uuid4().hex)
                     except ValueError:
-                        self.state.update(status='failed', error='Setup inspection failed\n' +
+                        self.state.update(status='failed', error=inspection_failed(value) + '\n' +
                                           (self.state.get('error') or value.get('output', '')))
                 elif value['action'] == 'setup' and value['status'] == 'complete':
                     try:

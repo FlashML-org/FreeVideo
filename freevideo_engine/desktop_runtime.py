@@ -308,6 +308,8 @@ class Runner:
     def _run_awake(self, action, root, arguments):
         run = io_path(self.logs) / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + uuid.uuid4().hex[:8])
         code, output, error = None, '', None
+        # what a report can say when the child left no text: how much it printed, and what stopped the run
+        lines, failed_with = 0, None
         started = time.monotonic()
         try:
             run.mkdir(parents=True)
@@ -360,6 +362,7 @@ class Runner:
                     if self.cancelled.is_set():
                         processes.stop(process)
                 for line in process.stdout:
+                    lines += 1
                     line = launch_view.line_back(plain_text(line), view)
                     log.write(line)
                     output = (output + line)[-2 * 1024 * 1024:]
@@ -373,6 +376,7 @@ class Runner:
                 code = process.wait(timeout=15)
                 process.stdout.close()
         except BaseException as failure:
+            failed_with = type(failure).__name__
             error = plain_text(repr(failure))
             detail = plain_text('\n' + traceback.format_exc())
             output += detail
@@ -386,7 +390,8 @@ class Runner:
                 processes.stop(self.process)
         finally:
             result = dict(action=action, status='cancelled' if self.cancelled.is_set() else 'complete' if code == 0 else 'failed',
-                returncode=code, error=error, wall_seconds=time.monotonic()-started, root=str(root), log=plain(run))
+                returncode=code, error=error, wall_seconds=time.monotonic()-started, root=str(root), log=plain(run),
+                lines=lines, failed_with=failed_with)
             try:
                 save(run / 'status.json', result)
             except OSError as failure:
