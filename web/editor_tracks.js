@@ -576,7 +576,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                     `${name}，第 ${index + 1} 段，${seconds} 秒，${status}${seamText}`));
                 // Pending replacements can retain their old media; state styling
                 // overlays it until the model reports that the new media is done.
-                item.media.hidden = visual !== 'done';
+                // The imported sound under a sound-led range is kept as it is, so its waveform stays in view while the picture is made.
+                item.media.hidden = visual !== 'done' && !(track.kind === 'audio' && clip.source?.kind === 'import' && key);
                 if (track.kind === 'video') {
                     updatePictureBadge(item.element, clip, record, clipPictureSize(clip, sources), t);
                     actions.blockNote?.(item, {noted, index, record});

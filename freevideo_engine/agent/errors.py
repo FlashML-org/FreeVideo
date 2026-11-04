@@ -125,6 +125,14 @@ ERRORS.update({
                               'Tell the user the model needs a network connection, then submit the job again with a new ref.'),
     'stems_failed': (409, True, 'Splitting the sound did not finish.',
                      'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
+    'voice_failed': (409, True, 'Changing the voice did not finish.',
+                     'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
+    'voice_model_missing': (409, False, 'The dubbing model is not ready on this machine.',
+                            'Tell the user to install the dubbing model first; do not retry.'),
+    'no_speech': (409, False, 'No speech was found in the selection.',
+                  'Do not retry; choose a stretch of sound with someone speaking.'),
+    'shorten_unavailable': (409, False, 'Lines cannot be shortened here yet.',
+                            'Write the shorter line yourself and send it with the other lines.'),
     'clip_source_unusable': (409, False, 'A clip\'s source is missing, or cannot be read as far as the clip uses it.',
                              'Read the project and check each clip\'s source: it must exist and play, and in + frames must stay '
                              'within its real length. Correct the project, then export the new revision.'),
@@ -239,7 +247,7 @@ def recovery(code, *, kind=None, stage='request', resumable=True):
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
     if kind == 'music' and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the music job again with a new ref.'
-    if kind == 'stems' and code == 'out_of_memory':
+    if kind in ('stems', 'voice', 'voice_lines') and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the job again with a new ref.'
     if kind == 'image' and code == 'no_memory':
         return 'Lower the picture dimensions or use fewer reference pictures, then submit with a new ref.'

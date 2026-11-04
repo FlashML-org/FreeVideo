@@ -7,7 +7,7 @@ export const firstFrameOn = record => record.settings?.[FIRST_FRAME_KEY] === tru
 // actions.setFirstFrame(value): saves the choice with the project.
 export function createFirstFrameSwitch(host, {state, t, actions}) {
     const {row, input, setDisabled} = firstFrameRow(t, 'fv-ed-first-frame');
-    host.append(row);
+    row.dataset.tourId = 'editor-first-frame'; host.append(row);
     let shown = false;
     // While generating the row stays as it was and cannot be changed.
     function update(busy = false) {

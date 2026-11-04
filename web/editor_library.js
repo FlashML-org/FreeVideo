@@ -107,7 +107,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         plus.ondblclick = event => { event.preventDefault(); event.stopPropagation(); };
         plus.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') insert(event); };
         container.append(button, plus);
-        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '打不开')})));
+        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '打不开'), kind: row.detail || null})));
         return container;
     }
     function updateUsed() {

@@ -9,6 +9,8 @@ import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
 import {createPassMode} from './pass_mode.js';
+import {createVoicePanel} from './editor_voice.js';
+import * as dubbing from './editor_voice_model.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
@@ -118,6 +120,9 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // Where a narrow English bar starts Generate on a line of its own (editor.css); hidden elsewhere.
     const lineBreak = el('span', 'fv-ed-genbar-break'); lineBreak.setAttribute('aria-hidden', 'true');
     generate.before(lineBreak); host.lang = t('en', 'zh-CN');
+    // Dubbing: the lines of a chosen stretch of speech take the description box's place.
+    const voice = actions.voice || null, voicePanel = voice ? createVoicePanel(host, voice.controller, {t}) : null;
+    if (voicePanel) description.before(voicePanel.element);
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
     const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
@@ -176,6 +181,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         report.hidden = !selectedFailure || selectedFailure.report === false;
         const running = ['queued', 'running', 'cancelling'].includes(status?.state);
         const musical = !!music?.target(selection);
+        const dub = !previewSelection && voice?.controller.target(selection) ? voice.controller.session(voice.controller.target(selection)) : null;
+        const voiced = !!dub && dub.phase !== 'none' && dub.phase !== 'error';
         const selected = !!selection && (!!previewSelection || musical || (actions.supportedSelection?.() ?? true));
         // While a part generates, choosing another place offers Generate again; it is queued behind.
         // A press is being sent for the parts in `pressing`; only that same selection waits for it.
@@ -188,6 +195,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const opening = (starting || !!actions.selectionSending?.()) && !held;
         const stopped = ['failed', 'cancelled', 'interrupted'].includes(status?.state);
         host.dataset.mode = busy ? 'running' : selected ? 'selected' : 'idle';
+        host.dataset.voice = String(voiced); voicePanel?.update();
         hint.hidden = !busy && !other;
         // The description and Generate stay where they are while a part is made, greyed, so nothing around them moves;
         // music being made shows only its progress and Cancel.
@@ -195,15 +203,21 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // A choice that will move to an empty spot can still be described first.
         const writable = selected || !previewSelection && !!selection && !!actions.selectionMovable?.();
         input.disabled = !writable || busy;
-        input.placeholder = !writable ? '' : musical ? t('Describe the music', '描述配乐') : t('Describe this part', '描述这一段');
+        const sound = writable && !musical && !!actions.soundLed?.();
+        input.placeholder = !writable ? '' : musical ? t('Describe the music', '描述配乐') : sound ? t('Describe the picture', '描述画面') : t('Describe this part', '描述这一段');
+        if (sound) host.dataset.tourId = 'video-empty-range'; else delete host.dataset.tourId;
         input.setAttribute('aria-label', t('Description', '描述'));
-        generate.classList.toggle('fv-primary', selected && !busy);
+        generate.classList.toggle('fv-primary', (voiced ? voice.controller.changed(dub).length > 0 : selected) && !busy);
         // A cancel already accepted is not offered again; the bar says it is stopping until the run ends.
         const cancelling = status?.state === 'cancelling' && !held;
         const finalization = clipFinalization(status);
         cancel.hidden = !busy || opening || cancelling || !held && finalization?.cancelable === false; resume.hidden = !stopped;
         const waiting = status?.state === 'queued' && !(status.blocks || []).some(block => ['queued', 'running'].includes(block.state) && block.prompt_id);
-        if (opening) hint.textContent = t('Starting…', '正在开始…');
+        const dubbingNow = voiced && dub.phase === 'dubbing', finding = voiced && dub.phase === 'finding';
+        if (dubbingNow || finding) {
+            hint.hidden = false;
+            hint.textContent = finding ? t('Finding the lines', '正在识别台词') : dubbing.dubbingText(Math.max(1, dub.index), dub.count, dub.remaining, t);
+        } else if (opening) hint.textContent = t('Starting…', '正在开始…');
         else if (held || waiting) hint.textContent = waiting && !held ? waitingText(status.waiting, t) : t('Queued', '排队中');
         else if (cancelling) hint.textContent = t('Stopping…', '正在停止…');
         else if (running) {
@@ -252,14 +266,17 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (pass) passControl.sync(pass);
             if (passMenu.hidden) passMenu.open = false;
         }
+        if (voiced) generate.textContent = dubbing.redubLabel(voice.controller.changed(dub).length, t);
         // Never disabled for a reason the press itself can explain or fix; only until the server says it can generate.
-        generate.disabled = busy || !!previewSelection || !!actions.generationWaiting?.();
+        generate.disabled = busy || !!previewSelection || !!actions.generationWaiting?.() || (voiced && ((dub.phase !== 'ready' && dub.phase !== 'done') || !voice.controller.changed(dub).length));
+        // While it dubs only the progress sentence and Cancel stay; while it recognises there is nothing to press yet.
+        if (voiced) { generate.hidden = dub.phase === 'dubbing' || dub.phase === 'finding'; cancel.hidden = dub.phase !== 'dubbing'; cancel.disabled = false; }
         resizeDescription();
         input.dispatchEvent(new Event('change'));
         generate.title = '';
         if (assets) { if (selected && !busy && !musical) assets.refresh(); else assets.element.hidden = true; }
         showMusicAssets(selected && !busy && musical && !previewSelection);
-        if (selected && !busy) {
+        if (selected && !busy && !voiced) {
             const key = JSON.stringify(selection);
             if (estimateCache?.key === key) generate.textContent += estimateCache.label;
             const seconds = await actions.estimate(selection);
@@ -368,7 +385,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

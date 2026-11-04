@@ -3,9 +3,12 @@ import {readGuideRecord, saveGuideRecord, guideRecord} from './first_run_guide.j
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 
 export const TOUR_TEXT = {
-    en: {examples: 'Feature examples', use: 'Use this example', next: 'Next', done: 'Done', close: 'Close'},
-    zh: {examples: '功能示例', use: '用这个示例', next: '下一张', done: '完成', close: '关闭'},
+    en: {examples: 'Feature examples', use: 'Use this example', next: 'Next', goto: 'Take me there', book: 'Read the tutorial', done: 'Done', close: 'Close'},
+    zh: {examples: '功能示例', use: '用这个示例', next: '下一张', goto: '带我去', book: '看教程', done: '完成', close: '关闭'},
 };
+// The chapter of the tutorial book that teaches the same thing as the card.
+const BOOK_CHAPTER = {'first-video': 'quick-start', 'text-to-video': 'text-to-video', 'first-last-frame': 'first-last-frame', 'quality-tiers': 'quality-tiers',
+    'reference-image': 'reference-video', 'replace-person': 'replace-person', character: 'cast-sheet', 'edit-view': 'editor', extend: 'extend-video', 'two-pass': 'refine', autopilot: 'autopilot'};
 const asset = name => new URL(`./assets/tour/${name}`, import.meta.url).href;
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 const contexts = new Map();
@@ -160,7 +163,14 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
             const use = el('button', 'fv-tour-use fv-primary', text.use);
             const usable = card.tryit.status !== 'pending-assets' && contextFor()?.canTry?.(card.tryit) !== false;
             use.onclick = async () => { await end(); await tryIt(card.id); };
-            usable ? actions.append(next, use) : actions.append(next); footer.append(dots, actions); content.append(footer);
+            if (card.goto?.length) {
+                const go = el('button', 'fv-tour-goto', text.goto);
+                go.onclick = async () => { await end(); const {guideTo} = await import('./tour_goto.js'); for (const id of card.goto) if (await guideTo(id)) break; };
+                actions.append(go);
+            }
+            const chapter = BOOK_CHAPTER[card.id], read = chapter ? el('button', 'fv-tour-book', text.book) : null;
+            if (read) read.onclick = async () => { await end(); const {openTutorialBook} = await import('./tutorial_book.js'); openTutorialBook({chapter}); };
+            usable ? actions.append(next, use) : actions.append(next); footer.append(dots, actions); if (read) dots.after(read); content.append(footer);
             for (const video of videos) video.onerror = () => {
                 stop(); const failed = loaded.splice(index, 1); release(failed);
                 if (!loaded.length) { end(); return; }

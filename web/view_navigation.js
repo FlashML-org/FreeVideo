@@ -2,7 +2,7 @@ import {createLanAccess} from './lan_access.js';
 import {api} from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { openSetup } from './setup.js';
-import { feedbackButton } from './feedback.js';
+import { feedbackButton, guideButton } from './feedback.js';
 import { wordmark } from './wordmark.js';
 import { createUpdateNotice, createVersionInfo } from './updates.js';
 import { makeMovable } from './toolbar_position.js';
@@ -169,7 +169,7 @@ export function installNavigation(openStudio, agent = false, {openWorkflow = nul
         const handle = await openEditorView(node);
         if (created) handle?.notify(t('Created an editing project for you.', '已新建一个剪辑工程'));
         return handle;
-    }, true), () => choose(node => openAutopilot(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
+    }, true), () => choose(node => openAutopilot(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
     toolbar.append(createUpdateNotice(cn).element);
     document.body.append(toolbar); refreshNavigation();
     makeMovable(toolbar);

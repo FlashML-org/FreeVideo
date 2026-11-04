@@ -1,8 +1,8 @@
 import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 
 const COPY = {
-    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '试一试'},
-    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Try it'},
+    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '试一试', goto: '带我去'},
+    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Try it', goto: 'Take me there'},
 };
 const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -118,7 +118,16 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
                 window.freevideoHowTo.tryIt(item.example, {chapter: item.id});
             };
         }
-        article.append(steps, ...(tryButton ? [tryButton] : []), start, limits);
+        let gotoButton = null;
+        if (item.goto?.length) {
+            gotoButton = el('button', 'fv-book-start fv-book-goto', text.goto); gotoButton.type = 'button';
+            gotoButton.onclick = async () => {
+                dialog.close();
+                const {guideTo} = await import('./tour_goto.js');
+                for (const id of item.goto) if (await guideTo(id)) break;
+            };
+        }
+        article.append(steps, ...(tryButton ? [tryButton] : []), ...(gotoButton ? [gotoButton] : []), start, limits);
         syncHowTo();
         syncTry();
         article.scrollTop = 0;

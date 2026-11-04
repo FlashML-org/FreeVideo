@@ -9,8 +9,11 @@
 /* Keep the entry beside Settings; compact headers use the same labelled button with a line icon. */
 .fv-header-actions>button{white-space:nowrap}
 .fv-feedback-entry>svg{display:none;flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:1500px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry>svg{display:block}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-label{display:none}}
+@media(max-width:1040px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
 @media(max-width:1040px){.fv-autopilot .fv-feedback-entry>svg{display:block}.fv-autopilot .fv-feedback-label{display:none}}
+@media(max-width:1040px){.fv-editor .fv-guide-entry>svg{display:block}.fv-editor .fv-guide-entry .fv-feedback-label{display:none}}
 @media(max-width:800px){.fv-editor .fv-feedback-entry>svg{display:block}.fv-editor .fv-feedback-label{display:none}}
-@media(max-width:680px){.fv-studio .fv-feedback-entry>svg{display:block}.fv-studio .fv-feedback-label{display:none}}
+@media(max-width:680px){.fv-studio .fv-feedback-entry>svg,.fv-view-navigation .fv-feedback-entry>svg{display:block}.fv-studio .fv-feedback-label,.fv-view-navigation .fv-feedback-label{display:none}}
 /* On a narrow screen the line gets the whole width above the button. */
 @media(max-width:480px){.fv-feedback .fv-feedback-actions{flex-wrap:wrap;row-gap:10px}.fv-feedback .fv-feedback-status{flex:1 0 100%}.fv-feedback .fv-feedback-status:empty{display:none}}

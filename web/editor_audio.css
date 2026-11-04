@@ -12,8 +12,9 @@
 .fv-ed-track-row[data-locked=true],.fv-ed-track-row[data-locked=true] *{cursor:not-allowed!important}
 .fv-ed-audio-fades{position:absolute;inset:3px 0;width:100%;height:calc(100% - 6px);fill:none;stroke:var(--fv-ink);stroke-width:1.5;pointer-events:none;z-index:2}
 .fv-ed-audio-fades path{vector-effect:non-scaling-stroke}
-.fv-ed-track-view .fv-ed-audio-junction{position:absolute;top:50%;width:10px;height:10px;transform:translate(-50%,-50%) rotate(45deg);padding:0;background:var(--fv-card);border:1px solid var(--fv-accent);border-radius:1px;z-index:7;opacity:0;cursor:pointer}
+.fv-ed-track-view .fv-ed-audio-junction{position:absolute;top:50%;box-sizing:border-box;width:10px;height:10px;min-width:0;min-height:0;transform:translate(-50%,-50%) rotate(45deg);padding:0;background:var(--fv-card);border:1px solid var(--fv-accent);border-radius:1px;z-index:7;opacity:0;cursor:pointer}
 .fv-ed-audio-junction:hover,.fv-ed-audio-junction:focus-visible,.fv-ed-audio-junction[data-active=true]{opacity:1!important}
+.fv-ed-track-view .fv-ed-audio-junction:disabled{opacity:0!important;pointer-events:none}
 .fv-ed-audio-junction[data-active=true]{background:var(--fv-accent)!important}
 .fv-ed-audio-junction[aria-pressed=true]{box-shadow:0 0 0 2px var(--fv-card),0 0 0 3px var(--fv-accent)}
 .fv-ed-audio-notice{position:absolute;z-index:12;padding:5px 8px;border:1px solid var(--fv-border);border-radius:6px;background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none}

@@ -172,13 +172,27 @@ def submit_batch(jobs, body, client):
     return jobs.submit_request(body, client=client)[0]
 
 
+JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'voice_lines', 'voice_replace')
+
+
 def stems_supported(machine):
     """Sound separation is offered on NVIDIA machines with enough video memory, never on a Mac."""
     from ..stems.service import supported
     return supported(machine.get('vram_gib'), uuid=machine.get('gpu_uuid')) and machine.get('device_backend', 'cuda') == 'cuda'
 
 
-def features(continuation, vlm, stems=False):
+def voice_ready(port):
+    """Whether the dubbing model that changes a voice is on this machine."""
+    service = getattr(port.server, '_freevideo_dubbing', None)
+    if service is None:
+        return False
+    try:
+        return bool(service.info(wait=False).get('ready'))
+    except (OSError, ValueError):
+        return False
+
+
+def features(continuation, vlm, stems=False, voice=True):
     """What an agent can use here (ready says whether the engine can run now). A missing name is not offered."""
     from .editor_runtime import available
     rules = available()
@@ -190,7 +204,7 @@ def features(continuation, vlm, stems=False):
             'enhance': bool(vlm.get('ready')), 'drama.film': True, 'images.edit': rules,
             'images.layers': rules, 'images.heal': rules, 'images.render': rules, 'projects.read': True,
             **{'projects.' + name: rules for name in ('insert', 'split', 'move', 'trim', 'remove', 'export', 'generate', 'listen', 'music')},
-            'projects.stems': bool(rules and stems)}
+            'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice)}
 
 
 def whitebox_support(jobs):
@@ -228,7 +242,7 @@ def capabilities(port, jobs):
     return dict(
         api_version=API_VERSION, freevideo_version=release or __version__, build=__version__, ready=ready, problem=problem,
         continuation=continuation,
-        features=features(continuation, vlm, stems=stems_supported(machine)),
+        features=features(continuation, vlm, stems=stems_supported(machine), voice=voice_ready(port)),
         whitebox=whitebox_support(jobs),
         device=dict(backend=machine.get('device_backend', 'cuda') if machine else None,
                     vram_limit_gib=machine.get('vram_gib'), ram_limit_gib=machine.get('ram_gib')),
@@ -241,6 +255,8 @@ def capabilities(port, jobs):
                'listen': 'Listen to the sound of an editing project for subtitle lines and times',
                'music': 'Compose music for an editing project and lay it on its second sound track',
                'stems': 'Split the sound of a clip into dialogue, music and ambience on sub-tracks',
+               'voice_lines': 'Write down the spoken lines of a sound clip with their start and end',
+               'voice': 'Say edited lines again in the original voice and put them back where the originals were',
                'image_edit': 'Render a saved revision of an image session to a picture'},
         limits=dict(width=[256, 4096, 32], height=[256, 4096, 32], seconds=[1.625, 60 if continuation else BLOCK_SECONDS],
                     seconds_tested=[4, 15],
@@ -2225,7 +2241,7 @@ def register():
                 raise JobError('idempotency_conflict', 'Conflicting keys')
             args = [] if operation == 'create' else [identity]
             extra = dict(client=request.headers.get('X-FreeVideo-Client', '')[:80] or None)
-            if operation in ('generate', 'export', 'listen', 'music', 'stems'):
+            if operation in JOB_OPERATIONS:
                 extra['jobs'] = jobs
             if operation == 'generate':
                 def capability(size):
@@ -2235,9 +2251,9 @@ def register():
                         return None
                 extra['capability'] = capability
             result = await asyncio.to_thread(getattr(projects, operation), *args, value, ref=key or ref, **extra)
-            if operation in ('generate', 'export', 'listen', 'music', 'stems'):
+            if operation in JOB_OPERATIONS:
                 await jobs.tick()
-            return reply(result, 201 if operation in ('create', 'generate', 'export', 'listen', 'music', 'stems') else 200)
+            return reply(result, 201 if operation == 'create' or operation in JOB_OPERATIONS else 200)
         return guarded(handler)
 
     for operation, (method, suffix, _) in contract.PROJECT_OPERATIONS.items():

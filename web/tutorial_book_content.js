@@ -3,6 +3,7 @@
 export const TUTORIAL_CHAPTERS = [
     {
         id: 'quick-start',
+        goto: ['prompt-box', 'generate-btn'],
         title: {zh: '做出第一条视频', en: 'Make your first video'},
         summary: {zh: '只写一句描述，其余使用默认设置。', en: 'Write one sentence and keep the default settings.'},
         media: {
@@ -26,6 +27,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'text-to-video',
+        goto: ['prompt-box'],
         title: {zh: '文字生成视频', en: 'Make a video from text'},
         summary: {zh: '用文字描述镜头，并选择画幅、清晰度和时长。', en: 'Describe the shot, then choose the shape, resolution and length.'},
         media: {
@@ -118,6 +120,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'cast-sheet',
+        goto: ['cast-add'],
         title: {zh: '角色库和角色设定图', en: 'Characters and character sheets'},
         summary: {zh: '把人物保存为角色，之后在描述中用 @ 引用。', en: 'Save a person as a character, then mention it with @ in later prompts.'},
         media: {
@@ -274,6 +277,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'editor',
+        goto: ['editor-timeline'],
         title: {zh: '剪辑视图：裁剪、描述、接续', en: 'The Edit view: crop, describe, continue'},
         summary: {zh: '在时间线上选中一段，描述它，并接着生成。', en: 'Select a part on the timeline, describe it and continue.'},
         media: {
@@ -338,6 +342,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'library-export',
+        goto: ['works-entry'],
         title: {zh: '作品库和导出', en: 'Creations and export'},
         summary: {zh: '查找生成过的视频，并导出为文件。', en: 'Find earlier videos and export them as files.'},
         media: {

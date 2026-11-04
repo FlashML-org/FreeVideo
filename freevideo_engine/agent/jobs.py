@@ -32,7 +32,7 @@ from ..system import windows
 ACTIVE = ('waiting', 'queued', 'running', 'cancelling')
 CAST_AGAIN = 'POST /freevideo/agent/v1/cast/%s/generate to make the reference pictures again.'
 DONE = ('succeeded', 'failed', 'cancelled', 'interrupted')
-GPU_KINDS = ('vlm', 'enhance', 'image', 'music', 'stems')
+GPU_KINDS = ('vlm', 'enhance', 'image', 'music', 'stems', 'voice')
 IMAGE_ERRORS = errors.IMAGE_ERRORS
 IMAGE_WAIT_ERRORS = ('busy', 'busy_video')
 IMAGE_WAIT_NOTICES = {
@@ -532,7 +532,7 @@ class Jobs:
 
         def readable(row):
             return (isinstance(row, dict) and specs.JOB_ID.fullmatch(str(row.get('id')))
-                    and row.get('kind') in ('generate', 'assemble', 'export', 'listen', 'image_edit') + GPU_KINDS
+                    and row.get('kind') in ('generate', 'assemble', 'export', 'listen', 'voice_lines', 'image_edit') + GPU_KINDS
                     and row.get('status') in ACTIVE + DONE and isinstance(row.get('spec'), dict)
                     and type(row.get('created_at')) in (int, float) and math.isfinite(row['created_at'])
                     and (self._receipts is None or (type(row.get('_receipt_revision', 0)) is int
@@ -601,7 +601,7 @@ class Jobs:
             records = list(latest.values())
         for row in records:
             if readable(row):
-                if row.get('status') == 'running' and row['kind'] in ('assemble', 'export', 'listen', 'image_edit') + GPU_KINDS:
+                if row.get('status') == 'running' and row['kind'] in ('assemble', 'export', 'listen', 'voice_lines', 'image_edit') + GPU_KINDS:
                     # This process restarted while the work ran in it; nothing continues it.
                     self.finish(row, 'failed', error=dict(code='interrupted',
                                 message='ComfyUI restarted while this job ran; submit it again'), save=False)
@@ -1488,6 +1488,12 @@ class Jobs:
             elif row['kind'] == 'stems':
                 from .stems import run_stems
                 result = run_stems(self, row)
+            elif row['kind'] == 'voice_lines':
+                from .voice import run_voice_lines
+                result = run_voice_lines(self, row)
+            elif row['kind'] == 'voice':
+                from .voice import run_voice_replace
+                result = run_voice_replace(self, row)
             else:
                 result = self.run_assemble(row)
             return result

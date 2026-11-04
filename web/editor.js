@@ -6,13 +6,15 @@ import {isText} from './editor_text_model.js';
 import {viewSwitch, viewChanged} from './view_navigation.js';
 import {wordmark} from './wordmark.js';
 import {openSetup} from './setup.js';
-import {feedbackButton} from './feedback.js';
+import {feedbackButton, guideButton} from './feedback.js';
 import {issueButton} from './issue_button.js';
 import * as model from './editor_model.js';
 import {discardEmptyEdit, hiddenEmptyEdit, deleteEditText} from './editor_lifecycle.js';
 import {createEditorState} from './editor_state.js';
 import {createEditorStore, sourceKey, mediaURL} from './editor_store.js';
 import {generationSize, continuedSize} from './editor_generation.js';
+import {uploadMedia} from './media_upload.js';
+import {checkOriginal} from './audio_original.js';
 import {createEditorLibrary} from './editor_library.js';
 import {createEditorPlayer} from './editor_player.js';
 import {createEditorTransport, registerEditorShortcuts} from './editor_transport.js';
@@ -27,6 +29,8 @@ import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortc
 import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
 import {createEditorMusic} from './editor_music.js';
 import {createEditorRecord, RECORD_ICON} from './editor_record.js';
+import {createEditorVoice} from './editor_voice.js';
+import {createVoiceStore, voiceAvailable} from './editor_voice_store.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
@@ -122,6 +126,12 @@ function saveReason(failure) {
     if (!failure) return 'unsaved';
     return failure.reason || (failure.status ? 'http_' + failure.status : isNetworkTypeError(failure) ? 'network' : undefined);
 }
+// Names the failed delete for the report: a reason given by the server or the page as it is, else the HTTP status, a lost connection or the error's own code or name, prefixed with the step when it was not the delete request itself.
+function deleteReason(value, step = 'delete') {
+    if (value?.reason) return value.reason;
+    const code = value?.status ? 'http_' + value.status : isNetworkTypeError(value) ? 'network' : value?.code || value?.name;
+    return code && step !== 'delete' ? step + '_' + code : code;
+}
 function restoreGeneration(record, before, prepared) {
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const entries = value => new Map(value.tracks.flatMap(track => track.clips.map(clip => [clip.id, {track: track.id, clip}])));
@@ -209,7 +219,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const top = el('header', 'fv-header fv-ed-top'), libraryHost = el('aside', 'fv-ed-library'), preview = el('section', 'fv-ed-preview'),
         transport = el('div', 'fv-ed-transport'), genHost = el('div', 'fv-ed-genbar'), tracksHost = el('div', 'fv-ed-tracks'), zoomHost = el('div', 'fv-ed-zoom');
     const adjustHost = el('aside', 'fv-ed-adjust-host');
-    tracksHost.dataset.fvGuide = 'editor-timeline';
+    tracksHost.dataset.fvGuide = 'editor-timeline'; tracksHost.dataset.tourId = 'editor-timeline';
     const button = (label, action, cls = '') => { const value = el('button', cls, label); value.type = 'button'; value.onclick = action; return value; };
     const navigation = viewSwitch('editor', () => handle.switchView('studio'), () => handle.switchView('nodes'), () => {}, () => handle.switchView('autopilot'));
     for (const control of navigation.querySelectorAll('button')) control.removeAttribute('title');
@@ -230,7 +240,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     exportBox.append(exportHint, exportButton, exportCancel); brand.append(wordmark(), title);
     const phoneAccess = createLanAccess(t, api);
     listeners.push(phoneAccess.dispose);
-    headerActions.append(exportBox, phoneAccess.element, feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
+    headerActions.append(exportBox, phoneAccess.element, guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
     top.append(brand, navigation, headerActions);
     const headerFit = fitEditorHeader(top, brand, title, navigation, headerActions);
     const menu = el('div', 'fv-ed-name-menu'); menu.hidden = true; menu.setAttribute('role', 'menu');
@@ -259,7 +269,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
-    const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map();
+    const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
     const failures = createEditorFailures({api, state, jobStatuses, reasonText: value => editorErrorText(value, t)});
     let submissionFailure = null;
     let blockStates = null, progressObserver = null, progressConnection = null;
@@ -536,6 +546,40 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
+    // Dubbing lines of a stretch of speech.
+    let voiceReady = false;
+    const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
+    // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
+    let lineStop = null;
+    function playVoiceLine(line) {
+        const found = voice.target(); if (!found) return;
+        lineStop?.();
+        const from = Math.round(found.clip.start + (found.start + line.start) * model.FPS), to = Math.round(found.clip.start + (found.start + line.end) * model.FPS);
+        state.seek(from); player.play();
+        const finish = () => { unwatch(); if (lineStop === finish) lineStop = null; };
+        const unwatch = state.subscribe(event => { if ((event.type ?? event) !== 'playhead') return; if (state.playhead >= to) { player.pause(); finish(); } else if (!player.playing) finish(); });
+        lineStop = finish;
+    }
+    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
+        // Hearing the other take changes nothing in the edit: only the preview swaps the sound.
+        const source = generatedSource(name);
+        if (!source) { player.previewClipSource(clipId, null); return; }
+        await store.getSources([sourceKey(source)]);
+        player.previewClipSource(clipId, source);
+    }, place: async result => {
+        // What to put into the project is what the service says in `apply`; the plain shape is the same as replacing a source.
+        const apply = result.apply || {op: 'replaceSource', clip_id: result.clip_id, source: result.sources?.new};
+        const dubbed = generatedSource(result.sources?.new);
+        if (!dubbed || !apply.clip_id) throw new model.EditError('source');
+        if (apply.op === 'placeStems' && !model.placeStems) throw new model.EditError('source');
+        const stems = apply.op === 'placeStems' ? Object.fromEntries(model.STEM_TRACKS.map(name => [name, generatedSource(apply.sources?.[name])])) : null;
+        if (stems && (!model.placeStems || !Object.values(stems).every(Boolean))) throw new model.EditError('source');
+        const single = !stems && (generatedSource(apply.source) || dubbed);
+        await store.getSources([...(stems ? Object.values(stems) : [single])].map(sourceKey));
+        state.apply(t('Redub', '重新配音'), record => stems ? model.placeStems(record, apply.clip_id, stems) : model.replaceSource(record, apply.clip_id, single));
+        const found = stems && state.record.tracks.flatMap(track => track.clips).find(clip => clip.stem_of === apply.clip_id && clip.source?.id === stems.dialogue.id);
+        return {voiceClip: stems ? found?.id : apply.clip_id};
+    }});
     let barValue = null;
     const exportMatches = () => exportSnapshot && exportSnapshot.id === state.record.id && exportSnapshot.revision === state.record.revision && exportSnapshot.content === content(state.record);
     function explainExport() {
@@ -586,6 +630,28 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         delete inputs.continue_from; delete inputs.continue_to;
         return {node: String(value.node), prompt: value.prompt, ...(value.extra_data ? {extra_data: value.extra_data} : {}), ...(api.clientId ? {client_id: api.clientId} : {})};
     }
+    // A part drawn over imported sound follows that sound as it is: the picture is made for the range of the file the
+    // parts cover, and the sound itself is kept.
+    async function followSound(frozen, record, ids) {
+        const videos = ids.map(id => model.find(record, id)).filter(Boolean).sort((a, b) => a.start - b.start);
+        const sound = videos.map(clip => model.find(record, clip.link));
+        if (!videos.length || sound.some(clip => clip?.source?.kind !== 'import' || store.sources.get(sourceKey(clip.source))?.has_video !== false)) return;
+        const source = sound[0].source, metadata = store.sources.get(sourceKey(source));
+        const blob = await (await fetch(metadata.audio)).blob(), extension = /\.[a-z0-9]{1,5}$/i.exec(String(metadata.name || metadata.path || ''))?.[0] || '.wav';
+        const {file} = await uploadMedia(api, new File([blob], `editor-${source.id}${extension}`, {type: blob.type}));
+        const rate = (await checkOriginal(api, {file})).sample_rate;
+        if (!(rate > 0)) throw new Error('audio_unusable');
+        const first = Math.round(sound[0].in * rate / model.FPS), frames = videos.reduce((sum, clip) => sum + clip.frames, 0);
+        const row = {file, role: 'reference', use: 'original', range: {start_sample: first, end_sample: first + Math.round(frames * rate / model.FPS)}};
+        const inputs = frozen.prompt[frozen.node].inputs, held = frozen.prompt[String(inputs.media?.[0])];
+        if (held?.class_type === 'FreeVideoMedia') {
+            const rows = JSON.parse(held.inputs.assets || '[]').filter(item => item.use !== 'original');
+            held.inputs.assets = JSON.stringify([...rows, row]);
+        } else {
+            const id = String(1 + Math.max(0, ...Object.keys(frozen.prompt).map(Number).filter(Number.isFinite)));
+            frozen.prompt[id] = {class_type: 'FreeVideoMedia', inputs: {assets: JSON.stringify([row])}}; inputs.media = [id, 0];
+        }
+    }
     function pinStoppedJob(record, ids, job) {
         return model.settle(record, ids.filter(id => model.attemptClip(record, id)?.job === job), 'stopped');
     }
@@ -596,6 +662,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return ['queued', 'running', 'cancelling'].includes(previous.state);
         failures.reconcile(job, previous);
         mostRecentJob = job.id; jobStatuses.set(job.id, job); paintJob(job);
+        if (!startPlayheads.has(job.id)) startPlayheads.set(job.id, state.playhead);
+        // Whether the job follows imported sound is read before a result replaces the sound's link target.
+        if (!soundJobs.has(job.id) && (job.blocks || []).some(block => { const heard = model.find(state.record, model.attemptClip(state.record, block.id)?.link);
+            return heard?.source?.kind === 'import' && store.sources.get(sourceKey(heard.source))?.has_video === false; })) soundJobs.add(job.id);
         genbar?.update(barJob(job));
         const completed = new Set();
         for (const block of job.blocks || []) {
@@ -616,6 +686,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     // Validate the current clip first so a bad receipt is visible.
                     model.fill(state.record, block.id, result);
                     state.settle(record => model.fill(record, block.id, result));
+                    // A sound-led result the playhead has not reached is shown from its first frame, once per job and unless the viewer moved on meanwhile.
+                    const done = model.find(state.record, block.id), picked = state.selection;
+                    if (done && soundJobs.has(job.id) && !shownJobs.has(job.id)) {
+                        shownJobs.add(job.id);
+                        if (picked?.kind === 'clip' && picked.ids.includes(block.id) && !player.playing && state.playhead === startPlayheads.get(job.id)
+                            && !(state.playhead >= done.start && state.playhead < done.start + done.frames)) state.seek(done.start);
+                    }
                 } catch (value) {
                     if (!(value instanceof model.EditError)) throw value;
                     state.settle(record => model.fail(record, block.id, 'result_mismatch', job.id));
@@ -780,22 +857,27 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     async function deleteCurrentProject() {
         if (switching || closing) return;
         switching = true; element.inert = true; updateTop();
+        let step = 'flush';
         try {
             const words = deleteEditText(t);
             if (jobActive()) throw {reason: 'generation_active'};
             await queue.flush(); releaseStamp();
             if (queue.dirty) { notify(saveErrorText(queue.failure, t), EDITOR_ISSUE, failureKind('save', {reason: saveReason(queue.failure)})); return; }
             // Load the replacement before deleting, so a read failure keeps the edit open.
+            step = 'list';
             const rows = (await store.projects()).filter(row => row.id !== state.record.id);
             // Most recently used: the order the edits were opened, then the last save.
             const order = id => { try { return Number(localStorage.getItem(usedPrefix + id)) || 0; } catch { return 0; } };
             rows.sort((a, b) => order(b.id) - order(a.id) || String(b.updated_at).localeCompare(String(a.updated_at)));
+            step = 'load';
             const record = rows.length ? await store.load(rows[0].id) : initial();
-            if (!record) throw new Error(words.delete_failed);
+            if (!record) throw Object.assign(new Error(words.delete_failed), {code: 'no_replacement'});
+            step = 'delete';
             await discardProject();
+            step = 'open';
             await replaceProject(record); menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus();
         } catch (value) {
-            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: value?.reason}));
+            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}));
         } finally { switching = false; element.inert = false; updateTop(); }
     }
     function confirmDelete() {
@@ -903,6 +985,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 return true;
             }
             catch (value) { if (value instanceof model.EditError) return value.code === 'busy'; throw value; }
+        },
+        // A range with no picture over imported sound: the picture is made to follow that sound.
+        soundLed(selection = state.selection) {
+            const range = selection?.kind === 'range' && selectionRange(selection);
+            return !!range && !!model.soundRange(state.record, range.start, range.frames);
         },
         // Another part generating is no reason: the server runs parts one after another.
         canGenerate(text, selection = state.selection) {
@@ -1077,6 +1164,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     if ('preview' in inputs || previewing) inputs.preview = previewing && alone;
                     if ('refine_from' in inputs) inputs.refine_from = '';
                 }
+                await followSound(frozen, prepared, ids);
                 if (allowEmpty === true && [text, ...Object.values(texts ?? {})].some(value => !value.trim())) allowEmptyPrompt({output: frozen.prompt}, frozen.node);
                 // Parts made at another size than the edit's have that size's limit.
                 const limit = (follow && (follow.width !== edit.width || follow.height !== edit.height)
@@ -1128,6 +1216,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async press(text, {allowEmpty = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
+            if (voice.session() && ['ready', 'done'].includes(voice.session().phase)) { await voice.redub(); return {}; }
             // A stretch of the music track, or a piece of music there: music, with or without words.
             if (music.target()) {
                 if (characters(text) > MUSIC_TEXT_LIMIT) return {say: textLongText(t, MUSIC_TEXT_LIMIT), focus: true};
@@ -1211,6 +1300,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async cancel() {
             if (music.target()) { await music.cancel(); return; }
             if (stems?.active()) { await stems.cancel(); return; }
+            if (voice.session()?.phase === 'dubbing') { voice.cancel(); return; }
             const range = selectionRange(state.selection);
             const own = range && state.record.tracks[0].clips.find(clip => clip.job && generating(clip)
                 && clip.start < range.start + range.frames && clip.start + clip.frames > range.start)?.job;
@@ -1339,6 +1429,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
+    voiceAvailable(api).then(value => { voiceReady = value; if (!disposed) voice.refresh(); });
+    actions.voice = {controller: voice};
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
@@ -1617,12 +1709,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (!queue.dirty && emptyEdit()) {
                     try { await discardProject({automatic: true}); }
                     catch (value) {
-                        notify(deleteEditText(t)[value?.reason] || deleteEditText(t).delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: value?.reason}));
+                        notify(deleteEditText(t)[value?.reason] || deleteEditText(t).delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value)}));
                         closing = false; element.inert = false; closePromise = null; return false;
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); voice.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());

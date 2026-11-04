@@ -843,6 +843,9 @@ def _run(args):
                     from .continuation import first_frame_prompt
                     prompt_text = first_frame_prompt(prompt_text)
                 prompt_text = without_music(prompt_text)
+                # The model has no negative prompt: sound the user excluded is worded as the sounds the scene has.
+                from .sound_prompt import positive_sound
+                prompt_text = positive_sound(prompt_text)
                 encoding = {'prompt': prompt_text, 'encoder': args.encoder,
                             'comfy_root': str(args.comfy_root or comfy_root()),
                             'model_paths': str(args.model_paths.resolve()) if args.model_paths else None,

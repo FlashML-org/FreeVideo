@@ -534,6 +534,7 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         empty_cache()
     if any(row.get('audio') for row in normalized):
         print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
+        from .vae_weights import load_audio_vae
         vae = (resident.input_audio_encoder(base, canvas, device=device)
                if resident is not None and torch.device(device).type != 'mps' else
                load_audio_vae(base, device=device)[0])

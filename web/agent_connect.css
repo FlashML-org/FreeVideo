@@ -41,6 +41,7 @@
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-header-actions>button{flex:none}
 /* Compact spacing only once the column is short of room, so wide headers keep their idle rhythm. */
 @container fv-autopilot-actions (max-width:671px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-header-actions>button{padding-inline:5px}}
+@container fv-autopilot-actions (max-width:632px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh)>span{display:none}}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now{flex:0 1 auto;min-width:0}
 .fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:5px;padding-left:8px}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go>:not(.fv-autopilot-now-name){flex:none}

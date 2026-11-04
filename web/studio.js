@@ -6,7 +6,7 @@ import {showEmptyPrompt, dismissEmptyPrompt} from './empty_prompt_notice.js';
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
-import { feedbackButton, feedbackIssueURL } from './feedback.js';
+import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
@@ -667,7 +667,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
-    tools.append(feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
+    tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
     // The Agent's page is the fourth tab, shown where the Agent interface is on; the guide's last step circles it.
     agentTabReady(agentInterfaceState(api), () => agentInterfaceState(api));
     // The length hint links to the same two views, through the same actions.
@@ -695,7 +695,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const untouched = () => Boolean(starter) && value(node, 'text') === starter;
     const shown = text => starter && text === starter ? '' : String(text || '');
     const prompt = el('textarea'); prompt.value = shown(value(node, 'text')); prompt.setAttribute('aria-label', t('Prompt', '提示词'));
-    prompt.dataset.fvGuide = 'describe';
+    prompt.dataset.fvGuide = 'describe'; prompt.dataset.tourId = 'prompt-box';
     const placeholder = () => { prompt.placeholder = extension.source ? extendText(t, 'prompt') : untouched() ? starterShown : t('Describe the scene… Type @ to reference media', '描述画面… 输入 @ 引用素材'); };
     placeholder();
     prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
@@ -1270,10 +1270,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), mode)); advanced.append(seedFields);
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewTools = el('div', null, 'fv-preview-tools');
-    previewTools.append(button(t('Creations', '作品'), () => {
+    const worksButton = button(t('Creations', '作品'), () => {
         stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value),
             extend: (saved, options) => openExtendEditor(saved, node, {studio: dialog, ...options})});
-    })); previewHead.append(previewTools); output.append(previewHead);
+    }); worksButton.dataset.tourId = 'works-entry'; previewTools.append(worksButton); previewHead.append(previewTools); output.append(previewHead);
     const previewSpace = el('div', null, 'fv-preview-space'); output.append(previewSpace);
     // The preview keeps the size it has once the list is in; an opened part grows the column, which scrolls.
     const partList = createChainPartList(t, (block, text) => chainController.setText(block, composePartText(chainController.state, block, text)), {
@@ -1653,7 +1653,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     runOptions.append(optionsToggle, optionsPanel);
     const generate = button('', submitDraft, 'fv-primary');
-    generate.dataset.fvGuide = 'generate';
+    generate.dataset.fvGuide = 'generate'; generate.dataset.tourId = 'generate-btn';
     runrow.append(generate, runOptions);
     runButtonReady = true;
     const queueActions = el('div', null, 'fv-queue-actions');
