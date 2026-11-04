@@ -7,6 +7,8 @@ Button {
     property bool selected: false
     property bool danger: false
     property bool singleLine: false
+    // A disabled button that is the only statement of what is happening: full strength, not a call to act.
+    property bool waiting: false
     // A text link: accent text, no frame.
     property bool link: false
     implicitHeight: Math.max(theme.height, contentItem.implicitHeight + 14)
@@ -15,10 +17,10 @@ Button {
     topPadding: 7; bottomPadding: 7
     font.pixelSize: theme.body; font.weight: primary ? Font.DemiBold : Font.Medium
     hoverEnabled: true
-    opacity: enabled ? 1 : 0.42
+    opacity: enabled || waiting ? 1 : 0.42
     contentItem: Text {
         text: control.text; font: control.font
-        color: control.primary ? theme.bg : control.danger ? theme.danger : control.selected ? theme.accent
+        color: control.waiting ? theme.text : control.primary ? theme.bg : control.danger ? theme.danger : control.selected ? theme.accent
              : control.link ? (control.hovered ? theme.accentHover : theme.accent)
              : control.flat && !control.hovered ? theme.muted : theme.text
         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
@@ -28,10 +30,10 @@ Button {
     }
     background: Rectangle {
         radius: theme.radiusSm
-        color: control.primary ? (control.down ? theme.accentDim : control.hovered ? theme.accentHover : theme.accent) :
+        color: control.waiting ? theme.raised : control.primary ? (control.down ? theme.accentDim : control.hovered ? theme.accentHover : theme.accent) :
                control.selected ? theme.accentSubtle : control.down ? theme.sheen : control.hovered ? theme.hover :
                control.flat ? "transparent" : theme.raised
-        border.width: control.activeFocus && control.visualFocus ? 2 : control.primary || control.flat ? 0 : 1
+        border.width: control.activeFocus && control.visualFocus ? 2 : (control.primary && !control.waiting) || control.flat ? 0 : 1
         border.color: control.activeFocus && control.visualFocus ? theme.accentHover : control.selected ? theme.accentDim : theme.border
         Behavior on color { ColorAnimation { duration: 110 } }
     }

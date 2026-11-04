@@ -652,6 +652,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('A video is still generating', '还有视频正在生成'),
          ('Click Update now again when this video has finished. The video being generated is not interrupted.',
           '这个视频生成完成后，再点击“立即更新”。正在生成的视频不会被打断。')),
+        # Setup or Repair never starts beside a job (a server another program started either), and Repair
+        # runs into the same check, so the card offers Retry installation only.
+        (r'ComfyUI is running a job\. Try again after it finishes', 'setup-busy',
+         ('A video is still generating', '还有视频正在生成'),
+         ('Setup stopped so that the video being generated is not interrupted. When it has finished, click "Retry installation" and confirm the installation again. Completed steps are kept.',
+          '安装已停止，以免打断正在生成的视频。视频生成完成后，请点击“重试安装”，并再次确认安装。已完成的步骤会保留。')),
         # Moving the engine's editable install to the new source failed and was undone (engine_binding).
         (r'Editable install failed for|Editable verification failed for|The engine.s uv is missing', 'update-unfinished',
          ('The update did not finish', '这次更新没有完成'),

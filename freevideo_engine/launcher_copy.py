@@ -25,6 +25,8 @@ ACTION_COPY = {
                       '已记下，处理完当前任务后自动导入'),
     'setup_queued': ('Models are being prepared in the background. Setup will continue when they are ready.',
                      '后台正在准备模型，好了会接着继续'),
+    'setup_job': ('A video is still generating. Setup will continue when it has finished.',
+                  '还有视频正在生成，完成后将自动继续'),
     'update_queued': ('The update will start after the current task finishes.',
                       '当前任务完成后会自动更新'),
 }

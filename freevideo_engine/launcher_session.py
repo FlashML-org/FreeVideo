@@ -14,8 +14,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
 from . import disk_space
-from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, Controller, layout, local_url, loopback_url, managed_frontend,
-                                     new_layout, queue_busy)
+from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, SETUP_WAITS_FOR_JOB, Controller, layout, local_url, loopback_url,
+                                     managed_frontend, new_layout, queue_busy)
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
@@ -94,6 +94,8 @@ class Session:
     update_waiting = update_restarting = False
     engine_updating = engine_autoinstall = reload_expected = resume_pages = False
     browser_wait = queue_state = queue_thread = bridge = None
+    # Setup that stopped for a running job and continues by itself once the queue is empty.
+    setup_job_wait, setup_job_tries = False, 0
     foreign_state = foreign_thread = None
     clients_polled = queue_polled = foreign_polled = receipt_polled = resume_until = resume_polled = bridge_polled = 0.
     bridge_pending = False
@@ -550,6 +552,11 @@ class Session:
             self.pending_action = None
             if self.action_notice == 'setup_queued':
                 self.action_notice = ''
+            self.setup_job_wait = False
+        if name != 'stop':
+            self.setup_job_tries = 0
+        if name in ('back', 'setup', 'launcher'):
+            self.setup_job_wait = False
         setup_action = (name == 'primary' and self.page != 'launcher'
                         or name == 'retry' and self.retry_kind() != 'launch')
         if setup_action and self.task_busy():
@@ -1793,6 +1800,12 @@ class Session:
         if saved['lan_access'] != (self.form.get('lan_access') is True):
             self.edit('lan_access', saved['lan_access'])
 
+    def setup_replayable(self):
+        """Whether the accepted plan can still be installed as it is. The engine's own install consumes
+        the plan, so a job met after it (the ComfyUI environment step of a first installation) leaves
+        Retry installation, which inspects again."""
+        return bool((self.controller.selection or {}).get('ready')) or getattr(self.controller, 'section', None) == 'engine'
+
     def tick(self):
         if isinstance(self.controller, Controller) and not self.controller.busy:
             self.controller.poll_access_proxy()
@@ -1850,6 +1863,21 @@ class Session:
                 # Nothing new to download or approve: deploy, then restart ComfyUI.
                 self.controller.run('install', True)
                 row, busy = self.controller.state, self.controller.busy
+        if (not busy and row.get('status') == 'failed' and row.get('action') == 'install'
+                and str(row.get('error') or '').startswith(SETUP_WAITS_FOR_JOB) and self.setup_job_tries < 3
+                and self.setup_replayable()):
+            # A video is generating, so setup stopped before it changed anything. Keep the plan the user
+            # accepted and install it when the queue is empty, instead of a failure card.
+            self.setup_job_tries += 1
+            self.setup_job_wait = True
+            self.queue_state = None
+            self.controller.state = row = dict(row, status='review', action='inspect', error=None, exception=None)
+        if self.setup_job_wait and row.get('status') != 'review':
+            self.setup_job_wait = False
+        if self.setup_job_wait and not self.task_busy() and self._queue_busy(any_server=True) is False:
+            self.setup_job_wait = False
+            self.controller.run('install', True)
+            row, busy = self.controller.state, self.controller.busy
         if (self.engine_updating and not busy and row.get('status') == 'failed'
                 and str(row.get('error') or '').startswith(ENGINE_UPDATE_WAITS)):
             # A video started after the check: keep waiting for it instead of showing a failure.
@@ -2404,7 +2432,8 @@ class Session:
             disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
             page=self.page, status=row.get('status', 'idle'), busy=busy, working=working,
             action_notice=self.t(*ACTION_COPY[self.action_notice]) if self.action_notice else '',
-            setup_pending=bool(self.pending_action), setup_wait_text=self.t(*ACTION_COPY['setup_queued']),
+            setup_pending=bool(self.pending_action) or self.setup_job_wait, setup_job_wait=self.setup_job_wait,
+            setup_wait_text=self.t(*ACTION_COPY['setup_job' if self.setup_job_wait else 'setup_queued']),
             can_manage=self.can_manage(), busy_reason=self.t(*ACTION_COPY['busy']),
             cleanup=cleanup,
             can_cleanup=self.can_manage() and not (self.updater and self.updater.busy),

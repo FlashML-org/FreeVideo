@@ -502,6 +502,8 @@ def launcher_comfy(selected, info):
 
 
 ENGINE_UPDATE_WAITS = 'ComfyUI is running a job, so the engine update waits'
+# Setup or Repair never starts beside a job; the launcher continues it when the queue is empty.
+SETUP_WAITS_FOR_JOB = 'ComfyUI is running a job. Try again after it finishes; the job is left running.'
 
 
 def _refused(error):
@@ -1229,7 +1231,7 @@ class Controller:
         worker. Stop our own idle server; connecting after setup starts it
         again. A running job is never stopped, in a server another program started either."""
         if queue_busy(loopback_url(self.server_address or url)):
-            raise RuntimeError('ComfyUI is running a job. Try again after it finishes; the job is left running.')
+            raise RuntimeError(SETUP_WAITS_FOR_JOB)
         if self.owns_server():
             self.stop_owned_server()
 
