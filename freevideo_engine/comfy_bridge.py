@@ -301,7 +301,7 @@ class WholeVideoProgress:
             vars(self).clear()
             vars(self).update(saved)
 
-    def configure(self, *, plan=None, media=None, conditioning=False, placement=None, sampled=None):
+    def configure(self, *, plan=None, media=None, conditioning=False, placement=None, sampled=None, reference=None):
         """Use facts already obtained by the bridge; never inspect media/models."""
         self._late_history()
         from .media_request import task_for
@@ -346,6 +346,14 @@ class WholeVideoProgress:
                                 sum(bool(media.get(k)) for k in ('first', 'last')))
         if conditioning:
             self.cold_flags['encode_cached'] = True
+        if reference:
+            # The prepared references: their rows enlarge every sampling step
+            # and their length sets the encoding time, neither known from the request.
+            rows, seconds = reference.get('reference_video_tokens'), reference.get('reference_seconds')
+            if type(rows) is int and rows > 0:
+                self.request['reference_video_tokens'] = rows
+            if type(seconds) in (int, float) and math.isfinite(seconds) and seconds > 0:
+                self.request['reference_seconds'] = float(seconds)
         self._reforecast()
 
     def _reforecast(self, *, reset_source=False):
@@ -542,6 +550,14 @@ class WholeVideoProgress:
             # LoRA groups describe a substage, not completion of the whole load.
             if type(done) is int and type(total) is int and total > 0 and message.get('unit') != 'bytes':
                 self._set_count(done, total)
+        elif phase == 'encode' and message.get('stage') == 'media':
+            # Reference video encoding costs far more than the stage's fixed
+            # estimate on a modest GPU; once a chunk is done its rate gives the
+            # rest. Only the stage under way is rescaled.
+            elapsed = _timing_seconds(message.get('elapsed_seconds'))
+            if type(done) is int and type(total) is int and 0 < done <= total and elapsed:
+                self._set_count(done, total)
+                self.weights[phase] = now - self.phase_started + elapsed * (total - done) / done
         elif phase == 'decode_save' and message.get('stage') == 'video':
             elapsed = _timing_seconds(message.get('elapsed_seconds'))
             if type(done) is int and type(total) is int and 0 <= done <= total and total > 0:
@@ -764,6 +780,8 @@ class WholeVideoProgress:
             self._retry({}, now)
         if event.get('event') in ('video_start', 'decode_resume'):
             self.configure(placement=event)
+        if event.get('event') == 'reference_media':
+            self.configure(reference=event)
         phase = self._phase_for(message, event)
         if phase:
             self._enter(phase, now)
@@ -1105,6 +1123,13 @@ def progress_message(event):
                     elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}
+    if name == 'media_encode_progress':
+        done, total = event.get('done'), event.get('total')
+        result = dict(label='Encoding image/video references', timing_phase='encoding')
+        if type(done) is int and type(total) is int and 0 <= done <= total and total > 0:
+            result.update(phase='encoding', stage='media', done=done, total=total, unit='frames',
+                          elapsed_seconds=event.get('elapsed_seconds'))
+        return result
     if name == 'reference_trimmed':
         return {'label': 'Preparing reference media', 'timing_phase': 'encoding',
                 'reference_trimmed': {key: event.get(key) for key in ('kind', 'number', 'seconds', 'used_seconds')}}
