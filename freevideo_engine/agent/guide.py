@@ -39,7 +39,7 @@ GUIDE = {
         'pedestal, arc shot, tracking shot, static shot, zoom, POV, roll; "with small amplitude", "at slow speed".',
     ],
     'dialogue': [
-        'Speakers get stable IDs (S1), (S2) across shots; describe each voice when it first appears.',
+        'Speakers are numbered (S1), (S2) once, in the order they first speak in the video, and keep that number throughout it; describe each voice when it first appears.',
         'Spoken words go inside <d>[Language] ...</d>, verbatim: The woman (S1) says: <d>[Chinese] 我们走吧。</d>',
         'Voiceover: "says in an off-screen voiceover: <d>...</d> while his lips remain completely closed."',
         'Visible text goes in double quotes: a neon sign reading "营业中". Never put spoken words in quotes: '

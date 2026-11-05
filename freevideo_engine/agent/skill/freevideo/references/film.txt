@@ -1,6 +1,6 @@
 # Films of several shots
 
-Use this only when the film needs separately chosen shots. A single video of up to 60 seconds is one `freevideo_generate` job.
+Use this when the piece runs longer than about 20 seconds, changes place or costume, or needs shots chosen or reshot separately; otherwise one `freevideo_generate` with `[Shot N]` cuts is enough (see "Making a short drama" in SKILL.md). Each shot is one generation of 15 to 20 seconds; the device limit is only a cap, and a shot with a cast card cannot be longer than one generation on this computer.
 
 1. Reuse or make cast cards: `freevideo_cast_list` first (reuse a matching card), then `freevideo_cast_create`; `freevideo_cast_generate` makes reference pictures when the user gave none.
 2. `freevideo_drama_plan` previews the shots without starting.
