@@ -970,8 +970,11 @@ class EventTail:
 def preview_state(event):
     """The few facts the page needs to show the newest frame preview, or None."""
     values = {key: event.get(key) for key in ('serial', 'step', 'total', 'frames', 'frame_width', 'frame_height')}
-    if any(type(value) is not int or value < 1 or value > 100000 for value in values.values()) or values['frames'] > 8:
+    if any(type(value) is not int or value < 1 or value > 100000 for value in values.values()) or values['frames'] > 16:
         return None
+    duration = event.get('duration_ms')  # optional: the playback speed follows the video's length
+    if type(duration) is int and 0 < duration <= 86400000:
+        values['duration_ms'] = duration
     return values
 
 
