@@ -13,7 +13,7 @@ const failure = (value, fallback) => Object.assign(new Error(value?.code || valu
 // change a voice but the model is still to be downloaded.
 export async function voiceFeatures(api) {
     try {
-        const response = await agentGet(api, `${ROOT}/capabilities`);
+        const response = await agentGet(api, ROOT);
         if (!response.ok) return {ready: false, install: false, unknown: true};
         const features = (await response.json())?.features;
         return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install']};

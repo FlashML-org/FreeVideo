@@ -636,9 +636,11 @@ def contracts(*, local=False):
                                             auth=False, page_or_token=True)
     routes['PUT', '/confirmations'] = route('Only the page user may change which operations need approval.',
                                             body=confirm_settings(), auth=False, page_or_token=True)
-    # The editor page separates sound itself: these four also accept its page session, which never holds the token.
+    # The editor page separates sound and changes voices itself: these also accept its page session, which never holds the token.
     for key in (('POST', '/projects/{id}/stems'), ('POST', '/projects/{id}/stems/export'),
-                ('GET', '/jobs/{id}'), ('POST', '/jobs/{id}/cancel')):
+                ('GET', '/jobs/{id}'), ('POST', '/jobs/{id}/cancel'), ('GET', ''),
+                ('POST', '/projects/{id}/voice/lines'), ('POST', '/projects/{id}/voice/replace'),
+                ('POST', '/projects/{id}/voice/shorten'), ('POST', '/projects/{id}/voice/estimate')):
         routes[key]['page_ok'] = True
     return routes
 
