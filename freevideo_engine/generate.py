@@ -540,7 +540,12 @@ def _run(args):
                        preview=preview, refine_from=getattr(args, 'refine_from', None), media=media,
                        original_audio=original_audio is not None and 'segment' in original_audio)
         # Reject absent/mismatched context before text encoding or model loading.
-        if getattr(args, 'continuation_snapshot', None):
+        preview_encoded = False
+        if refine_source:
+            from .preview import continuation_snapshot
+            snapshot, digest, preview_encoded = continuation_snapshot(refine_source, continue_from)
+            continuation = restore_snapshot(snapshot, digest, canvas)
+        elif getattr(args, 'continuation_snapshot', None):
             continuation = restore_snapshot(args.continuation_snapshot,
                 getattr(args, 'continuation_snapshot_sha256', None), canvas)
         else:
@@ -566,7 +571,8 @@ def _run(args):
             from .continuation import anchor_media, chain_first_frame_picture
             try:
                 # A context encoded from the file carries no first frame; whoever planned this run saw none either.
-                kept = None if 'tail' in continuation else chain_first_frame_picture(continuation, continue_from)
+                kept = (None if 'tail' in continuation or preview_encoded
+                        else chain_first_frame_picture(continuation, continue_from))
             except ValueError:
                 kept = None
                 first_frame['reason'] = 'unreadable'
@@ -577,9 +583,15 @@ def _run(args):
                 if args.out.resolve().exists():
                     raise FileExistsError(args.out.resolve())
                 args.out.resolve().parent.mkdir(parents=True, exist_ok=True)
-                continue_anchor = args.out.resolve().with_suffix('.first-frame.png')
                 picture, picture_width, picture_height = kept
-                continue_anchor.write_bytes(picture)
+                # A second pass names the same picture its preview was made with.
+                continue_anchor = None
+                if refine_source:
+                    from .preview import continuation_anchor
+                    continue_anchor = continuation_anchor(refine_source)
+                if continue_anchor is None:
+                    continue_anchor = args.out.resolve().with_suffix('.first-frame.png')
+                    continue_anchor.write_bytes(picture)
                 media = anchor_media(media, continue_anchor)
                 validate_route(task=getattr(args, 'task', None) or 'ref2va', anchor=True, two_pass=two_pass,
                                preview=preview, refine_from=getattr(args, 'refine_from', None), media=media)
@@ -667,7 +679,7 @@ def _run(args):
         validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored,
                        original_audio=original_audio is not None)
         planned = continuation_plan(canvas, two_pass, base_steps=base_steps, refine_steps=refine_steps,
-                                    scale=upscale_factor(args))
+                                    staged=bool(preview or refine_source), scale=upscale_factor(args))
         if two_pass and not planned['enabled'] and base_steps != 8:
             raise ValueError(planned['reason'] + ' A continuation needs two-pass generation.')
         continuation_first = planned['first']

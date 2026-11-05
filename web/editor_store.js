@@ -178,6 +178,8 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
     let recovered = null, capabilityPoll = null;
     // The length a new continuation starts with where the engine names one (a device that continues in short parts).
     let continueSeconds = null;
+    // Whether a part that continues can be made as a preview first, once the engine has said so.
+    let continuationPreview = false;
     let generationAvailable = false, generationGone = false, generationProbe = null, generationRetry = null, generationAttempts = 0, generationStalled = false, generationAsking = false;
     let disposed = false; const uploads = new Set();
     const session = holdSession();
@@ -264,6 +266,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             if (activeProject === id) { activeProject = null; clock.clearTimeout(sessionTimer); sessionTimer = null; }
         },
         get continueSeconds() { return standIn ? standIn.continueSeconds ?? null : continueSeconds; },
+        get continuationPreview() { return standIn ? standIn.continuationPreview === true : continuationPreview; },
         get generationAvailable() { return standIn ? standIn.generationAvailable ?? true : generationAvailable; },
         // The server said for certain it cannot generate (not just a missed answer that is asked again).
         get generationGone() { return !standIn && generationGone; },
@@ -301,6 +304,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                             if (!response.ok) return null;
                             const body = await response.json();
                             if (Number.isInteger(body?.continue_seconds) && body.continue_seconds > 0) continueSeconds = body.continue_seconds;
+                            continuationPreview = body?.continuation_preview === true;
                             return Array.isArray(body?.chains) ? true : null;
                         })
                         .catch(() => null), timeout]);

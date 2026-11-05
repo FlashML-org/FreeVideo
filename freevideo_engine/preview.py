@@ -4,6 +4,7 @@ The first pass is kept beside the preview MP4, so an upscale continues from the
 same latents: the learned latent upscale, the refinement steps and a full
 decode, as the uninterrupted request would have run them. Torch-free.
 """
+import hashlib
 import json
 from pathlib import Path
 
@@ -49,6 +50,31 @@ def source(output, native=False):
     else:
         result.update(metrics=str(folder / 'first-pass.engine.json'), request=str(folder / 'video.json'))
     return result
+
+
+def continuation_snapshot(source_paths, continue_from=None):
+    """The ending a continued preview was made from: (path, sha256, encoded from the file).
+
+    Its second pass continues that same record, whatever the store holds now."""
+    request = json.loads(Path(source_paths['request']).read_text(encoding='utf-8'))
+    value = request.get('continuation')
+    if not isinstance(value, dict):
+        raise ValueError('This preview does not continue a video. Generate the preview again.')
+    if continue_from is not None and Path(value.get('source_video', '')).resolve() != Path(continue_from).resolve():
+        raise ValueError('This preview continues another video. Generate the preview again.')
+    tail = value.get('tail')
+    path = Path((tail if isinstance(tail, dict) else value).get('snapshot') or '')
+    if not path.is_file():
+        raise ValueError('This preview no longer has the video ending it continues. Generate the preview again.')
+    return str(path), hashlib.sha256(path.read_bytes()).hexdigest(), isinstance(tail, dict)
+
+
+def continuation_anchor(source_paths):
+    """The first-frame picture a continued preview was made with, when it was and is still there."""
+    request = json.loads(Path(source_paths['request']).read_text(encoding='utf-8'))
+    anchor = (request.get('continuation') or {}).get('anchor')
+    path = Path(anchor['path']) if isinstance(anchor, dict) and anchor.get('path') else None
+    return path if path is not None and path.is_file() else None
 
 
 def upscale_reads(cache, video, upscaler_checkpoint):

@@ -274,6 +274,12 @@ def continuation_supported():
     return supported()[0]
 
 
+def continuation_preview():
+    """Whether a part that continues can be made as a preview first, on this device."""
+    from .continuation import previews_supported
+    return continuation_supported() and previews_supported()
+
+
 def continue_seconds():
     """The length a new continuation starts with where this device sets it: short parts on Apple silicon, where
     a full part takes long and often does not fit; None elsewhere, where the page goes by the measured limits."""
@@ -470,7 +476,7 @@ def register(host_factory=None):
     @server.routes.get('/freevideo/chains')
     async def listing(request):
         value = {'chains': runner.list(asking(request)), 'continuation': continuation_available(),
-                 'continue_seconds': continue_seconds()}
+                 'continue_seconds': continue_seconds(), 'continuation_preview': continuation_preview()}
         if fake:
             value['fake'] = True
         return response(value)

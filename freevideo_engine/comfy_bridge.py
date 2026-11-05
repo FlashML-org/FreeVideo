@@ -1274,6 +1274,12 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         width, height = previous['geometry']['width'], previous['geometry']['height']
         seconds, seed = previous['geometry']['seconds'], previous['seed']
         two_pass, preview = True, False
+        # A continued preview's second pass continues the same video the same way.
+        continue_from = argument(arguments, '--continue-from')
+        continue_from = None if continue_from is None else Path(continue_from)
+        frames = int(argument(arguments, '--frames')) if '--frames' in arguments else None
+        first_frame_reference = '--first-frame-reference' in arguments
+        voice_reference = '--voice-reference' in arguments
         base_steps = int(argument(arguments, '--base-steps', 8))
         refine_steps = int(argument(arguments, '--refine-steps', 3))
         # The second pass never uses a step cache; the preview's own command keeps its flag.
@@ -1296,7 +1302,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     def check_ending():
         from .continuation_tail import check
         from .two_pass import sampling_canvas
-        check(continue_from, sampling_canvas(canvas)[0])
+        check(continue_from, sampling_canvas(canvas, staged=bool(preview or upscale))[0])
 
     if step_cache == 'fbcache' and machine.get('device_backend') == 'mps':
         # Only the audio-video EasyCache is ported to Mac: the request samples every step,
@@ -1304,24 +1310,31 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         logging.warning('[FreeVideo] The first-block cache is not available on Mac yet; sampling every step.')
         step_cache = None
     if continue_from is not None:
-        validate_route(backend=machine.get('device_backend', 'cuda'))
-        from .continuation import MISSING, prepare, summary
+        validate_route(preview=preview, refine_from=refine_from, backend=machine.get('device_backend', 'cuda'))
+        from .continuation import MISSING, prepare, restore_snapshot, summary
         from .two_pass import sampling_canvas
-        # A continuation takes no media or preview, so its sampled size is known here; the snapshot
+        # A continuation takes no media, so its sampled size is known here; the snapshot
         # of the previous segment was written for that canvas, not for the requested size.
-        try:
-            continuation = prepare(continue_from, sampling_canvas(canvas)[0], directory=root / 'continuations')
-        except ValueError as error:
-            if str(error) != MISSING:
-                raise
-            # A video with no stored context (single-pass, an earlier version, a replaced file) is
-            # continued from its own ending, which the engine reads and encodes. Only a video whose
-            # ending cannot be used stops here, before anything is loaded.
-            check_ending()
+        started = sampling_canvas(canvas, staged=bool(preview or upscale))[0]
+        preview_encoded = False
+        if upscale:
+            from .preview import continuation_snapshot, source as preview_source
+            snapshot, digest, preview_encoded = continuation_snapshot(preview_source(upscale[0]), continue_from)
+            continuation = restore_snapshot(snapshot, digest, started)
+        else:
+            try:
+                continuation = prepare(continue_from, started, directory=root / 'continuations')
+            except ValueError as error:
+                if str(error) != MISSING:
+                    raise
+                # A video with no stored context (single-pass, an earlier version, a replaced file) is
+                # continued from its own ending, which the engine reads and encodes. Only a video whose
+                # ending cannot be used stops here, before anything is loaded.
+                check_ending()
     # The engine decides the same way from the same record: whether the film's first frame is there to use.
     # An ending encoded from the file has no first frame of the film to give.
     anchored = False
-    if continue_from is not None and continuation is not None and first_frame_reference:
+    if continue_from is not None and continuation is not None and first_frame_reference and not preview_encoded:
         from .continuation import chain_first_frame_picture
         try:
             anchored = chain_first_frame_picture(continuation, continue_from) is not None
@@ -1365,7 +1378,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             command.append('--first-frame-reference')
         if voice_reference:
             command.append('--voice-reference')
-        if continuation is not None:
+        if continuation is not None and not upscale:
             from .continuation import persist_snapshot
             continuation = persist_snapshot(continuation, run / 'continuation-source.safetensors')
             command += ['--continuation-snapshot', continuation['snapshot'],
@@ -1378,7 +1391,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
-    if hide_tail:
+    if hide_tail and '--hide-tail' not in command:
         command.append('--hide-tail')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}

@@ -1044,30 +1044,30 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else genbar?.update(mostRecentJob ? jobStatuses.get(mostRecentJob) ?? null : null);
         },
         onPass: listener => panel.passMode?.subscribe(listener) || (() => {}),
-        // A part made as a half-resolution preview: only one that stands alone, as the next part continues from
-        // this one's last frames, which the second pass changes.
+        // A part made as a half-resolution preview: one part only, as the next part continues from this one's last
+        // frames, which the second pass changes. It may continue the part before it where the engine can.
         previewFirst(selection = state.selection) {
             if (actions.passMode()?.mode !== 'preview' || music.target(selection)) return false;
             if ((state.record.settings?.base_steps ?? 8) !== 8) return false;
             const run = partRun(selection), chosen = run ? clipChoice(run) : selection, range = selectionRange(chosen); if (!range) return false;
-            if (continuesEarlier(range)) return false;
+            if (continuesEarlier(range) && !store.continuationPreview) return false;
             try {
                 // The parts Generate would send, planned as it plans them.
                 const selected = selectionClips(chosen), planned = selected.length && selected.every(clip => clip.pending && !clip.source);
                 const next = planned ? state.record : model.planRange(state.record, {...range, target: 'both', maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds});
                 const ids = planned ? selected.map(clip => clip.id) : next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames
                     && clip.pending && !['queued', 'running'].includes(clip.pending)).map(clip => clip.id);
-                return ids.length === 1 && !model.generationBefore(model.prepare(next, ids), ids).some(Boolean);
+                return ids.length === 1 && (store.continuationPreview || !model.generationBefore(model.prepare(next, ids), ids).some(Boolean));
             } catch (value) { if (value instanceof model.EditError) return false; throw value; }
         },
-        // The chosen preview part, shown from its first frame, whose second pass can replace it in place.
+        // The chosen preview part, shown from its first new frame, whose second pass can replace it in place.
         secondPassTarget(selection = state.selection) {
             if (selection?.kind !== 'clip' || !store.generationAvailable) return null;
             const clips = selectionClips(selection);
             if (clips.length !== 1) return null;
             const clip = clips[0], mate = clip.link ? model.find(state.record, clip.link) : null;
             // From the start of the preview: the second pass makes the same frames again, so a part cut short at its end still shows the same moment.
-            if (!clip.source || clip.pending || mate?.pending || clip.in !== 0 || clip.frames > clip.length) return null;
+            if (!clip.source || clip.pending || mate?.pending || clip.in !== (clip.splice?.frames ?? 0) || clip.frames > clip.length) return null;
             const metadata = store.sources.get(sourceKey(clip.source));
             return metadata?.preview === true && metadata.path ? {clip, path: metadata.path} : null;
         },
@@ -1155,8 +1155,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const follow = continuedSize(beforeKeys, sizes), edit = capability.generationSize || generationSize(state.record);
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
-                // A preview is one part that continues nothing; any other part samples both passes, whatever the panel shows.
-                const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && !beforeKeys.some(Boolean);
+                // A preview is one part; any other part samples both passes, whatever the panel shows.
+                const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && (store.continuationPreview || !beforeKeys.some(Boolean));
                 if (secondPass) {
                     if (!alone) throw new model.EditError('unsupported');
                     Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
