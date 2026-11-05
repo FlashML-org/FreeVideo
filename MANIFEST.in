@@ -82,5 +82,17 @@ include web/assets/tour/cb-music.mp4
 include web/assets/tour/cb-music.webp
 include web/assets/tour/cb-source.mp4
 include web/assets/tour/cb-source.webp
+include web/assets/tour/ca-music.mp4
+include web/assets/tour/ca-music.webp
+include web/assets/tour/ca-music-wave.webp
+include web/assets/tour/ca-dub.mp4
+include web/assets/tour/ca-dub.webp
+include web/assets/tour/ca-dub-wave.webp
+include web/assets/tour/ca-record.mp4
+include web/assets/tour/ca-record.webp
+include web/assets/tour/ca-record-wave.webp
+include web/assets/tour/cc-speech.mp4
+include web/assets/tour/cc-speech.webp
+include web/assets/tour/cc-speech-wave.webp
 include web/assets/tour/c10-source.webp
 include web/assets/tour/fox-sheet.webp

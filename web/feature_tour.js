@@ -135,11 +135,12 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
             }
             title.textContent = card.title[lang];
             content.append(el('p', 'fv-tour-line', card.line[lang]));
+            let waveImage = null;
             const pair = el('div', 'fv-tour-pair'), input = el('div', 'fv-tour-input'), output = el('div', 'fv-tour-output');
             card.input.forEach(item => {
                 if (item.text) input.append(el('p', null, item.text[lang]));
                 else if (item.mp4) input.append(media(videos.at(-1)));
-                else { const image = el('img'); image.src = asset(item.src); image.alt = ''; input.append(image); }
+                else { const image = el('img'); image.src = asset(item.src); image.alt = ''; input.append(image); waveImage = image; }
             });
             const arrow = el('span', 'fv-tour-arrow'); arrow.setAttribute('aria-hidden', 'true');
             // A thin CSS line and two strokes keep this decorative arrow out of the reading order.
@@ -154,7 +155,8 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
                 picker.setAttribute('role', 'group');
                 const show = (i, chosen) => {
                     stop();
-                    videos.forEach((video, j) => { video.hidden = j !== i; segments[j]?.setAttribute('aria-pressed', String(j === i)); if (j !== i) video.muted = true; });
+                    if (waveImage && card.sequence[i].wave) waveImage.src = asset(card.sequence[i].wave);
+                    videos.forEach((video, j) => { video.hidden = j !== i; segments[j]?.setAttribute('aria-pressed', String(j === i && (chosen || videos.length > 1))); if (j !== i) video.muted = true; });
                     const video = videos[i]; video.currentTime = 0; video.muted = !chosen; video.loop = chosen; playing = [video]; play();
                 };
                 videos.forEach((video, i) => {
@@ -167,7 +169,7 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
                     segment.onclick = () => show(i, true); segments[i] = segment; picker.append(segment);
                 });
                 if (segments.length) output.append(picker);
-                videos.forEach((video, i) => { video.hidden = i !== 0; segments[i]?.setAttribute('aria-pressed', String(i === 0)); });
+                videos.forEach((video, i) => { video.hidden = i !== 0; segments[i]?.setAttribute('aria-pressed', String(i === 0 && videos.length > 1)); });
                 playing = [videos[0]];
             } else output.append(media(videos[0], card.previewRange));
             pair.append(input, arrow, output); content.append(pair);
