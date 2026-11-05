@@ -103,17 +103,36 @@ def _prompt_digest(folder):
     return hashlib.sha256(text.encode('utf-8')).hexdigest() if text else None
 
 
+# The same prompt links videos only while each is made within this time of the one before it and from the same
+# pictures, clips and audio, across midnight too; the same words hours later, or on other pictures, are another task.
+_SITTING_SECONDS = 2 * 3600
+_INPUT_FILE = re.compile(r'(?:reference-\d{2}\.(?:png|mp4|wav)|(?:first|last)\.png)')
+
+
+def _inputs_digest(folder):
+    """What the run was given besides words: its reference pictures, clips and audio and its first and last frame."""
+    parts = []
+    try:
+        for entry in sorted(os.scandir(folder), key=lambda item: item.name):
+            if _INPUT_FILE.fullmatch(entry.name) and entry.is_file(follow_symlinks=False):
+                with open(entry.path, 'rb') as stream:
+                    parts.append('%s:%d:%s' % (entry.name, entry.stat().st_size, hashlib.sha256(stream.read(2**20)).hexdigest()))
+    except OSError:
+        return None
+    return hashlib.sha256('\n'.join(parts).encode('utf-8')).hexdigest()[:16]
+
+
 def _tasks(root, rows, folders, reports):
     """Name each row's task: the earliest video connected to it by a preview and its upscale, a continuation,
-    one agent job, or the same prompt text on the same day. A video with no such link is its own task."""
+    one agent job, or the same prompt text and inputs within two hours of the one before. A video with no such link is its own task."""
     parent = {row['id']: row['id'] for row in rows}
     def find(item):
         while parent[item] != item:
             parent[item] = parent[parent[item]]
             item = parent[item]
         return item
-    seen = {}
-    for row in rows:
+    seen, latest = {}, {}
+    for row in sorted(rows, key=lambda row: (row['created_at'], row['id'])):
         identity = row['id']
         tokens = ['id:' + identity]
         source = _source_identity(root, folders[identity], reports[identity])
@@ -123,12 +142,15 @@ def _tasks(root, rows, folders, reports):
             tokens.append('job:' + row['agent']['job'])
         digest = _prompt_digest(folders[identity])
         if digest:
-            tokens.append('prompt:%s:%s' % (identity.split('/', 1)[0], digest))
+            tokens.append('prompt:%s:%s' % (digest, _inputs_digest(folders[identity])))
+        moment = datetime.fromisoformat(row['created_at']).timestamp()
         for token in tokens:
-            if token in seen:
+            # Ascending order: a prompt token far from the video before it starts a new sitting.
+            if token in seen and not (token.startswith('prompt:') and moment - latest[token] > _SITTING_SECONDS):
                 parent[find(identity)] = find(seen[token])
             else:
                 seen[token] = identity
+            latest[token] = moment
     groups = {}
     for row in rows:
         groups.setdefault(find(row['id']), []).append(row)
