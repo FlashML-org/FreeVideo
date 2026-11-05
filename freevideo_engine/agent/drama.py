@@ -153,6 +153,12 @@ def check(play, single_seconds=BLOCK_SECONDS):
         for field in ('action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music'):
             if field in shot:
                 validate(specs._text, shot[field], path + '/' + field, 20000, empty=True)
+        if 'continuity' in shot:
+            if not isinstance(shot['continuity'], dict):
+                problem(path + '/continuity', 'must be an object of text by character name, and optionally "set"')
+            else:
+                for key, text in shot['continuity'].items():
+                    validate(specs._text, text, path + '/continuity/' + str(key).replace('~', '~0').replace('/', '~1'), 20000, empty=True)
         for field, low, high in (('takes', 1, 8), ('seed', 0, specs.MAX_SEED)):
             if field in shot:
                 validate(specs._int, shot[field], path + '/' + field, low, high)
@@ -333,9 +339,11 @@ def prompt(play, shot):
                 for key in people if characters[key].get('look')]
 
     def continuity():
-        """The film's table of clothes, props and places, the rows of the people in this shot (and 'set'), in every shot."""
-        table = play.get('continuity')
-        if not isinstance(table, dict):
+        """The film's table of clothes, props and places, the rows of the people in this shot (and 'set'), in every shot.
+        A row written in the shot itself replaces the film's row of that person (or 'set') for this shot only."""
+        table = {**(play.get('continuity') if isinstance(play.get('continuity'), dict) else {}),
+                 **(shot.get('continuity') if isinstance(shot.get('continuity'), dict) else {})}
+        if not table:
             return []
         rows = ['%s: %s.' % (_cap(characters[key].get('name') or key), table[key].strip().rstrip('.'))
                 for key in people if isinstance(table.get(key), str) and table[key].strip()]

@@ -22,7 +22,7 @@ Example: Beat 2, the kitchen. Mia stands at the sink, left of frame, back to the
 
 ## Continuity across shots
 
-- Clothes, hair, props and time of day are fixed for the whole film. Write them once and copy them into every shot.
+- Clothes, hair, props and time of day that stay the same are written once, in the film's continuity table; the prompt carries that row in every shot. A state that changes during the film (a scar that appears, a lantern that goes out, a bandage) is written in the shot where it holds, as that shot's own continuity row for the person: it replaces the table's row for that shot only. Do not put both states in the table, and keep a changing state out of the person's look in the cast as well; every shot would show both.
 - A new shot starts from what happened, not from the previous last frame: someone arrives, looks, answers. Say where everyone stands at the start.
 - A continuous action across two beats stays in one shot.
 - If the people in one scene look alike, give each a distinct colour of clothing so they are not swapped.
