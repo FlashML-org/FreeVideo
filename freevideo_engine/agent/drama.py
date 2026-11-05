@@ -283,6 +283,17 @@ def _carded(play, shot):
         return False
 
 
+def needs_machine_limit(play):
+    """Whether check() would refuse this film at the 15 s default but might accept it at this machine's own limit."""
+    for shot in play['shots']:
+        seconds = shot.get('seconds', play.get('seconds'))
+        if (isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > BLOCK_SECONDS
+                and (shot.get('first') is not None
+                     or not shot.get('continue') and (shot.get('references') or _carded(play, shot)))):
+            return True
+    return False
+
+
 SHOWN_TEXT = re.compile(r'["“「][^"”」]+["”」]')
 
 

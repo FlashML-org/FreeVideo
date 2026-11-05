@@ -33,6 +33,7 @@ MAX_GENERATION = 4  # Generations are zero-based: original 0, reshoots 1 through
 MAX_CHILDREN = 60   # Includes assembly, rejected submissions and resumed attempts.
 MAX_WAITERS = 32    # Long GET waits served at once; more callers receive the current state.
 MAX_WAIT = 25
+READY_SECONDS = 20.  # A long shot that needs the first table after a start waits this long more, then is asked to retry.
 REQUEST_ID = re.compile(r'r-[0-9a-f]{32}')
 _NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
 _POINTER = re.compile(r'(?:/(?:[A-Za-z0-9_-]{1,64}|\?))*|/')
@@ -378,15 +379,36 @@ class Productions:
             probe = spec.normalize(probe, port=self.jobs.port)
             # Pictures and cards make the shot a reference generation, which has its own limit.
             table = capability_table(self.jobs.port, probe, wait=WAIT_SECONDS, task='ref2va')
-            limit = single_frame_limit(probe, table=table)
-            return chain_plan.single_seconds(limit)
+            waiting = table.get('status') == 'computing' and drama.needs_machine_limit(play)
+            if waiting:
+                table = capability_table(self.jobs.port, probe, wait=READY_SECONDS, task='ref2va')
+                waiting = table.get('status') == 'computing'
+            if not waiting:
+                return chain_plan.single_seconds(single_frame_limit(probe, table=table))
         except Exception:  # A film that does not normalize is reported by its own checks.
             return chain_plan.BLOCK_SECONDS
+        # A limit not worked out yet is not a low limit: the same request can succeed in a moment.
+        raise JobError('capabilities_computing', 'Capabilities are being worked out',
+                       retry_after_seconds=table.get('retry_after_seconds'))
+
+    def _reshoot_seconds(self, identity, shot, changes):
+        """The limit for a shot that changes; a reshoot with no changes keeps what was accepted. Call without the lock."""
+        if not changes or not isinstance(changes, dict):
+            return math.inf
+        with self.changed:
+            state = deepcopy(self._record(identity)['state'])
+        try:
+            state['screenplay']['shots'][production._shot(state, shot)['index'] - 1].update(changes)
+        except production.ProductionError:  # production.reshoot reports it.
+            return math.inf
+        return self._single_seconds(dict(screenplay=state['screenplay']))
 
     def plan(self, request, *, local=True):
+        single_seconds = self._single_seconds(request)
         result = _domain(production.plan, {k: v for k, v in request.items() if k != 'ref'},
-                         single_seconds=self._single_seconds(request))
-        state = _domain(production.new, 'dplanpreview', result['request'], now=iso(self.jobs.clock()))
+                         single_seconds=single_seconds)
+        state = _domain(production.new, 'dplanpreview', result['request'], now=iso(self.jobs.clock()),
+                        single_seconds=single_seconds)
         play = result['request']['screenplay']
         with self.changed:
             cards = self._cards(play)
@@ -611,12 +633,13 @@ class Productions:
         if ref and alias and ref != alias:
             raise JobError('idempotency_conflict', 'Conflicting keys')
         ref = ref or alias
+        single_seconds = self._single_seconds(request)  # May wait, so not under the lock.
         with self.changed:
             digest, replay = self._receipt('start', dict(request=request, by=by), ref, client)
             if replay is not None:
                 return replay
             identity = 'd' + uuid.uuid4().hex[:12]
-            state = _domain(production.new, identity, request, now=iso(self.jobs.clock()))
+            state = _domain(production.new, identity, request, now=iso(self.jobs.clock()), single_seconds=single_seconds)
             # new() only takes director, not the initiating actor. Attribution
             # belongs to this boundary, including the future in-process UI.
             for decision in state['decisions']:
@@ -765,7 +788,7 @@ class Productions:
                     paused=view['paused'], stalled=view['stalled'], session=record.get('session'), error_zh=view['error_zh'], error_en=view['error_en']))
             return result
 
-    def _mutate(self, action, identity, *, by, ref=None, client=None, **values):
+    def _mutate(self, action, identity, *, by, ref=None, client=None, limit=None, **values):
         with self.changed:
             record = self._record(identity)
             if action in ('choose', 'reshoot', 'finish'):
@@ -777,7 +800,7 @@ class Productions:
                 return replay
             draft = deepcopy(record)
             state = draft['state']
-            _domain(getattr(production, action), state, by=by, now=iso(self.jobs.clock()), **values)
+            _domain(getattr(production, action), state, by=by, now=iso(self.jobs.clock()), **values, **(limit or {}))
             # The next advance is part of this operation: if it cannot run, nothing changes.
             self._preflight(record, draft)
             self._prepare_estimates(draft)
@@ -805,7 +828,8 @@ class Productions:
         return self._mutate('choose', identity, shot=shot, take=take, by=by, ref=ref, **kwargs)
 
     def reshoot(self, identity, shot, *, by='agent', ref=None, **kwargs):
-        return self._mutate('reshoot', identity, shot=shot, by=by, ref=ref, **kwargs)
+        seconds = self._reshoot_seconds(identity, shot, kwargs.get('changes'))
+        return self._mutate('reshoot', identity, shot=shot, by=by, ref=ref, limit=dict(single_seconds=seconds), **kwargs)
 
     def finish(self, identity, *, by='agent', ref=None, **kwargs):
         return self._mutate('finish', identity, by=by, ref=ref, **kwargs)

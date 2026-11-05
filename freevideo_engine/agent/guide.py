@@ -122,7 +122,8 @@ GUIDE = {
     ],
     'agent_jobs': [
         'GET /capabilities reads the studio cache with the same size/task/material query parameters. '
-        'status=computing includes retry_after_seconds; unknown plan estimates have seconds=null.',
+        'status=computing includes retry_after_seconds; unknown plan estimates have seconds=null. '
+        'A request answered with capabilities_computing waits retry_after_seconds and repeats unchanged.',
         'GET /jobs/{id}?wait=25 waits at most 25 seconds and returns poll_after_ms. Like POST /jobs, the answer '
         'has the job under job (its fields are also at the top level). Poll the same ID until job.status is '
         'succeeded, failed, cancelled or interrupted; disconnecting a wait or SSE does not cancel generation.',

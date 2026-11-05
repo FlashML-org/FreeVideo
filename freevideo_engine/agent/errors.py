@@ -82,6 +82,7 @@ ERRORS = {
 # Preserve that runtime contract while the pure production code keeps its 409.
 PRODUCTION_STATUS = {'not_ready': 409}
 ERRORS.update({
+    'capabilities_computing': (503, True, 'This computer is still working out what it can generate.', 'Wait retry_after_seconds, then retry the request.'),
     'unknown_shot': (404, False, 'The shot does not exist.', 'Use a shot id from the production view.'),
     'unknown_take': (404, False, 'The take does not exist.', 'Use a take number from this shot in the production view.'),
     'take_not_ready': (409, False, 'The take is stale or has not succeeded.', 'Choose a succeeded, non-stale take, or reshoot this shot.'),
@@ -290,6 +291,7 @@ def safe_details(value):
 FAILURE_REASONS_ZH = {
     **LORA_MESSAGE_ZH,
     'lan_unavailable': '局域网设置需要启动器安装记录',
+    'capabilities_computing': '正在计算这台电脑的生成能力，稍后再试',
     'out_of_memory': '生成时显存或内存不足',
     'insufficient_memory': '可用显存或内存不够生成这段内容',
     'no_memory': '可用显存或内存不够生成这张图片',
@@ -341,6 +343,7 @@ FAILURE_REASONS_ZH = {
 FAILURE_REASONS_EN = {
     **LORA_MESSAGE_EN,
     'lan_unavailable': 'Phone access requires FreeVideo installed with the launcher',
+    'capabilities_computing': 'Working out what this computer can generate; try again shortly',
     'out_of_memory': 'Graphics or system memory ran out during generation',
     'insufficient_memory': 'There is not enough free graphics or system memory for this generation',
     'no_memory': 'There is not enough free graphics or system memory for this picture',
@@ -480,6 +483,8 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
     result = capture_other_usage(result)
     if action_required:
         result['next'] = next_action if validation and next_action else action
+    if code == 'capabilities_computing':
+        result['retry_after_seconds'] = retry_after_seconds or 1
     if code == 'busy':
         result['retry_after_seconds'] = retry_after_seconds or 1
         result['details'].append(dict(owner=owner if owner in ('agent', 'ui') else 'ui'))
