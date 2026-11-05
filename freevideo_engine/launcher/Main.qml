@@ -479,7 +479,7 @@ ApplicationWindow {
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             FButton { objectName: "copyError"; visible: !diskFailure && !notAFault; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; visible: !notAFault; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
@@ -1485,7 +1485,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; spacing: 8
                                 FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
                                 FButton { text: t("Export report", "导出报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                                FButton { objectName: "settingsReportProblem"; text: t("Report a problem", "提交问题"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder"; text: t("Report a problem", "提交问题"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted

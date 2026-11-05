@@ -550,8 +550,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         if found:
             action = ('请改选“%s”文件夹。' if zh else 'Select the "%s" folder instead.') % found
         else:
-            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。' if zh else
-                      'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it.')
+            # The button name is the one on the launcher's ComfyUI page (Main.qml, newComfyMethod).
+            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“帮我安装 ComfyUI”。' if zh else
+                      'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it. '
+                      'If ComfyUI is not installed yet, choose "Install ComfyUI".')
         return dict(title='这不是 ComfyUI 文件夹' if zh else "This isn't a ComfyUI folder", detail='',
                     action=action, kind='comfy-folder')
     for pattern, kind, title, action in PLACE_RULES:
