@@ -74,5 +74,13 @@ include web/assets/tour/c12-s1.mp4
 include web/assets/tour/c12-s1.webp
 include web/assets/tour/c13-s1.mp4
 include web/assets/tour/c13-s1.webp
+include web/assets/tour/cb-ambience.mp4
+include web/assets/tour/cb-ambience.webp
+include web/assets/tour/cb-dialogue.mp4
+include web/assets/tour/cb-dialogue.webp
+include web/assets/tour/cb-music.mp4
+include web/assets/tour/cb-music.webp
+include web/assets/tour/cb-source.mp4
+include web/assets/tour/cb-source.webp
 include web/assets/tour/c10-source.webp
 include web/assets/tour/fox-sheet.webp

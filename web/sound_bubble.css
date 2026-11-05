@@ -1,0 +1,8 @@
+.fv-sound-bubble{box-sizing:border-box;position:absolute;z-index:30;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center;padding:10px 36px 10px 12px;color:var(--fv-ink);background:var(--fv-raised,#1b2430);border:1px solid var(--fv-accent,#6db8fa);border-radius:var(--fv-r-md,10px);box-shadow:0 8px 28px #0008;font:13px/1.5 var(--fv-font);animation:fv-sound-bubble-in .2s ease-out}
+.fv-sound-bubble::before{content:'';position:absolute;top:-6px;left:calc(var(--fv-sound-arrow,16px) - 5px);width:10px;height:10px;transform:rotate(45deg);background:var(--fv-raised,#1b2430);border-left:1px solid var(--fv-accent,#6db8fa);border-top:1px solid var(--fv-accent,#6db8fa)}
+.fv-sound-bubble p{margin:0;grid-column:1 / -1;max-height:3em;overflow:hidden}
+.fv-sound-bubble button{font:inherit;cursor:pointer;color:var(--fv-ink);background:transparent;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,6px);padding:3px 10px;min-height:28px}
+.fv-sound-bubble button:hover{background:var(--fv-hover)}
+.fv-sound-bubble .fv-sound-bubble-close{position:absolute;top:4px;right:4px;width:28px;padding:0;border:0;font-size:18px;line-height:1}
+@keyframes fv-sound-bubble-in{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){.fv-sound-bubble{animation:none}}

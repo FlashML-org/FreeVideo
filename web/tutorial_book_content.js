@@ -323,6 +323,82 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'separate-tracks',
+        goto: ['audio-track-button'],
+        title: {zh: '分离音轨和替换声音', en: 'Separate tracks and replace sound'},
+        summary: {zh: '把声音分成人声、音乐和环境声，并分别替换。', en: 'Split the sound into dialogue, music and ambience and replace each one.'},
+        media: {
+            type: 'image',
+            src: {zh: 'separate-tracks-1.webp', en: 'separate-tracks-2.webp'},
+            alt: {zh: '剪辑视图：选中的声音片段和“分⁠离⁠音⁠轨”按钮已用红框标出。', en: 'The Edit view, with a selected sound clip and the "Separate tracks" button outlined in red.'},
+        },
+        steps: {
+            zh: ['在剪辑视图中选中带声音的片段。', '点“分⁠离⁠音⁠轨”，人声、音乐和环境声会分成三条轨道。', '选中“音乐”轨上的片段，在描述框中写下想要的音乐，点“替⁠换⁠配⁠乐”。', '选中“人声”轨上的片段，在“台词”中修改某一句的文字。', '点“重⁠新⁠配⁠音”，只重配改过的句子。'],
+            en: ['Select a clip with sound in the Edit view.', 'Choose "Separate tracks". Dialogue, music and ambience become three tracks.', 'Select a clip on the music track, describe the music you want and choose "Replace music".', 'Select a clip on the dialogue track and change the words of one line under "Lines".', 'Choose "Redub". The changed lines are spoken again.'],
+        },
+        limits: {
+            zh: ['部分电脑暂不支持分离音轨，此时按钮不会出现。'],
+            en: ['Some computers cannot separate tracks. The button does not appear on them.'],
+        },
+    },
+    {
+        id: 'replace-music',
+        goto: ['audio-a2-track'],
+        title: {zh: '加配乐', en: 'Add music'},
+        summary: {zh: '在声音轨上选一段，描述想要的音乐。', en: 'Select a range on a sound track and describe the music.'},
+        media: {
+            type: 'image',
+            src: {zh: 'replace-music-1.webp', en: 'replace-music-2.webp'},
+            alt: {zh: '剪辑视图：第二条声音轨上选中的一段和风格选项已用红框标出。', en: 'The Edit view, with a range on the second sound track and the style options outlined in red.'},
+        },
+        steps: {
+            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项。', '在“描述配乐”中写下想要的音乐。', '点“生⁠成”。'],
+            en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood".', 'Describe the music under "Describe the music".', 'Choose "Generate".'],
+        },
+        limits: {
+            zh: ['首次生成需要下载配乐模型。', '要换掉分离后的音乐，请选中“音乐”轨上的片段，按钮会变为“替⁠换⁠配⁠乐”。'],
+            en: ['The first run downloads the music model.', 'To replace separated music, select a clip on the music track. The button then reads "Replace music".'],
+        },
+    },
+    {
+        id: 'voice-recording',
+        goto: ['record-entry'],
+        title: {zh: '配音与录音', en: 'Voice-over and recording'},
+        summary: {zh: '直接录音，或对已有的台词重新配音。', en: 'Record your own voice, or redub lines that already exist.'},
+        media: {
+            type: 'image',
+            src: {zh: 'voice-recording-1.webp', en: 'voice-recording-2.webp'},
+            alt: {zh: '剪辑视图：工具栏中的“录音”按钮已用红框标出。', en: 'The Edit view, with the "Record" button in the toolbar outlined in red.'},
+        },
+        steps: {
+            zh: ['点工具栏中的“录⁠音”。', '点“开⁠始⁠录⁠音”，对着麦克风说话。', '点“停⁠止”结束，录音会放到声音轨上。', '已有的人声可逐句改写：选中“人声”轨上的片段，修改“台词”中的文字，点“重⁠新⁠配⁠音”。'],
+            en: ['Choose "Record" in the toolbar.', 'Choose "Start recording" and speak into the microphone.', 'Choose "Stop". The recording is placed on an audio track.', 'Existing dialogue can be changed line by line: select a clip on the dialogue track, edit the words under "Lines" and choose "Redub".'],
+        },
+        limits: {
+            zh: ['录音需要允许使用麦克风。'],
+            en: ['Recording needs permission to use the microphone.'],
+        },
+    },
+    {
+        id: 'sound-to-picture',
+        goto: ['editor-timeline'],
+        title: {zh: '按声音生成画面', en: 'Generate a picture from sound'},
+        summary: {zh: '为只有声音的部分生成匹配的画面。', en: 'Generate a picture that matches a part that only has sound.'},
+        media: {
+            type: 'image',
+            src: {zh: 'sound-to-picture-1.webp', en: 'sound-to-picture-2.webp'},
+            alt: {zh: '剪辑视图：画面轨上选中的一段和描述框已用红框标出。', en: 'The Edit view, with a range on the picture track and the prompt box outlined in red.'},
+        },
+        steps: {
+            zh: ['在剪辑视图中放入一段只有声音的素材。', '在“画面”轨上，对着声音拖出一段。', '在“描述这一段”中写下想看到的画面。', '点“生⁠成”。'],
+            en: ['Put a clip that only has sound into the Edit view.', 'On the picture track, drag a range along the sound.', 'Describe the picture you want under "Describe this part".', 'Choose "Generate".'],
+        },
+        limits: {
+            zh: ['画面时长以所选的一段为准。'],
+            en: ['The picture has the length of the selected range.'],
+        },
+    },
+    {
         id: 'autopilot',
         title: {zh: 'AI 全自动', en: 'Autopilot'},
         summary: {zh: '用对话说明想拍的内容，由 AI 分镜头并逐个生成。', en: 'Say what to film in a chat; the AI plans the shots and makes them one by one.'},
