@@ -386,12 +386,12 @@ def get_latent_cache_key_dict(**kwargs):
     return make_latent_cache_key(**kwargs)[1]
 
 
-def _latent_cache(root, base, device):
-    """Per-picture latent receipts; another encoder, recipe or device never matches."""
+def _latent_cache(root, base, device, *, folder='vae', recipe='reference-latent-v2', cache_kind='reference-latent'):
+    """Per-input latent receipts; another encoder, recipe or device never matches."""
     import torch
     from .input_cache import InputCache, digest
     from .paths import data_root
-    directory = Path(base) / 'vae'
+    directory = Path(base) / folder
     files = sorted(directory.glob('*.safetensors'))
     if not files:
         return None
@@ -402,13 +402,35 @@ def _latent_cache(root, base, device):
     except Exception:
         diffusers = None
     from . import __version__
-    identity = {'recipe': 'reference-latent-v2', 'engine': __version__, 'diffusers': diffusers,
+    identity = {'recipe': recipe, 'engine': __version__, 'diffusers': diffusers,
                 'torch': getattr(torch, '__version__', 'unknown'), 'device': kind,
                 'gpu': torch.cuda.get_device_name() if (kind == 'cuda' and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'is_available') and torch.cuda.is_available()) else None,
                 'config': digest(directory / 'config.json') if (directory / 'config.json').exists() else None,
                 'weights': [[f.name, f.stat().st_size, f.stat().st_mtime_ns] for f in files]}
     target_root = root or (data_root() / 'input-cache')
-    return InputCache(identity, root=target_root, kind='reference-latent')
+    return InputCache(identity, root=target_root, kind=cache_kind)
+
+
+def _audio_key(path):
+    """The samples with their shape, so the length counts; every normalized reference is 32 kHz."""
+    import numpy as np
+    mapped = np.load(path, mmap_mode='r', allow_pickle=False)
+    try:
+        return 'audio-32000-' + _pixels_key(mapped)
+    finally:
+        del mapped
+
+
+def _use_audio_latent(row, ref, latent, canvas):
+    """Attach a normalized latent; cached ones are whole, so a clip used as is trims here."""
+    ref['audio_latent'] = latent
+    if row.get('use') == 'original':
+        ticks = round(canvas['frames'] / 24 * 40)
+        sound = latent.reshape(2, -1, 32)
+        if sound.shape[1] < ticks:
+            raise ValueError('Original audio encoder returned too few latent frames')
+        ref.update(use='original', original_audio=row['original_audio'],
+                   audio_latent=sound[:, :ticks].reshape(-1, 32).contiguous())
 
 
 def _pixels_key(mapped):
@@ -547,32 +569,46 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         del vae
         gc.collect()
         empty_cache()
-    if any(row.get('audio') for row in normalized):
-        print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
-        from .vae_weights import load_audio_vae
-        vae = (resident.input_audio_encoder(base, canvas, device=device)
-               if resident is not None and torch.device(device).type != 'mps' else
-               load_audio_vae(base, device=device)[0])
-        mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
-        std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
-        if vae.config.sampling_rate != 32000:
-            raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
-        for row, ref in zip(normalized, refs):
-            if row.get('audio'):
-                audio = torch.from_numpy(np.load(row['audio'], allow_pickle=False)).to(device)
-                latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
-                ref['audio_latent'] = ((latent - mean) / std).reshape(-1, 32).contiguous()
-                if row.get('use') == 'original':
-                    ticks = round(canvas['frames'] / 24 * 40)
-                    sound = ref['audio_latent'].reshape(2, -1, 32)
-                    if sound.shape[1] < ticks:
-                        raise ValueError('Original audio encoder returned too few latent frames')
-                    ref.update(use='original', original_audio=row['original_audio'],
-                               audio_latent=sound[:, :ticks].reshape(-1, 32).contiguous())
-                del audio, latent
-        del vae
-        gc.collect()
-        empty_cache()
+    audio_rows = [index for index, row in enumerate(normalized) if row.get('audio')]
+    if audio_rows:
+        # The same voice with another prompt reuses its latent and skips loading the audio VAE.
+        audio_cache, audio_keys, audio_latents = None, {}, {}
+        try:
+            audio_cache = _latent_cache(cache_root, base, device, folder='audio_vae',
+                                        recipe='reference-audio-latent-v1', cache_kind='reference-audio-latent')
+            for index in audio_rows if audio_cache is not None else ():
+                audio_keys[index] = _audio_key(normalized[index]['audio'])
+                latent = _cached_latent(audio_cache, audio_keys[index], Path(normalized[index]['audio']).parent)
+                if latent is not None:
+                    audio_latents[index] = latent
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+            audio_cache = None
+        print(json.dumps({'event': 'reference_audio_latent_cache', 'hits': len(audio_latents),
+                          'misses': len(audio_rows) - len(audio_latents)}), flush=True)
+        if len(audio_latents) < len(audio_rows):
+            print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
+            from .vae_weights import load_audio_vae
+            vae = (resident.input_audio_encoder(base, canvas, device=device)
+                   if resident is not None and torch.device(device).type != 'mps' else
+                   load_audio_vae(base, device=device)[0])
+            mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
+            std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
+            if vae.config.sampling_rate != 32000:
+                raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
+            for index in audio_rows:
+                if index not in audio_latents:
+                    audio = torch.from_numpy(np.load(normalized[index]['audio'], allow_pickle=False)).to(device)
+                    latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
+                    audio_latents[index] = ((latent - mean) / std).reshape(-1, 32).contiguous()
+                    if audio_cache is not None:
+                        _remember_latent(audio_cache, audio_keys[index], audio_latents[index],
+                                         Path(normalized[index]['audio']).parent)
+                    del audio, latent
+            del vae
+            gc.collect()
+            empty_cache()
+        for index in audio_rows:
+            _use_audio_latent(normalized[index], refs[index], audio_latents[index], canvas)
     if any(row.get('anchor') for row in normalized):
         value.update(keyframe_anchors=[row['anchor'] for row in normalized],
                      condition_latents=[row['latent'] for row in refs])
