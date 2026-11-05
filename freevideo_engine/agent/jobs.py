@@ -1655,8 +1655,9 @@ class Jobs:
                                                role=role))
                     for i, item in enumerate(spec['media'].get('references', []), 1):
                         asset = dict(file=self.media_file(row, item, 'reference-%02d' % i, target=target), role='reference')
-                        if 'early_steps' in item:
-                            asset['early_steps'] = item['early_steps']
+                        for key in ('early_steps', 'voice_only'):
+                            if key in item:
+                                asset[key] = item[key]
                         assets.append(asset)
                     return assets
                 assets = resolve()

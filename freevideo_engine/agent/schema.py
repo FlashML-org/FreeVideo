@@ -138,6 +138,9 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
         properties['early_steps'] = number(1, 32, integer=True, description=
             'A reference video only: it guides the first pass for this many steps and is dropped afterwards, '
             'including from the second pass. Omitted: the video guides every step.')
+        properties['voice_only'] = {'type': 'boolean', 'description':
+            'A reference video used only for its voice: the picture is encoded small and at a low frame rate, '
+            'the sound is unchanged. Not with early_steps.'}
     if clip:
         properties.pop('frame')
         properties.pop('edit')
@@ -166,6 +169,7 @@ def common():
 def generation_media(*, local=False, enhance=False):
     return obj({'first': nullable(media(True, local=local)), 'last': nullable(media(True, local=local)),
                 'references': nullable(array(media(enhance, local=local, early=not enhance), high=8 if enhance else 32))},
+               description='A first or last frame request does not take a voice reference.',
                allOf=[{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
                        'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}])
 

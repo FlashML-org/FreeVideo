@@ -254,6 +254,34 @@ def device_lock_path(device, path=None):
     return base.with_name(base.stem + '-gpu-' + token + base.suffix)
 
 
+def name_busy_lock(error, path, shared, wait_seconds):
+    """Say which lease a refused acquisition wanted; the bare errno names nothing."""
+    path = Path(path)
+    token = path.stem.partition('-gpu-')[2]
+    error.busy_lock = dict(lock=('device lease ' + path.name.replace(token, token[:8]) if token
+                                 else 'installation lease ' + path.name),
+                           shared=bool(shared), waited_seconds=round(wait_seconds, 3))
+    error.busy_lock_path = path
+
+
+def busy_lock_details(error):
+    """Name, wait and current holders of the lease an acquisition was refused, else {}."""
+    details = dict(getattr(error, 'busy_lock', None) or {})
+    if details:
+        try:
+            details['holders'] = describe_lock_holders([error.busy_lock_path])
+        except Exception:
+            pass
+    return details
+
+
+def failure_frames(error, limit=12):
+    """The traceback as 'file:line in function' rows: no source text, no folders, no values."""
+    import traceback
+    return ['%s:%d in %s' % (Path(frame.filename).name, frame.lineno, frame.name)
+            for frame in traceback.extract_tb(error.__traceback__)[-limit:]]
+
+
 @contextmanager
 def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
     """Take a lease, optionally waiting a bounded time for acquisition only."""
@@ -294,13 +322,15 @@ def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
                     import fcntl
                     fcntl.flock(stream, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
                 break
-            except BlockingIOError:
+            except BlockingIOError as error:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    name_busy_lock(error, path, shared, wait_seconds)
                     raise
                 time.sleep(min(0.075, remaining))
                 # A delayed wakeup must not start another attempt after budget.
                 if time.monotonic() >= deadline:
+                    name_busy_lock(error, path, shared, wait_seconds)
                     raise
         # The body is outside the retry loop: a failed request must never rerun.
         yield stream.fileno()

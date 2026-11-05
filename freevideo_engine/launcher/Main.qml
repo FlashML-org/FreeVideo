@@ -32,6 +32,7 @@ ApplicationWindow {
     property bool releaseNotesOpen: false
     property bool licensesOpen: false
     property string previousStatus: ""
+    property bool previousJobWait: false
     property string previousReview: ""
     property bool compact: width < 1000
     property bool narrow: width < 640
@@ -137,6 +138,8 @@ ApplicationWindow {
     // The label before diskLine() when the line states the disk rather than a problem.
     function diskLabel() { return disk && !disk.problem && !disk.short ? t("Disk:", "所在硬盘：") : "" }
     // On a Mac, a disk problem is fixed by choosing another disk, not by reporting a fault.
+    // Not a fault: a video is still generating, and the one way on is Retry installation.
+    readonly property bool notAFault: s.failure.kind === "setup-busy" || s.failure.kind === "update-busy"
     readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
     // An engine update needs no download; offer it as the way to launch.
@@ -231,6 +234,8 @@ ApplicationWindow {
         if (s.update.candidate) return t("Current version ", "当前版本 ") + releaseVersion(currentRelease) + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
         return t("Installed engine ", "已安装引擎 ") + engineVersion + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
     }
+    // A narrow window may wrap the waiting sentence; "自动继续" is not split in the middle.
+    function keepTogether(text) { return String(text).replace("自动继续", "自\u2060动\u2060继\u2060续") }
     function primaryText() {
         if (s.retry_kind) return retryText()
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
@@ -254,7 +259,10 @@ ApplicationWindow {
             if (previousPage) pageEnter.restart()
         }
         previousPage = s.page
-        if (s.status !== previousStatus || s.review_id !== previousReview) accepted = false
+        // A setup that waits for a video keeps the user's consent; leaving the wait asks again.
+        if (s.status !== previousStatus || s.review_id !== previousReview) accepted = !!s.setup_job_wait
+        else if (previousJobWait && !s.setup_job_wait) accepted = false
+        previousJobWait = !!s.setup_job_wait
         previousStatus = s.status; previousReview = s.review_id
         if (s.error !== previousError) {
             errorDetailsOpen = false
@@ -457,7 +465,7 @@ ApplicationWindow {
                         FText { objectName: "repairUpdatesEngine"; visible: !!s.update.with_repair; Layout.fillWidth: true; color: theme.text
                                 text: t("Repair also updates the engine to " + releaseVersion(currentRelease) + ".", "修复时会一并更新到新版引擎 " + releaseVersion(currentRelease) + "。") }
                         Flow {
-                            Layout.fillWidth: true; spacing: 8
+                            visible: !notAFault; Layout.fillWidth: true; spacing: 8
                             FButton { objectName: "moveToDisk"; visible: diskFailure && s.form.new_comfy && !!bestDisk; enabled: !s.busy; primary: true
                                       text: bestDisk ? t("Install on \"" + bestDisk.name + "\"", "改装到“" + bestDisk.name + "”") : ""
                                       onClicked: backend.useDisk(bestDisk.path) }
@@ -469,13 +477,13 @@ ApplicationWindow {
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
-                            FButton { objectName: "copyError"; visible: !diskFailure; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
-                            FButton { objectName: "showError"; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && s.failure.kind !== "port-taken"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
-                            FButton { objectName: "exportError"; visible: !diskFailure; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                            FButton { objectName: "copyError"; visible: !diskFailure && !notAFault; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
+                            FButton { objectName: "showError"; visible: !notAFault; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                            FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
-                            visible: errorDetailsOpen; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
+                            visible: errorDetailsOpen && !notAFault; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
                             TextArea { id: errorText; objectName: "failureDetails"; text: s.error; readOnly: true; selectByMouse: true; wrapMode: Text.Wrap; color: theme.muted; font.family: theme.mono; font.pixelSize: theme.micro; background: null; textFormat: TextEdit.PlainText }
                         }
                     }
@@ -791,7 +799,7 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        FCheck { objectName: "installConsent"; text: s.consent; checked: accepted; onToggled: accepted = checked; Layout.fillWidth: true }
+                        FCheck { objectName: "installConsent"; text: s.consent; checked: accepted; enabled: !s.setup_job_wait; onToggled: accepted = checked; Layout.fillWidth: true }
                         FButton { objectName: "planLicensesButton"; text: t("View licenses", "查看许可证"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: licensesOpen = true }
                     }
                 }
@@ -957,7 +965,7 @@ ApplicationWindow {
                         FText { objectName: "oldVersions"; visible: !!s.old_versions; text: "✓  " + s.old_versions; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         FText { objectName: "copiedModels"; visible: !!s.copied_models; text: s.copied_models || ""; color: theme.muted; font.pixelSize: theme.micro; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         FText { objectName: "archivesDone"; visible: !!s.archives_toast; text: s.archives_toast || ""; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
-                        FCheck { visible: s.needs_consent; text: s.consent; checked: accepted; onToggled: accepted = checked; Layout.fillWidth: true }
+                        FCheck { visible: s.needs_consent; text: s.consent; checked: accepted; enabled: !s.setup_job_wait; onToggled: accepted = checked; Layout.fillWidth: true }
                         FButton { objectName: "bundleLicensesButton"; visible: s.needs_consent; text: t("View licenses", "查看许可证"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: licensesOpen = true }
                     }
                     FCard {
@@ -1020,7 +1028,7 @@ ApplicationWindow {
         }
         Rectangle {
             id: footer; objectName: "footer"
-            height: win.narrow ? (narrowActions.twoRows ? 112 : 64) : shortWindow ? 64 : 76
+            height: win.narrow ? (narrowActions.twoRows ? 112 : s.setup_job_wait ? 84 : 64) : shortWindow ? 64 : 76
             anchors.bottom: parent.bottom; width: parent.width; color: theme.canvas
             Rectangle { height: 1; width: parent.width; color: theme.border }
             RowLayout {
@@ -1031,7 +1039,7 @@ ApplicationWindow {
                 FButton { visible: s.busy && !s.cleanup.busy; text: t("Pause", "暂停"); onClicked: backend.action("stop", false) }
                 FButton { objectName: win.narrow ? "" : "launchInstalledButton"; visible: updateFirst && s.retry_kind !== "launch"; flat: true; text: t("Launch current version", "启动当前版本"); onClicked: backend.action("primary", accepted) }
                 FButton {
-                    objectName: win.narrow ? "" : "primaryButton"; primary: !s.repair_offered && !(s.retry_kind === "launch" && engineUpdate.visible) && !manualFailure; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg
+                    objectName: win.narrow ? "" : "primaryButton"; primary: !s.repair_offered && !(s.retry_kind === "launch" && engineUpdate.visible) && !manualFailure; implicitWidth: Math.max(160, contentItem.implicitWidth+40); implicitHeight: theme.heightLg; waiting: !!s.setup_job_wait
                     text: s.setup_pending ? s.setup_wait_text : s.busy ? t("Working…", "正在处理…") : primaryText()
                     enabled: !s.busy && !s.setup_pending && !(s.page === "launcher" && s.needs_consent && !accepted)
                              && !(s.page === "progress" && s.status === "review" && !s.retry_kind && (!accepted || !!s.error))
@@ -1070,12 +1078,12 @@ ApplicationWindow {
                     anchors.right: parent.right; y: narrowActions.twoRows ? parent.height - height - 10 : (parent.height - height) / 2
                     primary: !s.repair_offered && !(s.retry_kind === "launch" && engineUpdate.visible) && !manualFailure
                     leftPadding: 12; rightPadding: 12
-                    singleLine: true
-                    implicitWidth: Math.max(120, contentItem.implicitWidth + leftPadding + rightPadding); implicitHeight: theme.heightLg
+                    singleLine: !s.setup_job_wait; waiting: !!s.setup_job_wait
+                    implicitWidth: Math.max(120, contentItem.implicitWidth + leftPadding + rightPadding); implicitHeight: s.setup_job_wait ? Math.max(theme.heightLg, contentItem.implicitHeight + 18) : theme.heightLg
                     width: Math.min(implicitWidth, Math.max(0, narrowActions.width - (narrowActions.twoRows ? 0 :
                         (backButton.visible ? backButton.width + 8 : 0) + (pauseButton.visible ? pauseButton.width + 8 : 0) +
                         (launchInstalled.visible ? launchInstalled.width + 8 : 0))))
-                    text: s.setup_pending ? s.setup_wait_text : s.busy ? t("Working…", "正在处理…") : primaryText()
+                    text: s.setup_pending ? keepTogether(s.setup_wait_text) : s.busy ? t("Working…", "正在处理…") : primaryText()
                     enabled: !s.busy && !s.setup_pending && !(s.page === "launcher" && s.needs_consent && !accepted)
                              && !(s.page === "progress" && s.status === "review" && !s.retry_kind && (!accepted || !!s.error))
                     onClicked: { if (s.retry_kind) { backend.action("retry", accepted); return } if (needsRuntime) { backend.browseRuntimePackage(); return } if (needsPackages) { backend.browsePackages(); return } if (updateFirst) { backend.update(""); return } backend.action(s.page === "launcher" && s.status === "open" ? "browser" : "primary", accepted) }

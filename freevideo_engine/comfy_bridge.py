@@ -22,6 +22,11 @@ from .comfy_environment import isolated_environment
 from .monitoring import save
 
 
+# Longer than the idle encoder's yield window (YIELD_SECONDS plus its join slack), so a speculative
+# warm-up of the previous request on the same device releases the lease before the wait runs out.
+DEVICE_LEASE_WAIT_SECONDS = 20.
+
+
 @contextlib.contextmanager
 def _device_generation_lease(environment):
     """An executor of a multi-GPU pool holds its own device's lease, not the shared installation lock.
@@ -38,7 +43,7 @@ def _device_generation_lease(environment):
     from .gpu_pool import child_lease_environment, generation_lease
     from .locking import LOCK_ENV
     device = SimpleNamespace(uuid=uuid)
-    with generation_lease(device, wait_seconds=3) as descriptor:
+    with generation_lease(device, wait_seconds=DEVICE_LEASE_WAIT_SECONDS) as descriptor:
         os.set_inheritable(descriptor, True)
         environment.update(child_lease_environment(device), **{LOCK_ENV: str(descriptor)})
         try:
@@ -1710,6 +1715,15 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     except BaseException as error:
         cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in ('InterruptProcessingException', 'CancelledError')
         state.update(status='cancelled' if cancelled else 'failed', error=repr(error))
+        if not cancelled:
+            try:
+                from .locking import busy_lock_details, failure_frames
+                state['traceback'] = failure_frames(error)
+                busy = busy_lock_details(error)
+                if busy:
+                    state['busy_lock'] = busy
+            except Exception:
+                pass
         try:
             if cancelled:
                 # Windows may terminate the CLI before its finally block runs.

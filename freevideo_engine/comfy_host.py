@@ -20,8 +20,10 @@ from .package_progress import PackageOutput
 from .terminal_ui import LogProgress, TerminalUI
 
 # FreeVideo's nodes and Agent routes run in the ComfyUI process; its requirements
-# do not name what only they use (the editor rules engine for project and image edits).
-NODE_PACKAGES = ('quickjs==1.19.4',)
+# do not name what only they use (the editor rules engine for project and image edits),
+# and accept a range of PyAV: the version our media code was measured on is held here,
+# because a newer one reads and writes different audio (it matches the engine's constraints).
+NODE_PACKAGES = ('quickjs==1.19.4', 'av==18.1.0')
 
 
 def prepare(root, comfy, run=None, download=False, repair=False):

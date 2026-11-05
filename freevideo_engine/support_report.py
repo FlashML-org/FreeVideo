@@ -501,7 +501,7 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
                         encoding=request.get('encoding_resources') or dict(ram=read_json('.encoding.memory.json')),
                         scope='Keep working RAM, PSS/RSS, commit and whole-GPU/allocator observations separate. '
                               'Cached encoder receipts do not describe this request’s peak.'),
-            bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm') if k in bridge},
+            bridge={k:bridge[k] for k in ('status', 'error', 'bridge_seconds', 'bridge_wall_seconds', 'sampling_cache_install', 'encoder_prewarm', 'traceback', 'busy_lock') if k in bridge},
             collection_notes=notes, log_tails={})
         stalled = agent_video_stalls(bridge.get('agent_generation_jobs') or
                                      agent_poll.get('agent_generation_jobs'))

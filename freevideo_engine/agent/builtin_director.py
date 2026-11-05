@@ -26,7 +26,7 @@ import re
 import urllib.request
 from urllib.parse import urlsplit
 
-from . import drama, spec
+from . import drama, spec, take_qa
 
 
 @dataclass(frozen=True)
@@ -367,17 +367,27 @@ def judge(shot_view, sheets, *, ask):
     shot = shot_view
     if shot.get('chosen_by') == 'user' or shot.get('chosen') is not None:
         return Decision('keep', shot['id'], '保留已选定的版本。')
-    if shot.get('state') in ('waiting', 'shooting'):
-        return Decision('wait', shot['id'], '等待这一镜的各版完成。')
+    shooting = shot.get('state') in ('waiting', 'shooting')
     uncertain = Decision('ask_user', shot['id'], '拿不准，请挑一版。')
-    takes = _selectable(shot)
+    finished = _selectable(shot)
+    unchecked = any('qa' in t and t['qa'] is None for t in finished)
+    if shooting and (not finished or any(t.get('qa') is None for t in finished)) or unchecked:
+        return Decision('wait', shot['id'], '等待这一镜的各版完成并质检。')
+    # A take that failed the picture or sound check is never chosen; a shot still shooting is judged as takes arrive.
+    takes = [t for t in finished if (t.get('qa') or {}).get('ok', True)]
     if not takes:
-        return uncertain
+        if shooting:
+            return Decision('wait', shot['id'], '已完成的版本没有通过质检，等待其余版本。')
+        if not finished or _retaken(shot):
+            return uncertain
+        faults = '；'.join(sorted({p for t in finished for p in t['qa']['problems']}))
+        return Decision('reshoot', shot['id'], '各版都没有通过质检。',
+                        note=('上一次的问题：' + faults)[:300], takes=_take_count(shot))
     try:
         rows = sheets['takes']
         images = {row['take']: row['image'] for row in rows}
         numbers = [t['take'] for t in takes]
-        if len(images) != len(rows) or set(images) != set(numbers):
+        if len(images) != len(rows) or not set(numbers) <= set(images):
             return uncertain
         previous = sheets.get('previous')
         batch_size = 15 if previous is not None else 16
@@ -391,9 +401,11 @@ def judge(shot_view, sheets, *, ask):
                              ('ratings',))
             prompt = ('评价这一镜的每个版本：0–10 分，reason 用不超过30字的中文指出具体优点或问题'
                       '（多余的字、人物变形、和描述不符等）；note 给下一次生成能用的具体修正。'
-                      'captions 表示有叠加字幕/文字，场景内真实招牌不算。不评价声音。'
+                      'captions 表示有叠加字幕/文字，场景内真实招牌不算。声音由自动质检评价，这里不评价。'
                       '\n镜头描述：' + _dump({k: shot[k] for k in ('screenplay', 'characters', 'style', 'captions') if k in shot})
                       + '\n图片顺序对应版号：' + _dump(batch)
+                      + ''.join('\n版%d的%s' % (t['take'], take_qa.summary(t.get('qa'))) for t in takes
+                                if t['take'] in batch and t.get('qa'))
                       + ('；最后一张是上一镜选定版的末帧，仅供接续参考。' if previous is not None else '。'))
             reply = _ask(ask, prompt, [images[n] for n in batch] + ([previous] if previous is not None else []), schema)
             if reply is None or sorted(r['take'] for r in reply['ratings']) != sorted(batch):
@@ -405,6 +417,8 @@ def judge(shot_view, sheets, *, ask):
             if row['captions'] and not shot.get('captions', False):
                 row['score'] = min(row['score'], 3)
         best = max(ratings, key=lambda r: (r['score'], -r['take']))
+        if best['score'] < 7 and shooting:
+            return Decision('wait', shot['id'], '已完成的版本不够好，等待其余版本。')
         if best['score'] >= 7:
             return Decision('choose', shot['id'], best['reason'], take=best['take'])
         if _retaken(shot):

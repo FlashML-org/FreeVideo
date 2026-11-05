@@ -9,9 +9,10 @@ const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 
 /**
  * Title, text and summary for the prefilled form. `where` is [English, Chinese] words for the place
- * ("Export", "导出"); `message` is the sentence the user sees.
+ * ("Export", "导出"); `message` is the sentence the user sees; `facts` is an optional flat object of numbers and
+ * states (never text or paths) that travels in the summary.
  */
-export function issueDraft({where, message, kind = null}, t = en => en) {
+export function issueDraft({where, message, kind = null, facts = null}, t = en => en) {
     const place = Array.isArray(where) ? where : [String(where || 'FreeVideo'), String(where || 'FreeVideo')];
     const clean = createErrorReport({exception_message: String(message || '')}).message;
     const lines = clean.split(/\r?\n/).filter(line => line.trim());
@@ -20,7 +21,7 @@ export function issueDraft({where, message, kind = null}, t = en => en) {
     const text = [t('FreeVideo showed an error.', 'FreeVideo 显示了一个错误。'),
         `Where: ${place[0]}`, `Error: ${first.trim().slice(0, MESSAGE)}`, ...(kind ? [`Kind: ${kind}`] : [])].join('\n');
     const tail = clean.length <= TAIL ? clean : clean.slice(0, 500) + '\n...\n' + clean.slice(-(TAIL - 505));
-    return {title: `[Feedback] ${t(place[0], place[1])}`, text, summary: JSON.stringify({where: place[0], kind, tail})};
+    return {title: `[Feedback] ${t(place[0], place[1])}`, text, summary: JSON.stringify(facts && Object.keys(facts).length ? {where: place[0], kind, tail, facts} : {where: place[0], kind, tail})};
 }
 
 // Browser-only modules, loaded as the button appears so the click opens the page at once

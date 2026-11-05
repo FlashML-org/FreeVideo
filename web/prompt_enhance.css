@@ -18,6 +18,7 @@
 .fv-enhance-status:is([data-state=progress],[data-state=error],[data-state=note]){display:block}
 .fv-enhance-status[data-state=error]{color:var(--fv-danger,#ff8a80);background:color-mix(in srgb,var(--fv-danger,#ff8a80) 7%,transparent)}
 .fv-enhance-status .fv-issue-button{min-height:26px;margin-top:7px;padding:3px 9px;font-size:11px}
+.fv-enhance-status .fv-issue-button:not([hidden]){display:flex;width:fit-content}
 .fv-enhance-meter{position:relative;height:3px;margin-top:7px;border-radius:2px;background:#ffffff12;overflow:hidden}
 .fv-enhance-meter>i{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .4s ease-out}
 .fv-enhance-meter[data-indeterminate=true]>i{width:32%;animation:fv-enhance-sweep 1.4s ease-in-out infinite}

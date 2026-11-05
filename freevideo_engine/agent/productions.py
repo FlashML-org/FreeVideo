@@ -21,7 +21,7 @@ import threading
 import time
 import uuid
 
-from . import drama, production, schema, spec, errors, operation_receipts
+from . import drama, production, schema, spec, errors, operation_receipts, take_qa
 from .jobs import DONE, JobError, iso, parts_problems
 from .forecast import generation_estimate
 
@@ -173,6 +173,9 @@ class Productions:
         self._waiter_lock = threading.Lock()
         # gate(action, *, by, estimate_seconds, refs, question) raises when the user must approve first.
         self.gate = None
+        # transcribe(path) -> heard text, optional; without it the QA does not compare dialogue.
+        self.transcribe = None
+        self._inspecting = set()
         self.load()
         jobs.parent_allowed = self.allows
 
@@ -514,11 +517,17 @@ class Productions:
                 return 1.
             value = (self.jobs.progress(row) or {}).get('fraction') if row and status == 'running' else None
             return min(1., max(0., value)) if type(value) in (int, float) and math.isfinite(value) else 0.
+        waiting = set()  # built-in shots whose first live take is still going: the others are withdrawn once it is chosen
         for shot, take in self._takes(state):
             child = children.get(take['job'])
             status = child['status'] if child and take['state'] != 'paused' else take['state']
             if take['stale'] or status == 'cancelled' or (take['cancel_requested'] and status != 'succeeded'):
                 continue
+            if state['director'] == 'builtin':
+                if shot['id'] in waiting:
+                    continue
+                if status not in ('succeeded', 'failed', 'interrupted'):
+                    waiting.add(shot['id'])
             part = fraction(child, status)
             completed += status in ('succeeded', 'failed', 'interrupted')
             fractions.append(part)
@@ -649,6 +658,7 @@ class Productions:
             for take, saved in zip(shot['takes'], internal['takes']):
                 take['error'] = contextual(saved.get('error'))
                 take['task'] = tasks.get(take['job'])
+                take['qa'] = deepcopy(record.get('qa', {}).get(take['job']))
         if value['join'] is not None:
             ref = record['state']['current_join']
             join = next(j for j in record['state']['joins'] if j['ref'] == ref)
@@ -883,6 +893,50 @@ class Productions:
             draft['elapsed_over_budget'] = over_budget
             self._bump(draft)  # Wake since/wait readers when the elapsed reminder appears or clears.
         if draft != record:
+            self._save(draft)
+        self._inspect_takes(identity)
+
+    def _inspect_takes(self, identity):
+        """Start the picture and sound check of each finished take that has none; it runs off the lock.
+
+        Only the built-in director reads the result, so films run by an agent are left alone.
+        """
+        record = self._record(identity)
+        if record['state']['director'] != 'builtin':
+            return
+        for shot in record['state']['shots']:
+            for take in shot['takes']:
+                job = take['job']
+                if (take['state'] != 'succeeded' or take['stale']
+                        or job in record.get('qa', {}) or (identity, job) in self._inspecting):
+                    continue
+                if not take['library_id']:
+                    # Nothing to open: pass it as unchecked, or the judge would wait on it forever.
+                    draft = deepcopy(self._record(identity))
+                    draft.setdefault('qa', {})[job] = dict(error='NoVideo', problems=[], notes=[], ok=True)
+                    self._bump(draft)
+                    self._save(draft)
+                    continue
+                self._inspecting.add((identity, job))
+                lines = [row['line'] for row in shot.get('lines') or [] if row.get('line')]
+                threading.Thread(target=self._inspect, daemon=True, args=(
+                    identity, job, take['library_id'], shot.get('seconds'), lines)).start()
+
+    def _inspect(self, identity, job, library, seconds, lines):
+        try:
+            with self.jobs.cpu:
+                result = take_qa.check(self.jobs.port.library_video(library), seconds=seconds,
+                                       lines=lines, transcribe=self.transcribe)
+        except Exception as error:  # noqa: BLE001 - a failed check must not block the film; the judge sees it as unchecked
+            logging.getLogger(__name__).warning('A take could not be checked (%s)', type(error).__name__)
+            result = dict(error=type(error).__name__, problems=[], notes=[], ok=True)
+        with self.changed:
+            self._inspecting.discard((identity, job))
+            if identity not in self.records:
+                return
+            draft = deepcopy(self._record(identity))
+            draft.setdefault('qa', {})[job] = result
+            self._bump(draft)
             self._save(draft)
 
     def _execute(self, identity, action):

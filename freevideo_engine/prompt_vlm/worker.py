@@ -137,9 +137,10 @@ def gpu_snapshot(stats):
     torch = sys.modules.get('torch')
     if torch is not None and torch.cuda.is_initialized():
         try:
+            free, total = torch.cuda.mem_get_info()
             stats.update(gpu_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
                          gpu_peak_reserved_bytes=torch.cuda.max_memory_reserved(),
-                         gpu_free_bytes=torch.cuda.mem_get_info()[0],
+                         gpu_free_bytes=free, gpu_total_bytes=total,
                          gpu_allocator_ooms=torch.cuda.memory_stats().get('num_ooms'))
         except (RuntimeError, OSError):
             stats['gpu_sample_unavailable'] = True
@@ -220,10 +221,13 @@ WORKING_VRAM = 3 * 2**28
 OUTPUT_TOKENS = 1800
 
 
-def kv_positions(input_tokens):
+def kv_positions(input_tokens, answer_tokens=None):
     """Cache positions reserved for a request: the input and its rewrite, then a
     correction retry that resends both with a short instruction and writes another.
-    A retry that would need more is skipped when the model is held on the GPU."""
+    A retry that would need more is skipped when the model is held on the GPU.
+    With answer_tokens, only one answer of that length is reserved (no retry)."""
+    if answer_tokens is not None:
+        return input_tokens + answer_tokens + 256
     return input_tokens + 2 * OUTPUT_TOKENS + 256
 
 
@@ -235,10 +239,10 @@ def reserved_tokens(stats):
     return tokens
 
 
-def kv_bytes(stored, input_tokens):
+def kv_bytes(stored, input_tokens, answer_tokens=None):
     keys = [row for name, row in stored.items() if name.endswith('self_attn.k_proj.weight')]
     per_token = 2 * len(keys) * (keys[0]['shape'][0] if keys else 0) * 2  # K and V, bf16
-    return per_token * kv_positions(input_tokens)
+    return per_token * kv_positions(input_tokens, answer_tokens)
 
 
 def retry_allowed(tokens, stats):
@@ -260,6 +264,61 @@ def placement(weights, int8_saving, kv, allocator_budget):
     return 'bf16' if weights <= room else 'int8' if weights - int8_saving <= room else None
 
 
+def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
+    """The GPU placement for `free` allocator bytes, or None when none fits.
+
+    Best first: bf16 or int8 resident, then int8 with the later layers streamed
+    from host memory. A text-only request keeps the vision tower in host memory
+    when that gives a better tier, and when nothing else fits reserves the cache
+    for one answer (no correction retry). A request with images runs the vision
+    tower on the CPU only when nothing fits otherwise, and keeps the retry: a
+    rewrite that misses a picture reference fails without it."""
+    from . import int8
+    vision = sum(row['bytes'] for name, row in stored.items() if name.startswith('model.visual.'))
+    saving = int8.saved_bytes(stored)
+    def fit(answer, on_host):
+        kv = kv_bytes(stored, input_tokens, answer)
+        size = weights - vision if on_host else weights
+        plan = dict(kv=kv, positions=kv_positions(input_tokens, answer), vision_on_host=on_host,
+                    vision_bytes=vision if on_host else 0, keep=None, host_bytes=0)
+        precision = placement(size, saving, kv, free)
+        if precision:
+            return dict(plan, precision=precision)
+        streamed = int8.resident_layers(size, stored, free - kv - WORKING_VRAM)
+        if streamed:
+            return dict(plan, precision='int8', keep=streamed[0], host_bytes=streamed[1])
+        return None
+    if kv_positions(input_tokens, answer_tokens) >= kv_positions(input_tokens):
+        answer_tokens = None
+    if text_only:
+        # Host memory for the vision tower only when that buys a better tier.
+        rank = lambda plan: (plan['precision'] == 'bf16', plan['keep'] is None, plan['keep'] or 0)
+        whole, apart = fit(None, False), fit(None, True)
+        if whole and (not apart or rank(whole) >= rank(apart)):
+            return whole
+        options = ((None, True), (answer_tokens, True))
+    else:
+        options = ((None, False), (None, True))
+    for answer, on_host in dict.fromkeys(options):
+        plan = fit(answer, on_host)
+        if plan:
+            return plan
+    return None
+
+
+def gpu_needed(weights, stored, free, input_tokens, answer_tokens, text_only):
+    """The fewest allocator bytes, to 32 MiB, for which gpu_plan finds a placement."""
+    step = 32 * 2**20
+    low, high = free // step, -(-(weights + 2 * kv_bytes(stored, input_tokens) + WORKING_VRAM) // step)
+    while low + 1 < high:
+        middle = (low + high) // 2
+        if gpu_plan(weights, stored, middle * step, input_tokens, answer_tokens, text_only):
+            high = middle
+        else:
+            low = middle
+    return high * step
+
+
 def load_model(folder, torch, stats, checkpoint):
     """Weights, FreeToken operators and GPU placement; returns (model, device)."""
     from . import core, int8
@@ -272,32 +331,43 @@ def load_model(folder, torch, stats, checkpoint):
     keep = None
     host_bytes = 0
     weight_budget = 0
+    vision_bytes = 0
     if torch.cuda.is_available():
         from .. import gpu_budget
-        free, _ = torch.cuda.mem_get_info()
-        stats.update(gpu_name=torch.cuda.get_device_name(), gpu_free_before_load_bytes=free,
+        free, total = torch.cuda.mem_get_info()
+        stats.update(gpu_name=torch.cuda.get_device_name(), gpu_free_before_load_bytes=free, gpu_total_bytes=total,
                      gpu_compute_capability=list(torch.cuda.get_device_capability()))
         admission = gpu_budget.configure(torch, free, reserve_bytes=256 * 2**20)
         free = min(free, admission.get('effective_allocator_limit_bytes') or free)
         # When the layers do not all fit, keep activation/KV space and the
         # desktop outside the budget for the layers that stay on the GPU.
         weight_budget = min(9 * 2**30, max(0, free - 2 * 2**30))
-        kv = kv_bytes(shapes, reserved_tokens(stats))
-        stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget, gpu_kv_reserve_bytes=kv)
-        resident = placement(weights, int8.saved_bytes(shapes), kv, free)
-        if not resident:
-            # Too big even as int8: keep what fits on the GPU and stream the other
-            # layers' int8 rows from host memory, a layer ahead of use.
-            plan = int8.resident_layers(weights, shapes, free - kv - WORKING_VRAM)
-            if plan:
-                resident, (keep, host_bytes) = 'int8', plan
+        tokens = reserved_tokens(stats)
+        plan = gpu_plan(weights, shapes, free, tokens, stats.get('answer_tokens', OUTPUT_TOKENS),
+                        not stats.get('image_count'))
+        positions = plan['positions'] if plan else kv_positions(tokens)
+        stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget,
+                     gpu_kv_reserve_bytes=plan['kv'] if plan else kv_bytes(shapes, tokens))
+        if plan:
+            resident, keep, host_bytes = plan['precision'], plan['keep'], plan['host_bytes']
+            vision_bytes = plan['vision_bytes']
+            stats.update(vision_device='cpu' if plan['vision_on_host'] else 'gpu',
+                         kv_reserve='one_answer' if positions < kv_positions(tokens) else 'with_retry')
         stats.update(streamed_layers=len(int8.layer_bytes(shapes)) - keep if keep is not None else 0,
                      streamed_host_bytes=host_bytes)
         if not resident and weight_budget <= 2 * 2**30:
             # Not even the streaming tier fits: the model would run on the CPU at
             # about 0.2 tokens/s and hit the request deadline, so say so at once.
+            # The service waits for this much to become free before trying again.
+            answer = stats.get('answer_tokens', OUTPUT_TOKENS)
+            stats['gpu_free_needed_bytes'] = gpu_needed(weights, shapes, free, tokens, answer, not stats.get('image_count'))
+            # The report names the figure for a text-only request and for one with images; this
+            # request's own kind may fit at the free memory shown, so these start from zero.
+            stats.update(placement_refused='gpu_free_below_floor',
+                         gpu_free_needed_text_only_bytes=gpu_needed(weights, shapes, 0, tokens, answer, True),
+                         gpu_free_needed_with_images_bytes=gpu_needed(weights, shapes, 0, tokens, answer, False))
             raise ValueError('out_of_memory')
-    stats['ram_required_bytes'] = (RESIDENT_RAM + host_bytes) if resident else MAPPED_RAM
+    stats['ram_required_bytes'] = (RESIDENT_RAM + host_bytes + vision_bytes) if resident else MAPPED_RAM
     available = stats['available_memory_at_start_bytes' if resident else 'available_memory_before_load_bytes']
     if available < stats['ram_required_bytes']:
         raise ValueError('ram_space')
@@ -307,9 +377,9 @@ def load_model(folder, torch, stats, checkpoint):
     loading = time.monotonic()
     if resident:
         from .load import resident as load_resident
-        model = load_resident(folder, torch, 'cuda:%d' % card, resident, keep)
+        model = load_resident(folder, torch, 'cuda:%d' % card, resident, keep, vision_on_host=bool(vision_bytes))
         mapping, device = {'': card}, 'cuda:%d' % card
-        stats.update(weights=resident, kv_positions=kv_positions(reserved_tokens(stats)))
+        stats.update(weights=resident, kv_positions=positions)
     else:
         import psutil
         from transformers import Qwen3VLForConditionalGeneration
@@ -509,7 +579,7 @@ def split(folder, value, stats):
     from .rules import SPLIT_RETRY, split_instruction, split_user_text, validate_split
     count = len(value['seconds'])
     limit = min(2 * OUTPUT_TOKENS - 200, 600 + 300 * count)  # Within the cache reserved for a rewrite and its retry.
-    stats.update(stage='imports', pid=os.getpid(), mode='split', part_count=count, dtype='bfloat16',
+    stats.update(stage='imports', pid=os.getpid(), mode='split', part_count=count, answer_tokens=limit, dtype='bfloat16',
                  attention='sdpa', kv_cache='dynamic', backend='transformers', accelerations=[],
                  persistent_model=False)
     torch, checkpoint = begin(stats)
@@ -574,7 +644,7 @@ def ask(folder, value, stats):
     questions = value['questions']
     stats.update(stage='imports', pid=os.getpid(), mode='ask', question_count=len(questions),
                  image_count=sum(len(q['images']) for q in questions), format=value['format'],
-                 max_tokens=value['max_tokens'], custom_system=bool(value.get('system')),
+                 max_tokens=value['max_tokens'], answer_tokens=value['max_tokens'], custom_system=bool(value.get('system')),
                  dtype='bfloat16', attention='sdpa', kv_cache='dynamic', backend='transformers',
                  accelerations=[], persistent_model=False)
     torch, checkpoint = begin(stats)
@@ -636,7 +706,8 @@ def ask(folder, value, stats):
                                     {'role': 'user', 'content': ASK_JSON_RETRY}]
                 answer['retried'] = True
                 retry_inputs = tokenize(processor, retry, pixels)
-                if retry_inputs.input_ids.shape[-1] > 6500:
+                if retry_inputs.input_ids.shape[-1] > 6500 or (stats.get('kv_reserve') == 'one_answer' and
+                        retry_inputs.input_ids.shape[-1] + value['max_tokens'] > stats['kv_positions']):
                     answer['error'] = 'invalid_json'
                 else:
                     ids, _ = generate(torch, model, retry_inputs.to(device), value['max_tokens'],

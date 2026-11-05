@@ -1,31 +1,64 @@
 {
   "schema": 1,
-  "product_version": "0.4.32",
+  "product_version": "0.4.33",
   "en": {
-    "summary": "A picture can be generated for a span of imported sound, and the top bar has a permanent Tutorial entry.",
+    "summary": "Prompt enhancement works with less free graphics memory, and Setup or Repair now waits for a video that is still generating.",
     "changes": [
-      "Sound-led video: drag a span over imported sound in the Edit view, describe the picture, and generate a video for that span while the original sound is kept.",
-      "Tutorial: the top bar has a permanent Tutorial entry. Three new feature examples cover making a first video, characters and the Edit view. These and some tutorial chapters have \"Take me there\", which highlights the matching control.",
-      "Audio descriptions: when a description asks to leave out music or other sounds, that request is removed before generation and, where needed, a sentence is added saying the sound comes from the action and the surroundings, so unwanted background music appears less often. Descriptions that ask for music or silence, and quoted lines, are unchanged.",
-      "Two GPUs: a machine with two GPUs now decides whether tasks can run together from the memory each task actually uses. On Linux, two 16 GB cards with 64 GB of RAM can run two tasks at once. Single-GPU machines are unaffected.",
-      "Editor: deleting an edit no longer keeps failing after a brief loss of contact with the background service.",
-      "Editor import: a video that is cut off or damaged part-way now keeps the part that can be read instead of failing the whole import.",
-      "Reference audio: generating with reference audio works again on Mac, and no longer fails on other systems when the model has to be loaded first."
+      "Prompts no longer receive the added sentence about natural sounds that 0.4.32 introduced.",
+      "Audio references: an mp4 file that only contains sound is accepted. An Agent that needs only the voice of a video can send it at a small picture size, which makes generation much faster.",
+      "Agent: choosing a take cancels the takes of that shot that are still queued or running.",
+      "Agent: when a voice reference is uploaded, the first six seconds are checked for speech, and the Agent is told when there is too little, such as in a clip that opens with music, so another clip can be chosen.",
+      "Setup or Repair that is stopped by a video still generating now waits for it and continues by itself, instead of showing a general failure.",
+      "Prompt enhancement: rewriting now works with less free graphics memory. When other programs hold the memory it needs, it waits and starts by itself once there is room, and lists those programs when their names can be read.",
+      "Audio processing in videos no longer differs depending on when FreeVideo was installed.",
+      "With several graphics cards, a new generation waits when its card is still briefly held by the previous request, instead of failing within a few seconds.",
+      "The Autopilot run bar stays fully visible in the top bar on narrow windows.",
+      "Settings: on narrow screens, the three Getting started buttons no longer break their labels across lines."
     ]
   },
   "zh": {
-    "summary": "可以为导入声音的一段生成画面；顶栏有常驻的教程入口。",
+    "summary": "提示词增强在可用显存较少时也能改写；安装或修复遇到还在生成的视频时会等待并自动继续。",
     "changes": [
-      "声音带动画面：在剪辑视图里，在导入的声音上拖出一段，写上画面描述，为这一段生成视频，原声保留。",
-      "教程：顶栏有常驻的“教程”入口。功能示例新增三张：做出第一条视频、角色、剪辑视图。这三张和部分教程章节有“带我去”，点后高亮对应的位置。",
-      "声音描述：写了不要音乐或某种声音时，生成前会去掉这类说法，必要时补一句说明声音来自动作和环境，减少无意带出的背景音乐。要求音乐或静音的描述、引号里的台词不改。",
-      "双显卡：有两张显卡的机器按每个任务的实际内存用量判断能否同时运行。在 Linux 上，两张 16 GB 显卡配 64 GB 内存可以同时运行两个任务。单卡机器不受影响。",
-      "剪辑：与后台的通信短暂中断后，删除剪辑不再连续失败。",
-      "剪辑导入：中途被截断或损坏的视频，现在会保留可读取的部分，不再整个导入失败。",
-      "参考音频：使用参考音频生成在 Mac 上恢复可用；其他系统需要先载入模型时也不再失败。"
+      "提示词不再被补写 0.4.32 加入的自然声音描述。",
+      "音频参考：只有声音的 mp4 文件也可以使用。Agent 只需要视频里的声音时，可用小画面传入，生成明显更快。",
+      "Agent：选定一版后，同一镜头还在排队或生成的其他版本自动撤下。",
+      "Agent：上传声音参考时检查前 6 秒的说话时长，说话太少（例如以音乐开头）时告知 Agent，便于换一段。",
+      "安装或修复被还在生成的视频拦下时，启动器现在会等视频结束后自动继续，不再显示通用的失败提示。",
+      "提示词增强：可用显存较少时也能改写；显存被其他程序占用时会等待，空出后自动改写，能读取到程序名时一并列出。",
+      "视频声音的处理结果不再因安装时间不同而有差异。",
+      "多张显卡时，新的生成遇到显卡还被上一个请求短暂占用会等待，不再几秒内失败。",
+      "AI 全自动运行时，窄窗口顶栏的运行条完整显示。",
+      "设置：窄屏上“新手指引”的三个按钮不再折行断字。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.32",
+      "en": {
+        "summary": "A picture can be generated for a span of imported sound, and the top bar has a permanent Tutorial entry.",
+        "changes": [
+          "Sound-led video: drag a span over imported sound in the Edit view, describe the picture, and generate a video for that span while the original sound is kept.",
+          "Tutorial: the top bar has a permanent Tutorial entry. Three new feature examples cover making a first video, characters and the Edit view. These and some tutorial chapters have \"Take me there\", which highlights the matching control.",
+          "Audio descriptions: when a description asks to leave out music or other sounds, that request is removed before generation and, where needed, a sentence is added saying the sound comes from the action and the surroundings, so unwanted background music appears less often. Descriptions that ask for music or silence, and quoted lines, are unchanged.",
+          "Two GPUs: a machine with two GPUs now decides whether tasks can run together from the memory each task actually uses. On Linux, two 16 GB cards with 64 GB of RAM can run two tasks at once. Single-GPU machines are unaffected.",
+          "Editor: deleting an edit no longer keeps failing after a brief loss of contact with the background service.",
+          "Editor import: a video that is cut off or damaged part-way now keeps the part that can be read instead of failing the whole import.",
+          "Reference audio: generating with reference audio works again on Mac, and no longer fails on other systems when the model has to be loaded first."
+        ]
+      },
+      "zh": {
+        "summary": "可以为导入声音的一段生成画面；顶栏有常驻的教程入口。",
+        "changes": [
+          "声音带动画面：在剪辑视图里，在导入的声音上拖出一段，写上画面描述，为这一段生成视频，原声保留。",
+          "教程：顶栏有常驻的“教程”入口。功能示例新增三张：做出第一条视频、角色、剪辑视图。这三张和部分教程章节有“带我去”，点后高亮对应的位置。",
+          "声音描述：写了不要音乐或某种声音时，生成前会去掉这类说法，必要时补一句说明声音来自动作和环境，减少无意带出的背景音乐。要求音乐或静音的描述、引号里的台词不改。",
+          "双显卡：有两张显卡的机器按每个任务的实际内存用量判断能否同时运行。在 Linux 上，两张 16 GB 显卡配 64 GB 内存可以同时运行两个任务。单卡机器不受影响。",
+          "剪辑：与后台的通信短暂中断后，删除剪辑不再连续失败。",
+          "剪辑导入：中途被截断或损坏的视频，现在会保留可读取的部分，不再整个导入失败。",
+          "参考音频：使用参考音频生成在 Mac 上恢复可用；其他系统需要先载入模型时也不再失败。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.31",
       "en": {

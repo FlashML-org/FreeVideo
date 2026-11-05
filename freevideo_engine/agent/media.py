@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 import uuid
 
-from ..comfy_assets import media_kind
+from ..comfy_assets import media_kind_of
 
 FPS = 24
 MAX_SAMPLES = 64
@@ -20,7 +20,7 @@ SHARP_SIDE = 384  # Sharpness is measured on a copy this size: fast, and blind t
 
 def inspect(path):
     path = _file(path)
-    kind = media_kind(path.name)
+    kind = media_kind_of(path)
     info = dict(path=str(path), name=path.name, kind=kind, bytes=path.stat().st_size)
     if kind == 'image':
         from PIL import Image
@@ -726,7 +726,7 @@ def _file(path, kind=None):
     path = Path(path)
     if not path.is_file():
         raise ValueError('No such media file: %s' % path.name)
-    if kind and media_kind(path.name) != kind:
+    if kind and media_kind_of(path) != kind:
         raise ValueError('%s is not a %s file' % (path.name, kind))
     return path
 
