@@ -302,7 +302,8 @@ def normalize(value, *, port=None):
                       lay=value.get('lay', True))
     elif kind == 'voice_lines':
         result.update(editor_project=value['editor_project'], revision=value['revision'], selection=dict(value['selection']),
-                      language=value.get('language', 'auto'), separate_first=bool(value.get('separate_first', False)))
+                      language=value.get('language', 'auto'), separate_first=bool(value.get('separate_first', False)),
+                      **({'script': [dict(entry) for entry in value['script']]} if value.get('script') else {}))
     elif kind == 'voice':
         result.update(editor_project=value['editor_project'], revision=value['revision'], selection=dict(value['selection']),
                       lines=[dict(line) for line in value['lines']], language=value.get('language', 'auto'),

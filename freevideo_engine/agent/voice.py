@@ -304,7 +304,7 @@ def run_voice_lines(jobs, row):
     """The lines of a selection: where each one is (from the voice) and what it says (from the recogniser)."""
     from .. import subtitle_ears
     from .. import subtitle_sherpa  # noqa: F401  registers the recogniser
-    from ..voice import sentences
+    from ..voice import script, sentences, speakers
     spec = row['spec']
     ctx = context(jobs, spec)
     sources = None
@@ -338,10 +338,22 @@ def run_voice_lines(jobs, row):
                            'The selection could not be recognised (%s)' % error.reason) from error
         words = [word for line in heard['lines'] for word in line['words']]
         rows = sentences.lines(words, audio, rate)
+        known = spec.get('script') or []
+        entries = script.match(rows, known) if known else [None] * len(rows)
+        for line, entry in zip(rows, entries):
+            if entry is not None:
+                # the text is known: it is what the line says, and the recogniser only gives the times
+                line['words'] = script.retime(line['words'], entry['text'], line['start'], line['end']) or line['words']
+                line['text'] = sentences._join(line['words'])
+        slices = [audio[int(line['start'] * rate):int(line['end'] * rate)] for line in rows]
+        numbers = speakers.label(slices, speakers.embedder())
+        if known:
+            numbers = speakers.by_role(numbers, [None if entry is None or not (entry.get('speaker') or '').strip()
+                                                 else script.roles(known)[entry['speaker'].strip()] for entry in entries])
         lines = []
         for index, line in enumerate(rows, 1):
             lines.append(dict(id='l%03d' % index, start=round(line['start'], 3), end=round(line['end'], 3), text=line['text'],
-                              speaker=0, words=line['words'],
+                              speaker=numbers[index - 1], words=line['words'],
                               rate=round(max(len(line['words']), 1) / max(line['end'] - line['start'], .1), 2)))
         kind = 'dialogue' if ctx['separated'] or sources else 'a1'
         return dict(editor_project=spec['editor_project'], revision=spec['revision'], separated=ctx['separated'],
@@ -574,6 +586,10 @@ def run_voice_replace(jobs, row, *, poll=.25):
         reference, own = _reference(jobs, spec, voice, every, original_wav, base)
         seed = _seed(spec, todo)
         pace = Pace(work)
+        # a text that cannot be said in the room its line has, even at the fastest tempo, is known before anything is made
+        expected = {found['id']: found['overrun'] for found in estimate(every, ctx['end'])['lines'] if found['overrun']}
+        if expected:
+            _phase(row, 'preparing', too_long=sorted(expected))
 
         def item(line, length, offset):
             window = windows[line['id']]
@@ -626,6 +642,8 @@ def run_voice_replace(jobs, row, *, poll=.25):
             if made is None:
                 result['code'] = 'cancelled'
                 continue
+            if line['id'] in expected:
+                result['expected_overrun'] = expected[line['id']]
             result.update(available=round((window['deadline'] if line['id'] in second_round else window['last']) - window['onset'], 3),
                           speed=made.get('speed'), stretch=made.get('stretch'), gain_db=made.get('gain_db'),
                           overrun=round(float(made.get('overrun') or 0.), 3), warning=made.get('warning'))

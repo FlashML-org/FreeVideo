@@ -366,8 +366,11 @@ VOICE_LINE = obj(dict(id=string(16, pattern=r'^l[0-9]{3,5}$'), start=number(0, 3
                  ('id', 'start', 'end', 'text', 'original_text'))
 VOICE_REFERENCE = obj(dict(clip_id=string(64), start=number(0, 36000), end=number(0, 36000), text=string(1000)),
                       ('clip_id', 'start', 'text'), description='A stretch of a sound clip whose voice every line takes.')
+VOICE_SCRIPT = array(obj(dict(text=string(2000), speaker=string(64, description='Who says it; the same name is the same number in the result.')),
+                         ('text',)), 1, 400,
+                     description='What the selection is known to say, in order. A recognised line that is one of these says it as written, and the lines are numbered by who says them.')
 VOICE_LINES_FIELDS = dict(
-    selection=VOICE_SELECTION, language=VOICE_LANGUAGE,
+    selection=VOICE_SELECTION, language=VOICE_LANGUAGE, script=VOICE_SCRIPT,
     separate_first={'type': 'boolean', 'default': False,
                     'description': 'Separate the sound first and recognise on the dialogue alone.'})
 VOICE_FIELDS = dict(
