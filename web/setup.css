@@ -21,9 +21,10 @@
 .fv-setup-head .fv-close{min-height:34px;width:34px;padding:0;font-size:20px;line-height:1;background:transparent;border-color:transparent;color:var(--fv-muted)}
 .fv-setup-head .fv-close:hover{background:var(--fv-raised);color:var(--fv-ink)}
 .fv-setup h3{font-size:var(--fv-body);font-weight:var(--fv-semibold);margin:0 0 12px}
-.fv-setup .fv-guide-replay-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.fv-setup .fv-guide-replay-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px}
 .fv-setup .fv-guide-replay-row h3{margin:0}
-.fv-setup .fv-guide-replay-actions{display:flex;align-items:center;gap:16px}
+.fv-setup .fv-guide-replay-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.fv-setup .fv-guide-replay-actions button{white-space:nowrap}
 .fv-setup .fv-guide-howtos{display:flex;flex-direction:column;align-items:stretch;gap:4px;margin-top:10px;width:100%}
 .fv-setup .fv-guide-howtos [role=menuitem]{width:100%;justify-content:flex-start;text-align:left}
 .fv-setup .fv-guide-howtos[hidden]{display:none}
