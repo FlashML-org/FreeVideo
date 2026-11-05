@@ -169,6 +169,7 @@ def common():
 def generation_media(*, local=False, enhance=False):
     return obj({'first': nullable(media(True, local=local)), 'last': nullable(media(True, local=local)),
                 'references': nullable(array(media(enhance, local=local, early=not enhance), high=8 if enhance else 32))},
+               description='A first or last frame request does not take a voice reference.',
                allOf=[{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
                        'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}])
 

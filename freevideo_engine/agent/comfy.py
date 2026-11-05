@@ -60,6 +60,15 @@ class ComfyPort:
     def output_relative(self, path):
         return Path(path).resolve().relative_to(self.output_root).as_posix()
 
+    def voice_window(self, path, seconds):
+        """Speech in the first seconds of an uploaded sound, or None without the speech model."""
+        from ..comfy_bridge import installation
+        from ..image_gen import image_pack
+        from ..speech import MODEL_FILE
+        from ..voice_window import inspect
+        model = image_pack.base(installation()[1]['model_root']) / MODEL_FILE
+        return inspect(path, seconds, model, self.output_root / 'FreeVideo' / '.editor' / 'speech')
+
     def library_video(self, identity):
         from ..comfy_library import _video, _report
         try:

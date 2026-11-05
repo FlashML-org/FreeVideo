@@ -1889,6 +1889,13 @@ def register():
             os.replace(target, out)
             info['name'] = identity + suffix
             info['original_name'] = name
+            if info['kind'] in ('audio', 'video') and info.get('has_audio', info['kind'] == 'audio'):
+                try:
+                    voice = await asyncio.to_thread(port.voice_window, out, info['seconds'])
+                except Exception:  # noqa: BLE001 - the check is advice; an upload never fails for it
+                    voice = None
+                if voice is not None:
+                    info['voice'] = voice
             return reply(dict(**assets.view(relative), **info), 201)
 
     @routes.get(PREFIX + '/media/{kind}/{file:.+}/file')
