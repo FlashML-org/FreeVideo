@@ -181,11 +181,13 @@ def run(request, model_dir, device='cuda'):
     used = []
     match = {}  # per line with its own reference: the voiced RMS the line is to come back with
     for index, line in enumerate(lines):
+        if line.get('level'):
+            match[index] = float(line['level'])
         own = line.get('reference')
         if own:
             try:
                 used.append(('line',) + prepare(own, 'line%d' % index) + (cut['reference-line%d.wav' % index], None))
-                match[index] = levels.get('line%d' % index)
+                match.setdefault(index, levels.get('line%d' % index))
                 continue
             except ValueError as error:
                 if str(error) != 'reference_short' or job_ref is None:

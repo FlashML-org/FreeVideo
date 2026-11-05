@@ -471,6 +471,14 @@ def _measure(audio, first, last):
     return (low + span[0]) / RATE, (low + span[1]) / RATE
 
 
+def _level(audio, first, last):
+    """RMS of the sound in [first, last) of a mono 44.1 kHz file: the loudness the new voice is to come back with."""
+    import numpy as np
+    low, high = max(0, int(first * RATE)), min(len(audio), int(last * RATE))
+    part = np.asarray(audio[low:high], dtype=np.float64)
+    return round(float(np.sqrt(np.mean(np.square(part)))), 6) if len(part) else None
+
+
 def _windows(every, todo, spans, base, limit):
     """Where each changed line's new voice goes: the original line plus a little quiet each side, and how far it may reach."""
     windows, failures = {}, {}
@@ -571,6 +579,9 @@ def run_voice_replace(jobs, row, *, poll=.25):
             window = windows[line['id']]
             made = dict(key=line['id'], text=line['text'].strip(), seconds=round(length, 3),
                         onset=round(window['onset'] - window['first'], 3), offset=round(offset - window['first'], 3))
+            level = _level(mono, windows[line['id']]['onset'], windows[line['id']]['offset'])
+            if level:
+                made['level'] = level
             if own and line['end'] - line['start'] >= 1. and line['original_text'].strip():
                 made['reference'] = dict(file=str(original_wav), text=line['original_text'].strip(),
                                          start=base + line['start'], end=base + line['end'])
