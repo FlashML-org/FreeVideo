@@ -687,7 +687,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请点“重试”。仍然停在这里时，可以导出报告。')),
         (r'ComfyUI is already running\. Restart it once', 'comfy-restart',
          ('Restart ComfyUI to load FreeVideo', '需要重启 ComfyUI 才能加载 FreeVideo'),
-         ('Close the ComfyUI that is running now, then click Retry.', '请关闭正在运行的 ComfyUI，然后点击重试。')),
+         ('Close the ComfyUI that is running now, then click "Connect again".', '请关闭正在运行的 ComfyUI，然后点击“重新连接”。')),
         # web/health.js lists the failed files and what to do on the page itself.
         (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),
