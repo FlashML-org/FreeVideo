@@ -176,8 +176,8 @@ class Productions:
         self._waiter_lock = threading.Lock()
         # gate(action, *, by, estimate_seconds, refs, question) raises when the user must approve first.
         self.gate = None
-        # transcribe(path) -> heard text, optional; without it the QA does not compare dialogue.
-        self.transcribe = None
+        # transcribe(path) -> heard text; a machine without a speech model gets a note instead of a comparison.
+        self.transcribe = take_qa.recognise
         self._inspecting = set()
         self.load()
         jobs.parent_allowed = self.allows

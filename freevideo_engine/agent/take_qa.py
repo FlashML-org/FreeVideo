@@ -16,6 +16,11 @@ BLACK_SECONDS = 0.3
 BLACK_SPREAD = 10.0           # a dark but detailed scene is not a black frame
 FREEZE_DIFF = 0.05            # 0-255 mean change between consecutive frames
 FREEZE_SECONDS = 1.5
+TAIL_NOTE_SECONDS = 0.5       # a take that stops moving this long before its end is worth a look
+TAIL_FREEZE_SECONDS = 1.0     # ...and this long it ended early (a held last beat is shorter)
+FLICKER_JUMP = 10.0           # 0-255 mean change that is a cut, not motion
+FLICKER_RATIO = 3.0           # ...and this many times larger than the motion that follows
+FLICKER_LOOK = 6              # frames after the jump that set "the motion that follows"
 SILENT_DB = -45.0             # whole-take RMS below this is near silence
 GAP_DB = -50.0                # 50 ms windows below this are a gap
 GAP_SECONDS = 2.0
@@ -49,6 +54,32 @@ def _pictures(path):
             small.append(gray)
             times.append(float(frame.time) if frame.time is not None else len(times) / 24.0)
     return means, small, times
+
+
+def recognise(path):
+    """The words heard in a take, Chinese or English (the language is identified from the sound)."""
+    from .. import subtitle_ears
+    from .. import subtitle_sherpa  # noqa: F401  registers the recogniser
+    engine = subtitle_ears.engine_for('transcribe')
+    audio = subtitle_ears.decode_mono(path)
+    if len(audio) <= subtitle_ears.RATE * .2:
+        return ''
+    heard = engine.transcribe(audio, 'auto', lambda fraction: None, lambda: False)
+    return ' '.join(word['text'] for line in heard['lines'] for word in line['words'])
+
+
+def _edge_flicker(changes, times):
+    """Seconds of a single odd frame at the start or the end: a jump to or from the neighbour that the
+    motion beside it does not explain."""
+    found = []
+    if len(changes) > FLICKER_LOOK:
+        after = max(changes[1:1 + FLICKER_LOOK])
+        if changes[0] >= FLICKER_JUMP and changes[0] >= FLICKER_RATIO * max(after, 1e-3):
+            found.append(('start', round(times[0], 2)))
+        before = max(changes[-1 - FLICKER_LOOK:-1])
+        if changes[-1] >= FLICKER_JUMP and changes[-1] >= FLICKER_RATIO * max(before, 1e-3):
+            found.append(('end', round(times[-1], 2)))
+    return found
 
 
 def _samples(path):
@@ -103,11 +134,26 @@ def check(path, *, seconds=None, size=None, lines=None, transcribe=None):
         if float(np.abs(small[index] - small[index - 1]).mean()) <= FREEZE_DIFF:
             flags[index] = flags[index - 1] = True
     frozen = _runs(flags, times, FREEZE_SECONDS)
+    changes = [float(np.abs(small[i] - small[i - 1]).mean()) for i in range(1, len(small))]
+    flicker = _edge_flicker(changes, times[1:]) if changes else []
+    # The tail: still for a while at the very end although the take moved before (shorter than a freeze).
+    tail = 0
+    while tail < len(changes) and changes[-1 - tail] <= FREEZE_DIFF:
+        tail += 1
+    tail_seconds = times[-1] - times[-1 - tail] if tail else 0.0
+    ended = (round(times[-1 - tail], 2), round(times[-1], 2)) \
+        if FREEZE_SECONDS > tail_seconds >= TAIL_NOTE_SECONDS and len(changes) > tail and max(changes[:-tail]) > FREEZE_DIFF * 20 else None
     if black:
         problems.append('black picture at %s' % ', '.join('%.1f-%.1f s' % s for s in black))
     if frozen:
         problems.append('frozen picture at %s' % ', '.join('%.1f-%.1f s' % s for s in frozen))
-    result.update(black=black, frozen=frozen)
+    if ended and ended[1] - ended[0] < TAIL_FREEZE_SECONDS:
+        notes.append('picture still for the last %.1f s' % (ended[1] - ended[0]))
+    elif ended:
+        problems.append('picture stops at %.1f s, %.1f s before the end' % (ended[0], ended[1] - ended[0]))
+    if flicker:
+        notes.append('single odd frame at the %s (trim %s)' % (' and '.join(w for w, _ in flicker), ' and '.join('the first frame' if w == 'start' else 'the last frame' for w, _ in flicker)))
+    result.update(black=black, frozen=frozen, flicker=[w for w, _ in flicker], stopped=ended)
 
     if not info['has_audio']:
         problems.append('no audio track')
@@ -132,7 +178,11 @@ def check(path, *, seconds=None, size=None, lines=None, transcribe=None):
                 result['gaps'] = gaps
 
     if lines and transcribe is not None and info['has_audio']:
-        heard = _words(transcribe(path))
+        try:
+            heard = _words(transcribe(path))
+        except Exception as error:  # no speech model is no reason to drop the take
+            notes.append('lines not checked (%s)' % (getattr(error, 'reason', None) or type(error).__name__))
+            return dict(result, problems=problems, notes=notes, ok=not problems)
         missing = []
         for line in lines:
             wanted = _words(line)
