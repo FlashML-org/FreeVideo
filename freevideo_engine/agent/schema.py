@@ -139,8 +139,8 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
             'A reference video only: it guides the first pass for this many steps and is dropped afterwards, '
             'including from the second pass. Omitted: the video guides every step.')
         properties['voice_only'] = {'type': 'boolean', 'description':
-            'A reference video used only for its voice: the picture is encoded small and at a low frame rate, '
-            'the sound is unchanged. Not with early_steps.'}
+            'A reference video used only for its voice: only its sound track is read, as an audio reference, and no '
+            'picture is encoded. A clip without sound is refused. Not with early_steps.'}
     if clip:
         properties.pop('frame')
         properties.pop('edit')

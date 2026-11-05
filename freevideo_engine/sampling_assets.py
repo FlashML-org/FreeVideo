@@ -177,7 +177,8 @@ def engine_task(media, base=None):
 
     A reference video counts as audio when it has an audio stream, exactly as
     the encoder decides, unless the request turned that video's sound off;
-    tables therefore match before the request starts.
+    tables therefore match before the request starts. A voice-only reference
+    video is read as audio and never counts as a picture.
     """
     from .media_request import task_for
     task = task_for(media)
@@ -185,8 +186,9 @@ def engine_task(media, base=None):
         return task
     visual = audio = False
     for ref in media.get('references', []):
-        visual |= ref['kind'] in ('image', 'video')
-        audio |= ref['kind'] == 'audio'
+        voice = ref['kind'] == 'video' and ref.get('voice_only')
+        visual |= ref['kind'] in ('image', 'video') and not voice
+        audio |= ref['kind'] == 'audio' or bool(voice)
         if ref['kind'] == 'video' and not audio and ref.get('sound') is not False and not ref.get('guide'):
             path = Path(ref['path'])
             if base is not None and not path.is_absolute():

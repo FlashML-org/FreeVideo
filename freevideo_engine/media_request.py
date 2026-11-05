@@ -154,7 +154,7 @@ def validate_guide(row):
 
 
 def validate_voice_only(row):
-    """A voice-only video supplies its sound; its picture is kept small and slow because only the voice is wanted."""
+    """A voice-only video supplies only its sound track, read as an audio reference; its picture is not encoded."""
     if row.get('kind') != 'video':
         raise ValueError('voice_only is only allowed on video references')
     if type(row['voice_only']) is not bool:

@@ -74,6 +74,7 @@ GUIDE = {
         "User message attachments are reference images by default. Use each name directly in media.references, media.first or media.last according to the user's words; if the intended role is unclear, ask one question. Text can be empty when a message has attachments.",
         'Tags are numbered per kind in reference order: <Picture 1>, <Picture 2>, <Video 1>, <Audio 1>. '
         'For keyframes the first frame is <Picture 1> and the last frame the next picture.',
+        'A reference video marked voice_only is an audio reference: its sound is <Audio N> and it has no <Video N> tag.',
         'Name subjects <Subject 1>, <Subject 2> in subject_definitions and reuse those labels in every section.',
         'Clips are cut to the generated length (at most 15 s); the job result lists any cut.',
     ],

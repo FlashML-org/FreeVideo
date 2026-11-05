@@ -14,7 +14,6 @@ from pathlib import Path
 
 
 REFERENCE_FRAMES = 360  # 15 s at 24 fps, the longest H3 generation
-VOICE_ONLY_CANVAS = {'width': 256, 'height': 144}  # a clip kept only for its voice is encoded this small
 
 
 def reference_frames(canvas):
@@ -161,6 +160,9 @@ def prepare(media, canvas, directory):
                        'width': canvas['width'], 'height': canvas['height'], 'crop_mode': 'fit'})
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']
+        if kind == 'video' and row.get('voice_only'):
+            # Only the sound is wanted, so the clip is read as an audio reference and no picture is encoded.
+            kind = 'audio'
         if row.get('use') == 'original':
             from .original_audio import model_audio, inspect
             numbers[kind] += 1
@@ -198,8 +200,7 @@ def prepare(media, canvas, directory):
                 if not container.streams.video:
                     raise ValueError('Reference video has no video stream')
                 stream = container.streams.video[0]
-                voice_only = bool(row.get('voice_only'))
-                width, height = reference_size(stream.width, stream.height, VOICE_ONLY_CANVAS if voice_only else canvas)
+                width, height = reference_size(stream.width, stream.height, canvas)
                 length = clip_seconds(container, stream)
                 pixels = np.lib.format.open_memmap(target, mode='w+', dtype=np.uint8, shape=(limit, height, width, 3))
                 origin = None
@@ -224,23 +225,12 @@ def prepare(media, canvas, directory):
                         count += 1
                     previous = image
                 del previous
-                step = 1
-                if voice_only:
-                    # Every third frame (8 fps), or every second (12 fps) when that would leave too few frames.
-                    step = next((n for n in (3, 2) if count // n >= 22), 1)
-                    kept = np.array(pixels[:count:step])
-                    del pixels
-                    pixels, count = kept, len(kept)
                 count = count - (count - 5) % 17
                 if count < 22:
                     raise ValueError('The reference video is too short; it needs to be at least about 1 s long.')
-                if voice_only:
-                    np.save(target, pixels[:count], allow_pickle=False)
-                else:
-                    pixels.flush()
-                ref.update(pixels=str(target), frames=count, normalized_fps=24 // step, width=width, height=height,
-                           crop_mode='voice_%dfps' % (24 // step) if voice_only else 'video_24fps')
-                used = count * step / 24.
+                pixels.flush()
+                ref.update(pixels=str(target), frames=count, normalized_fps=24, width=width, height=height, crop_mode='video_24fps')
+                used = count / 24.
                 # The clip's own sound is a reference too, unless the request turned it off.
                 soundtrack, longer_audio, _ = (None, False, None) if row.get('sound') is False or row.get('guide') else \
                     _audio(path, directory / ('reference-%02d-audio.npy' % index), limit / 24.)
@@ -248,7 +238,7 @@ def prepare(media, canvas, directory):
                 if soundtrack:
                     ref['audio'] = soundtrack
                     ref_items.append({'type': 'audio'})
-                selected = list(range(0, count, 12 // step))
+                selected = list(range(0, count, 12))
                 sampled = torch.from_numpy(np.array(pixels[selected])).float().div_(255)
                 if not row.get('guide'):
                     # A guide only supplies motion latents; it is not described to the
@@ -258,7 +248,8 @@ def prepare(media, canvas, directory):
         else:
             ref['audio'], longer, length = _audio(path, target, limit / 24.)
             if ref['audio'] is None:
-                raise ValueError('Reference audio file has no audio stream')
+                raise ValueError('The voice-only reference video has no audio stream' if row['kind'] == 'video'
+                                 else 'Reference audio file has no audio stream')
             ref.update(width=0, height=0, frames=0, crop_mode='audio_32khz')
             ref_items.append({'type': 'audio'})
         if longer:
