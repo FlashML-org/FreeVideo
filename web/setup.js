@@ -22,6 +22,7 @@ const SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source spe
 const repairStep = text => text.includes('In the FreeVideo launcher, open Settings and click Repair.')
     ? t('In the FreeVideo launcher, open Settings and click Repair.', '请在 FreeVideo 启动器的设置里点“修复”。')
     : t('Click Detect & review, then Install / repair.', '请先点“检测并预览”，再点“安装／修复”。');
+const WAIT_REFUSAL = /^Wait for (the installation check|the installation|a placement test|a setup task) to finish; its progress is in this panel\.$/;
 const SETUP_ERRORS = [
     [/^Choose an engine installation folder$/, () => t('Choose a FreeVideo installation folder first.', '请先选择 FreeVideo 安装目录。')],
     [/^Use a dedicated FreeVideo folder, not the ComfyUI root or its parent$/,
@@ -32,6 +33,13 @@ const SETUP_ERRORS = [
     [/^Finish or cancel queued ComfyUI requests before calibrating$/,
         () => t('Generations are running or queued. Run the test after they finish, or cancel them first.', '仍有生成正在进行或排队。请等待完成或先取消，再运行放置测试。')],
     [/^Wait for setup to finish$/, () => t('Installation is still running. Try again after it finishes.', '安装仍在进行，请在完成后重试。')],
+    // The placement test refuses to start beside another setup task and names it; that is a
+    // wait, not a fault, so it is shown as plain text without the report button.
+    [WAIT_REFUSAL,
+        text => {
+            const names = {'the installation check': '安装检查', 'the installation': '安装', 'a placement test': '放置测试'};
+            return t(text, `请等待${names[text.match(/^Wait for (.+) to finish/)[1]] ?? '安装任务'}完成，进度见本面板。`);
+        }],
     [/^Inspect this installation again before installing$/, () => t('Click Detect & review again, then Install / repair.', '请重新点“检测并预览”，再点“安装／修复”。')],
     [/^Review the plan and accept its model\/toolkit licenses first$/, () => t('Tick the agreement above to enable Install / repair.', '勾选上方的同意选项后，可点击“安装／修复”。')],
     [/^FreeVideo setup is missing\./, text => t('This folder has no finished FreeVideo installation. ', '该文件夹中没有已安装的 FreeVideo。') + repairStep(text)],
@@ -199,6 +207,7 @@ export async function openSetup() {
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
     let savedFolders = "", savedMissing = false;
+    let calibrateWait = false;
     let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, planErrors = false, planStale = false, ready = false, waitSince;
     // A click names what is happening at once, before the server has answered.
     const doing = (en, zh) => { waitSince ??= Date.now(); state.className = ''; state.textContent = t(en, zh); };
@@ -239,9 +248,13 @@ export async function openSetup() {
             installation.open = true;
             cancel.scrollIntoView({block: 'center'});
         } catch (error) {
-            calibrateStatus.className = 'fv-failure';
+            // A refusal that names the running task is a wait, not a fault: shown quietly, with the
+            // installation section open and the state polled so the progress it points to is visible.
+            calibrateWait = WAIT_REFUSAL.test(String(error.message || ''));
+            calibrateStatus.className = calibrateWait ? 'fv-muted' : 'fv-failure';
             fault(calibrateStatus, error.message);
-        } finally { calibrateButton.disabled = false; }
+            if (calibrateWait) { installation.open = true; poll(); }
+        } finally { calibrateButton.disabled = busy; }
     };
     saveReserve.onclick = async () => {
         clearReserveStatus();
@@ -310,7 +323,7 @@ export async function openSetup() {
         catch(error) { probeButton.disabled=false; fail(error); }
     };
     const controls = () => {
-        for (const e of [root, extra, copy, samplingCaches, saveFolders, inspect, use, hfToken, applyToken, clearToken]) e.disabled = busy;
+        for (const e of [root, extra, copy, samplingCaches, saveFolders, inspect, use, hfToken, applyToken, clearToken, calibrateButton]) e.disabled = busy;
         cancel.hidden = !busy; install.disabled = busy || !planId || !accept.checked; accept.disabled = busy; inspect.classList.toggle("fv-primary", !planId); install.classList.toggle("fv-primary", Boolean(planId));
         const why = busy ? "" : planStale ? t("Settings changed. Click Detect & review again.", "设置已更改，请重新点“检测并预览”。")
             : planErrors ? t("Fix the problems marked in red above, then click Detect & review again.", "上面有标红的问题，处理后请重新点“检测并预览”。")
@@ -365,6 +378,8 @@ export async function openSetup() {
     }
     function render(task) {
         busy = Boolean(task.busy); if (!busy) waitSince = undefined; else waitSince ??= Date.now();
+        // The wait sentence ends with the task it named.
+        if (!busy && calibrateWait) { calibrateWait = false; calibrateStatus.className = 'fv-muted'; calibrateStatus.textContent = ''; }
         ready = Boolean(task.ready) || ready && task.status !== 'failed';
         cancel.textContent = task.action === 'calibrate' ? t('Stop', '停止') : t('Stop setup', '停止安装');
         inputs.hidden = busy; plan.hidden = busy;
