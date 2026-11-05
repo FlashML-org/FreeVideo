@@ -208,6 +208,13 @@ export async function openSetup(options) {
         const {openCreativeWorkspace} = await import('./view_navigation.js');
         return openCreativeWorkspace();
     }});
+    const storage = node('section'); storage.append(node('h3', t('Storage', '存储')));
+    const storageName = node('span', t('Working files from finished videos', '已完成视频的中间文件'));
+    const storageSize = node('span'); storageSize.setAttribute('role', 'status');
+    const storageClear = node('button', t('Clear up', '清理')); storageClear.disabled = true;
+    const storageRow = node('div'); storageRow.className = 'fv-storage-row';
+    const storageEnd = node('div'); storageEnd.className = 'fv-storage-end'; storageEnd.append(storageSize, storageClear);
+    storageRow.append(storageName, storageEnd); storage.append(storageRow);
     const agentConfirm = agentConfirmSettings(t, api);
     // The preview while generating is a frame sheet; this switch plays it as a loop of the video in progress instead.
     // It applies to the preview on screen at once, on this page and on the phone page.
@@ -249,11 +256,35 @@ export async function openSetup(options) {
         loopSwitch.focus({preventScroll: true});
     };
     dialog.addEventListener('fv-setup-section', event => showSection(event.detail));
-    dialog.append(heading, installation, downloads, preview, status, agentConfirm.element, advanced, guideReplay);
+    dialog.append(heading, installation, downloads, preview, status, storage, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
     if (section) showSection(section);
+    const storageAmount = bytes => bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : (bytes / 1e6).toFixed(1) + ' MB';
+    const storageSay = (text, again) => { storageSize.textContent = text; storageClear.disabled = !again; };
+    const storageCheck = async () => {
+        try {
+            const response = await api.fetchApi('/freevideo/library/working-files');
+            const {bytes} = await response.json();
+            if (!response.ok || !Number.isFinite(bytes)) throw new Error();
+            if (bytes > 0) storageSay(storageAmount(bytes), true); else storageSay(t('Nothing to clear up', '没有可清理的文件'), false);
+        } catch { storageSay(t('The output folder cannot be accessed.', '无法访问输出文件夹'), true); }
+    };
+    storageClear.onclick = async () => {
+        storageClear.disabled = true;
+        try {
+            const response = await api.fetchApi('/freevideo/library/working-files/clear', {method: 'POST'});
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error();
+            const {freed_bytes: freed, left} = result;
+            if (left > 0) storageSay(cn ? (freed > 0 ? `已释放 ${storageAmount(freed)}，` : '') + `${left} 项未能删除`
+                : (freed > 0 ? `Freed ${storageAmount(freed)}. ` : '') + `${left} ${left === 1 ? 'item' : 'items'} could not be deleted.`, true);
+            else if (freed > 0) storageSay(t(`Freed ${storageAmount(freed)}`, `已释放 ${storageAmount(freed)}`), false);
+            else storageSay(t('Nothing to clear up', '没有可清理的文件'), false);
+        } catch { storageSay(t('The output folder cannot be accessed.', '无法访问输出文件夹'), true); }
+    };
+    storageCheck();
     let savedFolders = "", savedMissing = false;
     let calibrateWait = false;
     let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, planErrors = false, planStale = false, ready = false, waitSince;
