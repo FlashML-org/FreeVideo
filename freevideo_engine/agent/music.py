@@ -49,10 +49,10 @@ def run_music(jobs, row, *, poll=.5):
                 generate_seconds=numbers.get('generate_s'), load_seconds=numbers.get('load_s'))
 
 
-def _compose(jobs, row, service, out, frames, seed, quiet, phase, poll):
+def _compose(jobs, row, service, out, frames, seed, quiet, phase, poll, *, caption=None):
     for attempt in range(PREEMPTIONS + 1):
         try:
-            return service.compose(out, row['spec']['caption'], frames, seed=seed, quiet=quiet, fps=comfy_editor.FPS,
+            return service.compose(out, row['spec']['caption'] if caption is None else caption, frames, seed=seed, quiet=quiet, fps=comfy_editor.FPS,
                                    server=getattr(jobs.port, 'server', None), cancelled=lambda: bool(row.get('_cancel')),
                                    phase=phase)
         except service.Preempted:

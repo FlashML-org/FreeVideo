@@ -172,7 +172,7 @@ def submit_batch(jobs, body, client):
     return jobs.submit_request(body, client=client)[0]
 
 
-JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'voice_lines', 'voice_replace')
+JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace')
 
 
 def stems_supported(machine):
@@ -203,7 +203,8 @@ def features(continuation, vlm, stems=False, voice=True):
             'queue.shared': True, 'queue.busy': True, 'chain.auto': bool(continuation),
             'enhance': bool(vlm.get('ready')), 'drama.film': True, 'images.edit': rules,
             'images.layers': rules, 'images.heal': rules, 'images.render': rules, 'projects.read': True,
-            **{'projects.' + name: rules for name in ('insert', 'split', 'move', 'trim', 'remove', 'export', 'generate', 'listen', 'music')},
+            **{'projects.' + name: rules for name in ('insert', 'split', 'move', 'trim', 'remove', 'export', 'generate', 'listen', 'music',
+                                                    'finish_sound')},
             'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice)}
 
 
@@ -255,6 +256,7 @@ def capabilities(port, jobs):
                'listen': 'Listen to the sound of an editing project for subtitle lines and times',
                'music': 'Compose music for an editing project and lay it on its second sound track',
                'stems': 'Split the sound of a clip into dialogue, music and ambience on sub-tracks',
+               'finish_sound': 'Finish the sound of a joined cut: one score, even loudness, room tone',
                'voice_lines': 'Write down the spoken lines of a sound clip with their start and end',
                'voice': 'Say edited lines again in the original voice and put them back where the originals were',
                'image_edit': 'Render a saved revision of an image session to a picture'},

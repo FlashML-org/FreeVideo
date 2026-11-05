@@ -300,6 +300,10 @@ def normalize(value, *, port=None):
     elif kind == 'stems':
         result.update(editor_project=value['editor_project'], revision=value['revision'], clip_id=value['clip_id'],
                       lay=value.get('lay', True))
+    elif kind == 'finish_sound':
+        result.update(editor_project=value['editor_project'], revision=value['revision'],
+                      keep_dialogue_volume=bool(value.get('keep_dialogue_volume', False)),
+                      **({'music': dict(value['music'])} if 'music' in value else {}))
     elif kind == 'voice_lines':
         result.update(editor_project=value['editor_project'], revision=value['revision'], selection=dict(value['selection']),
                       language=value.get('language', 'auto'), separate_first=bool(value.get('separate_first', False)),

@@ -27,6 +27,7 @@ from .comfy_continuation import audio_lead_in, apply_audio_lead_in
 from .editor_limits import PROJECT_BYTES
 from .editor_text import is_text_track, has_text_data, validate_text_project, paint_project, check_export_text, MissingGlyphs
 from . import editor_export_options
+from .audio_loudness import Limiter
 from .editor_speed import validate_clip, changed as speed_changed, audio_changed, independent_join, VideoReader, AudioReader
 from .editor_audio import (clip_fields, track_fields, clip_audible, track_audible, crossfade_reads, apply_track_audio,
                            duck_ranges, duck_gain, duck_sources)
@@ -663,6 +664,9 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
     try:
         width, height, total, tracks = _layout(project)
         settings = editor_export_options.effective(options, width, height, total)
+        peak = project.get('master_peak_db')
+        if peak is not None and (type(peak) not in (int, float) or not math.isfinite(peak) or not -12 <= peak <= 0):
+            raise ExportError()
         width, height, total = settings.width, settings.height, settings.frames
         if settings.only == 'sound':
             tracks = {key: clips for key, clips in tracks.items() if key != 'v1'}
@@ -737,7 +741,32 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
             readers.callback(lambda: [decoder.close() for decoder in decoders.values()])
             black = np.zeros((height, width, 3), dtype=np.uint8) if video is not None else None
             written = 0
+
+            def encode_sound(block, number):
+                samples, sample_format = editor_export_options.sound_samples(block, settings)
+                sound = _audio_frame(samples, format=sample_format, layout='stereo')
+                sound.sample_rate = SAMPLE_RATE
+                sound.pts, sound.time_base = (number - settings.start) * SAMPLES_PER_FRAME, Fraction(1, SAMPLE_RATE)
+                for packet in audio.encode(sound):
+                    output.mux(packet)
+                if video is None and progress:
+                    progress((number - settings.start + 1) / total * .99)
+
+            # With a master ceiling the mix goes through a true-peak limiter, whose output lags its input;
+            # its frames are encoded by their own timeline position.
+            limiter = Limiter(peak, SAMPLE_RATE) if peak is not None else None
+            limited, limited_frame = np.zeros((2, 0)), None
+
+            def drain(final):
+                nonlocal limited, limited_frame
+                while limited.shape[1] >= SAMPLES_PER_FRAME or (final and limited.shape[1]):
+                    block = np.clip(limited[:, :SAMPLES_PER_FRAME], -1., 1.).astype(np.float32)
+                    limited = limited[:, SAMPLES_PER_FRAME:]
+                    if limited_frame >= settings.start:
+                        encode_sound(block, limited_frame)
+                    limited_frame += 1
             lead_start = editor_export_options.audio_lead_start(settings.start, tracks)
+            limited_frame = lead_start
             for number in range(lead_start, settings.start + total):
                 _check(cancelled)
                 for track, clips in editor_export_options.frame_tracks(tracks, settings.start, number):
@@ -813,17 +842,17 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
                     mixed += apply_track_audio(track_block, number * SAMPLES_PER_FRAME, audio_tracks[track],
                                                project['tracks'], extras=extras)
                     del extras
+                if limiter is not None:
+                    limited = np.concatenate([limited, limiter.push(mixed)], axis=1)
+                    drain(False)
+                    continue
                 np.clip(mixed, -1., 1., out=mixed)
                 if number < settings.start:
                     continue
-                samples, sample_format = editor_export_options.sound_samples(mixed, settings)
-                sound = _audio_frame(samples, format=sample_format, layout='stereo')
-                sound.sample_rate = SAMPLE_RATE
-                sound.pts, sound.time_base = (number - settings.start) * SAMPLES_PER_FRAME, Fraction(1, SAMPLE_RATE)
-                for packet in audio.encode(sound):
-                    output.mux(packet)
-                if video is None and progress:
-                    progress((number - settings.start + 1) / total * .99)
+                encode_sound(mixed, number)
+            if limiter is not None:
+                limited = np.concatenate([limited, limiter.flush()], axis=1)
+                drain(True)
             _check(cancelled)
             for stream in (video, audio):
                 if stream is None:
