@@ -864,11 +864,6 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     # Validation messages are already actionable. Show the cause, not a stack
     # trace or a guessed hardware diagnosis, and leave long details expandable.
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if lines and all(re.fullmatch(INSPECTION_SUMMARY, line) for line in lines):
-        # The check printed nothing but its own summary line (once per place that kept it); that line
-        # is for the report, not the card. The next step goes under it, as for an unexpected failure.
-        return dict(title='暂时未能完成' if zh else 'Couldn’t complete this step',
-                    detail=CHECK_UNFINISHED[zh] + '\n' + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
     causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
     detail = causes[-1] if causes else next((line for line in reversed(lines)
         if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Existing files are retained.', 'Rerun the same setup command'))), '')
@@ -894,9 +889,6 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     return dict(title=title, detail=detail, action='', kind='unknown')
 
 
-# comfy_setup.inspection_failed: the first line of a failed check.
-INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
-CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
 UNKNOWN_NEXT_STEP = ('Try again. If it fails again, export the report, then use "Report a problem" and attach it.',
                      '请重试。仍然失败时，请先导出报告，再点“提交问题”并附上报告。')
 

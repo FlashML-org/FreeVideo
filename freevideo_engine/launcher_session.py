@@ -2424,8 +2424,6 @@ class Session:
         download_state = dict(checking=bool(self.controller.busy), error=self.download_error,
             needs_check=self.download_error_key in ('unchecked', 'changed'), folder=self.download_export,
             inspection_error=inspection_read_error,
-            # Any failed check: the list's own line asks for Check again, so the raw error stays in the details.
-            inspection_failed=row.get('status') == 'failed' and row.get('action') == 'inspect',
             notice=downloads['copy']['exported'].format(folder=self.download_export) if self.download_export else '')
         if inspection_read_error:
             download_state.update(error=self.t(*DOWNLOAD_COPY['error_read']), needs_check=True)

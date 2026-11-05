@@ -1644,24 +1644,20 @@ ApplicationWindow {
                     }
                     FText { objectName: "downloadActionNotice"; visible: !!s.action_notice && s.action_notice !== s.busy_reason; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true }
                     FText { objectName: "downloadListError"; visible: text.length > 0; text: s.download_list.error; color: theme.danger; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: theme.micro + 1 }
-                    FText { objectName: "downloadListRawError"; visible: s.error.length > 0 && !s.download_list.inspection_failed; text: s.error; color: theme.danger; Layout.fillWidth: true; maximumLineCount: 2; elide: Text.ElideRight; font.pixelSize: theme.micro }
+                    FText { objectName: "downloadListRawError"; visible: s.error.length > 0 && !s.download_list.inspection_error; text: s.error; color: theme.danger; Layout.fillWidth: true; maximumLineCount: 2; elide: Text.ElideRight; font.pixelSize: theme.micro }
                 }
             }
             FText { objectName: "downloadBusyReason"; visible: !s.can_manage && (!s.action_notice || s.action_notice === s.busy_reason); text: s.busy_reason; color: theme.muted; Layout.fillWidth: true }
-            GridLayout {
-                id: downloadListActions; objectName: "downloadListActions"; Layout.fillWidth: true; Layout.minimumWidth: 0
-                columnSpacing: 8; rowSpacing: 8
-                // Wide: one row, Close on the left, every label on one line. Narrow, or wherever the row would not
-                // hold every label on one line: one full-width column, the actions first and Close last.
-                readonly property real rowWidth: closeDownloadList.implicitWidth + (checkDownloadList.visible ? checkDownloadList.implicitWidth : 0)
-                    + (useDownloadedFolder.visible ? useDownloadedFolder.implicitWidth : 0) + exportDownloadList.implicitWidth + (actionCount + 1) * columnSpacing
-                readonly property bool stacked: win.narrow || rowWidth > width
+            RowLayout {
+                objectName: "downloadListActions"; Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 8
+                // The actions share what the Close button leaves, so a long label wraps instead of leaving the dialog.
                 readonly property int actionCount: (checkDownloadList.visible ? 1 : 0) + (downloads.scope === "image" ? 1 : 2)
-                FButton { id: closeDownloadList; objectName: "closeDownloadList"; Layout.row: downloadListActions.stacked ? 3 : 0; Layout.column: 0; Layout.fillWidth: downloadListActions.stacked; text: downloads.copy.close; flat: true; onClicked: modelInfoOpen = false }
-                Item { visible: !downloadListActions.stacked; Layout.row: 0; Layout.column: 1; Layout.fillWidth: true }
-                FButton { id: checkDownloadList; objectName: "checkDownloadList"; Layout.row: 0; Layout.column: downloadListActions.stacked ? 0 : 2; Layout.fillWidth: downloadListActions.stacked; visible: downloads.scope !== "image" && (!downloads.available || s.download_list.needs_check); text: downloads.copy.check; enabled: !s.busy; onClicked: backend.prepareDownloadList() }
-                FButton { id: useDownloadedFolder; objectName: "useDownloadedFolder"; visible: downloads.scope !== "image"; Layout.row: downloadListActions.stacked ? 1 : 0; Layout.column: downloadListActions.stacked ? 0 : 3; Layout.fillWidth: downloadListActions.stacked; text: downloads.copy.use_folder; enabled: s.can_manage; onClicked: backend.useDownloadedFolder() }
-                FButton { id: exportDownloadList; objectName: "exportDownloadList"; Layout.row: downloadListActions.stacked ? 2 : 0; Layout.column: downloadListActions.stacked ? 0 : 4; Layout.fillWidth: downloadListActions.stacked; text: downloads.copy.export; primary: true; enabled: downloads.available && (downloads.scope === "image" || !s.busy); onClicked: backend.exportDownloadList() }
+                readonly property real actionWidth: Math.max(80, Math.floor((width - closeDownloadList.implicitWidth - (actionCount + 1) * spacing) / actionCount))
+                FButton { id: closeDownloadList; text: downloads.copy.close; flat: true; onClicked: modelInfoOpen = false }
+                Item { Layout.fillWidth: true }
+                FButton { id: checkDownloadList; objectName: "checkDownloadList"; Layout.maximumWidth: parent.actionWidth; visible: downloads.scope !== "image" && (!downloads.available || s.download_list.needs_check); text: downloads.copy.check; enabled: !s.busy; onClicked: backend.prepareDownloadList() }
+                FButton { objectName: "useDownloadedFolder"; visible: downloads.scope !== "image"; Layout.maximumWidth: parent.actionWidth; text: downloads.copy.use_folder; enabled: s.can_manage; onClicked: backend.useDownloadedFolder() }
+                FButton { objectName: "exportDownloadList"; Layout.maximumWidth: parent.actionWidth; text: downloads.copy.export; primary: true; enabled: downloads.available && (downloads.scope === "image" || !s.busy); onClicked: backend.exportDownloadList() }
             }
         }
     }
