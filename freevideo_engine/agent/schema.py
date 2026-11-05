@@ -234,7 +234,7 @@ def generate(*, local=False):
 def assemble(*, local=False):
     return obj(dict(kind={'const': 'assemble', 'type': 'string'},
         clips=array({'anyOf': [JOB, SAVED, media(local=local, clip=True)]}, 1, 200),
-        transition=enum(('cut', 'crossfade'), default='cut'), transition_seconds=number(.04, 5, default=.5),
+        transition=enum(('cut', 'crossfade'), default='cut'), transition_seconds=number(1 / 24, 3, default=.5),
         width=nullable(number(64, 4096, integer=True, multipleOf=2)), height=nullable(number(64, 4096, integer=True, multipleOf=2)),
         audio={'type': 'boolean', 'default': True}, name=SLUG, **common()), ('kind', 'clips'),
         **{'x-job-kind': 'assemble'})

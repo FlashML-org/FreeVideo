@@ -180,20 +180,14 @@ def fit(synth, target, *, onset=0., offset=None, tolerance=TOLERANCE, max_stretc
         tried.append((speed, voice, rate, seconds(voice, rate), edges))
         return tried[-1]
 
-    # A line that is too long is first closed by the tempo change, which keeps the voice natural; the model
-    # speed only takes what the tempo change cannot (a faster model speed costs naturalness quickly).
-    # A line that is too short is slowed by the tempo change in the same way, inside the same range.
-    def aim(length):
-        return min(max(length, wanted / (max_stretch * .96)), wanted * max_stretch * .96)   # inside this range no model speed is needed
-
     def off(entry):
-        return abs(entry[3] - aim(entry[3])) / wanted
+        return abs(entry[3] - wanted) / wanted
 
     speed = 1.0
     entry = run(speed)
     while off(entry) > tolerance and len(tried) < 3:
         # the length scales with 1/speed, so the next speed is the measured ratio
-        speed = min(max(speed * entry[3] / aim(entry[3]), low), high)
+        speed = min(max(speed * entry[3] / wanted, low), high)
         if speed == tried[-1][0]:
             break
         entry = run(speed)

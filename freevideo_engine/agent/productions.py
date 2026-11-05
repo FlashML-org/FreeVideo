@@ -24,6 +24,8 @@ import uuid
 from . import drama, production, schema, spec, errors, operation_receipts, take_qa
 from .jobs import DONE, JobError, iso, parts_problems
 from .forecast import generation_estimate
+from .length import WAIT_SECONDS, capability_table, single_frame_limit
+from .. import chain_plan
 
 SHEET_LEAST, SHEET_MOST = 6, 24  # frames per take when the caller gives no count: one per second
 
@@ -206,7 +208,7 @@ class Productions:
                     raise ValueError('Invalid submission marker')
                 production.view(state)
                 try:
-                    checked = production.plan(request, fields=False)
+                    checked = production.plan(request, fields=False, single_seconds=math.inf)  # saved: the limit held when it was accepted
                     if [s['id'] for s in state['shots']] != [s['id'] for s in checked['preview']['shots']]:
                         raise JobError('internal_error', 'Saved shots differ from the current plan')
                     production.advance(deepcopy(state), deepcopy(record['children']), now=state['updated_at'])
@@ -366,8 +368,24 @@ class Productions:
         if problems:
             _domain(production._invalid, problems)
 
+    def _single_seconds(self, request):
+        """The longest shot this machine generates at once for the film's size and quality; unknown keeps 15 s."""
+        play = request.get('screenplay') if isinstance(request, dict) else None
+        try:
+            probe = dict(prompt='x', aspect=play.get('aspect', '9:16'), quality=play.get('quality', 'light'), seconds=15)
+            if play.get('megapixels'):
+                probe['megapixels'] = play['megapixels']
+            probe = spec.normalize(probe, port=self.jobs.port)
+            # Pictures and cards make the shot a reference generation, which has its own limit.
+            table = capability_table(self.jobs.port, probe, wait=WAIT_SECONDS, task='ref2va')
+            limit = single_frame_limit(probe, table=table)
+            return chain_plan.single_seconds(limit)
+        except Exception:  # A film that does not normalize is reported by its own checks.
+            return chain_plan.BLOCK_SECONDS
+
     def plan(self, request, *, local=True):
-        result = _domain(production.plan, {k: v for k, v in request.items() if k != 'ref'})
+        result = _domain(production.plan, {k: v for k, v in request.items() if k != 'ref'},
+                         single_seconds=self._single_seconds(request))
         state = _domain(production.new, 'dplanpreview', result['request'], now=iso(self.jobs.clock()))
         play = result['request']['screenplay']
         with self.changed:
@@ -382,7 +400,7 @@ class Productions:
             row.update(cast_reference=resolved['cast_reference'], cast=resolved['people'],
                        cast_omitted=resolved['omitted'], cast_voice_omitted=resolved['voice_omitted'],
                        cast_missing=resolved['missing'], cast_pictures_each=pictures_each(resolved),
-                       references=len(resolved['references']))
+                       references=len(resolved['references']) + resolved['own_pictures'])
             try:
                 spec._text(row['prompt'], '/screenplay/shots/%d/prompt' % i, 20000)
             except spec.SpecError as error:
@@ -411,7 +429,7 @@ class Productions:
             resolved = self._carry(state['screenplay'], state['screenplay']['shots'][shot['index'] - 1],
                                    self._current(state['screenplay']), item, continues=shot['continues'])
             if resolved['references']:
-                item['media'] = dict(references=deepcopy(resolved['references']))
+                item['media'] = dict(references=self._own(item) + deepcopy(resolved['references']))
             estimate, revision = generation_estimate(self.jobs.port, spec.normalize(item, port=self.jobs.port))
             return dict(estimate, revision=revision)
         except Exception:  # Timing is optional; a forecast failure must not reject a film or job.
@@ -449,7 +467,8 @@ class Productions:
             shapes.append([normalized[k] for k in ('width', 'height', 'frames')])
         current = next((j for j in state['joins'] if j['ref'] == state['current_join']), None)
         transition = current['transition'] if current else state['screenplay'].get('transition', 'cut')
-        signature = dict(shapes=shapes, transition=transition)
+        seconds = state['screenplay'].get('transition_seconds', .5)
+        signature = dict(shapes=shapes, transition=transition, transition_seconds=seconds)
         if previous and previous.get('signature') == signature and previous.get('ref') == state['current_join']:
             return previous
         samples = []
@@ -460,7 +479,7 @@ class Productions:
             if saved.get('transition', 'cut') != transition or saved.get('width') or saved.get('height'):
                 continue
             if saved.get('audio', True) is not True or (
-                    transition == 'crossfade' and saved.get('transition_seconds', .5) != .5):
+                    transition == 'crossfade' and saved.get('transition_seconds', .5) != seconds):
                 continue
             if any(set(clip) != {'from_job'} for clip in saved['clips']):
                 continue
@@ -970,7 +989,8 @@ class Productions:
                     raise JobError('production_limit', 'Too many child jobs')
                 if 'join' in action:
                     item = dict(kind='assemble', clips=[children[r]['id'] for r in item['takes']],
-                                transition=item['transition'])
+                                transition=item['transition'],
+                                transition_seconds=record['state']['screenplay'].get('transition_seconds', .5))
                 else:
                     take = next(t for s in record['state']['shots'] for t in s['takes'] if t['job'] == ref)
                     if take['generation'] > MAX_GENERATION:
@@ -1025,11 +1045,17 @@ class Productions:
         if resolved['cast_reference'] is None:
             return resolved
         if resolved['references']:
-            item['media'] = dict(references=deepcopy(resolved['references']))
+            item['media'] = dict(references=self._own(item) + deepcopy(resolved['references']))
+        if resolved['prefix']:
             item['prompt'] = drama.with_cast(item['prompt'], resolved)
         item['metadata'] = dict(item.get('metadata') or {}, cast=dict(resolved['cards']),
                                 cast_reference=resolved['cast_reference'])
         return resolved
+
+    @staticmethod
+    def _own(item):
+        """The pictures the shot itself names; the cast cards are added after them."""
+        return deepcopy(((item or {}).get('media') or {}).get('references') or [])
 
     def _carry(self, play, shot, cards, item, *, continues):
         """The cast a shot carries: each person's sheet and face close-up on every device (one picture a person when

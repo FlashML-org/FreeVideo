@@ -73,7 +73,7 @@ def _compiled(play, shot):
 
 # What a screenplay shot and a line may say; anything else would be ignored without a word.
 SHOT_FIELDS = ('id', 'seconds', 'action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music', 'takes', 'seed',
-               'continue', 'first', 'references', 'cast', 'lines')
+               'continue', 'first', 'references', 'cast', 'lines', 'cuts')
 LINE_FIELDS = ('who', 'line', 'how', 'language')
 
 
@@ -101,7 +101,7 @@ def _fields(play, problems):
             problems.append(dict(path=prefix + name, message='is not a field here; use ' + ', '.join(known)))
 
 
-def plan(request, *, fields=True):
+def plan(request, *, fields=True, single_seconds=drama.BLOCK_SECONDS):
     """Return {'request': normalized copy, 'preview': {'shots': [...], 'total': N}}.
 
     fields=False rechecks a saved screenplay, which may predate the unknown-field rule."""
@@ -112,7 +112,7 @@ def plan(request, *, fields=True):
     play = deepcopy(request.get('screenplay'))
     play_ok = True
     try:
-        drama.check(play)
+        drama.check(play, single_seconds)
     except drama.Screenplay as error:
         play_ok = False
         problems.extend(dict(path='/screenplay' + p['path'], message=_rule(p)) for p in error.problems)

@@ -90,11 +90,6 @@ def request(value):
             raise ValueError('invalid_request')
         if line.get('reference') is not None:
             row['reference'] = reference_of(line['reference'], required=True)
-        level = line.get('level')
-        if level is not None:
-            if isinstance(level, bool) or not isinstance(level, (int, float)) or not 0 < level <= 1:
-                raise ValueError('invalid_request')
-            row['level'] = float(level)
         instruction = line.get('instruction')
         if instruction not in (None, ''):
             if not isinstance(instruction, str) or len(instruction) > 200:
