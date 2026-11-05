@@ -28,8 +28,13 @@ SAMPLE_RATE = 16000
 WINDOW = 0.05
 
 
+_CJK = '\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af'
+_WORD = re.compile("[%s]|(?:(?![%s])[\\w'])+" % (_CJK, _CJK))
+
+
 def _words(text):
-    return re.findall(r"[\w']+", str(text).lower())
+    """Words of a line; Chinese, Japanese and Korean have no spaces, so each of their characters is one."""
+    return _WORD.findall(str(text).lower())
 
 
 def _pictures(path):

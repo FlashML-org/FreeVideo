@@ -517,11 +517,17 @@ class Productions:
                 return 1.
             value = (self.jobs.progress(row) or {}).get('fraction') if row and status == 'running' else None
             return min(1., max(0., value)) if type(value) in (int, float) and math.isfinite(value) else 0.
+        waiting = set()  # built-in shots whose first live take is still going: the others are withdrawn once it is chosen
         for shot, take in self._takes(state):
             child = children.get(take['job'])
             status = child['status'] if child and take['state'] != 'paused' else take['state']
             if take['stale'] or status == 'cancelled' or (take['cancel_requested'] and status != 'succeeded'):
                 continue
+            if state['director'] == 'builtin':
+                if shot['id'] in waiting:
+                    continue
+                if status not in ('succeeded', 'failed', 'interrupted'):
+                    waiting.add(shot['id'])
             part = fraction(child, status)
             completed += status in ('succeeded', 'failed', 'interrupted')
             fractions.append(part)
@@ -901,8 +907,15 @@ class Productions:
         for shot in record['state']['shots']:
             for take in shot['takes']:
                 job = take['job']
-                if (take['state'] != 'succeeded' or take['stale'] or not take['library_id']
+                if (take['state'] != 'succeeded' or take['stale']
                         or job in record.get('qa', {}) or (identity, job) in self._inspecting):
+                    continue
+                if not take['library_id']:
+                    # Nothing to open: pass it as unchecked, or the judge would wait on it forever.
+                    draft = deepcopy(self._record(identity))
+                    draft.setdefault('qa', {})[job] = dict(error='NoVideo', problems=[], notes=[], ok=True)
+                    self._bump(draft)
+                    self._save(draft)
                     continue
                 self._inspecting.add((identity, job))
                 lines = [row['line'] for row in shot.get('lines') or [] if row.get('line')]
