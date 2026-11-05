@@ -1757,6 +1757,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     # another generation; cancellation should release its memory.
                     from .resident_process import OWNER
                     OWNER.release('cancelled')
+        try:
+            # Nothing will read a stopped request's decoded frames or reference frames; the
+            # sampling result and conditioning stay for the failure report.
+            from .comfy_library import release_decoded
+            state['decoded_release'] = release_decoded(run)
+        except Exception:
+            pass
         raise
     finally:
         from .resident_process import OWNER

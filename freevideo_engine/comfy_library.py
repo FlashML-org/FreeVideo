@@ -375,7 +375,7 @@ def video_download(output_directory, identity):
 # holds anything else, or any link, is not deleted at all.
 _OWNED_FILE = re.compile(r'(?:video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|comfy-request\.json|generate\.log'
                          r'|continuation-source\.safetensors'
-                         r'|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
+                         r'|frame-preview\.jpg|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
                          r'|reference-\d{2}\.(?:png|mp4|wav)'
                          r'|\.(?:share|editor-export)-[0-9a-f]{32}\.mp4)(?:\.[a-z0-9_]{8}\.tmp)?')
 _OWNED_FOLDER = 'video.artifacts'
@@ -482,6 +482,9 @@ def _remove(folder):
 # workflow read the MP4, and an upscale reads the preview's first pass. The
 # sampling result, conditioning and first pass stay.
 _DECODED = ('rgb.npy', 'audio.npy', 'audio.wav')
+# The normalized frames of reference videos and pictures: only the encoder reads
+# them, once, to build the conditioning. About 1.3 GB per reference video.
+_REFERENCE_FRAMES = 'media'
 _ATTEMPT = re.compile(r'\d{2}-[0-9A-Za-z_-]+')
 _RELEASED = '.decoded-released.json'
 # The startup release, a generation re-arming it and a library delete take
@@ -512,8 +515,13 @@ def release_decoded(folder):
         except OSError:
             left.append(_OWNED_FOLDER + '/attempts')  # retried at a later start
         for place in places:
-            for name in _DECODED:
-                path = place / name
+            paths = [place / name for name in _DECODED]
+            try:
+                if (place / _REFERENCE_FRAMES).is_dir() and _plain(place / _REFERENCE_FRAMES):
+                    paths += sorted((place / _REFERENCE_FRAMES).glob('*.npy'))
+            except OSError:
+                left.append((place / _REFERENCE_FRAMES).relative_to(folder).as_posix())
+            for path in paths:
                 try:
                     if not _plain(path):
                         continue
@@ -615,6 +623,23 @@ def release_earlier(output_directory):
                     continue
                 state = json.loads(state.read_text(encoding='utf-8'))
                 if not isinstance(state, dict) or state.get('status') in ('starting', 'running'):
+                    continue
+            except (OSError, ValueError, TypeError):
+                continue
+            result = release_decoded(folder)
+            totals['videos'] += result['freed_bytes'] > 0
+            totals['freed_bytes'] += result['freed_bytes']
+            totals['left'] += len(result['left'])
+            totals['skipped'] += result.get('skipped') == 'foreign-files'
+        # Stopped requests have no MP4 to find them by; their request record says they are over.
+        for path in sorted(root.glob('*/*/comfy-request.json')):
+            folder = path.parent
+            try:
+                if (not _ID.fullmatch(folder.relative_to(root).as_posix()) or (folder / 'video.mp4').exists()
+                        or not _plain(folder.parent) or not _plain(folder) or path.stat().st_size > 1024 * 1024):
+                    continue
+                state = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(state, dict) or state.get('status') not in ('cancelled', 'failed'):
                     continue
             except (OSError, ValueError, TypeError):
                 continue

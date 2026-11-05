@@ -951,6 +951,12 @@ def _run(args):
                         tuning.save_state(state)
                     except (OSError, ValueError) as error:
                         report['tuning']['cache_note'] = str(error)
+            # The encoder is done with the reference frames it normalized (over 1 GB per reference video).
+            for frames in (temporary / 'media').glob('*.npy'):
+                try:
+                    frames.unlink(missing_ok=True)
+                except OSError:
+                    pass  # Windows keeps a file open; the next start's release frees it
             info = report.get('encoding', {}).get('conditioning_info') or media.get('conditioning_info')
             if info:
                 if any(info.get(k) != canvas[k] for k in ('width', 'height', 'frames')):
