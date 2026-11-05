@@ -39,7 +39,7 @@ UNIT = 'freevideo.service'
 WRAPPER_MARK = '# FreeVideo command, written by FreeVideo setup.'
 DESKTOP_ID = 'freevideo.desktop'
 LOOPBACK = ('127.0.0.1', 'localhost', '::1')
-NODE_PACKAGES_NOTE = ('The Agent editing tools could not be added now; everything else works. '
+NODE_PACKAGES_NOTE = ('The packages for the Agent editing tools could not be updated now; everything else works. '
                       'FreeVideo will try again later.')
 COMMANDS = ('open', 'stop', 'status', 'restart', 'server')
 
