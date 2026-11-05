@@ -30,7 +30,9 @@ import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessag
 import {createEditorMusic} from './editor_music.js';
 import {createEditorRecord, RECORD_ICON} from './editor_record.js';
 import {createEditorVoice} from './editor_voice.js';
-import {createVoiceStore, voiceAvailable} from './editor_voice_store.js';
+import {createVoiceStore, voiceFeatures} from './editor_voice_store.js';
+import {createVoiceInstall} from './editor_voice_install.js';
+import {voiceTarget} from './editor_voice_model.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
@@ -547,7 +549,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
     // Dubbing lines of a stretch of speech.
-    let voiceReady = false;
+    let voiceReady = false, voiceInstallable = false;
     const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
     // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
     let lineStop = null;
@@ -560,7 +562,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const unwatch = state.subscribe(event => { if ((event.type ?? event) !== 'playhead') return; if (state.playhead >= to) { player.pause(); finish(); } else if (!player.playing) finish(); });
         lineStop = finish;
     }
-    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
+    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, recheck: readVoice, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
         // Hearing the other take changes nothing in the edit: only the preview swaps the sound.
         const source = generatedSource(name);
         if (!source) { player.previewClipSource(clipId, null); return; }
@@ -1429,8 +1431,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
-    voiceAvailable(api).then(value => { voiceReady = value; if (!disposed) voice.refresh(); });
-    actions.voice = {controller: voice};
+    // The dubbing model is downloaded from the bar where the lines would be; once it is there, the stretch chosen is looked at.
+    async function readVoice() {
+        const found = await voiceFeatures(api);
+        // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
+        if (found.unknown) return voiceReady;
+        voiceReady = found.ready; voiceInstallable = found.install;
+        if (!disposed) { voice.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
+        return found.ready;
+    }
+    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
+        onChange: () => { if (!disposed) genbar?.update(barValue); }, onReady: readVoice});
+    readVoice();
+    actions.voice = {controller: voice, install: voiceInstall};
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
@@ -1714,7 +1727,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); voice.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());

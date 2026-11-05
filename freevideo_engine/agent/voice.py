@@ -31,6 +31,7 @@ MARGIN = .1             # extra file read around a line when its sound is measur
 PREEMPTIONS = 8
 BUSY_WAITS = 8
 SPEED = dict(zh=4.5, en=2.8)      # units per second of a voice, when the line gave no rate of its own
+RECOGNITION_CODES = {'no_sound': 'invalid_request', 'too_long': 'invalid_request', 'language': 'speech_language'}
 DUB_CODES = {'out_of_memory': 'out_of_memory', 'model_missing': 'voice_model_missing',
              'invalid_request': 'invalid_request', 'disk_space': 'storage_unavailable'}
 SELECTION_MESSAGE = 'The selection must be a sound clip played at normal speed, forwards'
@@ -334,7 +335,7 @@ def run_voice_lines(jobs, row):
         except subtitle_ears.Cancelled as error:
             raise JobError('cancelled', 'Cancelled') from error
         except subtitle_ears.EarsError as error:
-            raise JobError(('invalid_request' if error.reason in ('no_sound', 'too_long') else 'voice_failed'),
+            raise JobError(RECOGNITION_CODES.get(error.reason, 'voice_failed'),
                            'The selection could not be recognised (%s)' % error.reason) from error
         words = [word for line in heard['lines'] for word in line['words']]
         rows = sentences.lines(words, audio, rate)

@@ -181,18 +181,25 @@ def stems_supported(machine):
     return supported(machine.get('vram_gib'), uuid=machine.get('gpu_uuid')) and machine.get('device_backend', 'cuda') == 'cuda'
 
 
-def voice_ready(port):
-    """Whether the dubbing model that changes a voice is on this machine."""
+def voice_state(port):
+    """(model ready, model can be downloaded here): the dubbing model is on this machine, or this machine could install it."""
     service = getattr(port.server, '_freevideo_dubbing', None)
     if service is None:
-        return False
+        return False, False
     try:
-        return bool(service.info(wait=False).get('ready'))
+        info = service.info(wait=False)
     except (OSError, ValueError):
-        return False
+        return False, False
+    ready = bool(info.get('ready'))
+    return ready, not ready and bool(info.get('supported')) and bool(info.get('published', True))
 
 
-def features(continuation, vlm, stems=False, voice=True):
+def voice_ready(port):
+    """Whether the dubbing model that changes a voice is on this machine."""
+    return voice_state(port)[0]
+
+
+def features(continuation, vlm, stems=False, voice=True, voice_install=False):
     """What an agent can use here (ready says whether the engine can run now). A missing name is not offered."""
     from .editor_runtime import available
     rules = available()
@@ -205,7 +212,9 @@ def features(continuation, vlm, stems=False, voice=True):
             'images.layers': rules, 'images.heal': rules, 'images.render': rules, 'projects.read': True,
             **{'projects.' + name: rules for name in ('insert', 'split', 'move', 'trim', 'remove', 'export', 'generate', 'listen', 'music',
                                                     'finish_sound')},
-            'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice)}
+            'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice),
+            # The machine could change a voice but the dubbing model is not there yet: the page offers its download.
+            'projects.voice.install': bool(rules and stems and voice_install and not voice)}
 
 
 def whitebox_support(jobs):
@@ -234,6 +243,7 @@ def capabilities(port, jobs):
             vlm = {k: v for k, v in service.info(wait=False).items() if k in ('ready', 'model', 'license', 'bytes', 'busy')}
         except (OSError, ValueError):
             vlm = dict(ready=False)
+    voice = voice_state(port)
     running, pending = port.snapshot()
     from ..chain_plan import BLOCK_SECONDS
     # One block is the limit when the backend cannot continue a video; plan and submit refuse the same requests.
@@ -243,7 +253,7 @@ def capabilities(port, jobs):
     return dict(
         api_version=API_VERSION, freevideo_version=release or __version__, build=__version__, ready=ready, problem=problem,
         continuation=continuation,
-        features=features(continuation, vlm, stems=stems_supported(machine), voice=voice_ready(port)),
+        features=features(continuation, vlm, stems=stems_supported(machine), voice=voice[0], voice_install=voice[1]),
         whitebox=whitebox_support(jobs),
         device=dict(backend=machine.get('device_backend', 'cuda') if machine else None,
                     vram_limit_gib=machine.get('vram_gib'), ram_limit_gib=machine.get('ram_gib')),

@@ -146,8 +146,26 @@ class Service:
             state['ready'] = pack.settle(root)
             if state['ready']:
                 state['bytes'] = 0
+        # The voice change reads the lines with the speech model of the subtitle pack, so one download brings both.
+        speech = self.speech_state()
+        if speech and not speech[0]:
+            state['ready'], state['bytes'] = False, state['bytes'] + speech[1]
         return dict(ready=state['ready'], model=pack.NAME, license=state['license'], bytes=state['bytes'],
                     published=state['published'], supported=state['supported'], busy=self.busy(), backends=backends.names())
+
+    @staticmethod
+    def speech_state():
+        """(all here, bytes still to download) of the speech pack (runtime, speech, language), or None where it cannot
+        be had. The pack lives where the recogniser looks for it (the model folder), not under the dubbing root."""
+        from .. import subtitle_pack
+        try:
+            state = subtitle_pack.status()
+            if not state['installable']:
+                return None
+            groups = [state['groups'][group] for group in subtitle_pack.GROUPS]
+            return all(group['ready'] for group in groups), sum(group['bytes'] for group in groups)
+        except Exception:
+            return None
 
     def busy(self):
         return self.thread is not None and self.thread.is_alive()
@@ -264,7 +282,36 @@ class Service:
         folder.mkdir()
         return folder
 
+    def install(self, root):
+        """The dubbing model, then the speech model; the progress counts both as one download."""
+        from .. import subtitle_pack
+        speech = self.speech_state()
+        missing = bool(speech and not speech[0])
+        extra = speech[1] if missing else 0
+        mine = []
+
+        def counted(offset, whole):
+            def report(row):
+                if 'total' in row:
+                    mine.append(row['total'])
+                    row = dict(row, done=min(row.get('done', 0) + offset, whole), total=whole)
+                self.progress(row)
+            return report
+        pack.install(root, self.first_segment(extra, mine), self.check)
+        if missing:
+            first = mine[-1] if mine else 0
+            subtitle_pack.install(subtitle_pack.GROUPS, None, counted(first, first + extra), self.check)
+
+    def first_segment(self, extra, mine):
+        def report(row):
+            if 'total' in row:
+                mine.append(row['total'])
+                row = dict(row, total=row['total'] + extra)
+            self.progress(row)
+        return report
+
     def work(self, root, machine, action, value):
+        from .. import subtitle_pack
         from ..locking import runtime_lock
         from ..monitoring import save
         started = time.monotonic()
@@ -272,7 +319,7 @@ class Service:
             if action == 'install':
                 with runtime_lock(Path(root) / 'dubbing-install.lock', inherit=False):
                     self.check()
-                    pack.install(root, self.progress, self.check)
+                    self.install(root)
                 self.check()
                 self.progress(dict(phase='complete'))
             else:
@@ -284,7 +331,7 @@ class Service:
             self.progress(dict(phase='cancelled'))
         except BlockingIOError:
             self.progress(dict(phase='failed', error='busy'))
-        except pack.PackError as error:
+        except (pack.PackError, subtitle_pack.PackError) as error:
             self.progress(dict(phase='failed', error=error.reason))
         except Exception as error:
             reason = str(error)
@@ -511,7 +558,7 @@ def register():
                 result = service.cancel(value.get('job'))
             else:
                 running, pending = server.prompt_queue.get_current_queue()
-                if running or pending:
+                if name == 'dub' and (running or pending):
                     raise ValueError('busy')
                 if name == 'dub':
                     await asyncio.to_thread(pack.settle, service.installation()[0])

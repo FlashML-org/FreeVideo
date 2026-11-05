@@ -115,6 +115,8 @@ ERRORS.update({
     'export_failed': (409, True, 'The export did not finish.', 'Read the project, then submit the export again with a new ref.'),
     'no_speech_model': (409, False, 'No speech model is installed on this machine.',
                         'Do not retry. Write the subtitle lines yourself with the subtitles edit, or tell the user the model is not installed.'),
+    'speech_language': (409, False, 'The speech model does not cover the language of this sound.',
+                        'Do not retry; tell the user the language is not supported, or write the lines yourself.'),
     'listen_failed': (409, True, 'Listening to the sound did not finish.',
                       'Read the project, then submit the listening job again with a new ref; if it fails again, write the lines yourself.'),
     'music_download_failed': (409, True, 'The music model could not be downloaded.',
