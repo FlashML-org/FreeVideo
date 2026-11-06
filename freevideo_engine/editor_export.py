@@ -998,6 +998,77 @@ def resolve_source(key):
     return dict(video=path, audio=path)
 
 
+class FrameError(ValueError):
+    """Why one frame cannot be saved as a picture: no_picture (nothing is shown there), generating (its part is not made yet) or range."""
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def render_frame(project, resolve, number, *, cancelled=None):
+    """One timeline frame as the export draws it (same placement, fit, picture edits and text), without encoding a video."""
+    width, height, total, tracks = _layout(project)
+    if not _whole(number) or number >= total:
+        raise FrameError('range')
+    clip = next((c for c in tracks['v1'] if c['start'] <= number < c['start'] + c['frames']), None)
+    if clip is None:
+        raise FrameError('no_picture')
+    path = _media(resolve, clip, 'video')
+    if path is None:
+        raise FrameError('generating')
+    wanted = clip['in'] + number - clip['start']
+    # A plain clip seeks straight to the wanted frame; a changed speed or direction keeps the export's own reader.
+    reader = (VideoReader(path, clip, width, height, cancelled) if speed_changed(clip)
+              else _VideoReader(path, wanted, width, height, cancelled, clip))
+    try:
+        pixels = reader.pixels(wanted)
+        return paint_project(pixels, project, number, width, height)
+    finally:
+        reader.close()
+
+
+def _picture_folder():
+    """The folder of pictures made here (the image editor's history), created on first use and never a link."""
+    import folder_paths
+    base = Path(folder_paths.get_input_directory()).resolve()
+    folder = base / 'freevideo-image'
+    if folder.is_symlink() or folder.resolve().parent != base:
+        raise ExportError()
+    folder.mkdir(exist_ok=True)
+    return folder
+
+
+def store_picture(pixels):
+    """Write a frame as a lossless PNG named like the pictures the image editor lists (image-YYYYMMDD-HHMMSS-NN.png)."""
+    from PIL import Image
+    from .file_ops import publish
+    folder = _picture_folder()
+    temporary = folder / ('.frame-' + uuid.uuid4().hex + '.partial')
+    try:
+        with temporary.open('xb') as stream:
+            Image.fromarray(pixels, 'RGB').save(stream, 'PNG')
+            stream.flush()
+            os.fsync(stream.fileno())
+        stamp = time.strftime('image-%Y%m%d-%H%M%S')
+        for number in range(1, 100):
+            target = folder / ('%s-%02d.png' % (stamp, number))
+            try:
+                publish(temporary, target)
+            except FileExistsError:
+                continue
+            return dict(file='freevideo-image/' + target.name, name=target.name,
+                        width=int(pixels.shape[1]), height=int(pixels.shape[0]))
+        raise ExportError()
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def save_frame(identity, revision, number, *, cancelled=None):
+    """Render one frame of a saved project revision and keep it as a picture."""
+    project = load_project(identity, revision)
+    return store_picture(render_frame(project, resolve_source, number, cancelled=cancelled))
+
+
 def _save_report(target, project, seconds, *, options=None):
     """Completion marker after media closes; only video.mp4 enters the library."""
     frames = _layout(project)[2]
@@ -1159,7 +1230,7 @@ class ExportQueue:
 
 
 def register():
-    """Register the three endpoints once on the existing ComfyUI server."""
+    """Register the export and frame endpoints once on the existing ComfyUI server."""
     from aiohttp import web
     from server import PromptServer
     server = PromptServer.instance
@@ -1211,3 +1282,27 @@ def register():
             return web.json_response({'reason': 'failed'}, status=404)
         except (ValueError, TypeError):
             return web.json_response({'reason': 'failed'}, status=400)
+
+    frame_lock = asyncio.Lock()
+
+    @server.routes.post('/freevideo/editor/frame')
+    async def frame(request):
+        """Keep one frame of a saved project revision, as the export would draw it, in the pictures made here."""
+        try:
+            body = await request.json()
+            if (not isinstance(body, dict) or set(body) != {'id', 'revision', 'frame'}
+                    or not _whole(body['revision']) or not _whole(body['frame'])):
+                raise ValueError('Invalid request')
+            async with frame_lock:
+                value = await asyncio.to_thread(save_frame, body['id'], body['revision'], body['frame'])
+            return web.json_response({'picture': value}, headers={'Cache-Control': 'no-store'})
+        except FrameError as error:
+            return web.json_response({'reason': error.reason}, status=422)
+        except ExportConflict as error:
+            return web.json_response({'revision': error.revision}, status=409, headers={'Cache-Control': 'no-store'})
+        except FileNotFoundError:
+            return web.json_response({'reason': 'source_missing'}, status=404)
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({'reason': 'failed'}, status=400)
+        except Exception as error:
+            return web.json_response({'reason': _reason(error)}, status=503)

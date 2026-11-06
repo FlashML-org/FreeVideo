@@ -67,9 +67,10 @@ const icons = {
     loop: 'M4 6h12l-3-3m3 3-3 3M16 14H4l3 3m-3-3 3-3',
     'play-range': 'M3 3v14m14-14v14M7 6l6 4-6 4z', fullscreen: 'M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4',
     snapping: 'M4 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3zM4 7h4m4 0h4',
+    'save-frame': 'M3 6h3l1.5-2h5L14 6h3v10H3zM10 13.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
     marker: 'm10 3 6 7-6 7-6-7z', shortcuts: 'M2 5h16v10H2zM5 8h1m3 0h1m3 0h1M5 11h1m3 0h5',
 };
-export function createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify}) {
+export function createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify, saveFrame = null}) {
     let tracks = null, align = null, layer = null, markerSelection = null, markerStamp = null, drag = null, kHeld = false, disposed = false;
     const clock = player.playback, listeners = [], nodes = [];
     const on = (target, type, callback, options) => { target.addEventListener(type, callback, options); listeners.push(() => target.removeEventListener(type, callback, options)); };
@@ -88,7 +89,15 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
     const loop = button('loop', t('Loop (Shift + L)', '循环播放（Shift + L）'));
     const range = button('play-range', t('Play selected range (Shift + Space)', '播放选中范围（Shift + 空格）'));
     const fullscreen = button('fullscreen', t('Full screen (F)', '全屏（F）'));
-    tools.append(loop, range, fullscreen); transport.append(tools); nodes.push(tools);
+    // Keeps the frame under the playhead as a picture; the button is off on an empty timeline and while the editor saves it.
+    const frame = saveFrame && button('save-frame', t('Save current frame', '保存当前帧'));
+    let savingFrame = false;
+    if (frame) on(frame, 'click', async () => {
+        if (frame.disabled) return;
+        savingFrame = true; frame.disabled = true; frame.setAttribute('aria-busy', 'true');
+        try { await saveFrame(); } finally { savingFrame = false; frame.removeAttribute('aria-busy'); refresh(); }
+    });
+    tools.append(loop, range, ...(frame ? [frame] : []), fullscreen); transport.append(tools); nodes.push(tools);
     const sheet = el('div', 'fv-ed-shortcut-sheet'); sheet.hidden = true; sheet.setAttribute('role', 'region'); sheet.setAttribute('aria-label', t('Shortcuts', '快捷键'));
     element.append(sheet); nodes.push(sheet);
     const fullHost = el('div', 'fv-ed-fullscreen-host'); preview.parentNode.insertBefore(fullHost, preview); fullHost.append(preview, transport); nodes.push(fullHost);
@@ -108,6 +117,7 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         const bounds = selection(); range.disabled = !bounds;
         range.title = t('Play selected range (Shift + Space)', '播放选中范围（Shift + 空格）');
         range.setAttribute('aria-label', range.title); range.setAttribute('aria-pressed', String(!!clock.range));
+        if (frame) frame.disabled = savingFrame || !model.exportFrames(state.record);
         fullscreen.setAttribute('aria-pressed', String(document.fullscreenElement === fullHost));
         transport.dataset.rate = String(player.playing ? clock.rate : 0);
         if (layer && !drag) renderMarkers();

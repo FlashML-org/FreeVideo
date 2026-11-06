@@ -537,6 +537,14 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         },
         watchExport(id, fn, lost) { return watch(async () => (await json('/freevideo/editor/export?' + new URLSearchParams({id})))?.export || null, fn, lost); },
         cancelExport: id => json('/freevideo/editor/export/cancel', post({id})),
+        // One frame of the saved project, as the export draws it, kept as a picture in the image history; null where the server is older.
+        async saveFrame(id, revision, frame) {
+            const response = await request('/freevideo/editor/frame', post({id, revision, frame}));
+            const value = await response.json().catch(() => null);
+            if (!response.ok && (response.status !== 404 || value?.reason)) throw Object.assign(errorFor(response), {reason: value?.reason});
+            if (response.status === 404 || !value) { notice('frame', 'To save a frame, update FreeVideo and restart it.', '请更新 FreeVideo 并重新启动后再保存画面。'); return null; }
+            return value.picture || null;
+        },
         // Subtitles from speech. What this computer can recognise; null where it cannot or the server is older.
         async ears() { return (await json('/freevideo/editor/ears'))?.available || null; },
         async startEars(id, revision) { return (await json('/freevideo/editor/ears', post({kind: 'transcribe', id, revision})))?.job || null; },

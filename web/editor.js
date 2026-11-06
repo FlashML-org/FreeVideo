@@ -604,6 +604,39 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (queue.dirty) { notify(saveErrorText(queue.failure, t), EDITOR_ISSUE, failureKind('save', {reason: saveReason(queue.failure)})); return false; }
         return !!state.record.id;
     }
+    // Keeps the frame under the playhead as a picture in the image history, drawn as the export would draw it, from the saved project.
+    let savingFrame = false;
+    async function saveFrame() {
+        if (savingFrame) return;
+        if (initializing || switching) { notify(t('Opening the edit…', '正在打开…')); return; }
+        if (!model.exportFrames(state.record)) { notify(t('The timeline is empty. Add a clip first.', '时间线是空的，请先放入素材。')); return; }
+        const epoch = projectEpoch, shown = Math.min(state.playhead, Math.max(0, model.duration(state.record) - 1));
+        savingFrame = true;
+        try {
+            if (!await saveForExport(epoch)) return;
+            let picture = null;
+            for (let attempt = 0; ; attempt++) {
+                try { picture = await store.saveFrame(state.record.id, state.record.revision, shown); break; }
+                catch (value) {
+                    if (value.status !== 409 || attempt >= 2) throw value;
+                    queue.enqueue(state.record);
+                    if (!await saveForExport(epoch)) return;
+                }
+            }
+            if (disposed || closing || epoch !== projectEpoch) return;
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > History.',
+                '已保存当前帧，位于“编辑图片 > AI 生成 > 历史”。'));
+        } catch (value) {
+            if (disposed || epoch !== projectEpoch) return;
+            const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
+                range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
+                generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
+                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
+                not_writable: t('The picture folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
+                disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
+            if (said) notify(said); else error(value, 'frame');
+        } finally { savingFrame = false; }
+    }
     function updateTop() {
         const name = state.record.name || new Date().toLocaleDateString();
         if (title.firstElementChild?.textContent !== name) { title.replaceChildren(el('span', '', name), icon('m4 6 4 4 4-4')); headerFit.check(); }
@@ -1511,7 +1544,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous, recordTool);
     const pictureTools = createPictureTools({state, sources: store.sources, t, capabilities: () => capability, error});
     toolbar.append(historyTools, editTools, zoomHost); element.insertBefore(toolbar, tracksHost);
-    const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify});
+    const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify, saveFrame});
     editTools.append(secondPassButton);
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
