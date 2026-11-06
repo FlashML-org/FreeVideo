@@ -3,8 +3,8 @@ import {readGuideRecord, saveGuideRecord, guideRecord} from './first_run_guide.j
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 
 export const TOUR_TEXT = {
-    en: {examples: 'Feature examples', use: 'Use this example', next: 'Next', goto: 'Take me there', book: 'Read the tutorial', done: 'Done', close: 'Close'},
-    zh: {examples: '功能示例', use: '用这个示例', next: '下一张', goto: '带我去', book: '看教程', done: '完成', close: '关闭'},
+    en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', book: 'Read the tutorial', done: 'Done', close: 'Close'},
+    zh: {examples: '功能示例', use: '填入示例', next: '下一张', goto: '带我去', book: '看教程', done: '完成', close: '关闭'},
 };
 // The chapter of the tutorial book that teaches the same thing as the card.
 const BOOK_CHAPTER = {'first-video': 'quick-start', 'text-to-video': 'text-to-video', 'first-last-frame': 'first-last-frame', 'quality-tiers': 'quality-tiers',

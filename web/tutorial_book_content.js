@@ -129,8 +129,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '角色窗口：名字、正面图片和其他角度图片已用红框标出。', en: 'The character window, with the name, front image and other angles outlined in red.'},
         },
         steps: {
-            zh: ['展开创作面板的“素材”，在“角色”一行点“+”（新建角色）。', '填写“名字”，设置“正面图片”：可“上⁠传⁠图⁠片”，也可“AI 生成”，后者会按描述一次生成 5 张供选。', '可再添加最多 5 张其他角度的图片，然后点“保⁠存”。', '之后在描述中输入 @ 选择该角色，并写明其动作。'],
-            en: ['Expand "Media" in the creation panel and, on the "Characters" row, choose + (New character).', 'Enter a "Name" and set the "Front image": choose "Upload images", or "Generate with AI", which makes 5 pictures from a description to pick from.', 'Add up to 5 images from other angles, then choose "Save".', 'In later prompts, type @ to pick the character and describe what the character does.'],
+            zh: ['展开创作面板的“素材”，在“角色”一行点“+”新建角色。', '填写“名字”，设置“正面图片”：可“上⁠传⁠图⁠片”，也可“AI 生成”，后者会按描述一次生成 5 张供选。', '可再添加最多 5 张其他角度的图片，然后点“保⁠存”。', '之后在描述中输入 @ 选择该角色，并写明其动作。'],
+            en: ['Expand "Media" in the creation panel and, on the "Characters" row, choose + to create a character.', 'Enter a "Name" and set the "Front image": choose "Upload images", or "Generate with AI", which makes 5 pictures from a description to pick from.', 'Add up to 5 images from other angles, then choose "Save".', 'In later prompts, type @ to pick the character and describe what the character does.'],
         },
         example: {
             assets: [{file: 'fox-sheet.webp', role: 'reference'}],
@@ -156,8 +156,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Expand "Media" in the creation panel and turn on "Replace person".', 'Under "Source video" choose "Add video", and under "Person image" choose "Add image".', 'To keep the sound of the source video, check "Keep source video sound".', 'The prompt can stay empty or describe more of the picture. Then choose "Generate video".'],
         },
         limits: {
-            zh: ['替换人物不能与首帧、尾帧同时使用。', '首次使用时会自动下载替换人物模型（约 80 MB），面板中显示进度，下载完成后才能生成。', '源视频至少 1 秒；源视频没有声音时，不能保留声音。'],
-            en: ['Replace person cannot be used with first or last frames.', 'The first time, the Replace person model (about 80 MB) downloads on its own. The panel shows the progress, and generation can start when it finishes.', 'The source video must be at least 1 second long. A source video without sound has no sound to keep.'],
+            zh: ['替换人物不能与首帧、尾帧同时使用。', '首次使用时会自动下载约 80 MB 的替换人物模型，面板中显示进度，下载完成后才能生成。', '源视频至少 1 秒；源视频没有声音时，不能保留声音。'],
+            en: ['Replace person cannot be used with first or last frames.', 'The first time, the Replace person model of about 80 MB downloads on its own. The panel shows the progress, and generation can start when it finishes.', 'The source video must be at least 1 second long. A source video without sound has no sound to keep.'],
         },
     },
     {
@@ -239,8 +239,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：接着生成的草稿段和描述框已用红框标出。', en: 'The Edit view, with the draft part that continues the video and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段（默认 10 秒；在 Mac 和一次生成不了 10 秒的设备上为 5 秒），在底部描述框写明接下来发生什么。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
-            en: ['Choose "Extend" below a finished video. The Edit view opens.', 'Select the part added after it (10 seconds by default, or 5 seconds on a Mac and on devices that cannot make 10 seconds at once) and write what happens next in the box at the bottom.', 'To make it longer, drag the part out; each part is at least 5 seconds. Then choose "Generate".', 'The new part follows the original and is joined into one video.'],
+            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段，在底部描述框写明接下来发生什么。这一段默认 10 秒，在 Mac 和一次生成不了 10 秒的设备上为 5 秒。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
+            en: ['Choose "Extend" below a finished video. The Edit view opens.', 'Select the part added after it and write what happens next in the box at the bottom. The part is 10 seconds by default, or 5 seconds on a Mac and on devices that cannot make 10 seconds at once.', 'To make it longer, drag the part out; each part is at least 5 seconds. Then choose "Generate".', 'The new part follows the original and is joined into one video.'],
         },
         example: {
             assets: [],
@@ -286,8 +286,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”（窗口窄于 1280 时，先点“调⁠整”打开该面板）。', '完成后点右上角的“导⁠出”保存。'],
-            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to continue.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop" (on a window narrower than 1280 pixels, choose "Adjust" first to open the panel).', 'When done, choose "Export" at the top right.'],
+            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”；窗口窄于 1280 时，先点“调⁠整”打开该面板。', '完成后点右上角的“导⁠出”保存。'],
+            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to continue.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop". On a window narrower than 1280 pixels, choose "Adjust" first to open the panel.', 'When done, choose "Export" at the top right.'],
         },
         example: {
             assets: [],
@@ -408,8 +408,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: 'AI 全自动：连接 Agent 的按钮已用红框标出。', en: 'Autopilot, with the button that connects an agent outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”（或所连 Agent 的名字）后，在“对 Agent 说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
-            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" (or the agent\'s name), describe the video under "Message the agent…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
+            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”或所连 Agent 的名字后，在“对 Agent 说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
+            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" or the agent\'s name, describe the video under "Message the agent…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
         },
         limits: {
             zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。', 'Agent 开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI Agent”中选择。'],
