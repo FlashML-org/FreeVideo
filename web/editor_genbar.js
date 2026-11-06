@@ -54,7 +54,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const input = el('textarea', 'fv-ed-description'); input.rows = 1; input.value = text;
     const description = el('div', 'fv-ed-description-box'); description.append(input);
     const generate = el('button', 'fv-ed-generate'), cancel = el('button', null, t('Cancel', '取消')), resume = el('button', null, t('Continue', '继续'));
-    input.dataset.fvGuide = 'editor-describe'; generate.dataset.fvGuide = 'editor-generate';
+    input.dataset.fvGuide = 'editor-describe'; input.dataset.tourId = 'segment-prompt'; generate.dataset.fvGuide = 'editor-generate';
     for (const button of [generate, cancel, resume]) button.type = 'button';
     host.append(hint, note, description, generate, cancel, resume);
     // Beside Generate, as beside the creative panel's Generate video: the panel's own two-pass choices, the same setting.

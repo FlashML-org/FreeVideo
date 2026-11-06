@@ -323,6 +323,25 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'segment-prompt',
+        goto: ['segment-prompt'],
+        title: {zh: '逐段描述', en: 'Describe each part'},
+        summary: {zh: '为剪辑视图中的每一段单独写描述。', en: 'Write a separate description for each part in the Edit view.'},
+        media: {
+            type: 'image',
+            src: {zh: 'segment-prompt-1.webp', en: 'segment-prompt-2.webp'},
+            alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
+        },
+        steps: {
+            zh: ['在“画面”轨上拖出一段较长的范围，它会分成带序号的多段。', '点选其中一段，在描述框中写下这一段的内容。', '再点选另一段，写下它的内容；每段的描述保存在这一段上。', '点“生⁠成”，各段按顺序生成并连成一个视频。'],
+            en: ['On the picture track, drag a long range. It is divided into numbered parts.', 'Select one part and write what happens in it in the prompt box.', 'Select another part and write its own description. Each part keeps its own.', 'Choose "Generate". The parts are made in order and joined into one video.'],
+        },
+        limits: {
+            zh: ['一个连续镜头的段数有上限，见“连续的长视频”。'],
+            en: ['One continuous shot has a limit on the number of parts; see "Make a longer video".'],
+        },
+    },
+    {
         id: 'separate-tracks',
         goto: ['audio-track-button'],
         title: {zh: '分离音轨和替换声音', en: 'Separate tracks and replace sound'},
@@ -414,6 +433,25 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。', 'Agent 开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI Agent”中选择。'],
             en: ['An agent must be connected first. Until then only the connection card is shown.', 'More shots take longer.', 'Whether an agent asks before starting a film or a long reshoot is set under "AI Agent" in Settings.'],
+        },
+    },
+    {
+        id: 'library-reuse',
+        goto: ['library-reuse', 'works-entry'],
+        title: {zh: '复用设置', en: 'Reuse settings'},
+        summary: {zh: '把以前一条视频的描述、尺寸、时长和种子填回创作面板。', en: 'Fill the prompt, size, duration and seed of an earlier video back into the creation panel.'},
+        media: {
+            type: 'image',
+            src: {zh: 'library-reuse-1.webp', en: 'library-reuse-2.webp'},
+            alt: {zh: '预览区下方的按钮：“复用设置”已用红框标出。', en: 'The buttons below the preview, with "Reuse settings" outlined in red.'},
+        },
+        steps: {
+            zh: ['点预览区右上角“作品”左边的图标，选一条以前的视频。', '点“复⁠用⁠设⁠置”，描述、尺寸、时长和种子会填回创作面板。', '改动需要变化的内容，再点“生⁠成⁠视⁠频”。', '填入有误时，10 秒内点“撤⁠销”，恢复原来的内容。'],
+            en: ['Choose the icon to the left of "Creations" above the preview and pick an earlier video.', 'Choose "Reuse settings". Its prompt, size, duration and seed are filled into the creation panel.', 'Change what should be different, then choose "Generate video".', 'If the fill was a mistake, choose "Undo" within 10 seconds to bring back what was there.'],
+        },
+        limits: {
+            zh: ['没有保存描述的视频不提供“复用设置”。'],
+            en: ['A video that kept no prompt does not offer "Reuse settings".'],
         },
     },
     {
