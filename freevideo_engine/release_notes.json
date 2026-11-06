@@ -1,37 +1,74 @@
 {
   "schema": 1,
-  "product_version": "0.4.33",
+  "product_version": "0.4.34",
   "en": {
-    "summary": "Prompt enhancement works with less free graphics memory, and Setup or Repair now waits for a video that is still generating.",
+    "summary": "Agent can finish the sound of a whole editor project in one job, a line of a clip can be respoken in the original voice, and the Edit tab can save the current frame as a picture.",
     "changes": [
-      "Prompts no longer receive the added sentence about natural sounds that 0.4.32 introduced.",
-      "Audio references: an mp4 file that only contains sound is accepted. An Agent that needs only the voice of a video can send it at a small picture size, which makes generation much faster.",
-      "Agent: choosing a take cancels the takes of that shot that are still queued or running.",
-      "Agent: when a voice reference is uploaded, the first six seconds are checked for speech, and the Agent is told when there is too little, such as in a clip that opens with music, so another clip can be chosen.",
-      "Setup or Repair that is stopped by a video still generating now waits for it and continues by itself, instead of showing a general failure.",
-      "Prompt enhancement: rewriting now works with less free graphics memory. When other programs hold the memory it needs, it waits and starts by itself once there is room, and lists those programs when their names can be read.",
-      "Audio processing in videos no longer differs depending on when FreeVideo was installed.",
-      "With several graphics cards, a new generation waits when its card is still briefly held by the previous request, instead of failing within a few seconds.",
-      "The Autopilot run bar stays fully visible in the top bar on narrow windows.",
-      "Settings: on narrow screens, the three Getting started buttons no longer break their labels across lines."
+      "Agent: a new job finishes the sound of an editor project in one step. It separates each clip's sound, removes sustained music that came with the clips while keeping effects such as gunshots and crowds, lays one continuous music track across the cut, evens out loudness and fills silent gaps with room tone.",
+      "Edit only some of the lines in a clip: those lines are respoken in the original speaker's voice at the original timing, and the rest stay as they were. Dubbed lines keep the original pace and loudness. The dubbing model (about 4.9 GB) is downloaded on first use.",
+      "A reference video marked as voice only is now read as an audio reference: only its sound track is used and no picture is encoded. A voice reference used across several shots is no longer encoded again for each one.",
+      "Agent: take checks listen for the scripted lines (Chinese and English), notice a single odd frame at the start or end and a picture that stops before the take ends, and do not pick such takes. The Agent skill text also submits storyboards as one batch and resumes a retryable failure once.",
+      "Short dramas: long shots submitted right after startup are no longer refused while this computer's generation limit is still being worked out.",
+      "The Edit tab can save the frame under the playhead as a picture. It is drawn as the export would draw it and kept under Edit image > Generate with AI > History.",
+      "Continued parts in the editor can now use Preview first, and Run second pass replaces the preview in place.",
+      "The preview shown while a video is generated plays as a loop of up to sixteen frames instead of a still sheet of four, and no longer flashes black when its stage changes size. Recent videos and Creations fold videos with the same prompt together only when they were made within two hours of each other from the same references.",
+      "Reference video encoding now shows progress, and the time estimate counts the reference video from the start.",
+      "When a request is refused for lack of GPU memory, the suggested size is now the largest smaller one that fits, instead of one of only two fixed smaller sizes.",
+      "Reference-video frames are removed after encoding and stopped requests free their leftovers, so a generation with reference videos no longer leaves over 1 GB per reference in its folder. Changing the prepared model also removes the online LoRA folders that pinned the old model, and unused ones are cleaned up automatically.",
+      "Launcher and Settings: the Restart ComfyUI step and the wrong-folder message no longer offer to report a problem, the wrong-folder message points to Install ComfyUI when none is found nearby, and the placement test button is disabled while an installation check or installation is running."
     ]
   },
   "zh": {
-    "summary": "提示词增强在可用显存较少时也能改写；安装或修复遇到还在生成的视频时会等待并自动继续。",
+    "summary": "Agent 可以一步完成整个剪辑工程的声音；可以只改一段里的几句台词，用原说话人的声音重说；编辑页可以把当前帧存成图片。",
     "changes": [
-      "提示词不再被补写 0.4.32 加入的自然声音描述。",
-      "音频参考：只有声音的 mp4 文件也可以使用。Agent 只需要视频里的声音时，可用小画面传入，生成明显更快。",
-      "Agent：选定一版后，同一镜头还在排队或生成的其他版本自动撤下。",
-      "Agent：上传声音参考时检查前 6 秒的说话时长，说话太少（例如以音乐开头）时告知 Agent，便于换一段。",
-      "安装或修复被还在生成的视频拦下时，启动器现在会等视频结束后自动继续，不再显示通用的失败提示。",
-      "提示词增强：可用显存较少时也能改写；显存被其他程序占用时会等待，空出后自动改写，能读取到程序名时一并列出。",
-      "视频声音的处理结果不再因安装时间不同而有差异。",
-      "多张显卡时，新的生成遇到显卡还被上一个请求短暂占用会等待，不再几秒内失败。",
-      "AI 全自动运行时，窄窗口顶栏的运行条完整显示。",
-      "设置：窄屏上“新手指引”的三个按钮不再折行断字。"
+      "Agent：新增一个任务，一步完成剪辑工程的全片声音：分离各段音轨，去掉持续的旧配乐（枪声、人群声等效果声保留），铺一条贯穿全片的配乐，统一全片响度，并在静音处补上环境声。",
+      "可以只改其中几句台词：改过的句子用原说话人的声音重说，时间位置不变，其余原声不动。配音的语速与响度保持与原句一致。配音模型约 4.9 GB，第一次使用时下载。",
+      "标为只用声音的参考视频，现在按音频参考读取：只取其声音，不再编码画面。同一段声音参考用于多个镜头时，不再重复编码。",
+      "Agent：镜头质检会听出每条候选是否说出了剧本台词（中英文均可），并发现开头或结尾单帧闪烁和画面提前停住，有这些问题的候选不会被选用。Agent 技能文本也改为把分镜作为一批提交，可重试的失败只重试一次。",
+      "短剧：在服务刚启动时提交长镜头，不再因本机的生成能力尚未算完而被拒绝。",
+      "编辑页可以把播放头所在的一帧存成图片，画面与导出一致，图片放在“编辑图片 > AI 生成 > 历史”里。",
+      "剪辑页的续写段现在可以使用“先出预览”，看过后用“继续二采”原位生成正式版。",
+      "生成中的预览改为循环播放最多 16 帧，取代原来 4 帧的静态拼图，画面尺寸变化时也不再闪黑。最近视频和作品库中，提示词相同的视频只有在相隔不超过两小时、且参考内容相同时才折叠在一起。",
+      "参考视频编码现在会显示进度，预计时间从一开始就把参考视频算进去。",
+      "因显存不足而拒绝请求时，建议的尺寸改为能放行的最大一档，不再只在两个固定的较小尺寸里选。",
+      "视频参考的帧文件在编码后即删除，取消或失败的请求也会释放残留文件，带视频参考的生成不再在文件夹里留下每个参考超过 1 GB 的文件。更换模型后会一并清理占住旧模型的在线 LoRA 文件夹，不再使用的也会自动清理。",
+      "启动器和设置：“需要重启 ComfyUI”这一步和“这不是 ComfyUI 文件夹”的提示不再显示“提交问题”；后者在附近找不到 ComfyUI 时会提示选择“帮我安装 ComfyUI”；安装检查或安装进行时，放置测试按钮置灰。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.33",
+      "en": {
+        "summary": "Prompt enhancement works with less free graphics memory, and Setup or Repair now waits for a video that is still generating.",
+        "changes": [
+          "Prompts no longer receive the added sentence about natural sounds that 0.4.32 introduced.",
+          "Audio references: an mp4 file that only contains sound is accepted. An Agent that needs only the voice of a video can send it at a small picture size, which makes generation much faster.",
+          "Agent: choosing a take cancels the takes of that shot that are still queued or running.",
+          "Agent: when a voice reference is uploaded, the first six seconds are checked for speech, and the Agent is told when there is too little, such as in a clip that opens with music, so another clip can be chosen.",
+          "Setup or Repair that is stopped by a video still generating now waits for it and continues by itself, instead of showing a general failure.",
+          "Prompt enhancement: rewriting now works with less free graphics memory. When other programs hold the memory it needs, it waits and starts by itself once there is room, and lists those programs when their names can be read.",
+          "Audio processing in videos no longer differs depending on when FreeVideo was installed.",
+          "With several graphics cards, a new generation waits when its card is still briefly held by the previous request, instead of failing within a few seconds.",
+          "The Autopilot run bar stays fully visible in the top bar on narrow windows.",
+          "Settings: on narrow screens, the three Getting started buttons no longer break their labels across lines."
+        ]
+      },
+      "zh": {
+        "summary": "提示词增强在可用显存较少时也能改写；安装或修复遇到还在生成的视频时会等待并自动继续。",
+        "changes": [
+          "提示词不再被补写 0.4.32 加入的自然声音描述。",
+          "音频参考：只有声音的 mp4 文件也可以使用。Agent 只需要视频里的声音时，可用小画面传入，生成明显更快。",
+          "Agent：选定一版后，同一镜头还在排队或生成的其他版本自动撤下。",
+          "Agent：上传声音参考时检查前 6 秒的说话时长，说话太少（例如以音乐开头）时告知 Agent，便于换一段。",
+          "安装或修复被还在生成的视频拦下时，启动器现在会等视频结束后自动继续，不再显示通用的失败提示。",
+          "提示词增强：可用显存较少时也能改写；显存被其他程序占用时会等待，空出后自动改写，能读取到程序名时一并列出。",
+          "视频声音的处理结果不再因安装时间不同而有差异。",
+          "多张显卡时，新的生成遇到显卡还被上一个请求短暂占用会等待，不再几秒内失败。",
+          "AI 全自动运行时，窄窗口顶栏的运行条完整显示。",
+          "设置：窄屏上“新手指引”的三个按钮不再折行断字。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.32",
       "en": {
@@ -372,23 +409,6 @@
           "启动器和安装：选中便携版 ComfyUI 内部的文件夹（例如 python_embeded）时，提示会写出应选择的便携版文件夹。Mac 系统没有 Git 时，安装会自行下载 Git。Git 下载失败后不再留下不完整的文件夹，以前残留的也会清除。Windows 上安全软件短暂占用刚下载的安装工具时，安装会重试数秒，不再以“此文件夹不可写”停止。",
           "编辑：保存失败时会写明原因，连接断开时显示为连接已断开。通过代理终止安全连接的 https 页面（部分云端显卡主机即是如此）上也可以正常使用编辑。",
           "诊断报告：页面检查会写明创作面板已打开却看不到的原因。Windows 上请求因内存不足被拒绝时，报告会写出已用内存中 FreeVideo 自己占用多少。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.21",
-      "en": {
-        "summary": "Agent image tasks can place characters in a scene by position, size and facing; the page check no longer reports a covered toolbar behind ComfyUI dialogs.",
-        "changes": [
-          "Agent images: an image task can take a scene picture and one to three characters (character card or picture) with a position, a height, a full-body or half-body framing and a facing direction. The picture is generated with the scene as the first reference instead of a pasted collage, and the result can be used directly as a first frame.",
-          "Page check: the FreeVideo toolbar is no longer reported as covered when ComfyUI shows a dimming or click-away layer over it, such as the Templates dialog on a first start or the Help panel; the details now name what covers the toolbar."
-        ]
-      },
-      "zh": {
-        "summary": "Agent 图片任务可按位置、大小和朝向把人物放进场景；页面检查不再因 ComfyUI 的对话框遮罩报告工具栏被遮挡。",
-        "changes": [
-          "Agent 图片：图片任务可以指定一张场景图和一至三个人物（角色卡或图片），并设定位置、人物高度、全身或半身景别和朝向。图片以场景为第一参考图生成，不再拼贴粘图，结果可直接作首帧。",
-          "页面检查：ComfyUI 的调暗或点击遮罩（首次启动的模板对话框、帮助面板等）盖在 FreeVideo 工具栏上时，不再报告工具栏被遮挡；诊断详情会写出遮挡工具栏的元素。"
         ]
       }
     }
