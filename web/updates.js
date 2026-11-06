@@ -209,8 +209,11 @@ function showReleaseNotes(cn) {
     const body = document.createElement('div'); body.className = 'fv-release-body';
     const close = document.createElement('button'); close.type = 'button'; close.autofocus = true;
     close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
-    dialog.append(title, body, close);
+    const news = document.createElement('button'); news.type = 'button'; news.textContent = t("What's new", '新功能');
+    news.onclick = () => { dialog.close(); import('./whatsnew.js').then(({showWhatsNew}) => showWhatsNew(cn)); };
+    dialog.append(title, body, news, close);
     const render = () => {
+        news.hidden = !/^0\.5\./.test(productVersion() || '');
         body.replaceChildren();
         for (const [label, release] of [[t('Available update', '可用更新'), value?.available],
             [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null)]]) {

@@ -14,6 +14,10 @@ placed there, one file at a time:
   the folder's name is the digest of its identity marker and it holds nothing
   but table files.
 
+* the online LoRA folders beside its cache that this installer built (see
+  online_lora_folders): they hardlink the model's groups, so they are removed
+  first and the model files then count only their own link;
+
 A variant with fused LoRA variants beside its cache is kept whole: int8 cannot
 merge those adapters yet, so the old model is still the only way to use them.
 
@@ -32,6 +36,7 @@ import stat
 import time
 
 from .long_paths import io_path, plain, plain_errors
+from . import online_lora_folders
 from .locking import runtime_lock
 from .storage import fingerprint
 from .runtime_alias import checked_real_path, AliasUnavailable
@@ -70,7 +75,8 @@ def inside(base, path):
 
 
 @plain_errors
-def unshared_file(path):
+def unshared_file(path, links=1):
+    """The file's stat when it is a regular file with exactly this many links (its own, by default)."""
     path = io_path(path)
     if '.replaced-' in path.name:
         return None
@@ -78,7 +84,7 @@ def unshared_file(path):
         info = path.lstat()
     except OSError:
         return None
-    if redirected(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+    if redirected(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != links:
         return None
     return info
 
@@ -162,17 +168,18 @@ def _stage(folder, prepared, stage):
 
 
 @plain_errors
-def _generated_tables(prepared, table):
+def _generated_tables(prepared, table, links=None):
     """Files of one engine-generated AdaLN table folder, or None unless it is bound to its identity."""
     from .adaln_assets import FORMAT, directory
     prepared, table = io_path(prepared), io_path(table)
     if not ADALN_DIRECTORY.fullmatch(table.name) or not inside(prepared, table) or not table.is_dir():
         return None
     entries = list(table.iterdir())
-    if any(not ADALN_FILE.fullmatch(entry.name) or unshared_file(entry) is None for entry in entries):
+    links = links or (lambda path: 1)
+    if any(not ADALN_FILE.fullmatch(entry.name) or unshared_file(entry, links(entry)) is None for entry in entries):
         return None
     marker = table / 'identity.json'
-    info = unshared_file(marker)
+    info = unshared_file(marker, links(marker))
     if info is None or info.st_size > ADALN_IDENTITY_LIMIT:
         return None
     try:
@@ -185,9 +192,29 @@ def _generated_tables(prepared, table):
 
 
 @plain_errors
-def _plan_file(path, kind, entries):
+def _regular(path):
+    try:
+        info = io_path(path).lstat()
+    except OSError:
+        return False
+    return not redirected(info) and stat.S_ISREG(info.st_mode)
+
+
+@plain_errors
+def _plan_file(path, kind, entries, linked=False):
     path = io_path(path)
     entries.append(dict(path=plain(path), kind=kind, bytes=path.lstat().st_size, stamp=fingerprint(path)))
+    if linked:
+        entries[-1]['linked'] = True
+
+
+def _same(entry, now):
+    """The file is as planned. Removing another link to the same data changes its change time, which a linked file may do."""
+    if not entry.get('linked'):
+        return now == entry['stamp']
+    ignored = ('ctime_ns', 'change_time_ns')
+    return ({k: v for k, v in now.items() if k not in ignored}
+            == {k: v for k, v in entry['stamp'].items() if k not in ignored})
 
 
 @plain_errors
@@ -201,12 +228,43 @@ def retire(root, catalog, name):
         return dict(variant=name, folder=plain(folder), files=entries, kept=kept, bytes=0, kept_bytes=0,
                     stage_directories=stage_directories, present=folder.exists() or folder.is_symlink())
     stages = folder / STAGES
+    # Online LoRA folders go first; each hard link they hold on a model file is
+    # one more link that file may carry and still count as unshared.
+    peers = {}
+    beside = (folder / catalog['variants'][name]['cache_prefix']).parent
+    online_files = []
+    if inside(prepared, beside):
+        for online in online_lora_folders.listing(beside):
+            for path in online_lora_folders.owned_files(online):
+                try:
+                    info = io_path(path).lstat()
+                except OSError:
+                    continue
+                if info.st_ino:
+                    peers[(info.st_dev, info.st_ino)] = peers.get((info.st_dev, info.st_ino), 0) + 1
+                online_files.append((path, info))
+    # Each folder's manifest last: it is what makes the folder ours, so it must outlive any file that stays.
+    online_files.sort(key=lambda row: (str(online_lora_folders.home(row[0])), row[0] == online_lora_folders.home(row[0]) / online_lora_folders.MARKER))
+    for path, info in online_files:
+        _plan_file(path, 'online-lora', entries, linked=True)
+        # A link to a model file frees nothing of its own: the model file is counted once, under its own name.
+        if info.st_ino and info.st_nlink > peers[(info.st_dev, info.st_ino)]:
+            entries[-1]['bytes'] = 0
+        planned.add(io_path(path))
+
+    def links(path):
+        """Links a file may carry: its own, plus the planned online LoRA links to the same data."""
+        try:
+            info = io_path(path).lstat()
+        except OSError:
+            return 1
+        return 1 + peers.get((info.st_dev, info.st_ino), 0) if info.st_ino else 1
     for row in catalog['variants'][name]['files']:
         path = folder / row['file']
         if path.exists() or path.is_symlink():
-            info = unshared_file(path)
+            info = unshared_file(path, links(path))
             if info is not None and info.st_size == row['bytes'] and inside(prepared, path):
-                _plan_file(path, 'catalog', entries)
+                _plan_file(path, 'catalog', entries, linked=links(path) > 1)
                 planned.add(path)
         sidecar = path.with_name(path.name + SIDECAR)
         if sidecar.exists() and inside(prepared, sidecar) and _sidecar_matches(sidecar, row):
@@ -238,11 +296,11 @@ def retire(root, catalog, name):
     cache = folder / catalog['variants'][name]['cache_prefix']
     if cache.is_dir() and inside(prepared, cache):
         for table in sorted(cache.iterdir()):
-            found = _generated_tables(prepared, table)
+            found = _generated_tables(prepared, table, links)
             for path in found or ():
                 path = io_path(path)
                 if path not in planned:
-                    _plan_file(path, 'adaln', entries)
+                    _plan_file(path, 'adaln', entries, linked=links(path) > 1)
                     planned.add(path)
     kept_bytes = 0
     for current, names, files in os.walk(folder, followlinks=False):
@@ -358,6 +416,19 @@ def permitted(path, kind, folder, rows, cache_prefix=None):
             if row_kind == 'catalog' and key.startswith(name) and PARTIAL.fullmatch(key[len(name):]):
                 return Path(name).parent == path.parent
         return False
+    if kind == 'online-lora':
+        if cache_prefix is None:
+            return False
+        beside = folder / Path(cache_prefix).parent
+        try:
+            relative = path.relative_to(beside)
+        except ValueError:
+            return False
+        parts = relative.parts
+        groups = {row_file[len(cache_prefix) + 1:] for row_file in (r['file'] for _, r in rows.values())
+                  if row_file.startswith(cache_prefix + '/')}
+        return (len(parts) >= 2 and online_lora_folders.NAME.fullmatch(parts[0]) is not None
+                and online_lora_folders.permitted('/'.join(parts[1:]), groups))
     if kind == 'adaln':
         if cache_prefix is None:
             return False
@@ -437,26 +508,37 @@ def clean(plan, catalog=None, receipt=None):
             if plain(folder) != plain(retired['folder']) or folder == variant_folder(root, catalog, active):
                 raise ValueError('Retired model folder changed; check storage again.')
             directories = set()
+            held = set()
             for entry in retired['files']:
                 path = Path(entry['path'])
                 reason = None
-                if not permitted(path, entry['kind'], Path(plain(folder)), rows, catalog['variants'][name]['cache_prefix']):
+                if entry['kind'] == 'online-lora' and online_lora_folders.home(path) in held and path == online_lora_folders.home(path) / online_lora_folders.MARKER:
+                    reason = 'folder still holds files'
+                elif not permitted(path, entry['kind'], Path(plain(folder)), rows, catalog['variants'][name]['cache_prefix']):
                     reason = 'not a planned name'
-                elif not inside(prepared, path) or unshared_file(path) is None:
+                elif entry['kind'] == 'online-lora' and not inside(prepared, path):
+                    reason = 'link, junction, shared or missing'
+                elif entry['kind'] == 'online-lora' and not _regular(path):
+                    reason = 'link, junction, shared or missing'
+                elif entry['kind'] != 'online-lora' and (not inside(prepared, path) or unshared_file(path) is None):
                     reason = 'link, junction, shared or missing'
                 else:
                     try:
-                        if fingerprint(path) != entry['stamp']:
+                        if not _same(entry, fingerprint(path)):
                             reason = 'changed since the scan'
                     except OSError:
                         reason = 'missing'
                 if reason:
                     skipped.append(dict(path=plain(path), reason=reason))
+                    if entry['kind'] == 'online-lora':
+                        held.add(online_lora_folders.home(path))
                     continue
                 try:
                     io_path(path).unlink()
                 except OSError as error:
                     skipped.append(dict(path=plain(path), reason=type(error).__name__))
+                    if entry['kind'] == 'online-lora':
+                        held.add(online_lora_folders.home(path))
                     continue
                 removed.append(dict(path=plain(path), bytes=entry['bytes'], kind=entry['kind']))
                 released += entry['bytes']

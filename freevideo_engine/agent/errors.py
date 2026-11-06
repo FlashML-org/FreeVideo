@@ -82,6 +82,7 @@ ERRORS = {
 # Preserve that runtime contract while the pure production code keeps its 409.
 PRODUCTION_STATUS = {'not_ready': 409}
 ERRORS.update({
+    'capabilities_computing': (503, True, 'This computer is still working out what it can generate.', 'Wait retry_after_seconds, then retry the request.'),
     'unknown_shot': (404, False, 'The shot does not exist.', 'Use a shot id from the production view.'),
     'unknown_take': (404, False, 'The take does not exist.', 'Use a take number from this shot in the production view.'),
     'take_not_ready': (409, False, 'The take is stale or has not succeeded.', 'Choose a succeeded, non-stale take, or reshoot this shot.'),
@@ -114,6 +115,8 @@ ERRORS.update({
     'export_failed': (409, True, 'The export did not finish.', 'Read the project, then submit the export again with a new ref.'),
     'no_speech_model': (409, False, 'No speech model is installed on this machine.',
                         'Do not retry. Write the subtitle lines yourself with the subtitles edit, or tell the user the model is not installed.'),
+    'speech_language': (409, False, 'The speech model does not cover the language of this sound.',
+                        'Do not retry; tell the user the language is not supported, or write the lines yourself.'),
     'listen_failed': (409, True, 'Listening to the sound did not finish.',
                       'Read the project, then submit the listening job again with a new ref; if it fails again, write the lines yourself.'),
     'music_download_failed': (409, True, 'The music model could not be downloaded.',
@@ -124,6 +127,8 @@ ERRORS.update({
     'stems_download_failed': (409, True, 'The sound separation model could not be downloaded.',
                               'Tell the user the model needs a network connection, then submit the job again with a new ref.'),
     'stems_failed': (409, True, 'Splitting the sound did not finish.',
+                     'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
+    'sound_failed': (409, True, 'The sound of the cut was not finished.',
                      'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
     'voice_failed': (409, True, 'Changing the voice did not finish.',
                      'Read the project, then submit the job again with a new ref; if it fails again, leave the sound as it is.'),
@@ -247,7 +252,7 @@ def recovery(code, *, kind=None, stage='request', resumable=True):
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
     if kind == 'music' and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the music job again with a new ref.'
-    if kind in ('stems', 'voice', 'voice_lines') and code == 'out_of_memory':
+    if kind in ('stems', 'sound', 'finish_sound', 'voice', 'voice_lines') and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the job again with a new ref.'
     if kind == 'image' and code == 'no_memory':
         return 'Lower the picture dimensions or use fewer reference pictures, then submit with a new ref.'
@@ -290,6 +295,7 @@ def safe_details(value):
 FAILURE_REASONS_ZH = {
     **LORA_MESSAGE_ZH,
     'lan_unavailable': '局域网设置需要启动器安装记录',
+    'capabilities_computing': '正在计算这台电脑的生成能力，稍后再试',
     'out_of_memory': '生成时显存或内存不足',
     'insufficient_memory': '可用显存或内存不够生成这段内容',
     'no_memory': '可用显存或内存不够生成这张图片',
@@ -341,6 +347,7 @@ FAILURE_REASONS_ZH = {
 FAILURE_REASONS_EN = {
     **LORA_MESSAGE_EN,
     'lan_unavailable': 'Phone access requires FreeVideo installed with the launcher',
+    'capabilities_computing': 'Working out what this computer can generate; try again shortly',
     'out_of_memory': 'Graphics or system memory ran out during generation',
     'insufficient_memory': 'There is not enough free graphics or system memory for this generation',
     'no_memory': 'There is not enough free graphics or system memory for this picture',
@@ -480,6 +487,8 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
     result = capture_other_usage(result)
     if action_required:
         result['next'] = next_action if validation and next_action else action
+    if code == 'capabilities_computing':
+        result['retry_after_seconds'] = retry_after_seconds or 1
     if code == 'busy':
         result['retry_after_seconds'] = retry_after_seconds or 1
         result['details'].append(dict(owner=owner if owner in ('agent', 'ui') else 'ui'))

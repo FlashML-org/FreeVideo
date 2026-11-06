@@ -73,7 +73,7 @@ def _compiled(play, shot):
 
 # What a screenplay shot and a line may say; anything else would be ignored without a word.
 SHOT_FIELDS = ('id', 'seconds', 'action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music', 'takes', 'seed',
-               'continue', 'first', 'references', 'cast', 'lines')
+               'continue', 'first', 'references', 'cast', 'lines', 'cuts', 'continuity')
 LINE_FIELDS = ('who', 'line', 'how', 'language')
 
 
@@ -101,7 +101,7 @@ def _fields(play, problems):
             problems.append(dict(path=prefix + name, message='is not a field here; use ' + ', '.join(known)))
 
 
-def plan(request, *, fields=True):
+def plan(request, *, fields=True, single_seconds=drama.BLOCK_SECONDS):
     """Return {'request': normalized copy, 'preview': {'shots': [...], 'total': N}}.
 
     fields=False rechecks a saved screenplay, which may predate the unknown-field rule."""
@@ -112,7 +112,7 @@ def plan(request, *, fields=True):
     play = deepcopy(request.get('screenplay'))
     play_ok = True
     try:
-        drama.check(play)
+        drama.check(play, single_seconds)
     except drama.Screenplay as error:
         play_ok = False
         problems.extend(dict(path='/screenplay' + p['path'], message=_rule(p)) for p in error.problems)
@@ -403,9 +403,9 @@ def _commit(state, draft, now):
         state.update(draft)
 
 
-def new(identity, request, *, now):
+def new(identity, request, *, now, single_seconds=drama.BLOCK_SECONDS):
     """Create a JSON receipt. Shot indices start at 1; generations start at 0."""
-    request = plan(request)['request']
+    request = plan(request, single_seconds=single_seconds)['request']
     if not isinstance(identity, str) or not spec.SLUG.fullmatch(identity):
         _invalid([dict(path='/id', message='Production id must be a unique short name')])
     state = dict(version=1, id=identity, title=request['screenplay'].get('title'), revision=1,
@@ -583,7 +583,7 @@ def choose(state, shot, take, *, by, reason=None, cascade=True, now):
     _commit(state, draft, now)
 
 
-def reshoot(state, shot, *, by, note=None, changes=None, takes=1, reason=None, now):
+def reshoot(state, shot, *, by, note=None, changes=None, takes=1, reason=None, now, single_seconds=drama.BLOCK_SECONDS):
     """Reserve a fresh generation; keep all previous non-stale takes selectable."""
     _editable(state, by)
     draft = deepcopy(state)
@@ -604,7 +604,7 @@ def reshoot(state, shot, *, by, note=None, changes=None, takes=1, reason=None, n
     source.update(deepcopy(changes or {}))
     # Recheck the complete effective screenplay, transactionally.
     plan(dict(screenplay=draft['screenplay'], takes_per_shot=draft['takes_per_shot'], director=draft['director']),
-         fields=False)
+         fields=False, single_seconds=single_seconds)
     _schedule(draft, row, takes, by, note)
     draft['cancelled'], draft['current_join'] = False, None
     _decision(draft, now, by, 'reshoot', shot, reason=reason)

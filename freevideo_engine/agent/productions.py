@@ -24,6 +24,8 @@ import uuid
 from . import drama, production, schema, spec, errors, operation_receipts, take_qa
 from .jobs import DONE, JobError, iso, parts_problems
 from .forecast import generation_estimate
+from .length import WAIT_SECONDS, capability_table, single_frame_limit
+from .. import chain_plan
 
 SHEET_LEAST, SHEET_MOST = 6, 24  # frames per take when the caller gives no count: one per second
 
@@ -31,6 +33,7 @@ MAX_GENERATION = 4  # Generations are zero-based: original 0, reshoots 1 through
 MAX_CHILDREN = 60   # Includes assembly, rejected submissions and resumed attempts.
 MAX_WAITERS = 32    # Long GET waits served at once; more callers receive the current state.
 MAX_WAIT = 25
+READY_SECONDS = 20.  # A long shot that needs the first table after a start waits this long more, then is asked to retry.
 REQUEST_ID = re.compile(r'r-[0-9a-f]{32}')
 _NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
 _POINTER = re.compile(r'(?:/(?:[A-Za-z0-9_-]{1,64}|\?))*|/')
@@ -173,8 +176,8 @@ class Productions:
         self._waiter_lock = threading.Lock()
         # gate(action, *, by, estimate_seconds, refs, question) raises when the user must approve first.
         self.gate = None
-        # transcribe(path) -> heard text, optional; without it the QA does not compare dialogue.
-        self.transcribe = None
+        # transcribe(path) -> heard text; a machine without a speech model gets a note instead of a comparison.
+        self.transcribe = take_qa.recognise
         self._inspecting = set()
         self.load()
         jobs.parent_allowed = self.allows
@@ -206,7 +209,7 @@ class Productions:
                     raise ValueError('Invalid submission marker')
                 production.view(state)
                 try:
-                    checked = production.plan(request, fields=False)
+                    checked = production.plan(request, fields=False, single_seconds=math.inf)  # saved: the limit held when it was accepted
                     if [s['id'] for s in state['shots']] != [s['id'] for s in checked['preview']['shots']]:
                         raise JobError('internal_error', 'Saved shots differ from the current plan')
                     production.advance(deepcopy(state), deepcopy(record['children']), now=state['updated_at'])
@@ -366,9 +369,46 @@ class Productions:
         if problems:
             _domain(production._invalid, problems)
 
+    def _single_seconds(self, request):
+        """The longest shot this machine generates at once for the film's size and quality; unknown keeps 15 s."""
+        play = request.get('screenplay') if isinstance(request, dict) else None
+        try:
+            probe = dict(prompt='x', aspect=play.get('aspect', '9:16'), quality=play.get('quality', 'light'), seconds=15)
+            if play.get('megapixels'):
+                probe['megapixels'] = play['megapixels']
+            probe = spec.normalize(probe, port=self.jobs.port)
+            # Pictures and cards make the shot a reference generation, which has its own limit.
+            table = capability_table(self.jobs.port, probe, wait=WAIT_SECONDS, task='ref2va')
+            waiting = table.get('status') == 'computing' and drama.needs_machine_limit(play)
+            if waiting:
+                table = capability_table(self.jobs.port, probe, wait=READY_SECONDS, task='ref2va')
+                waiting = table.get('status') == 'computing'
+            if not waiting:
+                return chain_plan.single_seconds(single_frame_limit(probe, table=table))
+        except Exception:  # A film that does not normalize is reported by its own checks.
+            return chain_plan.BLOCK_SECONDS
+        # A limit not worked out yet is not a low limit: the same request can succeed in a moment.
+        raise JobError('capabilities_computing', 'Capabilities are being worked out',
+                       retry_after_seconds=table.get('retry_after_seconds'))
+
+    def _reshoot_seconds(self, identity, shot, changes):
+        """The limit for a shot that changes; a reshoot with no changes keeps what was accepted. Call without the lock."""
+        if not changes or not isinstance(changes, dict):
+            return math.inf
+        with self.changed:
+            state = deepcopy(self._record(identity)['state'])
+        try:
+            state['screenplay']['shots'][production._shot(state, shot)['index'] - 1].update(changes)
+        except production.ProductionError:  # production.reshoot reports it.
+            return math.inf
+        return self._single_seconds(dict(screenplay=state['screenplay']))
+
     def plan(self, request, *, local=True):
-        result = _domain(production.plan, {k: v for k, v in request.items() if k != 'ref'})
-        state = _domain(production.new, 'dplanpreview', result['request'], now=iso(self.jobs.clock()))
+        single_seconds = self._single_seconds(request)
+        result = _domain(production.plan, {k: v for k, v in request.items() if k != 'ref'},
+                         single_seconds=single_seconds)
+        state = _domain(production.new, 'dplanpreview', result['request'], now=iso(self.jobs.clock()),
+                        single_seconds=single_seconds)
         play = result['request']['screenplay']
         with self.changed:
             cards = self._cards(play)
@@ -382,7 +422,7 @@ class Productions:
             row.update(cast_reference=resolved['cast_reference'], cast=resolved['people'],
                        cast_omitted=resolved['omitted'], cast_voice_omitted=resolved['voice_omitted'],
                        cast_missing=resolved['missing'], cast_pictures_each=pictures_each(resolved),
-                       references=len(resolved['references']))
+                       references=len(resolved['references']) + resolved['own_pictures'])
             try:
                 spec._text(row['prompt'], '/screenplay/shots/%d/prompt' % i, 20000)
             except spec.SpecError as error:
@@ -411,7 +451,7 @@ class Productions:
             resolved = self._carry(state['screenplay'], state['screenplay']['shots'][shot['index'] - 1],
                                    self._current(state['screenplay']), item, continues=shot['continues'])
             if resolved['references']:
-                item['media'] = dict(references=deepcopy(resolved['references']))
+                item['media'] = dict(references=self._own(item) + deepcopy(resolved['references']))
             estimate, revision = generation_estimate(self.jobs.port, spec.normalize(item, port=self.jobs.port))
             return dict(estimate, revision=revision)
         except Exception:  # Timing is optional; a forecast failure must not reject a film or job.
@@ -449,7 +489,8 @@ class Productions:
             shapes.append([normalized[k] for k in ('width', 'height', 'frames')])
         current = next((j for j in state['joins'] if j['ref'] == state['current_join']), None)
         transition = current['transition'] if current else state['screenplay'].get('transition', 'cut')
-        signature = dict(shapes=shapes, transition=transition)
+        seconds = state['screenplay'].get('transition_seconds', .5)
+        signature = dict(shapes=shapes, transition=transition, transition_seconds=seconds)
         if previous and previous.get('signature') == signature and previous.get('ref') == state['current_join']:
             return previous
         samples = []
@@ -460,7 +501,7 @@ class Productions:
             if saved.get('transition', 'cut') != transition or saved.get('width') or saved.get('height'):
                 continue
             if saved.get('audio', True) is not True or (
-                    transition == 'crossfade' and saved.get('transition_seconds', .5) != .5):
+                    transition == 'crossfade' and saved.get('transition_seconds', .5) != seconds):
                 continue
             if any(set(clip) != {'from_job'} for clip in saved['clips']):
                 continue
@@ -592,12 +633,13 @@ class Productions:
         if ref and alias and ref != alias:
             raise JobError('idempotency_conflict', 'Conflicting keys')
         ref = ref or alias
+        single_seconds = self._single_seconds(request)  # May wait, so not under the lock.
         with self.changed:
             digest, replay = self._receipt('start', dict(request=request, by=by), ref, client)
             if replay is not None:
                 return replay
             identity = 'd' + uuid.uuid4().hex[:12]
-            state = _domain(production.new, identity, request, now=iso(self.jobs.clock()))
+            state = _domain(production.new, identity, request, now=iso(self.jobs.clock()), single_seconds=single_seconds)
             # new() only takes director, not the initiating actor. Attribution
             # belongs to this boundary, including the future in-process UI.
             for decision in state['decisions']:
@@ -746,7 +788,7 @@ class Productions:
                     paused=view['paused'], stalled=view['stalled'], session=record.get('session'), error_zh=view['error_zh'], error_en=view['error_en']))
             return result
 
-    def _mutate(self, action, identity, *, by, ref=None, client=None, **values):
+    def _mutate(self, action, identity, *, by, ref=None, client=None, limit=None, **values):
         with self.changed:
             record = self._record(identity)
             if action in ('choose', 'reshoot', 'finish'):
@@ -758,7 +800,7 @@ class Productions:
                 return replay
             draft = deepcopy(record)
             state = draft['state']
-            _domain(getattr(production, action), state, by=by, now=iso(self.jobs.clock()), **values)
+            _domain(getattr(production, action), state, by=by, now=iso(self.jobs.clock()), **values, **(limit or {}))
             # The next advance is part of this operation: if it cannot run, nothing changes.
             self._preflight(record, draft)
             self._prepare_estimates(draft)
@@ -786,7 +828,8 @@ class Productions:
         return self._mutate('choose', identity, shot=shot, take=take, by=by, ref=ref, **kwargs)
 
     def reshoot(self, identity, shot, *, by='agent', ref=None, **kwargs):
-        return self._mutate('reshoot', identity, shot=shot, by=by, ref=ref, **kwargs)
+        seconds = self._reshoot_seconds(identity, shot, kwargs.get('changes'))
+        return self._mutate('reshoot', identity, shot=shot, by=by, ref=ref, limit=dict(single_seconds=seconds), **kwargs)
 
     def finish(self, identity, *, by='agent', ref=None, **kwargs):
         return self._mutate('finish', identity, by=by, ref=ref, **kwargs)
@@ -970,7 +1013,8 @@ class Productions:
                     raise JobError('production_limit', 'Too many child jobs')
                 if 'join' in action:
                     item = dict(kind='assemble', clips=[children[r]['id'] for r in item['takes']],
-                                transition=item['transition'])
+                                transition=item['transition'],
+                                transition_seconds=record['state']['screenplay'].get('transition_seconds', .5))
                 else:
                     take = next(t for s in record['state']['shots'] for t in s['takes'] if t['job'] == ref)
                     if take['generation'] > MAX_GENERATION:
@@ -1025,11 +1069,17 @@ class Productions:
         if resolved['cast_reference'] is None:
             return resolved
         if resolved['references']:
-            item['media'] = dict(references=deepcopy(resolved['references']))
+            item['media'] = dict(references=self._own(item) + deepcopy(resolved['references']))
+        if resolved['prefix']:
             item['prompt'] = drama.with_cast(item['prompt'], resolved)
         item['metadata'] = dict(item.get('metadata') or {}, cast=dict(resolved['cards']),
                                 cast_reference=resolved['cast_reference'])
         return resolved
+
+    @staticmethod
+    def _own(item):
+        """The pictures the shot itself names; the cast cards are added after them."""
+        return deepcopy(((item or {}).get('media') or {}).get('references') or [])
 
     def _carry(self, play, shot, cards, item, *, continues):
         """The cast a shot carries: each person's sheet and face close-up on every device (one picture a person when

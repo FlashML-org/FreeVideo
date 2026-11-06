@@ -1,0 +1,92 @@
+# Writing a short drama: script, blocking, continuity, casting, prompt
+
+First version. Each part gives the few rules that matter most and one example. Every example is invented for this file.
+
+## Script
+
+- One page before any prompt: who wants what, who stands in the way, how it gets worse, the low point, the reversal, the ending. Each beat is caused by the one before it; "and then" is not a cause.
+- One beat is one thing the audience learns or one choice a person makes. A beat that does neither is cut.
+- Dialogue is short and carries the conflict: a person asks, refuses, lies or gives in. No line explains what the picture already shows.
+- Amount of speech (estimate, to be measured): about 2 spoken words per second in English and about 4 characters per second in Chinese, counting pauses. A 20 second generation holds about 30 words, three to five lines. More than that gets rushed or cut off.
+- The last beat of a generation ends on a look, a door or a held line, so the next shot has something to start from.
+
+Example, a 20 second piece in one generation: a girl wants the last seat on the night bus. Cut 1: she runs, the doors are closing. Cut 2: a man in the seat sees her and pulls his bag onto it. Cut 3: she says "Please." Cut 4: he says nothing, then moves the bag. Cut 5: she sits; the bus pulls away. Two spoken lines in all, about four words.
+
+## Blocking
+
+- Write a plan for every beat: who sits or stands where, who faces whom, where the camera is. Left and right are the camera's left and right.
+- Two people who talk keep the same sides in every cut; the camera stays on one side of the line between them.
+- Name the camera for each cut: wide, over the shoulder, close-up, and whether it moves.
+
+Example: Beat 2, the kitchen. Mia stands at the sink, left of frame, back to the window. Dad sits at the table, right of frame, facing her. Camera behind Dad's shoulder, locked off. Cut to a close-up of Mia from his side, still on the left.
+
+## Continuity across shots
+
+- Clothes, hair, props and time of day that stay the same are written once, in the film's continuity table; the prompt carries that row in every shot. A state that changes during the film (a scar that appears, a lantern that goes out, a bandage) is written in the shot where it holds, as that shot's own continuity row for the person: it replaces the table's row for that shot only. Do not put both states in the table, and keep a changing state out of the person's look in the cast as well; every shot would show both.
+- A new shot starts from what happened, not from the previous last frame: someone arrives, looks, answers. Say where everyone stands at the start.
+- A continuous action across two beats stays in one shot.
+- If the people in one scene look alike, give each a distinct colour of clothing so they are not swapped.
+
+Example: Mia wears a green raincoat in every shot and Dad a grey cardigan. Shot 2 opens with Dad still seated and Mia in the doorway, the mug she picked up in shot 1 in her hand.
+
+## Casting
+
+- One card per person: a clear front picture, and a voice sample of that person only. `freevideo_cast_list` first; reuse a card that matches.
+- Describe each person in the cast and in the prompt the same way, by what is visible: age, build, hair, clothes, one distinguishing item.
+- At most three people in one generation. Speaker numbers (S1), (S2) follow the order in which people first speak in that one video; the drama tools assign them.
+
+Example: (S1) Mia: girl of about ten, black bob, green raincoat, yellow school bag. (S2) Dad: tall man in his forties, short beard, grey cardigan.
+
+## Writing the prompt
+
+Rules, in this order:
+1. Cuts of 2 to 4 seconds each. A 15 to 20 second generation holds four to six cuts. The speaker starts within half a second of the cut. A walk, a door or a turn takes 2 seconds at most.
+2. Six sections in this order, a blank line between them, each starting with its name and a colon: `subject_definitions:`, `summary:`, `retention_analysis:`, `detailed_description:`, `overall_soundscape:`, `non_diegetic_music:`. Write these names exactly. Add no other headings such as [Style] or [Scene].
+3. `subject_definitions:` has one line per reference picture and per voice, tagged `<Subject 1>`, `<Subject 2>`, `<Audio 1>` in the order the references are attached. Say what each looks like and keep that look in every cut. A `<Subject N>` is any reusable thing: a person, a place, a costume or prop, a style, a motion; one subject may draw on several pictures, for example the face from one and the outfit from another. Cite each voice where it is used: `<Audio 1> is the voice-timbre reference for <Subject 1> (S1)`. The voice supplies timbre and delivery only; the lines are written fresh for the new video.
+4. `retention_analysis:` has one line per tag: `<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - ...` and `<Audio 1>: reference - ...`.
+5. `summary:` opens with the task type in brackets, `[reference generation]`, or `[reference generation + audio reference]` when a voice reference is attached; one or two sentences of visual style (live-action, 2D animation, 3D CG, claymation, watercolor, vintage film) come before `[Shot 1]`. `detailed_description:` holds the cuts. `[Shot 1]` has no time; later cuts start `[Shot 2] At 00:03.500, ...` with times that only increase and the last cut ends at the length of the generation.
+6. Number speakers once, in the order of their first spoken line in this video, and reuse that number everywhere in it; the number is independent of the `<Subject N>` number and `retention_analysis` carries no (S#). Write it in brackets after the tag: `<Subject 1> (S1) says: <d>[English] It is still warm.</d>`. Write (S1), (S2); never "Speaker 1". Quote the line exactly.
+7. Cite each voice reference in the cut where it is active, and say whether it gives timbre or delivery. Every cut states: the shot size and the camera side and height; who is left, right and centre; where the camera is fixed or how it moves; where each person stands or sits and who they face; what the hands do; each face's expression; the clothes again; light and time of day; who is the only speaker; where each reference picture appears in the cut.
+8. Use concrete details in place of mood words: materials, light direction, gesture, texture, distance, sound source. A line that runs across a cut is marked `<scenetrans>` on both sides and says the voice continues; a line the video ends in the middle of is marked `<cutoff>`. Say what is there. Write the positive version of every wish: "her face stays still, lips pressed together" in place of a negation; "plain blank walls" in place of "no text"; "everyone else listens with lips closed" in place of "nobody speaks". The words no, not, never, without, nobody and does not stay out of the prompt.
+9. Generate two seeds of the first shot, look at them at full size, and continue only when they are right.
+
+Which form the tools write: a shot with cast pictures or references gets the six sections; a shot from a first frame or without pictures gets the short form `integrated_multimodal_description:`, `overall_soundscape:`, `non_diegetic_music:`. Write the six sections only when you give `prompt` yourself for a picture shot. The alignment of a first or last frame to its second is added by the engine's prompt rewrite; do not write it.
+
+Minimal complete example (a 6 second generation with two cuts; a real one has four to six):
+
+subject_definitions:
+<Subject 1> is the first reference picture: a girl of about ten with a black bob, a green raincoat and a yellow school bag, round face, brown eyes. She looks like this in every cut.
+<Subject 2> is the second reference picture: a tall man in his forties with a short dark beard and a grey cardigan. He looks like this in every cut.
+<Audio 1> is the voice-timbre reference for <Subject 1> (S1), a clear young girl's voice.
+<Audio 2> is the voice-timbre reference for <Subject 2> (S2), a low calm man's voice.
+
+summary:
+[reference generation + audio reference] Live-action, warm natural light, shallow depth of field. In a warm kitchen at dusk, a girl holds out a mug to her father, who takes it and thanks her.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - face, black bob, green raincoat, yellow school bag.
+<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - face, beard, grey cardigan.
+<Audio 1>: reference - the target uses the voice timbre of this reference for <Subject 1>.
+<Audio 2>: reference - the target uses the voice timbre of this reference for <Subject 2>.
+
+detailed_description:
+[Shot 1] Medium shot over <Subject 2>'s right shoulder, camera at eye level, locked-off tripod camera, the framing stays fixed for the whole shot. <Subject 1> (S1) stands left of frame in her green raincoat with her yellow school bag on her back, facing him, and holds a white mug out with both hands. <Subject 2> sits at the table on the right of frame, facing her, his grey cardigan in the soft orange light of the window. <Subject 1> says warmly, her eyes on him: <d>[English] It is still warm.</d> Exactly as her voice stops, her lips close and stay closed. <Subject 1> is the only speaker in this shot; <Subject 2> listens with lips closed.
+[Shot 2] At 00:03.000, Close-up of <Subject 2> from the left side, locked-off tripod camera. His bearded face fills the right of frame, his grey cardigan at the bottom edge; his right hand takes the white mug from the left edge of frame. His eyes soften and the corners of his mouth lift. <Subject 2> (S2) says gently: <d>[English] Thank you, Mia.</d> Exactly as his voice stops, his lips close and stay closed. <Subject 2> is the only speaker in this shot; <Subject 1> listens with lips closed.
+
+overall_soundscape:
+Quiet kitchen at dusk, a soft clink of the mug, two voices close to the microphone.
+
+non_diegetic_music:
+N/A
+
+## Check before generating
+
+Five faults that came back in real test generations. Check the prompt and the references for each one.
+
+1. Stray lettering. Props and clothes grow unreadable made-up letters: the edge of a laptop, embroidery on a chest, a shop sign, a cup. Write every such surface as plain and unmarked: "a plain matte grey mug", "a smooth navy jacket", "a blank painted shop sign". Letters on screen only when a real picture of that screen is a reference.
+2. Faces in wide shots. A face that is 20 to 30 pixels tall comes out smooth and plastic. A person who matters is in a medium shot or a close-up; the wide shot shows people who do not need to be recognised.
+3. Reading size. Text the audience must read is at least 14 pixels tall in the finished video. Take interface screenshots at 175% to 200% zoom and attach that picture; an 8 pixel line is unreadable and the shot is sent back.
+4. Third-party marks. Write props as neutral and unbranded: "a neutral silver laptop with a smooth lid", "a plain white takeaway box". Brand logos and trademarks stay out of the prompt and out of the references unless the story needs that exact prop.
+5. Voice reference. The first 6 seconds of the voice file carry the timbre: at least 4 of them are the person speaking, and the file does not open with music. When the person's first frame has the mouth hidden (a closed visor or a mask), attach a voice reference whose picture shows the mouth. A video that is attached only for its voice carries `voice_only: true`: its sound track is read as an audio reference and its picture is ignored, so it does not serve as the mouth picture.
+
+Example, fixing fault 1 and 4 together. Before: "Lena opens her silver laptop and drinks from a coffee cup." After: "Lena opens a neutral silver laptop with a smooth lid and lifts a plain matte grey mug."

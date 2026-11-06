@@ -41,6 +41,7 @@ let current = null;
 
 /** Open the bundled manual; chapter is one of the ids in tutorial_book_content.js. */
 export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
+    if (chapter === 'separate-tracks') import('./sound_bubble.js').then(({markSoundBubbleSeen}) => markSoundBubbleSeen(), () => {});
     if (current?.dialog.isConnected) {
         current.select(chapter);
         return current.dialog;

@@ -104,7 +104,10 @@ export function createPreviewScene(stage, progress, media) {
         width = stage.clientWidth; height = stage.clientHeight;
         const scale = Math.min(window.devicePixelRatio || 1, 1.5);
         canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
-        ctx.setTransform(scale, 0, 0, scale, 0, 0); schedule();
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        // Resizing clears the canvas; paint now so the throttled frame loop cannot leave a black frame.
+        if (!disposed && visible && width && height) paint();
+        schedule();
     });
     const observer = new MutationObserver(state);
     observer.observe(progress, {attributes: true, attributeFilter: ['hidden', 'style', 'data-counted']});

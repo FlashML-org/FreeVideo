@@ -664,8 +664,9 @@ def feasible_alternatives(hardware, canvas, **options):
     """Smaller requests this machine can plan now, for a refusal to name.
 
     The longest video at the requested size, and the requested length at the
-    largest of the panel's smaller pixel targets that fits; each one admitted
-    by this same planner, never estimated separately.
+    largest of the smaller pixel targets (1.5, 1.0, 0.75 and 0.5 megapixels)
+    that fits; each one admitted by this same planner, never estimated
+    separately.
     """
     from .geometry import geometry
     keep = {key: canvas[key] for key in ('task', 'steps', 'reference_video_tokens', 'reference_audio_tokens', 'early_reference')
@@ -698,7 +699,7 @@ def feasible_alternatives(hardware, canvas, **options):
     if best is not None:
         result.append(dict(kind='shorter', width=width, height=height, frames=best, seconds=round(best / 24, 1)))
     ratio = width / height
-    for megapixels in (.75, .5):
+    for megapixels in (1.5, 1., .75, .5):
         area = megapixels * 1024 * 1024
         smaller_width = max(256, int(round((area * ratio) ** .5 / 32)) * 32)
         smaller_height = max(256, int(round((area / ratio) ** .5 / 32)) * 32)

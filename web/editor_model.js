@@ -219,6 +219,11 @@ export function parse(value) {
     result.size_mode = value.size_mode ?? 'first';
     check(value.keep_empty === undefined || typeof value.keep_empty === 'boolean', 'invalid');
     if (value.keep_empty) result.keep_empty = true;
+    // The export's true-peak ceiling (dBTP), written by the finishing step.
+    if (value.master_peak_db !== undefined) {
+        check(typeof value.master_peak_db === 'number' && Number.isFinite(value.master_peak_db) && value.master_peak_db >= -12 && value.master_peak_db <= 0, 'invalid');
+        result.master_peak_db = value.master_peak_db;
+    }
     Object.assign(result, markerFields(value));
     if (value.replacements !== undefined) {
         check(Array.isArray(value.replacements) && value.replacements.length > 0 && value.replacements.length <= RULES.maxClips, 'invalid');

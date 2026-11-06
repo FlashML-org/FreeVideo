@@ -20,7 +20,7 @@ import re
 import time
 
 from . import spec as specs
-from ..chain_plan import CONTINUE_SECONDS
+from ..chain_plan import CONTINUE_SECONDS, BLOCK_SECONDS
 
 EXAMPLE = {
     'title': '末班车', 'name': 'the-last-train', 'aspect': '9:16', 'quality': 'light',
@@ -67,8 +67,10 @@ MAX_VOICES = 3      # voice clips per shot, the model limit
 MAX_REFERENCES = 32
 
 
-def check(play):
-    """Validate every independent field, mutating only missing shot ids."""
+def check(play, single_seconds=BLOCK_SECONDS):
+    """Validate every independent field, mutating only missing shot ids.
+
+    single_seconds: the longest shot this machine generates at once, which bounds a shot that carries pictures."""
     problems = []
 
     def problem(path, message):
@@ -109,6 +111,12 @@ def check(play):
             validate(specs._text, play[field], '/' + field, 20000, empty=True)
     if 'name' in play and (not isinstance(play['name'], str) or not specs.SLUG.fullmatch(play['name'])):
         problem('/name', 'must be a short project name')
+    if 'continuity' in play:
+        if not isinstance(play['continuity'], dict):
+            problem('/continuity', 'must be an object of text by character name, and optionally "set"')
+        else:
+            for key, text in play['continuity'].items():
+                validate(specs._text, text, '/continuity/' + str(key).replace('~', '~0').replace('/', '~1'), 20000, empty=True)
     if 'captions' in play:
         validate(specs._bool, play['captions'], '/captions')
     if 'quality' in play and (not isinstance(play['quality'], str) or play['quality'] not in specs.QUALITY):
@@ -136,8 +144,8 @@ def check(play):
             problem(path + '/id', '/shots/%d/id must be a unique short name' % i)
         if isinstance(shot['id'], str):
             names.add(shot['id'])
-        if not any(isinstance(shot.get(key), str) and shot[key].strip() for key in ('action', 'idea', 'prompt')):
-            problem(path, '/shots/%d needs action, idea or prompt' % i)
+        if not any(isinstance(shot.get(key), str) and shot[key].strip() for key in ('action', 'idea', 'prompt')) and not shot.get('cuts'):
+            problem(path, '/shots/%d needs action, idea, prompt or cuts' % i)
         if shot.get('continue') and i == 0:
             problem(path + '/continue', '/shots/0 cannot continue a previous shot')
         if 'continue' in shot:
@@ -145,6 +153,12 @@ def check(play):
         for field in ('action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music'):
             if field in shot:
                 validate(specs._text, shot[field], path + '/' + field, 20000, empty=True)
+        if 'continuity' in shot:
+            if not isinstance(shot['continuity'], dict):
+                problem(path + '/continuity', 'must be an object of text by character name, and optionally "set"')
+            else:
+                for key, text in shot['continuity'].items():
+                    validate(specs._text, text, path + '/continuity/' + str(key).replace('~', '~0').replace('/', '~1'), 20000, empty=True)
         for field, low, high in (('takes', 1, 8), ('seed', 0, specs.MAX_SEED)):
             if field in shot:
                 validate(specs._int, shot[field], path + '/' + field, low, high)
@@ -159,12 +173,13 @@ def check(play):
         if ((shot.get('continue') or long) and play.get('quality') in specs.QUALITY
                 and not specs.QUALITY[play['quality']][0] and all(p['path'] != '/quality' for p in problems)):
             problem('/quality', '"light" or "medium" (two-pass) when a shot continues another or is longer than 15 s')
-        if long and (shot.get('first') is not None or shot.get('references') and not shot.get('continue')):
-            problem(path + '/seconds', 'at most 15 with a first frame or references')
-        elif long and not shot.get('continue') and _carded(play, shot):
-            # Cast cards travel as references, which one generation of at most 15 s carries.
-            problem(path + '/seconds', 'at most 15 when a character in the shot has a cast card '
-                    '(a following shot with continue=true carries the same people further)')
+        over = (isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > single_seconds)
+        if over and (shot.get('first') is not None or shot.get('references') and not shot.get('continue')):
+            problem(path + '/seconds', 'at most %d with a first frame or references on this machine' % single_seconds)
+        elif over and not shot.get('continue') and _carded(play, shot):
+            # Cast cards travel as references, which one generation (at most single_seconds) carries.
+            problem(path + '/seconds', 'at most %d on this machine when a character in the shot has a cast card '
+                    '(a following shot with continue=true carries the same people further)' % single_seconds)
         if shot.get('first') is not None:
             validate(specs.media_item, shot['first'], path + '/first', image=True)
         if 'references' in shot:
@@ -185,6 +200,8 @@ def check(play):
                 for j, key in enumerate(shot['cast']):
                     if not isinstance(key, str) or key not in characters:
                         problem(path + '/cast/%d' % j, 'must name a character')
+        if 'cuts' in shot:
+            _check_cuts(shot, path, characters, seconds, problem, validate)
         lines = shot.get('lines', [])
         if not isinstance(lines, list):
             problem(path + '/lines', 'must be a list')
@@ -205,12 +222,62 @@ def check(play):
     return play
 
 
+def _check_cuts(shot, path, characters, seconds, problem, validate):
+    """Numbered cuts inside one generation: each starts at "at" seconds (the first at 0), strictly later than the one before."""
+    cuts = shot['cuts']
+    if not isinstance(cuts, list) or not 1 <= len(cuts) <= 8:
+        problem(path + '/cuts', 'must be a list of 1 to 8 cuts')
+        return
+    last = None
+    for j, cut in enumerate(cuts):
+        here = '%s/cuts/%d' % (path, j)
+        if not isinstance(cut, dict):
+            problem(here, 'must be an object')
+            continue
+        for key in cut:
+            if key not in CUT_FIELDS:
+                problem(here + '/' + key, 'is not a cut field (%s)' % ', '.join(CUT_FIELDS))
+        at = cut.get('at', 0 if j == 0 else None)
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or at < 0 or (j == 0 and at != 0):
+            problem(here + '/at', 'must be the second the cut starts (0 for the first cut)')
+        elif last is not None and at <= last:
+            problem(here + '/at', 'must be later than the cut before')
+        elif isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and at >= seconds:
+            problem(here + '/at', 'must be before the end of the shot (%s s)' % seconds)
+        else:
+            last = at
+        for field in ('framing', 'action', 'camera'):
+            if field in cut:
+                validate(specs._text, cut[field], here + '/' + field, 20000, empty=True)
+        if not any(isinstance(cut.get(k), str) and cut[k].strip() for k in ('action', 'framing')):
+            problem(here, 'needs an action or framing')
+        for k, line in enumerate(cut.get('lines', []) if isinstance(cut.get('lines', []), list) else [None]):
+            if not isinstance(line, dict) or line.get('who') not in characters:
+                problem('%s/lines/%d' % (here, k), 'must be a line from a named character')
+            else:
+                validate(specs._text, line.get('line'), '%s/lines/%d/line' % (here, k), 20000)
+
+
+CUT_FIELDS = ('at', 'framing', 'action', 'camera', 'lines')
+
+
+def _stamp(seconds):
+    whole = int(seconds)
+    return '%02d:%02d.%03d' % (whole // 60, whole % 60, round((seconds - whole) * 1000))
+
+
+def _mentions(text, word):
+    """Whole-word, case-insensitive match; a blank word never matches."""
+    word = (word or '').strip()
+    return bool(word) and re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', text, re.I) is not None
+
+
 def cast(play, shot):
     """Characters in this shot, speakers first, in order of appearance."""
     order = [line['who'] for line in shot.get('lines', [])]
-    order += [key for key in play.get('characters', {}) if key in (shot.get('cast') or [])
-              or play['characters'][key].get('name', key).lower() in shot.get('action', '').lower()
-              or key.lower() in shot.get('action', '').lower()]
+    action = shot.get('action', '')
+    order += [key for key, person in play.get('characters', {}).items() if key in (shot.get('cast') or [])
+              or _mentions(action, person.get('name', key)) or _mentions(action, key)]
     return list(dict.fromkeys(order))
 
 
@@ -222,7 +289,26 @@ def _carded(play, shot):
         return False
 
 
+def needs_machine_limit(play):
+    """Whether check() would refuse this film at the 15 s default but might accept it at this machine's own limit."""
+    for shot in play['shots']:
+        seconds = shot.get('seconds', play.get('seconds'))
+        if (isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > BLOCK_SECONDS
+                and (shot.get('first') is not None
+                     or not shot.get('continue') and (shot.get('references') or _carded(play, shot)))):
+            return True
+    return False
+
+
 SHOWN_TEXT = re.compile(r'["“「][^"”」]+["”」]')
+
+
+def _cap(name):
+    """A name as written, with its first letter upper-case: 'Old Ren' stays 'Old Ren'."""
+    return name[:1].upper() + name[1:]
+
+
+PAPER = re.compile(r'\b(note|letter|paper|card|sign|screen|book|poster|message|menu|map)\b', re.I)
 
 
 def prompt(play, shot):
@@ -232,34 +318,86 @@ def prompt(play, shot):
     characters = play.get('characters', {})
     people = cast(play, shot)
     lead = ', '.join(x for x in (play.get('style'), shot.get('framing')) if x)
-    parts = ['[Shot 1] ' + (lead + '.' if lead else '')]
-    if shot.get('continue'):
-        parts.append('Continuing from the opening frame, the scene keeps its exact layout, lighting and characters.')
-    for key in people:
-        person = characters[key]
-        if person.get('look'):
-            parts.append('%s is %s.' % ((person.get('name') or key).capitalize(), person['look'].rstrip('.')))
-    parts.append(named(play, people, shot.get('action', '')))
-    if shot.get('camera'):
-        parts.append(shot['camera'])
-    speakers = {}
-    for line in shot.get('lines', []):
+    # A speaker's number is its place in the order of vocal events of this video (the official rule): the first
+    # voice heard is (S1), the next new one (S2); the number is reused at every later line of the same shot.
+    heard = [line['who'] for cut in (shot.get('cuts') or [shot]) for line in cut.get('lines', [])]
+    numbers = {key: number for number, key in enumerate(dict.fromkeys(heard), 1)}
+    spoken = set()
+
+    def say(line):
         who = line['who']
         person = characters[who]
-        first = who not in speakers
-        speakers.setdefault(who, len(speakers) + 1)
+        first = who not in spoken
+        spoken.add(who)
         voice = (' with a %s voice' % person['voice']) if first and person.get('voice') else ''
         language = line.get('language') or person.get('language') or play.get('language') or guess(line['line'])
-        parts.append('%s%s (S%d) %s: <d>[%s] %s</d>' % ((person.get('name') or who).capitalize(), voice,
-                     speakers[who], line.get('how') or 'says', language, line['line']))
+        return '%s%s (S%d) %s: <d>[%s] %s</d>' % (_cap(person.get('name') or who), voice,
+                                                  numbers[who], line.get('how') or 'says', language, line['line'])
+
+    def looks():
+        return ['%s is %s.' % (_cap(characters[key].get('name') or key), characters[key]['look'].rstrip('.'))
+                for key in people if characters[key].get('look')]
+
+    def continuity():
+        """The film's table of clothes, props and places, the rows of the people in this shot (and 'set'), in every shot.
+        A row written in the shot itself replaces the film's row of that person (or 'set') for this shot only."""
+        table = {**(play.get('continuity') if isinstance(play.get('continuity'), dict) else {}),
+                 **(shot.get('continuity') if isinstance(shot.get('continuity'), dict) else {})}
+        if not table:
+            return []
+        rows = ['%s: %s.' % (_cap(characters[key].get('name') or key), table[key].strip().rstrip('.'))
+                for key in people if isinstance(table.get(key), str) and table[key].strip()]
+        if isinstance(table.get('set'), str) and table['set'].strip():
+            rows.append(table['set'].strip().rstrip('.') + '.')
+        return ['Continuity - ' + ' '.join(rows)] if rows else []
+
+    cuts = shot.get('cuts')
+    if cuts:
+        # Numbered cuts inside one generation: [Shot 1] has no time, the others say when they start.
+        seconds = shot.get('seconds')
+        parts = []
+        for number, cut in enumerate(cuts, 1):
+            row = [('[Shot 1] ' if number == 1 else '[Shot %d] At %s, ' % (number, _stamp(cut['at']))).rstrip()]
+            if number == 1:
+                row += [lead + '.' if lead else '']
+                if shot.get('continue'):
+                    row.append('Continuing from the opening frame, the scene keeps its exact layout, lighting and characters.')
+                row += looks() + continuity()
+            elif cut.get('framing'):
+                row.append(cut['framing'].strip().rstrip('.') + '.')
+            if number == 1 and cut.get('framing'):
+                row.append(cut['framing'].strip().rstrip('.') + '.')
+            if cut.get('action'):
+                row.append(named(play, people, cut['action']))
+            if cut.get('camera'):
+                row.append(cut['camera'])
+            row += [say(line) for line in cut.get('lines', [])]
+            if number == len(cuts) and isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
+                row.append('The shot ends at %s.' % _stamp(seconds))
+            parts.append(' '.join(x for x in row if x))
+        body = '\n'.join(parts)
+    else:
+        parts = ['[Shot 1] ' + (lead + '.' if lead else '')]
+        if shot.get('continue'):
+            parts.append('Continuing from the opening frame, the scene keeps its exact layout, lighting and characters.')
+        parts += looks() + continuity()
+        parts.append(named(play, people, shot.get('action', '')))
+        if shot.get('camera'):
+            parts.append(shot['camera'])
+        parts += [say(line) for line in shot.get('lines', [])]
+        body = ' '.join(p for p in parts if p)
     if not play.get('captions'):
         # Quoted words are text the shot shows (a sign, a menu); then only captions are ruled out.
         scene = ' '.join(shot.get(k) or '' for k in ('framing', 'action', 'camera')) + ' ' + (play.get('style') or '')
-        parts.append('No subtitles or captions.' if SHOWN_TEXT.search(scene) else 'No subtitles, no on-screen text.')
+        scene += ' ' + ' '.join(c.get(k) or '' for c in (cuts or []) for k in ('framing', 'action', 'camera'))
+        body += ' ' + ('No subtitles or captions.' if SHOWN_TEXT.search(scene) else 'No subtitles, no on-screen text.')
+        if PAPER.search(scene) and not SHOWN_TEXT.search(scene):
+            # A model writes the spoken line on any note it is asked to show close; a blank or unreadable face avoids it.
+            body += ' Any note, paper or sign in frame has a blank face with only faint folds, seen from the side or out of focus.'
     sound = shot.get('sound') or 'Natural ambience of the scene.'
     # Only a shot's own music is written; a score for the whole film is imported and laid on the sound track.
     music = shot.get('music') or 'N/A'
-    return ('integrated_multimodal_description: ' + ' '.join(p for p in parts if p) +
+    return ('integrated_multimodal_description: ' + body +
             '\n\noverall_soundscape: ' + sound + '\n\nnon_diegetic_music: ' + music)
 
 
@@ -325,7 +463,7 @@ def cast_references(play, shot, cards, *, continues=False):
     function serves plan previews and the moment a take is submitted.
     pictures_each is the most pictures one person carries in this shot.
     cast_reference: None (no character in the shot has a card), 'own' (the shot
-    names its own first frame or references; an empty list means no pictures), 'missing' (a card was deleted),
+    names its own first frame, which carries only the written descriptions, or an empty list of references), 'missing' (a card was deleted),
     'partial' (not everyone fit) or 'cards'. 'omitted' lists people left out
     entirely; 'voice_omitted' lists people whose pictures are carried but whose
     voice did not fit. A shot that continues the previous one carries no voice
@@ -334,13 +472,31 @@ def cast_references(play, shot, cards, *, continues=False):
     characters = play.get('characters', {})
     keys = [k for k in cast(play, shot) if isinstance(characters[k].get('card'), str)]
     result = dict(cast_reference=None, people=[], omitted=[], voice_omitted=[], missing=[], references=[],
-                  prefix=None, subjects=[], cards={}, pictures_each=None, clip_seconds=[])
+                  prefix=None, subjects=[], cards={}, pictures_each=None, clip_seconds=[], own_pictures=0)
     if not keys:
         return result
-    # A references list, even an empty one, is the shot's own choice: cards are added only when it is left out.
-    if shot.get('first') is not None or isinstance(shot.get('references'), list):
+    own = shot.get('references') if isinstance(shot.get('references'), list) else None
+    if own is not None and not own:
+        # An empty list is the shot's own choice of no pictures: no cards are added.
         result['cast_reference'] = 'own'
         return result
+    if shot.get('first') is not None and own is None:
+        # A first frame cannot travel with reference pictures; the people still get their written descriptions.
+        subjects = []
+        for key in keys:
+            card = cards.get(characters[key]['card'])
+            if card is None:
+                result['missing'].append(key)
+                continue
+            subjects.append(dict(name=characters[key].get('name') or key, description=card.get('description'),
+                                 pictures=None, audio=None))
+        subjects = [s for s in subjects if (s['description'] or '').strip()]
+        if subjects:
+            result['prefix'] = subject_definitions(subjects)
+            result['subjects'] = subjects
+        result['cast_reference'] = 'missing' if result['missing'] else 'own'
+        return result
+    offset = len(own or [])  # the shot's own pictures come first; the cards follow them
     spoken = {}
     for line in shot.get('lines', []):
         spoken[line['who']] = spoken.get(line['who'], 0) + 1
@@ -356,13 +512,13 @@ def cast_references(play, shot, cards, *, continues=False):
             continue
         images = person_pictures(card, alone=alone, continues=continues)
         if continues:
-            if images and len(chosen) < specs.CONTINUED_PICTURES:
+            if images and offset + len(chosen) < specs.CONTINUED_PICTURES:
                 chosen.append((key, card, images, False))
             else:
                 result['omitted'].append(key)
             continue
         voice = card.get('voice') is not None and voices < MAX_VOICES
-        if pictures + len(images) + voices + voice > MAX_REFERENCES:
+        if offset + pictures + len(images) + voices + voice > MAX_REFERENCES:
             result['omitted'].append(key)
             continue
         if card.get('voice') is not None and not voice:
@@ -370,7 +526,7 @@ def cast_references(play, shot, cards, *, continues=False):
         pictures, voices = pictures + len(images), voices + voice
         chosen.append((key, card, images, voice))
     chosen.sort(key=lambda row: keys.index(row[0]))
-    subjects, clips, picture = [], [], 0
+    subjects, clips, picture = [], [], offset
     for key, card, images, voice in chosen:
         result['cards'][card['id']] = card['revision']
         result['references'].extend(dict(item) for item in images)
@@ -386,7 +542,15 @@ def cast_references(play, shot, cards, *, continues=False):
             subjects.append(subject)
         result['people'].append(dict(character=key, card=card['id'], revision=card['revision'],
                                      pictures=len(images), voice=voice))
+    # Someone left out of the pictures still gets a written definition, numbered after the pictured people,
+    # so every carded person in the shot is a Subject and keeps one number in the story and in the voice lines.
+    for key in result['omitted']:
+        card = cards.get(characters[key]['card'])
+        if card is not None and (card.get('description') or '').strip():
+            subjects.append(dict(name=characters[key].get('name') or key, description=card.get('description'),
+                                 pictures=None, audio=None))
     result['references'].extend(clips)
+    result['own_pictures'] = offset
     result['pictures_each'] = max((len(images) for _, _, images, _ in chosen), default=0) or None
     if subjects:
         result['prefix'] = subject_definitions(subjects)
@@ -400,6 +564,56 @@ PROMPT_LIMIT = 20000
 DESCRIPTION_CUTS = (500, 250, 120, 0)
 
 
+def ref2va(text, resolved):
+    """A prompt written for pictures: tags in the story, then summary, retention_analysis and detailed_description.
+
+    Reference generation takes six sections in a fixed order (subject_definitions comes from the cards, see with_cast);
+    the first-frame form keeps integrated_multimodal_description. Names become <Subject N> everywhere in the story."""
+    head = 'integrated_multimodal_description: '
+    subjects = resolved.get('subjects') or []
+    if not resolved.get('references') or not subjects or not text.startswith(head) or '\n\noverall_soundscape:' not in text:
+        return text
+    body, rest = text[len(head):].split('\n\noverall_soundscape:', 1)
+    tags = {}
+    for number, subject in enumerate(subjects, 1):
+        name = (subject.get('name') or '').strip()
+        if name:
+            tags[name] = number
+    for name, number in sorted(tags.items(), key=lambda kv: -len(kv[0])):
+        body = re.sub(r'(?<![\w<])%s(?!\w)' % re.escape(name), '<Subject %d>' % number, body, flags=re.I)
+    marks = [(m.start(), int(m.group(1))) for m in re.finditer(r'\[Shot (\d+)\]', body)]
+    total = len(marks)
+
+    def appears(number):
+        tag = '<Subject %d>' % number
+        shots = [n for i, (at, n) in enumerate(marks)
+                 if tag in body[at:marks[i + 1][0] if i + 1 < total else len(body)]]
+        if total and len(shots) == total:
+            return 'all shots'
+        return ', '.join('[Shot %d]' % n for n in shots) if shots else 'the story'
+
+    voiced = any(s.get('audio') for s in subjects)
+    first = re.sub(r'\[Shot \d+\](?: At [\d:.]+,)?\s*', '', body.split('\n')[0]).strip()
+    if len(first) > 240:
+        cut = first[:240]
+        first = (cut[:cut.rfind('. ') + 1] if '. ' in cut else cut.rstrip()).strip()
+    summary = ('[reference generation%s] ' % (' + audio reference' if voiced else '')) + first
+    lines = []
+    for number, subject in enumerate(subjects, 1):
+        if not subject.get('pictures'):
+            lines.append('<Subject %d> (appears in %s): described - identity, hair, clothing and accessories follow '
+                         'the written description.' % (number, appears(number)))
+            continue
+        lines.append('<Subject %d> (appears in %s): fully_preserved - identity, hair, clothing and accessories are kept '
+                     'exactly as in the reference pictures.' % (number, appears(number)))
+    for number, subject in enumerate(subjects, 1):
+        if subject.get('audio'):
+            lines.append("<Audio %d>: reference - the target references the voice timbre of <Audio %d> for <Subject %d>'s lines."
+                         % (subject['audio'], subject['audio'], number))
+    return ('summary: ' + summary + '\n\nretention_analysis:\n' + '\n'.join(lines) +
+            '\n\ndetailed_description:\n' + body + '\n\noverall_soundscape:' + rest)
+
+
 def with_cast(text, resolved, *, limit=PROMPT_LIMIT):
     """The submitted prompt: the subject definitions, then the shot's own prompt.
 
@@ -407,6 +621,7 @@ def with_cast(text, resolved, *, limit=PROMPT_LIMIT):
     shortened (the pictures still show each person). Plan previews and submissions both call this."""
     if not resolved.get('prefix'):
         return text
+    text = ref2va(text, resolved)
     full = resolved['prefix'] + '\n\n' + text
     if len(full) <= limit or not resolved.get('subjects'):
         return full
@@ -424,8 +639,9 @@ def named(play, people, text):
     for key in people:
         name = play.get('characters', {})[key].get('name')
         if name and key.lower() != name.lower():
-            text = text.replace(key.capitalize(), name.capitalize() if text.startswith(key.capitalize())
-                                else name).replace(key, name)
+            text = re.sub(r'(?<!\w)(?:%s|%s)(?!\w)' % (re.escape(key.capitalize()), re.escape(key)),
+                          lambda hit: name[:1].upper() + name[1:] if hit.start() == 0 and hit.group() == key.capitalize()
+                          else name, text)
     return text
 
 

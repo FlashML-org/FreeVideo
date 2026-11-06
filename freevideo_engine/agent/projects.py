@@ -419,6 +419,24 @@ class Projects:
             self._remember(ref, digest, result, client)
             return result
 
+    def finish_sound(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue one job that finishes the sound of the cut the caller read; a stale revision starts nothing."""
+        schema.validate(schema.project_schema('finish_sound'), value)
+        with self.listen_lock:
+            digest, replay = self._receipt('projects:finish_sound', dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            if not comfy_editor.duration(stored):
+                raise _invalid('/revision', 'a revision whose timeline has clips', value['revision'])
+            job = jobs.submit(dict(kind='finish_sound', editor_project=identity,
+                                   **{k: v for k, v in value.items() if k != 'ref'}), client=client)[0]
+            result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
+            self._remember(ref, digest, result, client)
+            return result
+
     def stems(self, identity, value, *, jobs, ref=None, client=None):
         """Queue a sound-splitting job for one sound clip of the revision the caller read."""
         schema.validate(schema.project_schema('stems'), value)

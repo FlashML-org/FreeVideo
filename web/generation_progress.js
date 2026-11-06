@@ -449,8 +449,8 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const track = el('div', 'fv-generation-track'), fill = el('div', 'fv-generation-fill');
     track.setAttribute('role', 'progressbar'); track.setAttribute('aria-valuemin', '0'); track.append(fill);
     // The sampler's newest coarse frames; decorative, so it carries no text.
-    const frames = el('img', 'fv-generation-frames'); frames.alt = ''; frames.hidden = true;
-    frames.decoding = 'async'; frames.setAttribute('aria-hidden', 'true'); frames.draggable = false;
+    // One frame shows in place; the strip of frames plays through it as a loop (see playFrames).
+    const frames = el('div', 'fv-generation-frames'); frames.hidden = true; frames.setAttribute('aria-hidden', 'true');
     const times = el('div', 'fv-generation-times');
     const elapsed = el('span', ''), eta = el('span', 'fv-generation-eta'); times.append(elapsed, eta);
     const late = el('div', 'fv-generation-late'); late.hidden = true;
@@ -517,22 +517,60 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const {report, updateReport, fetchReport, downloadReport} = diagnostic;
     // The newest frame picture. Any failure leaves the page as it was without one.
     // `framesToken` changes whenever a pending fetch stops being wanted, so a late answer is dropped.
-    let framesKey = '', framesUrl = null, framesLoading = null, framesToken = 0;
+    let framesKey = '', framesUrl = null, framesLoading = null, framesToken = 0, strip = null, stripTimer = null;
+    function stopPlayback() { if (stripTimer !== null) cancelAnimationFrame(stripTimer); stripTimer = null; }
     function clearFrames() {
-        framesKey = ''; framesLoading = null; framesToken++; frames.hidden = true;
+        framesKey = ''; framesLoading = null; framesToken++; frames.hidden = true; strip = null; stopPlayback();
         if (framesUrl) { URL.revokeObjectURL(framesUrl); framesUrl = null; }
-        frames.removeAttribute('src');
+        frames.style.backgroundImage = '';
     }
-    // In a wide column each frame is 64 px high; a narrow one keeps the picture's own size.
+    // The frame is at most 128 px high in a wide column and 120 px in a narrow one, never above the picture's own
+    // height. In the Studio stage the percentage, step and times come first: the frame takes what is left of the
+    // stage (the padding shrinks first, as in a short stage) and is left out below 48 px.
+    let fitWatch = null;
     function fitFrames() {
         const width = (element.parentElement || element).clientWidth;
-        frames.dataset.wide = width > 480 ? 'true' : 'false';
+        const wide = width > 480;
+        frames.dataset.wide = wide ? 'true' : 'false';
+        const stage = element.closest?.('.fv-stage') ?? null;
+        if (typeof ResizeObserver === 'function') {
+            fitWatch ??= new ResizeObserver(() => fitFrames());
+            fitWatch.observe(element.parentElement || element); if (stage) fitWatch.observe(stage);
+        }
+        if (!strip || frames.hidden) return;
+        let height = Math.min(wide ? 128 : 120, strip.height), tight = false;
+        if (stage && stage.clientHeight > 0) {
+            const room = () => {
+                frames.style.display = 'none';
+                const rest = element.offsetHeight;
+                frames.style.display = '';
+                return Math.floor(stage.clientHeight - rest - 12);
+            };
+            element.dataset.tight = 'false';
+            let left = room();
+            if (left < height) { tight = true; element.dataset.tight = 'true'; left = room(); }
+            height = Math.min(height, left);
+        }
+        if (height < 48) { frames.dataset.fit = 'false'; element.dataset.tight = 'false'; }
+        else { frames.dataset.fit = 'true'; frames.style.height = `${height}px`; }
+    }
+    // Where the loop stands, from 0 up to (not including) 1.
+    const stripPhase = () => strip ? (strip.phase + (now() - strip.start) / 1000 * strip.fps / strip.count) % 1 : 0;
+    // The strip plays forward at its frames per second over the video's length, 4 to 8 a second; with reduced
+    // motion, or a single frame, the last frame stands still.
+    function playFrames() {
+        stripTimer = null;
+        if (!strip || frames.hidden) return;
+        const playing = strip.count > 1 && moving();
+        const index = playing ? Math.min(strip.count - 1, Math.floor(stripPhase() * strip.count)) : strip.count - 1;
+        frames.style.backgroundPosition = strip.count > 1 ? `${100 * index / (strip.count - 1)}% 0` : '0 0';
+        if (playing) stripTimer = requestAnimationFrame(playFrames);
     }
     function updateFrames(message, id) {
         const value = message.frame_preview;
         fitFrames();
         const usable = value && typeof value === 'object' && Number.isInteger(value.serial) && value.serial > 0
-            && Number.isInteger(value.frames) && value.frames > 0 && value.frames <= 8;
+            && Number.isInteger(value.frames) && value.frames > 0 && value.frames <= 16;
         if (!usable || !id || ['complete', 'failed', 'cancelled'].includes(message.phase)) { if (framesKey || framesLoading) clearFrames(); return; }
         const key = `${id}:${value.serial}`;
         if (key === framesKey || key === framesLoading) return;
@@ -540,18 +578,32 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         const token = ++framesToken;
         const path = `/freevideo/frame-preview/${id}`;
         (async () => {
+            let url = null;
             try {
                 const response = await (api ? api.fetchApi(path) : fetch(path));
                 if (!response.ok) throw new Error('No picture');
                 const blob = await response.blob();
                 if (framesToken !== token) return;
-                const url = URL.createObjectURL(blob);
-                const old = framesUrl;
-                frames.onload = () => { fitFrames(); if (framesUrl === url) frames.hidden = false; try { onLayout?.(); } catch {} };
-                frames.onerror = () => { if (framesUrl === url) clearFrames(); };
-                framesUrl = url; framesKey = key; frames.src = url;
+                url = URL.createObjectURL(blob);
+                // The new strip replaces the old one only once it has loaded, and the loop carries on from the same place.
+                const picture = new Image();
+                await new Promise((resolve, reject) => { picture.onload = resolve; picture.onerror = () => reject(new Error('No picture')); picture.src = url; });
+                if (framesToken !== token) { URL.revokeObjectURL(url); return; }
+                const seconds = Number.isInteger(value.duration_ms) && value.duration_ms > 0 ? value.duration_ms / 1000 : null;
+                const fps = Math.min(8, Math.max(4, seconds ? value.frames / seconds : 6));
+                const frameWidth = picture.naturalWidth / value.frames, frameHeight = picture.naturalHeight;
+                const old = framesUrl, phase = stripPhase();
+                strip = {count: value.frames, fps, phase, start: now(), height: frameHeight};
+                frames.style.setProperty('--fv-frame-height', `${frameHeight}px`);
+                frames.style.setProperty('--fv-frame-ratio', `${frameWidth} / ${frameHeight}`);
+                frames.style.backgroundSize = `${value.frames * 100}% 100%`;
+                frames.style.backgroundImage = `url("${url}")`;
+                framesUrl = url; framesKey = key; framesLoading = null;
+                frames.hidden = false; fitFrames(); stopPlayback(); playFrames();
+                try { onLayout?.(); } catch {}
                 if (old) URL.revokeObjectURL(old);
             } catch {
+                if (url && url !== framesUrl) URL.revokeObjectURL(url);
                 if (framesToken === token) clearFrames();
             }
         })();

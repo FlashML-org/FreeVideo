@@ -177,10 +177,11 @@ class FreeVideoGenerate(io.ComfyNode):
         try:
             options = request_options(continue_from, node_frames(frames))
             if options.get('continue_from'):
-                # A continued part turns on two passes, skips the preview and takes keyframes as pictures (execute).
-                two_pass, preview = True, False
+                # A continued part turns on two passes and takes keyframes as pictures; only NVIDIA keeps its preview (execute).
+                from .continuation import previews_supported
+                two_pass, preview = True, preview is True and previews_supported()
                 base_steps, refine_steps = part_steps(base_steps, refine_steps, step_cache)[:2]
-                options.update(two_pass=True, preview=False, refine_from=refine_from or None,
+                options.update(two_pass=True, preview=preview, refine_from=refine_from or None,
                                media=dict(first=False, last=False, conditioning_info=False))
             comfy_bridge.validate_request(text, width, height, seconds, seed, **options,
                                           allow_empty_prompt=allow_empty_prompt is True)
@@ -231,8 +232,10 @@ class FreeVideoGenerate(io.ComfyNode):
             two_pass = True
             notes.append('Continuing a video needs "Two-pass acceleration", so it is on for this part.')
         if options.get('continue_from') and preview:
-            preview = False
-            notes.append('A continued part is made in full, without stopping at the preview.')
+            from .continuation import previews_supported
+            if not previews_supported():
+                preview = False
+                notes.append('A continued part is made in full, without stopping at the preview.')
         from .two_pass import validate_steps
         if not refine_from:
             validate_steps(base_steps, refine_steps, two_pass)

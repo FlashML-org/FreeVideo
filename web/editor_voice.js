@@ -9,17 +9,21 @@ import {repairAction} from './repair_hint.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 // What a failed run says: the lines the user typed are kept, whatever went wrong; the code never reaches the words.
-export function failureCopy(error, t) {
+export function failureCopy(error, t, recognising = false) {
     if (isNetworkTypeError(error)) return {text: connectionLostText(t), report: false};
     switch (error?.code) {
         case 'out_of_memory': return {report: true, text: t('Not enough memory to finish dubbing. The edited lines are kept. Close other programs using the GPU, then redub.', '显存或内存不足，配音未完成，所改台词已保留。请关闭其他占用显卡的程序后重新配音。')};
         case 'storage_unavailable': return {report: false, text: t('Could not write to disk, so dubbing did not finish. The edited lines are kept. Check the free disk space, then redub.', '无法写入磁盘，配音未完成，所改台词已保留。请检查磁盘空间后重新配音。')};
+        case 'no_speech_model': return {report: true, text: t('The speech model could not be used, so the lines could not be recognized.', '语音识别模型无法使用，未能识别台词。')};
+        case 'speech_language': return {report: false, text: t('The language of this part is not supported for dubbing yet.', '这一段的语言暂不支持配音。')};
         case 'voice_model_missing': return {report: false, text: t('The dubbing model is not fully installed. ', '配音模型没有装全。') + t(...repairAction())};
-        default: return {report: true, text: t('Dubbing did not finish. The edited lines are kept. Redub them to try again.', '配音未完成，所改台词已保留，请重新配音。')};
+        default:
+            if (recognising) return {report: true, text: t('The lines could not be recognized. Select this part again.', '未能识别台词。请重新选中这一段再试。')};
+            return {report: true, text: t('Dubbing did not finish. The edited lines are kept. Redub them to try again.', '配音未完成，所改台词已保留，请重新配音。')};
     }
 }
 
-export function createEditorVoice({state, store, t, onChange = () => {}, place = async () => {}, available = () => true, playLine = () => {}, comparePlayback = () => {}}) {
+export function createEditorVoice({state, store, t, onChange = () => {}, place = async () => {}, available = () => true, recheck = async () => true, playLine = () => {}, comparePlayback = () => {}}) {
     const sessions = new Map();
     let disposed = false, placing = false;
     const target = (selection = state.selection) => available() && state.record && voice.voiceTarget(state.record, selection);
@@ -32,7 +36,7 @@ export function createEditorVoice({state, store, t, onChange = () => {}, place =
         if (!found) return null;
         const key = keyOf(found);
         let current = sessions.get(key);
-        if (current) return current;
+        if (current && current.phase !== 'error') return current;
         current = {key, found, phase: 'finding', lines: [], texts: new Map(), results: new Map(), shortened: new Map(), compare: 'new',
             active: null, index: 0, count: 0, remaining: null, failed: 0, revision: state.record.revision};
         sessions.set(key, current); emit();
@@ -43,9 +47,14 @@ export function createEditorVoice({state, store, t, onChange = () => {}, place =
             current.lines = result.lines; current.separated = result.separated; current.recognition = result.recognition;
             current.rate = new Map(result.lines.map(line => [line.id, line.rate]));
         } catch (value) {
-            // A failed recognition is not kept: choosing the stretch again asks again.
-            current.phase = 'error'; current.error = value;
-            if (sessions.get(key) === current) sessions.delete(key);
+            // A failed recognition says why in the panel; choosing the stretch again asks again.
+            // A model that went missing after the check: the download row comes back and recognition starts again once it is there.
+            if (value?.code === 'no_speech_model' && !disposed && sessions.get(key) === current && !(await recheck().catch(() => true))) {
+                sessions.delete(key); emit(); return null;
+            }
+            // Cancelled: nothing to say, so the panel goes; choosing the stretch again asks again.
+            if (value?.code === 'cancelled') { if (sessions.get(key) === current) sessions.delete(key); emit(); return null; }
+            current.phase = 'error'; current.error = value; current.failure = value;
             if (!disposed) onChange(); return current;
         }
         emit(); return current;
@@ -172,12 +181,12 @@ export function createVoicePanel(host, controller, {t}) {
         const dubbing = current.phase === 'dubbing', ready = ['ready', 'done', 'dubbing'].includes(current.phase);
         compare.hidden = !current.sources;
         for (const button of choices) button.setAttribute('aria-pressed', String(button.dataset.value === current.compare));
-        voiceName.hidden = !ready;
-        const failure = current.failure && failureCopy(current.failure, t);
+        voiceName.hidden = !ready; top.hidden = !ready && compare.hidden;
+        const failure = current.failure && failureCopy(current.failure, t, current.phase === 'error');
         note.replaceChildren();
         if (failure) {
             note.append(failure.text);
-            if (failure.report) note.append(issueButton(t, () => ({where: ['Editor generation', '剪辑器生成'], message: failure.text, kind: current.failure?.code || null})));
+            if (failure.report) note.append(issueButton(t, () => ({where: ['Editor generation', '剪辑器生成'], message: failure.text + (current.failure?.detail ? `\n${current.failure.detail}` : ''), kind: current.failure?.code || null})));
         } else note.textContent = current.notice === 'changed' ? t('This part changed during dubbing, so the new voice was not placed. Redub it.', '这一段在配音期间有改动，新声未放入。请重新配音。') : current.phase === 'none' ? t('No lines were found in this part.', '这一段没有识别到台词。') : current.phase === 'done' && current.failed ? voice.failedText(current.failed, t) : '';
         note.hidden = !note.textContent;
         if (current.phase === 'finding') {

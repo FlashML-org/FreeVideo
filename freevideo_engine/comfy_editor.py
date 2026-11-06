@@ -334,6 +334,12 @@ def validate(record):
             raise ValueError('Invalid empty edit retention')
         if record['keep_empty']:
             result['keep_empty'] = True
+    if 'master_peak_db' in record:
+        # The export's true-peak ceiling, set by the finishing step; without it the export only clips at full scale.
+        peak = record['master_peak_db']
+        if type(peak) not in (int, float) or not math.isfinite(peak) or not -12 <= peak <= 0:
+            raise ValueError('Invalid master peak')
+        result['master_peak_db'] = peak
     result.update(marker_fields(record))
     if 'replacements' in record:
         replacements = record['replacements']

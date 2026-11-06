@@ -13,6 +13,7 @@ from safetensors.torch import save_file
 from .lora_cache import INT8_UNMERGEABLE, MODULATION, _targets, index_adapter, prepare as prepare_fused
 from .media_request import digest, verify_files
 from .monitoring import save
+from . import online_lora_folders
 from .storage import fingerprint
 from .tensor_io import open_tensors
 
@@ -31,6 +32,17 @@ def _supported(adapters, linears, skip_modulation=False):
                     if target not in linears or not target.startswith(('transformer_blocks.', 'token_refiner.refiner_blocks.')):
                         return False
     return True
+
+
+def _tidy(output, identity):
+    """Record the use, then drop folders nothing can select again or nobody has used for long."""
+    online_lora_folders.touch(output)
+    current = {key: identity[key] for key in ('source_manifest_sha256', 'implementation_sha256', 'index_sha256', 'names_sha256')}
+    try:
+        for folder, reason, freed in online_lora_folders.prune(output.parent, current, keep=output):
+            print(json.dumps(dict(event='lora_folder_removed', folder=Path(folder).name, reason=reason, bytes=freed)), flush=True)
+    except OSError:
+        pass
 
 
 @torch.no_grad()
@@ -80,6 +92,7 @@ def prepare(cache, adapters, output_root=None):
             # Another combination can change a shared inode's link count/ctime.
             # Recheck it once, rather than rehashing the model on every use.
             save(marker, saved)
+        _tidy(output, identity)
         return output, dict(enabled=True, mode='online', cache_hit=True, **saved['online_lora']['summary'])
     targets = {name: dict(shape=spec['weight_shape']) for name, spec in manifest['linears'].items()}
     groups, skipped = {}, []
@@ -153,5 +166,6 @@ def prepare(cache, adapters, output_root=None):
     save(marker, dict(manifest, source_id=key, groups=records, online_lora=online,
         lora_identity=identity, lora_file_stamps={r['file']: fingerprint(output / r['file']) for r in records},
         total_bytes=manifest['total_bytes'] + sum(r['bytes'] for r in records if r['group'].startswith('lora/'))))
+    _tidy(output, identity)
     return output, dict(enabled=True, mode='online', cache_hit=False,
                         prepare_seconds=time.perf_counter() - started, **summary)

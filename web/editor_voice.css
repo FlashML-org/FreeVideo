@@ -1,5 +1,5 @@
 /* Dubbing lines in the generation bar. */
-.fv-ed-genbar[data-voice=true]{flex-wrap:wrap;align-items:center}
+.fv-ed-genbar[data-voice=true],.fv-ed-genbar[data-voice=note]{flex-wrap:wrap;align-items:center}
 .fv-ed-genbar[data-voice=true] .fv-ed-description-box,.fv-ed-genbar[data-voice=true] .fv-ed-first-frame{display:none}
 .fv-ed-genbar[data-voice=true] .fv-ed-gen-hint{flex:1}
 .fv-ed-genbar[data-voice=true] .fv-ed-generate{margin-left:auto}
@@ -34,4 +34,19 @@
  .fv-editor .fv-ed-voice textarea.fv-ed-voice-text{font-size:16px}
  .fv-ed-voice-extra{padding-left:60px;flex-wrap:wrap}
 }
-.fv-ed-voice-note:has(.fv-issue-button){display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.fv-ed-voice-note:has(.fv-issue-button),.fv-ed-voice-install-note:has(.fv-issue-button){display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+/* The download of the dubbing model, in the place of the lines. */
+.fv-ed-voice-install{order:-1;flex:1 1 100%;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.fv-ed-voice-install[hidden]{display:none}
+/* While a part generates, its own line comes first and the download follows it. */
+.fv-ed-genbar[data-mode=running] .fv-ed-voice-install{order:3}
+.fv-ed-voice-install .fv-ed-voice-install-note{flex:1 1 220px;min-width:0;font-size:13px;color:var(--fv-ink)}
+.fv-ed-voice-install .fv-ed-voice-install-note[hidden]{display:none}
+.fv-ed-voice-install .fv-actions{flex:none}
+.fv-ed-voice-install .fv-actions [hidden]{display:none}
+.fv-ed-voice-bar{order:3;flex:1 1 100%;height:4px;border-radius:2px;background:var(--fv-border);overflow:hidden}
+.fv-ed-voice-bar[hidden]{display:none}
+.fv-ed-voice-bar>span{display:block;height:100%;width:0;border-radius:2px;background:var(--fv-accent,#6db8fa);transition:width .3s}
+.fv-ed-voice-bar[data-indeterminate=true]>span{width:35%;animation:fv-ed-voice-slide 1.4s ease-in-out infinite}
+@keyframes fv-ed-voice-slide{from{margin-left:-35%}to{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){.fv-ed-voice-bar>span{transition:none}.fv-ed-voice-bar[data-indeterminate=true]>span{animation:none;width:100%;opacity:.5}}

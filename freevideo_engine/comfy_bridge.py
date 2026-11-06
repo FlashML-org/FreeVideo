@@ -301,7 +301,7 @@ class WholeVideoProgress:
             vars(self).clear()
             vars(self).update(saved)
 
-    def configure(self, *, plan=None, media=None, conditioning=False, placement=None, sampled=None):
+    def configure(self, *, plan=None, media=None, conditioning=False, placement=None, sampled=None, reference=None):
         """Use facts already obtained by the bridge; never inspect media/models."""
         self._late_history()
         from .media_request import task_for
@@ -346,6 +346,14 @@ class WholeVideoProgress:
                                 sum(bool(media.get(k)) for k in ('first', 'last')))
         if conditioning:
             self.cold_flags['encode_cached'] = True
+        if reference:
+            # The prepared references: their rows enlarge every sampling step
+            # and their length sets the encoding time, neither known from the request.
+            rows, seconds = reference.get('reference_video_tokens'), reference.get('reference_seconds')
+            if type(rows) is int and rows > 0:
+                self.request['reference_video_tokens'] = rows
+            if type(seconds) in (int, float) and math.isfinite(seconds) and seconds > 0:
+                self.request['reference_seconds'] = float(seconds)
         self._reforecast()
 
     def _reforecast(self, *, reset_source=False):
@@ -542,6 +550,14 @@ class WholeVideoProgress:
             # LoRA groups describe a substage, not completion of the whole load.
             if type(done) is int and type(total) is int and total > 0 and message.get('unit') != 'bytes':
                 self._set_count(done, total)
+        elif phase == 'encode' and message.get('stage') == 'media':
+            # Reference video encoding costs far more than the stage's fixed
+            # estimate on a modest GPU; once a chunk is done its rate gives the
+            # rest. Only the stage under way is rescaled.
+            elapsed = _timing_seconds(message.get('elapsed_seconds'))
+            if type(done) is int and type(total) is int and 0 < done <= total and elapsed:
+                self._set_count(done, total)
+                self.weights[phase] = now - self.phase_started + elapsed * (total - done) / done
         elif phase == 'decode_save' and message.get('stage') == 'video':
             elapsed = _timing_seconds(message.get('elapsed_seconds'))
             if type(done) is int and type(total) is int and 0 <= done <= total and total > 0:
@@ -764,6 +780,8 @@ class WholeVideoProgress:
             self._retry({}, now)
         if event.get('event') in ('video_start', 'decode_resume'):
             self.configure(placement=event)
+        if event.get('event') == 'reference_media':
+            self.configure(reference=event)
         phase = self._phase_for(message, event)
         if phase:
             self._enter(phase, now)
@@ -970,8 +988,11 @@ class EventTail:
 def preview_state(event):
     """The few facts the page needs to show the newest frame preview, or None."""
     values = {key: event.get(key) for key in ('serial', 'step', 'total', 'frames', 'frame_width', 'frame_height')}
-    if any(type(value) is not int or value < 1 or value > 100000 for value in values.values()) or values['frames'] > 8:
+    if any(type(value) is not int or value < 1 or value > 100000 for value in values.values()) or values['frames'] > 16:
         return None
+    duration = event.get('duration_ms')  # optional: the playback speed follows the video's length
+    if type(duration) is int and 0 < duration <= 86400000:
+        values['duration_ms'] = duration
     return values
 
 
@@ -1102,6 +1123,13 @@ def progress_message(event):
                     elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}
+    if name == 'media_encode_progress':
+        done, total = event.get('done'), event.get('total')
+        result = dict(label='Encoding image/video references', timing_phase='encoding')
+        if type(done) is int and type(total) is int and 0 <= done <= total and total > 0:
+            result.update(phase='encoding', stage='media', done=done, total=total, unit='frames',
+                          elapsed_seconds=event.get('elapsed_seconds'))
+        return result
     if name == 'reference_trimmed':
         return {'label': 'Preparing reference media', 'timing_phase': 'encoding',
                 'reference_trimmed': {key: event.get(key) for key in ('kind', 'number', 'seconds', 'used_seconds')}}
@@ -1271,6 +1299,12 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         width, height = previous['geometry']['width'], previous['geometry']['height']
         seconds, seed = previous['geometry']['seconds'], previous['seed']
         two_pass, preview = True, False
+        # A continued preview's second pass continues the same video the same way.
+        continue_from = argument(arguments, '--continue-from')
+        continue_from = None if continue_from is None else Path(continue_from)
+        frames = int(argument(arguments, '--frames')) if '--frames' in arguments else None
+        first_frame_reference = '--first-frame-reference' in arguments
+        voice_reference = '--voice-reference' in arguments
         base_steps = int(argument(arguments, '--base-steps', 8))
         refine_steps = int(argument(arguments, '--refine-steps', 3))
         # The second pass never uses a step cache; the preview's own command keeps its flag.
@@ -1293,7 +1327,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     def check_ending():
         from .continuation_tail import check
         from .two_pass import sampling_canvas
-        check(continue_from, sampling_canvas(canvas)[0])
+        check(continue_from, sampling_canvas(canvas, staged=bool(preview or upscale))[0])
 
     if step_cache == 'fbcache' and machine.get('device_backend') == 'mps':
         # Only the audio-video EasyCache is ported to Mac: the request samples every step,
@@ -1301,24 +1335,31 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         logging.warning('[FreeVideo] The first-block cache is not available on Mac yet; sampling every step.')
         step_cache = None
     if continue_from is not None:
-        validate_route(backend=machine.get('device_backend', 'cuda'))
-        from .continuation import MISSING, prepare, summary
+        validate_route(preview=preview, refine_from=refine_from, backend=machine.get('device_backend', 'cuda'))
+        from .continuation import MISSING, prepare, restore_snapshot, summary
         from .two_pass import sampling_canvas
-        # A continuation takes no media or preview, so its sampled size is known here; the snapshot
+        # A continuation takes no media, so its sampled size is known here; the snapshot
         # of the previous segment was written for that canvas, not for the requested size.
-        try:
-            continuation = prepare(continue_from, sampling_canvas(canvas)[0], directory=root / 'continuations')
-        except ValueError as error:
-            if str(error) != MISSING:
-                raise
-            # A video with no stored context (single-pass, an earlier version, a replaced file) is
-            # continued from its own ending, which the engine reads and encodes. Only a video whose
-            # ending cannot be used stops here, before anything is loaded.
-            check_ending()
+        started = sampling_canvas(canvas, staged=bool(preview or upscale))[0]
+        preview_encoded = False
+        if upscale:
+            from .preview import continuation_snapshot, source as preview_source
+            snapshot, digest, preview_encoded = continuation_snapshot(preview_source(upscale[0]), continue_from)
+            continuation = restore_snapshot(snapshot, digest, started)
+        else:
+            try:
+                continuation = prepare(continue_from, started, directory=root / 'continuations')
+            except ValueError as error:
+                if str(error) != MISSING:
+                    raise
+                # A video with no stored context (single-pass, an earlier version, a replaced file) is
+                # continued from its own ending, which the engine reads and encodes. Only a video whose
+                # ending cannot be used stops here, before anything is loaded.
+                check_ending()
     # The engine decides the same way from the same record: whether the film's first frame is there to use.
     # An ending encoded from the file has no first frame of the film to give.
     anchored = False
-    if continue_from is not None and continuation is not None and first_frame_reference:
+    if continue_from is not None and continuation is not None and first_frame_reference and not preview_encoded:
         from .continuation import chain_first_frame_picture
         try:
             anchored = chain_first_frame_picture(continuation, continue_from) is not None
@@ -1362,7 +1403,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             command.append('--first-frame-reference')
         if voice_reference:
             command.append('--voice-reference')
-        if continuation is not None:
+        if continuation is not None and not upscale:
             from .continuation import persist_snapshot
             continuation = persist_snapshot(continuation, run / 'continuation-source.safetensors')
             command += ['--continuation-snapshot', continuation['snapshot'],
@@ -1375,7 +1416,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
-    if hide_tail:
+    if hide_tail and '--hide-tail' not in command:
         command.append('--hide-tail')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
@@ -1741,6 +1782,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                     # another generation; cancellation should release its memory.
                     from .resident_process import OWNER
                     OWNER.release('cancelled')
+        try:
+            # Nothing will read a stopped request's decoded frames or reference frames; the
+            # sampling result and conditioning stay for the failure report.
+            from .comfy_library import release_decoded
+            state['decoded_release'] = release_decoded(run)
+        except Exception:
+            pass
         raise
     finally:
         from .resident_process import OWNER

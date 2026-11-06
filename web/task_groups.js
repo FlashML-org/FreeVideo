@@ -1,4 +1,4 @@
-// Videos made by one task (a preview and its upscale, a continuation, one agent job, the same prompt on one day)
+// Videos made by one task (a preview and its upscale, a continuation, one agent job, the same prompt within two hours)
 // share the `task` the library API gives them. A list shows the newest as the cover; the others fold under it
 // until the cover is pressed again. Both lists (Recent videos and Creations) fold with this one rule.
 

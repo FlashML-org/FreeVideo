@@ -8,7 +8,7 @@ export const TOUR_TEXT = {
 };
 // The chapter of the tutorial book that teaches the same thing as the card.
 const BOOK_CHAPTER = {'first-video': 'quick-start', 'text-to-video': 'text-to-video', 'first-last-frame': 'first-last-frame', 'quality-tiers': 'quality-tiers',
-    'reference-image': 'reference-video', 'replace-person': 'replace-person', character: 'cast-sheet', 'edit-view': 'editor', extend: 'extend-video', 'two-pass': 'refine', autopilot: 'autopilot'};
+    'reference-image': 'reference-video', 'replace-person': 'replace-person', character: 'cast-sheet', 'edit-view': 'editor', 'separate-sound': 'separate-tracks', extend: 'extend-video', 'two-pass': 'refine', autopilot: 'autopilot'};
 const asset = name => new URL(`./assets/tour/${name}`, import.meta.url).href;
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 const contexts = new Map();
@@ -135,11 +135,12 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
             }
             title.textContent = card.title[lang];
             content.append(el('p', 'fv-tour-line', card.line[lang]));
+            let waveImage = null;
             const pair = el('div', 'fv-tour-pair'), input = el('div', 'fv-tour-input'), output = el('div', 'fv-tour-output');
             card.input.forEach(item => {
                 if (item.text) input.append(el('p', null, item.text[lang]));
                 else if (item.mp4) input.append(media(videos.at(-1)));
-                else { const image = el('img'); image.src = asset(item.src); image.alt = ''; input.append(image); }
+                else { const image = el('img'); image.src = asset(item.src); image.alt = ''; input.append(image); waveImage = image; }
             });
             const arrow = el('span', 'fv-tour-arrow'); arrow.setAttribute('aria-hidden', 'true');
             // A thin CSS line and two strokes keep this decorative arrow out of the reading order.
@@ -149,11 +150,26 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
                 videos[0].onended = () => { for (const video of playing) video.currentTime = 0; play(); };
                 for (const video of videos) video.loop = false;
             } else if (card.sequence) {
+                // The four versions play in turn without sound. A choice plays that one version, with sound, until another is chosen.
+                const picker = el('div', 'fv-tour-segments'), segments = [];
+                picker.setAttribute('role', 'group');
+                const show = (i, chosen) => {
+                    stop();
+                    if (waveImage && card.sequence[i].wave) waveImage.src = asset(card.sequence[i].wave);
+                    videos.forEach((video, j) => { video.hidden = j !== i; segments[j]?.setAttribute('aria-pressed', String(j === i && (chosen || videos.length > 1))); if (j !== i) video.muted = true; });
+                    const video = videos[i]; video.currentTime = 0; video.muted = !chosen; video.loop = chosen; playing = [video]; play();
+                };
                 videos.forEach((video, i) => {
-                    video.hidden = i !== 0; media(video); video.loop = false;
-                    video.onended = () => { video.hidden = true; const next = videos[(i + 1) % videos.length]; next.hidden = false; next.currentTime = 0; playing = [next]; next.play().catch(() => {}); };
+                    media(video); video.loop = false;
+                    video.onended = () => show((i + 1) % videos.length, false);
                     output.append(video);
+                    const label = card.sequence[i].label;
+                    if (!label) return;
+                    const segment = el('button', 'fv-tour-segment', label[lang]); segment.type = 'button';
+                    segment.onclick = () => show(i, true); segments[i] = segment; picker.append(segment);
                 });
+                if (segments.length) output.append(picker);
+                videos.forEach((video, i) => { video.hidden = i !== 0; segments[i]?.setAttribute('aria-pressed', String(i === 0 && videos.length > 1)); });
                 playing = [videos[0]];
             } else output.append(media(videos[0], card.previewRange));
             pair.append(input, arrow, output); content.append(pair);

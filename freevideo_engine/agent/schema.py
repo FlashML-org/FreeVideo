@@ -139,8 +139,8 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
             'A reference video only: it guides the first pass for this many steps and is dropped afterwards, '
             'including from the second pass. Omitted: the video guides every step.')
         properties['voice_only'] = {'type': 'boolean', 'description':
-            'A reference video used only for its voice: the picture is encoded small and at a low frame rate, '
-            'the sound is unchanged. Not with early_steps.'}
+            'A reference video used only for its voice: only its sound track is read, as an audio reference, and no '
+            'picture is encoded. A clip without sound is refused. Not with early_steps.'}
     if clip:
         properties.pop('frame')
         properties.pop('edit')
@@ -234,7 +234,7 @@ def generate(*, local=False):
 def assemble(*, local=False):
     return obj(dict(kind={'const': 'assemble', 'type': 'string'},
         clips=array({'anyOf': [JOB, SAVED, media(local=local, clip=True)]}, 1, 200),
-        transition=enum(('cut', 'crossfade'), default='cut'), transition_seconds=number(.04, 5, default=.5),
+        transition=enum(('cut', 'crossfade'), default='cut'), transition_seconds=number(1 / 24, 3, default=.5),
         width=nullable(number(64, 4096, integer=True, multipleOf=2)), height=nullable(number(64, 4096, integer=True, multipleOf=2)),
         audio={'type': 'boolean', 'default': True}, name=SLUG, **common()), ('kind', 'clips'),
         **{'x-job-kind': 'assemble'})
@@ -355,6 +355,22 @@ def stems(*, local=False):
         **{'x-job-kind': 'stems'})
 
 
+SOUND_FIELDS = dict(
+    music={'oneOf': [obj(dict(caption=MUSIC_FIELDS['caption'], seed=MUSIC_FIELDS['seed']), ('caption',)),
+                     obj(dict(source=EDITOR_SOURCE), ('source',))],
+           'description': 'For an empty a2: a caption to compose, or a source to lay. Omit for no music.'},
+    keep_dialogue_volume={'type': 'boolean', 'default': False})
+
+
+def finish_sound(*, local=False):
+    return obj(dict(kind={'const': 'finish_sound', 'type': 'string'},
+        editor_project=string(34, pattern=r'^e-[0-9a-f]{32}$'),
+        revision=number(1, 2**53 - 1, integer=True),
+        **SOUND_FIELDS, **common()), ('kind', 'editor_project', 'revision'),
+        description='Finish the sound of a joined cut: split, one score on a2, even loudness at -18 LUFS, room tone.',
+        **{'x-job-kind': 'finish_sound'})
+
+
 VOICE_SELECTION = obj(dict(clip_id=string(64), start=number(0, 36000, description='Seconds from the clip start; default 0.'),
                            end=number(0, 36000, description='Seconds from the clip start; default the clip end.')), ('clip_id',),
                       description='The sound clip, or part of it, whose voice to change: the original sound, or its dialogue sub-track.')
@@ -366,8 +382,11 @@ VOICE_LINE = obj(dict(id=string(16, pattern=r'^l[0-9]{3,5}$'), start=number(0, 3
                  ('id', 'start', 'end', 'text', 'original_text'))
 VOICE_REFERENCE = obj(dict(clip_id=string(64), start=number(0, 36000), end=number(0, 36000), text=string(1000)),
                       ('clip_id', 'start', 'text'), description='A stretch of a sound clip whose voice every line takes.')
+VOICE_SCRIPT = array(obj(dict(text=string(2000), speaker=string(64, description='Who says it; the same name is the same number in the result.')),
+                         ('text',)), 1, 400,
+                     description='What the selection is known to say, in order. A recognised line that is one of these says it as written, and the lines are numbered by who says them.')
 VOICE_LINES_FIELDS = dict(
-    selection=VOICE_SELECTION, language=VOICE_LANGUAGE,
+    selection=VOICE_SELECTION, language=VOICE_LANGUAGE, script=VOICE_SCRIPT,
     separate_first={'type': 'boolean', 'default': False,
                     'description': 'Separate the sound first and recognise on the dialogue alone.'})
 VOICE_FIELDS = dict(
@@ -417,12 +436,13 @@ def image_edit(*, local=False):
 
 
 KINDS = dict(generate=generate, assemble=assemble, vlm=vlm, enhance=enhance, image=image,
-             export=export, listen=listen, music=music, stems=stems, voice_lines=voice_lines, voice=voice, image_edit=image_edit)
+             export=export, listen=listen, music=music, stems=stems, finish_sound=finish_sound, voice_lines=voice_lines, voice=voice,
+             image_edit=image_edit)
 
 
 def job_schema(*, local=False, refs=False, batch=False):
     # Music scores a joined cut, so it is not a storyboard row.
-    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind in ('music', 'stems', 'voice_lines', 'voice'))], 'x-discriminator': 'kind',
+    value = {'oneOf': [f(local=local) for kind, f in KINDS.items() if not (batch and kind in ('music', 'stems', 'finish_sound', 'voice_lines', 'voice'))], 'x-discriminator': 'kind',
              'description': 'x-discriminator selects field diagnostics by kind; all accepted branches use standard oneOf.'}
     return batch_references(value) if refs else value
 
@@ -539,7 +559,7 @@ def contracts(*, local=False):
         if method == 'GET':
             extra['query'] = shape
         else:
-            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music', 'stems', 'voice_lines', 'voice_replace') else {}))
+            extra.update(body=shape, idempotent=True, **({'status': 201} if name in ('create', 'generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace') else {}))
         routes[method, suffix] = route(summary, **extra)
     for name, (method, suffix, summary) in WHITEBOX_OPERATIONS.items():
         extra = dict(path=obj({'id': WHITEBOX}, ('id',))) if '{id}' in suffix else {}
@@ -616,9 +636,11 @@ def contracts(*, local=False):
                                             auth=False, page_or_token=True)
     routes['PUT', '/confirmations'] = route('Only the page user may change which operations need approval.',
                                             body=confirm_settings(), auth=False, page_or_token=True)
-    # The editor page separates sound itself: these four also accept its page session, which never holds the token.
+    # The editor page separates sound and changes voices itself: these also accept its page session, which never holds the token.
     for key in (('POST', '/projects/{id}/stems'), ('POST', '/projects/{id}/stems/export'),
-                ('GET', '/jobs/{id}'), ('POST', '/jobs/{id}/cancel')):
+                ('GET', '/jobs/{id}'), ('POST', '/jobs/{id}/cancel'), ('GET', ''),
+                ('POST', '/projects/{id}/voice/lines'), ('POST', '/projects/{id}/voice/replace'),
+                ('POST', '/projects/{id}/voice/shorten'), ('POST', '/projects/{id}/voice/estimate')):
         routes[key]['page_ok'] = True
     return routes
 
@@ -935,11 +957,12 @@ PROJECT_OPERATIONS = {
     'voice_shorten': ('POST', '/projects/{id}/voice/shorten', 'Shorten one line to fit a number of seconds. The answer is a text; nothing is saved or spoken.'),
     'voice_estimate': ('POST', '/projects/{id}/voice/estimate', 'Estimate the seconds the changed lines take to make. The answer comes at once.'),
     'music': ('POST', '/projects/{id}/music', 'Compose music as long as the joined cut and lay it on sound track a2 at frame 0, under the video sound. First get the revision; a2 must be empty. Wait for the returned job; the first use downloads the model (20 GB).'),
+    'finish_sound': ('POST', '/projects/{id}/finish_sound', 'Finish the sound of a joined cut in one job: split each clip\'s sound where offered, one score on a2, even dialogue, -18 LUFS, room tone. First get the revision; wait for the job.'),
 }
 PROJECT_TOOLS = dict(list='freevideo_projects', get='freevideo_project_read', create='freevideo_project_create',
                      write='freevideo_project_write', operations='freevideo_editor_operations',
                      generate='freevideo_project_generate', export='freevideo_export',
-                     listen='freevideo_project_listen', music='freevideo_project_music',
+                     listen='freevideo_project_listen', music='freevideo_project_music', finish_sound='freevideo_project_finish_sound',
                      stems='freevideo_project_stems', stems_export='freevideo_project_stems_export',
                      voice_lines='freevideo_project_voice_lines', voice_replace='freevideo_project_voice_replace',
                      voice_shorten='freevideo_project_voice_shorten', voice_estimate='freevideo_project_voice_estimate')
@@ -1063,6 +1086,8 @@ def project_schema(name):
         return obj(dict(revision=revision, **LISTEN_FIELDS, ref=REF), ('revision', 'mode'))
     if name == 'music':
         return obj(dict(revision=revision, **MUSIC_FIELDS, ref=REF), ('revision', 'caption'))
+    if name == 'finish_sound':
+        return obj(dict(revision=revision, **SOUND_FIELDS, ref=REF), ('revision',))
     if name in ('stems', 'stems_export'):
         return obj(dict(revision=revision, **STEMS_FIELDS, **(STEMS_LAY if name == 'stems' else {}), ref=REF), ('revision', 'clip_id'))
     if name == 'voice_lines':

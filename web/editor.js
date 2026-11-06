@@ -30,7 +30,9 @@ import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessag
 import {createEditorMusic} from './editor_music.js';
 import {createEditorRecord, RECORD_ICON} from './editor_record.js';
 import {createEditorVoice} from './editor_voice.js';
-import {createVoiceStore, voiceAvailable} from './editor_voice_store.js';
+import {createVoiceStore, voiceFeatures} from './editor_voice_store.js';
+import {createVoiceInstall} from './editor_voice_install.js';
+import {voiceTarget} from './editor_voice_model.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
@@ -547,7 +549,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
     // Dubbing lines of a stretch of speech.
-    let voiceReady = false;
+    let voiceReady = false, voiceInstallable = false;
     const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
     // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
     let lineStop = null;
@@ -560,7 +562,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const unwatch = state.subscribe(event => { if ((event.type ?? event) !== 'playhead') return; if (state.playhead >= to) { player.pause(); finish(); } else if (!player.playing) finish(); });
         lineStop = finish;
     }
-    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
+    const voice = createEditorVoice({state, store: createVoiceStore({api, state, queue}), t, onChange: () => genbar?.update(barValue), available: () => voiceReady, recheck: readVoice, playLine: playVoiceLine, comparePlayback: async (clipId, name) => {
         // Hearing the other take changes nothing in the edit: only the preview swaps the sound.
         const source = generatedSource(name);
         if (!source) { player.previewClipSource(clipId, null); return; }
@@ -601,6 +603,39 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (disposed || closing || epoch !== projectEpoch) return false;
         if (queue.dirty) { notify(saveErrorText(queue.failure, t), EDITOR_ISSUE, failureKind('save', {reason: saveReason(queue.failure)})); return false; }
         return !!state.record.id;
+    }
+    // Keeps the frame under the playhead as a picture in the image history, drawn as the export would draw it, from the saved project.
+    let savingFrame = false;
+    async function saveFrame() {
+        if (savingFrame) return;
+        if (initializing || switching) { notify(t('Opening the edit…', '正在打开…')); return; }
+        if (!model.exportFrames(state.record)) { notify(t('The timeline is empty. Add a clip first.', '时间线是空的，请先放入素材。')); return; }
+        const epoch = projectEpoch, shown = Math.min(state.playhead, Math.max(0, model.duration(state.record) - 1));
+        savingFrame = true;
+        try {
+            if (!await saveForExport(epoch)) return;
+            let picture = null;
+            for (let attempt = 0; ; attempt++) {
+                try { picture = await store.saveFrame(state.record.id, state.record.revision, shown); break; }
+                catch (value) {
+                    if (value.status !== 409 || attempt >= 2) throw value;
+                    queue.enqueue(state.record);
+                    if (!await saveForExport(epoch)) return;
+                }
+            }
+            if (disposed || closing || epoch !== projectEpoch) return;
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > History.',
+                '已保存当前帧，位于“编辑图片 > AI 生成 > 历史”。'));
+        } catch (value) {
+            if (disposed || epoch !== projectEpoch) return;
+            const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
+                range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
+                generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
+                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
+                not_writable: t('The picture folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
+                disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
+            if (said) notify(said); else error(value, 'frame');
+        } finally { savingFrame = false; }
     }
     function updateTop() {
         const name = state.record.name || new Date().toLocaleDateString();
@@ -1044,30 +1079,30 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else genbar?.update(mostRecentJob ? jobStatuses.get(mostRecentJob) ?? null : null);
         },
         onPass: listener => panel.passMode?.subscribe(listener) || (() => {}),
-        // A part made as a half-resolution preview: only one that stands alone, as the next part continues from
-        // this one's last frames, which the second pass changes.
+        // A part made as a half-resolution preview: one part only, as the next part continues from this one's last
+        // frames, which the second pass changes. It may continue the part before it where the engine can.
         previewFirst(selection = state.selection) {
             if (actions.passMode()?.mode !== 'preview' || music.target(selection)) return false;
             if ((state.record.settings?.base_steps ?? 8) !== 8) return false;
             const run = partRun(selection), chosen = run ? clipChoice(run) : selection, range = selectionRange(chosen); if (!range) return false;
-            if (continuesEarlier(range)) return false;
+            if (continuesEarlier(range) && !store.continuationPreview) return false;
             try {
                 // The parts Generate would send, planned as it plans them.
                 const selected = selectionClips(chosen), planned = selected.length && selected.every(clip => clip.pending && !clip.source);
                 const next = planned ? state.record : model.planRange(state.record, {...range, target: 'both', maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds});
                 const ids = planned ? selected.map(clip => clip.id) : next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames
                     && clip.pending && !['queued', 'running'].includes(clip.pending)).map(clip => clip.id);
-                return ids.length === 1 && !model.generationBefore(model.prepare(next, ids), ids).some(Boolean);
+                return ids.length === 1 && (store.continuationPreview || !model.generationBefore(model.prepare(next, ids), ids).some(Boolean));
             } catch (value) { if (value instanceof model.EditError) return false; throw value; }
         },
-        // The chosen preview part, shown from its first frame, whose second pass can replace it in place.
+        // The chosen preview part, shown from its first new frame, whose second pass can replace it in place.
         secondPassTarget(selection = state.selection) {
             if (selection?.kind !== 'clip' || !store.generationAvailable) return null;
             const clips = selectionClips(selection);
             if (clips.length !== 1) return null;
             const clip = clips[0], mate = clip.link ? model.find(state.record, clip.link) : null;
             // From the start of the preview: the second pass makes the same frames again, so a part cut short at its end still shows the same moment.
-            if (!clip.source || clip.pending || mate?.pending || clip.in !== 0 || clip.frames > clip.length) return null;
+            if (!clip.source || clip.pending || mate?.pending || clip.in !== (clip.splice?.frames ?? 0) || clip.frames > clip.length) return null;
             const metadata = store.sources.get(sourceKey(clip.source));
             return metadata?.preview === true && metadata.path ? {clip, path: metadata.path} : null;
         },
@@ -1155,8 +1190,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const follow = continuedSize(beforeKeys, sizes), edit = capability.generationSize || generationSize(state.record);
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
-                // A preview is one part that continues nothing; any other part samples both passes, whatever the panel shows.
-                const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && !beforeKeys.some(Boolean);
+                // A preview is one part; any other part samples both passes, whatever the panel shows.
+                const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && (store.continuationPreview || !beforeKeys.some(Boolean));
                 if (secondPass) {
                     if (!alone) throw new model.EditError('unsupported');
                     Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
@@ -1429,8 +1464,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return running;
     }
 
-    voiceAvailable(api).then(value => { voiceReady = value; if (!disposed) voice.refresh(); });
-    actions.voice = {controller: voice};
+    // The dubbing model is downloaded from the bar where the lines would be; once it is there, the stretch chosen is looked at.
+    async function readVoice() {
+        const found = await voiceFeatures(api);
+        // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
+        if (found.unknown) return voiceReady;
+        voiceReady = found.ready; voiceInstallable = found.install;
+        if (!disposed) { voice.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
+        return found.ready;
+    }
+    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
+        onChange: () => { if (!disposed) genbar?.update(barValue); }, onReady: readVoice});
+    readVoice();
+    actions.voice = {controller: voice, install: voiceInstall};
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
@@ -1498,7 +1544,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous, recordTool);
     const pictureTools = createPictureTools({state, sources: store.sources, t, capabilities: () => capability, error});
     toolbar.append(historyTools, editTools, zoomHost); element.insertBefore(toolbar, tracksHost);
-    const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify});
+    const transportControls = createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify, saveFrame});
     editTools.append(secondPassButton);
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
@@ -1714,7 +1760,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); voice.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());

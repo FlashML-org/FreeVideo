@@ -550,8 +550,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         if found:
             action = ('请改选“%s”文件夹。' if zh else 'Select the "%s" folder instead.') % found
         else:
-            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。' if zh else
-                      'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it.')
+            # The button name is the one on the launcher's ComfyUI page (Main.qml, newComfyMethod).
+            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“帮我安装 ComfyUI”。' if zh else
+                      'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it. '
+                      'If ComfyUI is not installed yet, choose "Install ComfyUI".')
         return dict(title='这不是 ComfyUI 文件夹' if zh else "This isn't a ComfyUI folder", detail='',
                     action=action, kind='comfy-folder')
     for pattern, kind, title, action in PLACE_RULES:
@@ -687,7 +689,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请点“重试”。仍然停在这里时，可以导出报告。')),
         (r'ComfyUI is already running\. Restart it once', 'comfy-restart',
          ('Restart ComfyUI to load FreeVideo', '需要重启 ComfyUI 才能加载 FreeVideo'),
-         ('Close the ComfyUI that is running now, then click Retry.', '请关闭正在运行的 ComfyUI，然后点击重试。')),
+         ('Close the ComfyUI that is running now, then click "Connect again".', '请关闭正在运行的 ComfyUI，然后点击“重新连接”。')),
         # web/health.js lists the failed files and what to do on the page itself.
         (r'The browser page did not load FreeVideo completely|浏览器页面没有完整加载 FreeVideo', 'page',
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),
@@ -864,6 +866,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     # Validation messages are already actionable. Show the cause, not a stack
     # trace or a guessed hardware diagnosis, and leave long details expandable.
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines and all(re.fullmatch(INSPECTION_SUMMARY, line) for line in lines):
+        # The check printed nothing but its own summary line (once per place that kept it); that line
+        # is for the report, not the card. The next step goes under it, as for an unexpected failure.
+        return dict(title='暂时未能完成' if zh else 'Couldn’t complete this step',
+                    detail=CHECK_UNFINISHED[zh] + '\n' + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
     causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
     detail = causes[-1] if causes else next((line for line in reversed(lines)
         if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Existing files are retained.', 'Rerun the same setup command'))), '')
@@ -889,6 +896,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     return dict(title=title, detail=detail, action='', kind='unknown')
 
 
+# comfy_setup.inspection_failed: the first line of a failed check.
+INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
+CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
 UNKNOWN_NEXT_STEP = ('Try again. If it fails again, export the report, then use "Report a problem" and attach it.',
                      '请重试。仍然失败时，请先导出报告，再点“提交问题”并附上报告。')
 

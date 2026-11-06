@@ -138,14 +138,34 @@ compose.onsubmit = async event => {
     } catch { notice(t('Could not send. Please try again.', '没有发送成功，请重试。')); }
     finally { sending = false; grow(); }
 };
-function picture(job, preview = false) {
+// Large previews play their strip forward as a loop, 4 to 8 frames a second over the video's length. The position
+// follows the clock, so a redraw that builds a new image carries on from the same place; with reduced motion, or in the
+// small list picture, the last frame stands still.
+const playing = new Set();
+let playTimer = null;
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function playStrips() {
+    playTimer = null;
+    for (const item of playing) {
+        if (!item.img.isConnected) { playing.delete(item); continue; }
+        const index = Math.min(item.count - 1, Math.floor((Date.now() / 1000 * item.fps / item.count) % 1 * item.count));
+        item.img.style.transform = `translateX(-${index * 100 / item.count}%)`;
+    }
+    if (playing.size && !reducedMotion() && typeof requestAnimationFrame === 'function') playTimer = requestAnimationFrame(playStrips);
+}
+function picture(job, preview = false, play = false) {
     const box = el('div', 'phone-picture');
     const p = job.progress || {}, frame = p.frame_preview;
-    const path = preview && frame?.serial > 0 && frame.frames > 0 && frame.frames <= 8 && job.node != null
+    const path = preview && frame?.serial > 0 && frame.frames > 0 && frame.frames <= 16 && job.node != null
         ? `/freevideo/frame-preview/${encodeURIComponent(job.node)}?serial=${frame.serial}` : mediaPath(job.thumbnail, 'image');
     if (path) {
         const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = path; box.append(img);
-        if (preview && frame?.frames > 0) { box.classList.add('strip'); img.style.width = `${frame.frames * 100}%`; img.style.transform = `translateX(-${(frame.frames - 1) * 100 / frame.frames}%)`; }
+        if (preview && frame?.frames > 0) { box.classList.add('strip'); img.style.width = `${frame.frames * 100}%`; img.style.transform = `translateX(-${(frame.frames - 1) * 100 / frame.frames}%)`;
+            if (play && frame.frames > 1 && !reducedMotion()) {
+                const seconds = frame.duration_ms > 0 ? frame.duration_ms / 1000 : null;
+                playing.add({img, count: frame.frames, fps: Math.min(8, Math.max(4, seconds ? frame.frames / seconds : 6))});
+                if (playTimer === null && typeof requestAnimationFrame === 'function') playTimer = requestAnimationFrame(playStrips);
+            } }
         img.onerror = () => { img.remove(); box.closest('.phone-frame')?.classList.add('no-frame'); };
     }
     return box;
@@ -206,7 +226,7 @@ function renderJobs() {
     if (running.length) generations.append(el('h2', 'phone-section', t('Generating', '正在生成')));
     for (const job of running) {
         const card = el('article', 'phone-running'), frame = el('div', 'phone-frame'), info = el('div', 'phone-info'); card.dataset.job = job.id;
-        const img = picture(job, true); img.style.aspectRatio = `${job.width || 9}/${job.height || 16}`; frame.append(img); frame.classList.toggle('no-frame', !img.firstChild);
+        const img = picture(job, true, true); img.style.aspectRatio = `${job.width || 9}/${job.height || 16}`; frame.append(img); frame.classList.toggle('no-frame', !img.firstChild);
         if (!img.firstChild) frame.append(el('span', 'phone-frame-pct', `${Math.floor(fraction(job) * 100)}%`));
         const row = el('div', 'phone-job-row'), numbers = el('div'); numbers.append(el('span', 'phone-pct', `${Math.floor(fraction(job) * 100)}%`), document.createTextNode(' '), el('span', 'phone-eta', remainingWords(job.progress?.remaining_seconds, t)));
         const stop = button('phone-quiet', t('Stop', '停止'), () => cancel(job, true)); stop.disabled = job.status === 'cancelling'; stop.dataset.action = 'stop-' + job.id; row.append(numbers, stop);

@@ -25,10 +25,10 @@
 .fv-generation-status{box-sizing:border-box;width:100%;flex:none;margin-top:10px;font-size:12px;line-height:18px;color:var(--fv-muted,#a2abba);text-align:center;text-wrap:balance}
 .fv-generation-compatibility{box-sizing:border-box;width:100%;flex:none;margin-top:10px;font-size:12px;line-height:18px;color:var(--fv-ink,#e8edf5);text-align:center;text-wrap:balance}
 .fv-generation-compatibility[hidden]{display:none!important}
-.fv-generation-frames{display:block;box-sizing:border-box;width:auto;max-width:100%;max-height:min(30vh,200px);margin:12px auto 0;border-radius:var(--fv-r-sm,6px);object-fit:contain;background:var(--fv-raised,#212a37)}
-.fv-studio .fv-stage .fv-generation-frames{width:auto;height:auto}
-.fv-generation-frames[data-wide=true],.fv-studio .fv-stage .fv-generation-frames[data-wide=true]{height:64px}
-.fv-generation-frames[hidden]{display:none!important}
+.fv-generation-frames{display:block;box-sizing:border-box;width:auto;max-width:100%;height:min(var(--fv-frame-height,120px),120px);aspect-ratio:var(--fv-frame-ratio,16 / 9);margin:12px auto 0;border-radius:var(--fv-r-sm,6px);background:var(--fv-raised,#212a37) no-repeat 0 0}
+.fv-generation-frames[data-wide=true],.fv-studio .fv-stage .fv-generation-frames[data-wide=true]{height:128px}
+.fv-generation-frames[hidden],.fv-generation-frames[data-fit=false]{display:none!important}
+.fv-studio .fv-stage .fv-generation-progress[data-tight=true],.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact[data-tight=true]{padding:8px 16px}
 .fv-studio .fv-stage[data-short=true] .fv-generation-frames{display:none!important}
 .fv-generation-live{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 /* Studio shows progress with the preview's rising wave, so its bar stays

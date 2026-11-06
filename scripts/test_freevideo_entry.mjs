@@ -43,7 +43,7 @@ globalThis.__permissionAsks = [];
 test('main browser entry registers both views and preserves node hooks', async t => {
     const extensions = [], opened = [], installed = [], events = new EventTarget();
     const issueURLs = [];
-    let refreshed = 0, compatibilityChecks = 0, updateChecks = 0, doneNotifyStarts = 0, rememberedView = null;
+    let refreshed = 0, compatibilityChecks = 0, updateChecks = 0, doneNotifyStarts = 0, whatsNewStarts = 0, rememberedView = null;
     const openingEvents = [];
     let restoreReleases = 0;
     let launchReady = null;
@@ -89,7 +89,8 @@ test('main browser entry registers both views and preserves node hooks', async t
         encoderFilePath: file => file?.offline_installation ? file.path || '' : '',
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
-        startUpdateChecks: () => { updateChecks++; },
+        startUpdateChecks: () => { updateChecks++; }, productVersion: () => '0.5.0',
+        startWhatsNew: options => { whatsNewStarts++; },
         startWhiteboxWorker: () => ({stop() {}}),
         startDoneNotify: options => { doneNotifyStarts++; doneNotifyOptions = options; },
         installNavigation: callback => installed.push(callback),
@@ -126,7 +127,8 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
             .replace("import { startWhiteboxWorker } from './whitebox_worker.js';", 'const {startWhiteboxWorker} = globalThis.__freevideoEntryTest;')
-            .replace("import { startUpdateChecks } from './updates.js';", 'const {startUpdateChecks} = globalThis.__freevideoEntryTest;')
+            .replace("import { startUpdateChecks, productVersion } from './updates.js';", 'const {startUpdateChecks,productVersion} = globalThis.__freevideoEntryTest;')
+            .replace("import { startWhatsNew } from './whatsnew.js';", 'const {startWhatsNew} = globalThis.__freevideoEntryTest;')
             .replace("import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';", 'const {startDoneNotify} = globalThis.__freevideoEntryTest; const askDesktopPermission = (...args) => globalThis.__permissionAsks.push(args); const DESKTOP_SETTING = "FreeVideo.DoneNotify.Desktop";')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
@@ -159,6 +161,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(installed.length, 1, 'the Create / Nodes navigation must be installed');
         assert.equal(compatibilityChecks, 1);
         assert.equal(updateChecks, 1);
+        assert.equal(whatsNewStarts, 1);
         assert.equal(doneNotifyStarts, 1);
 
         await t.test('desktop notification uses the registered default without overwriting stored opt-outs', () => {

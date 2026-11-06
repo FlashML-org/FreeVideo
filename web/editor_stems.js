@@ -2,6 +2,7 @@ import * as model from './editor_model.js';
 import {registerMenuItem} from './editor_menu.js';
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {sourceKey} from './editor_store.js';
+import {showSoundBubble, markSoundBubbleSeen, isBubbleRemover} from './sound_bubble.js';
 
 const ROOT = '/freevideo/agent/v1';
 const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
@@ -59,14 +60,19 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
             .flatMap(track => track.clips.filter(clip => selection.ids.includes(clip.id)).map(clip => ({clip, track})));
         return sound.length === 1 && !!sound[0].clip.source && sound[0].clip.stem_of === undefined ? sound[0] : null;
     };
-    let button = null, holder = null;
+    let button = null, holder = null, hideBubble = () => {};
     const sync = () => {
         if (!button) return;
         const found = available && target();
         button.hidden = holder.hidden = !found;
-        if (!found) return;
+        if (!found) { hideBubble(); return; }
         const {clip, track} = found;
         button.disabled = !!running || !!clip.pending || track.locked || children(state.record, clip.id).length > 0;
+        if (!button.disabled) {
+            // A bubble that is already up returns nothing to remove; keep the remover that owns it.
+            const remove = showSoundBubble(button, {cn: t('', 'zh') === 'zh'});
+            if (isBubbleRemover(remove)) hideBubble = remove;
+        }
     };
     // The entries exist only where the engine offers the separation, so other computers keep the menu they had.
     let stops = [];
@@ -109,7 +115,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
     }
     async function separate(clipId) {
         if (running) { notify(t('A sound is already being separated.', '正在分离另一段声音。')); return false; }
-        const tool = running = {cancelled: false, job: null}; sync();
+        const tool = running = {cancelled: false, job: null}; markSoundBubbleSeen(); sync();
         try {
             if (!await ready()) return false;
             const project = state.record.id, ref = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -164,5 +170,5 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
         } catch (value) { say(value, 'stems_failed'); return false; }
     }
     return {separate, cancel, exportStems, active: () => !!running,
-        dispose() { disposed = true; stops.forEach(stop => stop()); stops = []; unsubscribe?.(); holder?.remove(); button = holder = null; }};
+        dispose() { disposed = true; hideBubble(); stops.forEach(stop => stop()); stops = []; unsubscribe?.(); holder?.remove(); button = holder = null; }};
 }

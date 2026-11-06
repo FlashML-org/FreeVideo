@@ -7,14 +7,20 @@ const ROOT = '/freevideo/agent/v1';
 const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const detail = progress => { try { return JSON.parse(progress?.detail || 'null') || {}; } catch { return {}; } };
-const failure = (value, fallback) => Object.assign(new Error(value?.code || value?.error?.code || fallback), {code: value?.code || value?.error?.code || fallback});
+const failure = (value, fallback) => Object.assign(new Error(value?.code || value?.error?.code || fallback), {code: value?.code || value?.error?.code || fallback, detail: String(value?.message || value?.error?.message || '')});
 
-export async function voiceAvailable(api) {
+// What the engine offers for changing a voice: `ready` once the dubbing model is there, `install` where this machine could
+// change a voice but the model is still to be downloaded.
+export async function voiceFeatures(api) {
     try {
-        const response = await agentGet(api, `${ROOT}/capabilities`);
-        return !!(response.ok && (await response.json())?.features?.['projects.voice']);
-    } catch { return false; }
+        const response = await agentGet(api, ROOT);
+        if (!response.ok) return {ready: false, install: false, unknown: true};
+        const features = (await response.json())?.features;
+        return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install']};
+    } catch { return {ready: false, install: false, unknown: true}; }
 }
+
+export async function voiceAvailable(api) { return (await voiceFeatures(api)).ready; }
 
 export function createVoiceStore({api, state, queue}) {
     let running = null;

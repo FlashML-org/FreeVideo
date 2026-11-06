@@ -44,6 +44,20 @@ const HOWTOS = [
             {id: 'editor-refs', anchor: '[data-fv-guide="editor-refs"]', image: 'editor-refs',
                 en: 'Click + next to the prompt to upload or generate images, up to 3.', zh: '点描述框旁的 +，上传或生成图片，最多 3 张。'},
             {id: 'editor-describe', anchor: '[data-fv-guide="editor-describe"]', en: 'Describe it, then choose "Generate".', zh: '填写描述，然后点“生成”。'}]},
+    {id: 'separate-tracks', view: 'editor', title: ['Separate tracks', '分离音轨'],
+        steps: [
+            {id: 'sound-clip', anchor: '[data-tour-id="audio-a1-track"]', en: 'Select a clip with sound.', zh: '请选中带声音的片段。'},
+            {id: 'separate', anchor: '[data-tour-id="audio-track-button"]', en: 'Choose "Separate tracks". Dialogue, music and ambience become three tracks.', zh: '点“分离音轨”，人声、音乐和环境声会分成三条轨道。'},
+            {id: 'parts', anchor: '[data-tour-id="audio-music-stem"]', en: 'Each part can now be replaced on its own.', zh: '每条轨道现在都可以单独替换。'}]},
+    {id: 'replace-music', view: 'editor', title: ['Replace the music', '换一段配乐'],
+        steps: [
+            {id: 'music-track', anchor: '[data-tour-id="audio-music-stem"]', en: 'Select a clip on the music track.', zh: '选中“音乐”轨上的片段。'},
+            {id: 'music-describe', anchor: '[data-fv-guide="editor-describe"]', en: 'Describe the music you want.', zh: '描述想要的配乐。'},
+            {id: 'music-generate', anchor: '[data-fv-guide="editor-generate"]', en: 'Choose "Replace music".', zh: '点“替换配乐”。'}]},
+    {id: 'replace-voice', view: 'editor', title: ['Edit lines one by one', '逐句改台词'],
+        steps: [
+            {id: 'voice-lines', anchor: '[data-tour-id="voice-lines"]', en: 'Select a clip on the dialogue track. Change the words of a line here.', zh: '选中“人声”轨上的片段，在这里修改某一句的文字。'},
+            {id: 'voice-generate', anchor: '[data-fv-guide="editor-generate"]', en: 'Choose "Redub" to speak the changed lines again.', zh: '点“重新配音”，只重配改过的句子。'}]}
 ];
 
 export const howToList = cn => HOWTOS.map(({id, title}) => ({id, title: title[cn ? 1 : 0]}));

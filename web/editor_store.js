@@ -178,6 +178,8 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
     let recovered = null, capabilityPoll = null;
     // The length a new continuation starts with where the engine names one (a device that continues in short parts).
     let continueSeconds = null;
+    // Whether a part that continues can be made as a preview first, once the engine has said so.
+    let continuationPreview = false;
     let generationAvailable = false, generationGone = false, generationProbe = null, generationRetry = null, generationAttempts = 0, generationStalled = false, generationAsking = false;
     let disposed = false; const uploads = new Set();
     const session = holdSession();
@@ -264,6 +266,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             if (activeProject === id) { activeProject = null; clock.clearTimeout(sessionTimer); sessionTimer = null; }
         },
         get continueSeconds() { return standIn ? standIn.continueSeconds ?? null : continueSeconds; },
+        get continuationPreview() { return standIn ? standIn.continuationPreview === true : continuationPreview; },
         get generationAvailable() { return standIn ? standIn.generationAvailable ?? true : generationAvailable; },
         // The server said for certain it cannot generate (not just a missed answer that is asked again).
         get generationGone() { return !standIn && generationGone; },
@@ -301,6 +304,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                             if (!response.ok) return null;
                             const body = await response.json();
                             if (Number.isInteger(body?.continue_seconds) && body.continue_seconds > 0) continueSeconds = body.continue_seconds;
+                            continuationPreview = body?.continuation_preview === true;
                             return Array.isArray(body?.chains) ? true : null;
                         })
                         .catch(() => null), timeout]);
@@ -533,6 +537,14 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         },
         watchExport(id, fn, lost) { return watch(async () => (await json('/freevideo/editor/export?' + new URLSearchParams({id})))?.export || null, fn, lost); },
         cancelExport: id => json('/freevideo/editor/export/cancel', post({id})),
+        // One frame of the saved project, as the export draws it, kept as a picture in the image history; null where the server is older.
+        async saveFrame(id, revision, frame) {
+            const response = await request('/freevideo/editor/frame', post({id, revision, frame}));
+            const value = await response.json().catch(() => null);
+            if (!response.ok && (response.status !== 404 || value?.reason)) throw Object.assign(errorFor(response), {reason: value?.reason});
+            if (response.status === 404 || !value) { notice('frame', 'To save a frame, update FreeVideo and restart it.', '请更新 FreeVideo 并重新启动后再保存画面。'); return null; }
+            return value.picture || null;
+        },
         // Subtitles from speech. What this computer can recognise; null where it cannot or the server is older.
         async ears() { return (await json('/freevideo/editor/ears'))?.available || null; },
         async startEars(id, revision) { return (await json('/freevideo/editor/ears', post({kind: 'transcribe', id, revision})))?.job || null; },

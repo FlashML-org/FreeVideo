@@ -31,6 +31,7 @@ MARGIN = .1             # extra file read around a line when its sound is measur
 PREEMPTIONS = 8
 BUSY_WAITS = 8
 SPEED = dict(zh=4.5, en=2.8)      # units per second of a voice, when the line gave no rate of its own
+RECOGNITION_CODES = {'no_sound': 'invalid_request', 'too_long': 'invalid_request', 'language': 'speech_language'}
 DUB_CODES = {'out_of_memory': 'out_of_memory', 'model_missing': 'voice_model_missing',
              'invalid_request': 'invalid_request', 'disk_space': 'storage_unavailable'}
 SELECTION_MESSAGE = 'The selection must be a sound clip played at normal speed, forwards'
@@ -304,7 +305,7 @@ def run_voice_lines(jobs, row):
     """The lines of a selection: where each one is (from the voice) and what it says (from the recogniser)."""
     from .. import subtitle_ears
     from .. import subtitle_sherpa  # noqa: F401  registers the recogniser
-    from ..voice import sentences
+    from ..voice import script, sentences, speakers
     spec = row['spec']
     ctx = context(jobs, spec)
     sources = None
@@ -334,14 +335,26 @@ def run_voice_lines(jobs, row):
         except subtitle_ears.Cancelled as error:
             raise JobError('cancelled', 'Cancelled') from error
         except subtitle_ears.EarsError as error:
-            raise JobError(('invalid_request' if error.reason in ('no_sound', 'too_long') else 'voice_failed'),
+            raise JobError(RECOGNITION_CODES.get(error.reason, 'voice_failed'),
                            'The selection could not be recognised (%s)' % error.reason) from error
         words = [word for line in heard['lines'] for word in line['words']]
         rows = sentences.lines(words, audio, rate)
+        known = spec.get('script') or []
+        entries = script.match(rows, known) if known else [None] * len(rows)
+        for line, entry in zip(rows, entries):
+            if entry is not None:
+                # the text is known: it is what the line says, and the recogniser only gives the times
+                line['words'] = script.retime(line['words'], entry['text'], line['start'], line['end']) or line['words']
+                line['text'] = sentences._join(line['words'])
+        slices = [audio[int(line['start'] * rate):int(line['end'] * rate)] for line in rows]
+        numbers = speakers.label(slices, speakers.embedder())
+        if known:
+            numbers = speakers.by_role(numbers, [None if entry is None or not (entry.get('speaker') or '').strip()
+                                                 else script.roles(known)[entry['speaker'].strip()] for entry in entries])
         lines = []
         for index, line in enumerate(rows, 1):
             lines.append(dict(id='l%03d' % index, start=round(line['start'], 3), end=round(line['end'], 3), text=line['text'],
-                              speaker=0, words=line['words'],
+                              speaker=numbers[index - 1], words=line['words'],
                               rate=round(max(len(line['words']), 1) / max(line['end'] - line['start'], .1), 2)))
         kind = 'dialogue' if ctx['separated'] or sources else 'a1'
         return dict(editor_project=spec['editor_project'], revision=spec['revision'], separated=ctx['separated'],
@@ -471,6 +484,14 @@ def _measure(audio, first, last):
     return (low + span[0]) / RATE, (low + span[1]) / RATE
 
 
+def _level(audio, first, last):
+    """RMS of the sound in [first, last) of a mono 44.1 kHz file: the loudness the new voice is to come back with."""
+    import numpy as np
+    low, high = max(0, int(first * RATE)), min(len(audio), int(last * RATE))
+    part = np.asarray(audio[low:high], dtype=np.float64)
+    return round(float(np.sqrt(np.mean(np.square(part)))), 6) if len(part) else None
+
+
 def _windows(every, todo, spans, base, limit):
     """Where each changed line's new voice goes: the original line plus a little quiet each side, and how far it may reach."""
     windows, failures = {}, {}
@@ -566,11 +587,18 @@ def run_voice_replace(jobs, row, *, poll=.25):
         reference, own = _reference(jobs, spec, voice, every, original_wav, base)
         seed = _seed(spec, todo)
         pace = Pace(work)
+        # a text that cannot be said in the room its line has, even at the fastest tempo, is known before anything is made
+        expected = {found['id']: found['overrun'] for found in estimate(every, ctx['end'])['lines'] if found['overrun']}
+        if expected:
+            _phase(row, 'preparing', too_long=sorted(expected))
 
         def item(line, length, offset):
             window = windows[line['id']]
             made = dict(key=line['id'], text=line['text'].strip(), seconds=round(length, 3),
                         onset=round(window['onset'] - window['first'], 3), offset=round(offset - window['first'], 3))
+            level = _level(mono, windows[line['id']]['onset'], windows[line['id']]['offset'])
+            if level:
+                made['level'] = level
             if own and line['end'] - line['start'] >= 1. and line['original_text'].strip():
                 made['reference'] = dict(file=str(original_wav), text=line['original_text'].strip(),
                                          start=base + line['start'], end=base + line['end'])
@@ -615,6 +643,8 @@ def run_voice_replace(jobs, row, *, poll=.25):
             if made is None:
                 result['code'] = 'cancelled'
                 continue
+            if line['id'] in expected:
+                result['expected_overrun'] = expected[line['id']]
             result.update(available=round((window['deadline'] if line['id'] in second_round else window['last']) - window['onset'], 3),
                           speed=made.get('speed'), stretch=made.get('stretch'), gain_db=made.get('gain_db'),
                           overrun=round(float(made.get('overrun') or 0.), 3), warning=made.get('warning'))

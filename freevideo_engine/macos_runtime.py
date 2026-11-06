@@ -602,7 +602,8 @@ class Engine:
                         progress.layers(self.model.transformer_blocks), \
                         frame_preview.observing(latent_frames=canvas['latent_frames'], frame_h=height // 32,
                                                 frame_w=width // 32, step_offset=progress_offset + start,
-                                                total=progress_total if progress_total is not None else active_steps):
+                                                total=progress_total if progress_total is not None else active_steps,
+                                                seconds=canvas.get('seconds')):
                     self.residency = residency
                     from .step_cache import begin_pass, end_pass
                     step_cache = None

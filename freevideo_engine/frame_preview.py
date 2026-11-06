@@ -2,7 +2,8 @@
 
 At each step the scheduler already holds the model's prediction of the clean
 latents. A fixed per-pixel affine map from the 24 latent channels to RGB turns
-four of those latent frames into a small picture without running the VAE. The
+up to sixteen evenly spaced latent frames into one small strip without running
+the VAE, which the page plays as a loop. The
 observer only reads tensors the sampler already produced and never writes to
 them, so the sampled latents are identical with it on or off. Any failure
 silently turns it off for the rest of the request.
@@ -17,7 +18,7 @@ FILE = 'frame-preview.jpg'
 MARKER = 'frame-preview-off'
 ENV = 'FREEVIDEO_FRAME_PREVIEW'
 FIRST_STEP = 3
-FRAMES = 4
+FRAMES = 16  # evenly spaced latent frames in the strip; the page guards use the same bound
 QUALITY = 82
 MAX_FRAME_WIDTH = 336
 CHANNELS = 24
@@ -110,10 +111,11 @@ def _fail():
 
 
 class _Preview:
-    def __init__(self, latent_frames, frame_h, frame_w, step_offset, total):
+    def __init__(self, latent_frames, frame_h, frame_w, step_offset, total, seconds=None):
         self.rows = latent_frames * frame_h * frame_w
         self.shape = (latent_frames, frame_h, frame_w)
         self.step_offset, self.total = step_offset, total
+        self.duration_ms = round(seconds * 1000) if isinstance(seconds, (int, float)) and 0 < seconds < 86400 else None
         self.calls = 0
         count = min(FRAMES, latent_frames)
         self.indices = sorted({round(i * (latent_frames - 1) / max(1, count - 1)) for i in range(count)})
@@ -164,18 +166,19 @@ class _Preview:
         _serial = max(_serial + 1, step)
         n = len(self.indices)
         emit(dict(event='frame_preview', step=step, total=self.total, serial=_serial, frames=n,
-                  frame_width=strip.shape[1] // n, frame_height=strip.shape[0]))
+                  frame_width=strip.shape[1] // n, frame_height=strip.shape[0],
+                  **({'duration_ms': self.duration_ms} if self.duration_ms else {})))
 
 
 @contextmanager
-def observing(*, latent_frames, frame_h, frame_w, step_offset=0, total=None):
+def observing(*, latent_frames, frame_h, frame_w, step_offset=0, total=None, seconds=None):
     """Observe the video scheduler of one sampling pass; no-op unless configured."""
     global _active
     previous = _active
     _active = None
     if _sink is not None and not _failed:
         try:
-            _active = _Preview(latent_frames, frame_h, frame_w, step_offset, total)
+            _active = _Preview(latent_frames, frame_h, frame_w, step_offset, total, seconds)
         except Exception:
             _active = None
             _fail()

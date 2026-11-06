@@ -103,17 +103,36 @@ def _prompt_digest(folder):
     return hashlib.sha256(text.encode('utf-8')).hexdigest() if text else None
 
 
+# The same prompt links videos only while each is made within this time of the one before it and from the same
+# pictures, clips and audio, across midnight too; the same words hours later, or on other pictures, are another task.
+_SITTING_SECONDS = 2 * 3600
+_INPUT_FILE = re.compile(r'(?:reference-\d{2}\.(?:png|mp4|wav)|(?:first|last)\.png)')
+
+
+def _inputs_digest(folder):
+    """What the run was given besides words: its reference pictures, clips and audio and its first and last frame."""
+    parts = []
+    try:
+        for entry in sorted(os.scandir(folder), key=lambda item: item.name):
+            if _INPUT_FILE.fullmatch(entry.name) and entry.is_file(follow_symlinks=False):
+                with open(entry.path, 'rb') as stream:
+                    parts.append('%s:%d:%s' % (entry.name, entry.stat().st_size, hashlib.sha256(stream.read(2**20)).hexdigest()))
+    except OSError:
+        return None
+    return hashlib.sha256('\n'.join(parts).encode('utf-8')).hexdigest()[:16]
+
+
 def _tasks(root, rows, folders, reports):
     """Name each row's task: the earliest video connected to it by a preview and its upscale, a continuation,
-    one agent job, or the same prompt text on the same day. A video with no such link is its own task."""
+    one agent job, or the same prompt text and inputs within two hours of the one before. A video with no such link is its own task."""
     parent = {row['id']: row['id'] for row in rows}
     def find(item):
         while parent[item] != item:
             parent[item] = parent[parent[item]]
             item = parent[item]
         return item
-    seen = {}
-    for row in rows:
+    seen, latest = {}, {}
+    for row in sorted(rows, key=lambda row: (row['created_at'], row['id'])):
         identity = row['id']
         tokens = ['id:' + identity]
         source = _source_identity(root, folders[identity], reports[identity])
@@ -123,12 +142,15 @@ def _tasks(root, rows, folders, reports):
             tokens.append('job:' + row['agent']['job'])
         digest = _prompt_digest(folders[identity])
         if digest:
-            tokens.append('prompt:%s:%s' % (identity.split('/', 1)[0], digest))
+            tokens.append('prompt:%s:%s' % (digest, _inputs_digest(folders[identity])))
+        moment = datetime.fromisoformat(row['created_at']).timestamp()
         for token in tokens:
-            if token in seen:
+            # Ascending order: a prompt token far from the video before it starts a new sitting.
+            if token in seen and not (token.startswith('prompt:') and moment - latest[token] > _SITTING_SECONDS):
                 parent[find(identity)] = find(seen[token])
             else:
                 seen[token] = identity
+            latest[token] = moment
     groups = {}
     for row in rows:
         groups.setdefault(find(row['id']), []).append(row)
@@ -353,7 +375,7 @@ def video_download(output_directory, identity):
 # holds anything else, or any link, is not deleted at all.
 _OWNED_FILE = re.compile(r'(?:video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|comfy-request\.json|generate\.log'
                          r'|continuation-source\.safetensors'
-                         r'|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
+                         r'|frame-preview\.jpg|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
                          r'|reference-\d{2}\.(?:png|mp4|wav)'
                          r'|\.(?:share|editor-export)-[0-9a-f]{32}\.mp4)(?:\.[a-z0-9_]{8}\.tmp)?')
 _OWNED_FOLDER = 'video.artifacts'
@@ -460,6 +482,9 @@ def _remove(folder):
 # workflow read the MP4, and an upscale reads the preview's first pass. The
 # sampling result, conditioning and first pass stay.
 _DECODED = ('rgb.npy', 'audio.npy', 'audio.wav')
+# The normalized frames of reference videos and pictures: only the encoder reads
+# them, once, to build the conditioning. About 1.3 GB per reference video.
+_REFERENCE_FRAMES = 'media'
 _ATTEMPT = re.compile(r'\d{2}-[0-9A-Za-z_-]+')
 _RELEASED = '.decoded-released.json'
 # The startup release, a generation re-arming it and a library delete take
@@ -490,8 +515,13 @@ def release_decoded(folder):
         except OSError:
             left.append(_OWNED_FOLDER + '/attempts')  # retried at a later start
         for place in places:
-            for name in _DECODED:
-                path = place / name
+            paths = [place / name for name in _DECODED]
+            try:
+                if (place / _REFERENCE_FRAMES).is_dir() and _plain(place / _REFERENCE_FRAMES):
+                    paths += sorted((place / _REFERENCE_FRAMES).glob('*.npy'))
+            except OSError:
+                left.append((place / _REFERENCE_FRAMES).relative_to(folder).as_posix())
+            for path in paths:
                 try:
                     if not _plain(path):
                         continue
@@ -593,6 +623,23 @@ def release_earlier(output_directory):
                     continue
                 state = json.loads(state.read_text(encoding='utf-8'))
                 if not isinstance(state, dict) or state.get('status') in ('starting', 'running'):
+                    continue
+            except (OSError, ValueError, TypeError):
+                continue
+            result = release_decoded(folder)
+            totals['videos'] += result['freed_bytes'] > 0
+            totals['freed_bytes'] += result['freed_bytes']
+            totals['left'] += len(result['left'])
+            totals['skipped'] += result.get('skipped') == 'foreign-files'
+        # Stopped requests have no MP4 to find them by; their request record says they are over.
+        for path in sorted(root.glob('*/*/comfy-request.json')):
+            folder = path.parent
+            try:
+                if (not _ID.fullmatch(folder.relative_to(root).as_posix()) or (folder / 'video.mp4').exists()
+                        or not _plain(folder.parent) or not _plain(folder) or path.stat().st_size > 1024 * 1024):
+                    continue
+                state = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(state, dict) or state.get('status') not in ('cancelled', 'failed'):
                     continue
             except (OSError, ValueError, TypeError):
                 continue

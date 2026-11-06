@@ -862,7 +862,8 @@ class Engine:
                     (watch.layers(self.transformer.transformer_blocks) if watch is not None else nullcontext()), \
                     frame_preview.observing(latent_frames=canvas.get('latent_frames'), frame_h=height // 32,
                                             frame_w=width // 32, step_offset=progress_offset,
-                                            total=progress_total if progress_total is not None else active_steps):
+                                            total=progress_total if progress_total is not None else active_steps,
+                                            seconds=canvas.get('seconds')):
                 from .step_cache import begin_pass, end_pass
                 if not refining:
                     disabled = ('residual_offload' if self.config.get('residual_offload') and self.config.get('step_cache') == 'fbcache' else

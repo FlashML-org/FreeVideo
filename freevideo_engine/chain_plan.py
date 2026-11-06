@@ -101,6 +101,14 @@ def _lengths(total, first, following, least, continued):
     return lengths
 
 
+def single_seconds(max_frames=None):
+    """Whole seconds of the longest first block a device with this frame limit generates at once (unknown: 15 s)."""
+    if max_frames is None:
+        return BLOCK_SECONDS
+    limit = _number(max_frames, 'The frame limit', whole=True)
+    return (limit - (limit - 5) % UNIT) // FPS if limit >= 39 else 0
+
+
 def plan(seconds, single=False, max_frames=None, single_limit_seconds=None, block_seconds=None, continued=False,
          max_parts=None, first_frame=False):
     """`max_frames`: the most frames this device generates at once for the current settings (unknown: 15 s).

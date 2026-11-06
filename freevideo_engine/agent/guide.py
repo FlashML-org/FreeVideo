@@ -39,7 +39,7 @@ GUIDE = {
         'pedestal, arc shot, tracking shot, static shot, zoom, POV, roll; "with small amplitude", "at slow speed".',
     ],
     'dialogue': [
-        'Speakers get stable IDs (S1), (S2) across shots; describe each voice when it first appears.',
+        'Speakers are numbered (S1), (S2) once, in the order they first speak in the video, and keep that number throughout it; describe each voice when it first appears.',
         'Spoken words go inside <d>[Language] ...</d>, verbatim: The woman (S1) says: <d>[Chinese] 我们走吧。</d>',
         'Voiceover: "says in an off-screen voiceover: <d>...</d> while his lips remain completely closed."',
         'Visible text goes in double quotes: a neon sign reading "营业中". Never put spoken words in quotes: '
@@ -74,6 +74,7 @@ GUIDE = {
         "User message attachments are reference images by default. Use each name directly in media.references, media.first or media.last according to the user's words; if the intended role is unclear, ask one question. Text can be empty when a message has attachments.",
         'Tags are numbered per kind in reference order: <Picture 1>, <Picture 2>, <Video 1>, <Audio 1>. '
         'For keyframes the first frame is <Picture 1> and the last frame the next picture.',
+        'A reference video marked voice_only is an audio reference: its sound is <Audio N> and it has no <Video N> tag.',
         'Name subjects <Subject 1>, <Subject 2> in subject_definitions and reuse those labels in every section.',
         'Clips are cut to the generated length (at most 15 s); the job result lists any cut.',
     ],
@@ -122,7 +123,8 @@ GUIDE = {
     ],
     'agent_jobs': [
         'GET /capabilities reads the studio cache with the same size/task/material query parameters. '
-        'status=computing includes retry_after_seconds; unknown plan estimates have seconds=null.',
+        'status=computing includes retry_after_seconds; unknown plan estimates have seconds=null. '
+        'A request answered with capabilities_computing waits retry_after_seconds and repeats unchanged.',
         'GET /jobs/{id}?wait=25 waits at most 25 seconds and returns poll_after_ms. Like POST /jobs, the answer '
         'has the job under job (its fields are also at the top level). Poll the same ID until job.status is '
         'succeeded, failed, cancelled or interrupted; disconnecting a wait or SSE does not cancel generation.',
@@ -145,7 +147,8 @@ GUIDE = {
         'POST /projects/{id}/generate reserves pending parts for clip_ids or a start/frames range and fills them as the returned job finishes. POST /projects/{id}/export renders the revision you read; wait for its job.',
         'Music: POST /projects/{id}/music with the revision you read and a caption; wait for the job, then read the project: result.clip_ids are the new clips on a2. Run it after the cut is joined; a second run needs the earlier score removed from a2.',
         'Split sound: POST /projects/{id}/stems with the revision you read and the clip_id of a sound clip; wait for the job. The clip\'s sound is split into dialogue, music and ambience on tracks a4, a5 and a6 over the clip\'s range, and the clip itself goes silent. result.parts lists each track with its name, clip_id, start, end and frames. Offered only where features lists projects.stems; a clip is split once, and deleting the three parts gives its sound back. To save the three tracks and the original mix as four wav files, POST /projects/{id}/stems/export with the revision and the split clip\'s clip_id; the answer lists folder and files at once.',
-        'Change a voice: POST /projects/{id}/voice/lines with the revision you read and a selection (clip_id, and start and end in seconds if only part) to write down the lines; read result.lines. Change the text of the lines to redo and POST /projects/{id}/voice/replace with the same selection and all lines (original_text unchanged); only the changed lines are spoken again, in the voice of the original, and the rest keep their sound. result.lines gives where each new line starts and ends; a line that cannot fit before the next one keeps its original voice with replaced false and warning too_long. POST /projects/{id}/voice/estimate with the lines answers at once with the seconds the changed lines take. Offered only where features lists projects.voice.',
+        'Finish the sound: after the cut is joined, POST /projects/{id}/finish_sound with the revision you read; wait for the job. In one job it splits each picture clip\'s sound where separation is offered and removes the separated music where it is a sustained score (shots, explosions and crowds filed there stay, at the ambience level), lays one score on a2 for the whole cut (music.caption composes it, music.source lays a file; music already on a2 stays), evens the dialogue, sets the music 16 LU under it, brings the cut to -18 LUFS with a -1 dBTP peak ceiling and fills digital silence with room tone. result gives loudness_lufs, true_peak_db, music_removed (per block: removed or kept, with the levels) and the steps in skipped; skipped.music is too_long for a cut over 600 s, and the rest still runs; then tell the user: The cut is over 10 minutes, so no music was composed. The other steps are done. To add music, run this again with a music file. Run again, only the clips split this time are judged and levelled.',
+        'Change a voice: POST /projects/{id}/voice/lines with the revision you read and a selection (clip_id, and start and end in seconds if only part) to write down the lines; read result.lines. Change the text of the lines to redo and POST /projects/{id}/voice/replace with the same selection and all lines (original_text unchanged); only the changed lines are spoken again, in the voice of the original, and the rest keep their sound. result.lines gives where each new line starts and ends; a line that cannot fit before the next one keeps its original voice with replaced false and warning too_long. POST /projects/{id}/voice/estimate with the lines answers at once with the seconds the changed lines take. Offered only where features lists projects.voice. Where features lists projects.voice.install instead, the dubbing model is not installed yet: the person downloads it (about 4.9 GB) from the voice change bar in the editor, and no agent route does it.',
         'Subtitles: POST /projects/{id}/listen with mode transcribe (writes down what is said) or align (times the lines you give) and the revision you read; wait for the job and read result.lines, each with start and end frames. Then add them with a subtitles operation of cues {start, frames, text}; replace true swaps the whole track. With no speech model the job fails with no_speech_model: write the lines yourself.',
         'The user sees one line under each picture clip: its note, or else the first line of its description. A description is generation text, often long and in English, so after you add, generate or change a clip, write a note (operation note) in the user\'s language saying what is in the picture: the subject first, then the setting, for example "Train through morning mist" (in Chinese "小火车穿过晨雾"). A short clip shows only the first few characters, about four in Chinese, and those must already make sense on their own. Do not write where the clip sits (opening, middle, ending, part 2): the order of the clips shows that. Do not write how far along it is: the clip already shows its progress. Keep it true when you change the clip again.',
         'Reuse ref or Idempotency-Key only for the identical request. Source video/audio/thumbnail URLs require the same Agent token.',
@@ -381,6 +384,8 @@ CAPABILITIES_ZH = {
         '剪辑拼好后先读取 revision，并删去该轨道上原有的配乐；首次使用会下载音乐模型（约 20 GB）',
     ('POST', '/projects/{id}/stems'): '把一个声音片段的声音分成人声、音乐和环境声，放在其下方的 a4、a5、a6 三条轨道上，原片段静音。'
         '先读取 revision 与片段 ID，等待返回的任务完成，结果 parts 给出各轨道的名称、起止帧；仅在 features 含 projects.stems 时可用',
+    ('POST', '/projects/{id}/finish_sound'): '剪辑拼好后，用一个任务完成整条剪辑的声音：分离人声、音乐与环境声，在 a2 铺一段贯穿全片的配乐，'
+        '统一人声响度，整片调至 -18 LUFS，并以环境底噪填补无声处。先读取 revision，等待返回的任务完成',
     ('POST', '/projects/{id}/voice/lines'): '把选中声音片段里说的话逐句写下来，每句带起止秒数；先读取 revision 与片段 ID，等待返回的任务完成，结果 lines 给出各句；仅在 features 含 projects.voice 时可用',
     ('POST', '/projects/{id}/voice/replace'): '把改过文字的句子用原说话人的声音重新说一遍，放回原句的位置，没改的句子保持原声；提交 voice/lines 给出的全部句子，只改 text；结果 lines 给出每句新声的起止，放不进下一句之前的句子保留原声',
     ('POST', '/projects/{id}/voice/shorten'): '按目标秒数改短一句的文字；只返回文字，不保存也不配音',
@@ -626,7 +631,7 @@ GUIDE['cast'] = [
     'continue the previous one carry the sheet and the face for a single person, else one picture each (the face, '
     'else the front) for at most 3 people, and keep the voices of the previous shot; POST /drama/plan shows each shot\'s cast. '
     'A shot\'s own references replace the card pictures; references=[] sends none. '
-    'A shot with a carded character is at most 15 s; continue it in the next shot to go longer.',
+    'A shot with a carded character is at most one generation long on this machine (freevideo_capabilities reports it; 15 s when unknown); continue it in the next shot to go longer.',
     'POST /cast/{id}/generate makes reference pictures from the description as a normal job (face=true adds a close-up). '
     'It defaults to the installed image model, otherwise video frames (labels guessed, label_guess). '
     'When generation ends the card gets the pictures and a new revision; a failure '

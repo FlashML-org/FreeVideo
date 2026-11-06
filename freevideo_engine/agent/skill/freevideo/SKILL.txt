@@ -16,17 +16,32 @@ FreeVideo runs on the user's own computer. Everything below goes through its MCP
 
 ## Pick the right task
 
-- One video, up to 60 seconds: `freevideo_generate`. Longer than the device can do in one run is cut into parts and joined automatically.
+- One video, up to 60 seconds: `freevideo_generate`. Longer than the device can do in one run is cut into parts and joined automatically. The device limit is a hard cap, not a target: aim for 15 to 20 seconds per generation.
 - Start from or end on a picture: pass it as first or last frame. Make the picture first with `freevideo_generate_image`.
-- A film of several shots to choose between: the `freevideo_drama_*` tools. See `references/film.md`.
+- A story, scene or short drama: follow "Making a short drama" below. Several shots to choose between: the `freevideo_drama_*` tools; see `references/film.md`.
 - Existing footage on a timeline: the editing project tools. See `references/edit.md`.
 - A picture to change: `freevideo_edit_image` for a quick change, the `freevideo_image_*` tools for layered edits. See `references/image.md`.
-- Several independent jobs: `freevideo_submit_batch`.
+- Several independent jobs, or storyboard shots that do not depend on each other: put all of them in a single `freevideo_submit_batch` call, one job per shot with its own `ref`, then join the results in order. A shot that starts from the previous shot's last frame waits until that shot is done. Shots cut inside one generation with `[Shot N]` markers are one job.
+- What this computer can make: read the limits from `freevideo_capabilities` and report them as given (maximum width and height, shortest and longest seconds, frame rate). Do not answer from memory or round them.
+
+## Making a short drama
+
+Step one is the story, before any generation: a one-page outline with the lead's goal, the opponent's moves, the escalation, the low point, the reversal and the ending, each beat causing the next. The user confirms it; only then write dialogue and generate. Famous scenes may decorate a story, never replace it.
+
+One generation or several shots (the recommended length decides, not the device cap; `freevideo_capabilities` reports the cap as given):
+1. One `freevideo_generate` with `[Shot N]` cuts inside it (four to six cuts) when the whole piece is about 20 seconds or less, stays in one place, has at most three speakers and needs no shot to be chosen or reshot separately.
+2. Otherwise the `freevideo_drama_*` tools, even when this computer can make 60 seconds in one run. Each shot is one generation of 15 to 20 seconds, cut inside with `[Shot N]`; a shot with a cast card or reference pictures is at most 15 seconds, and longer content goes into the next shot with continue=true; a plan that is refused for length is shortened to that limit, never forced; never write 3 to 6 second shots. When the computer's limit is below 15 seconds, use that limit. A continuous action across two beats (a kick and its catch, a handover) stays in the same shot. Move from shot to shot through the story (someone arrives, looks, answers), not by forcing the last frame onto the next shot. Independent shots go in one batch; a shot that continues the previous one waits for it.
+3. When unsure, choose the drama tools.
+
+The short version, for every model (a small model can rely on point 7 alone): (1) story outline first; (2) about 20 seconds or less in one place with up to three people is one generation, longer is the drama tools; (3) cuts of 2 to 4 seconds in `[Shot N]`; (4) six sections in order: `subject_definitions:`, `summary:`, `retention_analysis:`, `detailed_description:`, `overall_soundscape:`, `non_diegetic_music:`; (5) people tagged `<Subject N>` with speakers numbered (S1), (S2) by first spoken line in that video; (6) say what is there and keep negation words out; (7) with the `freevideo_drama_*` tools, fill the structure fields (characters, and per shot the cuts with `at`, `framing`, `action`, `camera`, `lines`) and leave `prompt` empty: the tool writes the six sections and the (S#) numbers itself; (8) the full example and the rest are in `references/film-script.md`.
+
+Before each generation: one card per person (`freevideo_cast_list` first), clothes fixed for the whole film, a seating or standing plan for every beat, only what is seen and heard in the prompt (say what is there, never what is not), dialogue word for word, speaker numbers by order of first line in the video. Rules and examples for each of these, and the five faults to check before generating (stray lettering, small faces in wide shots, text under 14 pixels, third-party marks, voice references), are in `references/film-script.md`; the rest of the checks are in `references/film.md`. Generate two seeds of the first shot, look at them at full size, and only then continue. Whoever makes a shot looks at every take before choosing it.
 
 ## Running jobs
 
 - A job takes minutes. Call `freevideo_wait` with the job id; it returns after at most 25 seconds. If the job is still active, call it again with the same id. Never submit the same job twice.
-- A failed or interrupted generation is continued with `freevideo_resume`; only unfinished parts run.
+- A failed or interrupted generation is continued with `freevideo_resume`; only unfinished parts run. When a generation fails with `retryable` true, resume it once yourself; if it fails again, tell the user what happened.
+- An `invalid_request` about size or length lists what is allowed. Resubmit once with the legal value nearest to what the user asked for (on a tie, the smaller one) and change nothing else; then tell the user which size was used.
 - `freevideo_cancel` only for a job you started and the user wants stopped.
 - Look at a result before reporting it: `freevideo_look` (a frame or a contact sheet).
 - Report what you made with the saved-video id (`freevideo_library`), not a local path.

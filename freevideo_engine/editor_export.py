@@ -27,6 +27,7 @@ from .comfy_continuation import audio_lead_in, apply_audio_lead_in
 from .editor_limits import PROJECT_BYTES
 from .editor_text import is_text_track, has_text_data, validate_text_project, paint_project, check_export_text, MissingGlyphs
 from . import editor_export_options
+from .audio_loudness import Limiter
 from .editor_speed import validate_clip, changed as speed_changed, audio_changed, independent_join, VideoReader, AudioReader
 from .editor_audio import (clip_fields, track_fields, clip_audible, track_audible, crossfade_reads, apply_track_audio,
                            duck_ranges, duck_gain, duck_sources)
@@ -663,6 +664,9 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
     try:
         width, height, total, tracks = _layout(project)
         settings = editor_export_options.effective(options, width, height, total)
+        peak = project.get('master_peak_db')
+        if peak is not None and (type(peak) not in (int, float) or not math.isfinite(peak) or not -12 <= peak <= 0):
+            raise ExportError()
         width, height, total = settings.width, settings.height, settings.frames
         if settings.only == 'sound':
             tracks = {key: clips for key, clips in tracks.items() if key != 'v1'}
@@ -737,7 +741,32 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
             readers.callback(lambda: [decoder.close() for decoder in decoders.values()])
             black = np.zeros((height, width, 3), dtype=np.uint8) if video is not None else None
             written = 0
+
+            def encode_sound(block, number):
+                samples, sample_format = editor_export_options.sound_samples(block, settings)
+                sound = _audio_frame(samples, format=sample_format, layout='stereo')
+                sound.sample_rate = SAMPLE_RATE
+                sound.pts, sound.time_base = (number - settings.start) * SAMPLES_PER_FRAME, Fraction(1, SAMPLE_RATE)
+                for packet in audio.encode(sound):
+                    output.mux(packet)
+                if video is None and progress:
+                    progress((number - settings.start + 1) / total * .99)
+
+            # With a master ceiling the mix goes through a true-peak limiter, whose output lags its input;
+            # its frames are encoded by their own timeline position.
+            limiter = Limiter(peak, SAMPLE_RATE) if peak is not None else None
+            limited, limited_frame = np.zeros((2, 0)), None
+
+            def drain(final):
+                nonlocal limited, limited_frame
+                while limited.shape[1] >= SAMPLES_PER_FRAME or (final and limited.shape[1]):
+                    block = np.clip(limited[:, :SAMPLES_PER_FRAME], -1., 1.).astype(np.float32)
+                    limited = limited[:, SAMPLES_PER_FRAME:]
+                    if limited_frame >= settings.start:
+                        encode_sound(block, limited_frame)
+                    limited_frame += 1
             lead_start = editor_export_options.audio_lead_start(settings.start, tracks)
+            limited_frame = lead_start
             for number in range(lead_start, settings.start + total):
                 _check(cancelled)
                 for track, clips in editor_export_options.frame_tracks(tracks, settings.start, number):
@@ -813,17 +842,17 @@ def _render_once(project, resolve, target, *, progress, cancelled, options, repa
                     mixed += apply_track_audio(track_block, number * SAMPLES_PER_FRAME, audio_tracks[track],
                                                project['tracks'], extras=extras)
                     del extras
+                if limiter is not None:
+                    limited = np.concatenate([limited, limiter.push(mixed)], axis=1)
+                    drain(False)
+                    continue
                 np.clip(mixed, -1., 1., out=mixed)
                 if number < settings.start:
                     continue
-                samples, sample_format = editor_export_options.sound_samples(mixed, settings)
-                sound = _audio_frame(samples, format=sample_format, layout='stereo')
-                sound.sample_rate = SAMPLE_RATE
-                sound.pts, sound.time_base = (number - settings.start) * SAMPLES_PER_FRAME, Fraction(1, SAMPLE_RATE)
-                for packet in audio.encode(sound):
-                    output.mux(packet)
-                if video is None and progress:
-                    progress((number - settings.start + 1) / total * .99)
+                encode_sound(mixed, number)
+            if limiter is not None:
+                limited = np.concatenate([limited, limiter.flush()], axis=1)
+                drain(True)
             _check(cancelled)
             for stream in (video, audio):
                 if stream is None:
@@ -967,6 +996,77 @@ def resolve_source(key):
     # A linked audio clip uses this same video file. The decoder checks the
     # requested stream exists, so a broken source cannot silently turn mute.
     return dict(video=path, audio=path)
+
+
+class FrameError(ValueError):
+    """Why one frame cannot be saved as a picture: no_picture (nothing is shown there), generating (its part is not made yet) or range."""
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def render_frame(project, resolve, number, *, cancelled=None):
+    """One timeline frame as the export draws it (same placement, fit, picture edits and text), without encoding a video."""
+    width, height, total, tracks = _layout(project)
+    if not _whole(number) or number >= total:
+        raise FrameError('range')
+    clip = next((c for c in tracks['v1'] if c['start'] <= number < c['start'] + c['frames']), None)
+    if clip is None:
+        raise FrameError('no_picture')
+    path = _media(resolve, clip, 'video')
+    if path is None:
+        raise FrameError('generating')
+    wanted = clip['in'] + number - clip['start']
+    # A plain clip seeks straight to the wanted frame; a changed speed or direction keeps the export's own reader.
+    reader = (VideoReader(path, clip, width, height, cancelled) if speed_changed(clip)
+              else _VideoReader(path, wanted, width, height, cancelled, clip))
+    try:
+        pixels = reader.pixels(wanted)
+        return paint_project(pixels, project, number, width, height)
+    finally:
+        reader.close()
+
+
+def _picture_folder():
+    """The folder of pictures made here (the image editor's history), created on first use and never a link."""
+    import folder_paths
+    base = Path(folder_paths.get_input_directory()).resolve()
+    folder = base / 'freevideo-image'
+    if folder.is_symlink() or folder.resolve().parent != base:
+        raise ExportError()
+    folder.mkdir(exist_ok=True)
+    return folder
+
+
+def store_picture(pixels):
+    """Write a frame as a lossless PNG named like the pictures the image editor lists (image-YYYYMMDD-HHMMSS-NN.png)."""
+    from PIL import Image
+    from .file_ops import publish
+    folder = _picture_folder()
+    temporary = folder / ('.frame-' + uuid.uuid4().hex + '.partial')
+    try:
+        with temporary.open('xb') as stream:
+            Image.fromarray(pixels, 'RGB').save(stream, 'PNG')
+            stream.flush()
+            os.fsync(stream.fileno())
+        stamp = time.strftime('image-%Y%m%d-%H%M%S')
+        for number in range(1, 100):
+            target = folder / ('%s-%02d.png' % (stamp, number))
+            try:
+                publish(temporary, target)
+            except FileExistsError:
+                continue
+            return dict(file='freevideo-image/' + target.name, name=target.name,
+                        width=int(pixels.shape[1]), height=int(pixels.shape[0]))
+        raise ExportError()
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def save_frame(identity, revision, number, *, cancelled=None):
+    """Render one frame of a saved project revision and keep it as a picture."""
+    project = load_project(identity, revision)
+    return store_picture(render_frame(project, resolve_source, number, cancelled=cancelled))
 
 
 def _save_report(target, project, seconds, *, options=None):
@@ -1130,7 +1230,7 @@ class ExportQueue:
 
 
 def register():
-    """Register the three endpoints once on the existing ComfyUI server."""
+    """Register the export and frame endpoints once on the existing ComfyUI server."""
     from aiohttp import web
     from server import PromptServer
     server = PromptServer.instance
@@ -1182,3 +1282,27 @@ def register():
             return web.json_response({'reason': 'failed'}, status=404)
         except (ValueError, TypeError):
             return web.json_response({'reason': 'failed'}, status=400)
+
+    frame_lock = asyncio.Lock()
+
+    @server.routes.post('/freevideo/editor/frame')
+    async def frame(request):
+        """Keep one frame of a saved project revision, as the export would draw it, in the pictures made here."""
+        try:
+            body = await request.json()
+            if (not isinstance(body, dict) or set(body) != {'id', 'revision', 'frame'}
+                    or not _whole(body['revision']) or not _whole(body['frame'])):
+                raise ValueError('Invalid request')
+            async with frame_lock:
+                value = await asyncio.to_thread(save_frame, body['id'], body['revision'], body['frame'])
+            return web.json_response({'picture': value}, headers={'Cache-Control': 'no-store'})
+        except FrameError as error:
+            return web.json_response({'reason': error.reason}, status=422)
+        except ExportConflict as error:
+            return web.json_response({'revision': error.revision}, status=409, headers={'Cache-Control': 'no-store'})
+        except FileNotFoundError:
+            return web.json_response({'reason': 'source_missing'}, status=404)
+        except (ValueError, TypeError, KeyError):
+            return web.json_response({'reason': 'failed'}, status=400)
+        except Exception as error:
+            return web.json_response({'reason': _reason(error)}, status=503)

@@ -10,6 +10,7 @@ import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
 import {createPassMode} from './pass_mode.js';
 import {createVoicePanel} from './editor_voice.js';
+import {createInstallPanel} from './editor_voice_install.js';
 import * as dubbing from './editor_voice_model.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
@@ -123,6 +124,14 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // Dubbing: the lines of a chosen stretch of speech take the description box's place.
     const voice = actions.voice || null, voicePanel = voice ? createVoicePanel(host, voice.controller, {t}) : null;
     if (voicePanel) description.before(voicePanel.element);
+    // Where the dubbing model is missing and the engine offers it, the same place offers its download. The panel exists only
+    // while it is offered; with the model there, or on a machine that cannot change a voice, nothing of it is in the bar.
+    let installPanel = null;
+    const syncInstall = () => {
+        const offered = !!voice?.install?.offered?.() && !disposed;
+        if (offered && !installPanel) { installPanel = createInstallPanel(host, voice.install, {t, selection: () => previewSelection || state.selection}); description.before(installPanel.element); }
+        else if (!offered && installPanel) { installPanel.dispose(); installPanel = null; }
+    };
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
     const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
@@ -183,6 +192,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const musical = !!music?.target(selection);
         const dub = !previewSelection && voice?.controller.target(selection) ? voice.controller.session(voice.controller.target(selection)) : null;
         const voiced = !!dub && dub.phase !== 'none' && dub.phase !== 'error';
+        const installing = !previewSelection && !!voice?.install?.visible(selection);
         const selected = !!selection && (!!previewSelection || musical || (actions.supportedSelection?.() ?? true));
         // While a part generates, choosing another place offers Generate again; it is queued behind.
         // A press is being sent for the parts in `pressing`; only that same selection waits for it.
@@ -195,11 +205,11 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const opening = (starting || !!actions.selectionSending?.()) && !held;
         const stopped = ['failed', 'cancelled', 'interrupted'].includes(status?.state);
         host.dataset.mode = busy ? 'running' : selected ? 'selected' : 'idle';
-        host.dataset.voice = String(voiced); voicePanel?.update();
+        host.dataset.voice = voiced || installing ? 'true' : dub?.phase === 'error' ? 'note' : 'false'; voicePanel?.update(); syncInstall(); installPanel?.update();
         hint.hidden = !busy && !other;
         // The description and Generate stay where they are while a part is made, greyed, so nothing around them moves;
         // music being made shows only its progress and Cancel.
-        input.hidden = false; generate.hidden = musical && busy;
+        input.hidden = false; generate.hidden = musical && busy || installing;
         // A choice that will move to an empty spot can still be described first.
         const writable = selected || !previewSelection && !!selection && !!actions.selectionMovable?.();
         input.disabled = !writable || busy;
@@ -276,7 +286,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         generate.title = '';
         if (assets) { if (selected && !busy && !musical) assets.refresh(); else assets.element.hidden = true; }
         showMusicAssets(selected && !busy && musical && !previewSelection);
-        if (selected && !busy && !voiced) {
+        if (selected && !busy && !voiced && !installing) {
             const key = JSON.stringify(selection);
             if (estimateCache?.key === key) generate.textContent += estimateCache.label;
             const seconds = await actions.estimate(selection);
@@ -385,7 +395,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

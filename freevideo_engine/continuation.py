@@ -86,8 +86,7 @@ def audio_context():
     return validate_audio_context(os.environ.get('FREEVIDEO_CONTINUATION_AUDIO', AUDIO_CONTEXT_DEFAULT))
 
 
-def supported():
-    """Platform capability, without loading Torch or probing a GPU."""
+def _machine_backend():
     from .paths import data_root
     try:
         machine = json.loads((data_root() / 'machine.json').read_text(encoding='utf-8'))
@@ -95,9 +94,19 @@ def supported():
         machine = {}
     if not isinstance(machine, dict):
         machine = {}
-    if machine.get('device_backend', 'cuda') not in ('cuda', 'mps'):
+    return machine.get('device_backend', 'cuda')
+
+
+def supported():
+    """Platform capability, without loading Torch or probing a GPU."""
+    if _machine_backend() not in ('cuda', 'mps'):
         return False, 'unsupported_device'
     return True, None
+
+
+def previews_supported(backend=None):
+    """A continued part can stop at its first pass and be finished from it: NVIDIA only."""
+    return (backend or _machine_backend()) == 'cuda'
 
 
 def validate_frames(frames):
@@ -131,9 +140,9 @@ def validate_route(*, task='t2va', two_pass=True, preview=False, refine_from=Non
         valid_task = not sound and task in (('ref2va', 'ref2va_av') if anchor else ('t2va', 'ref2va', 'ref2va_audio', 'ref2va_av'))
     if not supported()[0] or backend not in (None, 'cuda', 'mps'):
         raise ValueError(UNSUPPORTED_DEVICE)
-    if refine_from:
+    if refine_from and not previews_supported(backend):
         raise ValueError(UNSUPPORTED_REFINE)
-    if not two_pass or preview:
+    if not two_pass or (preview and not previews_supported(backend)):
         raise ValueError(UNSUPPORTED_PASSES)
     # Keyframes reach a continued part as pictures (comfy_media.continued); here they are a request error.
     if (not valid_task or any(media.get(key) for key in ('first', 'last', 'conditioning_info'))

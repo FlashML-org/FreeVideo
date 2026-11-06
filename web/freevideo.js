@@ -9,7 +9,8 @@ import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
-import { startUpdateChecks } from './updates.js';
+import { startUpdateChecks, productVersion } from './updates.js';
+import { startWhatsNew } from './whatsnew.js';
 import { startWhiteboxWorker } from './whitebox_worker.js';
 import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';
 import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces } from './view_navigation.js';
@@ -800,7 +801,7 @@ app.registerExtension({
     async setup() {
         // One failing part must not take the others down; health.js shows what failed.
         for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio, agentInterfaceState(api), {openWorkflow: openFreeVideoWorkflow, recheck: () => agentInterfaceState(api)})],
-            ['updates', startUpdateChecks], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
+            ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
                 isFreeVideoWorkflow: () => (app.graph?._nodes || []).some(isGenerate)})],
             ['whitebox', () => startWhiteboxWorker({api})]]) {
             try { start(); } catch (error) { health({type: 'error', where, error}); }

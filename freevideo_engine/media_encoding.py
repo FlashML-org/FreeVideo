@@ -14,7 +14,6 @@ from pathlib import Path
 
 
 REFERENCE_FRAMES = 360  # 15 s at 24 fps, the longest H3 generation
-VOICE_ONLY_CANVAS = {'width': 256, 'height': 144}  # a clip kept only for its voice is encoded this small
 
 
 def reference_frames(canvas):
@@ -35,11 +34,12 @@ def reference_size(width, height, canvas):
     return max(32, round(width * scale / 32) * 32), max(32, round(height * scale / 32) * 32)
 
 
-def encode_visual(vae, pixels, *, device='cuda', posterior='sample'):
+def encode_visual(vae, pixels, *, device='cuda', posterior='sample', progress=None):
     """The pinned VAE chunk/padding/posterior recipe with one live pixel chunk.
 
     Posterior sampling still occurs once on the original device with seed 42;
     sampling separately per chunk would change the conditioning noise.
+    `progress(frames_done)` is told after each temporal chunk; it never touches the tensors.
     """
     import numpy as np
     import torch
@@ -56,6 +56,8 @@ def encode_visual(vae, pixels, *, device='cuda', posterior='sample'):
             current = torch.cat([current, current[:, :, -1:].repeat(1, 1, clip - current.shape[2], 1, 1)], dim=2)
         moments.append(vae._encode_clip(current).cpu())
         del current
+        if progress is not None:
+            progress(min(len(pixels), begin + clip))
     moments = torch.cat(moments, dim=2).to(device)
     if len(pixels) > 1 and vae.config.token_drop:
         moments = moments[:, :, :-vae.config.token_drop]
@@ -132,6 +134,25 @@ def _audio(path, destination, seconds):
     return str(destination), count > limit + 1600, length
 
 
+def reference_load(rows):
+    """(packed video rows, encoding seconds) the visual references add, as capabilities.admit counts them.
+
+    A still is one patch grid and five legacy encoding seconds; a clip adds five
+    rows of patches per 17 frames plus two, and its own length.
+    """
+    video, seconds = 0, 0.
+    for row in rows:
+        if row.get('kind') not in ('image', 'video') or not row.get('pixels'):
+            continue
+        patches = (int(row.get('height', 0)) // 32) * (int(row.get('width', 0)) // 32)
+        frames = int(row.get('frames', 1))
+        if frames == 1:
+            video, seconds = video + patches, seconds + 5.
+        else:
+            video, seconds = video + max(0, (frames - 5) // 17 * 5 + 2) * patches, seconds + frames / 24.
+    return video, seconds
+
+
 def prepare(media, canvas, directory):
     import numpy as np
     import torch
@@ -161,6 +182,9 @@ def prepare(media, canvas, directory):
                        'width': canvas['width'], 'height': canvas['height'], 'crop_mode': 'fit'})
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']
+        if kind == 'video' and row.get('voice_only'):
+            # Only the sound is wanted, so the clip is read as an audio reference and no picture is encoded.
+            kind = 'audio'
         if row.get('use') == 'original':
             from .original_audio import model_audio, inspect
             numbers[kind] += 1
@@ -198,8 +222,7 @@ def prepare(media, canvas, directory):
                 if not container.streams.video:
                     raise ValueError('Reference video has no video stream')
                 stream = container.streams.video[0]
-                voice_only = bool(row.get('voice_only'))
-                width, height = reference_size(stream.width, stream.height, VOICE_ONLY_CANVAS if voice_only else canvas)
+                width, height = reference_size(stream.width, stream.height, canvas)
                 length = clip_seconds(container, stream)
                 pixels = np.lib.format.open_memmap(target, mode='w+', dtype=np.uint8, shape=(limit, height, width, 3))
                 origin = None
@@ -224,23 +247,12 @@ def prepare(media, canvas, directory):
                         count += 1
                     previous = image
                 del previous
-                step = 1
-                if voice_only:
-                    # Every third frame (8 fps), or every second (12 fps) when that would leave too few frames.
-                    step = next((n for n in (3, 2) if count // n >= 22), 1)
-                    kept = np.array(pixels[:count:step])
-                    del pixels
-                    pixels, count = kept, len(kept)
                 count = count - (count - 5) % 17
                 if count < 22:
                     raise ValueError('The reference video is too short; it needs to be at least about 1 s long.')
-                if voice_only:
-                    np.save(target, pixels[:count], allow_pickle=False)
-                else:
-                    pixels.flush()
-                ref.update(pixels=str(target), frames=count, normalized_fps=24 // step, width=width, height=height,
-                           crop_mode='voice_%dfps' % (24 // step) if voice_only else 'video_24fps')
-                used = count * step / 24.
+                pixels.flush()
+                ref.update(pixels=str(target), frames=count, normalized_fps=24, width=width, height=height, crop_mode='video_24fps')
+                used = count / 24.
                 # The clip's own sound is a reference too, unless the request turned it off.
                 soundtrack, longer_audio, _ = (None, False, None) if row.get('sound') is False or row.get('guide') else \
                     _audio(path, directory / ('reference-%02d-audio.npy' % index), limit / 24.)
@@ -248,7 +260,7 @@ def prepare(media, canvas, directory):
                 if soundtrack:
                     ref['audio'] = soundtrack
                     ref_items.append({'type': 'audio'})
-                selected = list(range(0, count, 12 // step))
+                selected = list(range(0, count, 12))
                 sampled = torch.from_numpy(np.array(pixels[selected])).float().div_(255)
                 if not row.get('guide'):
                     # A guide only supplies motion latents; it is not described to the
@@ -258,7 +270,8 @@ def prepare(media, canvas, directory):
         else:
             ref['audio'], longer, length = _audio(path, target, limit / 24.)
             if ref['audio'] is None:
-                raise ValueError('Reference audio file has no audio stream')
+                raise ValueError('The voice-only reference video has no audio stream' if row['kind'] == 'video'
+                                 else 'Reference audio file has no audio stream')
             ref.update(width=0, height=0, frames=0, crop_mode='audio_32khz')
             ref_items.append({'type': 'audio'})
         if longer:
@@ -268,6 +281,12 @@ def prepare(media, canvas, directory):
             print(json.dumps(dict(event='reference_trimmed', **ref['trimmed'])), flush=True)
         result.append(ref)
     (directory / 'normalization.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+    rows, seconds = reference_load(result)
+    if rows:
+        # Known long before the first encoded chunk, and what the time estimate
+        # needs: reference rows enlarge every sampling step.
+        print(json.dumps({'event': 'reference_media', 'reference_video_tokens': rows,
+                          'reference_seconds': seconds}), flush=True)
     return result, {'images': key_images} if key_images else {'minimax_ref_items': ref_items} if ref_items else {}
 
 
@@ -386,12 +405,12 @@ def get_latent_cache_key_dict(**kwargs):
     return make_latent_cache_key(**kwargs)[1]
 
 
-def _latent_cache(root, base, device):
-    """Per-picture latent receipts; another encoder, recipe or device never matches."""
+def _latent_cache(root, base, device, *, folder='vae', recipe='reference-latent-v2', cache_kind='reference-latent'):
+    """Per-input latent receipts; another encoder, recipe or device never matches."""
     import torch
     from .input_cache import InputCache, digest
     from .paths import data_root
-    directory = Path(base) / 'vae'
+    directory = Path(base) / folder
     files = sorted(directory.glob('*.safetensors'))
     if not files:
         return None
@@ -402,13 +421,35 @@ def _latent_cache(root, base, device):
     except Exception:
         diffusers = None
     from . import __version__
-    identity = {'recipe': 'reference-latent-v2', 'engine': __version__, 'diffusers': diffusers,
+    identity = {'recipe': recipe, 'engine': __version__, 'diffusers': diffusers,
                 'torch': getattr(torch, '__version__', 'unknown'), 'device': kind,
                 'gpu': torch.cuda.get_device_name() if (kind == 'cuda' and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'is_available') and torch.cuda.is_available()) else None,
                 'config': digest(directory / 'config.json') if (directory / 'config.json').exists() else None,
                 'weights': [[f.name, f.stat().st_size, f.stat().st_mtime_ns] for f in files]}
     target_root = root or (data_root() / 'input-cache')
-    return InputCache(identity, root=target_root, kind='reference-latent')
+    return InputCache(identity, root=target_root, kind=cache_kind)
+
+
+def _audio_key(path):
+    """The samples with their shape, so the length counts; every normalized reference is 32 kHz."""
+    import numpy as np
+    mapped = np.load(path, mmap_mode='r', allow_pickle=False)
+    try:
+        return 'audio-32000-' + _pixels_key(mapped)
+    finally:
+        del mapped
+
+
+def _use_audio_latent(row, ref, latent, canvas):
+    """Attach a normalized latent; cached ones are whole, so a clip used as is trims here."""
+    ref['audio_latent'] = latent
+    if row.get('use') == 'original':
+        ticks = round(canvas['frames'] / 24 * 40)
+        sound = latent.reshape(2, -1, 32)
+        if sound.shape[1] < ticks:
+            raise ValueError('Original audio encoder returned too few latent frames')
+        ref.update(use='original', original_audio=row['original_audio'],
+                   audio_latent=sound[:, :ticks].reshape(-1, 32).contiguous())
 
 
 def _pixels_key(mapped):
@@ -463,6 +504,36 @@ def _remember_latent(cache, key, latent, directory=None):
         pass
     finally:
         path.unlink(missing_ok=True)
+
+
+class _encode_progress:
+    """Tells the caller how many reference frames are encoded, once per temporal chunk.
+
+    Reference video encoding is the longest silent stage of a request on a
+    modest GPU, so each finished chunk prints one `media_encode_progress` row
+    with the elapsed time, from which the remaining time follows. The count only
+    moves forward, also when a stage is retried.
+    """
+
+    def __init__(self, rows, clock=None):
+        import time
+        self.total = sum(int(frames) for frames in rows)
+        self.clock = clock or time.perf_counter
+        self.started = self.clock()
+        self.before = self.done = 0
+
+    def __call__(self, frames):
+        done = min(self.total, self.before + int(frames))
+        if done <= self.done or not self.total:
+            return
+        self.done = done
+        print(json.dumps({'event': 'media_encode_progress', 'done': done, 'total': self.total,
+                          'elapsed_seconds': round(self.clock() - self.started, 3)}), flush=True)
+
+    def finish(self, frames):
+        """One reference is complete: the next one counts on top of it."""
+        self.before += int(frames)
+        self.done = max(self.done, min(self.total, self.before))
 
 
 def encode_latents(normalized, value, base, canvas, *, resident=None, device='cuda', cache_root=None):
@@ -525,6 +596,8 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         if on_mps:
             from .backends.mps_vae_encode import bounded_encoder
             lifetime = bounded_encoder(vae, device=device)
+        report = _encode_progress([row['frames'] for index, row in enumerate(normalized)
+                                   if row.get('pixels') and index not in hits])
         with lifetime as memory:
             for index, (row, ref) in enumerate(zip(normalized, refs)):
                 if row.get('pixels') and index not in hits:
@@ -534,9 +607,12 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
                         ref['latent'] = _retry_in_host_memory(memory, lambda: encode_vae_condition(
                             vae, pixels, PIXEL_MEAN, PIXEL_STD, 42)).cpu()
                         del pixels
+                        report(1)
                     else:
                         ref['latent'] = _retry_in_host_memory(
-                            memory, lambda: encode_visual(vae, mapped[:row['frames']], device=device))
+                            memory, lambda: encode_visual(vae, mapped[:row['frames']], device=device,
+                                                          progress=report))
+                    report.finish(row['frames'])
                     del mapped
                     if cache is not None and index in keys:
                         _remember_latent(cache, keys[index], ref['latent'], Path(row['pixels']).parent)
@@ -547,32 +623,46 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
         del vae
         gc.collect()
         empty_cache()
-    if any(row.get('audio') for row in normalized):
-        print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
-        from .vae_weights import load_audio_vae
-        vae = (resident.input_audio_encoder(base, canvas, device=device)
-               if resident is not None and torch.device(device).type != 'mps' else
-               load_audio_vae(base, device=device)[0])
-        mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
-        std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
-        if vae.config.sampling_rate != 32000:
-            raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
-        for row, ref in zip(normalized, refs):
-            if row.get('audio'):
-                audio = torch.from_numpy(np.load(row['audio'], allow_pickle=False)).to(device)
-                latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
-                ref['audio_latent'] = ((latent - mean) / std).reshape(-1, 32).contiguous()
-                if row.get('use') == 'original':
-                    ticks = round(canvas['frames'] / 24 * 40)
-                    sound = ref['audio_latent'].reshape(2, -1, 32)
-                    if sound.shape[1] < ticks:
-                        raise ValueError('Original audio encoder returned too few latent frames')
-                    ref.update(use='original', original_audio=row['original_audio'],
-                               audio_latent=sound[:, :ticks].reshape(-1, 32).contiguous())
-                del audio, latent
-        del vae
-        gc.collect()
-        empty_cache()
+    audio_rows = [index for index, row in enumerate(normalized) if row.get('audio')]
+    if audio_rows:
+        # The same voice with another prompt reuses its latent and skips loading the audio VAE.
+        audio_cache, audio_keys, audio_latents = None, {}, {}
+        try:
+            audio_cache = _latent_cache(cache_root, base, device, folder='audio_vae',
+                                        recipe='reference-audio-latent-v1', cache_kind='reference-audio-latent')
+            for index in audio_rows if audio_cache is not None else ():
+                audio_keys[index] = _audio_key(normalized[index]['audio'])
+                latent = _cached_latent(audio_cache, audio_keys[index], Path(normalized[index]['audio']).parent)
+                if latent is not None:
+                    audio_latents[index] = latent
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+            audio_cache = None
+        print(json.dumps({'event': 'reference_audio_latent_cache', 'hits': len(audio_latents),
+                          'misses': len(audio_rows) - len(audio_latents)}), flush=True)
+        if len(audio_latents) < len(audio_rows):
+            print(json.dumps({'event': 'media_encode_phase', 'phase': 'Encoding reference audio'}), flush=True)
+            from .vae_weights import load_audio_vae
+            vae = (resident.input_audio_encoder(base, canvas, device=device)
+                   if resident is not None and torch.device(device).type != 'mps' else
+                   load_audio_vae(base, device=device)[0])
+            mean = torch.tensor(vae.config.latents_mean).view(1, 1, -1)
+            std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
+            if vae.config.sampling_rate != 32000:
+                raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
+            for index in audio_rows:
+                if index not in audio_latents:
+                    audio = torch.from_numpy(np.load(normalized[index]['audio'], allow_pickle=False)).to(device)
+                    latent = vae.encode(audio[:, None], return_dict=False)[0].mode().float().cpu().transpose(1, 2)
+                    audio_latents[index] = ((latent - mean) / std).reshape(-1, 32).contiguous()
+                    if audio_cache is not None:
+                        _remember_latent(audio_cache, audio_keys[index], audio_latents[index],
+                                         Path(normalized[index]['audio']).parent)
+                    del audio, latent
+            del vae
+            gc.collect()
+            empty_cache()
+        for index in audio_rows:
+            _use_audio_latent(normalized[index], refs[index], audio_latents[index], canvas)
     if any(row.get('anchor') for row in normalized):
         value.update(keyframe_anchors=[row['anchor'] for row in normalized],
                      condition_latents=[row['latent'] for row in refs])
