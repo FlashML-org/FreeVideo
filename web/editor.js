@@ -966,7 +966,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         name.focus(); name.select();
     }
     const actions = {
-        error, editError: error, notify, sources: store.sources, waveform: key => store.waveform(key), mediaURL: value => mediaURL(api, value),
+        error, editError: error, notify, sources: store.sources, waveform: key => store.waveform(key), beats: key => store.beats(key), mediaURL: value => mediaURL(api, value),
         projectToken: () => initializing ? null : projectEpoch,
         togglePlay: () => player.toggle(),
         pause: () => player.pause(),

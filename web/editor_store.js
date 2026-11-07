@@ -415,6 +415,9 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         },
         knownLineage() { return Object.fromEntries(lineage); },
         subscribeSources(fn) { watchers.add(fn); return () => watchers.delete(fn); },
+        async beats(key) {
+            return (await json('/freevideo/editor/beats?' + new URLSearchParams({key}), undefined, {beats: []})).beats || [];
+        },
         async waveform(key, points = 200) {
             return (await json('/freevideo/editor/waveform?' + new URLSearchParams({key, points}), undefined, {peaks: []})).peaks || [];
         },

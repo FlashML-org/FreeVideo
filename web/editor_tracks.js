@@ -8,7 +8,8 @@ import {timeEstimate} from './editor_genbar.js';
 import {clipPictureSize, updatePictureBadge} from './editor_frame.js';
 import {createSelectionGestures, isMultiple, isTyping} from './editor_select.js';
 import {createTrackMenu} from './editor_menu.js';
-import {transportSnapPoints, setSnapping as setTransportSnapping} from './editor_transport_model.js';
+import {transportSnapPoints, snappingEnabled, setSnapping as setTransportSnapping} from './editor_transport_model.js';
+import {beatSnapPoints} from './editor_beats_model.js';
 import {attachAudioTracks} from './editor_audio.js';
 import {seconds as secondsText} from './editor_audio_notes.js';
 import {renderSpeedBadge} from './editor_speed.js';
@@ -22,17 +23,21 @@ export const SNAP_DISTANCE = 8;
 export const frameToPixels = (frame, zoom, fps = model.FPS) => frame * zoom / fps;
 export const pixelsToFrame = (pixels, zoom, fps = model.FPS) => Math.round(pixels * fps / zoom);
 
-export function snapFrame(frame, points, zoom, {offsets = [0], distance = SNAP_DISTANCE, enabled = true} = {}) {
+// `beats` are points of lower rank: they are used only when nothing else is within reach.
+export function snapFrame(frame, points, zoom, {offsets = [0], distance = SNAP_DISTANCE, enabled = true, beats = []} = {}) {
     if (!enabled) return {frame: Math.max(0, frame), guide: null};
-    let best = null, delta = Infinity;
-    for (const point of points) for (const offset of offsets) {
-        const difference = point - (frame + offset);
-        const pixels = Math.abs(frameToPixels(difference, zoom));
-        if (pixels <= distance + 1e-9 && pixels < delta && frame + difference >= 0) {
-            delta = pixels; best = {frame: frame + difference, guide: point};
+    for (const candidates of [points, beats]) {
+        let best = null, delta = Infinity;
+        for (const point of candidates) for (const offset of offsets) {
+            const difference = point - (frame + offset);
+            const pixels = Math.abs(frameToPixels(difference, zoom));
+            if (pixels <= distance + 1e-9 && pixels < delta && frame + difference >= 0) {
+                delta = pixels; best = {frame: frame + difference, guide: point};
+            }
         }
+        if (best) return best;
     }
-    return best || {frame: Math.max(0, frame), guide: null};
+    return {frame: Math.max(0, frame), guide: null};
 }
 
 export function insertionPoint(clips, frame, exceptIds = []) {
@@ -52,16 +57,16 @@ export function rangeParameters(anchor, frame, tracks = ['v1', 'a1'], fps = mode
     return {kind: 'range', start: to < from ? Math.max(0, from - frames) : from, frames, tracks: [...tracks]};
 }
 
-export function moveParameters(clip, anchor, frame, points, zoom) {
+export function moveParameters(clip, anchor, frame, points, zoom, beats = []) {
     const desired = Math.max(0, clip.start + frame - anchor);
-    return snapFrame(desired, points, zoom, {offsets: [0, clip.frames]});
+    return snapFrame(desired, points, zoom, {offsets: [0, clip.frames], beats});
 }
 
-export function rangeMoveParameters(record, range, anchor, frame, points, zoom, {enabled = true} = {}) {
+export function rangeMoveParameters(record, range, anchor, frame, points, zoom, {enabled = true, beats = []} = {}) {
     const desired = Math.max(0, range.start + frame - anchor);
     const occupied = start => model.rangeOccupied(record, {...range, start});
     if (!enabled) return {frame: desired, guide: null, blocked: occupied(desired)};
-    const aligned = moveParameters(range, anchor, frame, points, zoom);
+    const aligned = moveParameters(range, anchor, frame, points, zoom, beats);
     if (occupied(desired)) {
         // Prefer a free, flush content edge over an unrelated grid/playhead snap.
         let best = null, distance = Infinity;
@@ -81,8 +86,8 @@ export function rangeMoveParameters(record, range, anchor, frame, points, zoom, 
 
 // Classification uses the source tail only to decide which gesture to preview.
 // trim/extendClip still validate the requested edit (including pairs and limits).
-export function edgeParameters(clip, edge, frame, points, zoom, {canExtend = true, maxFollowSeconds = model.RULES.maxSeconds} = {}) {
-    const snapped = snapFrame(frame, points, zoom);
+export function edgeParameters(clip, edge, frame, points, zoom, {canExtend = true, maxFollowSeconds = model.RULES.maxSeconds, beats = []} = {}) {
+    const snapped = snapFrame(frame, points, zoom, {beats});
     if (clip.pending && !clip.source) return {kind: 'planned', edge, frame: snapped.frame, guide: snapped.guide};
     const sourceEnd = clip.start + clip.length - clip.in;
     if (speedEdited(clip)) return {kind: 'trim', edge, frame: snapped.frame, guide: snapped.guide};
@@ -178,7 +183,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     handle.type = 'button'; handle.setAttribute('aria-label', t('Play position', '播放位置'));
     playhead.append(handle);
     const plannedLines = create('div', 'fv-ed-planned-borders');
-    overlays.append(plannedLines, selectionBox, previewBox, guide, insertion);
+    const beatLines = create('div', 'fv-ed-beat-lines');
+    overlays.append(plannedLines, beatLines, selectionBox, previewBox, guide, insertion);
     content.append(ruler, overlays, playhead); scroll.append(content);
     const tooltip = create('div', 'fv-ed-drag-label');
     tooltip.hidden = true; tooltip.setAttribute('role', 'status');
@@ -196,11 +202,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     zoomBar.append(zoomOut, slider, zoomIn, fit);
     element.append(heads, scroll, zoomBar, tooltip, popover); host.append(element);
 
-    const rows = new Map(), clips = new Map(), progresses = new Map(), waveforms = new Map();
+    const rows = new Map(), clips = new Map(), progresses = new Map(), waveforms = new Map(), beatTimes = new Map();
     let disposed = false, gesture = null, pointerFrame = null, pointerEvent = null;
     let previewSelection = null, selected = new Set(), estimateToken = 0, estimateTimer = null;
     let autoFrame = null, dragX = 0, cachedPoints = [], cachedPlan = '', plannedBorders = [];
-    let contentWidth = 0, lastRuler = '', dropPoint = null, draggedSource = null, dropPreviewKey = '';
+    let beatSignature = '', contentWidth = 0, lastRuler = '', dropPoint = null, draggedSource = null, dropPreviewKey = '';
     const listeners = [];
     function on(target, type, listener, options) {
         target.addEventListener(type, listener, options);
@@ -462,6 +468,25 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             waveforms.get(key).then(draw);
         }
     }
+    // Beats of the music under the clips, fetched once a source; a song without a clear pulse, or one not yet analysed, has none.
+    function loadBeats(key) {
+        if (!key || !actions.beats || beatTimes.has(key)) return;
+        beatTimes.set(key, []);
+        Promise.resolve().then(() => actions.beats(key)).then(times => { if (!disposed && Array.isArray(times)) beatTimes.set(key, times); }).catch(() => {});
+    }
+    const beatPoints = (event, ids) => snappingEnabled(state, event)
+        ? beatSnapPoints(state.record, clip => beatTimes.get(sourceKey(clip)), state.zoom, ids) : [];
+    // Grey lines on the music row while a clip or a cut is dragged: where the beats are that the drag may snap to.
+    function showBeats(event) {
+        const points = event && gesture?.moved && ['move', 'edge', 'rangeMove', 'rangeEdge'].includes(gesture.type) ? dragBeats(event) : [];
+        const row = rows.get(MUSIC_TRACK);
+        const signature = points.length && row ? `${state.zoom}|${row.top}|${row.height}|${points.length}|${points[0]}|${points[points.length - 1]}` : '';
+        if (signature === beatSignature) return;
+        beatSignature = signature;
+        beatLines.replaceChildren(...(signature ? points.map(frame => {
+            const line = create('div', 'fv-ed-beat-line'); line.style.left = `${pixels(frame)}px`; line.style.top = `${row.top}px`; line.style.height = `${row.height}px`; return line;
+        }) : []));
+    }
     function makeClip(clip, track) {
         const node = create('button', 'fv-ed-clip'); node.type = 'button'; node.dataset.clip = clip.id;
         node.dataset.track = track.id; node.dataset.state = model.clipState(clip);
@@ -584,7 +609,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                     const thumbnail = sourceInfo(key)?.thumbnail;
                     item.media.style.backgroundImage = thumbnail ? `url(${JSON.stringify(thumbnail)})` : '';
                 } else if (isText(clip)) actions.textClip?.(item, record);
-                else waveform(item, key);
+                else { waveform(item, key); if (track.id === MUSIC_TRACK) loadBeats(key); }
                 updateProgress(item);
             });
         }
@@ -629,6 +654,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }, 120);
     }
     function clearPreview() {
+        beatSignature = ''; beatLines.replaceChildren();
         previewSelection = null; previewBox.hidden = true; guide.hidden = true; insertion.hidden = true;
         actions.previewRange?.(null);
         tooltip.hidden = true; plannedLines.hidden = false; cachedPlan = ''; clearTimeout(estimateTimer); estimateToken++;
@@ -762,6 +788,16 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         for (const value of [frame, frame + length]) points.push(Math.round(value / grid) * grid);
         return transportSnapPoints(state, points, pointerEvent);
     }
+    // Beats rank below every other point. A range being moved leaves the beats of the music it carries.
+    function dragBeats(event = pointerEvent) {
+        let ids = gesture?.ids || [];
+        if (gesture?.type === 'rangeMove') {
+            const {start, frames, tracks} = gesture.range;
+            ids = state.record.tracks.filter(track => tracks.includes(track.id))
+                .flatMap(track => track.clips.filter(clip => clip.start < start + frames && clip.start + clip.frames > start).map(clip => clip.id));
+        }
+        return beatPoints(event, ids);
+    }
     // A clip's end can be dragged longer only over hidden source, by generating more, or as a planned part.
     const canGrow = clip => (clip.pending && !clip.source) || isText(clip) || speedEdited(clip) || clip.in + clip.frames < clip.length
         || (clip.extend && actions.generationAvailable?.() !== false);
@@ -783,6 +819,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (gesture.type === 'seek') {
             seekPlayhead(frame, pointerEvent); return;
         }
+        showBeats(event);
         if (!gesture.moved || gesture.type === 'click') return;
         if (gesture.type === 'rangeBoundary' || gesture.type === 'plannedBoundary') {
             const isRange = gesture.type === 'rangeBoundary';
@@ -807,13 +844,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             let aligned;
             if (gesture.type === 'rangeMove') {
                 const desired = original.start + frame - gesture.anchor;
-                const rangePoints = dragPoints(desired, original.frames);
-                aligned = rangeMoveParameters(state.record, original, gesture.anchor, frame, rangePoints, state.zoom, {enabled: rangePoints.length > 0});
+                const rangePoints = dragPoints(desired, original.frames), beats = dragBeats();
+                aligned = rangeMoveParameters(state.record, original, gesture.anchor, frame, rangePoints, state.zoom, {enabled: rangePoints.length > 0 || beats.length > 0, beats});
                 gesture.rangeBlocked = aligned.blocked;
                 element.dataset.cursor = aligned.blocked ? 'not-allowed' : 'grabbing';
                 gesture.selection = {...original, start: aligned.frame};
             } else {
-                aligned = snap(frame, dragPoints(frame), state.zoom);
+                aligned = snap(frame, dragPoints(frame), state.zoom, {beats: dragBeats()});
                 // The edge held still stays exactly where it is; the dragged one follows the pointer by whole seconds.
                 const end = original.start + original.frames, fixed = gesture.edge === 'start' ? end : original.start;
                 const drawn = rangeParameters(fixed, gesture.edge === 'start' ? Math.min(aligned.frame, end - 2 * model.FPS) : Math.max(aligned.frame, fixed), original.tracks);
@@ -837,7 +874,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         } else if (gesture.type === 'move') {
             plannedLines.hidden = true;
             const desired = gesture.clip.start + frame - gesture.anchor;
-            const result = moveParameters(gesture.clip, gesture.anchor, frame, dragPoints(desired, gesture.clip.frames), state.zoom);
+            const result = moveParameters(gesture.clip, gesture.anchor, frame, dragPoints(desired, gesture.clip.frames), state.zoom, dragBeats());
             result.track = isText(gesture.clip) ? pointerHit(event).track : null;
             const pointedTrack = pointerTrackAt(event);
             result.targetTrack = gesture.ids.length === 1 && ['a1', 'a2', 'a3'].includes(gesture.track)
@@ -884,7 +921,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 cachedPoints = allPoints([]); tooltip.hidden = true; updatePointer(event); return;
             }
             let result = edgeParameters(gesture.clip, gesture.edge, frame, points, state.zoom,
-                {canExtend: actions.generationAvailable?.() !== false, maxFollowSeconds: boundaryLimits().maxFollowSeconds});
+                {beats: beatPoints(event, gesture.ids), canExtend: actions.generationAvailable?.() !== false, maxFollowSeconds: boundaryLimits().maxFollowSeconds});
             if (result.kind === 'extend') result.frames = capRange({start: result.frame, frames: result.frames}, false, true).frames;
             if (result.kind === 'planned') {
                 let preview;

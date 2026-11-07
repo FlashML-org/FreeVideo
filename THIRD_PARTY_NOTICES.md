@@ -42,3 +42,5 @@ The fonts in `web/fonts/` are built by `scripts/build_web_fonts.py` from the pin
 
 `prompt_vlm/core.py` adapts FreeToken's merged MLP/QKV and bounded vision operators from revision
 `555efd89447232a555e05d187256b76a51c1aaa0`. Its header describes the changes and integration boundary.
+
+`freevideo_engine/beats.py` adapts the beat analysis of Imagination Studio (Apache License 2.0) by Keys (github.com/drowzeys) and Sam Wasserman / Wasserman Productions (wassermanproductions.com). The file header retains the attribution and notes the changes.
