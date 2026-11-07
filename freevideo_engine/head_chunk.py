@@ -285,7 +285,12 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
         linear_scale = linear_scale.finish() if linear_scale is not None else None
         if grouped_outputs:
             torch.cuda.current_stream(x.device).synchronize()
-            out = x.new_empty((len(x), output_width))
+            # Every head group has read x and the readouts live on the host, so a
+            # block that owns its normalized input takes the output in place of
+            # one more sequence-sized buffer (2.0 GiB at 188k rows, where the
+            # allocator held 2.5 GiB of it in pieces too small to use).
+            owned = getattr(attn, '_freevideo_owns_input', False) and x.shape[1] == output_width and x.is_contiguous()
+            out = x if owned else x.new_empty((len(x), output_width))
             # The first tiles of a freshly locked readout set wait for the device
             # after each stage, so a deferred CUDA error names its stage.
             for tile, (rows, part) in enumerate(soft.project(lambda part: part, out, len(x))):
