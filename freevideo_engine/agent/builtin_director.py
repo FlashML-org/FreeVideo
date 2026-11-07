@@ -17,7 +17,7 @@ job interface. All asks return a schema-checked object or None.
 """
 import base64
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import ipaddress
 import json
@@ -428,6 +428,46 @@ def judge(shot_view, sheets, *, ask):
         return uncertain
 
 
+CUT_AGREE = 0.3  # seconds by which the same cut may differ between takes
+
+
+def stitch_shot(shot_view, segments, sheets, *, ask):
+    """Pieces taking the best part of every cut from different takes, or None to keep one whole take.
+
+    Needs two or more takes that passed the check, every one with the same two or more cuts. The last piece
+    comes from the take that is chosen, so the next shot still continues from the chosen take's last frame."""
+    from . import cut_pick
+    if len(segments) < 2 or any(len(s['cuts']) != len(segments[0]['cuts']) for s in segments) or not segments[0]['cuts']:
+        return None
+    if any(abs(a - b) > CUT_AGREE for s in segments for a, b in zip(s['cuts'], segments[0]['cuts'])):
+        return None  # The same cut sits at different times: these are not the same parts.
+    images = {row['take']: row['image'] for row in sheets['takes']}
+    if any(s['take'] not in images for s in segments):
+        return None
+    count = len(segments[0]['cuts']) + 1
+    numbers = [s['take'] for s in segments]
+    rating = _object(dict(take=dict(type='integer', enum=numbers),
+                          scores=dict(type='array', minItems=count, maxItems=count,
+                                      items=dict(type='number', minimum=0, maximum=10))), ('take', 'scores'))
+    schema = _object(dict(ratings=dict(type='array', minItems=len(numbers), maxItems=len(numbers), items=rating)),
+                     ('ratings',))
+    parts = ''.join('\n版%d：%s' % (s['take'], '、'.join('第%d段 %.2f–%.2f 秒' % (i + 1, a, b) for i, (a, b) in enumerate(
+        zip([0.0] + s['cuts'], s['cuts'] + [s['seconds']])))) for s in segments)
+    prompt = ('同一镜头有几个版本，每版在画面硬切处分成相同的几段。按图上的时间标注，给每版的每一段打 0–10 分'
+              '（人物变形、多余的字、和描述不符都扣分），scores 按段的顺序给出。'
+              '\n镜头描述：' + _dump({k: shot_view[k] for k in ('screenplay', 'characters', 'style') if k in shot_view})
+              + '\n图片顺序对应版号：' + _dump(numbers) + '\n各版的分段：' + parts)
+    reply = _ask(ask, prompt, [images[n] for n in numbers], schema)
+    if reply is None or sorted(r['take'] for r in reply['ratings']) != sorted(numbers):
+        return None
+    scores = {r['take']: r['scores'] for r in reply['ratings']}
+    candidates = [dict(s, scores=scores[s['take']]) for s in segments]
+    result = cut_pick.stitch(candidates)
+    if result['fallback'] or len(result['pieces']) < 2:
+        return None
+    return result
+
+
 def revise(view, sentence, *, ask):
     """Translate one request into one checked reshoot, or ask for clarification."""
     unclear = Problem('unclear', '请说明要改哪一镜，以及画面或时长要怎样改？')
@@ -480,6 +520,18 @@ def _ref(identity, action, snapshot):
     return identity + ':builtin:' + action + ':' + digest
 
 
+def _with_stitch(tools, production_id, shot, sheets, decision, stitched, ask):
+    """Take the best part of every cut when the takes allow it; the choice becomes the take that ends the film part."""
+    try:
+        pieces = stitch_shot(shot, tools.segments(production_id, shot['id']), sheets, ask=ask)
+    except Exception:  # noqa: BLE001 - stitching is an extra; one whole take is always the fallback
+        return decision
+    if pieces is None:
+        return decision
+    stitched[shot['id']] = [dict(take=p['take'], start=p['start'], end=p['end']) for p in pieces['pieces']]
+    return replace(decision, take=pieces['pieces'][-1]['take'], reason=(decision.reason + '；各切镜取最好的一版拼接')[:300])
+
+
 def run(tools, production_id, *, ask, stop, wait=25):
     """Yield {shot, action, reason}; stop never cancels generation jobs.
 
@@ -489,7 +541,7 @@ def run(tools, production_id, *, ask, stop, wait=25):
     """
     wait = max(0, min(25, wait))
     since, errors, conflicts = None, 0, 0
-    handed_off = set()
+    handed_off, stitched = set(), {}
     while not stop():
         try:
             view = tools.get(production_id, since=since, wait=wait if since is not None else 0)
@@ -506,7 +558,12 @@ def run(tools, production_id, *, ask, stop, wait=25):
                                for s in view['shots']):
                         continue
                     snapshot = [(s['id'], s['chosen']) for s in view['shots']]
-                    tools.finish(production_id, by='builtin', ref=_ref(production_id, 'finish', snapshot))
+                    chosen = dict(snapshot)
+                    # A part list only stands while its last take is still the chosen one.
+                    pieces = {k: v for k, v in stitched.items() if chosen.get(k) == v[-1]['take']}
+                    tools.finish(production_id, by='builtin', ref=_ref(production_id, 'finish', snapshot + sorted(
+                        (k, [(p['take'], p['start'], p['end']) for p in v]) for k, v in pieces.items())),
+                        **({'pieces': pieces} if pieces else {}))
                     yield dict(shot=None, action='finish', reason='每镜已选定，开始接成影片。')
                     return
                 if action not in ('choose', 'reshoot'):
@@ -534,6 +591,7 @@ def run(tools, production_id, *, ask, stop, wait=25):
                 elif decision.action in ('choose', 'reshoot'):
                     ref = _ref(production_id, decision.action, shot)
                     if decision.action == 'choose':
+                        decision = _with_stitch(tools, production_id, shot, sheets, decision, stitched, ask)
                         tools.choose(production_id, shot['id'], decision.take, by='builtin', reason=decision.reason, ref=ref)
                     else:
                         tools.reshoot(production_id, shot['id'], by='builtin', note=decision.note,

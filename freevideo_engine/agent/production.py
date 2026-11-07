@@ -486,7 +486,7 @@ def advance(state, children, *, now):
         if join.get('cancel_requested'):
             actions.append({'cancel': join['ref']})
         elif not state.get('paused') and join['ref'] not in children:
-            actions.append({'join': {key: deepcopy(join[key]) for key in ('ref', 'takes', 'transition')}})
+            actions.append({'join': {key: deepcopy(join[key]) for key in ('ref', 'takes', 'transition', 'pieces') if key in join}})
     return actions
 
 
@@ -623,8 +623,40 @@ def _missing(state):
     return result
 
 
-def finish(state, *, by, transition=None, now):
-    """Snapshot the chosen refs for a new join, retaining every previous output."""
+def _pieces(state, pieces):
+    """Validate the parts to join for some shots; returns {shot id: [{job, start, end}]} or None."""
+    if not pieces:
+        return None
+    result, problems = {}, []
+    for shot in state['shots']:
+        rows = pieces.get(shot['id'])
+        if rows is None:
+            continue
+        found = []
+        for row in rows if isinstance(rows, list) else ():
+            take = next((t for t in shot['takes'] if t['take'] == row.get('take')
+                         and t['state'] == 'succeeded' and not t['stale']), None)
+            start, end = row.get('start'), row.get('end')
+            if take is None or type(start) not in (int, float) or type(end) not in (int, float) or not 0 <= start < end:
+                problems.append(dict(path='/pieces/' + shot['id'], message='needs succeeded takes and 0 <= start < end'))
+                break
+            found.append(dict(job=take['job'], start=float(start), end=float(end)))
+        else:
+            if found:
+                result[shot['id']] = found
+                continue
+            problems.append(dict(path='/pieces/' + shot['id'], message='must list at least one part'))
+    unknown = sorted(set(pieces) - {s['id'] for s in state['shots']})
+    problems += [dict(path='/pieces/' + str(k), message='is not a shot') for k in unknown]
+    if problems:
+        _invalid(problems)
+    return result or None
+
+
+def finish(state, *, by, transition=None, pieces=None, now):
+    """Snapshot the chosen refs for a new join, retaining every previous output.
+
+    `pieces` maps a shot id to [{take, start, end}] to join those parts of its takes instead of the chosen take."""
     _editable(state, by)
     missing = _missing(state)
     if missing:
@@ -634,13 +666,16 @@ def finish(state, *, by, transition=None, now):
     if transition not in ('cut', 'crossfade'):
         _invalid([dict(path='/transition', message='must be "cut" or "crossfade"')])
     refs = [_chosen(shot)['job'] for shot in state['shots']]
+    # A crossfade overlaps every neighbouring clip, which would dissolve the cuts inside a shot too.
+    parts = _pieces(state, pieces) if transition == 'cut' else None
     current = next((j for j in state['joins'] if j['ref'] == state['current_join']), None)
-    if current and current['state'] in ACTIVE and current['takes'] == refs and current['transition'] == transition:
+    if current and current['state'] in ACTIVE and current['takes'] == refs and current['transition'] == transition and current.get('pieces') == parts:
         return
     draft = deepcopy(state)
     ref = '%s:join%d' % (state['id'], len(state['joins']) + 1)
     draft['joins'].append(dict(ref=ref, takes=refs, transition=transition, state='waiting', by=by,
-                               revision=state['revision'] + 1, library_id=None, seconds=None, error=None))
+                               revision=state['revision'] + 1, library_id=None, seconds=None, error=None,
+                               **({'pieces': parts} if parts else {})))
     draft['current_join'], draft['cancelled'] = ref, False
     _commit(state, draft, now)
 

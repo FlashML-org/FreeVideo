@@ -1012,8 +1012,14 @@ class Productions:
                 if len(set(children) | set(record['children'])) >= MAX_CHILDREN:
                     raise JobError('production_limit', 'Too many child jobs')
                 if 'join' in action:
-                    item = dict(kind='assemble', clips=[children[r]['id'] for r in item['takes']],
-                                transition=item['transition'],
+                    parts = item.get('pieces') or {}
+                    shots = {t['job']: s['id'] for s in record['state']['shots'] for t in s['takes']}
+                    clips = []
+                    for r in item['takes']:
+                        rows = parts.get(shots.get(r))
+                        clips += ([dict(from_job=children[x['job']]['id'], start=x['start'], end=x['end']) for x in rows]
+                                  if rows else [children[r]['id']])
+                    item = dict(kind='assemble', clips=clips, transition=item['transition'],
                                 transition_seconds=record['state']['screenplay'].get('transition_seconds', .5))
                 else:
                     take = next(t for s in record['state']['shots'] for t in s['takes'] if t['job'] == ref)
@@ -1125,6 +1131,33 @@ class Productions:
                 result['previous'] = output.read_bytes()
         return result
 
+    def segments(self, identity, shot):
+        """The picture cuts of each usable take of a shot, with each part checked: what the director needs to
+        take the best part of every cut from different takes."""
+        from . import cut_pick
+        with self.changed:
+            record = self._record(identity)
+            row = _domain(production._shot, record['state'], shot)
+            takes = [(t['take'], t['library_id'], t.get('seconds'), spec.cut_times((t.get('spec') or {}).get('prompt')),
+                      (record.get('qa') or {}).get(t['job'])) for t in row['takes']
+                     if t['state'] == 'succeeded' and not t['stale']]
+        result = []
+        with self.jobs.cpu:
+            for number, library, seconds, expected, qa in takes:
+                if not library or not (qa or {}).get('ok', False):
+                    continue
+                path = self.jobs.port.library_video(library)
+                cuts = cut_pick.detect_cuts(path, [t for t in expected if t > 0])
+                if None in cuts:
+                    continue  # A cut the prompt asks for is not in this take: its parts cannot be matched to the others.
+                total = float(seconds) if seconds else None
+                if total is None:
+                    continue
+                bounds = [0.0] + cuts + [total]
+                checks = [cut_pick.segment_qa(path, bounds[i], bounds[i + 1])['ok'] for i in range(len(bounds) - 1)]
+                result.append(dict(take=number, path=str(path), cuts=cuts, seconds=total, qa=checks))
+        return result
+
     def adapter(self):
         return DirectorAdapter(self)
 
@@ -1142,6 +1175,6 @@ class DirectorAdapter:
         return self.productions.get(identity, since=since, wait=wait, compact=False)
 
     def __getattr__(self, name):
-        if name in ('plan', 'start', 'sheet', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
+        if name in ('plan', 'start', 'sheet', 'segments', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
             return getattr(self.productions, name)
         raise AttributeError(name)
