@@ -1,5 +1,5 @@
 /* Share the studio shell and header geometry; only the editor rows differ. */
-.fv-studio.fv-editor{--fv-ed-generation-row:max-content;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto minmax(max(96px,calc(272px - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,56px) 40px minmax(var(--fv-ed-tracks-min,174px),clamp(174px,calc(100dvh - 704px),236px));animation:none}
+.fv-studio.fv-editor{--fv-ed-generation-row:max-content;overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto minmax(max(96px,calc(clamp(160px,calc(100dvh - 248px - var(--fv-ed-tracks-min,174px)),272px) - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,56px) 40px minmax(var(--fv-ed-tracks-min,174px),clamp(174px,calc(100dvh - 704px),236px));animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-studio.fv-editor[data-generation-ready=false]{--fv-ed-generation-row:0px}
 @media(min-width:1280px){.fv-studio.fv-editor[data-adjust-available=true]{grid-template-columns:264px minmax(0,1fr) 264px}}
 .fv-editor *{box-sizing:border-box}
@@ -11,7 +11,7 @@
 /* Override the studio-wide motion reset only to retain the delay, with no fade. */
 @media (prefers-reduced-motion:reduce){.fv-editor .fv-ed-pending{transition:opacity 0s linear .6s!important}}
 .fv-editor button:where(:not(.fv-header button)){height:36px;min-height:0;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font);white-space:nowrap}
-.fv-editor .fv-header{grid-column:1/-1;position:relative;z-index:6}
+.fv-editor .fv-header{grid-column:1/-1;position:sticky;top:0;z-index:6;background:var(--fv-bg)}
 .fv-editor>:not(.fv-header){font-size:13px;line-height:1.4}
 .fv-editor .fv-brand{position:relative}.fv-editor .fv-brand>.fv-wordmark{flex-shrink:0}
 .fv-editor .fv-header-actions{min-width:0;height:100%}.fv-editor .fv-header-actions>button,.fv-editor .fv-ed-export-box>button{flex:none}
