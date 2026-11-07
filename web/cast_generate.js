@@ -24,7 +24,7 @@ const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
 // The five pictures of one description. No DOM: the page below draws its state.
 export function createCastGenerator({client, kind = 'character', onChange = () => {}, beforeGenerate = async () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
-    const scene = kind === 'setting', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
+    const scene = kind === 'setting' || kind === 'prop', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: ''};
     let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras;
@@ -116,7 +116,7 @@ export function createCastGenerator({client, kind = 'character', onChange = () =
 }
 
 export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, onPick = () => {}, fetchApi, client, loras, kind = 'character'}) {
-    const scene = kind === 'setting', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
+    const scene = kind === 'setting' || kind === 'prop', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
     const tr = t || ((en) => en);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
@@ -132,11 +132,12 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
 
     const root = el('div', 'fv-cg');
     if (scene) root.dataset.kind = 'scene';
+    if (kind === 'prop') root.dataset.shape = 'square';
     const body = el('div', 'fv-cg-body');
     const side = el('div', 'fv-cg-side');
     const foot = el('div', 'fv-cg-foot');
     const field = el('textarea', 'fv-cg-text');
-    field.placeholder = scene ? tr('Describe the scene', '描述场景') : tr('Describe the character', '描述角色');
+    field.placeholder = kind === 'prop' ? tr('Describe the prop', '描述道具') : scene ? tr('Describe the scene', '描述场景') : tr('Describe the character', '描述角色');
     field.setAttribute('aria-label', field.placeholder);
     field.maxLength = 1000;
     const note = el('div', 'fv-cg-note'); note.setAttribute('role', 'status');
@@ -240,7 +241,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
 
     function begin() {
         if (!field.value.trim()) {
-            attention = scene ? tr('Describe the scene first.', '请先描述场景。') : tr('Describe the character first.', '请先描述角色。');
+            attention = kind === 'prop' ? tr('Describe the prop first.', '请先描述道具。') : scene ? tr('Describe the scene first.', '请先描述场景。') : tr('Describe the character first.', '请先描述角色。');
             render(); field.focus();
             return;
         }

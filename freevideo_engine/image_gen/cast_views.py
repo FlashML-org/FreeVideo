@@ -9,6 +9,7 @@ import re
 
 VIEWS = ('front', 'three_quarter', 'side', 'back', 'face')
 SETTING_VIEWS = ('scene',)
+PROP_VIEWS = ('prop',)
 
 SIZES = {
     'front': (832, 1472),
@@ -17,6 +18,7 @@ SIZES = {
     'back': (832, 1472),
     'face': (1024, 1024),
     'scene': (1344, 768),
+    'prop': (1024, 1024),
 }
 
 BACKDROP = 'in front of a plain light grey studio backdrop, even soft studio light, sharp focus, no text'
@@ -71,6 +73,9 @@ def view_prompt(card, view):
     if card.get('kind') == 'setting':
         # The time, weather, light and colour the description gives are the point of a scene: only the people and text are barred.
         return '%s. A wide view of the place, no people, sharp focus, no text.' % who
+    if card.get('kind') == 'prop':
+        return ('%s. The single object alone, centred, in front of a plain light grey backdrop, even soft light, '
+                'sharp focus, no people, no text.' % who)
     if view == 'front':
         return ('%s. The person stands alone, the whole body from head to feet, facing the camera, neutral pose '
                 'with the arms relaxed, %s.' % (who, BACKDROP))
@@ -106,9 +111,9 @@ def page_views(description, kind='character'):
     card made from a description and these pictures are made from the same words."""
     if not isinstance(description, str) or not description.strip() or len(description) > 1000:
         raise ValueError('invalid_prompt')
-    if kind not in ('character', 'setting'):
+    if kind not in ('character', 'setting', 'prop'):
         raise ValueError('invalid_request')
     card = dict(name=description.strip()[:120], description=description.strip(), kind=kind)
-    views = SETTING_VIEWS if kind == 'setting' else VIEWS
+    views = SETTING_VIEWS if kind == 'setting' else PROP_VIEWS if kind == 'prop' else VIEWS
     return dict(views=[dict(view=view, prompt=view_prompt(card, view), width=SIZES[view][0],
                             height=SIZES[view][1], from_front=uses_front(view)) for view in views])

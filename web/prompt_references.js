@@ -215,8 +215,8 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
         try { available = items(); } catch { invalid = true; }
         const media = available.filter(item => `${item.name} ${item.token} ${t(item.kind, {image:'图片',video:'视频',audio:'音频'}[item.kind])} ${item.number}`.toLowerCase().includes(range.query));
         const found = everyone.filter(person => person.name.toLowerCase().includes(range.query));
-        const people = [...found.filter(person => !person.setting), ...found.filter(person => person.setting)];
-        const plain = people.filter(person => !person.setting).length;
+        const people = [...found.filter(person => !person.setting && !person.prop), ...found.filter(person => person.setting), ...found.filter(person => person.prop)];
+        const plain = people.filter(person => !person.setting && !person.prop).length, places = plain + people.filter(person => person.setting).length;
         matches = [...people.map(character => ({character})), ...media];
         list.replaceChildren();
         if (!matches.length) {
@@ -233,13 +233,14 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
         const heading = (en, zh) => { const h = document.createElement('div'); h.className = 'fv-reference-group'; h.setAttribute('role', 'presentation'); h.textContent = t(en, zh); list.append(h); };
         if (plain) heading('Characters', '角色');
         for (const [index, item] of matches.entries()) {
-            if (index === plain && index < people.length) heading('Scenes', '场景');
+            if (index === plain && index < places) heading('Scenes', '场景');
+            if (index === places && index < people.length) heading('Props', '道具');
             if (index === people.length && people.length && media.length) heading('Media', '素材');
             const option = document.createElement('div'); option.id = `${list.id}-${index}`;
             option.className = 'fv-reference-option'; option.setAttribute('role', 'option');
             if (item.character) {
                 const person = item.character, face = document.createElement('img');
-                face.className = 'fv-reference-face'; face.alt = ''; if (person.setting) face.dataset.place = ''; face.src = person.thumb || '';
+                face.className = 'fv-reference-face'; face.alt = ''; if (person.setting) face.dataset.place = ''; else if (person.prop) face.dataset.prop = ''; face.src = person.thumb || '';
                 const name = document.createElement('strong'); name.textContent = person.name;
                 option.className += ' fv-reference-person'; option.append(face, name);
                 if (person.blocked) { option.setAttribute('aria-disabled', 'true'); if (typeof person.blocked === 'string') option.title = person.blocked; }
