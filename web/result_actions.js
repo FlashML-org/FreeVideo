@@ -162,6 +162,7 @@ async function reuseAction(record, t, reuse) {
     const idle = () => {
         clearTimeout(timer); stop();
         const button = action('button', '', 'back', 'fv-action-secondary fv-action-reuse');
+        button.dataset.tourId = 'library-reuse';
         button.lastElementChild.replaceWith(make(label));
         button.hidden = !offered();
         button.onclick = () => {

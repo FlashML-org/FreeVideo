@@ -83,10 +83,12 @@ export async function availableHowToList(cn) {
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Plays one how-to. The editor ones open the Edit view first; the others open the creation panel.
+let opening = 0;
 export async function startHowTo(id, {openWorkspace = async () => (await import('./view_navigation.js')).openCreativeWorkspace()} = {}) {
     const howTo = HOWTOS.find(item => item.id === id);
     if (!howTo || !await howToAvailable(id)) return false;
     // Tour cards stay closed while a how-to opens its view, as they do over the guide layer.
+    opening++;
     document.body.dataset.fvHowTo = 'opening';
     try {
         if (!await openWorkspace()) return false;
@@ -97,5 +99,5 @@ export async function startHowTo(id, {openWorkspace = async () => (await import(
         await document.fonts.ready;
         await wait(250);
         return await showHowTo(howTo.steps);
-    } finally { delete document.body.dataset.fvHowTo; }
+    } finally { if (!--opening) delete document.body.dataset.fvHowTo; }
 }

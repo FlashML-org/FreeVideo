@@ -1,8 +1,8 @@
 import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 
 const COPY = {
-    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '试一试', goto: '带我去'},
-    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Try it', goto: 'Take me there'},
+    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '填入示例', goto: '带我去'},
+    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Use example', goto: 'Take me there'},
 };
 const el = (tag, cls, text) => {
     const node = document.createElement(tag);

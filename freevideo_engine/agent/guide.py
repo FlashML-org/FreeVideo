@@ -197,6 +197,11 @@ GUIDE = {
         'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate with "prompt": {"from_job": "<enhance id>"} rather than retyping the text. '
         'A film is cut into shots: see the rule "Cut by default" before making one long continued video.',
         'Use drama plan → start → get → sheet → choose/reshoot → finish; inspect todo after every change.',
+        'A shot whose prompt has numbered cuts and several takes: do not stop at the first take unless every cut of it is good '
+        '(scores 7 or more of 10); wait for the other takes, read segments, and choose with pieces '
+        '[{take, start, end}] to take the best part of every cut from different takes. Cut only where the takes cut, '
+        'never inside speech (in_speech), and skip a part with parts_ok false. The last part comes from the chosen take. Pass the cut times back exactly as returned, unrounded. '
+        'finish accepts pieces for any shot too. One whole take stays the fallback.',
         'At start tell the user the estimated total time; on over_budget decide whether to ask them; '
         'without an estimate report only the current work and elapsed time.',
         'Use get with since=revision and wait=25. changed=false is a compact timeout; retain the last full board.',
@@ -353,6 +358,7 @@ CAPABILITIES_ZH = {
     ('GET', '/drama/{id}'): '读取待办事项 todo 和版本 revision；用 since 和 wait=25 等待变化。'
         'paused 有值时停止操作，持续等待用户继续',
     ('GET', '/drama/{id}/shots/{shot}/sheet'): '各条生成完成后，查看带时间标记的画面和前一镜所选片段的末帧',
+    ('GET', '/drama/{id}/shots/{shot}/segments'): '镜头有几版且提示词写了同样的编号切镜时，读取每版的切点、各段检查和各版在每个切点处的衔接，再用 pieces 选出每个切镜最好的一段',
     ('POST', '/drama/{id}/shots/{shot}/choose'): '查看画面后选择一条；选定后才能拍摄承接它的下一镜',
     ('POST', '/drama/{id}/shots/{shot}/reshoot'): '按修改要求重拍，再查看画面并重新选片',
     ('POST', '/drama/{id}/finish'): '每一镜都选定后提交拼接，继续查询影片直到成片就绪',

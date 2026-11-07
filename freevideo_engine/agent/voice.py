@@ -340,14 +340,15 @@ def run_voice_lines(jobs, row):
         words = [word for line in heard['lines'] for word in line['words']]
         rows = sentences.lines(words, audio, rate)
         known = spec.get('script') or []
-        entries = script.match(rows, known) if known else [None] * len(rows)
+        rows, entries = script.merge(rows, known) if known else (rows, [None] * len(rows))
         for line, entry in zip(rows, entries):
             if entry is not None:
                 # the text is known: it is what the line says, and the recogniser only gives the times
                 line['words'] = script.retime(line['words'], entry['text'], line['start'], line['end']) or line['words']
                 line['text'] = sentences._join(line['words'])
         slices = [audio[int(line['start'] * rate):int(line['end'] * rate)] for line in rows]
-        numbers = speakers.label(slices, speakers.embedder())
+        why = []
+        numbers = speakers.label(slices, speakers.embedder(why=why), why)
         if known:
             numbers = speakers.by_role(numbers, [None if entry is None or not (entry.get('speaker') or '').strip()
                                                  else script.roles(known)[entry['speaker'].strip()] for entry in entries])
@@ -359,6 +360,7 @@ def run_voice_lines(jobs, row):
         kind = 'dialogue' if ctx['separated'] or sources else 'a1'
         return dict(editor_project=spec['editor_project'], revision=spec['revision'], separated=ctx['separated'],
                     language=heard.get('language'), speech=bool(lines), lines=lines, source=kind,
+                    **(dict(speakers_not_told_apart=why[0]) if why and lines else {}),
                     recognition=remember(spec, ctx, spec.get('language', 'auto'), lines) if lines else None)
     finally:
         _drop_folder(jobs, sources)

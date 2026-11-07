@@ -335,12 +335,13 @@ def _reconnect(state, shot):
         if take['stale'] and take['state'] in ACTIVE + ('paused',):
             take['cancel_requested'] = True
     if not _chosen(shot):
-        shot['chosen'] = shot['chosen_by'] = None
+        shot['chosen'] = shot['chosen_by'] = shot['pieces'] = None
         choice = shot.get('choices', {}).get(parent['job']) if parent else None
         if choice:
             take = _take(shot, choice['take'])
             if take['state'] == 'succeeded' and not take['stale']:
                 shot['chosen'], shot['chosen_by'] = take['take'], choice['by']
+                shot['pieces'] = None
     if _usable(shot):
         _drop_automatic(shot)
 
@@ -486,7 +487,7 @@ def advance(state, children, *, now):
         if join.get('cancel_requested'):
             actions.append({'cancel': join['ref']})
         elif not state.get('paused') and join['ref'] not in children:
-            actions.append({'join': {key: deepcopy(join[key]) for key in ('ref', 'takes', 'transition')}})
+            actions.append({'join': {key: deepcopy(join[key]) for key in ('ref', 'takes', 'transition', 'pieces') if key in join}})
     return actions
 
 
@@ -547,8 +548,31 @@ def _withdraw_others(row, chosen):
     row['pending'] = [g for g in row['pending'] if g[0].get('automatic')]
 
 
-def choose(state, shot, take, *, by, reason=None, cascade=True, now):
-    """Choose a current take, optionally reconnecting descendants automatically."""
+def _kept_parts(row, take, pieces):
+    """The parts to remember with a chosen take: valid takes of this shot, the last one being the chosen take."""
+    if pieces is None:
+        return None
+    problems = []
+    if not isinstance(pieces, list) or not pieces:
+        problems.append(dict(path='/pieces', message='must list at least one part'))
+    else:
+        for index, part in enumerate(pieces):
+            version = next((t for t in row['takes'] if isinstance(part, dict) and t['take'] == part.get('take')
+                            and t['state'] == 'succeeded' and not t['stale']), None)
+            start, end = (part.get('start'), part.get('end')) if isinstance(part, dict) else (None, None)
+            if version is None or type(start) not in (int, float) or type(end) not in (int, float) or not 0 <= start < end:
+                problems.append(dict(path='/pieces/%d' % index, message='needs a succeeded take of this shot and 0 <= start < end'))
+        if not problems and pieces[-1]['take'] != take:
+            problems.append(dict(path='/pieces/%d' % (len(pieces) - 1), message='the last part must come from the chosen take'))
+    if problems:
+        _invalid(problems)
+    return [dict(take=p['take'], start=float(p['start']), end=float(p['end'])) for p in pieces]
+
+
+def choose(state, shot, take, *, by, reason=None, cascade=True, pieces=None, now):
+    """Choose a current take, optionally reconnecting descendants automatically.
+
+    `pieces` is [{take, start, end}] to join from several takes of this shot; the last one comes from `take`."""
     _editable(state, by)
     _optional_text(reason, '/reason')
     draft = deepcopy(state)
@@ -560,13 +584,21 @@ def choose(state, shot, take, *, by, reason=None, cascade=True, now):
         raise ProductionError('take_not_ready', 'The take is stale or has not succeeded.',
                               details=dict(shot=shot, take=take, state=version['state'], stale=version['stale'],
                                            why='stale' if version['stale'] else 'not_succeeded'))
+    kept = _kept_parts(row, take, pieces)
     if row['chosen'] == take:
         if by == 'user' and row['chosen_by'] != 'user':
             row['chosen_by'] = by
+            row['pieces'] = kept
+            _decision(draft, now, by, 'chosen', shot, take, reason)
+            _commit(state, draft, now)
+        elif pieces is not None and kept != row.get('pieces'):
+            _guard(row, by)
+            row['pieces'] = kept
             _decision(draft, now, by, 'chosen', shot, take, reason)
             _commit(state, draft, now)
         return
     row['chosen'], row['chosen_by'] = take, by
+    row['pieces'] = kept
     _withdraw_others(row, take)
     _refresh(draft)
     if by != 'user':
@@ -623,8 +655,47 @@ def _missing(state):
     return result
 
 
-def finish(state, *, by, transition=None, now):
-    """Snapshot the chosen refs for a new join, retaining every previous output."""
+def _pieces(state, pieces):
+    """Validate the parts to join for some shots; returns {shot id: [{job, start, end}]} or None."""
+    if not pieces:
+        return None
+    result, problems = {}, []
+    for shot in state['shots']:
+        rows = pieces.get(shot['id'])
+        if rows is None:
+            continue
+        found = []
+        for row in rows if isinstance(rows, list) else ():
+            take = next((t for t in shot['takes'] if t['take'] == row.get('take')
+                         and t['state'] == 'succeeded' and not t['stale']), None)
+            start, end = row.get('start'), row.get('end')
+            if take is None or type(start) not in (int, float) or type(end) not in (int, float) or not 0 <= start < end:
+                problems.append(dict(path='/pieces/' + shot['id'], message='needs succeeded takes and 0 <= start < end'))
+                break
+            found.append(dict(job=take['job'], start=float(start), end=float(end)))
+        else:
+            if found:
+                result[shot['id']] = found
+                continue
+            problems.append(dict(path='/pieces/' + shot['id'], message='must list at least one part'))
+    unknown = sorted(set(pieces) - {s['id'] for s in state['shots']})
+    problems += [dict(path='/pieces/' + str(k), message='is not a shot') for k in unknown]
+    if problems:
+        _invalid(problems)
+    return result or None
+
+
+def _kept_standing(shot):
+    rows = shot.get('pieces')
+    chosen = shot.get('chosen')
+    return bool(rows) and rows[-1]['take'] == chosen and all(
+        any(t['take'] == r['take'] and t['state'] == 'succeeded' and not t['stale'] for t in shot['takes']) for r in rows)
+
+
+def finish(state, *, by, transition=None, pieces=None, now):
+    """Snapshot the chosen refs for a new join, retaining every previous output.
+
+    `pieces` maps a shot id to [{take, start, end}] to join those parts of its takes instead of the chosen take."""
     _editable(state, by)
     missing = _missing(state)
     if missing:
@@ -634,13 +705,22 @@ def finish(state, *, by, transition=None, now):
     if transition not in ('cut', 'crossfade'):
         _invalid([dict(path='/transition', message='must be "cut" or "crossfade"')])
     refs = [_chosen(shot)['job'] for shot in state['shots']]
+    # A crossfade overlaps every neighbouring clip, which would dissolve the cuts inside a shot too.
+    # Parts kept with a chosen take stand while their takes do; parts given now replace them for that shot.
+    if by != 'user':
+        owned = [shot['id'] for shot in state['shots'] if shot['id'] in (pieces or {}) and shot['chosen_by'] == 'user']
+        if owned:
+            raise ProductionError('chosen_by_user', 'This shot was chosen by the user.', details={'shots': owned})
+    kept = {shot['id']: shot['pieces'] for shot in state['shots'] if _kept_standing(shot)}
+    parts = _pieces(state, {**kept, **(pieces or {})}) if transition == 'cut' else None
     current = next((j for j in state['joins'] if j['ref'] == state['current_join']), None)
-    if current and current['state'] in ACTIVE and current['takes'] == refs and current['transition'] == transition:
+    if current and current['state'] in ACTIVE and current['takes'] == refs and current['transition'] == transition and current.get('pieces') == parts:
         return
     draft = deepcopy(state)
     ref = '%s:join%d' % (state['id'], len(state['joins']) + 1)
     draft['joins'].append(dict(ref=ref, takes=refs, transition=transition, state='waiting', by=by,
-                               revision=state['revision'] + 1, library_id=None, seconds=None, error=None))
+                               revision=state['revision'] + 1, library_id=None, seconds=None, error=None,
+                               **({'pieces': parts} if parts else {})))
     draft['current_join'], draft['cancelled'] = ref, False
     _commit(state, draft, now)
 
@@ -739,6 +819,7 @@ def view(state):
     result['shots'] = []
     for shot in state['shots']:
         row = {key: deepcopy(shot[key]) for key in ('id', 'index', 'continues', 'state', 'chosen', 'chosen_by')}
+        row['pieces'] = deepcopy(shot.get('pieces'))
         # The cast of the latest submitted take: cards are read when a take is submitted.
         latest = next((t for t in reversed(shot['takes']) if 'cast_reference' in t), {})
         row.update(cast_reference=latest.get('cast_reference'), cast_omitted=deepcopy(latest.get('cast_omitted', [])),

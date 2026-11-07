@@ -181,8 +181,8 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     // The menu entry sits on the sound tracks, where an empty spot or a stretch chosen can take a recording.
     const unregister = registerMenuItem({where: 'empty', group: 'sound', label: context => context.t('Record', '录音'),
         visible: context => !context.track || ['a1', 'a2'].includes(context.track), run: () => open()});
-    const unsubscribe = state.subscribe(event => { if (event.type === 'selection' && toolbarButton) toolbarButton.hidden = !recordable(state.selection); });
-    if (toolbarButton) toolbarButton.hidden = !recordable(state.selection);
+    const unsubscribe = state.subscribe(event => { if (event.type === 'selection' && toolbarButton) toolbarButton.disabled = !recordable(state.selection); });
+    if (toolbarButton) toolbarButton.disabled = !recordable(state.selection);
     paint();
     return {element: bar, open, hide, keyboard: keys, get phase() { return phase; }, dispose() { disposed = true; unregister(); unsubscribe(); abort(); release(); bar.remove(); }};
 }

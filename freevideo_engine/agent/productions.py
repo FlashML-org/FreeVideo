@@ -962,14 +962,30 @@ class Productions:
                     continue
                 self._inspecting.add((identity, job))
                 lines = [row['line'] for row in shot.get('lines') or [] if row.get('line')]
+                made = take.get('spec') or {}
+                prompt = made.get('prompt')
+                # A prompt that is not text (taken from another job) says nothing about its cuts.
+                planned = [t for t in spec.cut_times(prompt) if t > 0] if isinstance(prompt, str) else None
+                given = made.get('media') or {}
                 threading.Thread(target=self._inspect, daemon=True, args=(
-                    identity, job, take['library_id'], shot.get('seconds'), lines)).start()
+                    identity, job, take['library_id'], shot.get('seconds'), lines, planned,
+                    self._frame_file(given.get('first')), self._frame_file(given.get('last')))).start()
 
-    def _inspect(self, identity, job, library, seconds, lines):
+    def _frame_file(self, item):
+        """The file of a given frame image that sits in the input folder, else None (other sources are not checked)."""
+        name = item.get('file') if isinstance(item, dict) else None
+        if not isinstance(name, str):
+            return None
+        try:
+            return self.jobs.port.input_path(name)
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _inspect(self, identity, job, library, seconds, lines, planned=None, first=None, last=None):
         try:
             with self.jobs.cpu:
                 result = take_qa.check(self.jobs.port.library_video(library), seconds=seconds,
-                                       lines=lines, transcribe=self.transcribe)
+                                       lines=lines, transcribe=self.transcribe, planned=planned, first=first, last=last)
         except Exception as error:  # noqa: BLE001 - a failed check must not block the film; the judge sees it as unchecked
             logging.getLogger(__name__).warning('A take could not be checked (%s)', type(error).__name__)
             result = dict(error=type(error).__name__, problems=[], notes=[], ok=True)
@@ -1012,8 +1028,14 @@ class Productions:
                 if len(set(children) | set(record['children'])) >= MAX_CHILDREN:
                     raise JobError('production_limit', 'Too many child jobs')
                 if 'join' in action:
-                    item = dict(kind='assemble', clips=[children[r]['id'] for r in item['takes']],
-                                transition=item['transition'],
+                    parts = item.get('pieces') or {}
+                    shots = {t['job']: s['id'] for s in record['state']['shots'] for t in s['takes']}
+                    clips = []
+                    for r in item['takes']:
+                        rows = parts.get(shots.get(r))
+                        clips += ([dict(from_job=children[x['job']]['id'], **_on_frames(x['start'], x['end'])) for x in rows]
+                                  if rows else [children[r]['id']])
+                    item = dict(kind='assemble', clips=clips, transition=item['transition'],
                                 transition_seconds=record['state']['screenplay'].get('transition_seconds', .5))
                 else:
                     take = next(t for s in record['state']['shots'] for t in s['takes'] if t['job'] == ref)
@@ -1125,8 +1147,68 @@ class Productions:
                 result['previous'] = output.read_bytes()
         return result
 
+    def segments(self, identity, shot):
+        """The picture cuts of each usable take of a shot, with each part checked: what the director needs to
+        take the best part of every cut from different takes."""
+        from . import cut_pick
+        with self.changed:
+            record = self._record(identity)
+            row = _domain(production._shot, record['state'], shot)
+            takes = [(t['take'], t['library_id'], t.get('seconds'), spec.cut_times((t.get('spec') or {}).get('prompt')),
+                      (record.get('qa') or {}).get(t['job'])) for t in row['takes']
+                     if t['state'] == 'succeeded' and not t['stale']]
+        result = []
+        with self.jobs.cpu:
+            for number, library, seconds, expected, qa in takes:
+                if not library or not (qa or {}).get('ok', False):
+                    continue
+                path = self.jobs.port.library_video(library)
+                wanted = [t for t in expected if t > 0]
+                if not wanted:
+                    continue  # no numbered cuts in the prompt: this take is only ever used whole
+                cuts = cut_pick.detect_cuts(path, wanted)
+                if None in cuts:
+                    continue  # A cut the prompt asks for is not in this take: its parts cannot be matched to the others.
+                total = float(seconds) if seconds else None
+                if total is None:
+                    continue
+                bounds = [0.0] + cuts + [total]
+                checks = [cut_pick.segment_qa(path, bounds[i], bounds[i + 1])['ok'] for i in range(len(bounds) - 1)]
+                result.append(dict(take=number, path=str(path), cuts=cuts, seconds=total, qa=checks))
+        return result
+
+    def segments_view(self, identity, shot):
+        """What an agent needs to take the best part of every cut from different takes: for each usable take its
+        cuts, length and the check of each part, and how every join between two takes would sound at each cut.
+        Parts and joins use take numbers; finish takes {shot: [{take, start, end}]} (or choose takes pieces)."""
+        from . import cut_pick
+        rows = self.segments(identity, shot)
+        takes = [dict(take=r['take'], cuts=r['cuts'], seconds=r['seconds'], parts_ok=r['qa']) for r in rows]
+        joins = []
+        with self.jobs.cpu:
+            for a in rows:
+                for b in rows:
+                    if a['take'] == b['take'] or len(a['cuts']) != len(b['cuts']):
+                        continue
+                    for k, (end, start) in enumerate(zip(a['cuts'], b['cuts'])):
+                        try:
+                            heard = cut_pick.seam(a['path'], end, b['path'], start)
+                        except Exception:  # noqa: BLE001 - an unreadable sound is no join to recommend
+                            continue
+                        joins.append(dict(cut=k + 1, out_of=a['take'], into=b['take'], penalty=heard['penalty'],
+                                          in_speech=heard['in_speech'], level_step_db=heard['level_db']))
+        return dict(shot=shot, takes=takes, joins=joins,
+                    rule='A join is not allowed inside speech (in_speech) and a part with parts_ok false is not used.')
+
     def adapter(self):
         return DirectorAdapter(self)
+
+
+def _on_frames(start, end, fps=24):
+    """A cut time rounded by a caller (2.04 for 2.0416..) would leave one frame of the other scene at the join:
+    move both ends to the nearest output frame. The stored values stay as given."""
+    a, b = round(start * fps) / fps, round(end * fps) / fps
+    return dict(start=a, end=b) if b > a else dict(start=start, end=end)
 
 
 class DirectorAdapter:
@@ -1142,6 +1224,6 @@ class DirectorAdapter:
         return self.productions.get(identity, since=since, wait=wait, compact=False)
 
     def __getattr__(self, name):
-        if name in ('plan', 'start', 'sheet', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
+        if name in ('plan', 'start', 'sheet', 'segments', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
             return getattr(self.productions, name)
         raise AttributeError(name)

@@ -45,7 +45,8 @@
 .fv-book-limits li { margin-bottom:var(--book-sm); }
 .fv-book-start { margin-top:0; padding:var(--book-sm) var(--book-md); min-height:var(--book-control); border:0; border-radius:var(--book-control-radius); background:var(--book-button); color:var(--book-button-ink)!important; font-weight:600; }
 .fv-book-start + .fv-book-start, .fv-book-try + .fv-book-start { margin-inline-start:var(--book-sm); }
-.fv-book-try { background:var(--book-button); }
+.fv-book-try { background:transparent; color:var(--book-ink)!important; box-shadow:inset 0 0 0 var(--book-border) var(--book-line); }
+.fv-book-try:hover { background:var(--book-hover); }
 .fv-book-start:disabled { opacity:.5; cursor:default; }
 .fv-book-picker { display:none; }
 @media(max-width:680px) {
