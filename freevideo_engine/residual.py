@@ -85,14 +85,14 @@ class ResidualState:
                 return host
         return torch.empty(self.shape, dtype=self.dtype, device='cpu')
 
-    def _leave_locked_pages(self, keep, error):
+    def _leave_locked_pages(self, keep, error, copy=None):
         # A copy through the locked buffer was refused (Windows can fail a
         # queued copy with "invalid argument" when the system takes pages back).
         # Finish the queued work first, so a sticky error is raised as itself
         # rather than hidden by the retry, then continue in pageable memory,
         # which holds the same bytes and is read back unchanged.
         from .activation_staging import record_refusal
-        record_refusal('residual', 'to_device' if keep else 'to_host', error)
+        record_refusal('residual', copy or ('to_device' if keep else 'to_host'), error)
         if self.device.type == 'cuda':
             torch.cuda.synchronize(self.device)
         host = torch.empty(self.shape, dtype=self.dtype, device='cpu')
@@ -123,6 +123,31 @@ class ResidualState:
         """True when the stream has more rows than one tile."""
         return self.shape[-2] > ROW_TILE
 
+    def _tile_to_host(self, start, stop, rows):
+        # A refused locked-page copy of one tile moves the whole buffer to
+        # pageable memory: the tiles staged so far are kept and the refused
+        # tile is copied again, so the host still receives the original rows.
+        try:
+            self.host[..., start:stop, :].copy_(rows, non_blocking=self.pinned)
+        except torch.cuda.OutOfMemoryError:
+            raise
+        except RuntimeError as error:
+            if not self.pinned:
+                raise
+            self._leave_locked_pages(keep=True, error=error, copy='to_host')
+            self.host[..., start:stop, :].copy_(rows)
+
+    def _tile_to_device(self, start, stop):
+        try:
+            return self.host[..., start:stop, :].to(self.device, copy=True, non_blocking=self.pinned)
+        except torch.cuda.OutOfMemoryError:
+            raise
+        except RuntimeError as error:
+            if not self.pinned:
+                raise
+            self._leave_locked_pages(keep=True, error=error, copy='to_device')
+            return self.host[..., start:stop, :].to(self.device, copy=True)
+
     def store_through(self, tensor, transform):
         """Stage `tensor` on the host, then overwrite its rows with `transform`.
 
@@ -142,7 +167,7 @@ class ResidualState:
         for start in range(0, self.shape[-2], ROW_TILE):
             stop = min(start + ROW_TILE, self.shape[-2])
             rows = tensor[..., start:stop, :]
-            self.host[..., start:stop, :].copy_(rows, non_blocking=self.pinned)
+            self._tile_to_host(start, stop, rows)
             rows.copy_(transform(rows, start, stop))
         self.stored = True
         self.copies['to_host'] += 1
@@ -163,7 +188,7 @@ class ResidualState:
         tick = time.perf_counter()
         for start in range(0, self.shape[-2], ROW_TILE):
             stop = min(start + ROW_TILE, self.shape[-2])
-            rows = self.host[..., start:stop, :].to(self.device, copy=True, non_blocking=self.pinned)
+            rows = self._tile_to_device(start, stop)
             combine(rows, start, stop, branch[..., start:stop, :])
             del rows
         self.copies['to_device'] += 1
