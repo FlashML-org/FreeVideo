@@ -14,17 +14,22 @@ SHORTEST = .8        # a shorter line has too little voice to be told apart; it 
 RATE = 16000
 
 
-def embedder(root=None):
-    """A function from mono 16 kHz samples to a vector, or None when the model or its runtime is not here."""
+def embedder(root=None, why=None):
+    """A function from mono 16 kHz samples to a vector, or None when the model or its runtime is not here.
+
+    The reason it is None is appended to the list `why` (a short code, never a path)."""
+    why = why if why is not None else []
     try:
         from ..dubbing import pack
         file = pack.directory(root) / 'campplus.onnx'
         if not file.is_file():
+            why.append('model_missing')
             return None
         try:
             import onnxruntime
         except ImportError:
             if not pack.activate(pack.runtime_path(root)):
+                why.append('runtime_missing')
                 return None
             import onnxruntime
         import torch
@@ -34,6 +39,7 @@ def embedder(root=None):
         session = onnxruntime.InferenceSession(str(file), sess_options=options, providers=['CPUExecutionProvider'])
     except Exception as error:      # a missing optional part must never fail the lines
         _LOG.info('Speakers are not told apart: %s', error)
+        why.append('load_failed:%s' % type(error).__name__)
         return None
     name = session.get_inputs()[0].name
 
@@ -77,8 +83,10 @@ def cluster(vectors, same=SAME):
     return numbers
 
 
-def label(slices, embed):
-    """Speaker numbers for the mono 16 kHz `slices` of the lines, in order (all 0 without an embedder)."""
+def label(slices, embed, why=None):
+    """Speaker numbers for the mono 16 kHz `slices` of the lines, in order (all 0 without an embedder).
+
+    When `why` (a list) already holds a reason it stays; a line that could not be told apart adds 'line_failed:<error>'."""
     if embed is None:
         return [0] * len(slices)
     vectors = []
@@ -87,6 +95,8 @@ def label(slices, embed):
             vectors.append(embed(samples) if len(samples) >= SHORTEST * RATE else None)
         except Exception as error:
             _LOG.info('A line could not be told apart: %s', error)
+            if why is not None and not why:
+                why.append('line_failed:%s' % type(error).__name__)
             vectors.append(None)
     return cluster(vectors)
 

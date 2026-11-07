@@ -8,9 +8,14 @@ import re
 from difflib import SequenceMatcher
 
 FLOOR = .55          # least likeness of a recognised line to a script line for them to be the same line
+BALANCE = .6         # a recognised line is the script line only if neither is much longer than the other
+SPAN = 4             # most recognised lines (a pause cuts one sentence in pieces) that one script line may cover
+COVER = .85          # the lines a script line covers must say at least this much of it
+GAP = 2.             # longest silence, seconds, inside one script line cut by a pause
+LONGEST = 29.        # longest line, seconds (as in sentences.LONGEST)
 MINIMUM = .06        # no word is given less time than this, seconds
 _CJK = '぀-ヿ㐀-鿿가-힯'
-_PIECE = re.compile('[%s]|[^\\W_%s]+(?:\'[^\\W_%s]+)?' % (_CJK, _CJK, _CJK))
+_PIECE = re.compile('[%s]|(?:[^\\W\\d_%s]\\.){2,}(?:[^\\W\\d_%s](?!\\w))?|[^\\W_%s]+(?:[\'’.,-][^\\W_%s]+)*%%?' % (_CJK, _CJK, _CJK, _CJK, _CJK))
 
 
 def letters(text):
@@ -25,22 +30,69 @@ def pieces(text):
 def match(lines, script):
     """For each recognised line, the script entry it is (or None), in order; an entry is used once.
 
-    `lines` are [{text}], `script` [{text, speaker?}]."""
+    `lines` are [{text}], `script` [{text, speaker?}]. Of equally alike entries the first unused one is taken."""
+    return [entry for _, entry in _assign(lines, script)]
+
+
+def _assign(lines, script):
+    """[(number of lines covered, entry)] for each line: the first of a covered run holds the run, the rest (0, None)."""
     wanted = [letters(entry['text']) for entry in script]
-    used, found = set(), []
-    for line in lines:
-        heard = letters(line['text'])
-        best, likeness = None, FLOOR
-        for index, text in enumerate(wanted):
-            if index in used or not heard or not text:
-                continue
-            ratio = SequenceMatcher(None, heard, text, autojunk=False).ratio()
-            if ratio >= likeness:
-                best, likeness = index, ratio
+    used, result, at = set(), [], 0
+    while at < len(lines):
+        best, likeness, span = None, FLOOR, 1
+        for count in range(1, min(SPAN, len(lines) - at) + 1):
+            group = lines[at:at + count]
+            heard = letters(' '.join(line['text'] for line in group))
+            for index, text in enumerate(wanted):
+                if index in used or not heard or not text or min(len(heard), len(text)) < BALANCE * max(len(heard), len(text)):
+                    continue
+                if count > 1 and not _one_line(group, text):
+                    continue
+                ratio = SequenceMatcher(None, heard, text, autojunk=False).ratio()
+                if ratio >= FLOOR and (best is None or ratio > likeness):
+                    best, likeness, span = index, ratio, count
         if best is not None:
             used.add(best)
-        found.append(None if best is None else script[best])
-    return found
+        result.append((span, None if best is None else script[best]))
+        result.extend([(0, None)] * (span - 1))
+        at += span
+    return result
+
+
+def _one_line(group, text):
+    """Whether the recognised `group` of lines is one script line (letters `text`) cut by pauses: each line is the part
+    of it that stands in its place, together they say all of it, and no silence or length is more than one line has."""
+    parts = [letters(line['text']) for line in group]
+    if sum(map(len, parts)) < COVER * len(text):
+        return False
+    here = 0
+    for part in parts:
+        if SequenceMatcher(None, part, text[here:here + len(part)], autojunk=False).ratio() < FLOOR:
+            return False
+        here += len(part)
+    if all('start' in line and 'end' in line for line in group):
+        return (group[-1]['end'] - group[0]['start'] <= LONGEST
+                and all(after['start'] - before['end'] <= GAP for before, after in zip(group, group[1:])))
+    return True
+
+
+def merge(lines, script):
+    """(lines, entries) where the recognised lines that one script line covers are joined into one line.
+
+    A sentence cut by a pause is two recognised lines; joined, it is said once. `lines` are [{text, words, start, end}]."""
+    rows, entries, at = [], [], 0
+    for span, entry in _assign(lines, script):
+        if span == 0:
+            continue
+        group = lines[at:at + span]
+        at += span
+        row = dict(group[0])
+        if span > 1:
+            row.update(words=[word for line in group for word in line['words']], end=group[-1]['end'],
+                       text=' '.join(line['text'] for line in group))
+        rows.append(row)
+        entries.append(entry)
+    return rows, entries
 
 
 def retime(words, text, start, end):
