@@ -34,7 +34,7 @@ export function cleanStyle(raw = {}, kind = 'text') {
 }
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 export function readTextProject(raw, parseMedia) {
-    check(Array.isArray(raw.tracks) && raw.tracks.length <= 5, 'track');
+    check(Array.isArray(raw.tracks) && raw.tracks.length <= 9, 'track');
     const media = {...raw, tracks: raw.tracks.filter(t => !isTextTrack(t))}; delete media.subtitle_style;
     const result = structuredClone(parseMedia(media)), ids = new Set(result.tracks.flatMap(t => t.clips.map(c => c.id))), seen = new Set();
     for (const track of raw.tracks.filter(isTextTrack)) {

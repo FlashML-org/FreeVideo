@@ -53,7 +53,7 @@ def clean_style(raw, kind='text'):
 
 
 def validate_text_project(raw, validate_media):
-    _check(isinstance(raw.get('tracks'), list) and len(raw['tracks']) <= 5)
+    _check(isinstance(raw.get('tracks'), list) and len(raw['tracks']) <= 9)
     media = {k:v for k,v in raw.items() if k != 'subtitle_style'}
     media['tracks'] = [t for t in raw['tracks'] if not is_text_track(t)]
     result = validate_media(media)
