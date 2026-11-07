@@ -124,6 +124,20 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5060 | 8&nbsp;GB | 48&nbsp;GB | 768×1344 | 14&nbsp;s | Medium | 0.3.25 | 3474&nbsp;s | 0.3.25 | Already&nbsp;optimal |
 | 3060 | 12&nbsp;GB | 32&nbsp;GB | 896×1120 | 10&nbsp;s | Light | 0.3.25 | 1045&nbsp;s | 0.4.0 | 1025&nbsp;s&nbsp;(−20&nbsp;s) |
 | 3060&nbsp;Laptop | 6&nbsp;GB | 40&nbsp;GB | 960×544 | 15&nbsp;s | Light⁵ | 0.4.24 | 713&nbsp;s | 0.4.24 | Thermal‑limited¹ |
+| 5060 | 8&nbsp;GB | 64&nbsp;GB | 544×960 | 11.5&nbsp;s | Light | 0.4.26 | 743&nbsp;s¹³ | 0.4.26 | Already&nbsp;optimal¹² |
+| 3050&nbsp;Laptop | 6&nbsp;GB | 16&nbsp;GB | 1184×672 | 10&nbsp;s | High | 0.4.23 | 5773&nbsp;s | 0.4.31 | 4300&nbsp;s&nbsp;(−1470&nbsp;s) |
+| 5080 | 16&nbsp;GB | 32&nbsp;GB | 1920×1088 | 10&nbsp;s | Light | 0.4.18 | 1850&nbsp;s | 0.4.21 | 860&nbsp;s&nbsp;(−990&nbsp;s) |
+| 4060&nbsp;Ti | 8&nbsp;GB | 32&nbsp;GB | 960×544 | 6&nbsp;s | Light | 0.4.27 | 241&nbsp;s | 0.4.28 | 190&nbsp;s&nbsp;(−50&nbsp;s) |
+| 3060 | 12&nbsp;GB | 32&nbsp;GB | 672×1184 | 3&nbsp;s | Light | 0.4.28 | 469&nbsp;s | 0.4.28 | 430&nbsp;s&nbsp;(−40&nbsp;s) |
+| 5080&nbsp;Laptop | 16&nbsp;GB | 64&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.29 | 647&nbsp;s | 0.4.29 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.30 | 1056&nbsp;s | 0.4.30 | Already&nbsp;optimal |
+| 5070&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 768×1344 | 2.3&nbsp;s | Max¹² | 0.4.30 | 2195&nbsp;s | 0.4.30 | Compatibility&nbsp;level&nbsp;3¹⁴ |
+| 5080&nbsp;Laptop | 16&nbsp;GB | 64&nbsp;GB | 2496×832 | 8&nbsp;s | Light⁵ | 0.4.30 | 777&nbsp;s | 0.4.30 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 9.4&nbsp;s | Light | 0.4.31 | 806&nbsp;s | 0.4.31 | Already&nbsp;optimal |
+| 4060&nbsp;Laptop | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.4.32 | 802&nbsp;s | 0.4.32 | Already&nbsp;optimal |
+| 3050&nbsp;Laptop | 8&nbsp;GB | 40&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.4.33 | 890&nbsp;s | 0.4.33 | Already&nbsp;optimal |
+| 3070&nbsp;Laptop | 8&nbsp;GB | 64&nbsp;GB | 960×544 | 5&nbsp;s | Light | 0.4.33 | 260&nbsp;s | 0.4.33 | Already&nbsp;optimal |
+| 3070 | 8&nbsp;GB | 64&nbsp;GB | 736×736 | 10&nbsp;s | Light | 0.4.35 | 471&nbsp;s | 0.4.35 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -141,3 +155,4 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ¹¹ With 16 GB of RAM, the text encoder and part of the video model cannot stay in memory and are read from the drive; text encoding and the first pass, which wait on these reads, took about 460 s of the 887 s.
 - ¹² Task with a reference: every step also processes the reference video, images or audio, so each step takes longer than a plain request of the same size, up to about twice as long with a long reference.
 - ¹³ Preview (first pass only).
+- ¹⁴ Compatibility level 3 was set manually; it is the slowest level and made each step about 2.4 times slower than the automatic setting for this request, and the GPU core clock also stayed at 900 MHz against the 1815 MHz it reached. With the level off, the same request takes about 1100 s.
