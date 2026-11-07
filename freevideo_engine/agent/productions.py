@@ -1033,7 +1033,7 @@ class Productions:
                     clips = []
                     for r in item['takes']:
                         rows = parts.get(shots.get(r))
-                        clips += ([dict(from_job=children[x['job']]['id'], start=x['start'], end=x['end']) for x in rows]
+                        clips += ([dict(from_job=children[x['job']]['id'], **_on_frames(x['start'], x['end'])) for x in rows]
                                   if rows else [children[r]['id']])
                     item = dict(kind='assemble', clips=clips, transition=item['transition'],
                                 transition_seconds=record['state']['screenplay'].get('transition_seconds', .5))
@@ -1163,7 +1163,10 @@ class Productions:
                 if not library or not (qa or {}).get('ok', False):
                     continue
                 path = self.jobs.port.library_video(library)
-                cuts = cut_pick.detect_cuts(path, [t for t in expected if t > 0])
+                wanted = [t for t in expected if t > 0]
+                if not wanted:
+                    continue  # no numbered cuts in the prompt: this take is only ever used whole
+                cuts = cut_pick.detect_cuts(path, wanted)
                 if None in cuts:
                     continue  # A cut the prompt asks for is not in this take: its parts cannot be matched to the others.
                 total = float(seconds) if seconds else None
@@ -1174,8 +1177,38 @@ class Productions:
                 result.append(dict(take=number, path=str(path), cuts=cuts, seconds=total, qa=checks))
         return result
 
+    def segments_view(self, identity, shot):
+        """What an agent needs to take the best part of every cut from different takes: for each usable take its
+        cuts, length and the check of each part, and how every join between two takes would sound at each cut.
+        Parts and joins use take numbers; finish takes {shot: [{take, start, end}]} (or choose takes pieces)."""
+        from . import cut_pick
+        rows = self.segments(identity, shot)
+        takes = [dict(take=r['take'], cuts=r['cuts'], seconds=r['seconds'], parts_ok=r['qa']) for r in rows]
+        joins = []
+        with self.jobs.cpu:
+            for a in rows:
+                for b in rows:
+                    if a['take'] == b['take'] or len(a['cuts']) != len(b['cuts']):
+                        continue
+                    for k, (end, start) in enumerate(zip(a['cuts'], b['cuts'])):
+                        try:
+                            heard = cut_pick.seam(a['path'], end, b['path'], start)
+                        except Exception:  # noqa: BLE001 - an unreadable sound is no join to recommend
+                            continue
+                        joins.append(dict(cut=k + 1, out_of=a['take'], into=b['take'], penalty=heard['penalty'],
+                                          in_speech=heard['in_speech'], level_step_db=heard['level_db']))
+        return dict(shot=shot, takes=takes, joins=joins,
+                    rule='A join is not allowed inside speech (in_speech) and a part with parts_ok false is not used.')
+
     def adapter(self):
         return DirectorAdapter(self)
+
+
+def _on_frames(start, end, fps=24):
+    """A cut time rounded by a caller (2.04 for 2.0416..) would leave one frame of the other scene at the join:
+    move both ends to the nearest output frame. The stored values stay as given."""
+    a, b = round(start * fps) / fps, round(end * fps) / fps
+    return dict(start=a, end=b) if b > a else dict(start=start, end=end)
 
 
 class DirectorAdapter:

@@ -651,6 +651,7 @@ DRAMA_OPERATIONS = {
     'list': ('GET', '/drama', 'List films; status=active returns unfinished summaries'),
     'get': ('GET', '/drama/{id}', 'Read todo and revision; use since and wait=25. If paused, stop acting and long-wait until the user continues'),
     'sheet': ('GET', '/drama/{id}/shots/{shot}/sheet', 'After takes succeed, review their timed images and the previous chosen last frame'),
+    'segments': ('GET', '/drama/{id}/shots/{shot}/segments', 'When a shot has several takes with the same numbered cuts, read each take\'s cuts and part checks and how takes join at each cut; then choose with pieces to take the best part of every cut, passing the cut times back exactly as returned'),
     'choose': ('POST', '/drama/{id}/shots/{shot}/choose', 'After reviewing the sheet, choose a take; only then can the next continuation shoot'),
     'reshoot': ('POST', '/drama/{id}/shots/{shot}/reshoot', 'Request corrected takes, then review the sheet and choose again'),
     'finish': ('POST', '/drama/{id}/finish', 'After every shot is chosen, accept assembly; get the film until its output is ready'),
@@ -668,6 +669,16 @@ SCREENPLAY = {'type': 'object', 'description': (
     'continue: true to carry on from the previous shot}]; also title, style, aspect, quality; a whole-film score is not written here but imported onto a sound track.')}
 
 
+PIECES = dict(type='array', minItems=1, maxItems=24, description=(
+    'Parts of this shot\'s takes to join in order instead of one whole take: [{take, start, end}] in seconds, the last '
+    'part from the chosen take. Read segments first; cut where the takes cut, never inside speech.'),
+    items=dict(type='object', additionalProperties=False, required=['take', 'start', 'end'],
+               properties=dict(take=dict(type='integer', minimum=1), start=dict(type='number', minimum=0),
+                               end=dict(type='number', exclusiveMinimum=0))))
+FINISH_PIECES = dict(type='object', description='Parts for some shots: {shot id: [{take, start, end}]}, replacing the parts chosen with the take.',
+                     additionalProperties=PIECES)
+
+
 def drama_schema(name):
     if name in ('plan', 'start'):
         return obj(dict(screenplay=SCREENPLAY, takes_per_shot=number(1, 8, integer=True, default=1),
@@ -678,14 +689,16 @@ def drama_schema(name):
         return obj(dict(since=number(1, integer=True), wait=WAIT))
     if name == 'sheet':
         return obj(dict(frames=number(2, 24, integer=True, description='Frames per take; default one per second of the take (6 to 24)')))
+    if name == 'segments':
+        return obj({})
     if name == 'choose':
-        return obj(dict(take=number(1, integer=True), reason=string(20000), cascade={'type': 'boolean'}, ref=REF), ('take',))
+        return obj(dict(take=number(1, integer=True), reason=string(20000), cascade={'type': 'boolean'}, pieces=PIECES, ref=REF), ('take',))
     if name == 'reshoot':
         changes = {key: dict(type='string', maxLength=20000) for key in ('action', 'camera', 'framing', 'prompt')}
         changes.update(seconds=number(1.625, 60), lines=dict(type='array', items={'type': 'object'}))
         return obj(dict(note=string(20000), changes=obj(changes), takes=number(1, 8, integer=True, default=1),
                         reason=string(20000), ref=REF))
-    return obj(dict(ref=REF, **({'transition': enum(('cut', 'crossfade'))} if name == 'finish' else {})))
+    return obj(dict(ref=REF, **({'transition': enum(('cut', 'crossfade')), 'pieces': FINISH_PIECES} if name == 'finish' else {})))
 
 
 CAST_OPERATIONS = {

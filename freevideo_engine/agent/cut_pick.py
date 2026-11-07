@@ -75,9 +75,17 @@ def detect_cuts(path, expected=None, *, tolerance=0.6):
         near = [i for i in range(1, len(times)) if abs(times[i] - wanted) <= tolerance]
         best = max(near, key=lambda i: (diffs[i], -abs(times[i] - wanted)), default=None)
         if best is not None and _spike(diffs, best, max(1, min(near) - 1), min(len(diffs), max(near) + 2), MATCH_DIFF):
-            found.append(round(times[best], 3))
+            found.append(times[best])
         else:
             found.append(None)
+    # one frame cannot be two cuts: the cut nearer its expected time keeps it, the other is not found
+    for index, at in enumerate(found):
+        for other in range(index):
+            if at is not None and found[other] == at:
+                loser = index if abs(at - expected[index]) >= abs(at - expected[other]) else other
+                found[loser] = None
+                if loser == index:
+                    break
     return found
 
 
@@ -156,6 +164,8 @@ def stitch(candidates, *, seam_weight=0.5):
     if any(len(c['cuts']) + 1 != count or len(c['scores']) != count or len(c['qa']) != count for c in candidates):
         return _whole(candidates)
     bounds = {c['take']: [0.0] + [float(t) for t in c['cuts']] + [float(c['seconds'])] for c in candidates}
+    if any(b <= a for row in bounds.values() for a, b in zip(row, row[1:])):
+        return _whole(candidates)  # a cut at or before the previous one leaves an empty piece
     usable = [[c for c in candidates if c['qa'][k]] for k in range(count)]
     if not all(usable):
         return _whole(candidates)

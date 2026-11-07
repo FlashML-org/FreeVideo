@@ -2153,6 +2153,8 @@ def register():
             if operation == 'get':
                 # Long waits are asynchronous: they hold no worker thread, so user controls never queue behind them.
                 return reply(await productions.get_async(identity, **request[query_key]))
+            if operation == 'segments':
+                return reply(await asyncio.to_thread(productions.segments_view, identity, shot))
             if operation == 'sheet':
                 value = await asyncio.to_thread(productions.sheet, identity, shot, **request[query_key])
                 def picture(data):
