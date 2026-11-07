@@ -1,41 +1,64 @@
 {
   "schema": 1,
-  "product_version": "0.4.34",
+  "product_version": "0.4.35",
   "en": {
-    "summary": "Agent can finish the sound of a whole editor project in one job, a line of a clip can be respoken in the original voice, and the Edit tab can save the current frame as a picture.",
+    "summary": "External Agents can join the best part of every cut from different takes, the record button stays in place, and text and subtitles can be added after the sound has been separated.",
     "changes": [
-      "Agent: a new job finishes the sound of an editor project in one step. It separates each clip's sound, removes sustained music that came with the clips while keeping effects such as gunshots and crowds, lays one continuous music track across the cut, evens out loudness and fills silent gaps with room tone.",
-      "Edit only some of the lines in a clip: those lines are respoken in the original speaker's voice at the original timing, and the rest stay as they were. Dubbed lines keep the original pace and loudness. The dubbing model (about 4.9 GB) is downloaded on first use.",
-      "A reference video marked as voice only is now read as an audio reference: only its sound track is used and no picture is encoded. A voice reference used across several shots is no longer encoded again for each one.",
-      "Agent: take checks listen for the scripted lines (Chinese and English), notice a single odd frame at the start or end and a picture that stops before the take ends, and do not pick such takes. The Agent skill text also submits storyboards as one batch and resumes a retryable failure once.",
-      "Short dramas: long shots submitted right after startup are no longer refused while this computer's generation limit is still being worked out.",
-      "The Edit tab can save the frame under the playhead as a picture. It is drawn as the export would draw it and kept under Edit image > Generate with AI > History.",
-      "Continued parts in the editor can now use Preview first, and Run second pass replaces the preview in place.",
-      "The preview shown while a video is generated plays as a loop of up to sixteen frames instead of a still sheet of four, and no longer flashes black when its stage changes size. Recent videos and Creations fold videos with the same prompt together only when they were made within two hours of each other from the same references.",
-      "Reference video encoding now shows progress, and the time estimate counts the reference video from the start.",
-      "When a request is refused for lack of GPU memory, the suggested size is now the largest smaller one that fits, instead of one of only two fixed smaller sizes.",
-      "Reference-video frames are removed after encoding and stopped requests free their leftovers, so a generation with reference videos no longer leaves over 1 GB per reference in its folder. Changing the prepared model also removes the online LoRA folders that pinned the old model, and unused ones are cleaned up automatically.",
-      "Launcher and Settings: the Restart ComfyUI step and the wrong-folder message no longer offer to report a problem, the wrong-folder message points to Install ComfyUI when none is found nearby, and the placement test button is disabled while an installation check or installation is running."
+      "External Agents: when the takes of a shot have the same cuts, an Agent can read each take's cuts, per-part checks and how the takes join at every cut, then join the best part of every cut from different takes. The choice is kept with the film.",
+      "External Agents: when a voice is changed with a script, a sentence split by a pause is said once instead of twice, and numbers, hyphenated words and initials stay whole.",
+      "Editor: the record button stays in the toolbar and turns grey when the selection cannot take a recording, so the icons after it no longer move.",
+      "Editor: audio track names fit in the track head, and text and subtitles can be added after the sound has been separated.",
+      "Tutorial and feature tour: new cards and chapters for Describe each part and Reuse settings. The example button reads \"Use example\" in both."
     ]
   },
   "zh": {
-    "summary": "Agent 可以一步完成整个剪辑工程的声音；可以只改一段里的几句台词，用原说话人的声音重说；编辑页可以把当前帧存成图片。",
+    "summary": "外部 Agent 可从不同版本中选取每个切镜最好的一段并拼接，录音按钮位置固定，声音分离后可以添加文字和字幕。",
     "changes": [
-      "Agent：新增一个任务，一步完成剪辑工程的全片声音：分离各段音轨，去掉持续的旧配乐（枪声、人群声等效果声保留），铺一条贯穿全片的配乐，统一全片响度，并在静音处补上环境声。",
-      "可以只改其中几句台词：改过的句子用原说话人的声音重说，时间位置不变，其余原声不动。配音的语速与响度保持与原句一致。配音模型约 4.9 GB，第一次使用时下载。",
-      "标为只用声音的参考视频，现在按音频参考读取：只取其声音，不再编码画面。同一段声音参考用于多个镜头时，不再重复编码。",
-      "Agent：镜头质检会听出每条候选是否说出了剧本台词（中英文均可），并发现开头或结尾单帧闪烁和画面提前停住，有这些问题的候选不会被选用。Agent 技能文本也改为把分镜作为一批提交，可重试的失败只重试一次。",
-      "短剧：在服务刚启动时提交长镜头，不再因本机的生成能力尚未算完而被拒绝。",
-      "编辑页可以把播放头所在的一帧存成图片，画面与导出一致，图片放在“编辑图片 > AI 生成 > 历史”里。",
-      "剪辑页的续写段现在可以使用“先出预览”，看过后用“继续二采”原位生成正式版。",
-      "生成中的预览改为循环播放最多 16 帧，取代原来 4 帧的静态拼图，画面尺寸变化时也不再闪黑。最近视频和作品库中，提示词相同的视频只有在相隔不超过两小时、且参考内容相同时才折叠在一起。",
-      "参考视频编码现在会显示进度，预计时间从一开始就把参考视频算进去。",
-      "因显存不足而拒绝请求时，建议的尺寸改为能放行的最大一档，不再只在两个固定的较小尺寸里选。",
-      "视频参考的帧文件在编码后即删除，取消或失败的请求也会释放残留文件，带视频参考的生成不再在文件夹里留下每个参考超过 1 GB 的文件。更换模型后会一并清理占住旧模型的在线 LoRA 文件夹，不再使用的也会自动清理。",
-      "启动器和设置：“需要重启 ComfyUI”这一步和“这不是 ComfyUI 文件夹”的提示不再显示“提交问题”；后者在附近找不到 ComfyUI 时会提示选择“帮我安装 ComfyUI”；安装检查或安装进行时，放置测试按钮置灰。"
+      "外部 Agent：同一镜头的各版本切镜相同时，Agent 可读取每一版的切镜、各段检查结果和各切镜处的衔接情况，从不同版本中为每个切镜选取最好的一段并拼接；所选片段随影片保存。",
+      "外部 Agent：传入台词换人声时，被停顿切开的一句话只说一次；数字、连字符词和缩写保持完整。",
+      "剪辑：录音按钮固定在工具栏中，选区不能录音时变灰，其后的图标不再移动。",
+      "剪辑：声音轨名称在轨头内完整显示，声音分离后可以添加文字和字幕。",
+      "教程和功能导览：新增“逐段描述”和“复用设置”的卡片和章节；示例按钮统一为“填入示例”。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.34",
+      "en": {
+        "summary": "Agent can finish the sound of a whole editor project in one job, a line of a clip can be respoken in the original voice, and the Edit tab can save the current frame as a picture.",
+        "changes": [
+          "Agent: a new job finishes the sound of an editor project in one step. It separates each clip's sound, removes sustained music that came with the clips while keeping effects such as gunshots and crowds, lays one continuous music track across the cut, evens out loudness and fills silent gaps with room tone.",
+          "Edit only some of the lines in a clip: those lines are respoken in the original speaker's voice at the original timing, and the rest stay as they were. Dubbed lines keep the original pace and loudness. The dubbing model (about 4.9 GB) is downloaded on first use.",
+          "A reference video marked as voice only is now read as an audio reference: only its sound track is used and no picture is encoded. A voice reference used across several shots is no longer encoded again for each one.",
+          "Agent: take checks listen for the scripted lines (Chinese and English), notice a single odd frame at the start or end and a picture that stops before the take ends, and do not pick such takes. The Agent skill text also submits storyboards as one batch and resumes a retryable failure once.",
+          "Short dramas: long shots submitted right after startup are no longer refused while this computer's generation limit is still being worked out.",
+          "The Edit tab can save the frame under the playhead as a picture. It is drawn as the export would draw it and kept under Edit image > Generate with AI > History.",
+          "Continued parts in the editor can now use Preview first, and Run second pass replaces the preview in place.",
+          "The preview shown while a video is generated plays as a loop of up to sixteen frames instead of a still sheet of four, and no longer flashes black when its stage changes size. Recent videos and Creations fold videos with the same prompt together only when they were made within two hours of each other from the same references.",
+          "Reference video encoding now shows progress, and the time estimate counts the reference video from the start.",
+          "When a request is refused for lack of GPU memory, the suggested size is now the largest smaller one that fits, instead of one of only two fixed smaller sizes.",
+          "Reference-video frames are removed after encoding and stopped requests free their leftovers, so a generation with reference videos no longer leaves over 1 GB per reference in its folder. Changing the prepared model also removes the online LoRA folders that pinned the old model, and unused ones are cleaned up automatically.",
+          "Launcher and Settings: the Restart ComfyUI step and the wrong-folder message no longer offer to report a problem, the wrong-folder message points to Install ComfyUI when none is found nearby, and the placement test button is disabled while an installation check or installation is running."
+        ]
+      },
+      "zh": {
+        "summary": "Agent 可以一步完成整个剪辑工程的声音；可以只改一段里的几句台词，用原说话人的声音重说；编辑页可以把当前帧存成图片。",
+        "changes": [
+          "Agent：新增一个任务，一步完成剪辑工程的全片声音：分离各段音轨，去掉持续的旧配乐（枪声、人群声等效果声保留），铺一条贯穿全片的配乐，统一全片响度，并在静音处补上环境声。",
+          "可以只改其中几句台词：改过的句子用原说话人的声音重说，时间位置不变，其余原声不动。配音的语速与响度保持与原句一致。配音模型约 4.9 GB，第一次使用时下载。",
+          "标为只用声音的参考视频，现在按音频参考读取：只取其声音，不再编码画面。同一段声音参考用于多个镜头时，不再重复编码。",
+          "Agent：镜头质检会听出每条候选是否说出了剧本台词（中英文均可），并发现开头或结尾单帧闪烁和画面提前停住，有这些问题的候选不会被选用。Agent 技能文本也改为把分镜作为一批提交，可重试的失败只重试一次。",
+          "短剧：在服务刚启动时提交长镜头，不再因本机的生成能力尚未算完而被拒绝。",
+          "编辑页可以把播放头所在的一帧存成图片，画面与导出一致，图片放在“编辑图片 > AI 生成 > 历史”里。",
+          "剪辑页的续写段现在可以使用“先出预览”，看过后用“继续二采”原位生成正式版。",
+          "生成中的预览改为循环播放最多 16 帧，取代原来 4 帧的静态拼图，画面尺寸变化时也不再闪黑。最近视频和作品库中，提示词相同的视频只有在相隔不超过两小时、且参考内容相同时才折叠在一起。",
+          "参考视频编码现在会显示进度，预计时间从一开始就把参考视频算进去。",
+          "因显存不足而拒绝请求时，建议的尺寸改为能放行的最大一档，不再只在两个固定的较小尺寸里选。",
+          "视频参考的帧文件在编码后即删除，取消或失败的请求也会释放残留文件，带视频参考的生成不再在文件夹里留下每个参考超过 1 GB 的文件。更换模型后会一并清理占住旧模型的在线 LoRA 文件夹，不再使用的也会自动清理。",
+          "启动器和设置：“需要重启 ComfyUI”这一步和“这不是 ComfyUI 文件夹”的提示不再显示“提交问题”；后者在附近找不到 ComfyUI 时会提示选择“帮我安装 ComfyUI”；安装检查或安装进行时，放置测试按钮置灰。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.33",
       "en": {
@@ -388,27 +411,6 @@
         "changes": [
           "生成：低显存模式下，进度区会说明这次生成较慢的原因。",
           "剪辑视图：剪辑里规划的每一段现在都可以单独写描述，接着生成的一段会用为它写的描述。改写后的提示词填回时，@人物 高亮立即刷新。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.22",
-      "en": {
-        "summary": "Autopilot chat can attach reference pictures; the launcher and the editor explain more precisely why a step failed; Mac setup no longer needs Git installed.",
-        "changes": [
-          "Autopilot: a chat message can carry reference pictures, added with the Picture button, by pasting or by dragging, up to 4 per message and 10 MB each. A picture that fails to upload stays in place and can be clicked to retry.",
-          "Launcher and setup: choosing a folder inside a portable ComfyUI, such as its python_embeded folder, now names the portable folder to select. Mac setup downloads its own Git when the system has none. A failed Git download no longer leaves an incomplete folder behind, and leftovers from earlier attempts are removed. On Windows, when security software briefly holds the newly downloaded installer tool, setup retries for a few seconds instead of stopping with \"This folder is not writable\".",
-          "Edit: a failed save now states its cause, and a lost connection is reported as a lost connection. Edit also works on an https page served through a proxy that terminates the secure connection, as on some cloud GPU hosts.",
-          "Diagnostic reports: the page check states why an open creative panel cannot be seen. When a request is refused for lack of memory on Windows, the report records how much of the used memory FreeVideo itself holds."
-        ]
-      },
-      "zh": {
-        "summary": "AI 全自动聊天可以附参考图；启动器和编辑器更准确地说明失败原因；Mac 安装不再需要预先装好 Git。",
-        "changes": [
-          "AI 全自动：聊天消息可以附参考图，用“图片”按钮、粘贴或拖入添加，每条最多 4 张、每张不超过 10 MB。上传失败的图片会保留，点击即可重试。",
-          "启动器和安装：选中便携版 ComfyUI 内部的文件夹（例如 python_embeded）时，提示会写出应选择的便携版文件夹。Mac 系统没有 Git 时，安装会自行下载 Git。Git 下载失败后不再留下不完整的文件夹，以前残留的也会清除。Windows 上安全软件短暂占用刚下载的安装工具时，安装会重试数秒，不再以“此文件夹不可写”停止。",
-          "编辑：保存失败时会写明原因，连接断开时显示为连接已断开。通过代理终止安全连接的 https 页面（部分云端显卡主机即是如此）上也可以正常使用编辑。",
-          "诊断报告：页面检查会写明创作面板已打开却看不到的原因。Windows 上请求因内存不足被拒绝时，报告会写出已用内存中 FreeVideo 自己占用多少。"
         ]
       }
     }
