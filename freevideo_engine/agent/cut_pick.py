@@ -55,15 +55,21 @@ def _spike(diffs, index, lo, hi, floor):
     return diffs[index] >= floor and diffs[index] >= CUT_SPIKE * (float(np.median(around)) if around else 0.0)
 
 
+def cuts_in(small, times):
+    """Seconds of the hard picture cuts in decoded frames, ascending, excluding 0 and the end."""
+    diffs = _changes(small)
+    return [round(times[i], 3) for i in range(1, len(times))
+            if (diffs[i] >= CUT_DIFF and diffs[i] >= diffs[i - 1] and diffs[i] > (diffs[i + 1] if i + 1 < len(diffs) else -1)
+                and _spike(diffs, i, max(1, i - 3), min(len(diffs), i + 4), CUT_DIFF))]
+
+
 def detect_cuts(path, expected=None, *, tolerance=0.6):
     """Seconds of the hard picture cuts, ascending, excluding 0 and the end. With `expected`, each expected cut
     takes the strongest frame change within `tolerance` s; one with no such change is None, not guessed."""
     _, small, times = _pictures(path)
-    diffs = _changes(small)
     if not expected:
-        return [round(times[i], 3) for i in range(1, len(times))
-                if (diffs[i] >= CUT_DIFF and diffs[i] >= diffs[i - 1] and diffs[i] > (diffs[i + 1] if i + 1 < len(diffs) else -1)
-                    and _spike(diffs, i, max(1, i - 3), min(len(diffs), i + 4), CUT_DIFF))]
+        return cuts_in(small, times)
+    diffs = _changes(small)
     found = []
     for wanted in expected:
         near = [i for i in range(1, len(times)) if abs(times[i] - wanted) <= tolerance]

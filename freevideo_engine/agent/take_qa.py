@@ -28,6 +28,9 @@ GAP_EDGE = 0.5                # a gap counts as "in the middle" this far from bo
 SPEECH_DB = -35.0
 CLIP_PEAK = 0.999
 LINE_MATCH = 0.6
+CUT_MATCH = 0.6               # s, a detected cut this close to a planned one is that cut
+ASPECT_TOLERANCE = 0.03       # shape difference up to which a given frame is compared
+HOLD_DIFF = 12.0              # 0-255 mean difference between a given frame and the take's own end frame
 ANALYSIS_WIDTH = 64
 SAMPLE_RATE = 16000
 WINDOW = 0.05
@@ -66,6 +69,19 @@ def recognise(path):
         return ''
     heard = engine.transcribe(audio, 'auto', lambda fraction: None, lambda: False)
     return ' '.join(word['text'] for line in heard['lines'] for word in line['words'])
+
+
+def _still(path, shape):
+    """A given frame image as a small gray array of the analysis size, or None when it cannot be read."""
+    try:
+        from PIL import Image
+        with Image.open(media._file(path)) as image:
+            # A different shape is cropped or padded by the generator, so the two do not compare pixel for pixel.
+            if abs(image.width / image.height - shape[1] / shape[0]) > ASPECT_TOLERANCE:
+                return None
+            return np.asarray(image.convert('L').resize((shape[1], shape[0])), np.float32)
+    except Exception:  # noqa: BLE001 - an unreadable frame image only skips its check
+        return None
 
 
 def _edge_flicker(changes, times):
@@ -112,13 +128,32 @@ def _runs(flags, times, minimum):
     return spans
 
 
+def _shots(result, notes, small, times, planned):
+    """Hard cuts inside the take: those the prompt did not ask for, planned ones that are missing, and the
+    longest stretch without a cut."""
+    from . import cut_pick
+    cuts = cut_pick.cuts_in(small, times)
+    edges = [0.0] + cuts + [times[-1]]
+    result.update(cuts=cuts, longest_shot=round(max(b - a for a, b in zip(edges, edges[1:])), 2))
+    if planned is None:
+        return
+    extra = [c for c in cuts if all(abs(c - p) > CUT_MATCH for p in planned)]
+    lost = [p for p in planned if p > 0 and all(abs(c - p) > CUT_MATCH for c in cuts)]
+    if extra:
+        notes.append('picture cuts at %s that the prompt does not ask for' % ', '.join('%.1f s' % c for c in extra))
+    if lost:
+        notes.append('no picture cut at %s where the prompt has one' % ', '.join('%.1f s' % c for c in lost))
+
+
 def _db(value):
     return float(20 * np.log10(max(float(value), 1e-9)))
 
 
-def check(path, *, seconds=None, size=None, lines=None, transcribe=None):
+def check(path, *, seconds=None, size=None, lines=None, transcribe=None, planned=None, first=None, last=None):
     """Inspect one take. `seconds` is the planned length, `size` the expected (width, height),
-    `lines` the spoken lines the shot should contain and `transcribe(path)` returns the heard text."""
+    `lines` the spoken lines the shot should contain and `transcribe(path)` returns the heard text.
+    `planned` lists the seconds of the cuts the prompt asks for (empty: a single shot; None: not known),
+    `first` and `last` are the given first and last frame images, if any."""
     problems, notes = [], []
     info = media.inspect(path)
     if size and (info['width'], info['height']) != tuple(size):
@@ -154,6 +189,15 @@ def check(path, *, seconds=None, size=None, lines=None, transcribe=None):
     if flicker:
         notes.append('single odd frame at the %s (trim %s)' % (' and '.join(w for w, _ in flicker), ' and '.join('the first frame' if w == 'start' else 'the last frame' for w, _ in flicker)))
     result.update(black=black, frozen=frozen, flicker=[w for w, _ in flicker], stopped=ended)
+    if len(small) > 2:
+        _shots(result, notes, small, times, planned)
+        for name, given, frame in (('first', first, small[0] if small else None), ('last', last, small[-1])):
+            still = _still(given, frame.shape) if given else None
+            if still is not None:
+                held = float(np.abs(still - frame).mean())
+                result[name + '_frame_diff'] = round(held, 1)
+                if held > HOLD_DIFF:
+                    notes.append('the %s frame is not the given one' % name)
 
     if not info['has_audio']:
         problems.append('no audio track')

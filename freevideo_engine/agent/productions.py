@@ -962,14 +962,30 @@ class Productions:
                     continue
                 self._inspecting.add((identity, job))
                 lines = [row['line'] for row in shot.get('lines') or [] if row.get('line')]
+                made = take.get('spec') or {}
+                prompt = made.get('prompt')
+                # A prompt that is not text (taken from another job) says nothing about its cuts.
+                planned = [t for t in spec.cut_times(prompt) if t > 0] if isinstance(prompt, str) else None
+                given = made.get('media') or {}
                 threading.Thread(target=self._inspect, daemon=True, args=(
-                    identity, job, take['library_id'], shot.get('seconds'), lines)).start()
+                    identity, job, take['library_id'], shot.get('seconds'), lines, planned,
+                    self._frame_file(given.get('first')), self._frame_file(given.get('last')))).start()
 
-    def _inspect(self, identity, job, library, seconds, lines):
+    def _frame_file(self, item):
+        """The file of a given frame image that sits in the input folder, else None (other sources are not checked)."""
+        name = item.get('file') if isinstance(item, dict) else None
+        if not isinstance(name, str):
+            return None
+        try:
+            return self.jobs.port.input_path(name)
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _inspect(self, identity, job, library, seconds, lines, planned=None, first=None, last=None):
         try:
             with self.jobs.cpu:
                 result = take_qa.check(self.jobs.port.library_video(library), seconds=seconds,
-                                       lines=lines, transcribe=self.transcribe)
+                                       lines=lines, transcribe=self.transcribe, planned=planned, first=first, last=last)
         except Exception as error:  # noqa: BLE001 - a failed check must not block the film; the judge sees it as unchecked
             logging.getLogger(__name__).warning('A take could not be checked (%s)', type(error).__name__)
             result = dict(error=type(error).__name__, problems=[], notes=[], ok=True)
