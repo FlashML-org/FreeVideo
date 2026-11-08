@@ -45,7 +45,7 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
     const toggle = firstFrameRow(t, 'fv-first-frame fv-replace-person');
     toggle.row.firstChild.textContent = t('Replace person', '替换人物');
     toggle.input.setAttribute('aria-label', t('Replace person', '替换人物'));
-    toggle.row.title = '';
+    toggle.row.title = ''; toggle.row.dataset.tourId = 'replace-person';
     const slots = el('div', 'fv-swap-slots'), note = el('div', 'fv-note fv-swap-note'); note.setAttribute('role', 'status');
     const blockedTitle = t('Not available with first and last frames', '首尾帧不能和替换人物同时使用');
     function slot(kind, index = 0) {

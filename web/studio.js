@@ -553,7 +553,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     }
     // Only deselects: the files stay in the folder and the recent names are kept.
     const clear = button(t('Clear', '清空'), () => { write([]); });
-    actions.append(add);
+    add.dataset.tourId = 'lora-add'; actions.append(add);
     const changed = e => { if (String(e.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-loras', changed);
     const triggersChanged = e => refreshTriggerWords(e.detail);

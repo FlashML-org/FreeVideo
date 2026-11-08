@@ -161,6 +161,44 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'replace-two-people',
+        goto: ['replace-person'],
+        title: {zh: '替换两个人物', en: 'Replace two people'},
+        summary: {zh: '源视频里有两个人时，用两张人物图分别替换。', en: 'When the source video has two people, replace each with its own picture.'},
+        media: {
+            type: 'image',
+            src: {zh: 'replace-two-people-1.webp', en: 'replace-two-people-2.webp'},
+            alt: {zh: '创作面板：“替换人物”开关、两格人物图和“人物图按画面中人物从左到右的顺序对应。”已用红框标出。', en: 'The creation panel, with the "Replace person" switch, the two person image slots and the note on their order outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，打开“替换人物”，在“源视频”中添加视频。', '在“人物图 1”中添加第一张人物图；右边会出现“人物图 2”，再添加第二张。', '人物图按画面中人物从左到右的顺序对应：人物图 1 替换左边的人，人物图 2 替换右边的人。', '点人物图右上角的 × 可以移除一张。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Expand "Media" in the creation panel, turn on "Replace person" and add the video under "Source video".', 'Add the first picture under "Person image 1". "Person image 2" appears next to it; add the second picture there.', 'The pictures are matched to the people in the video from left to right: image 1 replaces the person on the left, image 2 the person on the right.', 'Choose × at the top right of a picture to remove it.', 'Choose "Generate video".'],
+        },
+        limits: {
+            zh: ['一次最多替换 2 个人物。', '替换人物不能与首帧、尾帧同时使用。'],
+            en: ['Up to 2 people can be replaced in one request.', 'Replace person cannot be used with first or last frames.'],
+        },
+    },
+    {
+        id: 'lora',
+        goto: ['lora-add'],
+        title: {zh: '使用自己的 LoRA', en: 'Use your own LoRA'},
+        summary: {zh: '把下载好的 LoRA 文件加进创作面板，改变画面风格。', en: 'Add a downloaded LoRA file in the creation panel to change the style of the picture.'},
+        media: {
+            type: 'image',
+            src: {zh: 'lora-1.webp', en: 'lora-2.webp'},
+            alt: {zh: '创作面板：“LoRA”中的“添加”按钮、模型下拉列表、强度和左侧把手已用红框标出。', en: 'The creation panel, with the "Add" button under "LoRA", the model list, the strength and the handle on the left outlined in red.'},
+        },
+        steps: {
+            zh: ['把 LoRA 文件（.safetensors）放进 models/loras 文件夹。', '展开创作面板的“LoRA”，点“添加”，在下拉列表中选择文件。', '需要时修改右边的强度，默认是 1；取消行首的勾选可暂时停用；有多个 LoRA 时，拖动左侧的把手调整顺序。', '模型要求触发词时，填在“触发词”一栏，它会自动加进描述；移除这个 LoRA 时一并去掉。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Put the LoRA file (.safetensors) in the models/loras folder.', 'Expand "LoRA" in the creation panel, choose "Add" and pick the file from the list.', 'Change the strength on the right if needed; the default is 1. Clear the checkbox at the start of the row to switch the LoRA off for now. With more than one LoRA, drag the handle on the left to change the order.', 'If the LoRA asks for trigger words, enter them in "Trigger words". They are added to the prompt, and removed again with the LoRA.', 'Choose "Generate video".'],
+        },
+        limits: {
+            zh: ['一次最多使用 32 个 LoRA。', '只列出 .safetensors 格式的文件。', 'FreeVideo 无需添加加速 LoRA。'],
+            en: ['Up to 32 LoRAs can be used at a time.', 'Only .safetensors files are listed.', 'FreeVideo needs no acceleration LoRA.'],
+        },
+    },
+    {
         id: 'quality-tiers',
         title: {zh: '四个质量档位', en: 'The four quality levels'},
         summary: {zh: '档位越靠右，用时越长、细节越多。', en: 'Further right takes longer and keeps more detail.'},
