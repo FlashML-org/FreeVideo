@@ -22,6 +22,7 @@ import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
+import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
 import { problem as timedProblem, timedText } from './timed_prompt.js';
@@ -701,13 +702,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     prompt.disabled = linked(node, 'text'); prompt.oninput = () => { set(node, 'text', prompt.value); placeholder(); };
     const promptEditor = el('div', null, 'fv-prompt-editor'); promptEditor.append(prompt);
     // Library characters offered in the @ list; a mention puts the character's pictures in the media list.
-    let castLibrary = null, sceneLibrary = null;
+    let castLibrary = null, sceneLibrary = null, propLibrary = null;
     const castAssets = () => { const owner = upstream(node, 'media'); const field = owner && widget(owner, 'assets'); return field ? {owner, field} : null; };
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
     const castBlocked = reason => ({frames: t('Not available with first and last frames', '首尾帧不能和角色同时使用'),
-        people: t('Up to 3 characters', '最多 3 个角色'), full: t('Up to 32 references', '参考素材最多 32 个'),
-        continued: t('Up to 3 images when continuing', '接续时最多 3\u00a0张')}[reason] || '');
+        people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
+        continued: t('No room left when continuing', '接续段位置已满')}[reason] || '');
     const castPending = new Map();
     // The feature tour's "try it": one example into this panel's media list, prompt and settings.
     const canTryTour = entry => !busy && !queued && !capturing && (!entry.prompt || !linked(node, 'text'))
@@ -753,19 +754,20 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
         const rows = mediaRows(node);
         const places = (sceneLibrary?.list() || []).map(card => ({...card, kind: 'setting'}));
-        return [...castLibrary.list(), ...places].filter(card => card.name).map(card => {
+        const objects = (propLibrary?.list() || []).map(card => ({...card, kind: 'prop'}));
+        return [...castLibrary.list(), ...places, ...objects].filter(card => card.name).map(card => {
             const state = mentionState(rows, card, Math.min(MAX_PICTURES_EACH, Number(card.images) || 0), {continued: Boolean(extension.source)});
             return {id: card.id, name: card.name, handle: mentionHandle(rows, card, castPending), thumb: card.thumbnail?.file ? view(card.thumbnail.file) : card.thumbnail?.url || '',
-                ...(card.kind === 'setting' ? {setting: true} : {}), blocked: state.ok ? '' : castBlocked(state.reason) || true};
+                ...(card.kind === 'setting' ? {setting: true} : card.kind === 'prop' ? {prop: true} : {}), blocked: state.ok ? '' : castBlocked(state.reason) || true};
         });
     }
     // The name goes into the text at once; the card's pictures follow when the full card has been read.
     function mentionCharacter(person) {
         if (!castLibrary) return false;
         if (castInRows(mediaRows(node)).some(entry => entry.id === person.id)) return true;
-        const library = person.setting ? sceneLibrary : castLibrary;
+        const library = person.setting ? sceneLibrary : person.prop ? propLibrary : castLibrary;
         if (!library) return false;
-        if (!mentionState(mediaRows(node), {id: person.id, ...(person.setting ? {kind: 'setting'} : {})}, 1, {continued: Boolean(extension.source)}).ok) return false;
+        if (!mentionState(mediaRows(node), {id: person.id, ...(person.setting ? {kind: 'setting'} : person.prop ? {kind: 'prop'} : {})}, 1, {continued: Boolean(extension.source)}).ok) return false;
         const typed = person.handle || person.name;
         castPending.set(person.id, typed);
         library.get(person.id).then(card => {
@@ -825,11 +827,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Time lines are read for one video made in a single run; parts of a long video keep the typed text.
     const timedRun = () => !extension.source && (lengthControl?.plan ? lengthControl.plan.count === 1 : Number(value(node, 'seconds')) <= 15);
     node.freevideoSingleRun = timedRun;
-    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; delete node.freevideoSingleRun; });
+    cleanup.push(() => { castLibrary?.destroy?.(); castLibrary = null; sceneLibrary?.destroy?.(); sceneLibrary = null; propLibrary?.destroy?.(); propLibrary = null; window.removeEventListener('freevideo-media', castChanged); prompt.removeEventListener('input', announceCast); castOverlay.dispose(); delete node.freevideoContinues; delete node.freevideoSingleRun; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, onChange: () => { castOverlay.refresh(); references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else castLibrary = library; });
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'setting', onChange: () => { references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else sceneLibrary = library; });
+    openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'prop', onChange: () => { references.refresh(); }})
+        .then(library => { if (disposed) library?.destroy?.(); else propLibrary = library; });
     let requestAssets = null, rewriteSubjects = [];
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
@@ -1693,6 +1697,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
     }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || (isNetworkTypeError(error) ? connectionLostText(t) : error?.message) || String(error));
     let lastQueueError = null, connectionNotice = false;
+    watchEngineExit(api).catch(() => {});
     function showQueueError(error) {
         if (disposed) return;
         status.dataset.error = 'true';
@@ -1721,6 +1726,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (node.freevideoFailureReport?.stage !== 'queue') return;
         lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
         status.dataset.error = 'false'; status.textContent = '';
+        // The engine is back: say so when the launcher saw it stop by itself.
+        newEngineExit(api).then(record => {
+            if (record && !disposed && !status.textContent) status.textContent = engineExitText(record, t);
+        }).catch(() => {});
     }
     // A part that stopped is one sentence on the status line; what ComfyUI said goes in the card, as a generation failure.
     function showPartError(error) {

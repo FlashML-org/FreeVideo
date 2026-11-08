@@ -1808,6 +1808,7 @@ class Session:
 
     def tick(self):
         if isinstance(self.controller, Controller) and not self.controller.busy:
+            self.controller.check_server_exit()
             self.controller.poll_access_proxy()
             self.sync_lan_from_store()
         self._finish_archives()
@@ -1962,6 +1963,14 @@ class Session:
         address = row['url'].split('/?')[0]
         self.page_check.poll(address)
         self.page_error = self.page_check.text(self.t, self.browser_opened, address)
+
+    def engine_exit_text(self, row):
+        """The sentence for a ComfyUI that stopped by itself while it was open; empty otherwise."""
+        value = row.get('engine_exit')
+        if row.get('status') != 'restart-required' or not isinstance(value, dict) or type(value.get('at')) not in (int, float):
+            return ''
+        from .engine_exit import describe
+        return describe(value, self.language.startswith('zh'))
 
     def old_versions_text(self):
         """What the background removal of earlier FreeVideo copies freed this session."""
@@ -2472,6 +2481,7 @@ class Session:
                          if row.get('lan_status') == 'no-address' else ''),
             port_from=port_from, port_to=port_to,
             plugin_scoped=row.get('status') == 'open' and row.get('plugin_scoped') is True,
+            engine_exit_text=self.engine_exit_text(row),
             old_versions=self.old_versions_text(), copied_models=self.copied_models_text(),
             archives=self.archives_text(), archives_confirm=self.archives_confirm_text(),
             archives_done=self.archives_done_text(), archives_failed=self.archives_failed_text(),

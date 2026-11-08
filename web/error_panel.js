@@ -4,6 +4,7 @@ import {repairAction} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
+import {knownEngineExit} from './engine_exit.js';
 import {focusReportTip, reportIssue, showReportTip} from './report_issue.js';
 const reports = new WeakSet();
 const captured = new WeakMap();
@@ -607,7 +608,7 @@ export function createErrorPanel(t, route = null) {
         }
         if (!issueModules) await loadIssueModules();
         if (!issueModules) return;
-        const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t});
+        const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t, engineExit: knownEngineExit()});
         const url = issueModules.feedback.feedbackIssueURL(draft.text, issueModules.updates.productVersion(), draft.summary, draft.title);
         globalThis.open?.(url, '_blank', 'noopener');
     };

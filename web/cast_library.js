@@ -24,9 +24,10 @@ const button = (className, label, action) => {
 const path = id => '/freevideo/agent/cast/' + encodeURIComponent(id);
 
 // kind 'setting' is the scene row: wide pictures, up to 3 per card, and no front picture.
+// kind 'prop' is the props row: square pictures, one per card, and no front picture.
 export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () => {}, kind = 'character'}) {
-    const scene = kind === 'setting', SLOTS = scene ? 3 : 6;
-    const word = (character, place) => scene ? place : character;
+    const prop = kind === 'prop', scene = kind === 'setting' || prop, SLOTS = prop ? 1 : scene ? 3 : 6;
+    const word = (character, place, thing = place) => prop ? thing : scene ? place : character;
     if (!document.querySelector('link[data-freevideo-cast]')) {
         const css = el('link'); css.rel = 'stylesheet'; css.dataset.freevideoCast = '';
         css.href = new URL('./cast_library.css', import.meta.url).href; document.head.append(css);
@@ -37,12 +38,12 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     // The row shows, and the page session is asked for, only once /freevideo/agent says the interface is on.
     let available = false; element.hidden = true;
     const probe = agentInterfaceEnabled(api).then(on => { available = on && !disposed; element.hidden = !available; return available; });
-    element.dataset.kind = scene ? 'scene' : 'character';
-    const heading = el('span', 'fv-cast-heading', word(text('Characters', '角色'), text('Scenes', '场景')));
+    element.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
+    const heading = el('span', 'fv-cast-heading', word(text('Characters', '角色'), text('Scenes', '场景'), text('Props', '道具')));
     const avatars = el('div', 'fv-cast-avatars');
     const skipped = el('div', 'fv-cast-unreadable'); skipped.hidden = true;
     const add = button('fv-cast-add', '+', () => openDialog());
-    add.setAttribute('aria-label', word(text('New character', '新建角色'), text('New scene', '新建场景'))); add.dataset.tourId = 'cast-add';
+    add.setAttribute('aria-label', word(text('New character', '新建角色'), text('New scene', '新建场景'), text('New prop', '新建道具'))); add.dataset.tourId = 'cast-add';
     element.append(heading, avatars, add, skipped);
 
     async function value(response) {
@@ -105,9 +106,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         let closed = false, loading = !!id, saving = false, revision, active = 'upload';
         let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
         const slots = Array(SLOTS).fill(null), slotUI = [];
-        const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = scene ? 'scene' : 'character';
+        const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
         const top = el('div', 'fv-cast-top');
-        const title = el('h2', '', id ? word(text('Edit character', '编辑角色'), text('Edit scene', '编辑场景')) : word(text('New character', '新建角色'), text('New scene', '新建场景')));
+        const title = el('h2', '', id ? word(text('Edit character', '编辑角色'), text('Edit scene', '编辑场景'), text('Edit prop', '编辑道具')) : word(text('New character', '新建角色'), text('New scene', '新建场景'), text('New prop', '新建道具')));
         dialog.setAttribute('aria-label', title.textContent);
         const closeButton = button('fv-cast-close', '×', () => close());
         closeButton.setAttribute('aria-label', text('Close', '关闭')); top.append(title, closeButton);
@@ -125,7 +126,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const aiPane = el('div', 'fv-cast-generate'); aiPane.hidden = true;
         const status = el('div', 'fv-cast-message'); status.setAttribute('role', 'status'); status.hidden = true;
         const actions = el('div', 'fv-cast-actions');
-        const remove = button('fv-cast-delete', word(text('Delete character', '删除角色'), text('Delete scene', '删除场景')), () => deleteCard()); remove.hidden = !id;
+        const remove = button('fv-cast-delete', word(text('Delete character', '删除角色'), text('Delete scene', '删除场景'), text('Delete prop', '删除道具')), () => deleteCard()); remove.hidden = !id;
         const cancel = button('', text('Cancel', '取消'), () => close());
         const save = button('fv-cast-save', text('Save', '保存'), () => saveCard());
         actions.append(remove, cancel, save);
@@ -144,7 +145,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const missingNow = () => !name.value.trim() ? text('Enter a name first', '先填写名字')
             : aiBusy() ? word(text('Wait for the five pictures to finish', '等待五张图生成完成'), text('Wait for the pictures to finish', '等待图片生成完成'))
             : active === 'upload' || scene ? (frontless ? slots.some(Boolean) : slots[0]) ? '' : frontless ? text('Add an image first', '先添加图片') : text('Add a front image first', '先添加正面图片')
-            : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'));
+            : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'), text('Generate the images first', '先生成道具图片'));
         function sync() {
             const busy = loading || saving;
             name.disabled = busy; remove.disabled = busy;
@@ -222,7 +223,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         for (let index = 0; index < SLOTS; index++) {
             const slot = el('div', 'fv-cast-slot' + (index || scene ? '' : ' fv-cast-front'));
             const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
-            const label = scene ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
+            const label = prop ? text('Image', '图片') : scene ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
             const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
             const remove = button('fv-cast-remove', '×', () => { release(index); paint(index); });
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
@@ -237,7 +238,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         uploadPane.append(views);
         function resetDelete() {
             clearTimeout(deleteTimer); deleteTimer = null; confirming = false;
-            remove.textContent = word(text('Delete character', '删除角色'), text('Delete scene', '删除场景')); remove.classList.remove('fv-cast-confirm');
+            remove.textContent = word(text('Delete character', '删除角色'), text('Delete scene', '删除场景'), text('Delete prop', '删除道具')); remove.classList.remove('fv-cast-confirm');
         }
         async function load() {
             loading = true; sync();
@@ -278,7 +279,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 const frontNeeded = !scene && (active === 'ai' || !frontless);
                 if (!pictures.length || pictures.length > SLOTS || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
                     message(word(text('Choose one front image and up to 5 more angles', '选一张正面图片，再加最多 5 张其他角度的图片'),
-                        text('Choose up to 3 images', '最多选 3 张图片')), true); return;
+                        text('Choose up to 3 images', '最多选 3 张图片'), text('Choose one image', '选一张图片')), true); return;
                 }
                 const images = [];
                 for (const picture of pictures) {

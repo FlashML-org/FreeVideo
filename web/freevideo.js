@@ -164,7 +164,8 @@ function mediaPanel(node, mount = null) {
     toolbar.append(add, generateImage, addAudio, role, picker, audioPicker); panel.append(toolbar, mode, note, audioHelp, connections, cards);
     const cast = createCastLibrary({api, text, viewURL, uploadOne});
     const places = createCastLibrary({api, text, viewURL, uploadOne, kind: 'setting'});
-    panel.prepend(cast.element, places.element);
+    const props = createCastLibrary({api, text, viewURL, uploadOne, kind: 'prop'});
+    panel.prepend(cast.element, places.element, props.element);
     const read = () => {
         const rows = JSON.parse(serialized.value || "[]");
         if (!Array.isArray(rows) || rows.length > 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
@@ -446,7 +447,7 @@ function mediaPanel(node, mount = null) {
             return JSON.stringify(requestRows(swapState(node)));
         }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range}) => ({file, role, enabled, ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : {})}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range}) => ({file, role, enabled, ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;
@@ -473,7 +474,7 @@ function mediaPanel(node, mount = null) {
     panel.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
     panel.ondrop = event => { event.preventDefault(); event.stopPropagation(); upload(event.dataTransfer.files); };
     panel.onpaste = event => { if (event.clipboardData?.files.length) { event.preventDefault(); event.stopPropagation(); upload(event.clipboardData.files); } };
-    const dispose = () => { window.removeEventListener('freevideo-media', changed); window.removeEventListener('freevideo-audio-blocked', clearUseNote); cast.destroy(); places.destroy(); };
+    const dispose = () => { window.removeEventListener('freevideo-media', changed); window.removeEventListener('freevideo-audio-blocked', clearUseNote); cast.destroy(); places.destroy(); props.destroy(); };
     if (mount) { mount.append(panel); render(); return dispose; }
     node.freevideoCreateMediaEditor = target => mediaPanel(node, target);
     node.addDOMWidget("freevideo_media", "freevideo_media", panel, {serialize: false, getMinHeight: () => 300, getMaxHeight: () => 520});

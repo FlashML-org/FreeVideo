@@ -104,9 +104,9 @@ def resolve_assets(serialized, input_directory):
                     or media_kind(row['file']) != 'video'):
                 raise ValueError('depth is only allowed on video references')
         # The character an @ mention added the row for; a continued part keeps one picture per character.
-        if 'cast' in row and (set(row['cast'] if isinstance(row['cast'], dict) else ('?',)) not in ({'id'}, {'id', 'setting'})
+        if 'cast' in row and (set(row['cast'] if isinstance(row['cast'], dict) else ('?',)) not in ({'id'}, {'id', 'setting'}, {'id', 'prop'})
                               or not isinstance(row['cast']['id'], str) or not 0 < len(row['cast']['id']) <= 128
-                              or row['cast'].get('setting', True) is not True):
+                              or row['cast'].get('setting', True) is not True or row['cast'].get('prop', True) is not True):
             raise ValueError('Invalid media item')
         if type(row.get('enabled', True)) is not bool:
             raise ValueError('Media enabled must be a boolean')
@@ -141,6 +141,8 @@ def resolve_assets(serialized, input_directory):
                 reference['cast'] = cast_id(row)   # only a continued part reads it (comfy_media.continued)
                 if is_setting(row):
                     reference['scene'] = True
+                if is_prop(row):
+                    reference['prop'] = True
             if 'early_steps' in row:
                 from .media_request import validate_early_steps
                 validate_early_steps(dict(row, kind=kind))
@@ -199,7 +201,7 @@ def continued_assets(serialized):
                 image = False
             if image:
                 pictures.append(row)
-    return json.dumps([_kept_row(row) for row in pick_pictures(pictures, cast_id, is_setting)] + original)
+    return json.dumps([_kept_row(row) for row in pick_pictures(pictures, cast_id, is_setting, is_prop)] + original)
 
 
 def cast_id(row):
@@ -215,10 +217,16 @@ def is_setting(row):
     return cast_id(row) is not None and cast.get('setting') is True
 
 
+def is_prop(row):
+    """Whether a panel row carries the picture of a prop card (an @ mention of a prop)."""
+    cast = row.get('cast') if isinstance(row, dict) else None
+    return cast_id(row) is not None and cast.get('prop') is True
+
+
 def _kept_row(row):
     kept = dict(file=row['file'], role='reference')
     if cast_id(row) is not None:
-        kept['cast'] = dict(id=cast_id(row), **({'setting': True} if is_setting(row) else {}))
+        kept['cast'] = dict(id=cast_id(row), **({'setting': True} if is_setting(row) else {'prop': True} if is_prop(row) else {}))
     return kept
 
 

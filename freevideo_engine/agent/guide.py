@@ -629,7 +629,7 @@ GUIDE['filming_routes'] = [dict(operation=name, method=method, path=path, descri
 GUIDE['cast_routes'] = [dict(operation=name, method=method, path=path, description=summary)
     for name, (method, path, summary) in CAST_OPERATIONS.items()]
 GUIDE['cast'] = [
-    'A card is a character or setting: name, a one-sentence English description used in prompts, up to six '
+    'A card is a character, setting or prop: name, a one-sentence English description used in prompts, up to six '
     'labelled pictures (front, three_quarter, side, back, face, sheet, other) and an optional 2 to 15 s voice.',
     'Changes need the revision you read (body revision or If-Match); stale_revision returns the current card in '
     'error.card. Fields the user changed return changed_by_user: keep the user\'s version.',

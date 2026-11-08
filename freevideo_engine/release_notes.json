@@ -1,27 +1,48 @@
 {
   "schema": 1,
-  "product_version": "0.4.35",
+  "product_version": "0.4.36",
   "en": {
-    "summary": "External Agents can join the best part of every cut from different takes, the record button stays in place, and text and subtitles can be added after the sound has been separated.",
+    "summary": "Props join the cast library beside characters and scenes, the editor stays usable in a short window, and a refresh no longer clears text selected in the chat.",
     "changes": [
-      "External Agents: when the takes of a shot have the same cuts, an Agent can read each take's cuts, per-part checks and how the takes join at every cut, then join the best part of every cut from different takes. The choice is kept with the film.",
-      "External Agents: when a voice is changed with a script, a sentence split by a pause is said once instead of twice, and numbers, hyphenated words and initials stay whole.",
-      "Editor: the record button stays in the toolbar and turns grey when the selection cannot take a recording, so the icons after it no longer move.",
-      "Editor: audio track names fit in the track head, and text and subtitles can be added after the sound has been separated.",
-      "Tutorial and feature tour: new cards and chapters for Describe each part and Reuse settings. The example button reads \"Use example\" in both."
+      "Cast library: props are a third kind beside characters and scenes. A prop can be uploaded or generated, and mentioned in a prompt. When a continued shot has room for fewer references, the character face is kept first, then the scene, then the prop.",
+      "Editor: in a short window the audio tracks and the add-audio button below the timeline are no longer cut off. The preview gives up height first, and the editor scrolls when that is not enough.",
+      "Chat: text selected in messages and cards is kept when the page refreshes, so it can be copied, and the reason for a failed send keeps its selection.",
+      "Launcher: when the engine stops unexpectedly, the launcher window and the page say when it stopped and offer to reconnect, and feedback and diagnostic reports include the latest exit record."
     ]
   },
   "zh": {
-    "summary": "外部 Agent 可从不同版本中选取每个切镜最好的一段并拼接，录音按钮位置固定，声音分离后可以添加文字和字幕。",
+    "summary": "道具加入角色库，与角色和场景并列；窗口较矮时编辑器仍可完整使用；聊天刷新时不再清掉已选中的文字。",
     "changes": [
-      "外部 Agent：同一镜头的各版本切镜相同时，Agent 可读取每一版的切镜、各段检查结果和各切镜处的衔接情况，从不同版本中为每个切镜选取最好的一段并拼接；所选片段随影片保存。",
-      "外部 Agent：传入台词换人声时，被停顿切开的一句话只说一次；数字、连字符词和缩写保持完整。",
-      "剪辑：录音按钮固定在工具栏中，选区不能录音时变灰，其后的图标不再移动。",
-      "剪辑：声音轨名称在轨头内完整显示，声音分离后可以添加文字和字幕。",
-      "教程和功能导览：新增“逐段描述”和“复用设置”的卡片和章节；示例按钮统一为“填入示例”。"
+      "角色库：道具成为与角色、场景并列的第三类，可上传或生成，并在提示词中引用；接续镜头可用的参考位置不足时，依次保留角色脸、场景、道具。",
+      "剪辑：窗口较矮时，时间线下方的声音轨和“＋ 声音轨”按钮不再被裁掉；预览区先让出高度，仍不够时编辑器出现滚动条。",
+      "聊天：页面刷新时，消息和任务卡中已选中的文字不再被清掉，可正常复制；发送失败的原因也保留选区。",
+      "启动器：引擎意外停止时，启动器窗口和页面提示停止的时间并提供重新连接入口；反馈和诊断报告带上最近一次退出记录。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.35",
+      "en": {
+        "summary": "External Agents can join the best part of every cut from different takes, the record button stays in place, and text and subtitles can be added after the sound has been separated.",
+        "changes": [
+          "External Agents: when the takes of a shot have the same cuts, an Agent can read each take's cuts, per-part checks and how the takes join at every cut, then join the best part of every cut from different takes. The choice is kept with the film.",
+          "External Agents: when a voice is changed with a script, a sentence split by a pause is said once instead of twice, and numbers, hyphenated words and initials stay whole.",
+          "Editor: the record button stays in the toolbar and turns grey when the selection cannot take a recording, so the icons after it no longer move.",
+          "Editor: audio track names fit in the track head, and text and subtitles can be added after the sound has been separated.",
+          "Tutorial and feature tour: new cards and chapters for Describe each part and Reuse settings. The example button reads \"Use example\" in both."
+        ]
+      },
+      "zh": {
+        "summary": "外部 Agent 可从不同版本中选取每个切镜最好的一段并拼接，录音按钮位置固定，声音分离后可以添加文字和字幕。",
+        "changes": [
+          "外部 Agent：同一镜头的各版本切镜相同时，Agent 可读取每一版的切镜、各段检查结果和各切镜处的衔接情况，从不同版本中为每个切镜选取最好的一段并拼接；所选片段随影片保存。",
+          "外部 Agent：传入台词换人声时，被停顿切开的一句话只说一次；数字、连字符词和缩写保持完整。",
+          "剪辑：录音按钮固定在工具栏中，选区不能录音时变灰，其后的图标不再移动。",
+          "剪辑：声音轨名称在轨头内完整显示，声音分离后可以添加文字和字幕。",
+          "教程和功能导览：新增“逐段描述”和“复用设置”的卡片和章节；示例按钮统一为“填入示例”。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.34",
       "en": {
@@ -394,23 +415,6 @@
           "手机访问：在启动器里打开局域网访问后，手机页可以正常使用，不再一直显示“连接断了，正在重新连接…”且没有内容。",
           "Agent：install-skill 命令可以为 Agent 安装 FreeVideo 技能，Windows 上层级很深的目录也能装。Agent 拿到的工具列表更短：常用工具完整列出，其余工具通过帮助工具打开。",
           "诊断报告：生成过程中 ComfyUI 重启后，这次运行的报告会标为已中断，不再显示为运行中；长视频会保留被中断那一段的报告。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.23",
-      "en": {
-        "summary": "Each part planned in the editor can have its own description; low-memory generations explain why they are slower.",
-        "changes": [
-          "Generation: When a generation runs in low-memory mode, the progress view says why it is slower.",
-          "Editor: Each part of a video planned in the editor can now have its own description, and a continued part uses exactly what you write for it. The highlight on characters mentioned with @ in the prompt box updates as soon as a rewritten prompt is filled in."
-        ]
-      },
-      "zh": {
-        "summary": "剪辑里规划的每一段可以单独写描述；低显存模式下的生成会说明较慢的原因。",
-        "changes": [
-          "生成：低显存模式下，进度区会说明这次生成较慢的原因。",
-          "剪辑视图：剪辑里规划的每一段现在都可以单独写描述，接着生成的一段会用为它写的描述。改写后的提示词填回时，@人物 高亮立即刷新。"
         ]
       }
     }

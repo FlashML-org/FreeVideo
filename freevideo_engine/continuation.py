@@ -42,14 +42,15 @@ UNSUPPORTED_MEDIA = UNSUPPORTED + ' Connect up to 3 pictures as references, and 
 PICTURES_MAX = 3
 
 
-def pick_pictures(rows, person, scene=None):
+def pick_pictures(rows, person, scene=None, prop=None):
     """The pictures a continued part keeps from image rows in panel order: at most PICTURES_MAX.
 
     person(row) is the id of the character a row belongs to, or None. With two or more characters each keeps
     only the last of its rows (the face close-up, or the one picture its card has) so that everyone is seen; the
     other pictures follow. With none or one character the first rows are kept.
     scene(row) is true for the picture of a setting card: the last such row keeps one place, after the others, so the
-    part still shows the same place."""
+    part still shows the same place. prop(row) is true for the picture of a prop card: props come after the
+    characters and the place, so they keep only the positions those leave free, in panel order, before the place."""
     rows = list(rows)
     place = None
     if scene is not None:
@@ -57,6 +58,10 @@ def pick_pictures(rows, person, scene=None):
         if places:
             place = places[-1]
             rows = [row for row in rows if not scene(row)]
+    things = []
+    if prop is not None:
+        things = [row for row in rows if prop(row)]
+        rows = [row for row in rows if not prop(row)]
     last = {}
     for index, row in enumerate(rows):
         if person(row) is not None:
@@ -68,6 +73,7 @@ def pick_pictures(rows, person, scene=None):
         faces = [rows[index] for index in sorted(last.values())]
         others = [row for row in rows if person(row) is None]
         chosen = (faces + others)[:room]
+    chosen = chosen + things[:room - len(chosen)]
     return chosen + ([place] if place is not None else [])
 
 

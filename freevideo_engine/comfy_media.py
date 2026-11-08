@@ -60,8 +60,8 @@ def continued(exported, notes=None):
     original = [row for row in media.get('references', []) if row.get('kind') == 'audio' and row.get('use') == 'original']
     keyframes = [name for name in ('first', 'last') if media.get(name)]
     # Characters added by an @ mention keep one picture each when there are several (pick_pictures).
-    chosen = pick_pictures(pictures, lambda row: None if row.get('scene') else row.get('cast'),
-                           lambda row: row.get('scene') is True)
+    chosen = pick_pictures(pictures, lambda row: None if row.get('scene') or row.get('prop') else row.get('cast'),
+                           lambda row: row.get('scene') is True, lambda row: row.get('prop') is True)
     candidates = [_plain(row) for row in chosen] + [{'kind': 'image', 'path': media[name]} for name in keyframes]
     if candidates or original:
         kept['references'] = candidates[:PICTURES_MAX] + original
@@ -79,7 +79,7 @@ def continued(exported, notes=None):
 
 def _plain(row):
     """A reference row without the panel's character or scene mark, which the engine's request does not carry."""
-    return {key: value for key, value in row.items() if key not in ('cast', 'scene')}
+    return {key: value for key, value in row.items() if key not in ('cast', 'scene', 'prop')}
 
 
 def continued_note(pictures, keyframes, used):

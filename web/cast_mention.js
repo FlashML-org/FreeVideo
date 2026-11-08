@@ -5,6 +5,7 @@
 export const MAX_PEOPLE = 3;
 export const MAX_PICTURES_EACH = 2;
 export const MAX_REFERENCES = 32;
+export const MAX_PROPS = 2;
 // Which of a card's pictures stands for the person after the sheet; the others follow in the card's own order.
 export const PICTURE_ORDER = ['face', 'front', 'three_quarter'];
 
@@ -44,14 +45,17 @@ function pictureNumbers(rows, continued = false) {
     });
     let kept = picked;
     if (continued) {
-        // The picture of a scene keeps its place after the others (continuation.pick_pictures).
+        // The picture of a scene keeps its place after the others, and props fill what is left (continuation.pick_pictures).
         const places = picked.filter(index => rows[index].cast?.setting === true);
         const place = places.length ? places[places.length - 1] : null;
-        const rest = place === null ? picked : picked.filter(index => rows[index].cast?.setting !== true);
+        const props = picked.filter(index => rows[index].cast?.prop === true);
+        const rest = picked.filter(index => rows[index].cast?.setting !== true && rows[index].cast?.prop !== true);
         const last = new Map();
         rest.forEach(index => { if (rows[index].cast?.id) last.set(rows[index].cast.id, index); });
         kept = last.size < 2 ? rest : [...last.values()].sort((a, b) => a - b).concat(rest.filter(index => !rows[index].cast?.id));
         kept = kept.slice(0, CONTINUE_PICTURES - (place === null ? 0 : 1));
+        // Props come after the people and the place: they keep only the positions those leave free.
+        kept = kept.concat(props.slice(0, CONTINUE_PICTURES - (place === null ? 0 : 1) - kept.length));
         if (place !== null) kept.push(place);
     }
     return new Map(kept.map((index, at) => [index, at + 1]));
@@ -64,7 +68,7 @@ export function castInRows(rows) {
         if (!enabled(row) || !row.cast?.id || row.role !== 'reference' || !IMAGE.test(row.file || '')) return;
         const name = row.cast.name || '';
         // `handle` is what the text says after the @: the name, or "name (2)" when another present character has the same name.
-        const person = people.get(row.cast.id) || {id: row.cast.id, name, handle: row.cast.handle || name, description: row.cast.description || '', setting: row.cast.setting === true, rows: []};
+        const person = people.get(row.cast.id) || {id: row.cast.id, name, handle: row.cast.handle || name, description: row.cast.description || '', setting: row.cast.setting === true, prop: row.cast.prop === true, rows: []};
         person.rows.push(index); people.set(row.cast.id, person);
     });
     return [...people.values()];
@@ -106,7 +110,7 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
     const people = castInRows(list);
     const ranges = mentionRanges(text, people);
     if (!ranges.length) return {text, subjects: []};
-    const placed = [];
+    const placed = [], placedProps = [];
     if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) active = false;
     const numbers = pictureNumbers(list, continued);
     const order = [];
@@ -117,6 +121,10 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         if (person?.setting) {
             // A scene is not a subject: its name stays in the sentence and one line says which pictures show the place.
             if (active && !placed.includes(person) && person.rows.some(index => numbers.has(index))) placed.push(person);
+            result += person.name; continue;
+        }
+        if (person?.prop) {
+            if (active && !placedProps.includes(person) && person.rows.some(index => numbers.has(index))) placedProps.push(person);
             result += person.name; continue;
         }
         if (!active || !person || !person.rows.some(index => numbers.has(index))) { result += person ? person.name : range.name; continue; }
@@ -133,7 +141,12 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         const description = String(place.description || '').trim().replace(/\.+$/, '');
         return `setting: ${place.name}${description ? ': ' + description : ''}. <Picture ${number}> shows the place.`;
     });
-    if (!order.length && !places.length) return {text: result, subjects: []};
+    const objects = placedProps.slice(0, MAX_PROPS).map(thing => {
+        const number = thing.rows.map(index => numbers.get(index)).filter(Boolean)[0];
+        const description = String(thing.description || '').trim().replace(/\.+$/, '');
+        return `prop: ${thing.name}${description ? ': ' + description : ''}. <Picture ${number}> shows the object.`;
+    });
+    if (!order.length && !places.length && !objects.length) return {text: result, subjects: []};
     const subjects = order.map(person => {
         // Consecutive picture numbers make one range; a person whose pictures are apart gets several.
         const ranges = [];
@@ -143,7 +156,7 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         }
         return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: null};
     });
-    const definitions = [...(subjects.length ? [subjectDefinitions(subjects)] : []), ...places].join(' ');
+    const definitions = [...(subjects.length ? [subjectDefinitions(subjects)] : []), ...places, ...objects].join(' ');
     return {text: definitions + '\n\n' + result, subjects};
 }
 
@@ -183,10 +196,17 @@ export function mentionState(rows, card, count = cardPictures(card).length, {con
     const people = castInRows(list);
     if (people.some(person => person.id === card.id)) return {ok: true, present: true};
     if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) return {ok: false, reason: 'frames'};
-    if (card.kind === 'setting' ? people.some(person => person.setting) : people.filter(person => !person.setting).length >= MAX_PEOPLE) {
+    if (card.kind === 'prop') {
+        if (people.filter(person => person.prop).length >= MAX_PROPS) return {ok: false, reason: 'props'};
+    } else if (card.kind === 'setting' ? people.some(person => person.setting) : people.filter(person => !person.setting && !person.prop).length >= MAX_PEOPLE) {
         return {ok: false, reason: card.kind === 'setting' ? 'place' : 'people'};
     }
-    if (continued && pictureNumbers(list).size >= CONTINUE_PICTURES) return {ok: false, reason: 'continued'};
+    // Faces and the place come before props in a continued part, so props alone do not take their positions.
+    if (continued) {
+        const taken = card.kind === 'prop' ? pictureNumbers(list).size
+            : pictureNumbers(list.filter(row => row?.cast?.prop !== true)).size;
+        if (taken >= CONTINUE_PICTURES) return {ok: false, reason: 'continued'};
+    }
     if (list.filter(enabled).length + count > MAX_REFERENCES) return {ok: false, reason: 'full'};
     return {ok: true, present: false};
 }
@@ -209,6 +229,6 @@ export function withCharacter(rows, card, typed = '') {
     const list = Array.isArray(rows) ? rows.map(row => ({...row})) : [];
     if (castInRows(list).some(person => person.id === card.id)) return list;
     const handle = typed || mentionHandle(list, card);
-    const cast = {id: card.id, name: card.name, description: card.description || '', ...(card.kind === 'setting' ? {setting: true} : {}), ...(handle === card.name ? {} : {handle})};
-    return [...list, ...cardPictures(card).map(file => ({file, role: 'reference', enabled: true, cast}))];
+    const cast = {id: card.id, name: card.name, description: card.description || '', ...(card.kind === 'setting' ? {setting: true} : card.kind === 'prop' ? {prop: true} : {}), ...(handle === card.name ? {} : {handle})};
+    return [...list, ...cardPictures(card).slice(0, card.kind === 'prop' ? 1 : undefined).map(file => ({file, role: 'reference', enabled: true, cast}))];
 }

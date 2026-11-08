@@ -49,6 +49,7 @@
 .fv-cg[data-kind=scene] .fv-cg-view{aspect-ratio:16/9;cursor:pointer}
 .fv-cg[data-kind=scene] .fv-cg-view:not([data-state=done]){cursor:default}
 .fv-cg[data-kind=scene] .fv-cg-view img{object-fit:cover}
+.fv-cg[data-shape=square] .fv-cg-view{aspect-ratio:1/1}
 .fv-cg[data-kind=scene] .fv-cg-view[aria-pressed=true]{border:2px solid var(--fv-accent,#6db8fa)}
 .fv-cg[data-kind=scene] .fv-cg-view:focus-visible{outline:2px solid var(--fv-accent,#6db8fa);outline-offset:2px}
 .fv-cg-stage{display:none}

@@ -54,3 +54,10 @@
 .fv-cast-dialog[data-kind=scene] .fv-cast-views{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:none}
 .fv-cast-dialog[data-kind=scene] .fv-cast-slot{aspect-ratio:16/9}
 .fv-cast-dialog[data-kind=scene] .fv-cast-choose img{object-fit:cover}
+.fv-cast-library[data-kind=prop] .fv-cast-avatar,.fv-cast-library[data-kind=prop] .fv-cast-add{border-radius:6px}
+.fv-cast-library[data-kind=prop] .fv-cast-avatar img{object-position:50% 50%;object-view-box:none}
+.fv-cast-dialog[data-kind=prop] .fv-cast-upload{display:block}
+.fv-cast-dialog[data-kind=prop] .fv-cast-views{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+.fv-cast-dialog[data-kind=prop] .fv-cast-slot{aspect-ratio:1/1;max-width:160px}
+.fv-cast-dialog[data-kind=prop] .fv-cast-choose img{object-fit:cover}
+.fv-studio .fv-panel .fv-cast-library .fv-cast-avatar,.fv-studio .fv-panel .fv-cast-library .fv-cast-add{padding:0;min-height:0}

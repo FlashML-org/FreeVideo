@@ -1,4 +1,4 @@
-"""The cast library: durable character and setting cards shared by every film.
+"""The cast library: durable character, setting and prop cards shared by every film.
 
 One JSON file per card under <jobs>/cast, written atomically under Jobs' lock,
 the same way films are kept. Pictures and voices enter a card only as input
@@ -21,7 +21,7 @@ from . import assets, errors, operation_receipts, schema, spec
 from .jobs import ACTIVE, DONE, JobError, iso
 
 CARD = re.compile(r'c[0-9a-f]{12}')
-KINDS = ('character', 'setting')
+KINDS = ('character', 'setting', 'prop')
 ORIGINS = ('user', 'agent', 'builtin')
 LABELS = schema.LABELS
 EDITABLE = ('name', 'description', 'images', 'voice')
@@ -39,6 +39,7 @@ PROMPT_VERSION = 1
 TURN = dict(aspect='9:16', seconds=6)
 CLOSE_UP = dict(aspect='1:1', seconds=4)
 SCENE = dict(aspect='16:9', seconds=6)
+PROP = dict(aspect='1:1', seconds=4)
 
 # The sheet of every view a shot carries for each person, put together here from the card's own pictures: up to six
 # equal cells (three to a row) on a light grey ground, each picture scaled whole and centred, no text.
@@ -58,6 +59,9 @@ def reference_prompt(card, *, face=False):
     who = (card.get('description') or card['name']).strip().rstrip('.')
     if card['kind'] == 'setting':
         return ('%s. A slow, steady camera pan across the place, no people, sharp focus, no text.' % who)
+    if card['kind'] == 'prop':
+        return ('%s. The object alone in the centre of the frame, slowly turning in place, in front of a plain '
+                'light grey backdrop, even soft light, a static camera, sharp focus, no people, no text.' % who)
     if face:
         return ('%s. A close-up of the face and shoulders, looking straight at the camera with a neutral '
                 'expression, in front of a plain light grey studio backdrop. The person stays still. '
@@ -676,7 +680,7 @@ class Cast:
                                 'GET /freevideo/agent/v1/jobs/%s; when it ends, get the card.' % job,
                                 card=view(card), job=job)
             if value['face'] and card['kind'] != 'character':
-                raise spec.SpecError([schema.diagnostic('/face', 'false for a setting card', True)])
+                raise spec.SpecError([schema.diagnostic('/face', 'false for a setting or prop card', True)])
             ready = value.get('source') != 'video' and getattr(self.jobs.port, 'image_ready', lambda: False)()
             from ..image_gen.loras import validate_selection
             loras = validate_selection(value.get('loras', []))
@@ -689,12 +693,12 @@ class Cast:
             seed = secrets.randbelow(spec.MAX_SEED + 1)
             token = uuid.uuid4().hex[:12]
             if source == 'image':
-                from ..image_gen.cast_views import VIEWS, SETTING_VIEWS
+                from ..image_gen.cast_views import VIEWS, SETTING_VIEWS, PROP_VIEWS
                 # A picture takes seconds, so a character always gets every view, the face close-up included.
-                views = list(SETTING_VIEWS if card['kind'] == 'setting' else VIEWS)
+                views = list(SETTING_VIEWS if card['kind'] == 'setting' else PROP_VIEWS if card['kind'] == 'prop' else VIEWS)
                 items = self._image_items(card, views[:1], seed, loras=loras)
             else:
-                parts = [('turn', SCENE if card['kind'] == 'setting' else TURN, False)]
+                parts = [('turn', SCENE if card['kind'] == 'setting' else PROP if card['kind'] == 'prop' else TURN, False)]
                 if value['face']:
                     parts.append(('face', CLOSE_UP, True))
                 items = [dict(kind='generate', prompt=reference_prompt(card, face=face), seed=seed,
@@ -847,7 +851,7 @@ class Cast:
                 staged.append((temporary, file))
                 part = hidden['job_views'][job]
                 pictures.append(dict(media=dict(file=file), by=generating['by'], from_job=job,
-                                     generated=True, label='other' if hidden['kind'] == 'setting' else part))
+                                     generated=True, label='other' if hidden['kind'] in ('setting', 'prop') else part))
             self._settle(identity, hidden, pictures, failure, staged)
         finally:
             for out, _ in staged:
@@ -893,7 +897,7 @@ class Cast:
                         failure = failure or dict(code='internal_error', job=job,
                                                   message='The reference pictures could not be saved.')
                     continue
-                setting = hidden.get('kind') == 'setting'
+                setting = hidden.get('kind') in ('setting', 'prop')
                 for n, row_frame in enumerate(picked):
                     if row_frame is None:
                         temporary[n].unlink(missing_ok=True)

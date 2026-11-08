@@ -702,7 +702,7 @@ def drama_schema(name):
 
 
 CAST_OPERATIONS = {
-    'create': ('POST', '/cast', 'Create a character or setting card when no existing card fits'),
+    'create': ('POST', '/cast', 'Create a character, setting or prop card when no existing card fits'),
     'list': ('GET', '/cast', 'Search the cast library before casting; reuse a matching card'),
     'get': ('GET', '/cast/{id}', 'Read a card with its pictures, voice and revision'),
     'update': ('PATCH', '/cast/{id}', 'Change a card; send the revision you read; fields the user changed stay theirs'),
@@ -724,7 +724,7 @@ def cast_schema(name, *, local=False):
                   images=array(obj(dict(media=picture, label=enum(LABELS)), ('media',)), 0, 6),
                   voice=nullable(obj(dict(media=sound, start=number(0, 3600, default=0), end=number(0, 3600)), ('media',))))
     if name == 'create':
-        return obj(dict(kind=enum(('character', 'setting'), default='character'), **fields, ref=REF), ('name',))
+        return obj(dict(kind=enum(('character', 'setting', 'prop'), default='character'), **fields, ref=REF), ('name',))
     if name == 'update':
         fields['images']['items']['properties']['label'] = {'type': 'string'}
         return obj(dict(fields, revision=number(1, integer=True), ref=REF))
@@ -738,7 +738,7 @@ def cast_schema(name, *, local=False):
                                      description='Replace pictures the user did not add; default fills empty slots.'),
                         revision=number(1, integer=True), ref=REF))
     if name == 'list':
-        return obj(dict(q=string(200), kind=enum(('character', 'setting')), origin=enum(('user', 'agent', 'builtin')),
+        return obj(dict(q=string(200), kind=enum(('character', 'setting', 'prop')), origin=enum(('user', 'agent', 'builtin')),
                         production=PRODUCTION, limit=number(1, 200, integer=True, default=50)))
     return EMPTY
 
@@ -753,7 +753,7 @@ def cast_view():
     generated = obj(dict(job=JOB, face_job=nullable(JOB), source=enum(('image', 'video')),
         seed=number(0, 2**53 - 1, integer=True), prompt_version=number(1, integer=True)),
         ('job', 'face_job', 'seed', 'prompt_version'))
-    return dict(obj(dict(id=CAST, kind=enum(('character', 'setting')), name=string(120),
+    return dict(obj(dict(id=CAST, kind=enum(('character', 'setting', 'prop')), name=string(120),
         description=nullable(string(1000)), revision=number(1, integer=True),
         images=array(picture, 0, 6), candidates=array(picture, 0, 6),
         generating=nullable(generating), generated=nullable(generated),

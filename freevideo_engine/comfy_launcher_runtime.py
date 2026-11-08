@@ -736,6 +736,7 @@ class Controller:
         self._access_poll_thread = None
         self.cancelled = threading.Event()
         self.server = None
+        self._exit_seen = None
         self.server_url = None
         self.server_address = None
         self.access_proxy = None
@@ -852,13 +853,38 @@ class Controller:
                                             password_set=password_set)
         self.state = dict(self.state, lan_status='' if self.access_links else 'no-address', lan_password_set=password_set)
 
+    def check_server_exit(self):
+        """Record a ComfyUI this launcher started that ended while it was open, and offer to start it again.
+
+        Only a process the launcher did not stop itself counts (stop_owned_server clears self.server under
+        the same lock), and an exit the user made (a normal exit, Ctrl+C) changes nothing. Returns the record or None.
+        """
+        with self._server_lock:
+            server = self.server
+            if (server is None or self.state.get('status') != 'open' or self._exit_seen is server
+                    or server.poll() is None):
+                return None
+            self._exit_seen = server
+            code, log = server.returncode, self.server_log
+            engine = (self.selection or {}).get('engine')
+            from . import engine_exit
+            if not engine or engine_exit.by_the_user(code):
+                return None
+            value = engine_exit.record(engine, code, log)
+            self.state = dict(self.state, status='restart-required', engine_exit=engine_exit.public(value))
+            return value
+
     def check_access_proxy(self):
         """Poll child lifetimes and refresh network links without moving ComfyUI."""
         if self.access_proxy is None:
             return
         if self.server is not None and self.server.poll() is not None:
-            self._access_stopped()
-            self.state = dict(self.state, status='ready')
+            with self._server_lock:
+                # This check may see the exit before the launcher's own does: record it first.
+                self.check_server_exit()
+                self._access_stopped()
+                # An engine that ended while open keeps its "stopped" notice.
+                self.state = dict(self.state, status='restart-required' if self.state.get('engine_exit') else 'ready')
         elif self.access_proxy.poll() is not None:
             self._access_stopped()
         elif time.monotonic() - self.access_polled >= 5:
@@ -1330,7 +1356,7 @@ class Controller:
     def _connect_comfy(self):
         retry, self._scope_retry = self._scope_retry, False
         self.state = {key: value for key, value in self.state.items()
-                      if key != 'moved_from' and (retry or key != 'plugin_scoped')}
+                      if key not in ('moved_from', 'engine_exit') and (retry or key != 'plugin_scoped')}
         if not self.selection or not self.selection['ready']:
             raise ValueError('Choose and inspect ComfyUI first')
         selected = self.selection

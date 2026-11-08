@@ -19,6 +19,8 @@ const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = n
 
 const CHAT_ISSUE = ['Chat', '对话'];
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+// Rewriting a text node drops the reader's selection, so a refresh writes only what changed.
+function put(node, text) { if (node.textContent !== text) node.textContent = text; }
 function glyph(path, width = 2.2) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('stroke-width', String(width));
@@ -401,6 +403,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     if (hint) main.insertBefore(hint.element, form);
     // A quoted button name stays on one line, so “新对话” never wraps in the middle.
     function quoted(node, text) {
+        if (node.textContent === text) return;
         const parts = String(text).split(/(“[^”]{1,12}”|"[^"]{1,24}")/);
         node.textContent = text;
         if (parts.length > 1) node.replaceChildren(...parts.flatMap((part, index) => part ? [el('span', index % 2 ? 'fv-chat-keep' : '', part)] : []));
@@ -891,7 +894,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         }
         return {element: item, update(entry, {editable = false} = {}) {
             current = entry;
-            if (!editor) { text.textContent = entry.text; text.hidden = !entry.text && !!entry.attachments?.length; }
+            if (!editor) { put(text, entry.text); text.hidden = !entry.text && !!entry.attachments?.length; }
             const names = (entry.attachments || []).map(picture => picture.name).join('|');
             if (names !== shown) {
                 shown = names; item.querySelector('.fv-chat-refs')?.remove();
@@ -974,7 +977,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         return draw = next => {
             const cells = jobParts(next);
             level(next);
-            name.textContent = jobName(next, t); meta.textContent = jobMeta(next, t); meta.hidden = !meta.textContent;
+            put(name, jobName(next, t)); put(meta, jobMeta(next, t)); meta.hidden = !meta.textContent;
             while (parts.children.length > cells.length) parts.lastChild.remove();
             while (parts.children.length < cells.length) parts.append(el('i'));
             cells.forEach((value, index) => parts.children[index].style.setProperty('--w', `${value * 100}%`));
@@ -983,8 +986,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const where = cardLine(said, next, t);
             quiet = stalled(next);
             const waiting = t('Progress has not updated recently; generation is still running.', '进度暂未更新，仍在生成中。');
-            part.textContent = cells.length ? t(`Part ${block.index} / ${block.total}`, `第 ${block.index} / ${block.total} 段`) : quiet ? waiting : where;
-            step.textContent = cells.length ? quiet ? waiting : where : '';
+            put(part, cells.length ? t(`Part ${block.index} / ${block.total}`, `第 ${block.index} / ${block.total} 段`) : quiet ? waiting : where);
+            put(step, cells.length ? quiet ? waiting : where : '');
             const going = stopping.has(next.id) || next.status === 'cancelling';
             stop.disabled = going; stop.textContent = going ? t('Stopping…', '正在停止…') : t('Stop', '停止');
             stop.setAttribute('aria-busy', String(going));
@@ -1062,7 +1065,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         }
         item.replaceChildren(...children);
         return (next, latest) => {
-            name.textContent = jobName(next, t); meta.textContent = jobMeta(next, t); meta.hidden = !meta.textContent;
+            put(name, jobName(next, t)); put(meta, jobMeta(next, t)); meta.hidden = !meta.textContent;
             if (picture) { show.setAttribute('aria-label', t('Open ', '打开 ') + jobName(next, t)); save.setAttribute('aria-label', t('Download ', '下载 ') + jobName(next, t)); }
             show.classList.toggle('fv-primary', latest);
         };
@@ -1121,7 +1124,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     actions.append(diagnostic.report);
                     if (retry) actions.append(...again());
                     links.append(actions); item.replaceChildren(reason, links);
-                    apply = next => { current = next; reason.textContent = failureReason(next, t);
+                    apply = next => { current = next; put(reason, failureReason(next, t));
                         diagnostic.updateReport({report_id: next.report_id}); };
                 } else { item.replaceChildren(); apply = null; }
             }
@@ -1134,7 +1137,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 button.hidden = way === 'resend' && !text;
                 // Going on needs no agent; saying the words again does.
                 button.disabled = retrying.has(key) || !inSelectedChat() || way === 'resend' && !sendingAllowed();
-                if (note) { note.textContent = fallbacks.get(key)?.reason || ''; note.hidden = !note.textContent; }
+                if (note) { put(note, fallbacks.get(key)?.reason || ''); note.hidden = !note.textContent; }
             }
         }};
     }
