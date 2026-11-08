@@ -624,6 +624,15 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
             cleaned['progress_timeline'] = timeline
         from .diagnostic_summary import summary_report
         cleaned['analysis'] = summary_report(cleaned)
+        try:
+            # Why the ComfyUI before this one stopped, when the launcher saw it end: numbers and fixed words.
+            from .comfy_bridge import installation_root
+            from .engine_exit import public, read
+            stopped = public(read(installation_root()))
+            if stopped:
+                cleaned['engine_exit'] = stopped
+        except Exception:
+            pass
         save(target, cleaned)
         return target
     except Exception:

@@ -22,6 +22,7 @@ import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
+import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
 import { problem as timedProblem, timedText } from './timed_prompt.js';
@@ -1696,6 +1697,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
     }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || (isNetworkTypeError(error) ? connectionLostText(t) : error?.message) || String(error));
     let lastQueueError = null, connectionNotice = false;
+    watchEngineExit(api).catch(() => {});
     function showQueueError(error) {
         if (disposed) return;
         status.dataset.error = 'true';
@@ -1724,6 +1726,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (node.freevideoFailureReport?.stage !== 'queue') return;
         lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
         status.dataset.error = 'false'; status.textContent = '';
+        // The engine is back: say so when the launcher saw it stop by itself.
+        newEngineExit(api).then(record => {
+            if (record && !disposed && !status.textContent) status.textContent = engineExitText(record, t);
+        }).catch(() => {});
     }
     // A part that stopped is one sentence on the status line; what ComfyUI said goes in the card, as a generation failure.
     function showPartError(error) {

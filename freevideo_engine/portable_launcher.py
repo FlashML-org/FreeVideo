@@ -243,6 +243,8 @@ class PortableController(Controller):
         self.state = dict(self.state, selection=dict(self.selection), lan_status=child.state.get('lan_status', ''))
         if status:
             self.state = dict(self.state, status=child.state['status'], url=child.state.get('url', ''))
+            if 'engine_exit' in child.state:
+                self.state = dict(self.state, engine_exit=child.state['engine_exit'])
 
     def _configure_access(self, values, *, connect=False):
         if connect:
@@ -262,6 +264,16 @@ class PortableController(Controller):
         if self.comfy_controller is not None:
             self.comfy_controller.stop_owned_server(grace=grace)
         super().stop_owned_server(grace=grace)
+
+    def check_server_exit(self):
+        """The ComfyUI of a package runs under the inner controller; its record and notice are copied here."""
+        child = self.comfy_controller
+        if child is None:
+            return super().check_server_exit()
+        value = child.check_server_exit()
+        if value is not None:
+            self._sync_access()
+        return value
 
     def check_access_proxy(self):
         if self.comfy_controller is None:

@@ -136,6 +136,12 @@ def register():
     async def launcher(request):
         return web.json_response(info)
 
+    @server.routes.get('/freevideo/launcher/last-exit')
+    async def last_exit(request):
+        """When the ComfyUI before this one stopped by itself: numbers and fixed words, never log text."""
+        from .engine_exit import public, read
+        return web.json_response(dict(exit=public(read(info['engine_root']))), headers={'Cache-Control': 'no-store'})
+
     @server.routes.get('/freevideo/launcher/workflow')
     async def workflow(request):
         value = json.loads((source / 'example_workflows' / 'FreeVideo-All-in-One.json').read_text(encoding='utf-8'))
