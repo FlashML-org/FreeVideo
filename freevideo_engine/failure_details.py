@@ -724,8 +724,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # Windows PowerShell 5.1 itself failed to initialize (.NET), before any FreeVideo script ran.
         (r'The shell cannot be started\. A failure occurred during initialization', 'powershell-start',
          ('Windows PowerShell could not start', 'Windows PowerShell 无法启动'),
-         ('FreeVideo needs Windows PowerShell to inspect this computer, and it failed to start here. Restart the computer and click Retry installation. If it happens again, export the report.',
-          'FreeVideo 需要用 Windows PowerShell 检查这台电脑，但它在这里没能启动。请重启电脑后点击“重试安装”；仍然出现时，请导出报告。')),
+         ('FreeVideo uses Windows PowerShell to inspect this computer, but Windows PowerShell could not start. Restart the computer, then click "Retry installation". If it fails again, export the report.',
+          'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 没能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
         (r'CURL_REPAIR_(?:TIMEOUT|HTTP|TLS|DNS|FAILED|PROXY_UNSUPPORTED|PROXY_MISSING|REDIRECT|SIZE|INTEGRITY)', 'download-tool-network',
          ('The download tool could not be prepared', '下载工具自动补齐失败'),
          ('Check the connection mode in Downloads and retry. Export the report for the source, route and failure code.',
