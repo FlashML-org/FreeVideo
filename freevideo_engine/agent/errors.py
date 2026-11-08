@@ -252,7 +252,7 @@ def recovery(code, *, kind=None, stage='request', resumable=True):
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
     if kind == 'music' and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the music job again with a new ref.'
-    if kind in ('stems', 'sound', 'finish_sound', 'voice', 'voice_lines') and code == 'out_of_memory':
+    if kind in ('stems', 'sound', 'finish_sound', 'voice', 'voice_lines', 'voice_say') and code == 'out_of_memory':
         return 'Close other GPU applications, then submit the job again with a new ref.'
     if kind == 'image' and code == 'no_memory':
         return 'Lower the picture dimensions or use fewer reference pictures, then submit with a new ref.'

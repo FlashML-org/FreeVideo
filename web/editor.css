@@ -101,6 +101,17 @@
 .fv-ed-music-label{flex:none;min-width:2.5em;font-size:13px;color:var(--fv-muted)}
 .fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented{width:auto;flex:0 1 auto;min-width:0;flex-wrap:wrap}
 .fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented button{flex:none}
+/* An empty stretch of the recording track: the voice above the words, on one line at any width. */
+.fv-ed-genbar.fv-ed-genbar-say{flex-wrap:wrap}
+.fv-ed-say-voice{order:-1;flex:1 1 100%;display:flex;align-items:center;gap:8px;min-width:0}
+.fv-ed-say-voice[hidden],.fv-ed-say-voice [hidden]{display:none}
+.fv-ed-say-label{flex:none;min-width:2.5em;font-size:13px;color:var(--fv-muted)}
+/* Under the studio's own select and button rules, so the voice keeps its width and the play sign its size. */
+.fv-ed-genbar .fv-ed-say-select{flex:0 1 auto;width:auto;min-width:0;max-width:min(100%,22em);min-height:var(--fv-h-sm);padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);color:inherit;font:inherit;text-overflow:ellipsis}
+.fv-ed-genbar .fv-ed-say-listen{flex:none;width:var(--fv-h-sm);height:var(--fv-h-sm);min-width:0;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);color:inherit;cursor:pointer}
+.fv-ed-genbar .fv-ed-say-listen:disabled{opacity:.5;cursor:default}
+.fv-ed-genbar .fv-ed-say-listen svg{flex:none;width:12px;height:12px;fill:currentColor}
+.fv-ed-say-none{font-size:16px;color:var(--fv-muted);min-width:0}
 .fv-editor:has(.fv-ed-gen-failure:not([hidden])){--fv-ed-generation-row:max-content}
 .fv-ed-genbar:has(.fv-ed-gen-failure:not([hidden])){flex-wrap:wrap;padding-top:10px;padding-bottom:10px}
 .fv-editor .fv-ed-gen-failure{display:block;flex:1 0 100%;min-width:0}

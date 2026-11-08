@@ -148,7 +148,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
             .replace("import { uploadMedia } from './media_upload.js';", 'const {uploadMedia} = globalThis.__freevideoEntryTest;')
             .replace("import { createCastLibrary } from './cast_library.js';", 'const {createCastLibrary} = globalThis.__freevideoEntryTest;')
-            .replace("import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body;')
+            .replace("import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body, peopleOf = () => [];')
             .replace("import { swapMissingText } from './replace_person.js';", 'const swapMissingText = () => "";')
             .replace("import { agentInterfaceState } from './agent_connect.js';", "const agentInterfaceState = async () => 'off';")
             .replace("import { installNativeErrorGuard } from './native_errors.js';", 'const installNativeErrorGuard = () => {};')

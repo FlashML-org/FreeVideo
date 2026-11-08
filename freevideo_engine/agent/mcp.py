@@ -24,7 +24,7 @@ from .client import ApiError, Client, DONE
 JOB_WAIT = 45.  # freevideo_wait only; the other waits keep 25 s. Fewer empty turns, each of which carries the whole context again.
 PROTOCOLS = ('2025-06-18', '2025-03-26', '2024-11-05')
 INSTRUCTIONS = """FreeVideo generates videos (MiniMax H3) on this computer's GPU.
-Start with freevideo_status and freevideo_capabilities. Picture editing, storyboards (submit_batch), editor operations and plan are not listed in full: freevideo_tool_help {name} gives the schema, freevideo_call runs them. Write prompts as the guide says (freevideo_prompt_guide): English sections
+Start with freevideo_status and freevideo_capabilities. Picture editing, storyboards (submit_batch), editor operations and plan are not listed in full: freevideo_tool_help {name} gives the schema, freevideo_call runs them. If a parameter is unclear, read the schema or check with freevideo_plan; do not submit a test job. Write prompts as the guide says (freevideo_prompt_guide): English sections
 integrated_multimodal_description / overall_soundscape / non_diegetic_music, [Shot N] cuts, (S1) <d>[Language] ...</d>
 dialogue. Generation uses continuous chains and takes minutes: submit, then call freevideo_wait (up to 45 seconds; it returns as soon as the job ends)
 or freevideo_job. Interrupted/failed/cancelled generation can continue with freevideo_resume; completed blocks stay.

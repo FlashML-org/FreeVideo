@@ -277,6 +277,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'editor',
+        view: 'editor',
         goto: ['editor-timeline'],
         title: {zh: '剪辑视图：裁剪、描述、接续', en: 'The Edit view: crop, describe, continue'},
         summary: {zh: '在时间线上选中一段，描述它，并接着生成。', en: 'Select a part on the timeline, describe it and continue.'},
@@ -301,6 +302,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'editor-extend-refs',
+        view: 'editor',
         title: {zh: '在剪辑视图延长时加参考图', en: 'Add reference images when extending in Edit'},
         summary: {zh: '用参考图引导接着生成的那一段。', en: 'Use reference images to guide the next part.'},
         media: {
@@ -324,6 +326,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'segment-prompt',
+        view: 'editor',
         goto: ['segment-prompt'],
         title: {zh: '逐段描述', en: 'Describe each part'},
         summary: {zh: '为剪辑视图中的每一段单独写描述。', en: 'Write a separate description for each part in the Edit view.'},
@@ -343,6 +346,8 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'separate-tracks',
+        view: 'editor',
+        select: '.fv-ed-clip[data-track=a1]',
         goto: ['audio-track-button'],
         title: {zh: '分离音轨和替换声音', en: 'Separate tracks and replace sound'},
         summary: {zh: '把声音分成人声、音乐和环境声，并分别替换。', en: 'Split the sound into dialogue, music and ambience and replace each one.'},
@@ -362,6 +367,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'replace-music',
+        view: 'editor',
         goto: ['audio-a2-track'],
         title: {zh: '加配乐', en: 'Add music'},
         summary: {zh: '在声音轨上选一段，描述想要的音乐。', en: 'Select a range on a sound track and describe the music.'},
@@ -371,8 +377,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：第二条声音轨上选中的一段和风格选项已用红框标出。', en: 'The Edit view, with a range on the second sound track and the style options outlined in red.'},
         },
         steps: {
-            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项。', '在“描述配乐”中写下想要的音乐。', '点“生⁠成”。'],
-            en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood".', 'Describe the music under "Describe the music".', 'Choose "Generate".'],
+            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项，或在“描述配乐”中写下想要的音乐。写了描述时，只按描述生成。', '点“生⁠成”。'],
+            en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood", or describe the music under "Describe the music". When there is a description, the music follows it alone.', 'Choose "Generate".'],
         },
         limits: {
             zh: ['首次生成需要下载配乐模型。', '要换掉分离后的音乐，请选中“音乐”轨上的片段，按钮会变为“替⁠换⁠配⁠乐”。'],
@@ -381,6 +387,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'voice-recording',
+        view: 'editor',
         goto: ['record-entry'],
         title: {zh: '配音与录音', en: 'Voice-over and recording'},
         summary: {zh: '直接录音，或对已有的台词重新配音。', en: 'Record your own voice, or redub lines that already exist.'},
@@ -399,7 +406,28 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'narration',
+        view: 'editor',
+        goto: ['editor-timeline'],
+        title: {zh: '为一句话配音', en: 'Add a spoken line'},
+        summary: {zh: '写下一句话，用片中的声音或一段录音说出来。', en: 'Write a line and have it spoken in a voice from the project or a recording.'},
+        media: {
+            type: 'image',
+            src: {zh: 'narration-1.webp', en: 'narration-2.webp'},
+            alt: {zh: '剪辑视图：生成条中的“音色”和“生成”已用红框标出。', en: 'The Edit view, with "Voice" and "Generate" in the generation bar outlined in red.'},
+        },
+        steps: {
+            zh: ['在声音轨的空白处点右键，选“配⁠音”。', '配音放在“录⁠音”轨上（分离过音轨时放在“人⁠声”轨），没有录音轨时会自动加上；选区从点击处到下一个片段，最长 5 秒。', '在“音⁠色”中选说话人、导入的片段或录音。“选一个声音片段…”可在时间线上点选，▶ 可试听。', '写下要说的话，点“生⁠成”。'],
+            en: ['Right-click an empty spot on a sound track and choose "Narration".', 'The line goes on the Voice track (or on the Dialogue track after separating tracks), which is added if missing. The range runs from the click to the next clip, up to 5 s.', 'Under "Voice", choose a speaker, an imported clip or a recording. "Pick a sound clip…" lets you click one on the timeline, and ▶ plays a sample.', 'Write what to say and choose "Generate".'],
+        },
+        limits: {
+            zh: ['话比选区长时，后面有空位就按完整长度放入；会盖住后面的片段时不放入，选区和文字保留。', '放入后可以撤销，也可在“台⁠词”中点“重⁠新⁠配⁠音”改写。'],
+            en: ['If the line is longer than the selection, it is placed at full length when there is room after it. If it would cover the next clip, it is not placed, and the selection and text are kept.', 'A placed line can be undone, or changed with "Redub" under "Lines".'],
+        },
+    },
+    {
         id: 'sound-to-picture',
+        view: 'editor',
         goto: ['editor-timeline'],
         title: {zh: '按声音生成画面', en: 'Generate a picture from sound'},
         summary: {zh: '为只有声音的部分生成匹配的画面。', en: 'Generate a picture that matches a part that only has sound.'},
@@ -415,6 +443,26 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['画面时长以所选的一段为准。'],
             en: ['The picture has the length of the selected range.'],
+        },
+    },
+    {
+        id: 'text-subtitles',
+        view: 'editor',
+        goto: ['text-entry'],
+        title: {zh: '加文字和字幕', en: 'Add text and subtitles'},
+        summary: {zh: '在剪辑视图里给画面加标题文字，或加上字幕。', en: 'Put a title or subtitles over the picture in the Edit view.'},
+        media: {
+            type: 'image',
+            src: {zh: 'text-subtitles-1.webp', en: 'text-subtitles-2.webp'},
+            alt: {zh: '剪辑视图：工具栏中的文字图标和字幕图标已用红框标出。', en: 'The Edit view, with the text icon and the subtitle icon in the toolbar outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“剪辑视图”，把播放头移到想加字的位置。', '点工具栏的 T 图标加标题，或点它右边的字幕图标加一条字幕，然后直接输入内容。', '在时间线上拖动两端调整出现的时间；在右侧面板中改字体、大小和颜色。', '已有 SRT 字幕文件时，选中字幕后点“导入字幕文件”。', '点右上角的“导⁠出”，文字和字幕会一起画进视频。'],
+            en: ['Choose "Edit" at the top and move the playhead to where the words should appear.', 'Click the T icon in the toolbar to add a title, or the subtitle icon next to it to add a subtitle, then type.', 'Drag the ends on the timeline to set when they appear, and change the font, size and colour in the panel on the right.', 'With an SRT subtitle file, select a subtitle and choose "Import subtitle file".', 'Choose "Export" at the top right. The words are drawn into the video.'],
+        },
+        limits: {
+            zh: ['字幕文件只支持 SRT，一次最多导入 500 条。', '所选字体缺少的字会在导出前提示。'],
+            en: ['Only SRT subtitle files can be imported, up to 500 subtitles at a time.', 'Characters the chosen font does not have are reported before export.'],
         },
     },
     {

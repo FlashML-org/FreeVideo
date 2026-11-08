@@ -1,8 +1,8 @@
 import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 
 const COPY = {
-    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '填入示例', goto: '带我去'},
-    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Use example', goto: 'Take me there'},
+    zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '填入示例', goto: '带我去', noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。'},
+    en: {book: 'Tutorial', contents: 'Contents', close: 'Close', limits: 'Limits', start: 'Start walkthrough', tryIt: 'Use example', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.'},
 };
 const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -119,16 +119,20 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
                 window.freevideoHowTo.tryIt(item.example, {chapter: item.id});
             };
         }
-        let gotoButton = null;
+        let gotoButton = null, gotoNote = null;
         if (item.goto?.length) {
             gotoButton = el('button', 'fv-book-start fv-book-goto', text.goto); gotoButton.type = 'button';
+            const note = el('p', 'fv-book-note'); note.setAttribute('role', 'status'); note.hidden = true;
             gotoButton.onclick = async () => {
-                dialog.close();
-                const {guideTo} = await import('./tour_goto.js');
-                for (const id of item.goto) if (await guideTo(id)) break;
+                const {goToScene} = await import('./tour_goto.js');
+                gotoButton.disabled = true; note.hidden = true;
+                const result = await goToScene({view: item.view, ids: item.goto, select: item.select, beforeRing: () => dialog.close()});
+                gotoButton.disabled = false;
+                if (!result.ok) { note.textContent = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget']; note.hidden = false; note.scrollIntoView({block: 'nearest'}); }
             };
+            gotoNote = note;
         }
-        article.append(steps, ...(tryButton ? [tryButton] : []), ...(gotoButton ? [gotoButton] : []), start, limits);
+        article.append(steps, ...(tryButton ? [tryButton] : []), ...(gotoButton ? [gotoButton] : []), start, ...(gotoNote ? [gotoNote] : []), limits);
         syncHowTo();
         syncTry();
         article.scrollTop = 0;

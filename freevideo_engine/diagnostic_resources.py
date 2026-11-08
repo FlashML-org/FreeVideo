@@ -33,7 +33,10 @@ DECODE_PHASES = ('decoder_admission', 'vae_load', 'video_decode', 'video_postpro
 SAMPLE_FINALIZE_PHASES = ('latent_validation', 'latent_save', 'offload_release', 'transformer_release')
 HOST_SAMPLE = ('pinned_allocated_bytes', 'pinned_active_bytes', 'pinned_cached_bytes',
     'physical_available_bytes', 'commit_available_bytes', 'torch_threads', 'torch_interop_threads')
-PROCESS_DELTA = ('cpu_user_seconds', 'cpu_system_seconds', 'read_bytes', 'write_bytes')
+PROCESS_DELTA = ('cpu_user_seconds', 'cpu_system_seconds', 'read_bytes', 'write_bytes', 'page_faults')
+# Lows and highs of host memory inside one sampling step (sampling_memory.mark_host).
+HOST_WINDOW = ('samples', 'min_commit_available_bytes', 'min_physical_available_bytes',
+               'peak_private_commit_bytes', 'peak_working_set_bytes')
 WEIGHT_PLACEMENT = ('transfers', 'h2d_bytes', 'host_stage_seconds', 'h2d_seconds',
     'host_buffer_wait_seconds', 'prefetch_wait_seconds', 'pinned_model_bytes', 'pinned_host_allocated_bytes',
     'pinned_layer_count', 'streamed_layer_count', 'pinned_buffer_bytes', 'pageable_buffer_bytes', 'cuda_buffer_bytes',
@@ -642,6 +645,7 @@ def sampling(value):
         for segment in ('local', 'nonlocal'):
             item[segment] = numbers(observed.get(segment),
                 WINDOWS_BUDGET)
+        item['host_window'] = numbers(row.get('host_window'), HOST_WINDOW)
         device = numbers(row.get('device_activity'), STEP_ACTIVITY)
         if device:
             item['device'] = device
@@ -650,6 +654,7 @@ def sampling(value):
     result['incomplete_step'] = {segment: numbers(observed.get(segment),
         WINDOWS_BUDGET)
         for segment in ('local', 'nonlocal')}
+    result['incomplete_step']['host_window'] = numbers(value.get('incomplete_step_host_window'), HOST_WINDOW)
     result['incomplete_step_compiler'] = sanitize(value.get('incomplete_step_compiler'))
     return result
 

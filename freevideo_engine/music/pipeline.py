@@ -491,7 +491,7 @@ class MusicPipeline:
         return audio.to(self.device) if chunk_size == 512 else audio
 
     @torch.inference_mode()
-    def generate(self, caption, seconds, seed, progress=None):
+    def generate(self, caption, seconds, seed, progress=None, avoid=()):
         validate_request(caption, seconds, seed)
         self.stage_times = {}
         if progress:
@@ -505,7 +505,7 @@ class MusicPipeline:
             planner = InstrumentalLM(model, self.lm_tokenizer, self.lm_processor, self.device)
             with torch.random.fork_rng(devices=devices):
                 torch.manual_seed(seed)
-                metadata, codes, times = planner.generate(caption, seconds)
+                metadata, codes, times = planner.generate(caption, seconds, avoid) if avoid else planner.generate(caption, seconds)
             self.last_lm_tokens = planner.tokens
             self.last_metadata = metadata.copy()
             self.stage_times.update(times)

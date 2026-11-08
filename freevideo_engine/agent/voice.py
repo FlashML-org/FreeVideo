@@ -189,11 +189,16 @@ def context(jobs, spec):
     if clip['source']['kind'] == 'generated' and str(clip['source']['id']).startswith('freevideo-dubbing/'):
         raise JobError('invalid_request', 'A written line is dubbed again from its text, not by changing its voice')
     parent, dialogue = clip, None
-    if track.get('stem') == 'dialogue':
+    if track.get('stem') == 'dialogue' or track.get('id') == 'a3':
         dialogue = clip
-        if clip.get('stem_of') not in found:
+        if clip.get('stem_of') is None:
+            # a line said on the voice track by itself (voice_say), or anything on the recording track, is a voice of
+            # its own, split from nothing
+            parent = clip
+        elif clip.get('stem_of') not in found:
             raise JobError('invalid_request', 'The voice part has lost the clip it was split from')
-        parent = found[clip['stem_of']][1]
+        else:
+            parent = found[clip['stem_of']][1]
     else:
         for other, candidate in found.values():
             if (other.get('stem') == 'dialogue' and candidate.get('stem_of') == clip['id']
@@ -375,6 +380,155 @@ def _seed(spec, lines):
         return spec['seed']
     text = '|'.join([spec['editor_project']] + ['%s=%s' % (line['id'], line['text']) for line in lines])
     return int.from_bytes(hashlib.sha256(text.encode()).digest()[:4], 'big') % (2 ** 30)
+
+
+# ---------------------------------------------------------------------------------------------- voice_say
+
+REFERENCE_SECONDS = 20.     # the longest stretch of the voice clip taken as the voice of a new line
+SAY_LEAD = .1               # quiet before a new line starts, at most (a twentieth of the line at most)
+SAY_TRAIL = .15             # quiet after it ends, at most
+
+
+def _voice_clip(jobs, spec):
+    """The clip whose voice says the line: (path of its sound, first and last file seconds of the stretch)."""
+    from ..editor_export import resolve_source
+    ref = spec['voice']['reference']
+    try:
+        project = jobs.projects.get(spec['editor_project'])['project']
+    except FileNotFoundError as error:
+        raise JobError('not_found', 'The project does not exist') from error
+    clip = next((clip for track in _tracks(project) for clip in track['clips'] if clip['id'] == ref['clip_id']), None)
+    if clip is None or not clip.get('source'):
+        raise JobError('invalid_request', 'The voice clip is not a sound clip of this project')
+    if (clip.get('speed') or 1) != 1 or clip.get('reverse'):
+        raise JobError('invalid_request', 'The voice clip must be played at normal speed, forwards')
+    length = clip['frames'] / FPS
+    start, end = float(ref.get('start', 0.)), min(float(ref.get('end', length)), length)
+    if not 0 <= start < end:
+        raise JobError('invalid_request', 'The voice stretch must lie inside the clip')
+    try:
+        path = resolve_source('%s:%s' % (clip['source']['kind'], clip['source']['id']))['audio']
+    except (OSError, ValueError):
+        path = None
+    if path is None:
+        raise JobError('invalid_request', 'The voice clip has no sound')
+    wav = Path(path).with_suffix('.wav')
+    base = clip.get('in', 0) / FPS
+    return (wav if wav.is_file() else Path(path)), base + start, base + end
+
+
+def _spoken(lines, longest=REFERENCE_SECONDS):
+    """The run of consecutive lines that lasts longest without passing `longest` seconds (a single longer line is
+    taken alone; the dubbing cuts it): (start, end, text), or None when there is no line."""
+    best = None
+    for first in range(len(lines)):
+        for last in range(first, len(lines)):
+            span = lines[last]['end'] - lines[first]['start']
+            if last > first and span > longest:
+                break
+            if best is None or span > best[1] - best[0]:
+                best = (lines[first]['start'], lines[last]['end'], first, last)
+    if best is None:
+        return None
+    texts = [line['text'].strip() for line in lines[best[2]:best[3] + 1]]
+    wide = any(re.search(r'[぀-ヿ㐀-鿿가-힯]', text) for text in texts)
+    return best[0], best[1], ('' if wide else ' ').join(texts)
+
+
+def _recognise(row, path, first, last, language):
+    """What the stretch [first, last) of a file says: the longest run of its lines, in file seconds."""
+    from .. import subtitle_ears
+    from .. import subtitle_sherpa  # noqa: F401  registers the recogniser
+    from ..voice import sentences
+    try:
+        engine = subtitle_ears.engine_for('transcribe')
+    except subtitle_ears.EarsError as error:
+        raise JobError('no_speech_model', 'No speech model is installed on this machine') from error
+    _phase(row, 'recognizing', fraction=0.)
+    try:
+        whole = subtitle_ears.decode_mono(path, cancelled=lambda: bool(row.get('_cancel')))
+        rate = subtitle_ears.RATE
+        audio = np.ascontiguousarray(whole[int(first * rate):int(last * rate)])
+        if len(audio) < rate:
+            raise JobError('no_speech', 'The voice clip is too short to take a voice from')
+        heard = engine.transcribe(audio, language, lambda fraction: _phase(row, 'recognizing', fraction=round(float(fraction), 3)),
+                                  lambda: bool(row.get('_cancel')))
+    except subtitle_ears.Cancelled as error:
+        raise JobError('cancelled', 'Cancelled') from error
+    except subtitle_ears.EarsError as error:
+        raise JobError(RECOGNITION_CODES.get(error.reason, 'voice_failed'),
+                       'The voice clip could not be recognised (%s)' % error.reason) from error
+    words = [word for line in heard['lines'] for word in line['words']]
+    found = _spoken(sentences.lines(words, audio, rate))
+    if found is None:
+        raise JobError('no_speech', 'No speech was found in the voice clip')
+    return first + found[0], first + found[1], found[2]
+
+
+def run_voice_say(jobs, row, *, poll=.25):
+    """A new line in the voice of a sound clip, `seconds` long: written to a file the page places itself.
+
+    The voiced part runs from just after the start to just before the end; a text too long to say in that time even
+    at the fastest tempo comes back longer, with `overrun` seconds and warning too_long, and one too short to fill it
+    ends early with warning too_short."""
+    from ..dubbing import align
+    from ..stems.separate import write_mp4, write_wav
+    started = time.monotonic()
+    spec = row['spec']
+    text, seconds = spec['text'].strip(), float(spec['seconds'])
+    if not text:
+        raise JobError('invalid_request', 'There is nothing to say')
+    path, first, last = _voice_clip(jobs, spec)
+    known = (spec['voice']['reference'].get('text') or '').strip()
+    recognised = False
+    if known:
+        reference = dict(file=str(path), text=known, start=first, end=last)
+    else:
+        begin, end, heard = _recognise(row, path, first, last, spec.get('language', 'auto'))
+        reference = dict(file=str(path), text=heard, start=begin, end=end)
+        recognised = True
+    _cancelled(row)
+    if reference['end'] - reference['start'] < 1.:
+        raise JobError('no_speech', 'The voice clip is too short to take a voice from')
+    # the line comes back as loud as the voice it takes, measured on its voiced part
+    level = None
+    try:
+        sample = _read(path, reference['start'], reference['end'])
+        span = align.voiced_span(sample, RATE)
+        if span is not None and span[1] > span[0]:
+            level = round(float(np.sqrt(np.mean(np.square(sample[span[0]:span[1]], dtype=np.float64)))), 6) or None
+    except (OSError, ValueError):
+        level = None
+    lead, trail = min(SAY_LEAD, seconds / 20), min(SAY_TRAIL, seconds / 20)
+    item = dict(key='say', text=text, seconds=round(seconds, 3), onset=round(lead, 3), offset=round(seconds - trail, 3),
+                **({'level': level} if level else {}))
+    seed = spec['seed'] if spec.get('seed') is not None else \
+        int.from_bytes(hashlib.sha256('|'.join([spec['editor_project'], reference['file'], str(reference['start']), text])
+                                      .encode()).digest()[:4], 'big') % (2 ** 30)
+    pace = Pace([dict(id='say', text=text, original_text='')])
+    made, cancelled = _round(jobs, row, [item], reference, seed, pace, 0, 1, [], poll)
+    made = made.get('say')
+    if cancelled or made is None:
+        raise JobError('cancelled', 'Cancelled')
+    if made.get('code') or 'data' not in made:
+        code = made.get('code') or 'failed'
+        raise JobError(DUB_CODES.get(code, 'voice_failed'), 'The line could not be said (%s)' % code)
+    _phase(row, 'placing')
+    data = np.asarray(made['data'], dtype=np.float32)
+    stereo = np.stack([data, data])
+    folder = '%s/%s-%s' % (FOLDER, row['id'], secrets.token_hex(2))
+    out = jobs.port.output_path(folder + '/line.mp4', create=True).parent
+    write_wav(out / 'line.wav', stereo, exact=True)
+    write_mp4(out / 'line.mp4', stereo)
+    length = len(data) / RATE
+    overrun = round(max(float(made.get('overrun') or 0.), length - seconds, 0.), 3)
+    warning = made.get('warning') or ('too_long' if overrun > align.FIT_SECONDS else None)
+    return dict(editor_project=spec['editor_project'], revision=spec['revision'], source='generated:%s/line.mp4' % folder,
+                seconds=round(length, 3), frames=max(1, int(length * FPS + 1e-6)), target_seconds=round(seconds, 3),
+                overrun=overrun if warning == 'too_long' else 0., warning=warning, fitted=bool(made.get('fitted')),
+                onset=made.get('onset'), offset=made.get('offset'), speed=made.get('speed'), stretch=made.get('stretch'),
+                text=text, reference=dict(text=reference['text'], recognised=recognised),
+                seed=seed, seconds_taken=round(time.monotonic() - started, 1))
 
 
 class Pace:

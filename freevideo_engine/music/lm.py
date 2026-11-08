@@ -11,6 +11,7 @@ import torch
 import yaml
 from transformers.generation.logits_process import LogitsProcessorList, RepetitionPenaltyLogitsProcessor
 from transformers.generation.streamers import BaseStreamer
+from . import words
 from .constrained_logits import MetadataConstrainedLogitsProcessor, FSMState
 from .lm_constants import DEFAULT_LM_INSTRUCTION
 logger = logging.getLogger(__name__)
@@ -36,11 +37,14 @@ class InstrumentalLM:
         value = int(target_duration * 5) + 10 if target_duration else min(fallback_max, 3500)
         return min(value, 4096 - 64)
 
-    def generate(self, caption, seconds):
-        """The single-item llm_dit route with all GenerationParams defaults."""
+    def generate(self, caption, seconds, avoid=()):
+        """The single-item llm_dit route with all GenerationParams defaults.
+
+        avoid: things the music should leave out ("drums"); the codes step steers away from them and the
+        planner's own description loses its clauses naming them. Empty: the upstream route unchanged."""
         lyrics = "[Instrumental]"
         defaults = dict(
-            temperature=0.85, negative_prompt="NO USER INPUT", top_k=None,
+            temperature=0.85, top_k=None,
             top_p=0.9, repetition_penalty=1.0, use_constrained_decoding=True,
             constrained_decoding_debug=False, caption=caption, lyrics=lyrics,
         )
@@ -50,9 +54,11 @@ class InstrumentalLM:
             cfg_scale=1.0, target_duration=None,
             user_metadata={"duration": int(seconds)}, stop_at_reasoning=True,
             skip_genres=True, skip_caption=False, skip_language=False,
-            generation_phase="cot", cot_text="", **defaults,
+            generation_phase="cot", cot_text="", negative_prompt="NO USER INPUT", **defaults,
         )
         metadata, _ = self.parse_lm_output(cot)
+        if avoid and metadata.get("caption"):
+            metadata["caption"] = words.drop_clauses(metadata["caption"], avoid)
         cot_s = time.perf_counter() - start
         cot_text = self._format_metadata_as_cot(metadata)
         start = time.perf_counter()
@@ -61,7 +67,8 @@ class InstrumentalLM:
             cfg_scale=2.0, target_duration=seconds, user_metadata=None,
             stop_at_reasoning=False, skip_genres=False,
             skip_caption=True, skip_language=True,
-            generation_phase="codes", cot_text=cot_text, **defaults,
+            generation_phase="codes", cot_text=cot_text,
+            negative_prompt=words.negative(avoid) if avoid else "NO USER INPUT", **defaults,
         )
         _, codes = self.parse_lm_output(codes)
         if len(codes.split("<|audio_code_")) - 1 != int(seconds * 5):

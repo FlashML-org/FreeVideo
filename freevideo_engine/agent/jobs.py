@@ -32,7 +32,7 @@ from ..system import windows
 ACTIVE = ('waiting', 'queued', 'running', 'cancelling')
 CAST_AGAIN = 'POST /freevideo/agent/v1/cast/%s/generate to make the reference pictures again.'
 DONE = ('succeeded', 'failed', 'cancelled', 'interrupted')
-GPU_KINDS = ('vlm', 'enhance', 'image', 'music', 'stems', 'finish_sound', 'voice')
+GPU_KINDS = ('vlm', 'enhance', 'image', 'music', 'stems', 'finish_sound', 'voice', 'voice_say')
 IMAGE_ERRORS = errors.IMAGE_ERRORS
 IMAGE_WAIT_ERRORS = ('busy', 'busy_video')
 IMAGE_WAIT_NOTICES = {
@@ -1230,6 +1230,9 @@ class Jobs:
             result['progress'] = progress
             if row.get('chain_id'):
                 result['last_heartbeat_at'] = result['progress'].pop('last_heartbeat_at', None)
+        elif row['status'] == 'succeeded' and row['kind'] in ('generate', 'image'):
+            # A finished job reads as whole, so a client following the fraction sees it reach the end.
+            result['progress'] = dict(phase='complete', fraction=1.)
         if row.get('result') is not None:
             result['result'] = result_view(row['result']) if row['kind'] == 'generate' else assets.public(row['result'])
         if row.get('error') is not None:
@@ -1277,6 +1280,14 @@ class Jobs:
                              block=dict(index=current['index'] + 1 if current else min(chain['done'] + 1, chain['count']),
                                         total=chain['count'], done=chain['done']),
                              last_heartbeat_at=iso(chain.get('last_heartbeat_at')))
+                # How far the part being made has come, decoding and saving included (the step count stops at the
+                # last step), and each part's frames: the overall fraction weighs the parts by them.
+                if chain['count'] > 1:
+                    if current and isinstance(current.get('fraction'), (int, float)):
+                        value['block']['fraction'] = min(1., max(0., float(current['fraction'])))
+                    frames = [(b.get('inputs') or {}).get('frames') for b in chain['blocks']]
+                    if len(frames) == chain['count'] and all(type(f) is int and f > 0 for f in frames):
+                        value['block']['frames'] = frames
                 if value['phase'] == 'sampling' and message.get('done') is not None:
                     value['step'] = dict(done=message['done'], total=message.get('total'), **({'unit': message['unit']} if message.get('unit') else {}))
                 for key in ('label', 'detail', 'fraction', 'elapsed_seconds', 'remaining_seconds'):
@@ -1497,6 +1508,9 @@ class Jobs:
             elif row['kind'] == 'voice':
                 from .voice import run_voice_replace
                 result = run_voice_replace(self, row)
+            elif row['kind'] == 'voice_say':
+                from .voice import run_voice_say
+                result = run_voice_say(self, row)
             else:
                 result = self.run_assemble(row)
             return result

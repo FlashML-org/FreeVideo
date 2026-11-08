@@ -19,13 +19,13 @@ const ICON = {video: 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4', audio: 'M2 8h4l4-4v1
 const icon = kind => { const s = svg('svg', {viewBox: '0 0 20 20', 'aria-hidden': 'true'}); s.append(svg('path', {d: ICON[kind]})); return s; };
 
 // A deterministic waveform in the editor's 200x40 box; shape decides how the sound reads.
-function wave(seed, shape) {
+function wave(seed, shape, rate = 1) {
     let x = seed * 9301 + 49297, d = '';
     const random = () => (x = (x * 9301 + 49297) % 233280) / 233280;
     for (let i = 0; i < 100; i++) {
         const at = i / 100;
-        const level = shape === 'speech' ? (Math.sin(at * 23) > -.2 ? .25 + random() * .75 : .06) * (.5 + .5 * Math.sin(at * 7 + 1))
-            : shape === 'music' ? .35 + .4 * Math.sin(at * 9 + seed) ** 2 + random() * .15
+        const level = shape === 'speech' ? (Math.sin(at * 23 * rate + seed) > -.2 ? .25 + random() * .75 : .06) * (.5 + .5 * Math.sin(at * 7 * rate + 1))
+            : shape === 'music' ? .35 + .4 * Math.sin(at * 9 * rate + seed) ** 2 + random() * .15
             : shape === 'ambience' ? .12 + random() * .12 : .3 + random() * .7;
         const h = Math.max(.5, Math.min(1, level) * 17);
         d += `M${(i + .5) * 2} ${20 - h}v${h * 2}`;
@@ -61,8 +61,8 @@ export function createStage(cn) {
         const fill = el('span', null, 'fv-ed-progress-fill'); c.append(fill); row.append(c); return c; };
     const video = clip(rows.v1, 'video'); video.querySelector('.fv-ed-clip-media').classList.add('fv-whatsnew-picture');
     const mixed = clip(rows.a1, 'mixed', wave(3, 'mixed'));
-    const voice = [clip(rows.a1, 'voice-old', wave(5, 'speech')), clip(rows.a1, 'voice-new', wave(11, 'speech'))];
-    const music = [clip(rows.a2, 'music-old', wave(7, 'music')), clip(rows.a2, 'music-new', wave(13, 'music'))];
+    const voice = [clip(rows.a1, 'voice-old', wave(5, 'speech')), clip(rows.a1, 'voice-new', wave(11, 'speech', 2.6))];
+    const music = [clip(rows.a2, 'music-old', wave(7, 'music')), clip(rows.a2, 'music-new', wave(13, 'music', 5.5))];
     clip(rows.a3, 'ambience', wave(9, 'ambience'));
     for (const c of [video, mixed, ...voice, ...music]) c.tabIndex = -1;
     scroll.append(content); view.append(heads, scroll); root.append(view);

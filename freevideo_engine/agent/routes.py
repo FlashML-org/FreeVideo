@@ -172,7 +172,7 @@ def submit_batch(jobs, body, client):
     return jobs.submit_request(body, client=client)[0]
 
 
-JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace')
+JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace', 'voice_say')
 
 
 def stems_supported(machine):
@@ -269,6 +269,7 @@ def capabilities(port, jobs):
                'finish_sound': 'Finish the sound of a joined cut: one score, even loudness, room tone',
                'voice_lines': 'Write down the spoken lines of a sound clip with their start and end',
                'voice': 'Say edited lines again in the original voice and put them back where the originals were',
+               'voice_say': 'Say a new line in the voice of a sound clip, as long as a given stretch',
                'image_edit': 'Render a saved revision of an image session to a picture'},
         limits=dict(width=[256, 4096, 32], height=[256, 4096, 32], seconds=[1.625, 60 if continuation else BLOCK_SECONDS],
                     seconds_tested=[4, 15],

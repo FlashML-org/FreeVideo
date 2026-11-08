@@ -252,6 +252,9 @@ class ChainRunner:
             elapsed += self._elapsed(block)
         remembered = self.progress_values.get(record['id'], {})
         value['progress'] = deepcopy(remembered | self.progress_messages.get(record['id'], {}))
+        if record['state'] == 'done' and record['output_state'] in ('done', 'none'):
+            # The running fraction stops short of the end until the parts are joined; a finished chain is whole.
+            value['progress'].update(fraction=1., remaining_seconds=0.)
         value['last_heartbeat_at'] = record.get('last_heartbeat_at')
         value['elapsed_seconds'] = max(elapsed, remembered.get('elapsed_seconds', 0.))
         value['joining'] = record['output_state'] == 'joining'

@@ -32,9 +32,10 @@ export function createVoiceStore({api, state, queue}) {
         for (let round = 0; round < 3; round++) { await new Promise(resolve => setTimeout(resolve, 0)); await queue.flush(); if (!queue.dirty) break; }
         if (queue.dirty || !state.record.id) throw failure(null, 'unsaved');
     }
-    async function job(name, body, progress = () => {}) {
+    // `own` keeps the job to itself: a new line said meanwhile is stopped on its own, never by the redub's Cancel.
+    async function job(name, body, progress = () => {}, own = null) {
         await saved();
-        const project = state.record.id, tool = running = {job: null};
+        const project = state.record.id, tool = own || (running = {job: null});
         try {
             const response = await retryAgentPost(api, path(name), {revision: state.record.revision, ...body, ref: uuid()});
             const answer = await response?.json().catch(() => null);
@@ -66,5 +67,24 @@ export function createVoiceStore({api, state, queue}) {
         }),
         shorten: ({line, target_seconds}) => sync('shorten', {line, target_seconds}),
         cancel: () => { if (running?.job) agentPost(api, `${ROOT}/jobs/${encodeURIComponent(running.job)}/cancel`, {}).catch(() => {}); },
+        // The lines of a whole sound clip, for the voices a new line can be said in; stopped on its own.
+        hear: ({found, own}) => job('lines', {selection: selection(found)}, undefined, own),
+        // A new line in the voice of a sound clip of the edit, `seconds` long; `own.job` is the job once it is accepted.
+        say: ({text, seconds, reference, own, progress = () => {}}) => job('say', {text, seconds, voice: {reference}}, info => progress(info), own),
+        // The same job read again after the page opened anew.
+        follow: async (id, progress = () => {}) => {
+            for (;;) {
+                const reply = await agentGet(api, `${ROOT}/jobs/${encodeURIComponent(id)}?wait=25`);
+                if (reply.status === 404) throw failure(null, 'missing');
+                if (!reply.ok) { await wait(1000); continue; }
+                const current = await reply.json();
+                if (!ACTIVE.includes(current.status)) {
+                    if (current.status === 'succeeded') return current.result;
+                    throw failure(current.error, current.status === 'cancelled' ? 'cancelled' : 'voice_failed');
+                }
+                progress({phase: current.progress?.phase, status: current.status, ...detail(current.progress)});
+            }
+        },
+        stop: id => agentPost(api, `${ROOT}/jobs/${encodeURIComponent(id)}/cancel`, {}).catch(() => {}),
     };
 }

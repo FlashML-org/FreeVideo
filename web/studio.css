@@ -267,8 +267,14 @@
 .fv-studio .fv-replace-person.fv-swap-blocked{cursor:not-allowed}
 .fv-studio .fv-swap-on>.fv-panel{display:none}
 .fv-studio .fv-swap-slots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.fv-studio .fv-swap-slots[hidden],.fv-studio .fv-swap-note[hidden],.fv-studio .fv-swap-sound[hidden]{display:none}
-.fv-studio .fv-swap-slot{min-width:0}
+.fv-studio .fv-swap-slots[hidden],.fv-studio .fv-swap-note[hidden],.fv-studio .fv-swap-sound[hidden],.fv-studio .fv-swap-order[hidden]{display:none}
+.fv-studio .fv-swap-slot{position:relative;min-width:0}
+.fv-studio .fv-swap-people{display:grid;grid-template-columns:repeat(var(--fv-people,1),minmax(0,1fr));gap:8px;min-width:0}
+.fv-studio .fv-swap-people[data-count="2"],.fv-studio .fv-swap-people[data-count="3"]{grid-column:1/-1}
+.fv-studio .fv-swap-people[data-count="2"]{--fv-people:2}.fv-studio .fv-swap-people[data-count="3"]{--fv-people:3}
+.fv-studio .fv-swap-order{grid-column:1/-1;margin:0}
+.fv-studio .fv-swap-remove{position:absolute;top:20px;right:4px;width:22px;height:22px;min-height:0;padding:0;border-radius:50%;line-height:1;font-size:15px}
+.fv-studio .fv-swap-remove[hidden]{display:none}
 .fv-studio .fv-swap-title{font-size:var(--fv-micro);color:var(--fv-muted);margin:0 0 7px}
 .fv-studio .fv-swap-drop{box-sizing:border-box;width:100%;height:112px;flex-direction:column;gap:2px;padding:6px;border:1px dashed var(--fv-border);background:var(--fv-card);color:var(--fv-muted);border-radius:var(--fv-r-sm);overflow:hidden}
 .fv-studio .fv-swap-drop.fv-swap-filled{border-style:solid;gap:4px}
@@ -289,7 +295,7 @@
 .fv-studio .fv-swap-meter>i{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .4s ease-out}
 .fv-studio .fv-swap-meter[data-indeterminate=true]>i{width:32%;animation:fv-swap-sweep 1.4s ease-in-out infinite}
 @keyframes fv-swap-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
-@media (max-width:480px){.fv-studio .fv-swap-slots{grid-template-columns:1fr}.fv-studio .fv-swap-source{order:1}.fv-studio .fv-swap-sound{order:2}.fv-studio .fv-swap-person{order:3}}
+@media (max-width:480px){.fv-studio .fv-swap-slots{grid-template-columns:1fr}.fv-studio .fv-swap-order{order:4}.fv-studio .fv-swap-source{order:1}.fv-studio .fv-swap-sound{order:2}.fv-studio .fv-swap-person{order:3}}
 /* Recent videos: the same folding as Creations; the videos under an opened cover are indented. */
 .fv-studio .fv-recent-card[hidden]{display:none}
 .fv-recent-card.fv-task-head:not(.fv-task-open) .fv-library-picture{box-shadow:4px -4px 0 0 var(--fv-sheen)}

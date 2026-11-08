@@ -529,6 +529,30 @@ class Projects:
         """Queue the new voice for the lines the caller changed."""
         return self._voice_job('voice_replace', 'voice', identity, value, jobs=jobs, ref=ref, client=client)
 
+    def voice_say(self, identity, value, *, jobs, ref=None, client=None):
+        """Queue a new line said in the voice of a sound clip of this project; the page places what it makes."""
+        schema.validate(schema.project_schema('voice_say'), value)
+        if not value['text'].strip():
+            raise _invalid('/text', 'something to say', value['text'])
+        with self.listen_lock:
+            digest, replay = self._receipt('projects:voice_say', dict(id=identity, body=value), ref, client)
+            if replay is not None:
+                return replay
+            stored = self._load(identity)['project']
+            if stored['revision'] != value['revision']:
+                raise ProjectError('project_changed', project=stored)
+            reference = value['voice']['reference']
+            clip = _clips(stored).get(reference['clip_id'])
+            if clip is None or not clip.get('source'):
+                raise _invalid('/voice/reference/clip_id', 'a sound clip of this project with media', reference['clip_id'])
+            if 'end' in reference and reference['end'] <= reference.get('start', 0):
+                raise _invalid('/voice/reference/end', 'a time after the start', reference['end'])
+            job = jobs.submit(dict(kind='voice_say', editor_project=identity,
+                                   **{k: v for k, v in value.items() if k != 'ref'}), client=client)[0]
+            result = dict(job=jobs.view(job), jobs=[jobs.view(job)])
+            self._remember(ref, digest, result, client)
+            return result
+
     def voice_estimate(self, identity, value, *, ref=None, client=None):
         """Seconds the changed lines take to make; asked at once, nothing is stored."""
         from . import voice

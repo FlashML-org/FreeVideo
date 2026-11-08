@@ -14,7 +14,12 @@ export function musicBarStatus(job, t, clock = Date.now) {
     if (!job || !['queued', 'running'].includes(job.state)) return null;
     let stage = '', time = '';
     if (job.state === 'queued') stage = t('Queued', '排队中');
-    else if (job.phase === 'downloading') stage = t('Downloading files for generation', '正在下载生成所需文件');
+    else if (job.phase === 'downloading') {
+        stage = t('Downloading files for generation', '正在下载生成所需文件');
+        // A whole percent where the time goes; without a share known yet, only the sentence (never "0%").
+        const percent = Number.isFinite(job.fraction) ? Math.min(99, Math.floor(job.fraction * 100)) : 0;
+        if (percent > 0) time = `${percent}%`;
+    }
     else if (job.phase === 'waiting') stage = t('Queued · waiting for the previous one', '排队中 · 等前一个完成');
     else if (job.phase === 'composing') {
         stage = t('Generating music', '正在生成配乐');
@@ -59,7 +64,11 @@ export function createEditorMusic({state, store, t, completeSources = async () =
     const settle = change => { try { state.settle(change); } catch (value) { if (!(value instanceof EditError)) throw value; } };
     function deliver(id, jobId, job) {
         if (disposed || !job) return;
-        statuses.set(jobId, {...job, seen_at: clock()});
+        // The download share never goes back between polls of the same download.
+        const before = statuses.get(jobId);
+        const fraction = job.phase === 'downloading' && before?.phase === 'downloading' && Number.isFinite(before.fraction)
+            ? Math.max(before.fraction, Number.isFinite(job.fraction) ? job.fraction : 0) : job.fraction;
+        statuses.set(jobId, {...job, fraction, seen_at: clock()});
         if (job.state === 'done' && job.result) {
             stopWatching(jobId);
             settle(record => music.finishMusic(record, id, jobId, {source: job.result.source, frames: job.result.frames}));

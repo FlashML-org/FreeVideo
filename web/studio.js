@@ -50,7 +50,7 @@ import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './f
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
-import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora } from './replace_state.js';
+import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
@@ -978,7 +978,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
     const mediaNode = upstream(node, 'media');
-    const mediaFilled = () => swapState(mediaNode) ? Boolean(swapState(mediaNode).source || swapState(mediaNode).person) : JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
+    const mediaFilled = () => swapState(mediaNode) ? Boolean(swapState(mediaNode).source || peopleOf(swapState(mediaNode)).length) : JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
         || Boolean(mediaNode.inputs?.some(input => ['first', 'last', ...referenceInputs, 'reference_audio'].includes(input.name) && input.link != null));
     // The line beside the closed title says what the section is for, until something is added.
     // The guide opens the section it points at; the ring stays on the title row.

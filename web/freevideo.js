@@ -32,7 +32,7 @@ import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
 import { uploadMedia } from './media_upload.js';
-import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';
+import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
@@ -165,7 +165,8 @@ function mediaPanel(node, mount = null) {
     const cast = createCastLibrary({api, text, viewURL, uploadOne});
     const places = createCastLibrary({api, text, viewURL, uploadOne, kind: 'setting'});
     const props = createCastLibrary({api, text, viewURL, uploadOne, kind: 'prop'});
-    panel.prepend(cast.element, places.element, props.element);
+    const libraries = el('div', undefined, 'fv-cast-libraries'); libraries.append(cast.element, places.element, props.element);
+    panel.prepend(libraries);
     const read = () => {
         const rows = JSON.parse(serialized.value || "[]");
         if (!Array.isArray(rows) || rows.length > 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
@@ -861,7 +862,8 @@ app.registerExtension({
                         const typed = requestText(prompt.value, owner.properties?.freevideo_prompt_versions);
                         const timed = !continued && owner.freevideoSingleRun?.() ? timedText(typed, Number(owner.widgets?.find(w => w.name === 'seconds')?.value)) : typed;
                         const body = expandCast(timed, mediaRows(owner), {continued}).text;
-                        return swapState(mediaNodeOf(owner)) ? withPrefix(body) : body;
+                        const swap = swapState(mediaNodeOf(owner));
+                        return swap ? withPrefix(body, peopleOf(swap).length) : body;
                     };
                 }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');

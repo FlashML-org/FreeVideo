@@ -3,8 +3,8 @@ import {readGuideRecord, saveGuideRecord, guideRecord} from './first_run_guide.j
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 
 export const TOUR_TEXT = {
-    en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', book: 'Read the tutorial', done: 'Done', close: 'Close'},
-    zh: {examples: '功能示例', use: '填入示例', next: '下一张', goto: '带我去', book: '看教程', done: '完成', close: '关闭'},
+    en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.', book: 'Read the tutorial', done: 'Done', close: 'Close'},
+    zh: {examples: '功能示例', use: '填入示例', next: '下一张', goto: '带我去', noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。', book: '看教程', done: '完成', close: '关闭'},
 };
 // The chapter of the tutorial book that teaches the same thing as the card.
 const BOOK_CHAPTER = {'first-video': 'quick-start', 'text-to-video': 'text-to-video', 'first-last-frame': 'first-last-frame', 'quality-tiers': 'quality-tiers',
@@ -179,14 +179,21 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
             const use = el('button', 'fv-tour-use fv-primary', text.use);
             const usable = card.tryit.status !== 'pending-assets' && contextFor()?.canTry?.(card.tryit) !== false;
             use.onclick = async () => { await end(); await tryIt(card.id); };
+            const note = el('p', 'fv-tour-note'); note.setAttribute('role', 'status'); note.hidden = true;
             if (card.goto?.length) {
                 const go = el('button', 'fv-tour-goto', text.goto);
-                go.onclick = async () => { await end(); const {guideTo} = await import('./tour_goto.js'); for (const id of card.goto) if (await guideTo(id)) break; };
+                go.onclick = async () => {
+                    const {goToScene} = await import('./tour_goto.js');
+                    go.disabled = true; note.hidden = true;
+                    const result = await goToScene({view: card.tryit?.view, ids: card.goto, select: card.select, beforeRing: end});
+                    go.disabled = false;
+                    if (!result.ok) { note.textContent = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget']; note.hidden = false; }
+                };
                 actions.append(go);
             }
             const chapter = BOOK_CHAPTER[card.id], read = chapter ? el('button', 'fv-tour-book', text.book) : null;
             if (read) read.onclick = async () => { await end(); const {openTutorialBook} = await import('./tutorial_book.js'); openTutorialBook({chapter}); };
-            usable ? actions.append(next, use) : actions.append(next); footer.append(dots, actions); if (read) dots.after(read); content.append(footer);
+            usable ? actions.append(next, use) : actions.append(next); footer.append(dots, actions); if (read) dots.after(read); content.append(footer, note);
             for (const video of videos) video.onerror = () => {
                 stop(); const failed = loaded.splice(index, 1); release(failed);
                 if (!loaded.length) { end(); return; }
