@@ -64,11 +64,9 @@
 @keyframes fv-menu-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.fv-actions *{transition:none!important;animation:none!important}}
 .fv-actions[data-unavailable=true] :is(a.fv-action[download],.fv-action-extend,.fv-share-trigger){opacity:.45;cursor:default;pointer-events:none}
-.fv-action-copy .fv-copy-text{display:inline-grid;justify-items:start}
+.fv-action-copy .fv-copy-text{display:inline-grid;justify-items:center;white-space:nowrap}
 .fv-action-copy .fv-copy-text::after{content:attr(data-widest);grid-area:1/1;visibility:hidden;height:0;overflow:hidden}
-.fv-action-reuse .fv-reuse-text{display:inline-grid;justify-items:start;white-space:nowrap}
-.fv-action-reuse .fv-reuse-text::after{content:attr(data-widest);grid-area:1/1;visibility:hidden;height:0;overflow:hidden}
-.fv-action-reuse .fv-reuse-text>*{grid-area:1/1}
+.fv-action-reuse .fv-reuse-text{display:inline-block;white-space:nowrap}
 .fv-reuse-done{cursor:default}
 .fv-action-reuse .fv-reuse-undo{all:unset;cursor:pointer;color:var(--fv-accent,#6db8fa);text-decoration:underline;text-underline-offset:2px}
 .fv-action-reuse .fv-reuse-undo:focus-visible{outline:2px solid var(--fv-accent,#6db8fa);outline-offset:2px;border-radius:3px}

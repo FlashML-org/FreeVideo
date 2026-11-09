@@ -228,6 +228,10 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
         except (OSError, ValueError):
             continue
     rows, unreadable, folders, reports = [], [], {}, {}
+    from .comfy_progress import REPORTS
+    tokens = REPORTS.tokens(root)
+    if tokens:
+        REPORTS.roots.add(root / 'FreeVideo')  # a token of an earlier service stays readable
     for key, path, info in sorted(candidates, key=lambda item: item[0], reverse=True):
         relative = Path('FreeVideo') / key[1] / 'video.mp4'
         if relative.as_posix() in hidden:
@@ -265,6 +269,8 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
                 agent = None
             if agent:
                 summary['agent'] = agent
+            if key[1] + '/video.mp4' in tokens:
+                summary['report_id'] = tokens[key[1] + '/video.mp4']
             folders[key[1]], reports[key[1]] = path.parent, report
             rows.append(dict(summary, id=key[1], bytes=info.st_size, favorite=is_favorite,
                              created_at=datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),

@@ -249,6 +249,19 @@ class ReportDownloads:
         except Exception:
             pass  # Reports stay readable in this process; the index is only a convenience.
 
+    @staticmethod
+    def tokens(output_directory):
+        """Report token of each saved video, keyed by its path below <output>/FreeVideo; the newest run wins."""
+        try:
+            rows = json.loads((Path(output_directory) / 'FreeVideo' / '.agent' / 'report-ids.json').read_text('utf-8'))
+        except (OSError, ValueError):
+            return {}
+        found = {}
+        for token, relative in (rows.items() if isinstance(rows, dict) else ()):
+            if isinstance(token, str) and len(token) == 32 and token.isalnum() and isinstance(relative, str):
+                found[relative] = token
+        return found
+
     def _recall(self, token):
         """The registered output of an earlier service, from the index beside its runs."""
         for root in self.roots:

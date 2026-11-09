@@ -394,6 +394,10 @@ class FreeVideoGenerate(io.ComfyNode):
             if 'continuation' in preview['freevideo_summary'][0] and options.get('frames'):
                 preview['freevideo_summary'][0]['continuation']['requested_frames'] = options['frames']
             preview['freevideo_summary'][0]['result_cache_hit'] = result_reused[0]
+            from .comfy_progress import REPORTS
+            known = REPORTS.tokens(output_root).get(relative.as_posix().removeprefix('FreeVideo/'))
+            if known:
+                preview['freevideo_summary'][0]['report_id'] = known
         except BaseException as error:
             from .resident_process import OWNER
             OWNER.finished()

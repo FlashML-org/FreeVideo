@@ -368,6 +368,12 @@ export function estimatedFraction(state, overall, stateAge, overallAge) {
     return candidate;
 }
 
+// A window that never saw the run still finds its report: the video's own record carries the token.
+export function recordReportId(record, remembered = null) {
+    const own = record?.report_id;
+    return remembered || (typeof own === 'string' && /^[a-f0-9]{32}$/.test(own) ? own : null);
+}
+
 // The video's report download, also used by Agent failure cards. A task that
 // failed before creating an engine report supplies the shared redacted summary.
 export function createDiagnosticReportControl(t, {api = null, fallback = null, tip = false, version = null,

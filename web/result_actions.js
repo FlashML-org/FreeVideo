@@ -150,10 +150,8 @@ async function reuseAction(record, t, reuse) {
     const saved = await savedSettings(api, record);
     if (!saved) return null;
     const label = t('Reuse settings', '复用设置'), filled = t('Filled in', '已填入'), undoLabel = t('Undo', '撤销');
-    const widest = [label, `${filled} · ${undoLabel}`, filled].sort((a, b) => b.length - a.length)[0];
-    // The label sits over an invisible copy of the longest state, so the bar does not shift when it changes.
     const make = (...parts) => {
-        const text = document.createElement('span'); text.className = 'fv-reuse-text'; text.dataset.widest = widest;
+        const text = document.createElement('span'); text.className = 'fv-reuse-text';
         const inner = document.createElement('span'); inner.append(...parts); text.append(inner);
         return text;
     };
@@ -232,7 +230,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         const text = copy.lastElementChild; let timer = 0;
         // The button keeps the width of its longest label, so the bar does not shift when the label changes.
         text.className = 'fv-copy-text';
-        text.dataset.widest = [t('Copy path', '复制路径'), t('Copied', '已复制'), t('Could not copy', '复制失败')].sort((a, b) => b.length - a.length)[0];
+        text.dataset.widest = [t('Copy path', '复制路径'), t('Copied', '已复制')].sort((a, b) => b.length - a.length)[0];
         copy.onclick = async () => {
             clearTimeout(timer);
             text.textContent = await copyText(record.video) ? t('Copied', '已复制') : t('Could not copy', '复制失败');
@@ -280,7 +278,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     share.replaceChildren(icon('share'), label);
     bar.append(share);
     if (diagnostic) {
-        const reportLabel = t('Diagnostic report', '诊断报告');
+        const reportLabel = t('Download report', '下载报告');
         const report = action('button', reportLabel, 'report', 'fv-action-secondary fv-action-report');
         report.title = t('Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时');
         const text = report.lastElementChild;

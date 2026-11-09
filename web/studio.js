@@ -8,7 +8,7 @@ import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
 import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
@@ -1508,7 +1508,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // shows its own report, or none when this window never saw its run.
         const reports = node.freevideoVideoReports || (node.freevideoVideoReports = new Map());
         if (!chosen && node.freevideoReportId) reports.set(r.video, node.freevideoReportId);
-        const wanted = reports.get(r.video) || null;
+        const wanted = recordReportId(r, reports.get(r.video));
         if (!(chosen && busy) && wanted !== shownReport) {
             shownReport = wanted; progress.updateReport({new_request: true});
             if (wanted) progress.updateReport({report_id: wanted});
