@@ -37,7 +37,7 @@ class Installer(SharedInstaller):
         except Exception as error:
             if self.cancel.is_set():
                 raise
-            raise RuntimeError(native.GIT_UNAVAILABLE) from error
+            raise RuntimeError(native.git_unavailable(error)) from error
 
     def component_tasks(self, uv):
         tasks = {}

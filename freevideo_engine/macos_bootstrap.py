@@ -76,6 +76,18 @@ def probe_links(root):
 GIT_UNAVAILABLE = 'Git is unavailable. Check the network connection, or install Git (Apple Command Line Tools), then retry.'
 
 
+def git_unavailable(error):
+    """The standard message plus why FreeVideo's own Git could not be prepared.
+
+    The message keeps its opening sentence, which the failure card matches on;
+    the cause follows on its own line, redacted and bounded, so a report shows which step failed.
+    """
+    from .diagnostics import Redactor
+    text = Redactor().text(' '.join(str(error).split()))
+    text = (type(error).__name__ + ': ' + text)[:400] if text else type(error).__name__
+    return GIT_UNAVAILABLE + '\nCause: ' + text
+
+
 def available_git():
     executable = shutil.which('git')
     if not executable:
