@@ -53,6 +53,8 @@ async def comfy_entrypoint():
     editor_export_routes()
     from .freevideo_engine.comfy_capabilities import register as capabilities_routes
     capabilities_routes()
+    from .freevideo_engine.comfy_monitor import register as monitor_routes
+    monitor_routes()
     from .freevideo_engine.subtitle_ears import register as subtitle_ears_routes
     subtitle_ears_routes()
     from .freevideo_engine.editor_music import register as editor_music_routes

@@ -97,6 +97,8 @@ class Front:
         self.dispatch_lock = asyncio.Lock()
         self.loop = getattr(server, 'loop', None)
         self.closed = False
+        # Set by the top-bar stop: pending requests stay queued and nothing new is sent to a worker.
+        self.paused = False
         self.background = set()
         # Devices whose executor exited. Their work moves to the others until the control process restarts.
         self.unavailable = set()
@@ -382,7 +384,7 @@ class Front:
             self._reap_exited()
             auxiliary_busy = self.auxiliary_busy()
             with self.lock:
-                assignments = self.scheduler.dispatch() if not self.closed and not auxiliary_busy else []
+                assignments = self.scheduler.dispatch() if not self.closed and not self.paused and not auxiliary_busy else []
                 workers = {worker.device.uuid: worker for worker in self.workers()}
                 selected, moved = [], False
                 for task, device in assignments:

@@ -1,4 +1,5 @@
 import {createLanAccess} from './lan_access.js';
+import {createMonitor} from './monitor_panel.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import {createExpandButton} from './editor_expand.js';
 import {allowEmptyPrompt, cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
@@ -667,6 +668,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
     const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
+    const monitor = createMonitor(t, api); tools.append(monitor.element); cleanup.push(monitor.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
@@ -2183,7 +2185,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
     // Escape first closes the recent videos panel of a narrower window, then the studio.
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!recent.dismiss()) closeDialog(dialog); });
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!monitor.dismiss() && !recent.dismiss()) closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
