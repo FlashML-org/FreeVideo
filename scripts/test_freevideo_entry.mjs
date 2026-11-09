@@ -148,7 +148,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
             .replace("import { uploadMedia } from './media_upload.js';", 'const {uploadMedia} = globalThis.__freevideoEntryTest;')
             .replace("import { createCastLibrary } from './cast_library.js';", 'const {createCastLibrary} = globalThis.__freevideoEntryTest;')
-            .replace("import { swapState, requestRows, swapMissing, withPrefix } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body;')
+            .replace("import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body, peopleOf = () => [];')
             .replace("import { swapMissingText } from './replace_person.js';", 'const swapMissingText = () => "";')
             .replace("import { agentInterfaceState } from './agent_connect.js';", "const agentInterfaceState = async () => 'off';")
             .replace("import { installNativeErrorGuard } from './native_errors.js';", 'const installNativeErrorGuard = () => {};')
@@ -524,7 +524,9 @@ test('main browser entry registers both views and preserves node hooks', async t
         await extension.beforeRegisterNodeDef(MediaNode, {name: 'FreeVideoMedia'});
         const media = new MediaNode(); media.onNodeCreated();
         const panel = media.dom.find(row => row.name === 'freevideo_media').element;
-        const [castRow, sceneRow, propRow, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [libraries, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [castRow, sceneRow, propRow] = libraries.children;
+        assert.equal(libraries.className, 'fv-cast-libraries');
         assert.equal(castRow, casts[0].element);
         assert.equal(sceneRow, casts[1].element);
         assert.equal(propRow, casts[2].element);
@@ -568,9 +570,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         media.onRemoved();
         assert.equal(casts[0].destroyed, true); assert.equal(casts[1].destroyed, true); assert.equal(casts[2].destroyed, true);
         const mounted = new Element('mount'), disposeMedia = media.freevideoCreateMediaEditor(mounted);
-        assert.equal(mounted.children[0].children[0], casts[3].element);
-        assert.equal(mounted.children[0].children[1], casts[4].element);
-        assert.equal(mounted.children[0].children[2], casts[5].element);
+        assert.equal(mounted.children[0].children[0].className, 'fv-cast-libraries');
+        assert.equal(mounted.children[0].children[0].children[0], casts[3].element);
+        assert.equal(mounted.children[0].children[0].children[1], casts[4].element);
+        assert.equal(mounted.children[0].children[0].children[2], casts[5].element);
         disposeMedia(); assert.equal(casts[3].destroyed, true); assert.equal(casts[4].destroyed, true); assert.equal(casts[5].destroyed, true);
 
         await t.test('Generate node removal preserves the original hook when setSize throws', async () => {
@@ -590,7 +593,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                 const progress = progressView;
                 assert.deepEqual(progress.element.children.slice(0, 10).map(child => child.className), [
                     'fv-generation-heading', 'fv-generation-track', 'fv-generation-label',
-                    'fv-generation-mini', 'fv-generation-frames', 'fv-generation-times', 'fv-generation-late', 'fv-generation-compatibility', 'fv-generation-status', 'fv-generation-live']);
+                    'fv-generation-mini', 'fv-generation-picture', 'fv-generation-times', 'fv-generation-late', 'fv-generation-compatibility', 'fv-generation-status', 'fv-generation-live']);
                 const activity = progress.snapshot().label;
                 removalNode.freevideoShowProgress({compatibility: {level: 2, name_en: 'Compatible', name_zh: '兼容'}});
                 assert.equal(progress.snapshot().label, activity, 'The node must not replace the activity for settings-only events');

@@ -249,6 +249,19 @@ class ReportDownloads:
         except Exception:
             pass  # Reports stay readable in this process; the index is only a convenience.
 
+    @staticmethod
+    def tokens(output_directory):
+        """Report token of each saved video, keyed by its path below <output>/FreeVideo; the newest run wins."""
+        try:
+            rows = json.loads((Path(output_directory) / 'FreeVideo' / '.agent' / 'report-ids.json').read_text('utf-8'))
+        except (OSError, ValueError):
+            return {}
+        found = {}
+        for token, relative in (rows.items() if isinstance(rows, dict) else ()):
+            if isinstance(token, str) and len(token) == 32 and token.isalnum() and isinstance(relative, str):
+                found[relative] = token
+        return found
+
     def _recall(self, token):
         """The registered output of an earlier service, from the index beside its runs."""
         for root in self.roots:
@@ -380,6 +393,16 @@ def move_request_first(queue, prompt_id, node_id, protected=lambda prompt_id: Fa
         return 'moved'
 
 
+def preview_style():
+    """How the preview while generating is shown (see preview_style.py); the default sheet when unreadable."""
+    try:
+        from .comfy_bridge import installation_root
+        from .preview_style import read
+        return read(installation_root())
+    except Exception:
+        return dict(style='sheet', chosen=False)
+
+
 def register():
     import asyncio
     from aiohttp import web
@@ -443,8 +466,14 @@ def register():
 
     @server.routes.get('/freevideo/progress')
     async def progress(request):
-        return web.json_response({'progress': STATE.snapshot()},
+        # The phone page reads the preview style from the same poll that carries the pictures.
+        style = preview_style()
+        return web.json_response({'progress': STATE.snapshot(), 'preview_style': style['style'], 'preview_chosen': style['chosen']},
                                  headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/preview-style')
+    async def preview_style_route(request):
+        return web.json_response(preview_style(), headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/node-view-opened')
     async def node_view_opened(request):

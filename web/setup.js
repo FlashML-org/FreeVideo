@@ -5,6 +5,7 @@ import { animateDetails, closeDialog } from './motion.js';
 import { createGuideReplayEntry } from './first_run_guide.js';
 import { issueButton } from './issue_button.js';
 import { agentConfirmSettings } from './agent_confirm_settings.js';
+import { previewStyle, loadPreviewStyle, applyPreviewStyle, onPreviewStyle } from './preview_style.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./setup.css', import.meta.url).href;
@@ -72,8 +73,10 @@ const failureText = value => {
 };
 let current;
 
-export async function openSetup() {
-    if (current?.open) { current.focus(); return; }
+export async function openSetup(options) {
+    // A click passes its event here; only a plain object can name a section to scroll to.
+    const section = options?.constructor === Object ? options.section : null;
+    if (current?.open) { current.focus(); current.dispatchEvent(new CustomEvent('fv-setup-section', {detail: section})); return; }
     const dialog = document.createElement("dialog"); current = dialog;
     dialog.className = "fv-setup";
     const node = (tag, label) => { const e = document.createElement(tag); if (label) e.textContent = label; return e; };
@@ -202,10 +205,42 @@ export async function openSetup() {
         return openCreativeWorkspace();
     }});
     const agentConfirm = agentConfirmSettings(t, api);
-    dialog.append(heading, installation, downloads, agentConfirm.element, advanced, guideReplay);
+    // The preview while generating is a frame sheet; this switch plays it as a loop of the video in progress instead.
+    // It applies to the preview on screen at once, on this page and on the phone page.
+    const preview = node('section'); preview.dataset.section = 'preview';
+    preview.append(node('h3', t('Preview during generation', '生成中的预览')));
+    const loopLabel = node('label'); loopLabel.className = 'fv-check';
+    const loopSwitch = node('input'); loopSwitch.type = 'checkbox';
+    loopLabel.append(loopSwitch, node('span', t('Loop playback', '循环播放')));
+    const previewStatus = note(t('When off, a frame sheet is shown.', '关闭时显示多帧拼图。')); previewStatus.setAttribute('aria-live', 'polite');
+    const paintPreview = () => { loopSwitch.checked = previewStyle() === 'loop'; };
+    paintPreview();
+    loopSwitch.onchange = async () => {
+        const wanted = loopSwitch.checked ? 'loop' : 'sheet';
+        loopSwitch.disabled = true; previewStatus.className = 'fv-muted';
+        previewStatus.textContent = t('When off, a frame sheet is shown.', '关闭时显示多帧拼图。');
+        try {
+            const saved = await request('preview-style', {style: wanted});
+            applyPreviewStyle(saved.style, saved.chosen === true);
+        } catch (error) {
+            previewStatus.textContent = failureText(error.message); previewStatus.className = 'fv-failure';
+        } finally { loopSwitch.disabled = false; paintPreview(); }
+    };
+    const stopWatching = onPreviewStyle(paintPreview);
+    dialog.addEventListener('close', stopWatching);
+    loadPreviewStyle(api).then(paintPreview);
+    preview.append(loopLabel, previewStatus);
+    const showSection = name => {
+        if (name !== 'preview') return;
+        preview.scrollIntoView({block: 'center'});
+        loopSwitch.focus({preventScroll: true});
+    };
+    dialog.addEventListener('fv-setup-section', event => showSection(event.detail));
+    dialog.append(heading, installation, downloads, preview, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
+    if (section) showSection(section);
     let savedFolders = "", savedMissing = false;
     let calibrateWait = false;
     let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, planErrors = false, planStale = false, ready = false, waitSince;

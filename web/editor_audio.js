@@ -27,7 +27,7 @@ export const AUDIO_SHORTCUTS = Object.freeze([{key: 'delete', action: 'removeCro
 export function createAudioActions(state, {t = en => en, error = () => {}} = {}) {
     const apply = (label, change, options, report = false) => { try { return state.apply(label, change, options); } catch (value) { if (report) error(value); return {ok: false, reason: value.code || 'audio'}; } };
     return {
-        detachAudio: id => { const result = apply(t('Detach audio', '分离声音'), record => sound.detachAudio(record, id)); if (result && result.ok !== false) state.select({kind: 'clip', ids: [id]}); return result; },
+        detachAudio: id => { const result = apply(t('Detach audio', '分离原声'), record => sound.detachAudio(record, id)); if (result && result.ok !== false) state.select({kind: 'clip', ids: [id]}); return result; },
         restoreAudio: id => apply(t('Reattach audio', '放回原声'), record => rules.restoreOriginal(record, id), undefined, true),
         replaceAudio: (id, payload) => apply(t('Replace audio', '替换声音'), record => rules.replaceAudio(record, id, payload), {clearRange: true}, true),
         setCrossfade: (id, frames) => apply(t('Crossfade', '交叉淡化'), record => sound.setCrossfade(record, id, frames)),
@@ -139,7 +139,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         onChange: seconds => apply(t('Fade out', '淡出'), record => sound.setFades(record, selectedAudio(state).map(clip => clip.id), 'fade_out', Math.round(seconds * 24))),
     });
     const fadeNote = el('p', 'fv-ed-audio-note'); fadeNote.hidden = true; form.append(fadeNote);
-    const detach = el('button', 'fv-ed-audio-detach', t('Detach audio', '分离声音')); detach.type = 'button'; form.append(detach);
+    const detach = el('button', 'fv-ed-audio-detach', t('Detach audio', '分离原声')); detach.type = 'button'; form.append(detach);
     const replace = el('button', 'fv-ed-audio-replace', t('Replace audio', '替换声音')); replace.type = 'button'; form.append(replace);
     cross.append(el('p', '', t('Crossfade', '交叉淡化')));
     const limitNote = frames => noteAtPointer(t(`At most ${secondsText(frames)} s`, `最多 ${secondsText(frames)} 秒`), panel);
@@ -200,7 +200,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         } else fadeNote.textContent = '';
         fadeNote.hidden = !fadeNote.textContent;
         const video = count === 1 ? selected.find(clip => sound.trackOf(state.record, clip.id).kind === 'video') : null;
-        detach.textContent = video?.detached_from ? t('Reattach audio', '放回原声') : t('Detach audio', '分离声音');
+        detach.textContent = video?.detached_from ? t('Reattach audio', '放回原声') : t('Detach audio', '分离原声');
         const detachReason = disabledReason(ctx, {needs: 'video', single: true}) || (locked ? t('This track is locked', '这条轨道已锁定') : '');
         detach.disabled = !!detachReason || !video?.source || !(video.link || rules.canRestoreOriginal(state.record, video.id));
         detach.title = detach.textContent;

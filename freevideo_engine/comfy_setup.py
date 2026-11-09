@@ -217,6 +217,13 @@ class Setup:
             raise ValueError('Specify automatic (null) or ' + label + ' in GiB')
         return write(root, value[field], backend=backend)
 
+    def preview_style(self, value=None):
+        from .preview_style import read, write
+        root = installation_root(self.source)
+        if value is None:
+            return read(root)
+        return write(root, value.get('style'))
+
     def downloads(self, root=None):
         from .download_settings import read
         return dict(preferences=read(Path(root or installation_root(self.source))/'download-settings.json'),
@@ -503,6 +510,8 @@ def register():
                 result = setup.download_token(value)
             elif name == 'resources':
                 result = setup.resource_settings(value)
+            elif name == 'preview-style':
+                result = setup.preview_style(value)
             elif name == 'calibrate':
                 running, pending = server.prompt_queue.get_current_queue()
                 if running or pending:

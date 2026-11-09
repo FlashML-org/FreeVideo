@@ -4,6 +4,7 @@ export const SWAP_LORA = 'alissonerdx-v1.1.safetensors';
 export const SWAP_PREFIX = 'body_swap:';
 export const MIN_SOURCE_SECONDS = 22 / 24; // the engine needs 22 frames
 export const SWAP_KEY = 'freevideo_replace_person';
+export const MAX_PEOPLE = 2; // person images in one request, matched to the people in the video from left to right
 
 export const swapState = media => {
     const state = media?.properties?.[SWAP_KEY];
@@ -11,11 +12,21 @@ export const swapState = media => {
 };
 export const keepsSound = state => Boolean(state?.keepSound && state.source?.audio === true);
 
-// Person image first (it is Picture 1), then the source video as a guide clip. `slot` keeps the number of each when the
-// file in it is replaced.
+// The person images, in the order they are matched to the people in the video (left to right). A state saved with one
+// person image has only `person`; a state with several keeps `people` and mirrors the first into `person`.
+export function peopleOf(state) {
+    const list = Array.isArray(state?.people) ? state.people : state?.person ? [state.person] : [];
+    return list.filter(entry => entry?.file).slice(0, MAX_PEOPLE);
+}
+// What the state stores for a list of person images: `person` stays the first, so a state with one image reads as before.
+export const withPeople = (state, people) => Object.assign(state, {people, person: people[0] || null});
+const personSlot = index => index ? `person${index + 1}` : 'person';
+
+// Person images first (they are Picture 1, 2, ...), then the source video as a guide clip. `slot` keeps the number of
+// each when the file in it is replaced.
 export function swapRows(state) {
     const rows = [];
-    if (state?.person?.file) rows.push({file: state.person.file, role: 'reference', enabled: true, slot: 'person'});
+    peopleOf(state).forEach((entry, index) => rows.push({file: entry.file, role: 'reference', enabled: true, slot: personSlot(index)}));
     if (state?.source?.file) rows.push({file: state.source.file, role: 'reference', enabled: true, guide: true, slot: 'source',
         ...(keepsSound(state) ? {keep_source_audio: true} : {})});
     return rows;
@@ -26,7 +37,7 @@ export const requestRows = state => swapRows(state).map(({slot, ...row}) => row)
 
 // 'both', 'source', 'person' for what is still missing, null when the two slots are filled.
 export function swapMissing(state) {
-    const source = Boolean(state?.source?.file), person = Boolean(state?.person?.file);
+    const source = Boolean(state?.source?.file), person = peopleOf(state).length > 0;
     return source && person ? null : !source && !person ? 'both' : source ? 'person' : 'source';
 }
 
@@ -36,9 +47,19 @@ export function effectiveRows(media, serialized) {
     return state ? swapRows(state) : JSON.parse(serialized?.value || '[]');
 }
 
-export const withPrefix = text => {
+// With several person images the request says who replaces whom: the pictures are in the order of the people in the
+// frame from left to right. A prompt that already names its pictures is left as the user wrote it. The wording is the
+// one that kept the order of two people right in every test run; it names the side of the frame for each picture.
+const NAMES_PICTURE = /\bPicture\s*\d/i;
+const SIDES = ['left', 'right'];
+export function peopleSentence(count) {
+    return SIDES.slice(0, Math.min(count, SIDES.length)).map((side, index) => `Picture ${index + 1} replaces the person on the ${side} side of the frame.`).join(' ');
+}
+export const withPrefix = (text, count = 1) => {
     const body = String(text ?? '').trim();
-    return body ? `${SWAP_PREFIX} ${body}` : SWAP_PREFIX;
+    const sentence = count > 1 && !NAMES_PICTURE.test(body) ? peopleSentence(Math.min(count, MAX_PEOPLE)) : '';
+    const rest = [sentence, body].filter(Boolean).join(' ');
+    return rest ? `${SWAP_PREFIX} ${rest}` : SWAP_PREFIX;
 };
 
 // The replace-person adapter as ComfyUI registers it: the same file may sit in a subfolder of models/loras.

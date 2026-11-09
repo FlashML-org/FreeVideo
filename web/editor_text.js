@@ -28,7 +28,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     const buttons=el('div','fv-ed-tool-group fv-ed-text-buttons');
     // Icons only on the toolbar; the name lives in the label and hover.
     const textButton=button('',{onClick:()=>add('text')}), subtitleButton=button('',{onClick:()=>add('subtitle')});
-    textButton.classList.add('fv-ed-add-text'); subtitleButton.classList.add('fv-ed-add-subtitle');
+    textButton.classList.add('fv-ed-add-text'); subtitleButton.classList.add('fv-ed-add-subtitle'); buttons.dataset.tourId = 'text-entry';
     // The same 16 px line glyphs as the other toolbar tools.
     const glyph=d=>{const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');svg.classList.add('fv-ed-glyph');const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',d);svg.append(path);return svg;};
     textButton.classList.add('fv-ed-icon'); subtitleButton.classList.add('fv-ed-icon');

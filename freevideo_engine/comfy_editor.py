@@ -756,7 +756,8 @@ def sources(root, keys):
                 media['preview'] = True
             if source['kind'] == 'import':
                 metadata = _read_import(root, source['id'])
-                media.update(preview_width=media['width'], preview_height=media['height'])
+                # The file's own name, for the page to call an imported sound by.
+                media.update(preview_width=media['width'], preview_height=media['height'], name=metadata['name'])
                 if metadata.get('original_size'):
                     media.update(width=metadata['width'], height=metadata['height'])
             address = (_view(relative) if relative else '/freevideo/editor/media?' +

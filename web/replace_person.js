@@ -4,9 +4,9 @@
 import { referenceKind } from './prompt_references.js';
 import { uploadMedia } from './media_upload.js';
 import { firstFrameRow } from './first_frame_row.js';
-import { swapState, swapRows, effectiveRows, keepsSound, withPrefix, swapMissing, SWAP_LORA, SWAP_PREFIX, MIN_SOURCE_SECONDS, SWAP_KEY } from './replace_state.js';
+import { swapState, swapRows, effectiveRows, keepsSound, withPrefix, swapMissing, peopleOf, withPeople, MAX_PEOPLE, SWAP_LORA, SWAP_PREFIX, MIN_SOURCE_SECONDS, SWAP_KEY } from './replace_state.js';
 
-export {swapState, swapRows, effectiveRows, keepsSound, withPrefix, swapMissing, SWAP_LORA, SWAP_PREFIX, MIN_SOURCE_SECONDS};
+export {swapState, swapRows, effectiveRows, keepsSound, withPrefix, swapMissing, peopleOf, MAX_PEOPLE, SWAP_LORA, SWAP_PREFIX, MIN_SOURCE_SECONDS};
 const KEY = SWAP_KEY;
 
 // A first or last frame, in the media list or on a connected input, rules the option out.
@@ -40,39 +40,47 @@ function videoSeconds(file) {
 // shown only while the option is on.
 export function createReplacePerson({t, api, media, mount, view, onChange = () => {}, extra = null}) {
     const stored = () => media.properties?.[KEY];
-    const state = () => { media.properties ??= {}; return media.properties[KEY] ??= {on: false, source: null, person: null, keepSound: false}; };
+    const state = () => { media.properties ??= {}; return media.properties[KEY] ??= {on: false, source: null, person: null, people: [], keepSound: false}; };
     const save = info => { media.graph?.change?.(); onChange(info); paint(); };
     const toggle = firstFrameRow(t, 'fv-first-frame fv-replace-person');
     toggle.row.firstChild.textContent = t('Replace person', '替换人物');
     toggle.input.setAttribute('aria-label', t('Replace person', '替换人物'));
-    toggle.row.title = '';
+    toggle.row.title = ''; toggle.row.dataset.tourId = 'replace-person';
     const slots = el('div', 'fv-swap-slots'), note = el('div', 'fv-note fv-swap-note'); note.setAttribute('role', 'status');
     const blockedTitle = t('Not available with first and last frames', '首尾帧不能和替换人物同时使用');
-    function slot(kind) {
+    function slot(kind, index = 0) {
         const box = el('div', 'fv-swap-slot'), title = el('div', 'fv-swap-title', kind === 'video' ? t('Source video', '源视频') : t('Person image', '人物图'));
         const body = el('button', 'fv-swap-drop'); body.type = 'button';
         const input = el('input'); input.type = 'file'; input.hidden = true;
         input.accept = kind === 'video' ? 'video/*,.mp4,.mov,.webm,.mkv,.m4v' : 'image/*,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff';
         body.onclick = () => input.click();
-        input.onchange = () => { const [file] = input.files; input.value = ''; if (file) choose(kind, file); };
+        input.onchange = () => { const [file] = input.files; input.value = ''; if (file) choose(kind, file, index); };
         for (const name of ['dragover', 'dragenter']) box.addEventListener(name, event => { event.preventDefault(); event.stopPropagation(); });
         box.addEventListener('drop', event => {
             event.preventDefault(); event.stopPropagation();
             const file = Array.from(event.dataTransfer?.files || []).find(f => referenceKind(f.name) === (kind === 'video' ? 'video' : 'image'));
-            if (file) choose(kind, file);
+            if (file) choose(kind, file, index);
         });
         box.append(title, body, input);
-        return {box, body, kind};
+        const remove = el('button', 'fv-swap-remove', '×'); remove.type = 'button'; remove.hidden = true;
+        remove.onclick = event => { event.stopPropagation(); dropPerson(index); };
+        if (kind === 'image') box.append(remove);
+        return {box, body, kind, title, remove};
     }
-    const source = slot('video'), person = slot('image');
+    const source = slot('video');
+    // One slot per person image, plus an empty one to add the next (up to MAX_PEOPLE); they are matched to the people in
+    // the video from left to right.
+    const personSlots = [], peopleBox = el('div', 'fv-swap-people fv-swap-person');
+    const personSlot = index => personSlots[index] ??= slot('image', index);
+    const order = el('div', 'fv-note fv-swap-order', t('Person images are matched to the people in the video from left to right.', '人物图按画面中人物从左到右的顺序对应。'));
     const sound = el('label', 'fv-swap-sound', t('Keep source video sound', '保留源视频声音'));
     const soundInput = el('input'); soundInput.type = 'checkbox'; sound.prepend(soundInput);
     soundInput.onchange = () => { state().keepSound = soundInput.checked; save(); };
-    source.box.classList.add('fv-swap-source'); person.box.classList.add('fv-swap-person');
-    slots.append(source.box, person.box, sound);
+    source.box.classList.add('fv-swap-source');
+    slots.append(source.box, peopleBox, order, sound);
     mount.prepend(...[toggle.row, slots, note, extra].filter(Boolean));
     let busy = false;
-    async function choose(kind, file) {
+    async function choose(kind, file, index = 0) {
         if (busy || media.isUploading) return;
         note.textContent = '';
         if (referenceKind(file.name) !== (kind === 'video' ? 'video' : 'image')) {
@@ -88,10 +96,16 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
             const result = await uploadMedia(api, file);
             const next = state();
             if (kind === 'video') { next.source = {file: result.file, audio: result.audio === true}; if (!next.source.audio) next.keepSound = false; }
-            else next.person = {file: result.file};
+            else { const list = peopleOf(next).slice(); list[Math.min(index, list.length)] = {file: result.file}; withPeople(next, list.slice(0, MAX_PEOPLE)); }
             save();
         } catch (error) { note.textContent = error.message; }
         finally { busy = false; media.isUploading = false; paint(); }
+    }
+    function dropPerson(index) {
+        if (busy || media.isUploading) return;
+        const next = state();
+        withPeople(next, peopleOf(next).filter((_, position) => position !== index));
+        note.textContent = ''; save();
     }
     function fill(part, entry, empty) {
         part.body.replaceChildren();
@@ -112,7 +126,17 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
         slots.hidden = !on; note.hidden = !on || !note.textContent;
         mount.classList.toggle('fv-swap-on', on);
         fill(source, current?.source, t('Add video', '添加视频'));
-        fill(person, current?.person, t('Add image', '添加图片'));
+        const people = peopleOf(current), shown = Math.min(MAX_PEOPLE, people.length + 1);
+        peopleBox.dataset.count = String(shown);
+        peopleBox.replaceChildren(...Array.from({length: shown}, (_, index) => {
+            const part = personSlot(index);
+            part.title.textContent = shown > 1 ? t(`Person image ${index + 1}`, `人物图 ${index + 1}`) : t('Person image', '人物图');
+            part.remove.hidden = !people[index]; part.remove.disabled = Boolean(busy);
+            part.remove.setAttribute('aria-label', t(`Remove person image ${index + 1}`, `移除人物图 ${index + 1}`));
+            fill(part, people[index], t('Add image', '添加图片'));
+            return part.box;
+        }));
+        order.hidden = !on || people.length < 2;
         const audio = current?.source?.audio === true;
         sound.hidden = !on; soundInput.disabled = busy || !audio; soundInput.checked = audio && current?.keepSound === true;
     }

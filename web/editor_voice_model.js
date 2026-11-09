@@ -6,6 +6,8 @@ export const SPEECH_TRACKS = ['a1', 'a4'];
 const NBSP = ' ';
 const clean = value => String(value ?? '').trim();
 const end = clip => clip.start + clip.frames;
+// A line said in a voice of the edit (the generation bar's new lines): on the recording track it is dubbed like speech.
+export const isSaidLine = clip => clip?.source?.kind === 'generated' && /^freevideo-voice\//.test(clip.source.id);
 
 // What a chosen stretch asks to be dubbed: a sound clip of the original sound (or its separated voice), whole or the
 // part a stretch covers, in seconds from the clip's start. Null for anything else.
@@ -16,14 +18,15 @@ export function voiceTarget(record, selection) {
         // A sound clip is chosen together with the picture it is linked to; exactly one speech clip may be among them.
         // Choosing a picture clip (which brings its linked sound along) is not choosing the voice.
         if (record.tracks.some(row => row.kind !== 'audio' && row.clips.some(value => selection.ids.includes(value.id)))) return null;
-        const found = record.tracks.filter(row => SPEECH_TRACKS.includes(row.id)).flatMap(row => row.clips.filter(value => selection.ids.includes(value.id)).map(value => [row, value]));
-        if (found.length !== 1 || !found[0][1].source) return null;
+        const found = record.tracks.filter(row => SPEECH_TRACKS.includes(row.id) || row.id === 'a3').flatMap(row => row.clips.filter(value => selection.ids.includes(value.id)).map(value => [row, value]));
+        if (found.length !== 1 || !found[0][1].source || found[0][0].id === 'a3' && !isSaidLine(found[0][1])) return null;
         [track, clip] = found[0];
         from = 0; to = clip.frames;
     } else if (selection.kind === 'range') {
-        if (selection.tracks?.length !== 1 || !SPEECH_TRACKS.includes(selection.tracks[0])) return null;
+        if (selection.tracks?.length !== 1 || !SPEECH_TRACKS.includes(selection.tracks[0]) && selection.tracks[0] !== 'a3') return null;
         track = record.tracks.find(row => row.id === selection.tracks[0]);
-        clip = track?.clips.find(value => value.source && value.start <= selection.start && end(value) >= selection.start + selection.frames);
+        clip = track?.clips.find(value => value.source && value.start <= selection.start && end(value) >= selection.start + selection.frames
+            && (track.id !== 'a3' || isSaidLine(value)));
         if (!clip) return null;
         from = selection.start - clip.start; to = from + selection.frames;
     } else return null;

@@ -284,18 +284,30 @@ class RemoteProcess:
 
     def send_signal(self, value):
         if alive(self.pid, self.created):
-            os.kill(self.pid, value)
+            try:
+                os.kill(self.pid, value)
+            except (PermissionError, ProcessLookupError):
+                # Windows answers "access denied" for a process that is already
+                # ending, which is what a worker does after it reports a CUDA
+                # error. Whether it is gone is decided by watching it in
+                # stop_request, never by what this call said.
+                pass
 
     def kill(self):
         import psutil
-        if alive(self.pid, self.created):
-            process = psutil.Process(self.pid)
-            for child in reversed(process.children(recursive=True)):
-                try:
-                    child.kill()
-                except psutil.Error:
-                    pass
-            process.kill()
+        try:
+            if alive(self.pid, self.created):
+                process = psutil.Process(self.pid)
+                for child in reversed(process.children(recursive=True)):
+                    try:
+                        child.kill()
+                    except psutil.Error:
+                        pass
+                process.kill()
+        except psutil.Error:
+            # Same race as send_signal: a process that is ending refuses the
+            # kill. The caller still waits for it to disappear.
+            pass
 
     def terminate(self):
         self.send_signal(signal.SIGTERM)

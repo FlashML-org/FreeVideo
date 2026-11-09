@@ -14,6 +14,8 @@ import time
 from collections import deque
 from pathlib import Path
 
+from .music.words import drop_clauses, split as split_words
+
 FPS = 24
 FOLDER = 'freevideo-music'
 MAX_JOBS = 20
@@ -42,24 +44,13 @@ MOODS = {
     'warm': 'warm and tender, moderate tempo around 85 BPM',
     'sad': 'sad and reflective, slow tempo around 65 BPM in a minor key',
 }
-# The feeling alone, without the pace: used after the user's own words, which set the pace themselves
-# (a fixed "around 70 BPM" after "a festival parade" pulled the piece back to the preset).
-FEELINGS = {
-    'calm': 'calm and peaceful',
-    'upbeat': 'bright and upbeat',
-    'tense': 'tense and suspenseful',
-    'warm': 'warm and tender',
-    'sad': 'sad and reflective, in a minor key',
-}
 DEFAULT_STYLE, DEFAULT_MOOD = 'cinematic', 'calm'
 
 
-def caption(style, mood, words=None):
-    """The English description the music model reads for a preset pair, or for the user's words with the pair after them."""
+def caption(style, mood):
+    """The English description the music model reads for a preset pair."""
     if style not in STYLES or mood not in MOODS:
         raise ValueError('Unknown style or mood')
-    if words:
-        return '%s. %s, %s. Instrumental only, no singing, no vocals.' % (words.rstrip('.'), STYLES[style], FEELINGS[mood])
     return '%s, %s. Instrumental only, no singing, no vocals.' % (STYLES[style], MOODS[mood])
 
 
@@ -104,13 +95,17 @@ def validate_request(body):
                 or not _whole(span['frames'], 1, frames - span['start'])):
             raise ValueError('Invalid quiet span')
         spans.append((span['start'], span['frames']))
-    # The user's own words go first, with the chosen style and feeling after them (not the preset's pace);
-    # the full preset alone when there are none.
-    if text:
-        words, stem = text if style is None else caption(style, mood, text), 'text'
+    # The user's own words alone: a preset after them outweighed them (a festival parade came out calm piano).
+    # What they rule out ("不要鼓") leaves the words and goes to the planner as what to steer away from.
+    # The full preset when there are no words, without its clauses naming a ruled-out thing.
+    kept, avoid = split_words(text) if text else ('', [])
+    if kept:
+        words, stem = '%s. Instrumental only, no singing, no vocals.' % kept.rstrip('.。'), 'text'
     else:
-        words, stem = caption(style, mood), '%s-%s' % (style, mood)
-    return dict(frames=frames, caption=words, stem=stem, style=style, mood=mood, seed=seed, quiet=spans)
+        if style is None:
+            style, mood = DEFAULT_STYLE, DEFAULT_MOOD
+        words, stem = drop_clauses(caption(style, mood), avoid), 'text' if text else '%s-%s' % (style, mood)
+    return dict(frames=frames, caption=words, stem=stem, style=style, mood=mood, seed=seed, quiet=spans, avoid=avoid)
 
 
 def _gpu_busy(server):
@@ -152,8 +147,9 @@ def run_job(request, *, root, out, phase, cancelled, server=None, service=None, 
     busy = busy or (lambda: _gpu_busy(server))
     for attempt in range(PREEMPTIONS + 1):
         try:
+            extra = dict(avoid=request['avoid']) if request.get('avoid') else {}
             return service.compose(out, request['caption'], request['frames'], seed=request['seed'], quiet=request['quiet'],
-                                   fps=FPS, server=server, cancelled=cancelled, phase=phase)
+                                   fps=FPS, server=server, cancelled=cancelled, phase=phase, **extra)
         except service.Preempted:
             if attempt == PREEMPTIONS:
                 raise service.MusicError('music_failed', 'preempted') from None
@@ -254,8 +250,12 @@ class MusicQueue:
                 with self.lock:
                     if name == 'composing' and job['phase'] != 'composing':
                         job['began'] = self.clock()
+                    value = 0. if fraction is None else max(0., min(.99, float(fraction)))
+                    # A download's share only grows: a file fetched again from another source does not move it back.
+                    if name == 'downloading' and job['phase'] == 'downloading':
+                        value = max(job['fraction'], value)
                     job['phase'] = name
-                    job['fraction'] = 0. if fraction is None else max(0., min(.99, float(fraction)))
+                    job['fraction'] = value
 
             out = self.root / job['relative']
             try:

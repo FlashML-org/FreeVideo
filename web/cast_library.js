@@ -67,7 +67,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         return {...card, images: front ? [front, ...images.filter(image => image !== front)] : images};
     };
     function render() {
-        avatars.replaceChildren(); heading.hidden = !rows.length;
+        avatars.replaceChildren(); 
         skipped.textContent = unreadable > 0 ? text(`${unreadable} ${unreadable === 1 ? 'character' : 'characters'} could not be read`, `另有 ${unreadable} 个角色无法读取`) : '';
         skipped.hidden = !unreadable;
         for (const row of rows) {

@@ -8,8 +8,9 @@ import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
+import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
 import { createPortNotice } from './port_notice.js';
@@ -50,7 +51,7 @@ import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './f
 import { createStudioLength, savedSeconds } from './studio_length.js?v=20261011-length';
 import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
-import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora } from './replace_state.js';
+import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
@@ -553,7 +554,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     }
     // Only deselects: the files stay in the folder and the recent names are kept.
     const clear = button(t('Clear', '清空'), () => { write([]); });
-    actions.append(add);
+    add.dataset.tourId = 'lora-add'; actions.append(add);
     const changed = e => { if (String(e.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-loras', changed);
     const triggersChanged = e => refreshTriggerWords(e.detail);
@@ -679,6 +680,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The guide starts after the tab settles: it fixes its steps from the anchors present at that moment.
     const agentDiscovery = navigation.ready;
     header.append(brand, navigation, tools);
+    const headerFit = fitStudioHeader(header, brand, navigation, tools); cleanup.push(headerFit.dispose);
     const body = el('div', null, 'fv-body'), controls = el('div', null, 'fv-controls'), output = el('div', null, 'fv-preview-column');
     dialog.append(header, body); body.append(controls, output);
     const portNotice = createPortNotice(cn);
@@ -749,6 +751,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
             exampleFocused = true; generate.focus({preventScroll: true});
         } else fault(t('Could not complete. Try again.', '没有完成，请重试'));
         return result;
+    };
+    // A start clip goes onto the editor timeline, where it can be continued; nothing is placed unless the file loaded.
+    const tryStartClip = async entry => {
+        if (busy || queued || capturing) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        let file;
+        try { file = await (await import('./tour_try.js')).fetchStartClip(entry); } catch (error) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'asset', error}; }
+        const handle = await openEditorView(node, {studio: dialog});
+        await handle?.ready;
+        if (!handle?.actions?.importFiles) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'no_editor'}; }
+        await handle.actions.importFiles([file], {at: 0});
+        await handle.actions.continueStart?.();
+        return {ok: true};
     };
     function castChoices() {
         if (!castLibrary || linked(node, 'text') || !castAssets()) return [];
@@ -978,7 +992,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     canvas.append(samplingSettings); cleanup.push(() => effort.dispose());
     cleanup.push(() => { clearTimeout(effortEstimateTimer); effortEstimateRequest?.abort(); });
     const mediaNode = upstream(node, 'media');
-    const mediaFilled = () => swapState(mediaNode) ? Boolean(swapState(mediaNode).source || swapState(mediaNode).person) : JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
+    const mediaFilled = () => swapState(mediaNode) ? Boolean(swapState(mediaNode).source || peopleOf(swapState(mediaNode)).length) : JSON.parse(value(mediaNode, 'assets') || '[]').some(r => r.enabled !== false)
         || Boolean(mediaNode.inputs?.some(input => ['first', 'last', ...referenceInputs, 'reference_audio'].includes(input.name) && input.link != null));
     // The line beside the closed title says what the section is for, until something is added.
     // The guide opens the section it points at; the ring stays on the title row.
@@ -1494,7 +1508,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // shows its own report, or none when this window never saw its run.
         const reports = node.freevideoVideoReports || (node.freevideoVideoReports = new Map());
         if (!chosen && node.freevideoReportId) reports.set(r.video, node.freevideoReportId);
-        const wanted = reports.get(r.video) || null;
+        const wanted = recordReportId(r, reports.get(r.video));
         if (!(chosen && busy) && wanted !== shownReport) {
             shownReport = wanted; progress.updateReport({new_request: true});
             if (wanted) progress.updateReport({report_id: wanted});
@@ -1760,12 +1774,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
         generate.disabled = submitting || chainWait || lengthControl.blocked || (runMode === 'loop' && queueState?.looping);
-        generate.textContent = submitting ? t('Adding…', '正在添加…')
+        // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
+        const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
+            `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
+            : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
+        generate.textContent = submitting ? adding
             : chainReason || (runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
-        generate.title = (lengthControl.blocked ? lengthControl.message : submitting ? t('Adding…', '正在添加…') : '');
+        generate.title = (lengthControl.blocked ? lengthControl.message : '');
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         for (const b of modeButtons) if (b.dataset.mode !== 'single') b.disabled = multiple;
         countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';
@@ -2236,7 +2254,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }, onGenerate: () => { if (generate.disabled) return false; generate.click(); return true; }, onEdit: () => openEditorView(node, {studio: dialog}),
         isBusy: () => busy || queued || capturing});
     cleanup.push(() => firstStart.dispose());
-    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, canTry: canTryTour, isBusy: () => busy || queued || capturing};
+    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
     cleanup.push(registerTourWorkspace(tourContext));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));

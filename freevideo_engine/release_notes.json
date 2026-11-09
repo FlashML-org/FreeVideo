@@ -1,25 +1,62 @@
 {
   "schema": 1,
-  "product_version": "0.4.36",
+  "product_version": "0.4.37",
   "en": {
-    "summary": "Props join the cast library beside characters and scenes, the editor stays usable in a short window, and a refresh no longer clears text selected in the chat.",
+    "summary": "Generation previews are a frame sheet again with an optional loop, the editor can narrate a line in a chosen voice, Replace character takes two people, and Windows installs download less.",
     "changes": [
-      "Cast library: props are a third kind beside characters and scenes. A prop can be uploaded or generated, and mentioned in a prompt. When a continued shot has room for fewer references, the character face is kept first, then the scene, then the prop.",
-      "Editor: in a short window the audio tracks and the add-audio button below the timeline are no longer cut off. The preview gives up height first, and the editor scrolls when that is not enough.",
-      "Chat: text selected in messages and cards is kept when the page refreshes, so it can be copied, and the reason for a failed send keeps its selection.",
-      "Launcher: when the engine stops unexpectedly, the launcher window and the page say when it stopped and offer to reconnect, and feedback and diagnostic reports include the latest exit record."
+      "The preview shown while a video is generated is a sheet of frames again. A new setting, Preview during generation, plays it as a loop of the video in progress instead. The preview is also shown when the window is short.",
+      "In the editor, right-click an empty spot on the dialogue or recording track and choose Narration: write a line, pick a voice, and it is generated to the length of the selection. New tutorial chapter and tour card.",
+      "Replace character takes a second person: the first picture replaces the person on the left, the second the person on the right (up to two people).",
+      "Generated music follows the written description and avoids an instrument it rules out, such as \"no piano\". The first-use download of the music files shows its percent on the generation bar.",
+      "Windows: when the graphics driver reports an error in the second pass, only the second pass is redone from the finished first pass instead of ending the request.",
+      "Windows installs download about 469 MB less: the ComfyUI workflow-template packages are no longer installed.",
+      "For multi-segment generation, segment progress now covers decoding and reaches 100% when finished.",
+      "Export and subtitle jobs show their own names and progress in the Agent activity list; the creation panel shows planning and adding counts.",
+      "Editor: the lines panel takes at most 40% of the editing area and scrolls inside, the five tracks stay visible, the resample menu is hidden while narrating, the audio button is now \"Separate original sound\", and characters, scenes and props sit in one row of equal squares.",
+      "Tutorials add Text and subtitles, Replace two people and Your own LoRA. Tour: \"Take me there\" opens the right view first, the media tour starts with first and last frames, and the \"Continue generating\" card puts the start video on the timeline.",
+      "The launcher points out a Windows PowerShell that cannot start; diagnostic reports on Windows record the lowest available memory and page-fault counts during sampling; in the update dialog, old and new waveforms are easier to tell apart and the ruler's last label is complete.",
+      "Download report is also available in reopened windows, the library and segment results, and the Reuse settings and Copy path buttons are centered; the top bar no longer overlaps in a narrow window."
     ]
   },
   "zh": {
-    "summary": "道具加入角色库，与角色和场景并列；窗口较矮时编辑器仍可完整使用；聊天刷新时不再清掉已选中的文字。",
+    "summary": "生成预览回到多帧拼图并可选循环播放，剪辑页可用所选音色配音，替换人物支持两个人，Windows 安装下载更少。",
     "changes": [
-      "角色库：道具成为与角色、场景并列的第三类，可上传或生成，并在提示词中引用；接续镜头可用的参考位置不足时，依次保留角色脸、场景、道具。",
-      "剪辑：窗口较矮时，时间线下方的声音轨和“＋ 声音轨”按钮不再被裁掉；预览区先让出高度，仍不够时编辑器出现滚动条。",
-      "聊天：页面刷新时，消息和任务卡中已选中的文字不再被清掉，可正常复制；发送失败的原因也保留选区。",
-      "启动器：引擎意外停止时，启动器窗口和页面提示停止的时间并提供重新连接入口；反馈和诊断报告带上最近一次退出记录。"
+      "生成中的预览默认回到多帧拼图；设置里新增“生成中的预览”，勾选“循环播放”后在原位循环播放。窗口再矮也会显示预览。",
+      "剪辑页可在人声轨或录音轨的空处右键“配音”，写一句话并选一个音色按选区长度生成；新增对应教程章和导览卡。",
+      "替换人物可添加第二张人物图，请求写明第一张替换左侧、第二张替换右侧的人；最多 2 个人。",
+      "生成配乐按所写描述来，写“不要钢琴”之类的排除时会避开该乐器；首次下载配乐文件时生成条显示百分比。",
+      "Windows：第二遍遇到显卡驱动报错时，用已完成的第一遍只重做第二遍，不再让整次请求结束。",
+      "Windows 安装少下载约 469 MB：不再安装 ComfyUI 自带的工作流模板包。",
+      "多段生成的段进度贯穿解码，完成时为 100%，段宽按帧数。",
+      "AI 任务列表里的导出和字幕任务显示自己的名字和进度；创作面板显示“正在规划分段…”“正在添加 3/10…”。",
+      "剪辑：台词面板最高占编辑区 40% 并在内部滚动、五条轨保持可见，配音时不再显示二次采样菜单，音频按钮改称“分离原声”；素材页角色、场景、道具排成一行等大方块。",
+      "教程新增“文字与字幕”“替换两个人”“使用自己的 LoRA”章；导览“带我去”先打开章节所在的视图，素材导览先出“首帧 + 尾帧”，“接着生成”卡把起始视频放上时间线。",
+      "启动器会指出无法启动的 Windows PowerShell；诊断报告在 Windows 上记录每个采样步的可用内存低点和缺页数；更新弹窗中新旧波形区分更明显，标尺末端标签完整显示。",
+      "重新打开的窗口、作品库和分段结果也有“下载报告”，“复用设置”“复制路径”按钮居中；窗口较窄时顶栏不再重叠。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.36",
+      "en": {
+        "summary": "Props join the cast library beside characters and scenes, the editor stays usable in a short window, and a refresh no longer clears text selected in the chat.",
+        "changes": [
+          "Cast library: props are a third kind beside characters and scenes. A prop can be uploaded or generated, and mentioned in a prompt. When a continued shot has room for fewer references, the character face is kept first, then the scene, then the prop.",
+          "Editor: in a short window the audio tracks and the add-audio button below the timeline are no longer cut off. The preview gives up height first, and the editor scrolls when that is not enough.",
+          "Chat: text selected in messages and cards is kept when the page refreshes, so it can be copied, and the reason for a failed send keeps its selection.",
+          "Launcher: when the engine stops unexpectedly, the launcher window and the page say when it stopped and offer to reconnect, and feedback and diagnostic reports include the latest exit record."
+        ]
+      },
+      "zh": {
+        "summary": "道具加入角色库，与角色和场景并列；窗口较矮时编辑器仍可完整使用；聊天刷新时不再清掉已选中的文字。",
+        "changes": [
+          "角色库：道具成为与角色、场景并列的第三类，可上传或生成，并在提示词中引用；接续镜头可用的参考位置不足时，依次保留角色脸、场景、道具。",
+          "剪辑：窗口较矮时，时间线下方的声音轨和“＋ 声音轨”按钮不再被裁掉；预览区先让出高度，仍不够时编辑器出现滚动条。",
+          "聊天：页面刷新时，消息和任务卡中已选中的文字不再被清掉，可正常复制；发送失败的原因也保留选区。",
+          "启动器：引擎意外停止时，启动器窗口和页面提示停止的时间并提供重新连接入口；反馈和诊断报告带上最近一次退出记录。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.35",
       "en": {
@@ -380,41 +417,6 @@
           "安装：Linux 上从启动器安装时，缺少 Git 和 C++ 编译器会改为私有下载，不再需要 sudo；只有 curl 等基础工具仍需系统提供，启动器会给出安装命令。即使 nvidia-smi 无法响应安装检查的查询，低于 580 的显卡驱动也会显示带检测到显卡的提示。系统早于 2022 年或缺少窗口所需的图形库时，Linux 桌面版会说明原因和处理办法，不再无提示地退出。",
           "更新：所有平台的更新下载都可走国内镜像，下载源过慢时自动换源续传。",
           "诊断：Mac 上因可用内存不足而在开始前被拒绝的生成，在错误面板中单独一行说明，报告会记录当时的内存。作品库中视频打不开时，反馈会附上播放器错误码和文件响应。诊断报告会记录这次运行使用的显卡。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.24",
-      "en": {
-        "summary": "A person in a source video can be replaced with the character in a person image; reference videos can be used for depth only; the built-in AI sets up a white-model scene from one sentence; an earlier video's prompt and settings can be reused; decoding on cards with less video memory is quicker.",
-        "changes": [
-          "Studio: \"Replace person\" in the Media section replaces the person in a source video with the character in a person image, and can keep the source video's sound; if that sound cannot be added, the finished video is still kept. A reference video can be set to \"Depth only\"; its depth is computed once and reused by later requests.",
-          "Creation panel: after an earlier video is selected in Recent videos, \"Reuse settings\" fills its prompt, picture size and duration back into the panel; \"Undo\" restores the previous values within 10 seconds.",
-          "White models: when no external Agent is connected, the white-model button in the chat box works with the built-in AI. Describe the shot in one sentence; if a ready-made scene fits, a white model is generated for confirmation, otherwise the reason is shown and the sentence is kept.",
-          "Long videos: when a description is split across parts, the story is no longer repeated in every part; the shared text keeps only what stays the same, such as people, place, lighting and style. Without the prompt model, the description is split across the parts by sentence instead of every part using the whole description, and the creation panel offers to download the prompt model; a download in progress is paused when generation starts.",
-          "Editor: a continued part can be as short as 5 seconds, and on Mac and on computers that cannot make 10 seconds at once a new part starts at 5 seconds; a video with a continued part shorter than 10 seconds has at most 4 parts. A description over the length limit is pointed out before sending, including on a retry.",
-          "Generation: after other ComfyUI workflows have run, the video memory they hold is released before a picture or a prompt rewrite starts, without restarting ComfyUI. A missing text encoder model is detected before encoding starts, with repair guidance; if a model repair fails while downloading, the original file is restored. When generation cannot start because the installation is in use, the failure details name the programs holding it open. When the GPU checks before switching to int8 fail, the failure card lists the reason for each check.",
-          "Memory and speed: on graphics cards that cannot hold the whole decoder, decoding no longer prepares the same layers again for every video segment or every new request while memory allows, with identical output. On most Windows graphics cards with 8 to 12 GB of video memory, the first pass of two-pass videos between 10 and 12 seconds without LoRA computes 8 attention heads at a time instead of 4, as shorter videos already did. On Windows, when other programs free video memory during a generation, the next pass and decoding use the recovered memory.",
-          "Install: setup no longer stops with a dependency mismatch after the installation folder was moved, copied or restored, and a dependency folder too deep for Windows is reported as a long path. Text encoder and tokenizer files deleted after installation are restored from the local copy before encoding and during repair, without downloading.",
-          "Phone access: the phone page works when local network access is switched on in the launcher, and no longer shows \"Connection lost. Reconnecting...\" with no content.",
-          "Agents: the install-skill command installs the FreeVideo skill for an Agent, also from deeply nested Windows folders. The tool list an Agent receives is shorter: common tools are listed in full and the others are opened through a help tool.",
-          "Diagnostic reports: when ComfyUI restarts during a generation, the report of that run is marked as interrupted instead of running, and a long video keeps the report of the part that was interrupted."
-        ]
-      },
-      "zh": {
-        "summary": "可以用人物图中的角色替换源视频里的人物；参考视频可以仅参考深度；内置 AI 可以用一句话搭出白模场景；可以复用之前视频的提示词和设置；显存较小的显卡解码更快。",
-        "changes": [
-          "工作室：“素材”一栏新增“替换人物”，用人物图中的角色替换源视频里的人物，可选保留源视频的声音；声音未能加入时，生成的视频仍会保留。参考视频可以勾选“仅参考深度”，深度只计算一次，之后的请求直接复用。",
-          "创作面板：在“最近作品”中选中之前的视频后，点“复用设置”可以把它的提示词、画面尺寸和时长填回面板；10 秒内点“撤销”可以恢复原来的内容。",
-          "白模：未连接外部 Agent 时，聊天框的白模按钮也可以使用。用一句话描述镜头，有合适的现成场景就先生成白模供确认，没有则说明原因并保留输入。",
-          "长视频：描述分到各段时，不再在每一段重复整个故事，各段共用的部分只保留人物、场景、光线和风格等不变的内容。未安装提示词模型时，描述按句子顺序分到各段，不再每段都用整段描述，创作面板会提示下载提示词模型；开始生成时，正在进行的下载会暂停。",
-          "剪辑视图：接着生成的每段最短可以是 5 秒，在 Mac 和无法一次生成 10 秒的电脑上，新的一段默认 5 秒；含短于 10 秒的接续段时，一个视频最多 4 段。描述超过长度上限时，发送前（包括重试时）就会提示。",
-          "生成：在 ComfyUI 里跑过其他工作流之后，生成图片和改写提示词前会先释放这些工作流占用的显存，无需重启 ComfyUI。文本编码器模型缺失时，会在编码开始前检测并给出修复指引；模型修复在下载中失败时，会还原原来的文件。安装正被占用而无法开始生成时，失败详情会写出占用它的程序。切换到 int8 前的 GPU 检查失败时，错误卡片会列出每项检查的失败原因。",
-          "内存与速度：显存放不下整个解码器的显卡，在内存允许时解码不再为每个视频片段或每次新请求重复准备同样的层，输出不变。显存 8–12 GB 的大多数 Windows 显卡上，10–12 秒、不带 LoRA 的两遍视频，第一遍每次计算的注意力头由 4 个增加到 8 个，与更短的视频相同。Windows 上，生成过程中其他程序释放显存后，下一遍和解码会用上恢复的显存。",
-          "安装：安装目录被移动、复制或还原后，安装不再因依赖不一致而停下；依赖目录层级过深时会按长路径问题提示。安装后被删掉的文本编码器和分词器文件，会在编码前和修复时从本地副本还原，不需要下载。",
-          "手机访问：在启动器里打开局域网访问后，手机页可以正常使用，不再一直显示“连接断了，正在重新连接…”且没有内容。",
-          "Agent：install-skill 命令可以为 Agent 安装 FreeVideo 技能，Windows 上层级很深的目录也能装。Agent 拿到的工具列表更短：常用工具完整列出，其余工具通过帮助工具打开。",
-          "诊断报告：生成过程中 ComfyUI 重启后，这次运行的报告会标为已中断，不再显示为运行中；长视频会保留被中断那一段的报告。"
         ]
       }
     }

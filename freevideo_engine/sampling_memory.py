@@ -16,9 +16,11 @@ class SamplingMemory:
         self.started = time.monotonic()
         self.index = 1
         self.rows, self.windows, self.errors = [], {}, []
+        self.hosts = {}
         self.status = 'not-applicable'
         self.identity = None
         self.previous_process = None
+        self.process = None
         self.previous_compiler = compilation.snapshot()
         if reader_factory is None and os.name == 'nt':
             from .windows_gpu_memory import AdapterMemory
@@ -58,10 +60,53 @@ class SamplingMemory:
                 with self.lock:
                     self.errors.append(str(error))
 
+    def host_reading(self):
+        """System commit and physical availability and this process's commit, or {} where unread."""
+        result = {}
+        try:
+            from .system import system_memory
+            memory = system_memory()
+            for key in ('commit_available_bytes', 'physical_available_bytes'):
+                if type(memory.get(key)) is int and memory[key] >= 0:
+                    result[key] = memory[key]
+        except Exception:
+            pass
+        try:
+            if self.process is None:
+                import psutil
+                self.process = psutil.Process(os.getpid())
+            info = self.process.memory_info()
+            # psutil names the Windows private commit `private` (also `pagefile`) and the working set `wset`.
+            for key, names in (('private_commit_bytes', ('private', 'pagefile', 'vms')),
+                               ('working_set_bytes', ('wset', 'rss'))):
+                value = next((getattr(info, name) for name in names if type(getattr(info, name, None)) is int), None)
+                if value is not None and value >= 0:
+                    result[key] = value
+        except Exception:
+            pass
+        return result
+
+    def mark_host(self, index):
+        """Fold one reading into this step's lows and highs; the report otherwise has only step-end values."""
+        reading = self.host_reading()
+        if not reading or index > 256:
+            return
+        with self.lock:
+            host = self.hosts.setdefault(index, dict(samples=0))
+            host['samples'] += 1
+            for key, low in (('commit_available_bytes', True), ('physical_available_bytes', True),
+                             ('private_commit_bytes', False), ('working_set_bytes', False)):
+                if key not in reading:
+                    continue
+                name = ('min_' if low else 'peak_') + key
+                old = host.get(name)
+                host[name] = reading[key] if old is None else (min if low else max)(old, reading[key])
+
     def poll(self):
         if self.reader is None:
             return
         index = self.index
+        self.mark_host(index)
         try:
             value = self.reader.sample()
             for name in ('local', 'nonlocal'):
@@ -137,6 +182,10 @@ class SamplingMemory:
             result.update(cpu_user_seconds=value.user, cpu_system_seconds=value.system)
             value = process.io_counters()
             result.update(read_bytes=value.read_bytes, write_bytes=value.write_bytes)
+            # Windows page faults include the hard faults of memory-mapped weights, which the I/O counters miss.
+            faults = getattr(process.memory_info(), 'num_page_faults', None)
+            if type(faults) is int:
+                result['page_faults'] = faults
         except Exception:
             # Includes unavailable psutil counters; keep any earlier readings.
             pass
@@ -172,9 +221,11 @@ class SamplingMemory:
 
     def result(self):
         with self.lock:
-            rows = [dict(row, windows=copy.deepcopy(self.windows.get(row['step']))) for row in self.rows]
+            rows = [dict(row, windows=copy.deepcopy(self.windows.get(row['step'])),
+                         host_window=copy.deepcopy(self.hosts.get(row['step']))) for row in self.rows]
             return dict(steps=rows, current_step=self.index,
                 incomplete_step_windows=copy.deepcopy(self.windows.get(self.index)),
+                incomplete_step_host_window=copy.deepcopy(self.hosts.get(self.index)),
                 incomplete_step_compiler=compilation.difference(self.previous_compiler, compilation.snapshot()),
                 compiler_scope=compilation.SCOPE,
                 windows_status=self.status, windows_identity=self.identity, errors=list(self.errors),
@@ -186,6 +237,8 @@ class SamplingMemory:
                       'Host counters are step-boundary observations, not peaks. Pinned allocated bytes include '
                       'active and allocator-cached rounded blocks across this process, not just model weights. '
                       'Process I/O deltas are OS counters; they do not measure mmap hard faults or PCIe transfers. '
+                      'Windows page faults count soft and hard faults of the whole process. '
+                      'A step\'s host lows and highs (system commit and physical memory available, the process commit and working set) come from the same 0.5 s samples. '
                       'These diagnostic observations do not change memory policy.')
 
     def persist(self):

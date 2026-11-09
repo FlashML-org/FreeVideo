@@ -160,11 +160,18 @@ export function jobMeta(job, t) {
     return parts.join(' · ');
 }
 // One number per part of a long video: 1 when made, how far along for the one being made, 0 for the rest.
+// The engine's own fraction for the part carries on through decoding and saving; without it, only the steps count.
 export function jobParts(job) {
     const block = job.progress?.block, step = job.progress?.step;
     if (!(block?.total > 1)) return [];
-    const inside = job.progress.phase === 'sampling' && step?.total ? Math.min(1, step.done / step.total) : 0;
+    const inside = Number.isFinite(block.fraction) ? Math.min(1, Math.max(0, block.fraction))
+        : job.progress.phase === 'sampling' && step?.total ? Math.min(1, step.done / step.total) : 0;
     return Array.from({length: block.total}, (_, i) => i < (block.done || 0) ? 1 : i === block.index - 1 ? inside : 0);
+}
+// Each part's share of the row, by its frames: the percentage weighs the parts the same way. Equal shares without them.
+export function partShares(job) {
+    const block = job.progress?.block, frames = block?.frames;
+    return Array.isArray(frames) && frames.length === block.total && frames.every(n => Number.isFinite(n) && n > 0) ? frames : null;
 }
 
 // Saves a picture through the browser's own download, under the file's name.
@@ -981,6 +988,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             while (parts.children.length > cells.length) parts.lastChild.remove();
             while (parts.children.length < cells.length) parts.append(el('i'));
             cells.forEach((value, index) => parts.children[index].style.setProperty('--w', `${value * 100}%`));
+            const shares = cells.length ? partShares(next) : null;
+            parts.style.gridTemplateColumns = shares ? shares.map(n => `minmax(0,${n}fr)`).join(' ') : '';
             parts.hidden = !cells.length;
             const block = next.progress?.block;
             const where = cardLine(said, next, t);

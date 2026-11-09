@@ -58,3 +58,36 @@ export async function guideTo(id) {
     document.addEventListener('pointerdown', done, true);
     return true;
 }
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Whether guideTo can show the target: drawn already, inside a closed section, or behind a toggle that names it.
+const reachable = id => {
+    const node = find(id);
+    return !!node && (visible(node) || !!node.closest('details:not([open])') || !!document.querySelector(`[data-tour-toggle="${CSS.escape(id)}"]`));
+};
+/**
+ * Open the view a scene belongs to, wait for one of its targets to appear, then ring it.
+ * `select` is a selector for the part a selection-bound control needs. Resolves with {ok: true} once ringed, or
+ * {ok: false, reason: 'view' | 'target' | 'hidden'}; `beforeRing` runs only when the ring is certain to be drawn.
+ */
+export async function goToScene({view = null, ids = [], select = null, beforeRing = null} = {}) {
+    if (view === 'editor' && !document.querySelector('dialog.fv-editor[open]')) {
+        if (!document.querySelector('dialog.fv-studio[open]')) await (await import('./view_navigation.js')).openCreativeWorkspace();
+        document.querySelector('dialog.fv-studio [data-view="editor"]')?.click();
+        for (let i = 0; i < 40 && !document.querySelector('dialog.fv-editor[open]'); i++) await wait(100);
+        if (!document.querySelector('dialog.fv-editor[open]')) return {ok: false, reason: 'view'};
+    }
+    for (let i = 0; i < 30 && !ids.some(find); i++) await wait(100);
+    if (!ids.some(find)) return {ok: false, reason: 'target'};
+    if (select && !ids.some(reachable)) {
+        await wait(300);
+        const part = document.querySelector(select);
+        const box = part?.getBoundingClientRect();
+        if (box) for (const type of ['pointerdown', 'pointerup']) part.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: type === 'pointerdown' ? 1 : 0, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2}));
+        for (let i = 0; i < 20 && !ids.some(reachable); i++) await wait(100);
+    }
+    if (!ids.some(reachable)) return {ok: false, reason: 'hidden'};
+    await beforeRing?.();
+    for (const id of ids) if (await guideTo(id)) return {ok: true};
+    return {ok: false, reason: 'hidden'};
+}

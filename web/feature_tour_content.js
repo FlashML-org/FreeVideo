@@ -6,10 +6,10 @@ const card = (id, title, line, input, preview, tryit, extra = {}) => ({id, added
 export const FEATURE_TOUR = [
     card('text-to-video', copy('Text to video', '文字生成视频'), copy('Write a description and get a video.', '写一段描述，生成一段视频。'),
         [{text: copy(...CASTLE_PROMPT)}], clip('c1-s2'), {assets: [], prompt: CASTLE_PROMPT, settings: {quality: 'High', width: 1344, height: 768, seconds: 5}}),
-    card('product-showcase', copy('Product showcase', '产品展示'), copy('Turn a whitebox and a product image into a product video.', '用白模和一张产品图，生成产品视频。'),
-        [{src: 'c2-whitemodel.webp'}, {src: 'c2-product.webp'}], clip('c2g-s3'), {example: 'whitebox-product', status: 'pending-assets'}, {trigger: 'media'}),
     card('first-last-frame', copy('First and last frame', '首帧和尾帧'), copy('Set the opening and closing frames, and the motion in between is generated.', '给出开头和结尾，生成中间的画面。'),
         [{text: copy('First frame + last frame', '首帧 + 尾帧')}], clip('c3-s1'), {status: 'pending-assets'}, {trigger: 'media'}),
+    card('product-showcase', copy('Product showcase', '产品展示'), copy('Turn a whitebox and a product image into a product video.', '用白模和一张产品图，生成产品视频。'),
+        [{src: 'c2-whitemodel.webp'}, {src: 'c2-product.webp'}], clip('c2g-s3'), {example: 'whitebox-product', status: 'pending-assets'}, {trigger: 'media'}),
     card('quality-tiers', copy('Four quality levels', '四档质量'), copy('Higher levels add detail and take longer.', '档位越高，画面越细，用时越长。'),
         [{text: copy('A puppy runs across the grass.', '一只小狗跑过草地。')}], clip('c4-high'), {assets: [], settings: {quality: 'High'}},
         {quality: ['light', 'medium', 'high', 'max'].map((name, i) => ({...clip(`c4-${name}`), label: copy(['Light', 'Medium', 'High', 'Max'][i], ['轻量', '标准', '精细', '极致'][i])}))}),
@@ -26,10 +26,13 @@ export const FEATURE_TOUR = [
         [{src: 'c12-s1.webp'}], clip('c13-s1'), {status: 'pending-assets', view: 'editor'}, {trigger: 'editor', added: '0.5.0', goto: ['editor-timeline', 'editor-inspector']}),
     card('separate-sound', copy('Separate and replace sound', '分离与替换声音'), copy('Split the sound into dialogue, music and ambience, then replace each one.', '把声音分成人声、音乐和环境声，再分别替换。'),
         [{src: 'cb-source.webp'}], clip('cb-source'), {status: 'pending-assets', view: 'editor'},
-        {trigger: 'editor', added: '0.5.0', goto: ['audio-track-button'], sequence: [['source', 'Original', '原声'], ['dialogue', 'Dialogue', '人声'], ['music', 'Music', '音乐'], ['ambience', 'Ambience', '环境声']].map(([name, en, zh]) => ({...clip(`cb-${name}`), label: copy(en, zh)}))}),
+        {trigger: 'editor', added: '0.5.0', goto: ['audio-track-button'], select: '.fv-ed-clip[data-track=a1]', sequence: [['source', 'Original', '原声'], ['dialogue', 'Dialogue', '人声'], ['music', 'Music', '音乐'], ['ambience', 'Ambience', '环境声']].map(([name, en, zh]) => ({...clip(`cb-${name}`), label: copy(en, zh)}))}),
     card('add-sound', copy('Add sound to a video', '给视频加声音'), copy('Drag a range on the sound track and add music, a voice-over or a recording.', '在声音轨上拖一段，加配乐、配音，或录一段声音。'),
         [{src: 'ca-music-wave.webp'}], clip('ca-music'), {status: 'pending-assets', view: 'editor'},
         {trigger: 'editor', added: '0.5.0', goto: ['audio-a2-track'], sequence: [['music', 'Music', '配乐'], ['dub', 'Voice-over', '配音'], ['record', 'Recording', '录音']].map(([name, en, zh]) => ({...clip(`ca-${name}`), wave: `ca-${name}-wave.webp`, label: copy(en, zh)}))}),
+    card('narration', copy('Add a spoken line', '为一句话配音'), copy('Right-click an empty spot on a sound track, choose "Narration", write a line and choose "Generate".', '在声音轨的空白处点右键，选“配音”，写下一句话，点“生成”。'),
+        [{src: 'cd-narration-wave.webp'}], clip('cd-narration'), {status: 'pending-assets', view: 'editor'},
+        {trigger: 'editor', added: '0.5.0', goto: ['editor-timeline'], sequence: [{...clip('cd-narration'), label: copy('Pick a voice and generate', '选音色并生成')}]}),
     card('sound-to-picture', copy('Generate a picture from sound', '按声音生成画面'), copy('Drag an empty range on the video track above a sound, and the picture follows it.', '在有声音的区间上方的视频轨拖出一段空白，画面随声音生成。'),
         [{src: 'cc-speech-wave.webp'}], clip('cc-speech'), {status: 'pending-assets', view: 'editor'},
         {trigger: 'editor', added: '0.5.0', goto: ['video-empty-range'], sequence: [{...clip('cc-speech'), label: copy('Play with sound', '播放声音')}]}),
@@ -39,7 +42,7 @@ export const FEATURE_TOUR = [
     card('library-reuse', copy('Reuse settings', '复用设置'), copy('Fill the prompt, size, duration and seed of an earlier video back in.', '把以前一条视频的描述、尺寸、时长和种子填回来。'),
         [{text: copy(...CASTLE_PROMPT)}], clip('c1-s2'), {status: 'pending-assets'}, {added: '0.5.0', goto: ['library-reuse', 'works-entry']}),
     card('extend', copy('Extend', '接着生成'), copy('Continue from where the last clip ends.', '从上一段的结尾接着生成下一段。'),
-        [{src: 'c6-s1.webp'}], clip('c6-s1'), {status: 'pending-assets', view: 'editor'}, {trigger: 'editor', previewRange: [2, 8]}),
+        [{src: 'c6-s1.webp'}], clip('c6-s1'), {startClip: {file: 'c1-s2.mp4'}, view: 'editor'}, {trigger: 'editor', previewRange: [2, 8]}),
     card('two-pass', copy('Two-pass', '二次采样'), copy('The first pass sets the composition; the second adds detail.', '第一遍定构图，第二遍补细节。'),
         [{...clip('c7-src-s1')}], clip('c7-s1'), {assets: [], prompt: ['A dark castle emerges from the mist as the camera slowly moves closer.', '深色城堡从薄雾中显现，镜头缓缓推近。'], settings: {two_pass: true}}),
     card('edit-image', copy('Edit image', '编辑图片'), copy('Change only the selected area and keep the rest.', '只改选中的区域，其余保持不变。'),
@@ -49,5 +52,12 @@ export const FEATURE_TOUR = [
 ];
 export const tourKey = card => `tour:${card.id}:${card.added}`;
 export const readyCards = (cards = FEATURE_TOUR) => cards.filter(c => c.status !== 'pending' && c.clip?.mp4 && c.clip?.poster);
-export const unseenCards = (record, {version, trigger, cards = FEATURE_TOUR} = {}) => readyCards(cards).filter(c =>
-    !record?.seen?.includes(tourKey(c)) && (trigger ? c.trigger === trigger : c.added === version));
+const unseen = (record, c) => !record?.seen?.includes(tourKey(c));
+// A trigger offers its cards in order; while the next one's files are missing it offers nothing, so a later card never stands in for it.
+export const unseenCards = (record, {version, trigger, cards = FEATURE_TOUR} = {}) => {
+    if (trigger) {
+        const next = cards.filter(c => c.trigger === trigger && unseen(record, c));
+        return next.length && readyCards(next).includes(next[0]) ? readyCards(next) : [];
+    }
+    return readyCards(cards).filter(c => unseen(record, c) && c.added === version);
+};

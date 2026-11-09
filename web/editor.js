@@ -32,6 +32,8 @@ import {createEditorRecord, RECORD_ICON} from './editor_record.js';
 import {createEditorVoice} from './editor_voice.js';
 import {createVoiceStore, voiceFeatures} from './editor_voice_store.js';
 import {createVoiceInstall} from './editor_voice_install.js';
+import {createEditorNarration} from './editor_narration.js';
+import {MAX_LINE_TEXT as NARRATION_TEXT_LIMIT} from './editor_narration_model.js';
 import {voiceTarget} from './editor_voice_model.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
@@ -269,6 +271,24 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
+    // Selects the clip and, when nothing follows it yet, adds one minimum draft. Returns false while the generation probe has not said yes.
+    function enterClip(match, epoch, select = true, settled = () => {}) {
+        if (closing || disposed || epoch !== projectEpoch) return true;
+        const clip = state.record.tracks[0].clips.findLast(match);
+        if (!clip) return true;
+        // Coming back to a clip that already has parts after it selects the waiting draft instead of adding another.
+        const edge = clip.start + clip.frames;
+        const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
+        const waiting = after.find(other => other.pending === 'draft');
+        if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
+        if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { settled(); return true; }
+        if (!store.generationAvailable) return false;
+        const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
+        tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
+            {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
+        settled();
+        return true;
+    }
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
@@ -801,7 +821,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         initialSelection = offerInitial = extendEntry = null;
         projectEpoch++; held.length = 0;
         player.pause(); for (const stop of jobWatchers.values()) stop(); jobWatchers.clear(); jobStatuses.clear(); progress.clear(); runProgress.clear(); failures.clear(); progressConnection?.reset();
-        mostRecentJob = null; submissionFailure = null; music.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
+        mostRecentJob = null; submissionFailure = null; music.reset(); narration.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
         suppressSave = true; try { state.replace(record); savedContent = content(record); } finally { suppressSave = false; }
         panel.onProjectLoaded?.(record);
         const width = tracksHost.clientWidth - 148; if (width > 0) state.setZoom(model.openingZoom(width, record));
@@ -835,7 +855,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             forgetPointer();
         })); if (disposed) return;
         // A restored edit remains usable offline with its existing placeholders.
-        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs(); music.recover();
+        await completeSources().catch(value => error(value, null, undefined, 'sources')); if (disposed) return; recoverJobs(); music.recover(); narration.recover();
         state.restoreView(remembered);
         // Also when generating is confirmed only after the edit has opened.
         offerInitial = () => { if (epoch === projectEpoch && !state.selection && state.record.tracks.every(track => !track.clips.length)) selectInitial(); };
@@ -960,6 +980,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The server was asked and has not said yes: Generate is greyed until it does.
         generationWaiting: () => generationAsked && !store.generationAvailable,
         importFiles: (files, options) => library?.importFiles(files, options),
+        // The first imported clip on the timeline start is selected and followed by one draft once it is placed.
+        async continueStart() {
+            const epoch = projectEpoch, match = clip => clip.source?.kind === 'import' && clip.start === 0;
+            for (let waited = 0; waited < 120 && !state.record.tracks[0]?.clips.some(match); waited++) {
+                if (closing || disposed || epoch !== projectEpoch) return false;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (!state.record.tracks[0]?.clips.some(match)) return false;
+            await store.generationReady();
+            if (!enterClip(match, epoch) && !closing && !disposed) extendEntry = () => { if (enterClip(match, epoch, false) || closing || disposed) extendEntry = null; };
+            return true;
+        },
         gestureStart({selectionGesture = false} = {}) {
             // A description being typed is written to its part before the gesture, which a later edit would stop.
             genbar?.commit();
@@ -996,7 +1028,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         interrupted: clip => clip.pending === 'stopped' && !clip.source && !!clip.job
             && (jobStatuses.get(clip.job)?.blocks || []).some(block => block.state === 'interrupted' && model.attemptClip(state.record, block.id)?.id === clip.id),
         selectedFailure() {
-            const tune = music.failure(); if (tune) return tune;
+            const tune = music.failure() || narration.failure(); if (tune) return tune;
             const clip = state.selection?.kind === 'clip' && state.record.tracks.flatMap(track => track.clips).find(clip => state.selection.ids.includes(clip.id) && clip.pending === 'failed');
             if (clip) return {id: clip.id, text: failures.text(clip.id)};
             return submissionFailure === JSON.stringify(state.selection) ? {id: 'submission', text: failures.text('submission')} : null;
@@ -1034,12 +1066,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // any other choice.
         partText(selection = state.selection) {
             if (music.target(selection)) return music.text(selection);
+            if (narration.target(selection)) return narration.text(selection);
             const clips = selectionClips(selection).sort((a, b) => a.start - b.start);
             return clips.length && clips.every(editablePart) ? {ids: clips.map(clip => clip.id), text: clips[0].text} : null;
         },
         describeParts(ids, text) {
             text = wellFormed(text);
             if (ids.length === 1 && music.target({kind: 'clip', ids})) return music.describe(ids[0], text);
+            if (ids.length === 1 && narration.target({kind: 'clip', ids})) return narration.describe(ids[0], text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
             try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
@@ -1126,6 +1160,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         previewRange: selection => genbar?.preview(selection),
         async estimate(selection) {
             if (music.target(selection)) return music.estimate(selection);
+            if (narration.target(selection)) return narration.estimate(selection);
             const run = partRun(selection), range = selectionRange(run ? clipChoice(run) : selection); if (!range) return null;
             let seconds = 0;
             for (const count of model.rangeParts(state.record, {...range, ...capability})) { const value = capability.estimate(count); if (value == null) return null; seconds += value; }
@@ -1257,6 +1292,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (characters(text) > MUSIC_TEXT_LIMIT) return {say: textLongText(t, MUSIC_TEXT_LIMIT), focus: true};
                 return music.press(text);
             }
+            // An empty stretch of the recording track, or a line planned there: a new line in the voice chosen.
+            if (narration.target()) {
+                if (characters(text) > NARRATION_TEXT_LIMIT) return {say: textLongText(t, NARRATION_TEXT_LIMIT), focus: true};
+                return narration.press(text);
+            }
             let selection = state.selection, said = null;
             if (actions.selectionHeld()) return {say: t('Queued', '排队中')};
             if (busySelection(selection)) return {say: t('This part is generating.', '这一段正在生成。')};
@@ -1321,9 +1361,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             await actions.generate({text: texts ? texts[run[0].id] : text, texts, selection, shown, allowEmpty});
             return {text, say: [said, used, busyBefore ? t('Queued. It starts after the part now generating.', '已排队，正在生成的那段完成后自动开始。') : null].filter(Boolean).join(' ') || null, queued: busyBefore};
         },
-        selectionRunning: () => music.target() ? music.running() : busySelection(state.selection),
+        selectionRunning: () => music.target() ? music.running() : narration.target() ? narration.running() : busySelection(state.selection),
         // A choice over existing clips that Generate would move to an empty spot.
-        selectionMovable: () => !music.target() && !actions.supportedSelection() && !!emptySpot(state.selection),
+        selectionMovable: () => !music.target() && !narration.target() && !actions.supportedSelection() && !!emptySpot(state.selection),
         selectionSending() { const range = selectionRange(state.selection); return !!range && ([...sendingRanges].some(other => overlaps(other, range)) || [...sending].some(id => { const clip = model.find(state.record, id); return clip && overlaps(clip, range); })); },
         selectionHeld() { const ids = selectionClips(state.selection).map(clip => clip.id); return ids.length > 0 && ids.every(isHeld); },
         // Takes the selected parts out of the line; they stay as drafts.
@@ -1334,6 +1374,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         },
         async cancel() {
             if (music.target()) { await music.cancel(); return; }
+            if (narration.target()) { await narration.cancel(); return; }
             if (stems?.active()) { await stems.cancel(); return; }
             if (voice.session()?.phase === 'dubbing') { voice.cancel(); return; }
             const range = selectionRange(state.selection);
@@ -1470,21 +1511,43 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
         if (found.unknown) return voiceReady;
         voiceReady = found.ready; voiceInstallable = found.install;
-        if (!disposed) { voice.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
+        if (!disposed) { voice.refresh(); narration.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
         return found.ready;
     }
     const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
         onChange: () => { if (!disposed) genbar?.update(barValue); }, onReady: readVoice});
+    // A new line said in a voice of the edit, on an empty stretch of the recording track; heard from the clip's own sound.
+    let sampleStop = null;
+    function playSample({clip: id, start, end}, onEnd) {
+        sampleStop?.();
+        const clip = model.find(state.record, id), metadata = clip?.source && store.sources.get(sourceKey(clip.source));
+        const url = metadata && mediaURL(api, metadata.audio || metadata.video);
+        if (!url) { onEnd(); return () => {}; }
+        player.pause();
+        const media = new Audio(url), from = clip.in / model.FPS + start, to = clip.in / model.FPS + end;
+        let stopped = false;
+        const stop = () => { if (stopped) return; stopped = true; media.pause(); media.removeAttribute('src'); media.load(); if (sampleStop === stop) sampleStop = null; };
+        const finish = () => { stop(); onEnd(); };
+        media.ontimeupdate = () => { if (media.currentTime >= to) finish(); };
+        media.onended = media.onerror = finish;
+        media.onloadedmetadata = () => { media.currentTime = from; media.play().catch(finish); };
+        sampleStop = stop;
+        return stop;
+    }
+    const narration = createEditorNarration({state, store: createVoiceStore({api, state, queue}), t, sources: () => store.sources,
+        available: () => voiceReady || voiceInstallable, ready: () => voiceReady, install: voiceInstall, play: playSample,
+        say: text => genbar?.say(text), completeSources, onStatus: () => genbar?.update(barValue)});
     readVoice();
     actions.voice = {controller: voice, install: voiceInstall};
+    actions.narration = narration;
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
     {
         // What the editor gives the bar is the video job's; a chosen piece of music being made shows its own instead.
         const update = genbar.update;
-        genbar.update = value => { barValue = value; update(music.barStatus() || value); };
-        state.subscribe(event => { if (event.type === 'selection' || event.type === 'record') update(music.barStatus() || barValue); });
+        genbar.update = value => { barValue = value; update(music.barStatus() || narration.barStatus() || value); };
+        state.subscribe(event => { if (event.type === 'selection' || event.type === 'record') update(music.barStatus() || narration.barStatus() || barValue); });
         music.refreshInfo();
     }
     const adjust = adjustPanel = createAdjustPanel(adjustHost, {state, t, actions});
@@ -1633,7 +1696,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const next = content(state.record);
             if (!suppressSave && !initializing && next !== savedContent && exportStatus?.state === 'done') { exportStatus = null; exportButton.textContent = t('Export', '导出'); }
             if (!suppressSave && !initializing && next !== savedContent) { savedContent = next; queue.enqueue(state.record); }
-            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs(); music.recover();
+            completeSources().catch(value => error(value, null, undefined, 'sources')); recoverJobs(); music.recover(); narration.recover();
         }
         if (event.type === 'selection') { if (state.selection !== initialSelection) initialSelection = null; }
         if (event.type === 'record' || event.type === 'selection') { updateTop(); updateTransport(); pictureTools.update(); }
@@ -1760,7 +1823,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+                rememberView(); disposed = true; music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
                 textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
                 audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
                 listeners.splice(0).forEach(remove => remove());
@@ -1899,23 +1962,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             };
             // Selects the work and, when nothing follows it yet, adds one minimum draft. Runs once; when the
             // generation probe failed this time it runs after a later probe succeeds.
-            const enter = (select = true) => {
-                if (closing || disposed || epoch !== projectEpoch) return true;
-                const clip = state.record.tracks[0].clips.findLast(clip => clip.source?.kind === 'work' && clip.source.id === id);
-                if (!clip) return true;
-                // Coming back to a work that already has parts after it selects the waiting draft instead of adding another.
-                const edge = clip.start + clip.frames;
-                const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
-                const waiting = after.find(other => other.pending === 'draft');
-                if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
-                if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { showFullSourceHint(); return true; }
-                if (!store.generationAvailable) return false;
-                const spare = Math.min(...model.pair(state.record, clip.id).map(member => member.length - member.in - member.frames));
-                tracks.extendClip(clip.id, spare + model.defaultContinueSeconds(capability.maxFollowSeconds,
-                    {short: store.continueSeconds != null && store.continueSeconds < model.RULES.fullSeconds}) * model.FPS, {silent: true});
-                showFullSourceHint();
-                return true;
-            };
+            const enter = select => enterClip(clip => clip.source?.kind === 'work' && clip.source.id === id, epoch, select, showFullSourceHint);
             await store.generationReady();
             if (!enter() && !closing && !disposed) extendEntry = () => { if (enter(false) || closing || disposed) extendEntry = null; };
         }

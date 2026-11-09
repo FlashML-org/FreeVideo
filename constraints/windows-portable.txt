@@ -22,14 +22,6 @@ comfy-angle==0.1.1
 comfy-kitchen==0.2.33
 comfyui-embedded-docs==0.5.11
 comfyui-frontend-package==1.51.10
-comfyui-workflow-templates==0.11.55
-comfyui-workflow-templates-core==0.3.333
-comfyui-workflow-templates-json==0.1.68
-comfyui-workflow-templates-media-api==0.3.84
-comfyui-workflow-templates-media-assets-01==0.1.39
-comfyui-workflow-templates-media-image==0.3.160
-comfyui-workflow-templates-media-other==0.3.229
-comfyui-workflow-templates-media-video==0.3.101
 cryptography==50.0.1
 diffusers==0.40.0.dev0
 einops==0.8.2

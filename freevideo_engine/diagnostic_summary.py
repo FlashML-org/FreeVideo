@@ -137,6 +137,7 @@ def summary_report(report):
         for segment in ('local','nonlocal'):
             item[segment] = _measurements((row.get('windows') or {}).get(segment),
                 diagnostic.WINDOWS_BUDGET)
+        item['host_window'] = diagnostic.numbers(row.get('host_window'), diagnostic.HOST_WINDOW)
         device = diagnostic.numbers(row.get('device_activity'), diagnostic.STEP_ACTIVITY)
         if device:
             item['device'] = device
@@ -148,6 +149,8 @@ def summary_report(report):
     for segment in ('local','nonlocal'):
         result['incomplete_step_memory'][segment] = _measurements((sampling.get('incomplete_step_windows') or {}).get(segment),
             diagnostic.WINDOWS_BUDGET)
+    result['incomplete_step_memory']['host_window'] = diagnostic.numbers(
+        sampling.get('incomplete_step_host_window'), diagnostic.HOST_WINDOW)
     failures = [engine.get('failure') or {}] + [r.get('failure') or {} for r in (summary.get('failed_attempts') or [])[:3]]
     for row in failures:
         kind = row.get('kind')

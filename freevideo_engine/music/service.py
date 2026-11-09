@@ -119,8 +119,9 @@ def _result(stream):
 
 
 def compose(out, caption, frames, *, seed, quiet=(), fps=24, server=None, cancelled=lambda: False,
-            phase=lambda name, fraction=None: None):
+            phase=lambda name, fraction=None: None, avoid=()):
     """Write the finished piece (exact length, levelled, faded; MP4 or WAV by out's suffix) to out; returns the worker's numbers.
+    avoid: English names of things the music should leave out (music.words).
 
     Raises Preempted when a video started, InterruptedError when cancelled, MusicError otherwise."""
     from ..comfy_bridge import installation
@@ -138,7 +139,7 @@ def compose(out, caption, frames, *, seed, quiet=(), fps=24, server=None, cancel
         ACTIVE.preempted = False
         ACTIVE.idle.clear()
     try:
-        return _run(out, caption, frames, seconds, seed, quiet, fps, server, cancelled, root, machine)
+        return _run(out, caption, frames, seconds, seed, quiet, fps, server, cancelled, root, machine, avoid)
     except BlockingIOError:
         raise Preempted() from None  # other GPU work holds engine.lock; the caller waits and tries again
     finally:
@@ -147,7 +148,7 @@ def compose(out, caption, frames, *, seed, quiet=(), fps=24, server=None, cancel
             ACTIVE.idle.set()
 
 
-def _run(out, caption, frames, seconds, seed, quiet, fps, server, cancelled, root, machine):
+def _run(out, caption, frames, seconds, seed, quiet, fps, server, cancelled, root, machine, avoid=()):
     from ..image_gen import image_pack
     from ..locking import runtime_lock
     from .. import processes, resident_process
@@ -167,7 +168,7 @@ def _run(out, caption, frames, seconds, seed, quiet, fps, server, cancelled, roo
             'freevideo_engine.music.worker', '--root', image_pack.base(machine['model_root']) / 'music',
             '--out', out, '--caption', caption, '--seconds', max(MIN_SECONDS, seconds), '--seed', seed,
             '--frames', frames, '--fps', fps, '--quiet', json.dumps([list(span) for span in quiet]),
-            '--device', machine.get('device_backend', 'cuda'))
+            '--device', machine.get('device_backend', 'cuda'), *(('--avoid', json.dumps(list(avoid))) if avoid else ()))
         command[0] = machine['comfy_python']
         env['FREEVIDEO_RUNTIME_LOCK_FD'] = str(descriptor)
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:

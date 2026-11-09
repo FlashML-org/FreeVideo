@@ -5,6 +5,7 @@ import json
 
 from .long_paths import io_path, resolved
 from . import disk_space
+from .comfy_requirements import requirements_content
 
 GiB = 1 << 30
 SPACE_FLOOR = 2 * GiB
@@ -48,7 +49,7 @@ def frontend_ready(root, frontend):
                 and Path(record['python']).resolve().is_relative_to(env_root.resolve())
                 and Path(identity['engine_python']).resolve() == (root / 'envs/unified/Scripts/python.exe').resolve()
                 and Path(identity['comfy']).resolve() == comfy.resolve()
-                and identity['requirements'] == hashlib.sha256((comfy / 'requirements.txt').read_bytes()).hexdigest()
+                and identity['requirements'] == hashlib.sha256(requirements_content(comfy / 'requirements.txt')).hexdigest()
                 and json.loads((env_root / 'freevideo-host.json').read_text(encoding='utf-8')) == identity)
     except (OSError, ValueError, KeyError, TypeError):
         return False

@@ -313,6 +313,10 @@ def normalize(value, *, port=None):
                       lines=[dict(line) for line in value['lines']], language=value.get('language', 'auto'),
                       voice=dict(value.get('voice') or {}), lay=value.get('lay', True),
                       **{k: value[k] for k in ('seed',) if k in value})
+    elif kind == 'voice_say':
+        result.update(editor_project=value['editor_project'], revision=value['revision'], text=value['text'],
+                      seconds=float(value['seconds']), voice=dict(reference=dict(value['voice']['reference'])),
+                      language=value.get('language', 'auto'), **{k: value[k] for k in ('seed',) if k in value})
     elif kind == 'image_edit':
         result.update(image=value['image'], revision=value['revision'])
     else:

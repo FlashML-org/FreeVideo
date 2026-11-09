@@ -1,3 +1,5 @@
+/* The end label stays inside the ruler. */
+.fv-whatsnew-stage .fv-ed-ruler .fv-ed-tick:last-child span{left:auto;right:4px}
 .fv-whatsnew{box-sizing:border-box;width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:24px;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg);background:var(--fv-canvas);color:var(--fv-ink);font:14px/1.6 var(--fv-font);overflow:auto}
 .fv-whatsnew::backdrop{background:#0009}
 .fv-whatsnew[open]{animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}

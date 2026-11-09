@@ -172,7 +172,7 @@ def submit_batch(jobs, body, client):
     return jobs.submit_request(body, client=client)[0]
 
 
-JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace')
+JOB_OPERATIONS = ('generate', 'export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice_replace', 'voice_say')
 
 
 def stems_supported(machine):
@@ -269,6 +269,7 @@ def capabilities(port, jobs):
                'finish_sound': 'Finish the sound of a joined cut: one score, even loudness, room tone',
                'voice_lines': 'Write down the spoken lines of a sound clip with their start and end',
                'voice': 'Say edited lines again in the original voice and put them back where the originals were',
+               'voice_say': 'Say a new line in the voice of a sound clip, as long as a given stretch',
                'image_edit': 'Render a saved revision of an image session to a picture'},
         limits=dict(width=[256, 4096, 32], height=[256, 4096, 32], seconds=[1.625, 60 if continuation else BLOCK_SECONDS],
                     seconds_tested=[4, 15],
@@ -872,6 +873,14 @@ def register():
         progress = view.get('progress') or {}
         value['progress'] = {k: progress[k] for k in ('phase', 'step', 'fraction', 'remaining_seconds',
                              'queue_position') + (('block',) if card else ()) if progress.get(k) is not None}
+        if 'fraction' not in value['progress'] and view.get('kind') in ('export', 'listen'):
+            # An export or a subtitle job reports its share of the work as a small JSON detail.
+            try:
+                share = float(json.loads(progress.get('detail') or '{}').get('fraction'))
+            except (TypeError, ValueError, AttributeError):
+                share = None
+            if share is not None and 0 <= share <= 1:
+                value['progress']['fraction'] = share
         if view.get('waiting_for'):
             value['waiting_for'] = len(view['waiting_for'])
         if view.get('error'):

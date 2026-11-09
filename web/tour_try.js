@@ -35,6 +35,9 @@ async function fetchFile(entry, fetchAsset) {
     return new File([blob], entry.file, {type: blob.type});
 }
 
+// A start clip is not a creation-panel reference: it is placed on the editor timeline as the part to continue from.
+export const fetchStartClip = (entry, fetchAsset = fetch) => fetchFile(entry.startClip, fetchAsset);
+
 // panel: {node, api, cn, rows() -> current rows, write(rows) -> bool, setPrompt(text), setSetting(name, value)}.
 // Returns {ok: true} or {ok: false, reason}. The existing media rows are kept and the example is added after them,
 // except that rows already holding the same example file are not added twice.

@@ -161,6 +161,44 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'replace-two-people',
+        goto: ['replace-person'],
+        title: {zh: '替换两个人物', en: 'Replace two people'},
+        summary: {zh: '源视频里有两个人时，用两张人物图分别替换。', en: 'When the source video has two people, replace each with its own picture.'},
+        media: {
+            type: 'image',
+            src: {zh: 'replace-two-people-1.webp', en: 'replace-two-people-2.webp'},
+            alt: {zh: '创作面板：“替换人物”开关、两格人物图和“人物图按画面中人物从左到右的顺序对应。”已用红框标出。', en: 'The creation panel, with the "Replace person" switch, the two person image slots and the note on their order outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，打开“替换人物”，在“源视频”中添加视频。', '在“人物图 1”中添加第一张人物图；右边会出现“人物图 2”，再添加第二张。', '人物图按画面中人物从左到右的顺序对应：人物图 1 替换左边的人，人物图 2 替换右边的人。', '点人物图右上角的 × 可以移除一张。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Expand "Media" in the creation panel, turn on "Replace person" and add the video under "Source video".', 'Add the first picture under "Person image 1". "Person image 2" appears next to it; add the second picture there.', 'The pictures are matched to the people in the video from left to right: image 1 replaces the person on the left, image 2 the person on the right.', 'Choose × at the top right of a picture to remove it.', 'Choose "Generate video".'],
+        },
+        limits: {
+            zh: ['一次最多替换 2 个人物。', '替换人物不能与首帧、尾帧同时使用。'],
+            en: ['Up to 2 people can be replaced in one request.', 'Replace person cannot be used with first or last frames.'],
+        },
+    },
+    {
+        id: 'lora',
+        goto: ['lora-add'],
+        title: {zh: '使用自己的 LoRA', en: 'Use your own LoRA'},
+        summary: {zh: '把下载好的 LoRA 文件加进创作面板，改变画面风格。', en: 'Add a downloaded LoRA file in the creation panel to change the style of the picture.'},
+        media: {
+            type: 'image',
+            src: {zh: 'lora-1.webp', en: 'lora-2.webp'},
+            alt: {zh: '创作面板：“LoRA”中的“添加”按钮、模型下拉列表、强度和左侧把手已用红框标出。', en: 'The creation panel, with the "Add" button under "LoRA", the model list, the strength and the handle on the left outlined in red.'},
+        },
+        steps: {
+            zh: ['把 LoRA 文件（.safetensors）放进 models/loras 文件夹。', '展开创作面板的“LoRA”，点“添加”，在下拉列表中选择文件。', '需要时修改右边的强度，默认是 1；取消行首的勾选可暂时停用；有多个 LoRA 时，拖动左侧的把手调整顺序。', '模型要求触发词时，填在“触发词”一栏，它会自动加进描述；移除这个 LoRA 时一并去掉。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Put the LoRA file (.safetensors) in the models/loras folder.', 'Expand "LoRA" in the creation panel, choose "Add" and pick the file from the list.', 'Change the strength on the right if needed; the default is 1. Clear the checkbox at the start of the row to switch the LoRA off for now. With more than one LoRA, drag the handle on the left to change the order.', 'If the LoRA asks for trigger words, enter them in "Trigger words". They are added to the prompt, and removed again with the LoRA.', 'Choose "Generate video".'],
+        },
+        limits: {
+            zh: ['一次最多使用 32 个 LoRA。', '只列出 .safetensors 格式的文件。', 'FreeVideo 无需添加加速 LoRA。'],
+            en: ['Up to 32 LoRAs can be used at a time.', 'Only .safetensors files are listed.', 'FreeVideo needs no acceleration LoRA.'],
+        },
+    },
+    {
         id: 'quality-tiers',
         title: {zh: '四个质量档位', en: 'The four quality levels'},
         summary: {zh: '档位越靠右，用时越长、细节越多。', en: 'Further right takes longer and keeps more detail.'},
@@ -277,6 +315,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'editor',
+        view: 'editor',
         goto: ['editor-timeline'],
         title: {zh: '剪辑视图：裁剪、描述、接续', en: 'The Edit view: crop, describe, continue'},
         summary: {zh: '在时间线上选中一段，描述它，并接着生成。', en: 'Select a part on the timeline, describe it and continue.'},
@@ -301,6 +340,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'editor-extend-refs',
+        view: 'editor',
         title: {zh: '在剪辑视图延长时加参考图', en: 'Add reference images when extending in Edit'},
         summary: {zh: '用参考图引导接着生成的那一段。', en: 'Use reference images to guide the next part.'},
         media: {
@@ -324,6 +364,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'segment-prompt',
+        view: 'editor',
         goto: ['segment-prompt'],
         title: {zh: '逐段描述', en: 'Describe each part'},
         summary: {zh: '为剪辑视图中的每一段单独写描述。', en: 'Write a separate description for each part in the Edit view.'},
@@ -343,6 +384,8 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'separate-tracks',
+        view: 'editor',
+        select: '.fv-ed-clip[data-track=a1]',
         goto: ['audio-track-button'],
         title: {zh: '分离音轨和替换声音', en: 'Separate tracks and replace sound'},
         summary: {zh: '把声音分成人声、音乐和环境声，并分别替换。', en: 'Split the sound into dialogue, music and ambience and replace each one.'},
@@ -362,6 +405,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'replace-music',
+        view: 'editor',
         goto: ['audio-a2-track'],
         title: {zh: '加配乐', en: 'Add music'},
         summary: {zh: '在声音轨上选一段，描述想要的音乐。', en: 'Select a range on a sound track and describe the music.'},
@@ -371,8 +415,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：第二条声音轨上选中的一段和风格选项已用红框标出。', en: 'The Edit view, with a range on the second sound track and the style options outlined in red.'},
         },
         steps: {
-            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项。', '在“描述配乐”中写下想要的音乐。', '点“生⁠成”。'],
-            en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood".', 'Describe the music under "Describe the music".', 'Choose "Generate".'],
+            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项，或在“描述配乐”中写下想要的音乐。写了描述时，只按描述生成。', '点“生⁠成”。'],
+            en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood", or describe the music under "Describe the music". When there is a description, the music follows it alone.', 'Choose "Generate".'],
         },
         limits: {
             zh: ['首次生成需要下载配乐模型。', '要换掉分离后的音乐，请选中“音乐”轨上的片段，按钮会变为“替⁠换⁠配⁠乐”。'],
@@ -381,6 +425,7 @@ export const TUTORIAL_CHAPTERS = [
     },
     {
         id: 'voice-recording',
+        view: 'editor',
         goto: ['record-entry'],
         title: {zh: '配音与录音', en: 'Voice-over and recording'},
         summary: {zh: '直接录音，或对已有的台词重新配音。', en: 'Record your own voice, or redub lines that already exist.'},
@@ -399,7 +444,28 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'narration',
+        view: 'editor',
+        goto: ['editor-timeline'],
+        title: {zh: '为一句话配音', en: 'Add a spoken line'},
+        summary: {zh: '写下一句话，用片中的声音或一段录音说出来。', en: 'Write a line and have it spoken in a voice from the project or a recording.'},
+        media: {
+            type: 'image',
+            src: {zh: 'narration-1.webp', en: 'narration-2.webp'},
+            alt: {zh: '剪辑视图：生成条中的“音色”和“生成”已用红框标出。', en: 'The Edit view, with "Voice" and "Generate" in the generation bar outlined in red.'},
+        },
+        steps: {
+            zh: ['在声音轨的空白处点右键，选“配⁠音”。', '配音放在“录⁠音”轨上（分离过音轨时放在“人⁠声”轨），没有录音轨时会自动加上；选区从点击处到下一个片段，最长 5 秒。', '在“音⁠色”中选说话人、导入的片段或录音。“选一个声音片段…”可在时间线上点选，▶ 可试听。', '写下要说的话，点“生⁠成”。'],
+            en: ['Right-click an empty spot on a sound track and choose "Narration".', 'The line goes on the Voice track (or on the Dialogue track after separating tracks), which is added if missing. The range runs from the click to the next clip, up to 5 s.', 'Under "Voice", choose a speaker, an imported clip or a recording. "Pick a sound clip…" lets you click one on the timeline, and ▶ plays a sample.', 'Write what to say and choose "Generate".'],
+        },
+        limits: {
+            zh: ['话比选区长时，后面有空位就按完整长度放入；会盖住后面的片段时不放入，选区和文字保留。', '放入后可以撤销，也可在“台⁠词”中点“重⁠新⁠配⁠音”改写。'],
+            en: ['If the line is longer than the selection, it is placed at full length when there is room after it. If it would cover the next clip, it is not placed, and the selection and text are kept.', 'A placed line can be undone, or changed with "Redub" under "Lines".'],
+        },
+    },
+    {
         id: 'sound-to-picture',
+        view: 'editor',
         goto: ['editor-timeline'],
         title: {zh: '按声音生成画面', en: 'Generate a picture from sound'},
         summary: {zh: '为只有声音的部分生成匹配的画面。', en: 'Generate a picture that matches a part that only has sound.'},
@@ -415,6 +481,26 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['画面时长以所选的一段为准。'],
             en: ['The picture has the length of the selected range.'],
+        },
+    },
+    {
+        id: 'text-subtitles',
+        view: 'editor',
+        goto: ['text-entry'],
+        title: {zh: '加文字和字幕', en: 'Add text and subtitles'},
+        summary: {zh: '在剪辑视图里给画面加标题文字，或加上字幕。', en: 'Put a title or subtitles over the picture in the Edit view.'},
+        media: {
+            type: 'image',
+            src: {zh: 'text-subtitles-1.webp', en: 'text-subtitles-2.webp'},
+            alt: {zh: '剪辑视图：工具栏中的文字图标和字幕图标已用红框标出。', en: 'The Edit view, with the text icon and the subtitle icon in the toolbar outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“剪辑视图”，把播放头移到想加字的位置。', '点工具栏的 T 图标加标题，或点它右边的字幕图标加一条字幕，然后直接输入内容。', '在时间线上拖动两端调整出现的时间；在右侧面板中改字体、大小和颜色。', '已有 SRT 字幕文件时，选中字幕后点“导入字幕文件”。', '点右上角的“导⁠出”，文字和字幕会一起画进视频。'],
+            en: ['Choose "Edit" at the top and move the playhead to where the words should appear.', 'Click the T icon in the toolbar to add a title, or the subtitle icon next to it to add a subtitle, then type.', 'Drag the ends on the timeline to set when they appear, and change the font, size and colour in the panel on the right.', 'With an SRT subtitle file, select a subtitle and choose "Import subtitle file".', 'Choose "Export" at the top right. The words are drawn into the video.'],
+        },
+        limits: {
+            zh: ['字幕文件只支持 SRT，一次最多导入 500 条。', '所选字体缺少的字会在导出前提示。'],
+            en: ['Only SRT subtitle files can be imported, up to 500 subtitles at a time.', 'Characters the chosen font does not have are reported before export.'],
         },
     },
     {

@@ -11,7 +11,11 @@
 .fv-ed-voice-compare[hidden]{display:none}
 .fv-editor .fv-ed-voice-compare button{height:26px;min-height:26px;padding:0 12px;border:0;border-radius:0;background:transparent;color:var(--fv-muted);font-size:12px}
 .fv-editor .fv-ed-voice-compare button[aria-pressed=true]{background:var(--fv-accent,#6db8fa);color:#0f1722}
-.fv-ed-voice-lines{display:flex;flex-direction:column;gap:6px;max-height:calc(6 * 44px);overflow-y:auto}
+/* The lines scroll inside their own box: at most 40% of the editor and never so tall that the timeline loses its picture track and
+   three sound tracks (the bar takes 104px besides the list; the picture keeps about 160px where the window allows). */
+.fv-ed-voice-lines{display:flex;flex-direction:column;gap:6px;max-height:max(44px,min(calc(6 * 44px),calc((100dvh - 32px) * .4 - 104px),calc(100dvh - 32px - 76px - 80px - 160px - var(--fv-ed-lines-tracks,280px) - 104px)));overflow-y:auto}
+@media(min-width:681px){
+.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){--fv-ed-lines-tracks:min(var(--fv-ed-tracks-min,174px),280px);grid-template-rows:auto minmax(96px,1fr) 40px var(--fv-ed-generation-row,max-content) 40px var(--fv-ed-lines-tracks)}}
 .fv-ed-voice-line{display:flex;flex-direction:column;gap:2px}
 .fv-ed-voice-main{display:flex;align-items:flex-start;gap:8px;position:relative;padding-left:8px}
 .fv-ed-voice-mark{position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:1px;background:transparent}

@@ -53,3 +53,5 @@
 .fv-feature-tour .fv-tour-dot{flex:0 1 20px;width:20px;min-width:0}
 .fv-tour-dot::after{inset:10px 6px}
 }
+
+.fv-tour-note{margin:10px 0 0;text-align:end}.fv-tour-note[hidden]{display:none}

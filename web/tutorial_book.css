@@ -34,6 +34,8 @@
 .fv-book-chapter[aria-current] { font-weight:600; }
 .fv-book-article { min-width:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--book-lg) var(--book-xl); overflow-wrap:anywhere; }
 .fv-book-chapter-title { margin:0 0 var(--book-sm); font-size:var(--book-title); font-weight:600; line-height:1.35; }
+.fv-book-note { margin:var(--book-sm) 0 0; }
+.fv-book-note[hidden] { display:none; }
 .fv-book-summary { margin:0 0 var(--book-md); }
 .fv-book-media { display:block; width:auto; max-width:100%; height:auto; max-height:var(--book-media-height); object-fit:contain; margin-inline:auto; border:var(--book-border) solid var(--book-line); border-radius:var(--book-media-radius); background:var(--book-panel); }
 .fv-book-steps { padding-inline-start:var(--book-lg); margin:var(--book-lg) 0 var(--book-md); }

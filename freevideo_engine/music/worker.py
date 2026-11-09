@@ -43,9 +43,12 @@ def main(argv=None):
         parser.add_argument("--frames", type=int)
         parser.add_argument("--fps", type=float, default=24.)
         parser.add_argument("--quiet", default="[]")
+        # Things the music should leave out, a JSON list of English names ("drums").
+        parser.add_argument("--avoid", default="[]")
         args = parser.parse_args(argv)
         validate_request(args.caption, args.seconds, args.seed)
         quiet = _quiet(args.quiet)
+        avoid = _avoid(args.avoid)
         if args.frames is not None and not (0 < args.frames and 0 < args.fps):
             raise BadRequest("frames and fps must be positive")
         import torch
@@ -64,7 +67,8 @@ def main(argv=None):
         load_s = time.perf_counter() - start
         start = time.perf_counter()
         phase = "generate"
-        audio = pipeline.generate(args.caption, args.seconds, args.seed)
+        audio = (pipeline.generate(args.caption, args.seconds, args.seed, avoid=avoid) if avoid
+                 else pipeline.generate(args.caption, args.seconds, args.seed))
         _synchronize(torch, cuda)
         generate_s = time.perf_counter() - start
         if args.frames is not None:
@@ -107,6 +111,17 @@ def _quiet(text):
         return [(int(start), int(frames)) for start, frames in spans]
     except (TypeError, ValueError) as error:
         raise BadRequest("quiet must be a JSON list of [start, frames]") from error
+
+
+def _avoid(text):
+    try:
+        names = json.loads(text)
+    except ValueError as error:
+        raise BadRequest("avoid must be a JSON list of names") from error
+    if (not isinstance(names, list) or len(names) > 32
+            or not all(isinstance(name, str) and 0 < len(name) <= 40 and name.isprintable() for name in names)):
+        raise BadRequest("avoid must be a JSON list of names")
+    return names
 
 
 def _synchronize(torch, cuda):
