@@ -351,6 +351,9 @@ DEPENDENCIES = (('The environment needs repair', '运行环境需要修复'),
 # missing file often surfaces as some other package's ImportError instead.
 ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment packages: '
 
+# Windows refused to load a file (Smart App Control or another application control policy).
+APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
+
 
 def _stopped_on_missing_module(text):
     """ComfyUI itself stopped on an import, not a custom node that logged one and loaded on."""
@@ -358,6 +361,14 @@ def _stopped_on_missing_module(text):
     errors = [i for i, line in enumerate(lines) if re.match(r'^[\w.]+(?:Error|Exception)\b', line)]
     return bool(errors) and bool(re.match(r'^(?:ModuleNotFoundError|ImportError): (?:No module named|DLL load failed)',
                                           lines[errors[-1]])) \
+        and not any('for custom nodes' in line for line in lines[errors[-1] + 1:])
+
+
+def _stopped_on_application_control(text):
+    """The import ComfyUI stopped on was refused by Windows, so reinstalling the package changes nothing."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    errors = [i for i, line in enumerate(lines) if re.match(r'^[\w.]+(?:Error|Exception)\b', line)]
+    return bool(errors) and bool(re.search(APPLICATION_CONTROL, lines[errors[-1]])) \
         and not any('for custom nodes' in line for line in lines[errors[-1] + 1:])
 
 
@@ -575,7 +586,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                       if zh else 'Need %s; %s available. Free another %s, then click “Check again”.' % sizes)
         return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk', detail=detail,
                     action='重新检查' if zh else 'Check again')
-    if text.startswith('ComfyUI could not start.'):
+    # A block by Windows' application control is not a missing file: its own card applies (rules below).
+    if text.startswith('ComfyUI could not start.') and not _stopped_on_application_control(summary):
         if can_repair and repairs_comfy and (_stopped_on_missing_module(summary) or ENVIRONMENT_FILES in summary):
             return dict(title=DEPENDENCIES[0][zh], detail='', action=DEPENDENCIES[1][zh], kind='dependencies')
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
@@ -800,7 +812,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '安全软件或 Windows 的保护功能拦截了 FreeVideo 运行环境中的 Python 文件。请在其中允许 FreeVideo 所在的文件夹'
           '（Windows 安全中心：病毒和威胁防护 → 管理勒索软件防护 → 受控文件夹访问，以及排除项），然后点“重试安装”。')),
         # Windows refuses PyTorch's unsigned DLLs under Smart App Control; reinstalling changes nothing.
-        (r'WinError 4551|Application Control policy has blocked', 'app-control',
+        (APPLICATION_CONTROL, 'app-control',
          ('Windows blocked some runtime files', 'Windows 拦截了运行组件'),
          ('Smart App Control in Windows blocked these files. Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App Control settings.',
           'Windows 的“智能应用控制”拦截了这些文件。在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”。')),
