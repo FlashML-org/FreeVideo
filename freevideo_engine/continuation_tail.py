@@ -260,7 +260,7 @@ def complete(request, canvas, manifest, sampling_plan=None, *, resident=None, de
     if not path.is_file():
         started = time.perf_counter()
         data = encode(tail, tail['base'], device=device, before_upload=None if resident is None else
-                      lambda model, audio: resident.input_vae_room(model, tail['canvas'], audio=audio))
+                      lambda model, audio: resident.input_vae_room(model, tail['canvas'], audio=audio, tail=True))
         write(path, dict(data, metadata=dict(metadata(identity(manifest), tail['canvas'], tail['first']),
                                              source_id=tail['source_id'])))
         path.chmod(0o400)

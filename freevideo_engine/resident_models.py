@@ -420,7 +420,7 @@ class ModelBank:
         """The dominant kind of change, from stored transitions or this process's digests."""
         return usage_habit.dominant(self.recent or usage_habit.transitions(self.history))
 
-    def input_vae_room(self, model, canvas, *, audio=False):
+    def input_vae_room(self, model, canvas, *, audio=False, tail=False):
         # Input encoding has its own live workspace; it cannot assume an output
         # decoder's memory footprint. Charge actual retained CPU model tensors
         # before upload plus a canvas-scaled starting workspace estimate.
@@ -435,7 +435,11 @@ class ModelBank:
         # segment. The GPU estimate says nothing about host memory, so an idle
         # model's host copy is released unless the live budget covers the
         # stage as well. Plentiful hosts keep it for reuse.
-        host = weights + (2*GiB if audio else max(8*GiB, 26*GiB*area))
+        # A continuation's ending is 22 frames and about 15 s of sound whatever the canvas: measured at
+        # 1344x768 the stage grew this process by 0.74 GiB of private memory and 0.76 GiB of mapped
+        # checkpoint pages, nowhere near a reference clip's 26 GiB. Charging the clip figure released the
+        # idle engine's pinned weights on 64 GB hosts and made the next load read and pin them again.
+        host = weights + (2*GiB if audio else 3*GiB if tail else max(8*GiB, 26*GiB*area))
         role = 'input_audio_vae' if audio else 'input_video_vae'
         retained = model if self.entries.get(role, {}).get('model') is model else None
         self.make_room(role, weights + workspace, model=retained, ram_need=host)
