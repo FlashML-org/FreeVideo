@@ -10,6 +10,7 @@ import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
+import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
 import { createPortNotice } from './port_notice.js';
@@ -679,6 +680,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The guide starts after the tab settles: it fixes its steps from the anchors present at that moment.
     const agentDiscovery = navigation.ready;
     header.append(brand, navigation, tools);
+    const headerFit = fitStudioHeader(header, brand, navigation, tools); cleanup.push(headerFit.dispose);
     const body = el('div', null, 'fv-body'), controls = el('div', null, 'fv-controls'), output = el('div', null, 'fv-preview-column');
     dialog.append(header, body); body.append(controls, output);
     const portNotice = createPortNotice(cn);
