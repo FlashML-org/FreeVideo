@@ -180,6 +180,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'local-image-edit',
+        title: {zh: '局部改图', en: 'Change part of a picture'},
+        summary: {zh: '在编辑图片中框出一块区域，只让 AI 修改这一块，其余部分保持不变。', en: 'Select an area in the image editor and let the AI change only that area, leaving the rest as it is.'},
+        media: {
+            type: 'image',
+            src: {zh: 'local-image-edit-1.webp', en: 'local-image-edit-2.webp'},
+            alt: {zh: '编辑图片：图片上框出了一块选区，“选框”工具、描述栏和“生成”按钮已用红框标出。', en: 'The image editor, with an area selected on the picture and the Marquee tool, the description field and the "Generate" button outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，点图片（或右上角的“编辑”），打开“编辑图片”。', '点左上角的“AI 生成”，选择“改这张”。', '用“选框”“套索”或“魔棒”在图片上选出要修改的区域；按住 Shift 拖动可以添加区域，按住 Alt 拖动可以减去一块。', '在描述栏中写下选区要改成什么样。', '点“生⁠成”。结果出现后选区仍然保留，可以直接再改；满意后点“保存”。'],
+            en: ['Expand "Media" in the creation panel, click the picture (or "Edit" at its top right) to open "Edit image".', 'Click "Generate with AI" at the top left and choose "Edit this".', 'Select the area to change on the picture with "Marquee", "Lasso" or "Magic wand". Hold Shift while dragging to add an area, or Alt to take one away.', 'In the description field, describe how the selection should change.', 'Click "Generate". The selection stays after the result appears, so it can be changed again; click "Save" when satisfied.'],
+        },
+        limits: {
+            zh: ['没有选区时，“改这张”会按描述修改整张图片。', '“点选”需要先下载一次选区模型，面板会显示进度。', '图片生成需要所用的图片模型已经下载完成。'],
+            en: ['Without a selection, "Edit this" changes the whole picture according to the description.', '"Click select" needs a selection model downloaded once; the panel shows the progress.', 'Generating pictures needs the picture model to be downloaded first.'],
+        },
+    },
+    {
         id: 'lora',
         goto: ['lora-add'],
         title: {zh: '使用自己的 LoRA', en: 'Use your own LoRA'},
