@@ -262,8 +262,9 @@ RULES = [
     'otherwise make its reference pictures with POST /cast/{id}/generate. '
     'Before shooting, tell the user the casting in one sentence. Later shots use the card\'s current pictures. '
     'Keep cards you made so later films can reuse them.',
-    'Pictures. When the user wants a picture, or a first frame or reference picture that does not exist yet, make '
-    'it with freevideo_generate_image; to change a picture, pass it in images. The result is an input file: use '
+    'Pictures. When the user wants a picture, make it with freevideo_generate_image and stop there: do not read the video '
+    'prompt guide, plan or start a video, and tell the user where the picture is. The same tool makes a first frame or '
+    'reference picture that does not exist yet; to change a picture, pass it in images. The result is an input file: use '
     'result.file as a first frame, as a reference, or in images again. When where people stand in the shot matters, '
     'make the first frame with scene_image and people (cast card IDs or pictures, x, height, facing left/right, '
     'framing full/half), then generate the video from result.file. Use dimensions divisible by 32. '
@@ -306,7 +307,8 @@ RULES_ZH = [
     '先选角，再拍摄。先搜索角色库，使用用户指定的卡片或明确符合要求的卡片；拿不准时询问用户。'
     '只有找不到合适卡片时才新建：用户提供了照片就用照片，否则通过 POST /cast/{id}/generate 生成参考图。'
     '开拍前用一句话告诉用户选角结果。后续镜头使用卡片当前的图片。保留你创建的卡片，方便以后拍片复用。',
-    '图片。用户要一张图，或者缺一张首帧、参考图时，用 freevideo_generate_image 生成；要改一张图，把它放进 images。'
+    '图片。用户要一张图时，用 freevideo_generate_image 生成，到此为止：不读视频提示词指南，不做视频规划，也不生成视频，告诉用户图片在哪里。'
+    '缺一张首帧、参考图时也用它生成；要改一张图，把它放进 images。'
     '结果是一个输入文件：result.file 可以当首帧、当参考图，也可以再放进 images。镜头里人物站位要紧时，'
     '先用 people（角色图和各自的位置）做出首帧，再用它生成视频。',
     '默认切镜头。能切镜头的地方就切：新镜头直接用对应的参考图（人物卡、场景图）生成，不接上一段视频。'
@@ -458,7 +460,9 @@ def connection_discovery(root, base, lang=None):
 def introduction(zh, offers):
     """What the agent tells the user first: only what this installation is known to carry through."""
     rows = ['按描述生成视频，可以给首帧图片或参考图' if zh else
-            'Make a video from a description, optionally from a first-frame picture or reference pictures']
+            'Make a video from a description, optionally from a first-frame picture or reference pictures',
+            '按描述生成图片，也可以修改、合成已有的图片；只要图片时不会生成视频' if zh else
+            'Make a picture from a description, or change and combine pictures; a request for a picture alone makes no video']
     if offers.get('editing'):
         rows.append('剪辑：把片段排上时间线，分割、裁剪、删除，再导出成片' if zh else
                     'Edit: put clips on a timeline, split, trim and remove them, then export the finished video')
@@ -489,6 +493,7 @@ def connection_guide(root, base, lang=None, offers=None, resumed=False):
         '# client is the name the user sees as connected: put your own, for example "Claude Code" or "Codex".',
         'call("POST", "/connect/hello", {"client": "Local Agent", "via": "http"})',
         'print(call("GET", ""))',
+        '# A request for a picture alone: POST /jobs {"kind": "image", "prompt": ..., "label": ..., "ref": ...} and no video job; the result is result.file.',
         '# Only after the user asks for a video:',
         '# label is the short name the user sees on the job, in their language: what the video shows, 2 to 8 characters.',
         '# seconds and aspect are what the user asked for (10 seconds and 16:9 when they said nothing): send them the first time.',
@@ -557,7 +562,7 @@ def connection_guide(root, base, lang=None, offers=None, resumed=False):
                      'without id). Its "session" is the conversation the user is in (it changes when the user opens or returns to another one; always post to the session the latest wait named); POST ' + base + PREFIX + '/sessions/{session}/events '
                      'with {"type":"message","text":"..."} (MCP: freevideo_session_post). Say only one short sentence '
                      'there first, at most 12 words, no list and no examples (the page already shows examples), for example '
-                     '"Connected. Describe the video you want.", in the language the user writes to you in. Give the introduction in your own window as usual, but it '
+                     '"Connected. Describe the video or picture you want.", in the language the user writes to you in. Give the introduction in your own window as usual, but it '
                      'does not end your turn: right after it, call the wait. Then stay in this conversation: call the wait again; it answers within about 50 seconds, and '
                      '"again": true means the user has not spoken yet, so call it again at once, time after time, with no '
                      'limit. Nothing new is not a reason to finish: do not end your reply and do not stop to ask the '
