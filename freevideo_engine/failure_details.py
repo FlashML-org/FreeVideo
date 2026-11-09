@@ -704,6 +704,13 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('If this computer has an NVIDIA graphics card, install NVIDIA driver 580 or newer, '
           'restart the computer, then click "Retry installation".',
           '如果这台电脑有 NVIDIA 显卡，请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。')),
+        # Setup reports an unsupported card and an old driver together; the first match is shown, and
+        # a driver update cannot help a card below the hardware floor, so that card comes first.
+        (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
+         ('This GPU is not supported', '这张显卡不受支持'),
+         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
+          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
+          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
@@ -712,11 +719,6 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('The NVIDIA driver is installed but not running', 'NVIDIA 显卡驱动已安装但未运行'),
          ('Restart the computer, then click "Retry installation". If it still fails after the restart, reinstall the NVIDIA driver.',
           '请重启电脑后点击“重试安装”。重启后仍然失败时，请重新安装 NVIDIA 显卡驱动。')),
-        (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
-         ('This GPU is not supported', '这张显卡不受支持'),
-         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
-          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
-          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'CUDA_CAPABILITY_UNKNOWN', 'gpu-detection',
          ('GPU information could not be read', '未能读取显卡信息'),
          ('Retry hardware detection. If it still fails, export the report; it includes the GPU identity and the raw driver query.',
