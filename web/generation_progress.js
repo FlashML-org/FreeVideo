@@ -1,6 +1,7 @@
 // One whole-video estimate and the same five rows in Studio and the node view.
 import { saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError } from './report_issue.js';
 import { issueButton } from './issue_button.js';
+import { previewStyle, loadPreviewStyle, onPreviewStyle, hintWanted, markHintSeen, sheetLayout } from './preview_style.js';
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./generation_progress.css', import.meta.url).href;
 document.head.append(css);
@@ -462,7 +463,9 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     stall.setAttribute('role', 'status');
     const stallText = el('span', ''); stall.append(stallText);
     const trims = new Map();
-    element.append(heading, track, label, mini, frames, times, late, compatibilityNote, status, live);
+    // The picture and its hint share one block, so a short stage can put the text on one line above it.
+    const pictureBox = el('div', 'fv-generation-picture'); pictureBox.append(frames);
+    element.append(heading, track, label, mini, pictureBox, times, late, compatibilityNote, status, live);
     let recovery = '', lowMemory = false, compatibility = null, samplingPlan = {}, secondPass = false, references = false, splitFailed = null;
     let hasHeartbeat = false;
     // Mac: the unified-memory notice of this request, and whether its first pass has ended.
@@ -517,57 +520,121 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const {report, updateReport, fetchReport, downloadReport} = diagnostic;
     // The newest frame picture. Any failure leaves the page as it was without one.
     // `framesToken` changes whenever a pending fetch stops being wanted, so a late answer is dropped.
-    let framesKey = '', framesUrl = null, framesLoading = null, framesToken = 0, strip = null, stripTimer = null;
+    let framesKey = '', framesUrl = null, framesLoading = null, framesToken = 0, strip = null, stripTimer = null, reportShown = null;
     function stopPlayback() { if (stripTimer !== null) cancelAnimationFrame(stripTimer); stripTimer = null; }
     function clearFrames() {
         framesKey = ''; framesLoading = null; framesToken++; frames.hidden = true; strip = null; stopPlayback();
         if (framesUrl) { URL.revokeObjectURL(framesUrl); framesUrl = null; }
-        frames.style.backgroundImage = '';
+        frames.style.backgroundImage = ''; frames.replaceChildren(); frames.dataset.style = 'loop';
+        hint.hidden = true; element.dataset.tight = 'false';
     }
-    // The frame is at most 128 px high in a wide column and 120 px in a narrow one, never above the picture's own
-    // height. In the Studio stage the percentage, step and times come first: the frame takes what is left of the
-    // stage (the padding shrinks first, as in a short stage) and is left out below 48 px.
+    // The first-time hint under the picture: one line, a button to the settings and a close button. Either one ends it
+    // for this browser, as does having chosen in the settings; when the stage has no room for it, it waits.
+    const hint = el('div', 'fv-generation-hint'); hint.hidden = true;
+    const hintText = el('span', 'fv-generation-hint-text'), hintSettings = el('button', 'fv-generation-hint-settings'), hintClose = el('button', 'fv-generation-hint-close');
+    hintText.textContent = t('The preview can be set to loop in Settings.', '预览可在设置中改为循环播放。');
+    hintSettings.type = 'button'; hintSettings.textContent = t('Settings', '设置');
+    hintClose.type = 'button'; hintClose.textContent = '×'; hintClose.setAttribute('aria-label', t('Close', '关闭'));
+    hint.append(hintText, hintSettings, hintClose);
+    frames.after(hint);
+    const endHint = () => { markHintSeen(); hint.hidden = true; fitFrames(); try { onLayout?.(); } catch {} };
+    hintClose.onclick = endHint;
+    hintSettings.onclick = async () => {
+        endHint();
+        try { const {openSetup} = await import('./setup.js'); openSetup({section: 'preview'}); } catch { /* The settings stay reachable from the header. */ }
+    };
+    // The picture is at most 128 px high in a wide column and 120 px in a narrow one (a sheet: 64 px in a wide column),
+    // never above the picture's own height. In the Studio stage the percentage, step and times come first, then the
+    // picture takes what is left of the stage, down to a 24 px band; it is never left out. When the room is short the
+    // secondary lines fold away first, then the hint waits for more room.
     let fitWatch = null;
+    // The sheet is the default. The loop shows only when it is switched on in the settings and can play; with reduced
+    // motion, a single frame or no animation frames the sheet shows again, so the picture never stops on one frame.
+    const showsSheet = count => previewStyle() !== 'loop' || !(count > 1) || !moving();
     function fitFrames() {
-        const width = (element.parentElement || element).clientWidth;
-        const wide = width > 480;
+        const column = (element.parentElement || element).clientWidth;
+        const wide = column > 480;
         frames.dataset.wide = wide ? 'true' : 'false';
         const stage = element.closest?.('.fv-stage') ?? null;
         if (typeof ResizeObserver === 'function') {
             fitWatch ??= new ResizeObserver(() => fitFrames());
             fitWatch.observe(element.parentElement || element); if (stage) fitWatch.observe(stage);
         }
-        if (!strip || frames.hidden) return;
-        let height = Math.min(wide ? 128 : 120, strip.height), tight = false;
+        if (!strip || frames.hidden) { hint.hidden = true; return; }
+        const sheet = showsSheet(strip.count);
+        frames.dataset.style = sheet ? 'sheet' : 'loop';
+        const width = Math.max(1, column - (stage ? 32 : 44));
+        const ratio = strip.ratio;
+        const natural = sheet ? (wide ? 64 : Math.min(strip.height, 200, (typeof innerHeight === 'number' ? innerHeight : 1000) * .3))
+            : Math.min(wide ? 128 : 120, strip.height);
+        const wantHint = hintWanted() && sheet && strip.count > 1 && moving();
+        const roomFor = withHint => {
+            hint.hidden = !withHint;
+            frames.style.display = 'none';
+            const rest = element.offsetHeight;
+            frames.style.display = '';
+            return Math.floor(stage.clientHeight - rest - ({true: 6, max: 3}[element.dataset.tight] ?? 12));
+        };
+        let room = null, showHint = wantHint;
         if (stage && stage.clientHeight > 0) {
-            const room = () => {
-                frames.style.display = 'none';
-                const rest = element.offsetHeight;
-                frames.style.display = '';
-                return Math.floor(stage.clientHeight - rest - 12);
-            };
             element.dataset.tight = 'false';
-            let left = room();
-            if (left < height) { tight = true; element.dataset.tight = 'true'; left = room(); }
-            height = Math.min(height, left);
+            let left = roomFor(wantHint);
+            if (left < natural) { element.dataset.tight = 'true'; left = roomFor(wantHint); }
+            if (left < 24) { element.dataset.tight = 'max'; left = roomFor(wantHint); }
+            // The hint is shown only when the picture keeps at least a 24 px band beside it.
+            if (wantHint && left < 24) { showHint = false; left = roomFor(false); }
+            room = left;
+        } else element.dataset.tight = 'false';
+        hint.hidden = !showHint;
+        if (sheet) {
+            const layout = sheetLayout({count: strip.count, ratio, natural, room, width});
+            // Whole-pixel cells, so the thin line between two frames looks the same at every width.
+            const cellWidth = Math.floor(layout.height * ratio);
+            frames.style.height = `${layout.height}px`; frames.style.width = `${cellWidth * layout.shown}px`;
+            frames.style.aspectRatio = 'auto';
+            const signature = `${layout.indices.join(',')}|${cellWidth}|${framesUrl}`;
+            if (frames.dataset.cells !== signature) {
+                frames.dataset.cells = signature;
+                frames.replaceChildren(...layout.indices.map(index => {
+                    const cell = el('span', 'fv-generation-cell');
+                    cell.style.width = `${cellWidth}px`;
+                    cell.style.backgroundImage = `url("${framesUrl}")`;
+                    cell.style.backgroundSize = `${strip.count * 100}% 100%`;
+                    cell.style.backgroundPosition = strip.count > 1 ? `${100 * index / (strip.count - 1)}% 0` : '0 0';
+                    return cell;
+                }));
+            }
+        } else {
+            const height = Math.max(24, room === null ? natural : Math.min(natural, room));
+            frames.style.height = `${height}px`; frames.style.width = ''; frames.style.aspectRatio = '';
+            if (frames.children.length) { frames.replaceChildren(); delete frames.dataset.cells; }
         }
-        if (height < 48) { frames.dataset.fit = 'false'; element.dataset.tight = 'false'; }
-        else { frames.dataset.fit = 'true'; frames.style.height = `${height}px`; }
     }
     // Where the loop stands, from 0 up to (not including) 1.
     const stripPhase = () => strip ? (strip.phase + (now() - strip.start) / 1000 * strip.fps / strip.count) % 1 : 0;
     // The strip plays forward at its frames per second over the video's length, 4 to 8 a second; with reduced
-    // motion, or a single frame, the last frame stands still.
+    // motion, or a single frame, the last frame stands still. The frame sheet does not play.
     function playFrames() {
         stripTimer = null;
-        if (!strip || frames.hidden) return;
+        if (!strip || frames.hidden || showsSheet(strip.count)) return;
         const playing = strip.count > 1 && moving();
         const index = playing ? Math.min(strip.count - 1, Math.floor(stripPhase() * strip.count)) : strip.count - 1;
         frames.style.backgroundPosition = strip.count > 1 ? `${100 * index / (strip.count - 1)}% 0` : '0 0';
         if (playing) stripTimer = requestAnimationFrame(playFrames);
     }
+    // A change of style in the settings reaches the picture on screen at once.
+    function restyleFrames() {
+        if (!strip || frames.hidden) return;
+        stopPlayback();
+        frames.style.backgroundImage = showsSheet(strip.count) ? '' : `url("${framesUrl}")`;
+        fitFrames(); playFrames();
+        try { onLayout?.(); } catch {}
+    }
+    onPreviewStyle(restyleFrames);
+    try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', restyleFrames); } catch { /* No media queries: the check above is enough. */ }
     function updateFrames(message, id) {
         const value = message.frame_preview;
+        if (id && id !== reportShown) { reportShown = id; loadPreviewStyle(api); }
         fitFrames();
         const usable = value && typeof value === 'object' && Number.isInteger(value.serial) && value.serial > 0
             && Number.isInteger(value.frames) && value.frames > 0 && value.frames <= 16;
@@ -593,11 +660,12 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                 const fps = Math.min(8, Math.max(4, seconds ? value.frames / seconds : 6));
                 const frameWidth = picture.naturalWidth / value.frames, frameHeight = picture.naturalHeight;
                 const old = framesUrl, phase = stripPhase();
-                strip = {count: value.frames, fps, phase, start: now(), height: frameHeight};
+                strip = {count: value.frames, fps, phase, start: now(), height: frameHeight, ratio: frameWidth / frameHeight};
                 frames.style.setProperty('--fv-frame-height', `${frameHeight}px`);
                 frames.style.setProperty('--fv-frame-ratio', `${frameWidth} / ${frameHeight}`);
+                const sheet = showsSheet(value.frames);
                 frames.style.backgroundSize = `${value.frames * 100}% 100%`;
-                frames.style.backgroundImage = `url("${url}")`;
+                frames.style.backgroundImage = sheet ? '' : `url("${url}")`;
                 framesUrl = url; framesKey = key; framesLoading = null;
                 frames.hidden = false; fitFrames(); stopPlayback(); playFrames();
                 try { onLayout?.(); } catch {}

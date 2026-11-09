@@ -27,9 +27,32 @@
 .fv-generation-compatibility[hidden]{display:none!important}
 .fv-generation-frames{display:block;box-sizing:border-box;width:auto;max-width:100%;height:min(var(--fv-frame-height,120px),120px);aspect-ratio:var(--fv-frame-ratio,16 / 9);margin:12px auto 0;border-radius:var(--fv-r-sm,6px);background:var(--fv-raised,#212a37) no-repeat 0 0}
 .fv-generation-frames[data-wide=true],.fv-studio .fv-stage .fv-generation-frames[data-wide=true]{height:128px}
-.fv-generation-frames[hidden],.fv-generation-frames[data-fit=false]{display:none!important}
+.fv-generation-frames[hidden]{display:none!important}
 .fv-studio .fv-stage .fv-generation-progress[data-tight=true],.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact[data-tight=true]{padding:8px 16px}
-.fv-studio .fv-stage[data-short=true] .fv-generation-frames{display:none!important}
+.fv-generation-frames[data-style=sheet]{display:flex;overflow:hidden;background:none;max-width:100%}
+.fv-generation-cell{flex:none;display:block;height:100%;background-repeat:no-repeat}
+/* One thin line between two frames, the same at every width. */
+.fv-generation-cell+.fv-generation-cell{box-shadow:inset 1px 0 0 rgba(7,19,32,.7)}
+/* The hint under the picture: one line that never covers it. */
+.fv-generation-hint{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px auto 0;max-width:100%;font-size:12px;line-height:20px;color:var(--fv-muted,#a2abba)}
+.fv-generation-hint[hidden]{display:none!important}
+.fv-generation-hint-text{min-width:0;text-wrap:balance}
+.fv-generation-progress .fv-generation-hint button{flex:none;min-height:24px;height:24px;min-width:0;margin:0;padding:0 6px;font:inherit;line-height:20px;box-shadow:none;color:var(--fv-accent,#6db8fa);background:transparent;border:0;border-radius:var(--fv-r-sm,6px);cursor:pointer}
+.fv-generation-progress .fv-generation-hint .fv-generation-hint-close{padding:0 8px;font-size:16px;color:var(--fv-muted,#a2abba)}
+@media (pointer:coarse){.fv-generation-progress .fv-generation-hint button{min-width:44px;min-height:44px;height:44px}}
+/* A short stage: the percentage, step and time share one line; the bar and the secondary lines fold away so the
+   picture keeps what is left. */
+.fv-generation-picture{display:block;min-width:0}
+.fv-studio .fv-stage .fv-generation-progress:is([data-tight=true],[data-tight=max]) :is(.fv-generation-track,.fv-generation-mini,.fv-generation-status,.fv-generation-late){display:none!important}
+.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact:is([data-tight=true],[data-tight=max]){flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:baseline;align-content:center;gap:0 12px}
+.fv-studio .fv-stage .fv-generation-progress:is([data-tight=true],[data-tight=max]) :is(.fv-generation-heading,.fv-generation-label,.fv-generation-times){display:flex!important;flex:none;flex-direction:row;align-items:baseline;margin:0;gap:0}
+.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact:is([data-tight=true],[data-tight=max]) .fv-generation-count{font-size:22px;line-height:1.3}
+.fv-studio .fv-stage .fv-generation-progress:is([data-tight=true],[data-tight=max]) .fv-generation-times>span:not(.fv-generation-eta){display:none}
+.fv-studio .fv-stage .fv-generation-progress:is([data-tight=true],[data-tight=max]) :is(.fv-generation-picture,.fv-generation-compatibility){flex:0 0 100%;order:1}
+.fv-studio .fv-stage .fv-generation-progress:is([data-tight=true],[data-tight=max]) :is(.fv-generation-frames,.fv-generation-hint){margin-top:6px}
+.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact[data-tight=max]{padding:3px 12px}
+.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact[data-tight=max] .fv-generation-count{font-size:16px;line-height:1.2}
+.fv-studio .fv-stage .fv-generation-progress[data-tight=max] :is(.fv-generation-frames,.fv-generation-hint){margin-top:3px}
 .fv-generation-live{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 /* Studio shows progress with the preview's rising wave, so its bar stays
    hidden (studio.css); the node view keeps the bar under the percentage. */

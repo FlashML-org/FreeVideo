@@ -1,6 +1,7 @@
 import {chatData, chatPoller, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, newId} from './chat_data.js';
 import {phoneText, jobGroups, mergePhoneJobs, retryWords, queueWords, remainingWords, mediaPath, saveVideo, applyPhoneChain, phonePartWords, phoneJobKey} from './phone_model.js';
 import {wordmark} from './wordmark.js';
+import {applyPreviewStyle, previewStyle, hintWanted, markHintSeen, onPreviewStyle} from './preview_style.js';
 
 export function mountPhone(root) {
 const t = phoneText(navigator.language);
@@ -148,11 +149,15 @@ function playStrips() {
     playTimer = null;
     for (const item of playing) {
         if (!item.img.isConnected) { playing.delete(item); continue; }
-        const index = Math.min(item.count - 1, Math.floor((Date.now() / 1000 * item.fps / item.count) % 1 * item.count));
+        // Without the loop switched on, the last frame stands still, as before the loop existed.
+        const still = previewStyle() !== 'loop';
+        const index = still ? item.count - 1 : Math.min(item.count - 1, Math.floor((Date.now() / 1000 * item.fps / item.count) % 1 * item.count));
         item.img.style.transform = `translateX(-${index * 100 / item.count}%)`;
     }
-    if (playing.size && !reducedMotion() && typeof requestAnimationFrame === 'function') playTimer = requestAnimationFrame(playStrips);
+    if (playing.size && previewStyle() === 'loop' && !reducedMotion() && typeof requestAnimationFrame === 'function') playTimer = requestAnimationFrame(playStrips);
 }
+// A change of the choice reaches the picture on screen at once; the job list redraws with it.
+onPreviewStyle(() => { jobsSignature = ''; if (playTimer === null && typeof requestAnimationFrame === 'function') playTimer = requestAnimationFrame(playStrips); if (typeof renderJobs === 'function' && tab === 'jobs') renderJobs(); });
 function picture(job, preview = false, play = false) {
     const box = el('div', 'phone-picture');
     const p = job.progress || {}, frame = p.frame_preview;
@@ -219,7 +224,7 @@ async function cancel(job, confirm) {
 }
 let jobsSignature = '';
 function renderJobs() {
-    const signature = JSON.stringify([Object.values(jobs).map(phoneJobKey), limit]); if (signature === jobsSignature) return; jobsSignature = signature;
+    const signature = JSON.stringify([Object.values(jobs).map(phoneJobKey), limit, previewStyle(), hintWanted()]); if (signature === jobsSignature) return; jobsSignature = signature;
     const active = document.activeElement?.dataset.action;
     const {running, queued, done} = jobGroups(jobs); generations.replaceChildren();
     if (!running.length && !queued.length && !done.length) generations.append(el('p', 'phone-empty', t('Nothing yet. Tell the Agent what to make in Chat.', '还没有作品，在对话里说想做什么。')));
@@ -230,7 +235,14 @@ function renderJobs() {
         if (!img.firstChild) frame.append(el('span', 'phone-frame-pct', `${Math.floor(fraction(job) * 100)}%`));
         const row = el('div', 'phone-job-row'), numbers = el('div'); numbers.append(el('span', 'phone-pct', `${Math.floor(fraction(job) * 100)}%`), document.createTextNode(' '), el('span', 'phone-eta', remainingWords(job.progress?.remaining_seconds, t)));
         const stop = button('phone-quiet', t('Stop', '停止'), () => cancel(job, true)); stop.disabled = job.status === 'cancelling'; stop.dataset.action = 'stop-' + job.id; row.append(numbers, stop);
-        info.append(el('p', 'phone-prompt', job.label)); if (phonePartWords(job, t)) info.append(el('span', 'phone-eta', phonePartWords(job, t))); info.append(bar(job), row); card.append(frame, info); generations.append(card);
+        info.append(el('p', 'phone-prompt', job.label)); if (phonePartWords(job, t)) info.append(el('span', 'phone-eta', phonePartWords(job, t))); info.append(bar(job), row); card.append(frame);
+        // The first time a preview is on screen: one line under it, closed for good with the ×. The settings are on the computer.
+        if (img.firstChild && hintWanted()) {
+            const hint = el('div', 'phone-hint'), close = button('phone-hint-close', '×', () => { markHintSeen(); jobsSignature = ''; renderJobs(); });
+            close.setAttribute('aria-label', t('Close', '关闭'));
+            hint.append(el('span', '', t('The preview can be set to loop in FreeVideo Settings on the computer.', '预览可在电脑上的 FreeVideo 设置中改为循环播放。')), close); card.append(hint);
+        }
+        card.append(info); generations.append(card);
     }
     if (queued.length) generations.append(el('h2', 'phone-section', t('Queued', '排队中')));
     queued.forEach((job, index) => {
@@ -288,6 +300,7 @@ async function refresh() {
         if (after && data.session !== chat.session) { drafts.set(chat.session, input.value); input.value = drafts.get(data.session) || ''; grow(); chat = emptyChat(); rows.clear(); log.replaceChildren(); await refresh(); return; }
         if (data.session !== chat.session) { chat = emptyChat(); rows.clear(); log.replaceChildren(); }
         chat = chatMerge(chat, data); const previous = jobs;
+        if (typeof progress.preview_style === 'string') applyPreviewStyle(progress.preview_style, progress.preview_chosen === true);
         jobs = mergePhoneJobs(jobs, {...chat.jobs, ...(now.current?.id ? {[now.current.id]: now.current} : {})}, activity.jobs || [], progress.progress || []);
         if (!historyStarted) cursor = activity.next_cursor ?? null;
         const running = jobGroups(jobs).running;
