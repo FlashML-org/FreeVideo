@@ -651,6 +651,8 @@ def generate(request, resident=None):
             else:
                 engine.close()
             metrics['transformer_released_before_decode'] = released(engine)
+            from .ram import release_freed_heap
+            release_freed_heap()
             # Keep the bounded file reader alive through transformer teardown.
             # Releasing DiT mappings is independent of the decoder checkpoint,
             # so both operations can run concurrently and give slow storage

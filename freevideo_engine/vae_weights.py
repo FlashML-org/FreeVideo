@@ -80,6 +80,11 @@ def _owns_storage(tensor):
     return tensor.storage_offset() == 0 and tensor.untyped_storage().nbytes() == tensor.numel() * tensor.element_size()
 
 
+# Freed read buffers stay in the allocator's arena; handing them back this often
+# keeps the loading peak near the live weights instead of half the bytes read.
+TRIM_INTERVAL_BYTES = 256 << 20
+
+
 def load_state(model, paths, *, device_for_name, skip=(), linear_dtype=None, mapped=False):
     """Read one tensor at a time, with no retained full state dictionary.
 
@@ -123,6 +128,7 @@ def load_state(model, paths, *, device_for_name, skip=(), linear_dtype=None, map
     if set(sources) != set(expected):
         raise ValueError('Missing VAE weights: ' + ', '.join(sorted(set(expected) - set(sources))))
     converted, loaded, mapped_bytes, streamed_count, streamed_bytes = 0, 0, 0, 0, 0
+    since_trim = trimmed = 0
     for path, stamp in files.items():
         names = [name for name in _file_order(path) if sources.get(name) == path]
         if not names:
@@ -165,12 +171,20 @@ def load_state(model, paths, *, device_for_name, skip=(), linear_dtype=None, map
                     loaded += target.numel() * target.element_size()
                     mapped_bytes += target.numel() * target.element_size() if view and target is source else 0
                     del source, value
+                    since_trim += loaded - trimmed
+                    trimmed = loaded
+                    if since_trim >= TRIM_INTERVAL_BYTES:
+                        from .ram import release_freed_heap
+                        release_freed_heap()
+                        since_trim = 0
                 if parameter:
                     owner._parameters[leaf] = torch.nn.Parameter(target, requires_grad=False)
                 else:
                     owner._buffers[leaf] = target
                 del target
             del views
+        from .ram import release_freed_heap
+        release_freed_heap()
         current = path.stat()
         if (current.st_size, current.st_mtime_ns, current.st_ctime_ns) != stamp:
             raise ValueError('VAE checkpoint changed during preparation: ' + str(path))
