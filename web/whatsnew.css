@@ -6,7 +6,7 @@
 .fv-whatsnew>*{flex:none}
 .fv-whatsnew h2{margin:0 0 16px;font-size:20px;font-weight:600}
 .fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:12px;overflow:hidden;background:var(--fv-bg)}
-.fv-whatsnew-stage{display:flex;flex-direction:column}
+.fv-whatsnew-stage{display:flex;flex-direction:column;position:relative}
 .fv-whatsnew-stage .fv-ed-track-view{transition:height .24s var(--fv-ease)}
 .fv-whatsnew-measure,.fv-whatsnew-measure *{transition:none!important}
 .fv-whatsnew-stage .fv-ed-track-scroll,.fv-whatsnew-stage .fv-ed-track-heads{bottom:0}
@@ -70,3 +70,7 @@
 .fv-whatsnew-top .fv-ed-voice-lines{max-height:none;overflow:visible}
 @media(max-width:520px){.fv-whatsnew-top .fv-ed-genbar[data-mode=running] .fv-ed-description-box{display:none}}
 @media(max-width:520px){.fv-whatsnew h2{font-size:18px;margin-bottom:12px}.fv-whatsnew-list{gap:2px;margin:12px 0}.fv-whatsnew-top .fv-ed-voice-lines{gap:4px}}
+
+.fv-whatsnew-stage .fv-ed-track-content{transition:height .24s var(--fv-ease)}
+.fv-whatsnew-stage[data-lang=en] .fv-ed-voice-text s{margin-right:4px}
+@media(max-width:520px){.fv-whatsnew-top .fv-ed-genbar[data-mode=selected] .fv-ed-description-box{flex:1 1 100%}}

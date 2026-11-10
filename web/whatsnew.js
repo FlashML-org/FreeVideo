@@ -2,6 +2,7 @@
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
 import {PAGES, LINES} from './whatsnew_pages.js';
 import {segmented} from './editor_adjust.js';
+import {PEAKS} from './whatsnew_peaks.js';
 
 const KEY = 'freevideo.whatsnew-seen';
 const SERIES = '0.5';
@@ -10,21 +11,11 @@ const svg = (tag, attrs = {}) => { const e = document.createElementNS('http://ww
 const ICON = {video: 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4', audio: 'M2 8h4l4-4v12l-4-4H2z M13 6c4 2 4 6 0 8 M13 9c1 1 1 1 0 2'};
 const icon = kind => { const s = svg('svg', {viewBox: '0 0 20 20', 'aria-hidden': 'true'}); s.append(svg('path', {d: ICON[kind]})); return s; };
 
-// A deterministic waveform in the editor's 200x40 box; shape decides how the sound reads. `duck` lists the spans where music sits lower.
-function wave(seed, shape, rate = 1, duck = []) {
-    let x = seed * 9301 + 49297, d = '';
-    const random = () => (x = (x * 9301 + 49297) % 233280) / 233280;
-    for (let i = 0; i < 100; i++) {
-        const at = i / 100;
-        let level = shape === 'speech' ? (Math.sin(at * 23 * rate + seed) > -.2 ? .25 + random() * .75 : .06) * (.5 + .5 * Math.sin(at * 7 * rate + 1))
-            : shape === 'piano' ? .12 + .7 * Math.abs(Math.sin(at * Math.PI * 8.3 * rate)) ** 1.6
-            : shape === 'guitar' ? .4 + .5 * Math.abs(Math.sin(at * Math.PI * 40)) ** 1.5 * (.7 + random() * .3)
-            : shape === 'ambient' ? .2 + .3 * Math.abs(Math.sin(at * Math.PI * 4 * rate)) + random() * .08
-            : shape === 'ambience' ? .12 + random() * .12 : .3 + random() * .7;
-        if (duck.some(([from, to]) => at >= from && at <= to)) level *= .5;
-        const h = Math.max(.5, Math.min(1, level) * 17);
-        d += `M${(i + .5) * 2} ${20 - h}v${h * 2}`;
-    }
+// A waveform in the editor's 200x40 box from real peaks, drawn as the editor draws them.
+function wave(id) {
+    const peaks = PEAKS[id];
+    let d = '';
+    peaks.forEach((peak, i) => { const h = Math.max(.5, Math.min(1, peak) * 17); d += `M${(i + .5) * 2} ${20 - h}v${h * 2}`; });
     const s = svg('svg', {viewBox: '0 0 200 40', preserveAspectRatio: 'none', 'aria-hidden': 'true'});
     s.classList.add('fv-ed-waveform'); s.append(svg('path', {d})); return s;
 }
@@ -34,7 +25,7 @@ const frame = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 // One page's scene: the editor's track view under its generation bar, changed only by the ops of its steps.
 export function createStage(cn, page) {
     const t = pair => pair[cn ? 1 : 0];
-    const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true');
+    const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true'); root.dataset.lang = cn ? 'zh' : 'en';
     let ticker = 0, dragTicker = 0, instantLayout = false;
     // The generation bar, the lines and the recording bar are the editor's own, under the editor's styles; they share one box above the tracks.
     const top = el('div', null, 'fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor');
@@ -58,7 +49,6 @@ export function createStage(cn, page) {
     // The view and the playhead reach the last track that is showing, and follow it when a track appears.
     const fit = () => {
         let low = 24;
-        if (page.keep) low = parseFloat(bodies[page.keep].style.top) + names[page.keep].row.height + 6;
         for (const id in names) if (headNodes[id].dataset.on !== 'false') low = Math.max(low, parseFloat(bodies[id].style.top) + names[id].row.height + 6);
         content.style.height = `${low}px`; view.style.height = `${low + 4}px`;
     };
@@ -67,7 +57,7 @@ export function createStage(cn, page) {
         const c = el('div', null, 'fv-ed-clip'); c.dataset.name = spec.id; c.tabIndex = -1;
         const media = el('span', null, 'fv-ed-clip-media');
         if (spec.picture) media.classList.add('fv-whatsnew-picture');
-        if (spec.wave) media.append(wave(...spec.wave));
+        if (spec.wave) media.append(wave(spec.wave));
         c.append(media, el('span', null, 'fv-ed-progress-fill'));
         rows[spec.row].append(c); clips[spec.id] = {spec, node: c};
     }
@@ -79,7 +69,7 @@ export function createStage(cn, page) {
         if (item === '-') { const rule = el('div'); rule.setAttribute('role', 'separator'); menu.append(rule); continue; }
         const b = el('button'); b.type = 'button'; b.tabIndex = -1; b.setAttribute('role', 'menuitem'); b.append(el('span', t(item), 'fv-ed-menu-label')); menu.append(b);
     }
-    menuBox.append(menu); content.append(menuBox);
+    menuBox.append(menu); root.append(menuBox);
     scroll.append(content); view.append(heads, scroll);
 
     const SRC = page.lines || LINES;
@@ -122,8 +112,10 @@ export function createStage(cn, page) {
     // The box above the tracks grows and shrinks to its content over 240 ms.
     const morph = change => {
         if (instantLayout) { change(); return; }
-        const from = top.offsetHeight; top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight;
-        if (from === to) { top.style.transition = ''; return; }
+        const from = top.offsetHeight, shown = [voice.hidden, record.hidden, genbar.hidden].join();
+        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight;
+        // A panel that appears or goes is swapped at once, so no half-open frame shows; the other changes grow or shrink over 240 ms.
+        if (from === to || shown !== [voice.hidden, record.hidden, genbar.hidden].join()) { top.style.transition = ''; return; }
         top.style.height = `${from}px`; top.getBoundingClientRect(); top.style.transition = ''; top.style.height = `${to}px`;
     };
     const paintLines = () => {
@@ -182,7 +174,7 @@ export function createStage(cn, page) {
         if (ops.lit) list.querySelectorAll('li').forEach((li, i) => { if (ops.lit.includes(i)) li.dataset.lit = 'true'; else li.removeAttribute('data-lit'); });
         if (ops.menu) {
             menuBox.dataset.on = String(!!ops.menu.show);
-            menuBox.style.left = '38%'; menuBox.style.top = '34px';
+            menuBox.style.left = `${view.offsetLeft + scroll.offsetLeft + scroll.clientWidth * .38}px`; menuBox.style.top = `${view.offsetTop + 34}px`;
             menu.querySelectorAll('button').forEach((b, i) => { b.dataset.hover = String(ops.menu.hover === i); });
         }
         morph(() => {
@@ -227,7 +219,7 @@ export function createStage(cn, page) {
     // Reduced motion shows the finished page: every step applied at once, typed text complete.
     const settle = ops => { const o = {...ops}; if (o.bar?.type) o.bar = {...o.bar, text: o.bar.type, type: null}; if (o.lines?.edit === 'typing') o.lines = {...o.lines, edit: 'done'}; set(o, true); };
     const finish = () => { instantLayout = true; for (const [, ops] of page.steps) settle(ops); range.dataset.on = 'false'; instantLayout = false; };
-    // The tallest the dialog gets over the steps; `measure` reads the dialog's own height at each state.
+    // The tallest the demo gets over the steps; `measure` reads the stage's own height at each state.
     const tallest = measure => {
         root.classList.add('fv-whatsnew-measure'); instantLayout = true; reset(); let max = measure();
         for (const [, ops] of page.steps) { settle(ops); max = Math.max(max, measure()); }
@@ -264,14 +256,13 @@ export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
     const page = PAGES[0], stage = createStage(cn, page);
     title.textContent = page.title[cn ? 1 : 0]; stageHost.replaceChildren(stage.element); dialog.insertBefore(stage.list, foot);
     let stop = () => {}, closed = false;
-    // The dialog is as tall as its tallest state, so nothing below the demo moves; that is measured once the editor styles are in.
+    // The demo frame is as tall as its tallest state, so the list below never moves; that is measured once the editor styles are in.
     stageHost.style.visibility = 'hidden';
     const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
     Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
         if (closed) return;
-        dialog.style.minHeight = '';
-        const tall = stage.tallest(() => dialog.offsetHeight);
-        dialog.style.minHeight = `${Math.min(tall, innerHeight - 48)}px`;
+        stageHost.style.height = '';
+        stageHost.style.height = `${stage.tallest(() => stage.element.offsetHeight) + 2}px`;
         stageHost.style.visibility = ''; stop = play(stage, page, reduce);
     });
     close.onclick = () => dialog.close();
