@@ -131,6 +131,9 @@ TOUR_FILES = frozenset((
     'web/assets/tour/cc-speech.mp4',
     'web/assets/tour/cc-speech.webp',
     'web/assets/tour/cc-speech-wave.webp',
+    'web/assets/tour/cd-narration.mp4',
+    'web/assets/tour/cd-narration.webp',
+    'web/assets/tour/cd-narration-wave.webp',
     'web/assets/tour/c10-source.webp',
     'web/assets/tour/fox-sheet.webp',
 ))
