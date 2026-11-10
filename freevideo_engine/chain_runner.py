@@ -679,25 +679,32 @@ class ChainRunner:
 
     def _keep_lead(self, identity, index, output, previous, continues):
         """Copy the block's seam sound out of the shared store before newer records push it out."""
+        return self._lead_failure(identity, index, output, previous, continues) is None
+
+    def _lead_failure(self, identity, index, output, previous, continues):
+        """None once the seam sound is kept, else the short reason it was not (never a path or a text)."""
         reader = getattr(self.host, 'lead', None)
-        if not continues or reader is None or not getattr(self.host, 'repairs_seams', True) or not isinstance(output, str) or not isinstance(previous, str):
-            return False
+        if not continues or not isinstance(output, str) or not isinstance(previous, str):
+            return 'not_adjacent'
+        if reader is None or not getattr(self.host, 'repairs_seams', True):
+            return 'no_reader'
         try:
-            lead = reader(output, previous)
+            check = getattr(self.host, 'lead_check', None)
+            lead, reason = check(output, previous) if check is not None else (reader(output, previous), 'not_read')
             if lead is not None:
                 chain_leads.save(self.store_dir, identity, index, lead, previous, output)
-                return True
-        except Exception:
-            pass
+                return None
+        except Exception as error:
+            reason = 'save_failed:' + type(error).__name__
         logging.warning('[FreeVideo] A chain block\'s seam sound could not be kept: %s', identity)
-        return False
+        return reason
 
     @staticmethod
     def _continues(row):
         """A block generated from the one before it: its seam must be repaired, whatever its receipt promised."""
         return isinstance(row['after'], str) and bool(row['continuation'])
 
-    def _seams_kept(self, snapshot):
+    def _seams_kept(self, snapshot, reasons=None):
         """(indexes of the seams that must be repaired, how many of them have their sound), keeping
         late any a shared record still has. A seam is the pair of neighbours in the joined video, so a
         block that continues from a block other than its neighbour cannot be repaired and counts as lost."""
@@ -712,12 +719,28 @@ class ChainRunner:
             wanted.add(row['index'])
             neighbour = blocks[position - 1]
             if row['after'] != neighbour['id']:
+                if reasons is not None:
+                    reasons.append((row['index'], 'not_adjacent'))
                 continue
             if chain_leads.load(self.store_dir, identity, row['index'], neighbour['output'], row['output']) is not None:
                 kept += 1
-            elif self._keep_lead(identity, row['index'], row['output'], neighbour['output'], True):
-                kept += 1
+            else:
+                reason = self._lead_failure(identity, row['index'], row['output'], neighbour['output'], True)
+                if reason is None:
+                    kept += 1
+                elif reasons is not None:
+                    reasons.append((row['index'], reason))
         return wanted, kept
+
+    @staticmethod
+    def _kept_reasons(reasons):
+        """' (seam 2: no_record; seam 3: no_reader; and 1 more)' for the seams whose sound was not kept, at most three named."""
+        if not reasons:
+            return ''
+        named = ['seam %d: %s' % row for row in reasons[:3]]
+        if len(reasons) > 3:
+            named.append('and %d more' % (len(reasons) - 3))
+        return ' (' + '; '.join(named) + ')'
 
     def _finish_blocks(self, record, final_state='done'):
         if not record['join']:
@@ -1007,13 +1030,15 @@ class ChainRunner:
         failure = None
         promised = kept = 0
         try:
-            found, kept = self._seams_kept(snapshot)
+            reasons = []
+            found, kept = self._seams_kept(snapshot, reasons)
             wanted.update(found)
             promised = len(wanted)
             snapshot = dict(snapshot, lead_reader=lead_reader, expected_seams=promised, join_progress=join_progress)
             if kept < promised:
                 # A sound seam that cannot be repaired is never published as a finished video.
-                raise ValueError('%d of %d seam sounds were not kept' % (promised - kept, promised))
+                raise ValueError('%d of %d seam sounds were not kept' % (promised - kept, promised)
+                                 + self._kept_reasons(reasons))
             output = self.host.join(snapshot, cancelled)
             if not isinstance(output, str) or not output:
                 raise ValueError('Joining did not return a video path')

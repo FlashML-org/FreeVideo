@@ -264,6 +264,11 @@ class ComfyHost:
         from .comfy_continuation import audio_lead_in
         return audio_lead_in(output, previous=previous)
 
+    def lead_check(self, output, previous):
+        """(the seam sound, None), or (None, why it could not be read), for the message of a lost seam."""
+        from .comfy_continuation import audio_lead_in_checked
+        return audio_lead_in_checked(output, previous=previous)
+
 
 def continuation_directions():
     """'after' and 'before', each once FreeVideoGenerate has the input that carries it."""
