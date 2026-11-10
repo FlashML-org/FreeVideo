@@ -208,7 +208,7 @@
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button[aria-pressed=true] svg{color:var(--fv-accent)}
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button:not(:disabled):hover,.fv-editor .fv-ed-toolbar .fv-ed-more-panel button:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent)}
 /* The tracks' basic fallback rises from the bottom; Blake supplies the waves. */
-.fv-editor .fv-ed-progress-fill{width:100%;height:calc(var(--fv-ed-progress)*100%);inset:auto 0 0}
+.fv-editor .fv-ed-progress-fill{width:100%;height:calc(var(--fv-ed-progress)*100%);inset:auto 0 0;box-shadow:inset 0 2px 0 var(--fv-accent)}
 .fv-ed-drawer-toggle{display:none!important}
 .fv-ed-name-menu{position:absolute;top:100%;left:0;width:300px;max-width:calc(100vw - 32px);padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px;z-index:8;display:flex;flex-direction:column;gap:0;font:13px var(--fv-font)}
 /* Rows look like the right-click menu (editor_menu.css). */
