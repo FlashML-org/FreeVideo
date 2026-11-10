@@ -394,6 +394,18 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
                 for path in report_files(host_run):
                     add_path('launcher/host-runs/' + host_run.name + '/' +
                              path.relative_to(host_run).as_posix(), path)
+        # One line per update source that failed (launcher_update.SOURCE_LOG):
+        # the interface only says the download server could not be reached.
+        # The name is spelled out so a failed import still yields a report.
+        sources_name = 'launcher/update-sources.log'
+        try:
+            from .desktop_runtime import launcher_root
+            from .launcher_update import SOURCE_LOG
+            sources_log = io_path(launcher_root()) / 'updates' / SOURCE_LOG
+            if sources_log.is_file() and not is_link(sources_log):
+                add_path(sources_name, sources_log)
+        except (ImportError, OSError, ValueError, RuntimeError) as error:
+            manifest['errors'].append({'file': sources_name, 'error': type(error).__name__})
         # What the browser page found (web/health.js), and the page files of the
         # source ComfyUI served: a missing or changed file explains a page
         # without FreeVideo's styles or workspace.

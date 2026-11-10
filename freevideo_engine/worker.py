@@ -355,7 +355,7 @@ def generate(request, resident=None):
             memory_diagnostics = SamplingMemory(torch, Path(request['output']).with_suffix('.sampling-memory.json')).start()
             from . import frame_preview
             if not request.get('capacity_trial', False):
-                frame_preview.configure(Path(request['output']).parent)
+                frame_preview.configure(Path(request['output']).parent, decoder_bytes=request.get('preview_decoder_bytes', 0))
             def sample_finalize_phase(name):
                 metrics.update(phase='sample_finalize', sample_finalize_phase=name)
                 save(request['metrics'], metrics)

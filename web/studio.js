@@ -763,8 +763,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const handle = await openEditorView(node, {studio: dialog});
         await handle?.ready;
         if (!handle?.actions?.importFiles) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'no_editor'}; }
+        // The clips already on the timeline are noted first, so the draft follows the clip this import adds and not an older one.
+        const known = handle.actions.clipIds?.() || [];
         await handle.actions.importFiles([file], {at: 0});
-        await handle.actions.continueStart?.();
+        await handle.actions.continueStart?.(known);
         return {ok: true};
     };
     function castChoices() {

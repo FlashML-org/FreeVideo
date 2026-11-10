@@ -272,13 +272,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     // Selects the clip and, when nothing follows it yet, adds one minimum draft. Returns false while the generation probe has not said yes.
-    function enterClip(match, epoch, select = true, settled = () => {}) {
+    function enterClip(match, epoch, {select = true, settled = () => {}, fresh = false} = {}) {
         if (closing || disposed || epoch !== projectEpoch) return true;
         const clip = state.record.tracks[0].clips.findLast(match);
         if (!clip) return true;
         // Coming back to a clip that already has parts after it selects the waiting draft instead of adding another.
+        // A clip just placed before older content (`fresh`) owns only the parts that continue it, not what it pushed back.
         const edge = clip.start + clip.frames;
-        const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge);
+        const after = state.record.tracks[0].clips.filter(other => other.id !== clip.id && other.start >= edge && (!fresh || other.follows === clip.id));
         const waiting = after.find(other => other.pending === 'draft');
         if (select) state.select({kind: 'clip', ids: model.pair(state.record, (waiting || clip).id).map(member => member.id)});
         if (after.length || !clip.extend || !clip.source || store.sources.get(sourceKey(clip.source))?.missing) { settled(); return true; }
@@ -980,16 +981,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The server was asked and has not said yes: Generate is greyed until it does.
         generationWaiting: () => generationAsked && !store.generationAvailable,
         importFiles: (files, options) => library?.importFiles(files, options),
-        // The first imported clip on the timeline start is selected and followed by one draft once it is placed.
-        async continueStart() {
-            const epoch = projectEpoch, match = clip => clip.source?.kind === 'import' && clip.start === 0;
+        clipIds: () => state.record.tracks[0]?.clips.map(clip => clip.id) || [],
+        // The clip an import just added is selected and followed by one draft once it is placed. `known` holds the clip ids
+        // recorded before that import, so an older imported clip at the start is not taken for the new one.
+        async continueStart(known = []) {
+            const epoch = projectEpoch, seen = new Set(known), match = clip => clip.source?.kind === 'import' && !seen.has(clip.id);
             for (let waited = 0; waited < 120 && !state.record.tracks[0]?.clips.some(match); waited++) {
                 if (closing || disposed || epoch !== projectEpoch) return false;
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
             if (!state.record.tracks[0]?.clips.some(match)) return false;
             await store.generationReady();
-            if (!enterClip(match, epoch) && !closing && !disposed) extendEntry = () => { if (enterClip(match, epoch, false) || closing || disposed) extendEntry = null; };
+            if (!enterClip(match, epoch, {fresh: true}) && !closing && !disposed) extendEntry = () => { if (enterClip(match, epoch, {select: false, fresh: true}) || closing || disposed) extendEntry = null; };
             return true;
         },
         gestureStart({selectionGesture = false} = {}) {
@@ -1962,7 +1965,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             };
             // Selects the work and, when nothing follows it yet, adds one minimum draft. Runs once; when the
             // generation probe failed this time it runs after a later probe succeeds.
-            const enter = select => enterClip(clip => clip.source?.kind === 'work' && clip.source.id === id, epoch, select, showFullSourceHint);
+            const enter = select => enterClip(clip => clip.source?.kind === 'work' && clip.source.id === id, epoch, {select, settled: showFullSourceHint});
             await store.generationReady();
             if (!enter() && !closing && !disposed) extendEntry = () => { if (enter(false) || closing || disposed) extendEntry = null; };
         }

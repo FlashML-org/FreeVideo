@@ -27,6 +27,7 @@ ROW_WIDTH = CHANNELS * 4  # 24 channels x a (1, 2, 2) patch
 _sink = None
 _active = None
 _weights = None
+_decoder_bytes = 0   # GPU bytes the plan set aside for the small decoder; 0 keeps the per-pixel map
 _marker = None  # request-level file: a failure in one process keeps the request's later processes off
 _failed = False  # request-level: one failure turns previews off for every later pass
 _serial = 0      # request-level: numbers pictures across passes so the page never mistakes a new one for the old
@@ -48,16 +49,18 @@ def load_weights(path=WEIGHTS):
     return k, weight, bias
 
 
-def configure(directory, emit=None, *, weights=None, request_state=None):
+def configure(directory, emit=None, *, weights=None, request_state=None, decoder_bytes=0):
     """Turn previews on for this process; returns whether they are active.
 
     `directory` receives the picture; `emit(event)` reports each new one.
     `request_state` is a per-request directory shared by the request's worker
     processes: a failure leaves a marker there, so a later process of the same
-    request stays off.
+    request stays off. `decoder_bytes` is the GPU memory the plan reserved for
+    the small decoder; without it the per-pixel map draws every picture.
     """
-    global _sink, _weights, _failed, _serial, _marker
+    global _sink, _weights, _failed, _serial, _marker, _decoder_bytes
     _sink = _weights = None
+    _decoder_bytes = decoder_bytes if type(decoder_bytes) is int and decoder_bytes > 0 else 0
     _failed, _serial = False, 0
     _marker = None if request_state is None else Path(request_state) / MARKER
     if disabled():
@@ -120,16 +123,12 @@ class _Preview:
         count = min(FRAMES, latent_frames)
         self.indices = sorted({round(i * (latent_frames - 1) / max(1, count - 1)) for i in range(count)})
         self.tensors = None
+        self.decoder = None
 
     def render(self, model_output, timestep, sample):
         """The preview strip as uint8 (height, frames * width, 3), from the predicted clean latents."""
         import torch
-        k, weight, bias = _weights
         t, fh, fw = self.shape
-        if self.tensors is None or self.tensors[0].device != sample.device:
-            self.tensors = (torch.tensor(weight, dtype=torch.float32, device=sample.device),
-                            torch.tensor(bias, dtype=torch.float32, device=sample.device))
-        matrix, offset = self.tensors
         index = torch.tensor(self.indices, device=sample.device)
         with torch.no_grad():
             seen = sample.detach().reshape(t, fh, fw, ROW_WIDTH)[index].float()
@@ -138,14 +137,51 @@ class _Preview:
             n = len(self.indices)
             # (n, fh, fw, C, 1, 2, 2) -> (n, fh*2, fw*2, C)
             x0 = x0.reshape(n, fh, fw, CHANNELS, 2, 2).permute(0, 1, 4, 2, 5, 3).reshape(n, fh * 2, fw * 2, CHANNELS)
-            out = torch.addmm(offset, x0.reshape(-1, CHANNELS), matrix)
-            out = out.reshape(n, fh * 2, fw * 2, 3, k, k).permute(0, 3, 1, 4, 2, 5)
-            out = out.reshape(n, 3, fh * 2 * k, fw * 2 * k)
+            out = self._small_decoder(x0, sample.device)
+            if out is None:
+                out = self._per_pixel(x0, n, fh, fw, sample.device)
             if out.shape[-1] > MAX_FRAME_WIDTH:
                 size = (max(1, round(out.shape[-2] * MAX_FRAME_WIDTH / out.shape[-1])), MAX_FRAME_WIDTH)
                 out = torch.nn.functional.interpolate(out, size=size, mode='area')
             picture = out.clamp(0., 1.).mul(255.).round().to(torch.uint8)
             return picture.permute(2, 0, 3, 1).reshape(picture.shape[2], n * picture.shape[3], 3).cpu().numpy()
+
+    def _per_pixel(self, x0, n, fh, fw, device):
+        import torch
+        k, weight, bias = _weights
+        if self.tensors is None or self.tensors[0].device != device:
+            self.tensors = (torch.tensor(weight, dtype=torch.float32, device=device),
+                            torch.tensor(bias, dtype=torch.float32, device=device))
+        matrix, offset = self.tensors
+        out = torch.addmm(offset, x0.reshape(-1, CHANNELS), matrix)
+        out = out.reshape(n, fh * 2, fw * 2, 3, k, k).permute(0, 3, 1, 4, 2, 5)
+        return out.reshape(n, 3, fh * 2 * k, fw * 2 * k)
+
+    def _small_decoder(self, x0, device):
+        """The small decoder's frames at the pass's picture size, or None for the per-pixel map.
+
+        Any failure, a full card included, only returns this request to the
+        per-pixel map; it never turns previews off.
+        """
+        global _decoder_bytes
+        import torch
+        if not _decoder_bytes or device.type != 'cuda' or torch.version.hip:
+            return None
+        try:
+            from . import frame_preview_decoder
+            if self.decoder is None or next(self.decoder.parameters()).device != device:
+                self.decoder = frame_preview_decoder.load(device)
+            width = min(MAX_FRAME_WIDTH, x0.shape[2] * 4)
+            def finish(picture):
+                if picture.shape[-1] > width:
+                    picture = torch.nn.functional.interpolate(
+                        picture, size=(max(1, round(picture.shape[-2] * width / picture.shape[-1])), width), mode='area')
+                return picture
+            return frame_preview_decoder.decode(self.decoder, x0.permute(0, 3, 1, 2).contiguous(), finish)
+        except Exception:
+            _decoder_bytes = 0
+            self.decoder = None
+            return None
 
     def observe(self, model_output, timestep, sample):
         global _serial

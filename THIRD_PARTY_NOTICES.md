@@ -13,6 +13,7 @@ FreeVideo code uses [Apache-2.0](LICENSE). Its dependencies and models retain th
 | [ComfyUI](https://github.com/Comfy-Org/ComfyUI), including the H3 text encoder code | GPL-3.0 |
 | [VDN-H3](https://github.com/OpenVDN/vdn-minimax-h3), [Diffusers](https://github.com/huggingface/diffusers), [SageAttention](https://github.com/thu-ml/SageAttention) | Apache-2.0 |
 | [VDN-H3 and H3 model weights](https://huggingface.co/OpenVDN/vdn-minimax-h3-edge/blob/main/LICENSE) | MiniMax H3 Community License |
+| Sampling preview decoder weights (a derivative of the H3 video decoder) | [MiniMax H3 Community License](freevideo_engine/licenses/MiniMax-H3-Community-License-Agreement.txt) |
 | [MiniMax H3 latent upscaler](https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler) | [MIT](freevideo_engine/licenses/latent-upscaler-MIT.txt) |
 | [FreeToken](https://github.com/FlashML-org/FreeToken) prompt VLM operators, [Qwen3-VL-4B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct) optional weights | [Apache-2.0](freevideo_engine/licenses/FreeToken-Apache-2.0.txt) |
 | [Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) Turbo image generation models, including Qwen3-VL-8B and VAE (optional download; [notice](freevideo_engine/image_gen/licenses/NOTICE.txt) installed with the models), © 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved. | [Qwen RESEARCH LICENSE AGREEMENT](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/LICENSE) |

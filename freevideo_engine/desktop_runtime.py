@@ -68,6 +68,9 @@ def source_files(root):
               if p.is_file() and (not p.relative_to(root).as_posix().startswith('web/assets/tour/') or p.relative_to(root).as_posix() in TOUR_FILES) and (p.suffix in ('.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico', '.qml',
                                              '.woff2', '.otf', '.webp')
                  or folder == 'web' and (p.relative_to(root).as_posix() in TOUR_FILES or p.parent.name == 'tutorial' and p.suffix == '.mp4'))]
+    # The small preview decoder's weights are the one binary file the engine reads from its own folder.
+    decoder = root / 'freevideo_engine/frame_preview_decoder.safetensors'
+    files += [decoder] if decoder.is_file() else []
     return sorted(files)
 
 

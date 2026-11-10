@@ -759,6 +759,7 @@ class Policy:
     lora_max_block_bytes: int = 0
     lora_root_bytes: int = 0
     adaln_extra_bytes: int = 0
+    preview_decoder_bytes: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -873,7 +874,7 @@ def first_block_cache_bytes(canvas):
     return math.ceil(2 * placement_tokens(canvas) * 5376 * 2 * FIRST_BLOCK_CACHE_RESERVED_SCALE)
 
 
-def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
+def choose_placement(hardware: Hardware, *, canvas=None, stage='generation', **options):
     """Placement for a request; canvas['step_cache'] asks for a step cache.
 
     The first-block cache is kept when reserving its storage only gives up
@@ -910,6 +911,36 @@ def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
     # so its history and identities still match.
     return replace(base, engine=dict(base.engine, step_cache=wanted) if kept else base.engine,
                    notes=list(base.notes) + ([note] if note else []))
+
+
+def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
+    """The placement of choose_placement, plus the sampling preview's small decoder when it fits.
+
+    The decoder's GPU bytes are charged like the step cache's. It is kept only
+    when charging them leaves the placement exactly as it was; otherwise the
+    request keeps the per-pixel preview and the placement of a request without it.
+    """
+    from dataclasses import replace
+    plan = choose_placement(hardware, canvas=canvas, stage=stage, **options)
+    if (stage != 'generation' or canvas is None or hardware.system == 'Darwin' or not hardware.vram_total
+            or options.get('allow_capacity_trial') or plan.capacity_trial):
+        return plan
+    from .frame_preview_decoder import reserve_bytes
+    reserve = reserve_bytes(canvas['width'], canvas['height'])
+    extra = options.get('step_cache_bytes', 0) + reserve
+    wanted = canvas.get('step_cache')
+    if wanted == 'fbcache' and 'step_cache' in plan.engine:
+        extra += first_block_cache_bytes({k: v for k, v in canvas.items() if k != 'step_cache'})
+    try:
+        plain = {k: v for k, v in canvas.items() if k != 'step_cache'}
+        charged = _choose(hardware, canvas=plain, stage=stage, **{**options, 'step_cache_bytes': extra})
+    except ResourceBudgetError:
+        return plan
+    same = {k: v for k, v in plan.engine.items() if k != 'step_cache'}
+    if charged.engine != same or charged.decoder != plan.decoder:
+        return plan
+    return replace(plan, preview_decoder_bytes=reserve)
+
 
 
 def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',

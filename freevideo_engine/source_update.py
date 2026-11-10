@@ -118,6 +118,8 @@ def try_download(candidate, home, token='', *, progress=None, cancel=None, langu
     except Exception as error:
         # No paths, metadata, response bodies or credentials enter diagnostics.
         log.info('Source update unavailable; using full package (%s)', type(error).__name__)
+        if isinstance(error, network.DownloadError):
+            update.log_source_failures(home, 'source-update', getattr(error, 'package_attempts', None))
         try:
             pending_path(home, candidate).unlink(missing_ok=True)
         except OSError:
