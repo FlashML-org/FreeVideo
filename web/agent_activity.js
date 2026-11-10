@@ -11,8 +11,18 @@ const KINDS = {
     export: ['Exporting', '导出中', 'M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3'],
     listen: ['Transcribing', '识别中', 'M4 6h16M4 12h10M4 18h13'],
     enhance: ['Enhancing prompt', '增强提示词', 'M4 20l4-1 10-10-3-3L5 16zM14 7l3 3M18 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z'],
+    image: ['Generating image', '生成图片', 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm-1 12 5-5 4 4 3-3 5 5M16 9h.01'],
+    image_edit: ['Saving image', '保存图片', 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm-1 12 5-5 4 4 3-3 5 5M15 4l3 3'],
+    music: ['Composing music', '生成配乐', 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zm10-2a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z'],
+    stems: ['Separating tracks', '分离音轨', 'M3 12h6m0 0 4-6h8M9 12l4 6h8M9 12h12'],
+    finish_sound: ['Finishing sound', '声音收尾', 'M4 10v4h3l4 4V6l-4 4H4zm11-1a4 4 0 0 1 0 6m2.5-9a8 8 0 0 1 0 12'],
+    voice_lines: ['Finding the lines', '识别台词', 'M4 5h16v10H9l-5 4V5zm4 3h8M8 11h5'],
+    voice: ['Redubbing', '重新配音', 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6 12a6 6 0 0 0 12 0M12 18v3m-3 0h6'],
+    voice_say: ['Dubbing', '配音中', 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM6 12a6 6 0 0 0 12 0M12 18v3m-3 0h6M19 3v4m-2-2h4'],
 };
-const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], vlm: ['Check', '检查'], enhance: ['Prompt', '提示词'], export: ['Export', '导出'], listen: ['Subtitles', '字幕']};
+const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], vlm: ['Check', '检查'], enhance: ['Prompt', '提示词'], export: ['Export', '导出'], listen: ['Subtitles', '字幕'],
+    image: ['Image', '图片'], image_edit: ['Edit image', '编辑图片'], music: ['Music', '配乐'], stems: ['Tracks', '音轨'], finish_sound: ['Sound', '声音'],
+    voice_lines: ['Lines', '台词'], voice: ['Voice', '配音'], voice_say: ['New line', '新台词']};
 
 // Short reasons for the failures people can act on; the engine's own message stays in the tooltip.
 const REASONS = {
@@ -33,16 +43,33 @@ function glyph(path) {
 // The same two wordings as the conversation's cards.
 const left = (s, t) => s >= 60 ? t(`About ${Math.ceil(s / 60)} min`, `约 ${Math.ceil(s / 60)} 分钟`) : t('Under 1 min', '不到 1 分钟');
 // The engine's phases in the reader's language.
-function phaseText(p, t) {
+function phaseText(p, t, kind) {
     const step = p.step;
     // The first step is still getting ready: the line does not count from zero. A row here does not know which
     // part of a long video it is on, and a later part loads nothing, so it does not say the model is loading.
     if (p.phase === 'sampling' && step?.total) return step.done >= 1 ? t(`Step ${step.done} / ${step.total}`, `生成 ${step.done} / ${step.total}`) : t('Preparing', '准备中');
+    // Dubbing counts lines, not steps.
+    if (p.phase === 'dubbing' && step?.total) return t(`Line ${step.done} / ${step.total}`, `第 ${step.done} / ${step.total} 句`);
+    // The sound finish separates each source clip in turn.
+    const clip = /^separating (\d+)\/(\d+)$/.exec(p.phase || '');
+    if (clip) return t(`Separating tracks · clip ${clip[1]} / ${clip[2]}`, `分离音轨 · 第 ${clip[1]} / ${clip[2]} 段`);
+    // A picture's stages share names with a video's, but it saves no sound.
+    if (kind === 'image' || kind === 'image_edit') {
+        const own = {text: t('Reading prompt', '读取提示词'), encode: t('Preparing images', '准备图片'),
+            denoise: t('Drawing', '绘制中'), decode: t('Saving the image', '保存图片')}[p.phase];
+        if (own) return own;
+    }
     return {encoding: t('Reading prompt and media', '读取提示词和素材'), load: t('Loading the model', '加载模型'),
-        decode: t('Saving video and audio', '保存视频与音频'), starting: t('Starting', '启动中'),
+        decode: t('Saving video and audio', '保存视频与音频'), starting: t('Starting', '启动中'), start: t('Starting', '启动中'),
         loading: t('Loading the model', '加载模型'), answering: t('Answering', '回答中'), rewriting: t('Enhancing prompt', '增强提示词'),
         assembling: t('Joining clips', '拼接片段'), 'preparing images': t('Preparing images', '准备图片'),
-        finishing: t('Finishing', '收尾中')}[p.phase] || '';
+        finishing: t('Finishing', '收尾中'),
+        // Sound jobs: music, tracks, the sound finish and dubbing.
+        downloading: t('Downloading the model', '下载模型'), waiting: t('Waiting for the GPU', '等待显卡'),
+        composing: t('Composing music', '生成配乐'), separating: t('Separating tracks', '分离音轨'),
+        recognizing: t('Finding the lines', '识别台词'), preparing: t('Preparing', '准备中'), dubbing: t('Dubbing', '配音中'),
+        'measuring loudness': t('Measuring loudness', '测量响度'), 'balancing loudness': t('Balancing loudness', '统一响度'),
+        'filling silence': t('Adding room tone', '补环境声'), placing: t('Placing on the timeline', '放入时间线')}[p.phase] || '';
 }
 
 function status(job, t) {
@@ -75,7 +102,9 @@ function row(job, t, api, refresh, open, cancellationErrors) {
         body.append(bar);
     }
     const meta = [];
-    if (job.status === 'running' && phaseText(p, t)) meta.push(phaseText(p, t));
+    // A job's main phase is already its state; only the other phases add a line.
+    const phase = job.status === 'running' ? phaseText(p, t, job.kind) : '';
+    if (phase && phase !== status(job, t)) meta.push(phase);
     if (job.status === 'running' && p.remaining_seconds > 0) meta.push(left(p.remaining_seconds, t));
     const reason = job.status === 'failed' && REASONS[job.error?.code];
     if (reason) meta.push(t(...reason));
@@ -165,8 +194,11 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
         const skipped = el('div', 'fv-agent-unreadable', unreadable > 0
             ? t(`${unreadable} ${unreadable === 1 ? 'job' : 'jobs'} could not be read`, `另有 ${unreadable} 个任务无法读取`) : '');
         skipped.hidden = !unreadable;
+        // A poll must not move a list the reader has scrolled.
+        const scrolled = panel.querySelector('ol')?.scrollTop || 0;
         panel.replaceChildren();
         panel.append(header, list, skipped);
+        list.scrollTop = scrolled;
         if (key) (panel.querySelector(`[data-job="${key[0]}"] .${key[1].split(' ')[0]}`) || panel).focus?.();
     }
     function render() {
