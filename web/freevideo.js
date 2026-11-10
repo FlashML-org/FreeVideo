@@ -58,7 +58,7 @@ style.textContent = `
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
 .fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
-.fv-panel[data-freevideo=media]>.fv-mode:not([hidden]){display:inline-block;margin:4px 0 2px;padding:2px 8px;border-radius:var(--fv-r-xs,3px);background:var(--fv-selected);font-weight:var(--fv-medium,500)}.fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
+.fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
 .fv-card[data-enabled=false]{opacity:.5}.fv-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:60px}
 .fv-preview{display:block;width:100%;max-height:160px;object-fit:contain;margin:8px 0;border-radius:var(--fv-r-sm,8px);background:var(--fv-bg)}
 .fv-card audio{width:100%;height:36px;margin:8px 0}.fv-empty{padding:35px 12px;text-align:center;color:var(--fv-muted);border:1px dashed var(--fv-border);border-radius:var(--fv-r-md,12px);margin-top:12px}
@@ -144,7 +144,6 @@ function mediaPanel(node, mount = null) {
     panel.tabIndex = 0;
     const toolbar = el("div", undefined, "fv-toolbar");
     const note = el("div", "", "fv-note"); note.setAttribute("role", "status");
-    const mode = el("div", "", "fv-mode");
     const cards = el("div"), connections = el("div", undefined, "fv-connected");
     const picker = el("input"); picker.type = "file"; picker.multiple = true;
     picker.accept = acceptList(["image", "video", "audio"]); picker.hidden = true;
@@ -155,13 +154,12 @@ function mediaPanel(node, mount = null) {
     audioPicker.accept = acceptList(["audio"]); audioPicker.hidden = true;
     const addAudio = button(text('Reference audio', '参考音频'),
         text('Add a voice, music or rhythm reference (its first 15 seconds at most are used)', '添加音色、音乐或节奏参考（最多使用前 15 秒）'), () => audioPicker.click());
-    const audioHelp = el('div', '', 'fv-note'); audioHelp.hidden = true;
     const role = el("select"); role.setAttribute("aria-label", text("Use new images as", "新图片用途"));
     for (const [value, label] of [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]]) {
         const option = el("option", label); option.value = value; role.append(option);
     }
     role.value = 'reference';
-    toolbar.append(add, generateImage, addAudio, skinSelect(role), picker, audioPicker); panel.append(toolbar, mode, note, audioHelp, connections, cards);
+    toolbar.append(add, generateImage, addAudio, skinSelect(role), picker, audioPicker); panel.append(toolbar, note, connections, cards);
     const cast = createCastLibrary({api, text, viewURL, uploadOne});
     const places = createCastLibrary({api, text, viewURL, uploadOne, kind: 'setting'});
     const props = createCastLibrary({api, text, viewURL, uploadOne, kind: 'prop'});
@@ -319,11 +317,7 @@ function mediaPanel(node, mount = null) {
         });
         const first = active.filter(row => row.role === "first").length + Number(linked('first'));
         const last = active.filter(row => row.role === "last").length + Number(linked('last'));
-        const audioRefs = active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'audio').length + Number(linked('reference_audio'));
         const refs = active.filter(row => row.role === "reference").length + referenceInputs.filter(linked).length + Number(linked('reference_audio'));
-        audioHelp.hidden = !audioRefs;
-        audioHelp.textContent = text('Use <Audio 1>, <Audio 2> in your prompt to guide voice, music or rhythm; up to the first 15 s is used. Set accompanying images to Reference.',
-            '在提示词里用 <Audio 1>、<Audio 2> 参考音色、音乐或节奏，最多取前 15 秒；搭配的图片选“参考”。');
         connections.replaceChildren();
         for (const [name, label] of [['first', text('First frame', '首帧')], ['last', text('Last frame', '尾帧')], ...referenceInputs.map((name, index) => [name, referenceLabel(index)]), ['reference_audio', text('Reference audio', '参考音频')]]) {
             if (!linked(name)) continue;
@@ -332,8 +326,6 @@ function mediaPanel(node, mount = null) {
             const chip = el('span', `${label} · ${text('Connected', '已连接')}`, 'fv-connection');
             chip.title = source?.title || source?.type || label; connections.append(chip);
         }
-        mode.textContent = refs ? text("Reference video · experimental", "参考生成 · 实验性") : first && last ? text("First + last frame", "首尾帧生成") : first ? text("Image to video", "图生视频") : last ? text("Last frame to video", "尾帧生成") : "";
-        mode.hidden = !mode.textContent;
         message(refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last) && continuing ? text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。") : refs && (first || last) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : "", Boolean(refs > 32 || refs && (first || last) && !continuing || first > 1 || last > 1));
         if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Drop images or video here", "拖入图片或视频"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media comes from the connected inputs; no upload is needed.', '素材来自已连接的输入，无需上传。'), 'fv-connected-card'));

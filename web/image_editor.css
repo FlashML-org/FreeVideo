@@ -206,7 +206,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-field label{color:var(--fv-muted);font-size:var(--fv-micro);white-space:nowrap;min-width:52px}
 .fv-ie-field input[type=number],.fv-ie-rename{width:100%;min-width:0;min-height:30px;padding:3px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised)}
 .fv-ie-field input[type=color]{width:44px;height:28px;padding:0 2px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);cursor:pointer}
-.fv-ie-field input[type=checkbox]{accent-color:var(--fv-accent);margin:0}
+
 .fv-ie-field .fv-ie-select{flex:1;min-width:0}
 .fv-ie-field>.fv-select{flex:1;min-width:0}
 .fv-ie-gen-shape>.fv-select{flex:1}
@@ -257,7 +257,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-lora-row{display:grid;grid-template-columns:18px minmax(0,1fr) 64px 28px;align-items:center;gap:6px}
 .fv-ie-lora-row select{min-width:0;width:100%;padding-right:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-ie-lora-row input[type=number]{width:64px;padding:4px 6px;font-variant-numeric:tabular-nums}
-.fv-ie-lora-row input[type=checkbox]{accent-color:var(--fv-accent);width:15px;height:15px}
+
 .fv-ie-lora-row button{height:28px;padding:0 6px}
 .fv-ie-lora-row[data-enabled=false]>:not(input[type=checkbox]){opacity:.45}
 .fv-ie-lora-row .fv-ie-lora-trigger{grid-column:2/span 3;min-width:0;height:28px;box-sizing:border-box;padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);color:var(--fv-ink);font:inherit;font-size:var(--fv-micro)}

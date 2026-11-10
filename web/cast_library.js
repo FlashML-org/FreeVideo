@@ -104,6 +104,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         if (disposed || !available) return;
         current?.close();
         let closed = false, loading = !!id, saving = false, revision, active = 'upload';
+        let moved = false;
         let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
         const slots = Array(SLOTS).fill(null), slotUI = [];
         const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
@@ -254,7 +255,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 beyond = card.images.slice(SLOTS).map(picture => ({media: picture.media, label: picture.label}));
                 slotUI.forEach((_, index) => paint(index));
                 generator?.cancel(); aiState = {busy: false, done: false}; select('upload'); resetDelete();
-            } finally { loading = false; if (!closed) sync(); }
+            } finally {
+                loading = false;
+                if (!closed) {
+                    sync();
+                    // The name box was disabled while the card loaded, so focus fell away; return it unless the person already moved on.
+                    if (!moved) name.focus();
+                }
+            }
         }
         async function failure(error) {
             if (closed) return;
@@ -323,6 +331,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             add.focus();
         }
         // A click anywhere else in the dialog takes the second step back.
+        dialog.addEventListener('keydown', () => { moved = true; }); dialog.addEventListener('pointerdown', () => { moved = true; });
         dialog.onpointerdown = event => { if (confirming && event.target !== remove) resetDelete(); };
         dialog.oncancel = event => { event.preventDefault(); close(); };
         dialog.onclose = close;
