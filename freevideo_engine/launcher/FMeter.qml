@@ -4,7 +4,7 @@ import QtQuick
 // `shown` eases toward it, so the fill and any percentage bound to `shown`
 // move together instead of jumping between status refreshes. While work
 // runs, a soft sheen crosses the fill; unknown progress sweeps one way, as
-// on macOS; a finished bar settles into the success colour.
+// on macOS; a finished bar settles into the success colour. The fill is one accent colour, with no gradient.
 Rectangle {
     id: meter
     property real fraction: -1
@@ -26,19 +26,8 @@ Rectangle {
         // Never narrower than it is tall, so a small value is still a capsule.
         width: meter.shown > 0 ? Math.max(height, meter.shown * parent.width) : 0
         clip: true
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop {
-                position: 0
-                color: meter.complete ? theme.success : meter.subdued ? theme.accentDim : theme.accent
-                Behavior on color { ColorAnimation { duration: 420 } }
-            }
-            GradientStop {
-                position: 1
-                color: meter.complete ? Qt.lighter(theme.success, 1.14) : meter.subdued ? theme.accent : theme.accentRamp
-                Behavior on color { ColorAnimation { duration: 420 } }
-            }
-        }
+        color: meter.complete ? theme.success : meter.subdued ? theme.accentDim : theme.accent
+        Behavior on color { ColorAnimation { duration: 420 } }
         // Inset by the end radius, so the sheen never squares off the capsule.
         Item {
             x: fill.radius; width: Math.max(0, fill.width - 2 * fill.radius); height: fill.height

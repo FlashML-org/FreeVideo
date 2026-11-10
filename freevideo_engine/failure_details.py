@@ -920,11 +920,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     # failed step's own line is found anywhere in the text.
     step = re.search(r'^Failed step: ([\w.-]+) \(exit code (-?\w+)\)', text, re.M)
     if step:
-        # The internal step id never reaches the card; the exit code stays as the detail.
+        # The internal step id never reaches the card; the exit code stays in the technical details.
         name = _step_name(step.group(1), zh)
         if name:
             title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
-        detail = ('退出码 %s' if zh else 'Exit code %s') % step.group(2)
+        detail = ''
     # A message the launcher raised itself (a ValueError) is the next step already.
     unexpected = 'Traceback' in text and not re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '')
     detail = lan_error(detail, zh)
