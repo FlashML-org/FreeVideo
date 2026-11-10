@@ -20,9 +20,9 @@ export const LINES = [
 
 export const PAGES = [
     {id: 'overview', title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
-        ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music from one line of description', '替换配乐：写一句描述就换'],
-        ['Generate music to fit the selected length', '加配乐：按选中的长度生成'], ["Edit lines; only changed lines are redubbed", '改台词：只重配改过的那句'],
-        ["Redub in the original speaker's voice", '配音：沿用原来说话人的声音'], ['Record straight onto an audio track', '录音：直接录进声音轨'],
+        ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: regenerated from a text description', '替换配乐：根据文字描述重新生成'],
+        ['Add music: generated to fit the selected length', '添加配乐：按选中的长度生成'], ['Edit lines: only changed lines are redubbed', '修改台词：只为改过的台词重新配音'],
+        ["Dub: in the original speaker's voice", '配音：沿用原说话人的声音'], ['Record: recorded onto an audio track', '录音：录制到声音轨'],
         ['Generate picture from sound', '按声音生成画面']],
     rows: [V, ...SOUND], toolbar: ['stems'], clips: [picture, mix, ...blocks(), music, guitar, rain, redub], preview: false,
     steps: [[0, {}], [1500, {select: 'mix', tb: {show: 'stems'}}], [1900, {tb: {press: 'stems'}, bar: {mode: 'running', hint: [['Separating the sound', '正在分离声音']]}, run: {id: 'mix', ms: 1200}}],
