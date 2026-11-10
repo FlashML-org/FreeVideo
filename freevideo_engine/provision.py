@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, CancelledError
 
 from .bootstrap import PACKAGE, model_target, installation_model_files
 from .locking import runtime_lock
-from .monitoring import save
+from .monitoring import save, load_ledger
 from .install_tuning import hf_receipt, unchanged_before
 from . import network
 from .storage import record_download, compact_sources, fingerprint
@@ -80,7 +80,7 @@ def _models(plan, retained):
     # ownership checks intact; a different spelling must not lose the receipt.
     root = Path(plan['root']).expanduser().resolve()
     ledger = root / 'verified-models.json'
-    stamps = json.loads(ledger.read_text(encoding='utf-8')) if ledger.is_file() else {}
+    stamps = load_ledger(ledger)
     model_dir, encoder_dir = (Path(plan[name]).expanduser().resolve() for name in ('model_dir', 'encoder_dir'))
     prepared = plan.get('prepared_model')
     files = installation_model_files(prepared, plan.get('reuse_cache'), plan.get('sampling_caches'))
@@ -151,7 +151,7 @@ def _models(plan, retained):
                 save(path.with_suffix('.json'), dict(bytes=row['bytes'], sha256=row['sha256']))
             if origin:
                 record_download(root, path, row, origin=origin)
-            save(ledger, stamps)
+            save(ledger, stamps, durable=True)
             ready[0] += 1
             emit('model_ready', index=ready[0], total=len(files), file=str(path),
                  verification=stamp.get('method'), operation=operation)
@@ -421,7 +421,7 @@ def verify_cache(plan, cache):
             or len(groups) != len(expected) or {r.get('group') for r in groups} != expected):
         raise ValueError('Prepared cache is not complete; original model files retained')
     ledger = Path(plan['root']) / 'verified-cache.json'
-    stamps = json.loads(ledger.read_text(encoding='utf-8')) if ledger.is_file() else {}
+    stamps = load_ledger(ledger)
     assets = list(validate_catalog(manifest, count))
     total = len(groups) + len(assets)
     step('Model files verifying', 0, total)
@@ -440,7 +440,7 @@ def verify_cache(plan, cache):
             raise ValueError('AdaLN model asset failed integrity check: ' + row['file'])
         check_table(path, row, identity, verify_hash=False)
         step('Model files verifying', index, total)
-    save(ledger, stamps)
+    save(ledger, stamps, durable=True)
     return manifest
 
 

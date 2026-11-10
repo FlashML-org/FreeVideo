@@ -261,6 +261,10 @@ PLACE_RULES = (
      ('The disk is not connected', '这块硬盘没有连接'),
      ('Connect the disk that holds the installation folder, then check again, or choose another folder.',
       '请接上安装位置所在的硬盘后重新检查，或者换一个位置。')),
+    (r'Windows does not let this account create folders in', 'engine-folder-denied',
+     ('This location cannot be used', '无法使用这个位置'),
+     ('Windows does not let this account create folders in this location. Choose a folder in the user folder or on another drive.',
+      'Windows 不允许当前账户在这个位置创建文件夹。请改选用户文件夹或其他硬盘上的文件夹。')),
     (r'The installation folder is on a read-only disk', 'disk-read-only',
      ('This disk is read-only', '这块硬盘是只读的'),
      ('This Mac can read the disk but not write to it, as with NTFS disks. Choose a folder on another disk.',
@@ -351,6 +355,9 @@ DEPENDENCIES = (('The environment needs repair', '运行环境需要修复'),
 # missing file often surfaces as some other package's ImportError instead.
 ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment packages: '
 
+# Windows refused to load a file (Smart App Control or another application control policy).
+APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
+
 
 def _stopped_on_missing_module(text):
     """ComfyUI itself stopped on an import, not a custom node that logged one and loaded on."""
@@ -358,6 +365,14 @@ def _stopped_on_missing_module(text):
     errors = [i for i, line in enumerate(lines) if re.match(r'^[\w.]+(?:Error|Exception)\b', line)]
     return bool(errors) and bool(re.match(r'^(?:ModuleNotFoundError|ImportError): (?:No module named|DLL load failed)',
                                           lines[errors[-1]])) \
+        and not any('for custom nodes' in line for line in lines[errors[-1] + 1:])
+
+
+def _stopped_on_application_control(text):
+    """The import ComfyUI stopped on was refused by Windows, so reinstalling the package changes nothing."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    errors = [i for i, line in enumerate(lines) if re.match(r'^[\w.]+(?:Error|Exception)\b', line)]
+    return bool(errors) and bool(re.search(APPLICATION_CONTROL, lines[errors[-1]])) \
         and not any('for custom nodes' in line for line in lines[errors[-1] + 1:])
 
 
@@ -575,7 +590,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                       if zh else 'Need %s; %s available. Free another %s, then click “Check again”.' % sizes)
         return dict(title='磁盘空间不足' if zh else 'Not enough disk space', kind='disk', detail=detail,
                     action='重新检查' if zh else 'Check again')
-    if text.startswith('ComfyUI could not start.'):
+    # A block by Windows' application control is not a missing file: its own card applies (rules below).
+    if text.startswith('ComfyUI could not start.') and not _stopped_on_application_control(summary):
         if can_repair and repairs_comfy and (_stopped_on_missing_module(summary) or ENVIRONMENT_FILES in summary):
             return dict(title=DEPENDENCIES[0][zh], detail='', action=DEPENDENCIES[1][zh], kind='dependencies')
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
@@ -704,6 +720,13 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('If this computer has an NVIDIA graphics card, install NVIDIA driver 580 or newer, '
           'restart the computer, then click "Retry installation".',
           '如果这台电脑有 NVIDIA 显卡，请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。')),
+        # Setup reports an unsupported card and an old driver together; the first match is shown, and
+        # a driver update cannot help a card below the hardware floor, so that card comes first.
+        (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
+         ('This GPU is not supported', '这张显卡不受支持'),
+         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
+          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
+          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
@@ -712,11 +735,6 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('The NVIDIA driver is installed but not running', 'NVIDIA 显卡驱动已安装但未运行'),
          ('Restart the computer, then click "Retry installation". If it still fails after the restart, reinstall the NVIDIA driver.',
           '请重启电脑后点击“重试安装”。重启后仍然失败时，请重新安装 NVIDIA 显卡驱动。')),
-        (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
-         ('This GPU is not supported', '这张显卡不受支持'),
-         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
-          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
-          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'CUDA_CAPABILITY_UNKNOWN', 'gpu-detection',
          ('GPU information could not be read', '未能读取显卡信息'),
          ('Retry hardware detection. If it still fails, export the report; it includes the GPU identity and the raw driver query.',
@@ -798,7 +816,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '安全软件或 Windows 的保护功能拦截了 FreeVideo 运行环境中的 Python 文件。请在其中允许 FreeVideo 所在的文件夹'
           '（Windows 安全中心：病毒和威胁防护 → 管理勒索软件防护 → 受控文件夹访问，以及排除项），然后点“重试安装”。')),
         # Windows refuses PyTorch's unsigned DLLs under Smart App Control; reinstalling changes nothing.
-        (r'WinError 4551|Application Control policy has blocked', 'app-control',
+        (APPLICATION_CONTROL, 'app-control',
          ('Windows blocked some runtime files', 'Windows 拦截了运行组件'),
          ('Smart App Control in Windows blocked these files. Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App Control settings.',
           'Windows 的“智能应用控制”拦截了这些文件。在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”。')),

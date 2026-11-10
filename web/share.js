@@ -81,6 +81,15 @@ export function drawShareCard(canvas,frame,logo,record,t) {
     return shape;
 }
 
+// The line while the share video is written: the frame reached and the time used, once the first frame is known.
+export function exportingText(progress,seconds,t){
+    const frame=progress?.frame,total=progress?.total;
+    if(!Number.isInteger(frame)||frame<1)return t('Exporting the share video…','正在导出分享视频…');
+    const time=`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
+    return Number.isInteger(total)&&total>=frame
+        ?t(`Exporting the share video · Frame\u00a0${frame}\u00a0of\u00a0${total} · ${time}\u00a0elapsed`,`正在导出分享视频 · 第\u00a0${frame}\u00a0帧，共\u00a0${total}\u00a0帧 · 已用\u00a0${time}`)
+        :t(`Exporting the share video · Frame\u00a0${frame} · ${time}\u00a0elapsed`,`正在导出分享视频 · 第\u00a0${frame}\u00a0帧 · 已用\u00a0${time}`);
+}
 export function shareButton(record,t){
     const b=button(t('Share','分享'),()=>openShare(record,t),'fv-quiet fv-share-trigger');
     b.hidden=!identity(record);return b;
@@ -96,7 +105,7 @@ export async function openShare(record,t){
     const indicator=el('span','fv-share-indicator');indicator.setAttribute('aria-hidden','true');tabs.append(indicator);
     const slide=()=>{const b=tabs.querySelector('[aria-selected=true]');if(b)indicator.style.cssText=`transform:translateX(${b.offsetLeft-3}px);width:${b.offsetWidth}px`;};
     let kind='image',ready=false,busy=false,disposed=false,videoFailed=false,metadata,shape,template,first,logo,exported;
-    let exportRequest;
+    let exportRequest,watch;
     const abort=new AbortController();
     const panel=el('div','fv-share-body'),preview=el('div','fv-share-preview'),canvas=el('canvas'),player=el('video');
     canvas.setAttribute('aria-label',t('Sharing image preview','分享图预览'));
@@ -156,6 +165,13 @@ export async function openShare(record,t){
                 setTimeout(()=>URL.revokeObjectURL(url),60000);say('');return;
             }
             if(!exported){
+                const started=Date.now();let latest=null,reading=false;
+                watch=setInterval(async()=>{
+                    if(reading)return;reading=true;
+                    try{const r=await api.fetchApi('/freevideo/share/progress?'+new URLSearchParams({id}),{signal:exportRequest.signal});if(r.ok)latest=await r.json();}catch{}
+                    reading=false;
+                    if(busy&&!disposed)say(exportingText(latest,(Date.now()-started)/1000,t));
+                },500);
                 const response=await api.fetchApi('/freevideo/share/video',{method:'POST',headers:{'Content-Type':'application/json'},signal:exportRequest.signal,
                     body:JSON.stringify({id,template,rect:shape.rect})});
                 if(response.status===409)throw Object.assign(new Error(t('Another export is running. Try again shortly.','已有分享视频正在导出，请稍后再试。')),{reportable:false});
@@ -168,10 +184,10 @@ export async function openShare(record,t){
         }catch(error){if(!disposed){
             say(error.name==='AbortError'?'':kind==='image'?t('Could not save the share image. Try again.','分享图没有保存成功，请重试。'):error.message,error.reportable!==false);
         }}
-        finally{busy=false;if(!disposed){save.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
+        finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }
     dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog(dialog);});
-    dialog.onclose=()=>{disposed=true;abort.abort();exportRequest?.abort();player.pause();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};
+    dialog.onclose=()=>{disposed=true;clearInterval(watch);abort.abort();exportRequest?.abort();player.pause();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};
     // Start focus on the dialog itself, not with a focus ring on the first tab.
     document.body.append(dialog);dialog.showModal();dialog.focus();slide();message.textContent=t('Preparing preview…','正在准备预览…');
     try{

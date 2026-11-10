@@ -2,36 +2,82 @@
 .fv-whatsnew-stage .fv-ed-ruler .fv-ed-tick:last-child span{left:auto;right:4px}
 .fv-whatsnew{box-sizing:border-box;width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:24px;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg);background:var(--fv-canvas);color:var(--fv-ink);font:14px/1.6 var(--fv-font);overflow:auto}
 .fv-whatsnew::backdrop{background:#0009}
-.fv-whatsnew[open]{animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}
+.fv-whatsnew[open]{display:flex;flex-direction:column;animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}
+.fv-whatsnew>*{flex:none}
 .fv-whatsnew h2{margin:0 0 16px;font-size:20px;font-weight:600}
-.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:var(--fv-r-md);overflow:hidden;background:var(--fv-bg)}
-.fv-whatsnew-stage .fv-ed-track-view{height:236px}
+.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:12px;overflow:hidden;background:var(--fv-bg);}
+.fv-whatsnew-stage{display:flex;flex-direction:column;position:relative}
+.fv-whatsnew-stage .fv-ed-track-view{flex:1 1 0;height:auto;min-height:0}
+.fv-whatsnew-measure,.fv-whatsnew-measure *{transition:none!important}
 .fv-whatsnew-stage .fv-ed-track-scroll,.fv-whatsnew-stage .fv-ed-track-heads{bottom:0}
 .fv-whatsnew-stage .fv-ed-clip{cursor:default;position:absolute}
 .fv-whatsnew-picture{background:linear-gradient(90deg,color-mix(in srgb,var(--fv-accent) 28%,var(--fv-card)),color-mix(in srgb,var(--fv-accent-ramp) 22%,var(--fv-card)) 50%,color-mix(in srgb,var(--fv-accent) 18%,var(--fv-card)))}
 /* Rows and clips change by state only; each change fades. */
 .fv-whatsnew-stage .fv-ed-track-row,.fv-whatsnew-stage .fv-ed-track-head,.fv-whatsnew-stage .fv-ed-clip{transition:opacity .5s var(--fv-ease),translate .5s var(--fv-ease)}
 .fv-whatsnew-stage .fv-ed-progress-fill{transition:width .7s linear}
-.fv-whatsnew-stage[data-split="0"] :is([data-track=a2],[data-track=a3]){opacity:0;translate:0 -6px}
-.fv-whatsnew-stage[data-split="0"] [data-name=voice-old],.fv-whatsnew-stage[data-split="0"] [data-name=voice-new]{opacity:0}
-.fv-whatsnew-stage[data-split="1"] [data-name=mixed]{opacity:0}
-.fv-whatsnew-stage [data-name=voice-new],.fv-whatsnew-stage [data-name=music-new]{opacity:0}
-.fv-whatsnew-stage[data-voice=new] [data-name=voice-old],.fv-whatsnew-stage[data-music=new] [data-name=music-old]{opacity:0}
-.fv-whatsnew-stage[data-split="1"][data-voice=new] [data-name=voice-new],.fv-whatsnew-stage[data-music=new] [data-name=music-new]{opacity:1}
-.fv-whatsnew-stage[data-music=running] [data-name=music-old],.fv-whatsnew-stage[data-voice=running] [data-name=voice-old]{outline:2px solid var(--fv-accent);outline-offset:-2px}
+.fv-whatsnew-stage .fv-ed-clip[data-on=false]{opacity:0;pointer-events:none}
+.fv-whatsnew-stage .fv-ed-clip{transition:opacity .5s var(--fv-ease),left .5s var(--fv-ease),width .5s var(--fv-ease)}
+.fv-whatsnew-stage .fv-ed-clip[data-selected],.fv-whatsnew-stage .fv-ed-clip[data-state=running]{outline:2px solid var(--fv-accent);outline-offset:-2px}
+.fv-whatsnew-stage .fv-ed-clip[data-state=running]{--fv-ed-progress:0}
+.fv-whatsnew-stage .fv-ed-clip[data-state=running] .fv-ed-progress-fill{width:calc(var(--fv-ed-progress) * 100%)}
+.fv-whatsnew-oldlabel{position:absolute;left:8px;top:4px;right:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:1.3;color:var(--fv-ink);text-shadow:0 0 3px var(--fv-card)}
+.fv-whatsnew-label s{text-decoration-thickness:2px}
 .fv-whatsnew{position:relative}
 .fv-whatsnew:focus{outline:none}
-.fv-whatsnew-close{position:absolute;top:12px;right:12px;width:var(--fv-h-sm);height:var(--fv-h-sm);padding:0;border:0;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted,var(--fv-ink));font:22px/1 var(--fv-font);cursor:pointer}
-.fv-whatsnew-close:hover{background:var(--fv-hover);color:var(--fv-ink)}
-.fv-whatsnew h2{padding-right:36px}
-.fv-whatsnew-stage .fv-ed-track-view .fv-ed-track-head{justify-content:flex-start;padding-left:12px;box-sizing:border-box;white-space:nowrap}
-.fv-whatsnew-foot{display:flex;align-items:center;gap:8px;margin-top:16px}
-.fv-whatsnew-dots{display:flex;gap:6px;margin-right:auto}
-.fv-whatsnew-dot{width:8px;height:8px;padding:0;border:0;border-radius:50%;background:var(--fv-border);cursor:pointer}
-.fv-whatsnew-dot[aria-current=true]{background:var(--fv-accent)}
-.fv-whatsnew-foot button:not(.fv-whatsnew-dot){min-height:var(--fv-h-sm);padding:4px 16px;border:0;border-radius:var(--fv-r-sm);font:inherit;cursor:pointer;background:var(--fv-hover);color:var(--fv-ink)}
-.fv-whatsnew-next{background:var(--fv-accent)!important;color:var(--fv-bg)!important;font-weight:600}
-.fv-whatsnew-foot[hidden],.fv-whatsnew-take[hidden]{display:none}
+.fv-whatsnew-stage .fv-ed-track-view .fv-ed-track-head{justify-content:flex-start;padding-left:16px;box-sizing:border-box;white-space:nowrap}
+.fv-whatsnew-foot::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:24px;background:linear-gradient(transparent,var(--fv-canvas));pointer-events:none}
+@media(max-width:520px){.fv-whatsnew-stage .fv-ed-ruler .fv-ed-tick:nth-last-child(3) span{display:none}}
 .fv-whatsnew :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
+
+.fv-whatsnew-stage .fv-ed-track-row[data-on=false],.fv-whatsnew-stage .fv-ed-track-head[data-on=false]{opacity:0}
+.fv-whatsnew-stage .fv-ed-clip[data-hl]{outline:2px solid color-mix(in srgb,var(--fv-accent) 60%,transparent);outline-offset:-2px}
+.fv-whatsnew-stage .fv-ed-clip[data-flash]{outline:2px solid var(--fv-accent);outline-offset:-2px}
+.fv-whatsnew-stage .fv-ed-track-content{position:relative}
+.fv-whatsnew-playhead{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--fv-accent);pointer-events:none}
+.fv-whatsnew-playhead[data-on=false],.fv-whatsnew-range[data-on=false]{display:none}
+.fv-whatsnew-range{position:absolute;box-sizing:border-box;border:2px solid var(--fv-accent);border-radius:var(--fv-r-sm);background:color-mix(in srgb,var(--fv-accent) 18%,transparent);pointer-events:none;overflow:hidden}
+.fv-whatsnew-range span{position:absolute;right:6px;top:2px;font-size:12px;white-space:nowrap}
+/* The editor's own generation bar, set into the dialog: the studio and editor classes bring its styles, not its window. */
+.fv-whatsnew-new{font-weight:400;color:var(--fv-accent)}
+.fv-whatsnew-list li{transition:color .3s}
+.fv-whatsnew-list li[data-lit]{color:var(--fv-accent);font-weight:600}
 @media(prefers-reduced-motion:reduce){.fv-whatsnew[open]{animation:none}.fv-whatsnew-stage *{transition:none!important}}
-@media(max-width:520px){.fv-whatsnew{padding:16px}.fv-whatsnew-stage .fv-ed-track-view{--fv-ed-head-width:88px}.fv-whatsnew-stage .fv-ed-track-head>span:first-of-type{display:inline}.fv-whatsnew-stage .fv-ed-track-view .fv-ed-track-head{padding-left:8px;gap:4px;font-size:12px}.fv-whatsnew-stage .fv-ed-track-head svg{width:14px;height:14px}.fv-whatsnew-close{top:8px;right:8px}}
+@media(max-width:520px){.fv-whatsnew{padding:16px}.fv-whatsnew-stage .fv-ed-track-view{--fv-ed-head-width:88px}.fv-whatsnew-stage .fv-ed-track-head>span:first-of-type{display:inline}.fv-whatsnew-stage .fv-ed-track-view .fv-ed-track-head{padding-left:12px;gap:4px;font-size:12px}.fv-whatsnew-stage .fv-ed-track-head svg{width:14px;height:14px}.fv-whatsnew-close{top:8px;right:8px}}
+
+/* The seven features sit under the demo, outside its frame. */
+.fv-whatsnew-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:16px 0 16px;padding:0 0 0 17px;list-style:decimal inside;font-size:13px;line-height:20px}
+.fv-whatsnew-foot{margin-top:auto}
+@media(max-width:520px){.fv-whatsnew-list{grid-template-columns:1fr;padding-left:13px}}
+.fv-whatsnew-close{height:36px;min-height:36px;padding:0 16px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);color:var(--fv-ink);font:inherit;cursor:pointer}
+.fv-whatsnew-foot{display:flex;justify-content:flex-end;position:sticky;bottom:0;margin-top:auto;padding-top:8px;background:var(--fv-canvas)}
+
+/* The editor's own bars and menu set into the dialog: the studio and editor classes bring their styles, not the window. */
+.fv-whatsnew-ed.fv-studio.fv-editor{position:static;display:block;width:auto;height:auto;margin:0;border:0;border-radius:0;box-shadow:none;overflow:visible;background:transparent;color:var(--fv-ink);color-scheme:inherit;font:13px/1.5 var(--fv-font);animation:none;pointer-events:none}
+.fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{overflow:hidden;background:var(--fv-card);transition:height .24s var(--fv-ease)}
+.fv-whatsnew-top .fv-ed-genbar,.fv-whatsnew-top .fv-ed-record{grid-column:auto;grid-row:auto;box-sizing:border-box;min-height:56px}
+.fv-whatsnew-top .fv-ed-genbar[hidden],.fv-whatsnew-top .fv-ed-record[hidden]{display:none}
+.fv-whatsnew-top .fv-ed-record-end{justify-content:flex-end;align-items:center}
+.fv-whatsnew-top .fv-ed-record-side{align-items:center;color:var(--fv-muted)}
+.fv-whatsnew-top .fv-ed-description-box{flex:1}
+.fv-whatsnew-top .fv-ed-voice-text{flex:1;min-width:0;box-sizing:border-box;min-height:36px;padding:8px;border:1px solid var(--fv-border);border-radius:6px;color:var(--fv-ink);font-size:13px;line-height:18px}
+.fv-whatsnew-top .fv-ed-voice-text s{text-decoration-thickness:2px;color:var(--fv-muted)}
+.fv-whatsnew-top .fv-whatsnew-new{font-weight:400;color:var(--fv-accent)}
+.fv-whatsnew-top .fv-ed-genbar[data-voice=true] .fv-ed-generate{margin-left:auto}
+.fv-whatsnew-menu.fv-whatsnew-ed.fv-studio.fv-editor{position:absolute;z-index:3;width:max-content;background:transparent}
+.fv-whatsnew-menu.fv-whatsnew-ed.fv-studio.fv-editor[data-on=false]{display:none}
+.fv-whatsnew-menu .fv-ed-context-menu{position:static;min-width:180px;box-shadow:0 4px 16px #0006}
+.fv-whatsnew-menu .fv-ed-context-menu button[data-hover=true]{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
+.fv-whatsnew-top .fv-ed-voice-lines{max-height:none;overflow:visible}
+@media(max-width:520px){.fv-whatsnew-top .fv-ed-genbar[data-mode=running] .fv-ed-description-box{display:none}}
+@media(max-width:520px){.fv-whatsnew h2{font-size:18px;margin-bottom:12px}.fv-whatsnew-list{gap:2px;margin:12px 0}.fv-whatsnew-top .fv-ed-voice-lines{gap:4px}}
+
+.fv-whatsnew-stage[data-lang=en] .fv-ed-voice-text s{margin-right:4px}
+@media(max-width:520px){.fv-whatsnew-top .fv-ed-genbar[data-mode=selected] .fv-ed-description-box{flex:1 1 100%}}
+
+/* Style and mood share one row on a wide window. */
+@media(min-width:521px){.fv-whatsnew-top .fv-ed-music-presets:not([hidden]){flex-direction:row;flex-wrap:wrap;gap:6px 24px}}
+/* The dubbing bar is one row, name left and button right; the lines lie over the lower tracks at the foot of the frame. */
+.fv-whatsnew-top .fv-ed-genbar[data-voice=true]{flex-wrap:nowrap}
+.fv-whatsnew-top .fv-ed-genbar[data-voice=true] .fv-ed-voice{flex:1 1 0}
+.fv-whatsnew-lines.fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{position:absolute;z-index:3;inset:auto 8px 8px;height:auto;padding:8px;border:1px solid var(--fv-border);border-radius:12px;box-shadow:0 4px 16px #0006}
+.fv-whatsnew-lines[hidden]{display:none!important}

@@ -147,6 +147,11 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             encoder_hidden_states=prompt_embeds[None], timestep=times, timestep_indices=time_ids,
             token_tags=tags, position_ids=positions, video_indices=video_ids, audio_indices=audio_ids,
             text_indices=text_ids, return_dict=False)
+        if refine_schedule is not None:
+            # This schedule's scheduler is the upstream class, which does not look at
+            # the frame preview itself. The call only reads; the update below is unchanged.
+            from .frame_preview import observe
+            observe(prediction[0, condition_rows:], video_t, video_rows[condition_rows:])
         video_rows[condition_rows:] = video_scheduler.step(
             prediction[0, condition_rows:].float(), video_t, video_rows[condition_rows:], return_dict=False)[0]
         if step_seconds is not None:

@@ -14,7 +14,7 @@
 .fv-editor .fv-ed-adjust-button{height:32px;padding:0 8px}
 .fv-editor .fv-ed-adjust-segmented{width:100%;min-width:0}
 .fv-editor .fv-ed-adjust-segmented button{flex:1;padding:0 6px}
-.fv-editor .fv-ed-adjust-segmented button[aria-pressed=true]{background:var(--fv-raised);color:var(--fv-ink)}
+.fv-editor .fv-ed-adjust-segmented button[aria-pressed=true]{background:var(--fv-raised);color:var(--fv-ink);font-weight:600;box-shadow:0 1px 3px #0006}
 .fv-ed-adjust-toggle-control{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
 .fv-ed-adjust-toggle-control input{accent-color:var(--fv-accent);width:15px;height:15px;margin:0}
 .fv-ed-adjust-controls:disabled :is(.fv-ed-adjust-label,output,.fv-ed-adjust-toggle-control span){opacity:.4}

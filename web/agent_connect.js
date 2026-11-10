@@ -23,6 +23,13 @@ export async function agentInterfaceState(api) {
     } catch { return 'unknown'; }
 }
 
+// What to tell the user when the lookup got no usable answer at all (no refusal came back): the request failed, the
+// reply could not be read, or it held no address. The page cannot tell these apart for the user, and in each the
+// way back is the same.
+export function noAnswerHint(kind, t) {
+    return kind ? t('Could not reach FreeVideo on this computer. Make sure it is still running, then retry.', '无法连接本机的 FreeVideo 服务，请确认它仍在运行后重试。') : '';
+}
+
 // What to tell the user when the address lookup is refused: only refusals that say what to do are named; any other
 // failure keeps the plain "could not get address".
 export function refusalHint(code, t) {
@@ -65,17 +72,17 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const status = el('p', 'fv-agent-connect-status', t('Getting the connection address…', '正在获取连接地址…')); status.setAttribute('role', 'status');
     body.append(mark, title, intro, subtitle, actions, sentence, status);
 
-    let feedback = false, text = '', failures = 0, refusal = null;
+    let feedback = false, text = '', failures = 0, refusal = null, noAnswer = null;
     let timer, feedbackTimer, controller, generation = 0;
     const active = () => body.isConnected && shown();
     const render = () => {
         label.textContent = !text && failures >= 3 ? t('Could not get address. Retry', '获取失败，重试') : feedback ? t('Copied', '已复制') : t('Copy', '复制');
         if (!text && failures >= 3) {
-            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''})` : label.textContent, kind: refusal?.code || null})); button.after(issue); }
+            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
         button.disabled = !text && failures < 3;
         button.title = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
-        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) : '';
+        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) || noAnswerHint(noAnswer, t) : '';
     };
     render();
 
@@ -101,7 +108,9 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     // Only the sentence is read here, until it is known; who is connected comes from the surface that holds the card.
     async function load() {
         const current = generation;
-        const request = new AbortController(); controller = request; refusal = null;
+        const request = new AbortController(); controller = request; refusal = null; noAnswer = null;
+        // What the lookup lacked if it fails without a refusal: the request itself fails first, then the reply is read.
+        let lacked = 'unreachable';
         try {
             // The sentence carries no parameter: the server gives the agent the language this card showed.
             const response = await api.fetchApi('/freevideo/agent/connect?lang=' + t('en', 'zh'), {cache: 'no-store', signal: request.signal});
@@ -109,12 +118,13 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
             if (current !== generation) return;
             if (!response.ok || !connect?.address) {
                 refusal = !response.ok ? {status: response.status, code: String(connect?.error?.code || '').slice(0, 40) || null} : null;
+                lacked = connect ? 'no_address' : 'unreadable';
                 throw new Error('Missing address');
             }
             text = connectionSentence(connect.address, t);
-            failures = 0; refusal = null; render();
+            failures = 0; refusal = null; noAnswer = null; render();
             if (await state === 'unknown') { state = agentInterfaceState(api); changed(await state); }
-        } catch { if (current === generation) { failures++; render(); } }
+        } catch { if (current === generation) { noAnswer = refusal ? null : lacked; failures++; render(); } }
         finally {
             if (current === generation) {
                 controller = null;

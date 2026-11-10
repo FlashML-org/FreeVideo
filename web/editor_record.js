@@ -1,6 +1,7 @@
 // Recording from the microphone onto a sound track. A small bar above the tracks holds the microphone choice, the level,
 // and the start/stop button; the take is saved as a WAV and placed like any imported sound, never over what is already there.
 import {registerMenuItem} from './editor_menu.js';
+import {skinSelect} from './fv_select.js';
 import {COUNTDOWN_SECONDS, elapsedText, deviceName, recordable, recordRange, landingTrack, replacesTake, secondsOf, takeName, level, mixdown, encodeWav} from './editor_record_model.js';
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 let styled = false;
@@ -19,7 +20,7 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     const note = el('span', 'fv-ed-record-note'); note.setAttribute('role', 'status');
     const close = el('button', 'fv-ed-record-close', '×'); close.type = 'button'; close.setAttribute('aria-label', t('Close', '关闭'));
     const side = el('div', 'fv-ed-record-side'), center = el('div', 'fv-ed-record-center');
-    side.append(devices); center.append(main, meter, note); bar.append(side, center, close);
+    side.append(skinSelect(devices)); center.append(main, meter, note); bar.append(side, center, close);
 
     let phase = 'idle', denied = false, stream = null, recorder = null, chunks = [], context = null, frame = null, timers = [], disposed = false, session = 0, ticker = null, listening = null, startedAt = 0;
     const clear = () => { timers.forEach(clearTimeout); timers = []; clearInterval(ticker); ticker = null; };

@@ -190,6 +190,16 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         })().finally(() => { refreshTask = null; });
         return refreshTask;
     }
+    // The Creations panel shares this page: what it generates, deletes or restores changes this list too.
+    const generated = event => { const video = event.detail?.value?.video; if (video) refresh({outputs: [video]}); };
+    const deleted = event => {
+        const video = event.detail?.video; if (!video || disposed) return;
+        if (rows.some(row => row.video === video)) { rows = rows.filter(row => row.video !== video); render(); }
+    };
+    const restored = () => { refresh(); };
+    window.addEventListener('freevideo-result', generated);
+    window.addEventListener('freevideo-library-deleted', deleted);
+    window.addEventListener('freevideo-library-restored', restored);
     function choose(value) { tab = value; render(); scheduleMore(); }
     works.onclick = () => choose('work'); imports.onclick = () => choose('import');
     tabs.onkeydown = event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); choose(tab === 'work' ? 'import' : 'work'); (tab === 'work' ? works : imports).focus(); } };
@@ -253,5 +263,5 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     });
     const stopUsed = state?.subscribe(event => { if (event.type === 'record') updateUsed(); });
     render(); load();
-    return {element: host, importFiles, refresh, dispose() { disposed = true; pendingAdds.clear(); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stop(); stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
+    return {element: host, importFiles, refresh, dispose() { disposed = true; pendingAdds.clear(); window.removeEventListener('freevideo-result', generated); window.removeEventListener('freevideo-library-deleted', deleted); window.removeEventListener('freevideo-library-restored', restored); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stop(); stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
 }

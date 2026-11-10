@@ -12,10 +12,8 @@ function drawQr(canvas, link) {
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const button = (cls, label, action) => { const b = el('button', cls, label); b.type = 'button'; b.onclick = action; return b; };
 export function createLanAccess(t, api) {
-    const element = el('div', 'fv-lan'), trigger = button('fv-lan-trigger', '', toggle), panel = el('section', 'fv-lan-panel');
+    const element = el('div', 'fv-lan'), trigger = button('fv-lan-trigger', t('Phone', '手机'), toggle), panel = el('section', 'fv-lan-panel');
     const label = t('Phone access', '手机连接'); trigger.setAttribute('aria-label', label); trigger.setAttribute('aria-expanded', 'false'); trigger.setAttribute('aria-haspopup', 'dialog');
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(svg.namespaceURI || 'http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', 'M7 2h10a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM10 18h4'); svg.append(path); trigger.append(svg);
     const dot = el('i', 'fv-lan-dot'); dot.hidden = true; dot.setAttribute('aria-hidden', 'true'); trigger.append(dot);
     panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', label);
     const head = el('div', 'fv-lan-heading'), toggleButton = button('fv-lan-switch', '', changeEnabled);

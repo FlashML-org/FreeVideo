@@ -15,6 +15,13 @@ export function waitingText(waiting, t) {
     return t(`Queued · starts in ${time}`, `排队中 · ${time}后开始`);
 }
 
+// The line while a long video's parts are joined: which part is being written once that is known.
+export function joiningText(join, t) {
+    const part = join?.part, count = join?.count;
+    if (!Number.isInteger(part) || !Number.isInteger(count) || count < 2 || part < 1 || part > count) return t('Joining the parts', '正在接合各段');
+    return t(`Joining · Part ${part} of ${count}`, `正在接合 · 第 ${part} 段，共 ${count} 段`);
+}
+
 // No overlapping polls and no delivery after disposal, including a slow response.
 export function createPoller(read, deliver, {clock = clockDefault, interval = 2000, onError = () => {}} = {}) {
     let active = true, timer = null, running = null;

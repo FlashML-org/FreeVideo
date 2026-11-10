@@ -52,3 +52,25 @@
 @keyframes fv-panel-enter{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
 @keyframes fv-backdrop-enter{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){:where(.fv-studio,.fv-setup)[open],:where(.fv-studio,.fv-setup)::backdrop{animation:none!important}}
+/* The one dropdown, checkbox and menu face (fv_select.js). */
+.fv-select{position:relative;display:block;min-width:0}
+.fv-select>select{appearance:none!important;-webkit-appearance:none!important;width:100%!important;max-width:100%!important;padding-right:34px!important;text-overflow:ellipsis;cursor:pointer;background-image:none}
+.fv-select::after{content:'';position:absolute;right:12px;top:50%;width:16px;height:16px;margin-top:-8px;background:currentColor;color:var(--fv-ink);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.5 3.5 3 3.5-3'/%3E%3C/svg%3E") center/16px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.5 3.5 3 3.5-3'/%3E%3C/svg%3E") center/16px no-repeat;pointer-events:none}
+.fv-select:has(>select:disabled)::after{opacity:.5}
+.fv-select:has(>select[hidden]){display:none}
+.fv-select-menu-host>.fv-select-native{position:absolute;inset:0;opacity:0;pointer-events:none}
+.fv-select-menu-host>.fv-select-trigger{display:flex;align-items:center;width:100%;max-width:100%;min-height:var(--fv-h-sm,32px);padding:4px 34px 4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
+.fv-select-menu-host>.fv-select-trigger:hover:not(:disabled){background:var(--fv-hover)}.fv-select-menu-host>.fv-select-trigger:disabled{opacity:.5;cursor:default}
+.fv-select-face{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:8px;font:13px var(--fv-font)}
+.fv-select-menu[hidden]{display:none}
+.fv-select-menu [role=separator]{height:1px;margin:5px 4px;background:var(--fv-border)}
+.fv-select-group{padding:6px 10px 2px;color:var(--fv-muted);font-size:12px}
+.fv-select-menu .fv-select-item{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;height:32px;min-height:32px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:var(--fv-ink);font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
+.fv-select-menu .fv-select-item:hover,.fv-select-menu .fv-select-item:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
+.fv-select-label{overflow:hidden;text-overflow:ellipsis}
+.fv-select-mark{flex:none;width:14px;height:14px;color:var(--fv-accent);visibility:hidden}.fv-select-mark svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.fv-select-item[aria-selected=true] .fv-select-mark{visibility:visible}
+:where(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) :where(input[type=checkbox]:not([role=switch])){appearance:none;-webkit-appearance:none;flex:none;box-sizing:border-box;width:16px;height:16px;min-height:16px;margin:0;padding:0;border:1px solid var(--fv-border);border-radius:4px;background:var(--fv-card) center/12px no-repeat;cursor:pointer;vertical-align:middle;transition:background-color .15s,border-color .15s}
+:where(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) :where(input[type=checkbox]:not([role=switch]):checked){border-color:var(--fv-accent);background-color:var(--fv-accent);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E")}
+:where(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) :where(input[type=checkbox]:not([role=switch]):disabled){opacity:.45;cursor:default}

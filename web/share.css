@@ -21,5 +21,5 @@
 .fv-studio .fv-share-footer .fv-primary:active:not(:disabled){transform:translateY(0) scale(.98)}
 @keyframes fv-share-spin{to{transform:rotate(360deg)}}
 @keyframes fv-share-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
-@media(max-width:600px){.fv-studio.fv-share{width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.fv-share-header{padding:16px;gap:12px}.fv-share-body{padding:14px}.fv-share-footer{padding:14px}.fv-share-status{max-width:50%}.fv-share-tabs button{min-width:54px;padding:6px 10px}}
+@media(max-width:600px){.fv-studio.fv-share{width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.fv-share-header{padding:16px;gap:12px}.fv-share-body{padding:14px}.fv-share-footer{padding:14px}.fv-share-status{max-width:50%}.fv-share-status:not(:empty){max-width:none;flex:1 0 100%}.fv-share-tabs button{min-width:54px;padding:6px 10px}}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-share[open]{animation:none}.fv-share *{transition:none!important}.fv-share[data-busy=true] .fv-share-status:before{animation:none}}

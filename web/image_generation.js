@@ -4,6 +4,7 @@ import * as commands from './image_commands.js';
 import {orientMatrix, rasterKinds, scaleSelection} from './image_editor_engine.js';
 import {saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError} from './report_issue.js';
 import {issueButton} from './issue_button.js';
+import {skinSelect} from './fv_select.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
@@ -860,7 +861,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 update();
             };
             ratio.onchange = changed;
-            shape.append(ratio, size);
+            shape.append(skinSelect(ratio), size);
         }
         const field = el('div', null, 'fv-ie-gen-field');
         const refs = el('div', null, 'fv-ie-gen-refs'); refs.setAttribute('role', 'list');

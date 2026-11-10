@@ -1,4 +1,5 @@
 import {createLanAccess} from './lan_access.js';
+import {createMonitor} from './monitor_panel.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import {createExpandButton} from './editor_expand.js';
 import {allowEmptyPrompt, cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
@@ -16,6 +17,7 @@ import { createUpdateNotice, createVersionInfo, productVersion } from './updates
 import { createPortNotice } from './port_notice.js';
 import { focusReportTip, hideReportTip, reportIssue, reportTipClosed, showReportTip } from './report_issue.js';
 import { issueButton } from './issue_button.js';
+import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary } from './library.js';
@@ -55,7 +57,7 @@ import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora
 import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
-import { waitingText } from './chain_support.js';
+import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
 import { createPassMode } from './pass_mode.js';
@@ -486,7 +488,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 };
                 select.disabled = strength.disabled = trigger.disabled = row.enabled === false;
                 const remove = button('×', () => { rows.splice(index, 1); write(rows); }); remove.setAttribute('aria-label', t('Remove LoRA', '移除 LoRA'));
-                wrap.append(enabled, select, strength, remove, trigger, strengthMark);
+                wrap.append(enabled, skinSelect(select), strength, remove, trigger, strengthMark);
                 wrap.dataset.index = String(index); wrap.dataset.sortable = String(rows.length > 1);
                 if (rows.length > 1) wrap.prepend(sortGrip(wrap, index));
                 const problem = el('div', null, 'fv-lora-problem'); problem.hidden = true; wrap.append(problem);
@@ -667,6 +669,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
     const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
+    const monitor = createMonitor(t, api); tools.append(monitor.element); cleanup.push(monitor.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
@@ -1075,7 +1078,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const name of widget(loraNode, 'lora').options?.values || ['None']) { const o = el('option', name); o.value = name; select.append(o); }
         select.value = value(loraNode, 'lora'); select.onchange = () => { set(loraNode, 'lora', select.value); requestAssets?.refresh(); };
         const {input: strength, mark: strengthMark} = loraStrengthBox(value(loraNode, 'strength'), () => { set(loraNode, 'strength', Number(strength.value)); requestAssets?.refresh(); });
-        loraMount.append(field(t('LoRA', 'LoRA'), select), field(t('Strength', '强度'), strength), strengthMark, el('p', loraWarning(), 'fv-lora-note'));
+        loraMount.append(field(t('LoRA', 'LoRA'), skinSelect(select)), field(t('Strength', '强度'), strength), strengthMark, el('p', loraWarning(), 'fv-lora-note'));
     } else loraMount.append(el('p', loraWarning(), 'fv-lora-note'));
     const [, advanced] = expand(t('Advanced', '高级选项'));
     const custom = el('div', null, 'fv-fields');
@@ -1285,7 +1288,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seed.onchange = () => { if (seed.value && seed.reportValidity()) set(node, 'seed', Number(seed.value)); };
     const mode = el('select'); for (const [v, label] of [['randomize', t('New each run', '每次随机')], ['fixed', t('Keep fixed', '保持固定')], ['increment', t('Increment', '递增')], ['decrement', t('Decrement', '递减')]]) { const o = el('option', label); o.value = v; mode.append(o); }
     mode.value = value(node, 'control_after_generate') || 'fixed'; mode.onchange = () => set(node, 'control_after_generate', mode.value);
-    seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), mode)); advanced.append(seedFields);
+    seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), skinSelect(mode))); advanced.append(seedFields);
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewTools = el('div', null, 'fv-preview-tools');
     const worksButton = button(t('Creations', '作品'), () => {
@@ -1597,7 +1600,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     chainController = createStudioChain({api, node, onProgress: (message, chain) => {
             const position = chainPosition(chain, message);
             const joining = readChainResult(chain).joining, waiting = chain.state === 'queued' && message.phase === 'prepare';
-            setChainLine(joining ? t('Joining the parts.', '正在接合各段。')
+            setChainLine(joining ? joiningText(chain.joining_part, t)
                 : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t(`Waiting in queue · Part ${position.index + 1} of ${position.count}`, `正在排队 · 第 ${position.index + 1} 段，共 ${position.count} 段`))
                 : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
             progress.element.querySelector('.fv-generation-label').hidden = joining || waiting;
@@ -1616,7 +1619,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             partList.update(chain, active, Boolean(result?.request_id) && result.request_id === chain?.id);
             busy = active || Boolean(queueState?.running || queueState?.pending.length); queued = chain?.state === 'queued';
             chainLine.hidden = !active;
-            setChainLine(outcome?.joining ? t('Joining the parts.', '正在接合各段。')
+            setChainLine(outcome?.joining ? joiningText(chain?.joining_part, t)
                 : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
             if (active && node.properties.freevideo_chain?.width) previewSize(node.properties.freevideo_chain.width, node.properties.freevideo_chain.height);
             if (!active) { cancelling = false; hideProgress(); }
@@ -1770,7 +1773,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // straight to the busy GPU, so its button waits like a full queue does.
         const chainWait = Boolean(chainController?.active && (!chainController.canQueue || !multiple));
         const chainReason = !chainWait ? '' : readChainResult(chain)?.joining
-            ? t('Joining parts…', '正在拼接…')
+            ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
         generate.disabled = submitting || chainWait || lengthControl.blocked || (runMode === 'loop' && queueState?.looping);
@@ -2183,7 +2186,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
     // Escape first closes the recent videos panel of a narrower window, then the studio.
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!recent.dismiss()) closeDialog(dialog); });
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!monitor.dismiss() && !recent.dismiss()) closeDialog(dialog); });
     dialog.onclose = () => { disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,

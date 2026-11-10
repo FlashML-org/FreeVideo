@@ -798,7 +798,7 @@ def _download(row, path, plan, progress_callback, headers_for, *, transfer_compl
                             if path.is_file() and fragments['bytes'] == row['bytes']:
                                 return
                             plan = dict(plan, manual_ranges=fragments['ranges'])
-                        elif not plan.get('allow_model_restart') or resource_failure:
+                        elif not plan.get('allow_model_restart'):
                             network.pause_download(networking, name, path, retained, 'xet-or-legacy-resume-unavailable' if unresumable else reason,
                                                    details=getattr(error, 'details', None))
                         else:

@@ -12,7 +12,10 @@ Button {
     // A text link: accent text, no frame.
     property bool link: false
     implicitHeight: Math.max(theme.height, contentItem.implicitHeight + 14)
-    implicitWidth: Math.max(80, contentItem.implicitWidth + leftPadding + rightPadding)
+    // A text the button may change to: its width is the wider of the two, so the row does not move.
+    property string widthText: ""
+    TextMetrics { id: reserve; font: control.font; text: control.widthText }
+    implicitWidth: Math.max(80, Math.max(contentItem.implicitWidth, reserve.advanceWidth) + leftPadding + rightPadding)
     leftPadding: 16; rightPadding: 16
     topPadding: 7; bottomPadding: 7
     font.pixelSize: theme.body; font.weight: primary ? Font.DemiBold : Font.Medium

@@ -239,8 +239,10 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
             const option = document.createElement('div'); option.id = `${list.id}-${index}`;
             option.className = 'fv-reference-option'; option.setAttribute('role', 'option');
             if (item.character) {
-                const person = item.character, face = document.createElement('img');
-                face.className = 'fv-reference-face'; face.alt = ''; if (person.setting) face.dataset.place = ''; else if (person.prop) face.dataset.prop = ''; face.src = person.thumb || '';
+                const person = item.character, face = document.createElement(person.thumb ? 'img' : 'span');
+                face.className = 'fv-reference-face';
+                if (face.tagName === 'SPAN') { face.textContent = [...String(person.name || '')][0] || ''; face.dataset.initial = ''; }
+                else face.alt = ''; if (person.setting) face.dataset.place = ''; else if (person.prop) face.dataset.prop = ''; if (face.tagName === 'IMG') face.src = person.thumb;
                 const name = document.createElement('strong'); name.textContent = person.name;
                 option.className += ' fv-reference-person'; option.append(face, name);
                 if (person.blocked) { option.setAttribute('aria-disabled', 'true'); if (typeof person.blocked === 'string') option.title = person.blocked; }
@@ -255,8 +257,7 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
             const label = document.createElement('span'), name = document.createElement('strong'), detail = document.createElement('small');
             name.textContent = t({image:'Image',video:'Video',audio:'Audio'}[item.kind], {image:'图片',video:'视频',audio:'音频'}[item.kind]) + ` ${item.number}`;
             detail.textContent = item.name; label.append(name, detail);
-            const token = document.createElement('code'); token.textContent = item.token;
-            option.append(thumb, label, token); option.title = item.name;
+            option.append(thumb, label); option.title = item.name;
             option.onpointerdown = e => e.preventDefault(); option.onclick = () => choose(index);
             option.onpointermove = () => select(index); list.append(option);
         }

@@ -177,6 +177,19 @@ async function keepInFront(workflow, opened) {
     }
 }
 
+// While extensions are still starting, ComfyUI has not set its canvas store yet. Frontends from 1.57 on
+// then reject one internal step of loadGraphData (the address hash) with this error, un-awaited, after
+// the graph itself has loaded. Nothing in the page depends on that step; absorb exactly this rejection
+// for the duration of the call instead of leaving it unhandled. The listener runs before the page
+// check's own, which therefore never mistakes it for a FreeVideo failure.
+const canvasNotReady = reason => reason instanceof Error && reason.message === 'getCanvas: canvas is null';
+async function loadWhileStarting(graph, name) {
+    const absorb = event => { if (canvasNotReady(event.reason)) { event.preventDefault(); event.stopImmediatePropagation(); } };
+    addEventListener('unhandledrejection', absorb, true);
+    try { return await app.loadGraphData(graph, true, true, name); }
+    finally { setTimeout(() => removeEventListener('unhandledrejection', absorb, true), 2000); }
+}
+
 // Explicit launcher navigation only; ordinary ComfyUI visits restore their own
 // graph. Remove the flag before loading so refreshing never resets user edits.
 app.registerExtension({
@@ -198,7 +211,7 @@ app.registerExtension({
             // Opening the bundled graph now would overwrite the cached project's
             // media and connections before ComfyUI restores them; keepInFront
             // brings the restored tab forward instead.
-            if (!cached) await app.loadGraphData(structuredClone(workflow), true, true, 'FreeVideo');
+            if (!cached) await loadWhileStarting(structuredClone(workflow), 'FreeVideo');
         } catch (error) {
             console.error('FreeVideo launcher:', error);
             health({type: 'launch', error});

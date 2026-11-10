@@ -873,14 +873,26 @@ def register():
         progress = view.get('progress') or {}
         value['progress'] = {k: progress[k] for k in ('phase', 'step', 'fraction', 'remaining_seconds',
                              'queue_position') + (('block',) if card else ()) if progress.get(k) is not None}
-        if 'fraction' not in value['progress'] and view.get('kind') in ('export', 'listen'):
-            # An export or a subtitle job reports its share of the work as a small JSON detail.
+        if view.get('kind') in ('export', 'listen', 'music', 'stems', 'finish_sound', 'voice_lines', 'voice', 'voice_say'):
+            # A job that runs outside ComfyUI reports its share of the work as a small JSON detail; dubbing also
+            # reports the line it is on and the time left.
             try:
-                share = float(json.loads(progress.get('detail') or '{}').get('fraction'))
-            except (TypeError, ValueError, AttributeError):
+                detail = json.loads(progress.get('detail') or '{}')
+            except ValueError:
+                detail = {}
+            detail = detail if isinstance(detail, dict) else {}
+            try:
+                share = float(detail.get('fraction'))
+            except (TypeError, ValueError):
                 share = None
-            if share is not None and 0 <= share <= 1:
+            if 'fraction' not in value['progress'] and share is not None and 0 <= share <= 1:
                 value['progress']['fraction'] = share
+            done, total = detail.get('index'), detail.get('count')
+            if 'step' not in value['progress'] and type(done) is int and type(total) is int and 0 < done <= total:
+                value['progress']['step'] = dict(done=done, total=total)
+            remaining = detail.get('remaining_seconds')
+            if 'remaining_seconds' not in value['progress'] and type(remaining) in (int, float) and 0 < remaining < math.inf:
+                value['progress']['remaining_seconds'] = remaining
         if view.get('waiting_for'):
             value['waiting_for'] = len(view['waiting_for'])
         if view.get('error'):

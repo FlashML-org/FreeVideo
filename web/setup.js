@@ -1,4 +1,5 @@
 import { api } from "../../scripts/api.js";
+import { skinSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
 import { openCompatibility } from './compatibility.js';
 import { animateDetails, closeDialog } from './motion.js';
@@ -6,6 +7,7 @@ import { createGuideReplayEntry } from './first_run_guide.js';
 import { issueButton } from './issue_button.js';
 import { agentConfirmSettings } from './agent_confirm_settings.js';
 import { previewStyle, loadPreviewStyle, applyPreviewStyle, onPreviewStyle } from './preview_style.js';
+import { monitorShown, setMonitorShown, onMonitorShown } from './monitor_panel.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./setup.css', import.meta.url).href;
@@ -115,7 +117,7 @@ export async function openSetup(options) {
     for (const [id, name] of [['auto', t('Auto (recommended)', '自动（推荐）')], ['proxy', t('Proxy only', '仅代理')], ['direct', t('Direct only', '仅直连')]]) {
         const option = node('option', name); option.value = id; proxyMode.append(option);
     }
-    modeLabel.append(proxyMode);
+    modeLabel.append(skinSelect(proxyMode));
     downloads.append(modeLabel);
     const sourceLabel = node('label', t('Download source', '下载源'));
     const source = node('select');
@@ -123,7 +125,7 @@ export async function openSetup(options) {
         const option = node('option',name); option.value = id; source.append(option);
     }
     const probeButton = node('button', t('Test source speeds', '重新测速'));
-    const sourceRow = node('div'); sourceRow.className = 'fv-source-row'; sourceRow.append(source, probeButton);
+    const sourceRow = node('div'); sourceRow.className = 'fv-source-row'; sourceRow.append(skinSelect(source), probeButton);
     sourceLabel.append(sourceRow); downloads.append(sourceLabel);
     const sourceStatus = note(''), speeds = node('div');
     downloads.append(sourceStatus, speeds);
@@ -140,8 +142,8 @@ export async function openSetup(options) {
     tokenLink.href = 'https://huggingface.co/settings/tokens'; tokenLink.target = '_blank'; tokenLink.rel = 'noopener noreferrer';
     authActions.append(applyToken, clearToken, tokenLink); auth.append(authActions);
     const authStatus = note(''); auth.append(authStatus); downloads.append(auth);
-    const advanced = node('details'); advanced.append(node('summary', t('Advanced settings', '高级设置')));
-    const compatibility = node('button', t('Compatibility settings', '兼容性设置'));
+    const advanced = node('details'); advanced.className = 'fv-adv'; advanced.append(node('summary', t('Advanced settings', '高级设置')));
+    const compatibility = node('button', t('Compatibility settings', '兼容性设置')); compatibility.className = 'fv-row';
     compatibility.onclick = openCompatibility;
     advanced.append(compatibility);
     const resources = node('details');
@@ -152,12 +154,14 @@ export async function openSetup(options) {
     const autoLabel = node('label'); autoLabel.className = 'fv-check'; autoLabel.append(reserveAuto, node('span', t('Automatic optimization', '自动优化')));
     const reserve = node('input'); reserve.type = 'number'; reserve.min = '0.2'; reserve.step = '0.1';
     reserve.value = '1.0'; reserve.disabled = true; reserve.className = 'fv-number';
-    reserveLabel.append(reserve, document.createTextNode('GiB'));
-    const saveReserve = node('button', t('Save', '保存')), reserveStatus = note('');
+    const reserveUnit = node('span'); reserveUnit.className = 'fv-unit'; reserveUnit.append(reserve, node('span', 'GiB')); reserveLabel.append(reserveUnit);
+    const saveReserve = node('button', t('Save', '保存')), reserveStatus = node('span'); reserveStatus.className = 'fv-muted fv-saved';
     const reserveHelp = note(t('Extra VRAM to keep free. Applies from the next generation.', '额外保留的空闲显存，下次生成起生效。'));
-    resources.append(autoLabel, reserveLabel, reserveHelp, saveReserve, reserveStatus);
+    resources.append(autoLabel, reserveLabel, reserveHelp, saveReserve);
+    reserveSummary.append(reserveStatus);
     advanced.append(resources);
-    const clearReserveStatus = () => { reserveStatus.textContent = ''; reserveStatus.className = 'fv-muted'; };
+    let savedTimer;
+    const clearReserveStatus = () => { clearTimeout(savedTimer); reserveStatus.textContent = ''; reserveStatus.className = 'fv-muted fv-saved'; };
     reserveStatus.setAttribute('aria-live', 'polite');
     reserve.oninput = clearReserveStatus;
     reserveAuto.onchange = () => { reserve.disabled = reserveAuto.checked; clearReserveStatus(); };
@@ -230,13 +234,22 @@ export async function openSetup(options) {
     dialog.addEventListener('close', stopWatching);
     loadPreviewStyle(api).then(paintPreview);
     preview.append(loopLabel, previewStatus);
+    const status = node('section'); status.dataset.section = 'status';
+    status.append(node('h3', t('System status', '运行状态')));
+    const statusLabel = node('label'); statusLabel.className = 'fv-check';
+    const statusSwitch = node('input'); statusSwitch.type = 'checkbox'; statusSwitch.checked = monitorShown();
+    statusLabel.append(statusSwitch, node('span', t('Show system status in the top bar', '在顶栏显示运行状态')));
+    statusSwitch.onchange = () => setMonitorShown(statusSwitch.checked);
+    const stopStatusWatching = onMonitorShown(() => { statusSwitch.checked = monitorShown(); });
+    dialog.addEventListener('close', stopStatusWatching);
+    status.append(statusLabel);
     const showSection = name => {
         if (name !== 'preview') return;
         preview.scrollIntoView({block: 'center'});
         loopSwitch.focus({preventScroll: true});
     };
     dialog.addEventListener('fv-setup-section', event => showSection(event.detail));
-    dialog.append(heading, installation, downloads, preview, agentConfirm.element, advanced, guideReplay);
+    dialog.append(heading, installation, downloads, preview, status, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();
@@ -257,10 +270,10 @@ export async function openSetup(options) {
     const showResources = value => {
         const unified = value && Object.hasOwn(value, 'ram_reserve_gib');
         reserveField = unified ? 'ram_reserve_gib' : 'gpu_reserve_gib';
-        reserveSummary.textContent = unified ? t('Reserved unified memory', '预留统一内存') : t('Reserved VRAM', '预留显存');
+        reserveSummary.firstChild.textContent = unified ? t('Reserved unified memory', '预留统一内存') : t('Reserved VRAM', '预留显存');
         // Mac generation shares unified memory and has no compatibility levels.
         compatibility.hidden = unified;
-        reserveLabel.firstChild.textContent = reserveSummary.textContent;
+        reserveLabel.firstChild.textContent = reserveSummary.firstChild.textContent;
         reserve.min = unified ? '1' : '0.2';
         reserveAuto.checked = value?.[reserveField] == null;
         reserve.disabled = reserveAuto.checked;
@@ -304,6 +317,8 @@ export async function openSetup(options) {
         try {
             showResources(await request('resources', {[reserveField]: reserveAuto.checked ? null : Number(reserve.value)}));
             reserveStatus.textContent = t('Saved · applies to the next request', '已保存 · 下次生成生效');
+            // The state sits at the row's end and fades after two seconds.
+            savedTimer = setTimeout(() => { reserveStatus.classList.add('fv-fade'); savedTimer = setTimeout(clearReserveStatus, 400); }, 2000);
         } catch (error) { reserveStatus.className = 'fv-failure'; fault(reserveStatus, error.message); }
         finally { saveReserve.disabled = false; }
     };

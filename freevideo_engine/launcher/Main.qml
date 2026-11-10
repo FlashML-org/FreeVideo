@@ -139,6 +139,7 @@ ApplicationWindow {
     function diskLabel() { return disk && !disk.problem && !disk.short ? t("Disk:", "所在硬盘：") : "" }
     // On a Mac, a disk problem is fixed by choosing another disk, not by reporting a fault.
     // Not a fault: a video is still generating, and the one way on is Retry installation.
+    function reportOpened(error, title) { return s.report_opened === error + "\u0001" + title }
     readonly property bool notAFault: s.failure.kind === "setup-busy" || s.failure.kind === "update-busy"
     readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
@@ -479,7 +480,7 @@ ApplicationWindow {
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             FButton { objectName: "copyError"; visible: !diskFailure && !notAFault; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
                             FButton { objectName: "showError"; visible: !notAFault; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
                         ScrollView {
@@ -865,7 +866,7 @@ ApplicationWindow {
                         FText { visible: !s.update.phase && !!text; text: releaseSummary(availableRelease); Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro }
                         FButton { text: t("What's new", "更新内容"); flat: true; visible: !s.update.phase && !!availableRelease; implicitHeight: theme.heightSm; onClicked: releaseNotesOpen = true }
                         FButton { objectName: "updateBannerManualDownload"; text: t("Download from the release page ↗", "去发布页手动下载 ↗"); flat: true; visible: s.update.status === "error" && !!s.update.release_page; implicitHeight: theme.heightSm; onClicked: backend.link(s.update.release_page) }
-                        FButton { objectName: "updateBannerReport"; text: t("Report a problem", "提交问题"); flat: true; visible: s.update.status === "error" && !!s.update.error; implicitHeight: theme.heightSm; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
+                        FButton { objectName: "updateBannerReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; visible: s.update.status === "error" && !!s.update.error; implicitHeight: theme.heightSm; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
                     }
                     FCard {
                         objectName: "modelUpgradeCard"
@@ -884,7 +885,7 @@ ApplicationWindow {
                             FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
                                       text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
                             FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
-                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(upgradeExplanation(), t("Model upgrade", "模型升级")) }
+                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(upgradeExplanation(), t("Model upgrade", "模型升级")) }
                             FButton {
                                 objectName: "modelUpgradeButton"; primary: true
                                 visible: upgrade.status === "available" || upgrade.status === "releasable"
@@ -988,7 +989,7 @@ ApplicationWindow {
                             FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("remove") }
                         }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
-                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: t("Report a problem", "提交问题"); onClicked: backend.reportProblem(s.image_pack.detail || "", t("Image pack", "图像模型包")) }
+                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")); onClicked: backend.reportProblem(s.image_pack.detail || "", t("Image pack", "图像模型包")) }
                         Flow {
                             visible: s.image_pack.install.state === "failed" && !!s.image_pack.report_id
                             Layout.fillWidth: true; spacing: 8
@@ -1018,7 +1019,7 @@ ApplicationWindow {
                                 text: s.prompt_model.suggest ? t("Download", "下载") : t("Resume", "继续"); enabled: !s.busy; onClicked: backend.promptModelAction("install") }
                             FButton { objectName: "promptModelPause"; visible: s.prompt_model.busy; text: t("Pause", "暂停"); onClicked: backend.promptModelAction("cancel") }
                             FButton { objectName: "promptModelDismiss"; visible: s.prompt_model.suggest; text: t("Don't ask again", "不再提示"); flat: true; onClicked: backend.dismissPromptHint() }
-                            FButton { objectName: "promptModelReport"; visible: s.prompt_model.install.state === "failed"; text: t("Report a problem", "提交问题"); flat: true; onClicked: backend.reportProblem(win.promptModelLine(), t("Prompt model", "提示词模型")) }
+                            FButton { objectName: "promptModelReport"; visible: s.prompt_model.install.state === "failed"; text: reportOpened(win.promptModelLine(), t("Prompt model", "提示词模型")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(win.promptModelLine(), t("Prompt model", "提示词模型")); flat: true; onClicked: backend.reportProblem(win.promptModelLine(), t("Prompt model", "提示词模型")) }
                         }
                     }
                 }
@@ -1485,7 +1486,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; spacing: 8
                                 FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
                                 FButton { text: t("Export report", "导出报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder"; text: t("Report a problem", "提交问题"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(s.error, s.failure.title || "") }
+                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted
@@ -1747,7 +1748,7 @@ ApplicationWindow {
             FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启可完成更新，模型和设置都会保留。") : s.update.candidate && s.update.manual ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Download it and replace this version; models and settings are kept.", "）。下载新版后替换当前版本，模型和设置会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + releaseVersion(currentRelease) + t(" (installed: ", "（已安装 ") + engineVersion + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Could not check for updates.", "暂时无法检查更新。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
             FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
             FButton { objectName: "updateManualDownloadButton"; text: t("Download from the release page ↗", "去发布页手动下载 ↗"); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.release_page; onClicked: backend.link(s.update.release_page) }
-            FButton { objectName: "updateDialogReport"; text: t("Report a problem", "提交问题"); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
+            FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
             FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: t("What's new", "更新内容") + " · " + releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }

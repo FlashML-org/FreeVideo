@@ -4,6 +4,25 @@ import sys
 from .system import windows
 
 
+def release_freed_heap():
+    """Return freed heap pages to the OS; glibc keeps them in the arena otherwise.
+
+    Loading a checkpoint one converted tensor at a time frees every read buffer,
+    but the allocator keeps those pages as anonymous memory, about half of the
+    bytes uploaded. Elsewhere (Windows, musl, macOS) there is nothing to trim.
+    """
+    import gc
+    gc.collect()
+    if sys.platform != 'linux':
+        return False
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except (OSError, AttributeError):
+        return False
+    return True
+
+
 def inference_working_pss(rollup, protected_file_bytes=None):
     """Keep anonymous/shared/dirty pages; clean file pages may be reclaimed.
 

@@ -94,5 +94,8 @@ include web/assets/tour/ca-record-wave.webp
 include web/assets/tour/cc-speech.mp4
 include web/assets/tour/cc-speech.webp
 include web/assets/tour/cc-speech-wave.webp
+include web/assets/tour/cd-narration.mp4
+include web/assets/tour/cd-narration.webp
+include web/assets/tour/cd-narration-wave.webp
 include web/assets/tour/c10-source.webp
 include web/assets/tour/fox-sheet.webp

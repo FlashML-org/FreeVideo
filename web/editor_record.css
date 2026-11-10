@@ -3,7 +3,8 @@
 .fv-ed-record-side{display:flex;min-width:0}
 .fv-ed-record-center{display:flex;align-items:center;gap:14px;min-width:0}
 .fv-ed-record-close{justify-self:end}
-.fv-ed-record-device{appearance:none;flex:0 1 auto;width:auto;max-width:min(100%,260px);height:32px;padding:0 12px;border:1px solid var(--fv-border);border-radius:16px;background:var(--fv-card);color:var(--fv-muted);font:inherit;text-overflow:ellipsis;cursor:pointer}
+.fv-ed-record-device{appearance:none;flex:0 1 auto;width:auto;max-width:100%;height:32px;padding:0 12px;border:1px solid var(--fv-border);border-radius:16px;background:var(--fv-card);color:var(--fv-muted);font:inherit;text-overflow:ellipsis;cursor:pointer}
+.fv-ed-record-side>.fv-select{flex:0 1 auto;max-width:min(100%,260px)}
 .fv-ed-record-device:hover:not(:disabled){color:var(--fv-ink)}
 .fv-ed-record-device:disabled{opacity:.5;cursor:default}
 /* The level is a row of dots that is always drawn, so it reads as a meter before anything is said; the lit part follows the voice. */

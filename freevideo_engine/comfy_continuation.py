@@ -123,12 +123,18 @@ def audio_lead_in(video, previous=None):
     start are untrimmed and the blocks are adjacent on the track. Apply before
     adjusting volume or resampling.
     """
+    return audio_lead_in_checked(video, previous)[0]
+
+
+def audio_lead_in_checked(video, previous=None):
+    """(the seam audio, None) as audio_lead_in reads it, or (None, why it could not be read): no_video,
+    no_record, old_record, source_changed or read_failed:<error type>. Never a path or a text."""
     try:
         import numpy as np
         from av import FFmpegError
         from .continuation_store import load, video_id
     except ImportError:
-        return None
+        return None, 'read_failed:ImportError'
     try:
         try:
             import folder_paths
@@ -144,21 +150,29 @@ def audio_lead_in(video, previous=None):
             def resolve(value):
                 return resolve_continue_from(str(value), folder_paths.get_output_directory(),
                                              folder_paths.get_input_directory())
-        path = resolve(video)
-        if path is None:
-            return None
-        value = load(path, directory=directory)
-        if value is None or 'audio_lead_in' not in value:
-            return None
-        if previous is not None:
-            source = resolve(previous)
-            if source is None or value['metadata'].get('source_id') != video_id(source):
+        def located(name):
+            # A video that is gone raises ValueError from the resolvers rather than returning None.
+            try:
+                return resolve(name)
+            except ValueError:
                 return None
+        path = located(video)
+        if path is None:
+            return None, 'no_video'
+        value = load(path, directory=directory)
+        if value is None:
+            return None, 'no_record'
+        if 'audio_lead_in' not in value:
+            return None, 'old_record'
+        if previous is not None:
+            source = located(previous)
+            if source is None or value['metadata'].get('source_id') != video_id(source):
+                return None, 'source_changed'
         return dict(samples=value['audio_lead_in'].astype(np.float32), before=LEAD_IN_SAMPLES,
-                    fade=LEAD_IN_FADE, sample_rate=LEAD_IN_RATE)
+                    fade=LEAD_IN_FADE, sample_rate=LEAD_IN_RATE), None
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError,
-            ImportError, OverflowError, FFmpegError):
-        return None
+            ImportError, OverflowError, FFmpegError) as error:
+        return None, 'read_failed:' + type(error).__name__
 
 
 def apply_audio_lead_in(previous_samples, samples, lead):

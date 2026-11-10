@@ -1,7 +1,7 @@
 .fv-ed-audio-panel{box-sizing:border-box;width:100%;color:var(--fv-ink);font:13px/1.4 var(--fv-font,system-ui)}
 .fv-ed-audio-form,.fv-ed-audio-cross{display:flex;flex-direction:column;gap:12px}
 .fv-ed-audio-panel [hidden]{display:none!important}
-.fv-ed-track-view .fv-ed-track-head{justify-content:space-between;gap:2px;padding:0 4px}
+.fv-ed-track-view .fv-ed-track-head{justify-content:space-between;gap:2px;padding:0 4px 0 16px}
 .fv-ed-track-head>svg{display:none}
 .fv-ed-track-head>span:not(.fv-ed-audio-track-controls){white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fv-ed-audio-track-controls{display:flex;gap:1px;flex:none}

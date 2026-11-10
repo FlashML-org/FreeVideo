@@ -190,6 +190,7 @@ class ComfyHost:
             raise RuntimeError('Joining is not available in this version') from None
         planned = record.get('plan')
         blocks = chain_store.leading_blocks(record)
+        shown = {'progress': record['join_progress']} if record.get('join_progress') is not None else {}
         # A planned chain shows exactly the requested length: what the last block made beyond it is left out.
         frames = planned['frames'] if planned and not planned['single'] and len(blocks) == len(record['blocks']) else None
         if record.get('original_audio') is not None:
@@ -200,14 +201,15 @@ class ComfyHost:
             if len(blocks) < len(record['blocks']):
                 frames = sum(block['new_frames'] for block in blocks)
             return join_outputs([block['output'] for block in blocks], record['id'], cancelled,
-                                frames=frames, replace=record.get('output'), original_audio=info)
+                                frames=frames, replace=record.get('output'), original_audio=info, **shown)
         kept = {'leads': record['lead_reader'], 'expected_seams': record.get('expected_seams')} \
             if record.get('lead_reader') is not None else {}
         from .chain_level import voiced
         # Parts with spoken lines keep their voice level and fullness to the first part's.
         speaking = [voiced(block.get('inputs', {}).get('text')) for block in blocks]
         return join_outputs([block['output'] for block in blocks], record['id'], cancelled,
-                            frames=frames, replace=record.get('output'), speaking=speaking, **kept)
+                            frames=frames, replace=record.get('output'), speaking=speaking,
+                            **shown, **kept)
 
     def split_texts(self, value, cancelled):
         """One description per part from the local prompt model: (parts, None) or (None, reason)."""
@@ -261,6 +263,11 @@ class ComfyHost:
         """A finished block's seam sound, read while its record is still in the shared store."""
         from .comfy_continuation import audio_lead_in
         return audio_lead_in(output, previous=previous)
+
+    def lead_check(self, output, previous):
+        """(the seam sound, None), or (None, why it could not be read), for the message of a lost seam."""
+        from .comfy_continuation import audio_lead_in_checked
+        return audio_lead_in_checked(output, previous=previous)
 
 
 def continuation_directions():

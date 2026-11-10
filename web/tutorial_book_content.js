@@ -143,6 +143,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'scenes-props',
+        title: {zh: '场景和道具', en: 'Scenes and props'},
+        summary: {zh: '把常用的地点和物品存进素材库，在描述中用 @ 引用。', en: 'Save a place or an object once, then mention it with @ in later prompts.'},
+        media: {
+            type: 'image',
+            src: {zh: 'scenes-props-1.webp', en: 'scenes-props-2.webp'},
+            alt: {zh: '道具窗口：名称和图片已用红框标出。', en: 'The prop window, with the name and the image outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，在“场景”或“道具”一行点“+”新建。', '填写“名称”，添加图片：可“上传图片”，也可“AI 生成”。场景最多 3 张图片，道具 1 张。', '点“保存”。', '之后在描述中输入 @ 选择它，并写明它在画面中的位置或用法。'],
+            en: ['Expand "Media" in the creation panel and choose + on the "Scenes" or "Props" row.', 'Enter a "Name" and add pictures: choose "Upload images" or "Generate with AI". A scene takes up to 3 pictures, a prop 1.', 'Choose "Save".', 'Later, type @ in the description to pick it, and say where it is in the shot or how it is used.'],
+        },
+        limits: {
+            zh: ['一次请求最多使用 1 个场景和 2 个道具，不占角色的 3 个名额。', '场景和道具不能与首帧、尾帧同时使用。', '物品的细节可能每次略有不同。'],
+            en: ['A request uses up to 1 scene and 2 props, which do not count toward the 3 characters.', 'Scenes and props cannot be used with first or last frames.', 'Fine details of an object may differ slightly between runs.'],
+        },
+    },
+    {
         id: 'replace-person',
         title: {zh: '替换人物', en: 'Replace person'},
         summary: {zh: '把视频里的人换成人物图中的人，动作和镜头沿用源视频。', en: 'Put the person from an image into a video, keeping the motion and camera of the source video.'},
@@ -177,6 +195,42 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['一次最多替换 2 个人物。', '替换人物不能与首帧、尾帧同时使用。'],
             en: ['Up to 2 people can be replaced in one request.', 'Replace person cannot be used with first or last frames.'],
+        },
+    },
+    {
+        id: 'edit-image',
+        title: {zh: '编辑图片', en: 'Edit a picture'},
+        summary: {zh: '在生成前裁剪、修图或加文字，原图始终保留。', en: 'Crop, retouch or add text before generating. The original is always kept.'},
+        media: {
+            type: 'image',
+            src: {zh: 'edit-image-1.webp', en: 'edit-image-2.webp'},
+            alt: {zh: '图片编辑窗口：工具栏中的裁剪、文字和“保存”已用红框标出。', en: 'The picture editor, with the crop and text tools and Save outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，上传图片后点缩略图，或点图片下方的“编辑”。', '在左侧工具栏选择工具：“裁剪与画布”调整构图，“画笔”“污点修复”“仿制图章”修图，“文字”添加文字。', '改错了可点“撤销”，或按 Ctrl+Z。', '点“保存”。修改后的图片用于生成，原图仍保留，点“恢复原图”可改回。'],
+            en: ['Expand "Media" in the creation panel, upload a picture, then choose its thumbnail or the "Edit" button below it.', 'Choose a tool on the left: "Crop and canvas" to recompose, "Brush", "Spot healing" or "Clone stamp" to retouch, "Text" to add words.', 'To undo a change, choose "Undo" or press Ctrl+Z.', 'Choose "Save". The edited picture is used for generation and the original is kept; choose "Original" to switch back.'],
+        },
+        limits: {
+            zh: ['视频的裁剪另在“调整裁剪”中设置。', '“AI 生成”和“点选”需要图片生成功能可用时才显示。'],
+            en: ['Crop for a video is set separately, with "Adjust crop".', '"Generate with AI" and "Click select" appear only when picture generation is available.'],
+        },
+    },
+    {
+        id: 'local-image-edit',
+        title: {zh: '局部改图', en: 'Change part of a picture'},
+        summary: {zh: '在编辑图片中框出一块区域，只让 AI 修改这一块，其余部分保持不变。', en: 'Select an area in the image editor and let the AI change only that area, leaving the rest as it is.'},
+        media: {
+            type: 'image',
+            src: {zh: 'local-image-edit-1.webp', en: 'local-image-edit-2.webp'},
+            alt: {zh: '编辑图片：图片上框出了一块选区，“选框”工具、描述栏和“生成”按钮已用红框标出。', en: 'The image editor, with an area selected on the picture and the Marquee tool, the description field and the "Generate" button outlined in red.'},
+        },
+        steps: {
+            zh: ['展开创作面板的“素材”，点图片（或右上角的“编辑”），打开“编辑图片”。', '点左上角的“AI 生成”，选择“改这张”。', '用“选框”“套索”或“魔棒”在图片上选出要修改的区域；按住 Shift 拖动可以添加区域，按住 Alt 拖动可以减去一块。', '在描述栏中写下选区要改成什么样。', '点“生⁠成”。结果出现后选区仍然保留，可以直接再改；满意后点“保存”。'],
+            en: ['Expand "Media" in the creation panel, click the picture (or "Edit" at its top right) to open "Edit image".', 'Click "Generate with AI" at the top left and choose "Edit this".', 'Select the area to change on the picture with "Marquee", "Lasso" or "Magic wand". Hold Shift while dragging to add an area, or Alt to take one away.', 'In the description field, describe how the selection should change.', 'Click "Generate". The selection stays after the result appears, so it can be changed again; click "Save" when satisfied.'],
+        },
+        limits: {
+            zh: ['没有选区时，“改这张”会按描述修改整张图片。', '“点选”需要先下载一次选区模型，面板会显示进度。', '图片生成需要所用的图片模型已经下载完成。'],
+            en: ['Without a selection, "Edit this" changes the whole picture according to the description.', '"Click select" needs a selection model downloaded once; the panel shows the progress.', 'Generating pictures needs the picture model to be downloaded first.'],
         },
     },
     {

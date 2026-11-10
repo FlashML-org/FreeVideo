@@ -3,6 +3,7 @@
 // graph node to hold it) and puts trigger words into the prompt the way the video panel does.
 import {reconcileLoraTriggers} from './lora_triggers.js';
 import {createVerdicts} from './lora_check.js';
+import {skinSelect} from './fv_select.js';
 
 export const IMAGE_LORA_LIMIT = 8, IMAGE_LORA_STRENGTH = 2;
 const STORE = 'freevideo_image_loras';
@@ -135,7 +136,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
                 catch (error) { note.textContent = error.message; }
             };
             const check = () => verdicts.get(row.name).then(() => { if (!disposed && wrap.isConnected && select.value === row.name) { show(); drawSummary(); syncPrompt(); onChange(); } });
-            wrap.append(on, select, strength, remove, trigger, problem);
+            wrap.append(on, skinSelect(select), strength, remove, trigger, problem);
             list.append(wrap); show();
             if (!verdicts.peek(row.name)) check();
             triggerWords(row.name).then(() => {

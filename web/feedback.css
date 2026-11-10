@@ -6,14 +6,18 @@
 .fv-feedback .fv-feedback-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:20px}
 .fv-feedback .fv-feedback-status{flex:1;margin:0;min-width:0;color:#a5b3c6;font-size:13px;line-height:1.45;text-decoration:none}
 .fv-feedback .fv-feedback-actions button{flex:none;min-width:88px}
-/* Keep the entry beside Settings; compact headers use the same labelled button with a line icon. */
-.fv-header-actions>button{white-space:nowrap}
-.fv-feedback-entry>svg{display:none;flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
-@media(max-width:1500px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry>svg{display:block}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-label{display:none}}
-@media(max-width:1040px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
-@media(max-width:1040px){.fv-autopilot .fv-feedback-entry>svg{display:block}.fv-autopilot .fv-feedback-label{display:none}}
-@media(max-width:1040px){.fv-editor .fv-guide-entry>svg{display:block}.fv-editor .fv-guide-entry .fv-feedback-label{display:none}}
-@media(max-width:800px){.fv-editor .fv-feedback-entry>svg{display:block}.fv-editor .fv-feedback-label{display:none}}
-@media(max-width:680px){.fv-studio .fv-feedback-entry>svg,.fv-view-navigation .fv-feedback-entry>svg{display:block}.fv-studio .fv-feedback-label,.fv-view-navigation .fv-feedback-label{display:none}}
+/* One group of header entries in every view: text only, 14 px, 32 px high, 8 px apart. */
+.fv-studio .fv-header .fv-header-actions{gap:8px}
+.fv-studio .fv-header .fv-header-actions>button,.fv-studio .fv-header .fv-header-actions .fv-lan-trigger,.fv-studio .fv-header .fv-header-actions .fv-version-info{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:0;height:32px;min-height:32px;padding:0 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--fv-muted);font:inherit;font-size:14px;font-weight:400;line-height:1;white-space:nowrap}
+.fv-studio .fv-header .fv-header-actions>button:hover,.fv-studio .fv-header .fv-header-actions .fv-lan-trigger:hover,.fv-studio .fv-header .fv-header-actions .fv-lan-trigger[aria-expanded=true],.fv-studio .fv-header .fv-header-actions .fv-version-info:hover{background:var(--fv-hover)!important;border-color:transparent;color:var(--fv-ink)!important}
+.fv-header .fv-header-actions .fv-lan{flex:none}
+.fv-header .fv-header-actions .fv-lan-dot{right:3px;top:3px;border:0;background:var(--fv-success)}
+.fv-version-dot{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:var(--fv-accent)}
+.fv-header .fv-header-actions .fv-version-info{position:relative}
+@media(pointer:coarse){.fv-header .fv-header-actions .fv-lan-trigger{width:auto;height:44px;padding:0 10px}}
+/* Narrow Autopilot header: the same collapse order as the other views, phone first, then Feedback and Tutorial. */
+@media(max-width:720px){.fv-autopilot .fv-header .fv-lan{display:none}}
+@media(max-width:560px){.fv-studio.fv-autopilot .fv-header .fv-header-actions .fv-feedback-entry{display:none}}
+@media(max-width:480px){.fv-studio.fv-autopilot .fv-header .fv-header-actions .fv-guide-entry,.fv-studio.fv-autopilot .fv-header .fv-header-actions .fv-version-info{display:none}}
 /* On a narrow screen the line gets the whole width above the button. */
 @media(max-width:480px){.fv-feedback .fv-feedback-actions{flex-wrap:wrap;row-gap:10px}.fv-feedback .fv-feedback-status{flex:1 0 100%}.fv-feedback .fv-feedback-status:empty{display:none}}

@@ -25,7 +25,7 @@ export const CLIP_FINALIZATION_COPY = {
     decodeAudio: ['Rendering the audio', '正在输出音频'],
     saveVideo: ['Saving the video', '正在保存视频'],
     openClip: ['Adding it to the timeline', '正在放到时间线上'],
-    joinClips: ['Joining the parts', '正在拼接各段'],
+    joinClips: ['Joining the parts', '正在接合各段'],
 };
 export function clipFinalization(job) {
     if (!job || !['running', 'queued'].includes(job.state)) return null;

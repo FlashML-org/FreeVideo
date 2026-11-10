@@ -118,6 +118,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("import { openEditorView } from './editor_loader.js';", 'const openEditorView = (...args) => globalThis.__freevideoEntryTest.openEditorView?.(...args);');
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
+        source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source
             .replace("import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';", 'const {createErrorPanel,errorText,createErrorReport,adviceFor} = globalThis.__freevideoEntryTest;')
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
@@ -555,8 +556,9 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.match(note.textContent, /Choose keyframes or references/);
         media.widgets[0].value = '[]'; media.inputs = []; media.onConnectionsChange(); await Promise.resolve();
         assert.equal(audioHelp.hidden, true);
-        assert.match(mode.textContent, /Text to video/);
-        const imageRole = toolbar.children.find(e => e.tag === 'select');
+        assert.equal(mode.textContent, '');
+        assert.equal(mode.hidden, true);
+        const imageRole = toolbar.children.find(e => e.tag === 'div' && e.className === 'fv-select')?.children.find(e => e.tag === 'select');
         const imagePicker = toolbar.children.find(e => e.tag === 'input' && e.accept.startsWith('.png'));
         assert.equal(imageRole.value, 'reference');
         api.fetchApi = async () => ({ok: true, json: async () => ({file: 'image.png'})});

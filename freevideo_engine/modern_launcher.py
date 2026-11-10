@@ -306,6 +306,13 @@ def create_ui(session, *, show=True):
 
         @Slot(str, str)
         def reportProblem(self, error, title):
+            # The button shows "opened" at once and the form follows on the next turn, so a slow browser is not met with a second click.
+            if not session.start_report(error, title):
+                return
+            self.refresh()
+            QTimer.singleShot(0, lambda: self.openReport(error, title))
+
+        def openReport(self, error, title):
             from . import __version__
             from .launcher_issue import environment_line, issue_url, machine_hardware, product_version
             from .windows_ux import open_browser

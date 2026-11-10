@@ -1,44 +1,34 @@
-// What's new in 0.5: the editor's own track view drawn with the editor's own classes and played as a short loop.
+// What's new in 0.5: the editor's own track view drawn with the editor's own classes and played once.
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
+import {PAGES, LINES} from './whatsnew_pages.js';
+import {segmented} from './editor_adjust.js';
+import {PEAKS} from './whatsnew_peaks.js';
+
 const KEY = 'freevideo.whatsnew-seen';
 const SERIES = '0.5';
-const PAGES = [
-    {id: 'story', title: ['Edit picture and sound, track by track', '画面和声音，逐轨编辑'], steps: [[0, {split: 0, music: 'old', voice: 'old'}], [1800, {split: 1}],
-        [3000, {music: 'running', progress: .3}], [4200, {progress: .8}], [5000, {music: 'new', progress: 0}],
-        [6600, {voice: 'running', progress: .5}], [7600, {progress: .9}], [8300, {voice: 'new', progress: 0}]], length: 11000},
-    {id: 'stems', title: ['Split the sound into three tracks', '把声音拆成三条轨道'], howto: 'separate-tracks',
-        steps: [[0, {split: 0, music: 'old', voice: 'old'}], [1400, {split: 1}]], length: 5200},
-    {id: 'music', title: ['Replace the music', '换一段配乐'], howto: 'replace-music',
-        steps: [[0, {split: 1, music: 'old', voice: 'old'}], [1200, {music: 'running', progress: .35}], [2000, {progress: .8}], [2700, {music: 'new', progress: 0}]], length: 5200},
-    {id: 'voice', title: ['Regenerate a line', '重新生成一句台词'], howto: 'replace-voice',
-        steps: [[0, {split: 1, music: 'old', voice: 'old'}], [1200, {voice: 'running', progress: .5}], [2200, {progress: .9}], [2800, {voice: 'new', progress: 0}]], length: 5200},
-];
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const svg = (tag, attrs = {}) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
 const ICON = {video: 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4', audio: 'M2 8h4l4-4v12l-4-4H2z M13 6c4 2 4 6 0 8 M13 9c1 1 1 1 0 2'};
 const icon = kind => { const s = svg('svg', {viewBox: '0 0 20 20', 'aria-hidden': 'true'}); s.append(svg('path', {d: ICON[kind]})); return s; };
 
-// A deterministic waveform in the editor's 200x40 box; shape decides how the sound reads.
-function wave(seed, shape, rate = 1) {
-    let x = seed * 9301 + 49297, d = '';
-    const random = () => (x = (x * 9301 + 49297) % 233280) / 233280;
-    for (let i = 0; i < 100; i++) {
-        const at = i / 100;
-        const level = shape === 'speech' ? (Math.sin(at * 23 * rate + seed) > -.2 ? .25 + random() * .75 : .06) * (.5 + .5 * Math.sin(at * 7 * rate + 1))
-            : shape === 'music' ? .35 + .4 * Math.sin(at * 9 * rate + seed) ** 2 + random() * .15
-            : shape === 'ambience' ? .12 + random() * .12 : .3 + random() * .7;
-        const h = Math.max(.5, Math.min(1, level) * 17);
-        d += `M${(i + .5) * 2} ${20 - h}v${h * 2}`;
-    }
+// A waveform in the editor's 200x40 box from real peaks, drawn as the editor draws them.
+function wave(id) {
+    const peaks = PEAKS[id];
+    let d = '';
+    peaks.forEach((peak, i) => { const h = Math.max(.5, Math.min(1, peak) * 17); d += `M${(i + .5) * 2} ${20 - h}v${h * 2}`; });
     const s = svg('svg', {viewBox: '0 0 200 40', preserveAspectRatio: 'none', 'aria-hidden': 'true'});
     s.classList.add('fv-ed-waveform'); s.append(svg('path', {d})); return s;
 }
 
-const ROWS = [['v1', 'video', 64], ['a1', 'audio', 40], ['a2', 'audio', 40], ['a3', 'audio', 40]];
+const frame = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 
-export function createStage(cn) {
-    const t = (en, zh) => cn ? zh : en;
-    const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true');
+// One page's scene: the editor's track view under its generation bar, changed only by the ops of its steps.
+export function createStage(cn, page) {
+    const t = pair => pair[cn ? 1 : 0];
+    const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true'); root.dataset.lang = cn ? 'zh' : 'en';
+    let ticker = 0, dragTicker = 0, instantLayout = false, need = 0;
+    // The generation bar, the lines and the recording bar are the editor's own, under the editor's styles; they share one box above the tracks.
+    const top = el('div', null, 'fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor');
     const view = el('section', null, 'fv-ed-track-view'); view.dataset.trackSwitches = 'false';
     const heads = el('div', null, 'fv-ed-track-heads'), scroll = el('div', null, 'fv-ed-track-scroll'), content = el('div', null, 'fv-ed-track-content');
     const ruler = el('div', null, 'fv-ed-ruler');
@@ -48,95 +38,241 @@ export function createStage(cn) {
         ruler.append(tick);
     }
     content.append(ruler);
-    let top = 24;
-    const rows = {}, heading = {};
-    for (const [id, kind, height] of ROWS) {
-        const row = el('div', null, 'fv-ed-track-row'); row.dataset.track = id; row.style.top = `${top}px`; row.style.height = `${height}px`;
-        const head = el('div', null, 'fv-ed-track-head'); head.dataset.track = id; head.style.top = `${top}px`; head.style.height = `${height}px`;
-        const name = el('span'); head.append(icon(kind), name); heads.append(head); content.append(row);
-        rows[id] = row; heading[id] = name; top += height + 6;
+    let bottom = 24;
+    const rows = {}, names = {}, headNodes = {}, bodies = {};
+    for (const row of page.rows) {
+        const body = el('div', null, 'fv-ed-track-row'); body.dataset.track = row.id; body.style.top = `${bottom}px`; body.style.height = `${row.height}px`;
+        const head = el('div', null, 'fv-ed-track-head'); head.dataset.track = row.id; head.style.top = `${bottom}px`; head.style.height = `${row.height}px`;
+        const name = el('span', t(row.name)); head.append(icon(row.kind), name); heads.append(head); content.append(body);
+        rows[row.id] = body; names[row.id] = {row, name}; headNodes[row.id] = head; bodies[row.id] = body; bottom += row.height + 6;
     }
-    const clip = (row, name, node) => { const c = el('div', null, 'fv-ed-clip'); c.dataset.name = name; c.style.left = '0'; c.style.width = '100%';
-        const media = el('span', null, 'fv-ed-clip-media'); if (node) media.append(node); c.append(media);
-        const fill = el('span', null, 'fv-ed-progress-fill'); c.append(fill); row.append(c); return c; };
-    const video = clip(rows.v1, 'video'); video.querySelector('.fv-ed-clip-media').classList.add('fv-whatsnew-picture');
-    const mixed = clip(rows.a1, 'mixed', wave(3, 'mixed'));
-    const voice = [clip(rows.a1, 'voice-old', wave(5, 'speech')), clip(rows.a1, 'voice-new', wave(11, 'speech', 2.6))];
-    const music = [clip(rows.a2, 'music-old', wave(7, 'music')), clip(rows.a2, 'music-new', wave(13, 'music', 5.5))];
-    clip(rows.a3, 'ambience', wave(9, 'ambience'));
-    for (const c of [video, mixed, ...voice, ...music]) c.tabIndex = -1;
-    scroll.append(content); view.append(heads, scroll); root.append(view);
-    const names = () => {
-        const split = root.dataset.split === '1';
-        heading.v1.textContent = t('Video', '画面');
-        heading.a1.textContent = split ? t('Dialogue', '人声') : t('Audio', '声音');
-        heading.a2.textContent = t('Music', '音乐'); heading.a3.textContent = t('Ambience', '环境声');
+    // The view and the playhead reach the last track that is showing, and follow it when a track appears.
+    const fit = () => {
+        let low = 24;
+        for (const id in names) if (headNodes[id].dataset.on !== 'false') low = Math.max(low, parseFloat(bodies[id].style.top) + names[id].row.height + 6);
+        low = Math.max(low, menu.offsetHeight + 40);
+        content.style.height = `${low}px`; playhead.style.bottom = 'auto'; playhead.style.height = `${low}px`;
+        // What the frame needs in this state: the bar and the tracks, or the bar and the lines laid over the lower tracks with the dialogue track left showing.
+        need = Math.max(top.offsetHeight + low + 4, linesBox.hidden ? 0 : top.offsetHeight + 122 + linesBox.offsetHeight);
     };
-    const set = state => {
-        for (const [k, v] of Object.entries(state)) { if (k === 'progress') root.style.setProperty('--fv-ed-progress', String(v)); else root.dataset[k] = String(v); }
-        for (const [pair, key] of [[voice, 'voice'], [music, 'music']]) {
-            pair[0].dataset.state = root.dataset[key] === 'running' ? 'running' : 'ready';
-            if (root.dataset[key] === 'running') pair[0].style.setProperty('--fv-ed-progress', root.style.getPropertyValue('--fv-ed-progress') || '0');
+    const clips = {};
+    for (const spec of page.clips) {
+        const c = el('div', null, 'fv-ed-clip'); c.dataset.name = spec.id; c.tabIndex = -1;
+        const media = el('span', null, 'fv-ed-clip-media');
+        if (spec.picture) media.classList.add('fv-whatsnew-picture');
+        if (spec.wave) media.append(wave(spec.wave));
+        c.append(media, el('span', null, 'fv-ed-progress-fill'));
+        rows[spec.row].append(c); clips[spec.id] = {spec, node: c};
+    }
+    const playhead = el('div', null, 'fv-whatsnew-playhead'), range = el('div', null, 'fv-whatsnew-range'), rangeText = el('span');
+    range.append(rangeText); content.append(range, playhead);
+    // The clip's right-click menu, as the editor draws it.
+    const menuBox = el('div', null, 'fv-whatsnew-menu fv-whatsnew-ed fv-studio fv-editor'), menu = el('div', null, 'fv-ed-context-menu');
+    for (const item of page.menuItems || []) {
+        if (item === '-') { const rule = el('div'); rule.setAttribute('role', 'separator'); menu.append(rule); continue; }
+        const b = el('button'); b.type = 'button'; b.tabIndex = -1; b.setAttribute('role', 'menuitem'); b.append(el('span', t(item), 'fv-ed-menu-label')); menu.append(b);
+    }
+    menuBox.append(menu); root.append(menuBox);
+    scroll.append(content); view.append(heads, scroll);
+
+    const SRC = page.lines || LINES;
+    const button = (label, cls) => { const b = el('button', label, cls); b.type = 'button'; b.tabIndex = -1; return b; };
+    const genbar = el('div', null, 'fv-ed-genbar');
+    const voice = el('div', null, 'fv-ed-voice'), voiceTop = el('div', null, 'fv-ed-voice-top'), voiceList = el('div', null, 'fv-ed-voice-lines');
+    voiceTop.append(el('span', t(['Lines', '台词']), 'fv-ed-voice-name'));
+    const lineNodes = SRC.map((_, i) => {
+        const line = el('div', null, 'fv-ed-voice-line'), main = el('div', null, 'fv-ed-voice-main'), time = button(`0:0${[0, 4, 7][i]}`, 'fv-ed-voice-time'), body = el('div', null, 'fv-ed-voice-text');
+        main.append(el('span', null, 'fv-ed-voice-mark'), time, body); line.append(main); voiceList.append(line); return {line, body};
+    });
+    // The three lines lie over the lower tracks in a box of their own; the bar keeps one row, with the name and the button.
+    const linesBox = el('div', null, 'fv-whatsnew-lines fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor'); linesBox.hidden = true; linesBox.append(voiceList);
+    voice.append(voiceTop);
+    const presets = el('div', null, 'fv-ed-music-presets');
+    const picker = (label, options) => {
+        const row = el('div', null, 'fv-ed-music-row'), control = segmented(options.map(([value, text]) => ({value, label: t(text)})));
+        control.setAttribute('aria-label', label); control.querySelectorAll('button').forEach(b => { b.tabIndex = -1; });
+        row.append(el('span', label, 'fv-ed-music-label'), control); presets.append(row); return control;
+    };
+    const styles = picker(t(['Style', '风格']), [['piano', ['Piano', '钢琴']], ['folk', ['Folk', '民谣']], ['ambient', ['Ambient', '氛围']]]);
+    const moods = picker(t(['Mood', '情绪']), [['calm', ['Calm', '舒缓']], ['upbeat', ['Upbeat', '明快']], ['tense', ['Tense', '紧张']], ['warm', ['Warm', '温暖']], ['sad', ['Sad', '悲伤']]]);
+    const description = el('div', null, 'fv-ed-description-box'), text = el('textarea', null, 'fv-ed-description');
+    text.rows = 1; text.style.height = '36px'; text.readOnly = true; text.tabIndex = -1; description.append(text);
+    const hint = el('div', null, 'fv-ed-gen-hint'), go = button('', 'fv-ed-generate fv-primary'), cancel = button(t(['Cancel', '取消']));
+    genbar.append(voice, presets, description, hint, go, cancel);
+    const record = el('div', null, 'fv-ed-record'), recMain = el('button', null, 'fv-ed-record-main'), recNote = el('span', null, 'fv-ed-record-note');
+    recMain.type = 'button'; recMain.tabIndex = -1;
+    const recSide = el('div', null, 'fv-ed-record-side'), recCenter = el('div', null, 'fv-ed-record-center'), recEnd = el('div', null, 'fv-ed-record-side fv-ed-record-end');
+    recSide.append(el('span', t(['Record', '录音']))); recCenter.append(recMain); recEnd.append(recNote); record.append(recSide, recCenter, recEnd);
+    top.append(genbar, record); root.append(top, view, linesBox);
+    const list = el('ol', null, 'fv-whatsnew-list'); for (const item of page.list || []) list.append(el('li', t(item)));
+
+    let typing = 0, timers = [];
+    const place = (c, at, to) => { c.node.style.left = `${at * 100}%`; c.node.style.width = `${(to - at) * 100}%`; };
+    const bar = {}, linesState = {};
+    const typeInto = (node, full, done) => {
+        const put = value => { if (node.tagName === 'TEXTAREA') node.value = value; else node.textContent = value; };
+        clearInterval(typing); const per = cn ? 70 : 35; let n = 0; put('');
+        typing = setInterval(() => { n++; put(full.slice(0, n)); if (n >= full.length) { clearInterval(typing); done?.(); } }, per);
+    };
+    // The box above the tracks grows and shrinks to its content over 240 ms.
+    const morph = change => {
+        if (instantLayout) { change(); return; }
+        const from = top.offsetHeight, shown = [voice.hidden, record.hidden, genbar.hidden].join();
+        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight;
+        // A panel that appears or goes is swapped at once, so no half-open frame shows; the other changes grow or shrink over 240 ms.
+        if (from === to || shown !== [voice.hidden, record.hidden, genbar.hidden].join()) { top.style.transition = ''; return; }
+        top.style.height = `${from}px`; top.getBoundingClientRect(); top.style.transition = ''; top.style.height = `${to}px`;
+    };
+    const paintLines = () => {
+        lineNodes.forEach(({line, body: node}, i) => {
+            const [full, old, fresh] = SRC[i].map(x => t(x));
+            line.dataset.changed = String(i === 1 && !!linesState.edit);
+            if (i !== 1) { node.textContent = full; return; }
+            if (linesState.edit === 'strike') node.replaceChildren(...full.split(old).flatMap((p, k, a) => k < a.length - 1 ? [document.createTextNode(p), el('s', old)] : [document.createTextNode(p)]));
+            else if (linesState.edit === 'typing') { const [head, tail] = full.split(old); node.replaceChildren(document.createTextNode(head), el('s', old), el('b', null, 'fv-whatsnew-new'), document.createTextNode(tail)); typeInto(node.querySelector('b'), fresh); }
+            else if (linesState.edit === 'done') node.textContent = full.replace(old, fresh);
+            else node.textContent = full;
+        });
+    };
+    const paintBar = () => {
+        const mode = bar.mode || 'idle', running = mode === 'running', recording = mode === 'record', open = mode === 'selected' || mode === 'lines';
+        genbar.hidden = recording; record.hidden = !recording;
+        genbar.dataset.mode = running ? 'running' : open ? 'selected' : 'idle';
+        voice.hidden = linesBox.hidden = !linesState.shown; if (linesState.shown) genbar.dataset.voice = 'true'; else genbar.removeAttribute('data-voice');
+        presets.hidden = !bar.presets; genbar.classList.toggle('fv-ed-genbar-music', !!bar.presets);
+        styles.value = bar.style; moods.value = bar.mood; styles.disabled = moods.disabled = running;
+        text.placeholder = bar.ph ? t(bar.ph) : ''; text.disabled = running;
+        hint.hidden = !running; hint.textContent = running ? (bar.hint || []).map(t).join(' · ') : '';
+        go.hidden = running; go.disabled = !open; go.textContent = bar.button ? t(bar.button) : ''; cancel.hidden = !running;
+        record.dataset.phase = bar.phase || 'idle'; recMain.textContent = bar.phase === 'recording' ? t(['Stop', '停止']) : t(['Start recording', '开始录音']);
+    };
+    const reset = () => {
+        clearInterval(typing); clearInterval(ticker); clearInterval(dragTicker); timers.forEach(clearTimeout); timers = []; recNote.textContent = '';
+        for (const key of Object.keys(bar)) delete bar[key];
+        for (const key of Object.keys(linesState)) delete linesState[key];
+        for (const c of Object.values(clips)) {
+            place(c, c.spec.at, c.spec.at + (c.spec.grow ? .02 : c.spec.to - c.spec.at));
+            c.node.dataset.on = String(!c.spec.off); c.node.dataset.state = 'ready'; c.node.removeAttribute('data-selected'); c.node.removeAttribute('data-hl');
+            c.node.style.removeProperty('--fv-ed-progress'); c.node.style.clipPath = ''; c.node.style.transition = ''; c.node.style.opacity = '';
         }
-        names();
+        for (const id in names) { names[id].name.textContent = t(names[id].row.name); headNodes[id].dataset.on = String(!names[id].row.late); bodies[id].dataset.on = String(!names[id].row.late); }
+        const faders = [...Object.values(clips).map(c => c.node), ...Object.values(headNodes), ...Object.values(bodies)];
+        faders.forEach(n => { n.style.transition = 'none'; }); frame(() => faders.forEach(n => { n.style.transition = ''; }));
+        playhead.style.cssText = ''; playhead.dataset.on = 'false'; range.dataset.on = 'false'; range.style.cssText = ''; menuBox.dataset.on = 'false';
+        text.value = ''; list.querySelectorAll('li').forEach(li => li.removeAttribute('data-lit'));
+        top.style.height = ''; top.style.transition = '';
+        paintLines(); paintBar(); fit();
     };
-    set({split: 0, music: 'old', voice: 'old', progress: 0});
-    return {element: root, set};
+    const set = (ops, instant = false) => {
+        if (ops.split) {
+            const faders = [...Object.values(clips).map(c => c.node), ...Object.values(headNodes), ...Object.values(bodies)];
+            faders.forEach(n => { n.style.transition = 'none'; }); frame(() => faders.forEach(n => { n.style.transition = ''; }));
+            for (const c of Object.values(clips)) { if (c.spec.splits) c.node.dataset.on = 'true'; if (c.spec.id === 'mix') c.node.dataset.on = 'false'; }
+            for (const id in names) if (names[id].row.late && !names[id].row.record) { headNodes[id].dataset.on = 'true'; bodies[id].dataset.on = 'true'; }
+            if (names.a1.row.dialogue) names.a1.name.textContent = t(names.a1.row.dialogue);
+        }
+        if (ops.rowShow) { headNodes[ops.rowShow].dataset.on = 'true'; bodies[ops.rowShow].dataset.on = 'true'; }
+        for (const id of ops.hide || []) clips[id].node.dataset.on = 'false';
+        for (const id of ops.show || []) clips[id].node.dataset.on = 'true';
+        if ('select' in ops) for (const c of Object.values(clips)) { if (c.spec.id === ops.select) c.node.dataset.selected = 'true'; else c.node.removeAttribute('data-selected'); }
+        if ('hl' in ops) for (const c of Object.values(clips)) { if (ops.hl.includes(c.spec.id)) c.node.dataset.hl = 'true'; else c.node.removeAttribute('data-hl'); }
+        if (ops.lit) list.querySelectorAll('li').forEach((li, i) => { if (ops.lit.includes(i)) li.dataset.lit = 'true'; else li.removeAttribute('data-lit'); });
+        if (ops.menu) {
+            menuBox.dataset.on = String(!!ops.menu.show);
+            menuBox.style.left = `${view.offsetLeft + scroll.offsetLeft + Math.max(8, Math.min(scroll.clientWidth * .38, scroll.clientWidth - menu.offsetWidth - 8))}px`; menuBox.style.top = `${view.offsetTop + 34}px`;
+            menu.querySelectorAll('button').forEach((b, i) => { b.dataset.hover = String(ops.menu.hover === i); });
+        }
+        morph(() => {
+            if (ops.bar) {
+                const wasType = ops.bar.type;
+                Object.assign(bar, ops.bar);
+                if ('text' in ops.bar) { text.value = ops.bar.text ? t(ops.bar.text) : ''; }
+                if (wasType) { delete bar.type; typeInto(text, t(wasType), paintBar); }
+            }
+            if (ops.lines) { Object.assign(linesState, ops.lines); paintLines(); }
+            paintBar();
+        });
+        fit();
+        if ('at' in ops) { playhead.dataset.on = 'true'; playhead.style.left = `${ops.at * 100}%`; }
+        if (ops.run && !instant) {
+            const {id, ms} = ops.run, node = clips[id].node, fill = node.querySelector('.fv-ed-progress-fill');
+            node.dataset.state = 'running'; fill.style.transition = 'none'; node.style.setProperty('--fv-ed-progress', '0');
+            frame(() => { fill.style.transition = `width ${ms}ms linear`; node.style.setProperty('--fv-ed-progress', '1'); });
+        }
+        if (ops.done) { const c = clips[ops.done].node; c.dataset.state = 'ready'; c.style.removeProperty('--fv-ed-progress'); }
+        if (ops.reveal && !instant) {
+            const {id, ms} = ops.reveal, node = clips[id].node;
+            node.style.transition = 'none'; node.style.clipPath = 'inset(0 100% 0 0)';
+            frame(() => { node.style.transition = `clip-path ${ms}ms var(--fv-ease)`; node.style.clipPath = 'inset(0 0 0 0)'; });
+        }
+        if (ops.flash && !instant) { const node = clips[ops.flash].node; node.dataset.flash = 'true'; timers.push(setTimeout(() => node.removeAttribute('data-flash'), 900)); }
+        if (ops.play) {
+            const [from, to, ms] = ops.play; playhead.dataset.on = 'true'; playhead.style.transition = 'none'; playhead.style.left = `${(instant ? to : from) * 100}%`;
+            if (!instant) frame(() => { playhead.style.transition = `left ${ms}ms linear`; playhead.style.left = `${to * 100}%`; });
+        }
+        if (ops.rec) {
+            const {id, from, to, ms} = ops.rec, c = clips[id]; c.node.style.transition = 'none'; place(c, from, instant ? to : from + .01); c.node.dataset.on = 'true';
+            if (!instant) {
+                frame(() => { c.node.style.transition = `width ${ms}ms linear`; place(c, from, to); });
+                const started = performance.now(); clearInterval(ticker);
+                ticker = setInterval(() => { const sec = Math.min(Math.floor((performance.now() - started) / 1000), Math.floor(ms / 1000)); recNote.textContent = `0:0${sec}`; }, 250);
+            }
+        }
+        if (instant) recNote.textContent = '';
+    };
+    reset();
+    // Reduced motion shows the finished page: every step applied at once, typed text complete.
+    const settle = ops => { const o = {...ops}; if (o.bar?.type) o.bar = {...o.bar, text: o.bar.type, type: null}; if (o.lines?.edit === 'typing') o.lines = {...o.lines, edit: 'done'}; set(o, true); };
+    const finish = () => { instantLayout = true; for (const [, ops] of page.steps) settle(ops); range.dataset.on = 'false'; instantLayout = false; };
+    // The tallest the demo gets over the steps: the frame has that height from the start to the end, so nothing below it moves.
+    const tallest = () => {
+        root.classList.add('fv-whatsnew-measure'); instantLayout = true; reset(); let max = need;
+        for (const [, ops] of page.steps) { settle(ops); max = Math.max(max, need); }
+        instantLayout = false; reset(); root.classList.remove('fv-whatsnew-measure'); return max;
+    };
+    return {element: root, list, set, reset, finish, tallest, height: value => { root.style.height = `${value}px`; }};
 }
 
-// Plays a page's steps in a loop; reduced motion shows the finished state once.
+// Plays a page's steps once and stays on the finished state; reduced motion shows that state at once.
 export function play(stage, page, reduce) {
     let timers = [], dead = false;
-    const run = () => {
-        if (dead) return;
-        for (const [at, state] of page.steps) timers.push(setTimeout(() => !dead && stage.set(state), at));
-        timers.push(setTimeout(run, page.length));
-    };
-    if (reduce) { for (const [, state] of page.steps) stage.set(state); return () => {}; }
-    run();
+    if (reduce) { stage.finish(); return () => {}; }
+    stage.reset();
+    for (const [at, ops] of page.steps) timers.push(setTimeout(() => !dead && stage.set(ops), at));
     return () => { dead = true; timers.forEach(clearTimeout); };
 }
 
 const seenSeries = () => { try { return localStorage.getItem(KEY) === SERIES; } catch { return false; } };
 const remember = () => { try { localStorage.setItem(KEY, SERIES); } catch { /* Shown again next time. */ } };
 
-export function showWhatsNew(cn, {openedBy = 'user', start} = {}) {
+export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
     const t = (en, zh) => cn ? zh : en;
     const css = document.getElementById('fv-whatsnew-css') || Object.assign(document.createElement('link'), {id: 'fv-whatsnew-css', rel: 'stylesheet', href: new URL('./whatsnew.css', import.meta.url).href});
     if (!css.isConnected) document.head.append(css);
-    for (const sheet of ['editor_tracks.css']) {
+    for (const sheet of ['editor.css', 'editor_expand.css', 'editor_adjust.css', 'editor_tracks.css', 'editor_menu.css', 'editor_voice.css', 'editor_record.css']) {
         const id = 'fv-whatsnew-' + sheet;
         if (!document.getElementById(id)) document.head.append(Object.assign(document.createElement('link'), {id, rel: 'stylesheet', href: new URL('./' + sheet, import.meta.url).href}));
     }
     const dialog = el('dialog', null, 'fv-whatsnew'); dialog.setAttribute('aria-label', t("What's new", '新功能'));
-    const title = el('h2'), close = el('button', '×', 'fv-whatsnew-close'), stageHost = el('div', null, 'fv-whatsnew-host'), foot = el('div', null, 'fv-whatsnew-foot');
-    const dots = el('div', null, 'fv-whatsnew-dots'), take = el('button', t('Take me there', '带我去'), 'fv-whatsnew-take'), next = el('button', null, 'fv-whatsnew-next');
-    take.type = next.type = close.type = 'button'; take.hidden = true; close.setAttribute('aria-label', t('Close', '关闭'));
-    foot.append(dots, take, next); dialog.append(close, title, stageHost, foot);
+    const title = el('h2'), stageHost = el('div', null, 'fv-whatsnew-host'), foot = el('div', null, 'fv-whatsnew-foot');
+    const close = el('button', t('Close', '关闭'), 'fv-whatsnew-close'); close.type = 'button';
+    foot.append(close); dialog.append(title, stageHost, foot);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let index = 0, stop = () => {}, token = 0;
-    const dotButtons = PAGES.map((page, i) => { const b = el('button', null, 'fv-whatsnew-dot'); b.type = 'button'; b.setAttribute('aria-label', page.title[cn ? 1 : 0]); b.onclick = () => show(i); dots.append(b); return b; });
-    function show(i) {
-        stop(); index = i; const page = PAGES[i], mine = ++token;
-        title.textContent = page.title[cn ? 1 : 0];
-        const stage = createStage(cn); stageHost.replaceChildren(stage.element);
-        stop = play(stage, page, reduce);
-        dotButtons.forEach((b, n) => b.setAttribute('aria-current', String(n === i)));
-        next.textContent = i === PAGES.length - 1 ? t('Done', '完成') : t('Next', '下一页');
-        take.hidden = true;
-        // A page that has no guided tour yet shows no button.
-        if (page.howto) Promise.resolve(window.freevideoHowTo?.available?.(page.howto)).then(ok => { if (ok && token === mine) take.hidden = false; }).catch(() => {});
-    }
-    close.onclick = () => dialog.close();
-    next.onclick = () => index === PAGES.length - 1 ? dialog.close() : show(index + 1);
-    take.onclick = () => { const id = PAGES[index].howto; dialog.close(); void window.freevideoHowTo?.start?.(id); };
-    dialog.addEventListener('keydown', event => {
-        event.stopPropagation();
-        if (event.key === 'ArrowRight' && index < PAGES.length - 1) show(index + 1);
-        if (event.key === 'ArrowLeft' && index > 0) show(index - 1);
+    const page = PAGES[0], stage = createStage(cn, page);
+    title.textContent = page.title[cn ? 1 : 0]; stageHost.replaceChildren(stage.element); dialog.insertBefore(stage.list, foot);
+    let stop = () => {}, closed = false;
+    // The demo frame is as tall as its tallest state for the whole run, so the list under it and the dialog never move.
+    stageHost.style.visibility = 'hidden';
+    const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
+    Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
+        if (closed) return;
+        stage.height(stage.tallest());
+        stageHost.style.visibility = ''; stop = play(stage, page, reduce);
     });
-    dialog.addEventListener('close', () => { stop(); remember(); dialog.remove(); }, {once: true});
-    document.body.append(dialog); dialog.showModal(); show(start ?? 0); dialog.tabIndex = -1; dialog.focus();
+    close.onclick = () => dialog.close();
+    dialog.addEventListener('keydown', event => event.stopPropagation());
+    dialog.addEventListener('close', () => { closed = true; stop(); remember(); dialog.remove(); }, {once: true});
+    document.body.append(dialog); dialog.showModal(); dialog.tabIndex = -1; dialog.focus();
     return () => { if (dialog.open) dialog.close(); };
 }
 

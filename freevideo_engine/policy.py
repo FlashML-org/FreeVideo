@@ -359,6 +359,14 @@ def activation_bytes(head, tokens):
 # request's budget. Cached or preencoded conditioning skips the encoder
 # entirely and this does not apply.
 ENCODER_HOST_BYTES = int(3.6 * GiB)
+# The host floor for the video stage is 4 GiB. On Linux, freed VAE-load
+# temporaries are returned to the OS (ram.release_freed_heap), which took the
+# measured 1344x768/10 s anonymous peak from 4.8 to 3.5 GiB; full runs passed
+# with 4.0, 4.5 and 5.0 GiB of RAM. There the floor is the encoder floor, so one
+# request is not admitted for the video stage and then refused for the encoder
+# in front of it. Windows and macOS do not run that trim and keep 4 GiB.
+VIDEO_HOST_BYTES = 4*GiB
+LINUX_VIDEO_HOST_BYTES = ENCODER_HOST_BYTES
 
 # Residual placement keeps the same head/FF/projection kernels. Full-capacity
 # qualification and its platform scope are recorded in docs/POLICY.md. This
@@ -955,7 +963,8 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
     # The encoding phase already has a measured host floor. Do not discard a
     # preloaded encoder because the later video stage needs a larger minimum;
     # automatic_profile replans generation after conditioning has been saved.
-    ram_minimum = ENCODER_HOST_BYTES if stage == 'encoding' else 4*GiB
+    ram_minimum = (ENCODER_HOST_BYTES if stage == 'encoding' else
+                   LINUX_VIDEO_HOST_BYTES if hardware.system == 'Linux' else VIDEO_HOST_BYTES)
     # Let a Windows foreground request spend RAM growth headroom before
     # rejecting it, as the GPU's is spent below: the default 2 GiB is taken
     # from live available memory, so a machine whose free RAM sits a few

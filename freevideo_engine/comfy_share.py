@@ -107,6 +107,10 @@ def layout(data):
     return template, (x, y, w, h), hashlib.sha256(encoded + json.dumps(rect).encode()).hexdigest()[:20]
 
 
+# The frame being written and the total (0 when unknown) for each export running now, read by the sharing dialog.
+PROGRESS = {}
+
+
 def video_export(root, identity, data, stop):
     import av
     from PIL import Image
@@ -141,6 +145,8 @@ def video_export(root, identity, data, stop):
             audio = writer.add_stream_from_template(audio_source) if audio_source else None
             streams = [source] + ([audio_source] if audio_source else [])
             base = Image.new('RGB', template.size, '#111720'); base.paste(template, mask=template.getchannel('A'))
+            total = source.frames or (round(float(source.duration * source.time_base * rate)) if source.duration else 0)
+            PROGRESS[identity] = (0, total)
             count = 0
             for packet in reader.demux(streams):
                 if stop.is_set():
@@ -154,6 +160,7 @@ def video_export(root, identity, data, stop):
                         rendered.pts, rendered.time_base = frame.pts, frame.time_base
                         for output in video.encode(rendered): writer.mux(output)
                         count += 1
+                        PROGRESS[identity] = (count, max(total, count))
                 elif packet.dts is not None and audio is not None:
                     packet.stream = audio; writer.mux(packet)
             for packet in video.encode(): writer.mux(packet)
@@ -162,6 +169,7 @@ def video_export(root, identity, data, stop):
         temporary.replace(target)
         return target, key
     finally:
+        PROGRESS.pop(identity, None)
         temporary.unlink(missing_ok=True)
 
 
@@ -190,6 +198,11 @@ def register():
             except Exception:
                 raise web.HTTPNotFound(text='First frame unavailable') from None
         return web.Response(body=data, content_type='image/jpeg', headers={'Cache-Control': 'private, no-store'})
+
+    @server.routes.get('/freevideo/share/progress')
+    async def progress(request):
+        frame, total = PROGRESS.get(request.query.get('id'), (None, 0))
+        return web.json_response({} if frame is None else {'frame': frame, 'total': total}, headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/share/video')
     async def export(request):

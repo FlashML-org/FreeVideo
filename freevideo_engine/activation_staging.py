@@ -1,6 +1,16 @@
 """Contiguous D2H head groups with double-buffered CPU projection tiles."""
 import collections
+import contextlib
 import torch
+
+# The first copies through a freshly locked buffer, and the first tiles of its
+# first projection, are followed by a wait for the device. A deferred CUDA
+# "invalid argument" from a queued locked copy is otherwise reported by
+# whichever later call happens to run (reports on the second pass's first layer
+# name three different statements), outside the handler that continues in
+# pageable memory. Waiting here raises it inside that handler, with the stage
+# named. A handful of waits per buffer set, none afterwards.
+CHECKED_COPIES = 3
 
 # Every refused locked-page copy of this process, residual stream and head
 # readouts alike, so a report shows whether the fallback fired, which copy was
@@ -9,11 +19,27 @@ _REFUSED = collections.deque(maxlen=32)
 _refused_total = 0
 
 
-def record_refusal(source, copy, error):
+def record_refusal(source, copy, error, checked=False):
     global _refused_total
     lines = str(error).strip().splitlines()
-    _REFUSED.append(dict(source=source, copy=copy, error=(lines[0] if lines else '')[:200]))
+    row = dict(source=source, copy=copy, error=(lines[0] if lines else '')[:200])
+    if checked:
+        row['checked'] = True  # raised by the wait after one of the first copies, not by the copy call
+    _REFUSED.append(row)
     _refused_total += 1
+
+
+@contextlib.contextmanager
+def checked(active, stage, **fields):
+    """Wait for the device after `stage` while `active`; name the stage on a CUDA error."""
+    try:
+        yield
+        if active and torch.cuda.is_initialized():
+            torch.cuda.synchronize()
+    except RuntimeError as error:
+        if active and not isinstance(error, torch.cuda.OutOfMemoryError) and hasattr(error, 'add_note'):
+            error.add_note('checked stage: %s %s' % (stage, ' '.join('%s=%s' % item for item in fields.items())))
+        raise
 
 
 def refusals_mark():
@@ -38,36 +64,55 @@ class LockedCopies:
     and the buffers stay locked.
     """
 
-    def __init__(self):
+    def __init__(self, checked_copies=CHECKED_COPIES):
         self.locked = True
         self.fallbacks = 0
+        # One budget per direction: the host-to-device copies (the report's refused statement) are not
+        # used up by the device-to-host copies that come first in a layer.
+        self.unchecked = dict(to_host=checked_copies, to_device=checked_copies)
 
-    def _leave(self, device, copy, error):
-        record_refusal('readout', copy, error)
+    def _leave(self, device, copy, error, waited=False):
+        record_refusal('readout', copy, error, checked=waited)
         if device.type == 'cuda':
             torch.cuda.synchronize(device)
         self.locked = False
         self.fallbacks += 1
 
+    def _wait(self, device, copy):
+        # Inside the handler of the copy that was just queued.
+        if self.unchecked[copy] > 0:
+            self.unchecked[copy] -= 1
+            if device.type == 'cuda':
+                torch.cuda.synchronize(device)
+                return True
+        return False
+
     def to_host(self, destination, source):
         if self.locked:
+            waited = False
             try:
                 destination.copy_(source, non_blocking=True)
+                waited = True  # from here on an error comes from the wait
+                self._wait(source.device, 'to_host')
                 return
             except torch.cuda.OutOfMemoryError:
                 raise
             except RuntimeError as error:
-                self._leave(source.device, 'to_host', error)
+                self._leave(source.device, 'to_host', error, waited)
         destination.copy_(source.to('cpu'))
 
     def to_device(self, source, device):
         if self.locked:
+            waited = False
             try:
-                return source.to(device, non_blocking=True)
+                value = source.to(device, non_blocking=True)
+                waited = True  # from here on an error comes from the wait
+                self._wait(torch.device(device), 'to_device')
+                return value
             except torch.cuda.OutOfMemoryError:
                 raise
             except RuntimeError as error:
-                self._leave(torch.device(device), 'to_device', error)
+                self._leave(torch.device(device), 'to_device', error, waited)
         return source.clone().to(device)
 
 

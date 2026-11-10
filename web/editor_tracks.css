@@ -41,7 +41,7 @@
 .fv-ed-waveform{width:100%;height:100%;display:block;stroke:color-mix(in srgb,var(--fv-accent) 55%,transparent);stroke-width:1;fill:none}
 .fv-ed-clip[data-state=planned]{border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent);background:color-mix(in srgb,var(--fv-ink) 3%,transparent)}
 .fv-ed-clip[data-state=running]{background:var(--fv-card)}
-.fv-ed-progress-fill{display:none;right:auto;width:calc(var(--fv-ed-progress) * 100%);background:color-mix(in srgb,var(--fv-accent) 55%,transparent)}
+.fv-ed-progress-fill{display:none;right:auto;width:calc(var(--fv-ed-progress) * 100%);background:color-mix(in srgb,var(--fv-accent) 45%,transparent);box-shadow:inset -2px 0 0 var(--fv-accent)}
 .fv-ed-clip[data-state=running] .fv-ed-progress-fill:not([hidden]){display:block}
 .fv-ed-block-progress{display:none}
 .fv-ed-clip[data-state=running] .fv-ed-block-progress,.fv-ed-block-progress[data-queued=true]{display:block}
@@ -84,7 +84,7 @@
 .fv-ed-clip-popover button+button{margin-left:6px}
 .fv-ed-clip-popover{max-height:calc(100% - 16px);overflow:auto}
 .fv-ed-track-view [hidden]{display:none!important}
-@media(max-width:520px){.fv-ed-track-view,.fv-studio.fv-editor .fv-ed-track-view[data-track-switches],.fv-studio.fv-editor[data-text-tracks] .fv-ed-track-view{--fv-ed-head-width:52px}.fv-studio.fv-editor .fv-ed-track-head>svg{display:none}.fv-ed-track-head{padding:0 2px;box-sizing:border-box}.fv-ed-track-head>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.fv-ed-track-zoom{right:8px}.fv-ed-clip-status{left:5px;font-size:11px}}
+@media(max-width:520px){.fv-ed-track-view,.fv-ed-track-view[data-track-switches=true],.fv-studio.fv-editor .fv-ed-track-view[data-track-switches],.fv-studio.fv-editor[data-text-tracks] .fv-ed-track-view{--fv-ed-head-width:64px}.fv-studio.fv-editor .fv-ed-track-head>svg{display:none}.fv-ed-track-view .fv-ed-track-heads .fv-ed-track-head,.fv-ed-track-view .fv-ed-track-heads .fv-ed-track-head[data-text-track=true]{padding:0 2px 0 12px;box-sizing:border-box}.fv-ed-track-head>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.fv-ed-track-zoom{right:8px}.fv-ed-clip-status{left:5px;font-size:11px}}
 @media(forced-colors:active){.fv-ed-clip,.fv-ed-selection,.fv-ed-gesture-preview{border-color:Highlight}.fv-ed-playhead,.fv-ed-snap-line{background:CanvasText}}
 
 /* Gesture affordances; track slots and heads are owned by the track layout. */

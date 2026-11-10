@@ -88,6 +88,8 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                 converted_store=getattr(model_cache, 'converted_store', None))
         vae, compute_cache_metrics = load_video_decoder(base, resident_blocks=count, weight_source=weight_source,
                                                        linear_fp16=linear_compute_cache)
+    from .ram import release_freed_heap
+    release_freed_heap()
     vae.eval().requires_grad_(False)
     if type(resident_blocks) is not int or not 0 <= resident_blocks <= len(vae.decoder.transformer_blocks):
         raise ValueError('VAE resident block count is outside this decoder')

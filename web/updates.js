@@ -264,8 +264,8 @@ export function createVersionInfo(cn) {
     let closeNotes = () => {};
     element.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
     const render = () => {
-        const current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
-        element.textContent = current ? displayVersion(current) : cn ? '版本' : 'Version';
+        element.textContent = cn ? '版本' : 'Version';
+        if (value?.available) { const dot = document.createElement('i'); dot.className = 'fv-version-dot'; dot.setAttribute('aria-hidden', 'true'); element.append(dot); }
     };
     listeners.add(render); render();
     return {element, dispose: () => { listeners.delete(render); closeNotes(); }};

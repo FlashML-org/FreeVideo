@@ -27,7 +27,7 @@ from . import execution_paths
 from .hardware import Hardware, GiB, cgroup_capacity
 from . import __version__, subprocess_output
 from .policy import resource_budget
-from .monitoring import save
+from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
@@ -716,7 +716,7 @@ def plan(args, *, local_progress=None, stage=None):
     reserved = set()
     check_download_list = bool(getattr(args, 'download_list', False))
     stamps_path = root / 'verified-models.json'
-    stamps = json.loads(stamps_path.read_text(encoding='utf-8')) if check_download_list and stamps_path.is_file() else {}
+    stamps = load_ledger(stamps_path, retain=False) if check_download_list else {}
     # The check leaves the installer's ledger alone and keeps what it hashed in a file of its own.
     checked_path = root / 'download-list-checks.json'
     try:

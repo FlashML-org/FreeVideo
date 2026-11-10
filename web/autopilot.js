@@ -6,7 +6,7 @@ import { about, agentChat, jobName } from './autopilot_chat.js';
 import { createRequestAssets } from './request_assets.js';
 import { openEditorView } from './editor_loader.js';
 import { closeDialog } from './motion.js';
-import { productVersion } from './updates.js';
+import { createVersionInfo, productVersion } from './updates.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
 import { openExtendEditor, openStudio, showNodes } from './studio.js';
@@ -37,7 +37,8 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     halt.title = t('Stop all', '全部停止'); halt.setAttribute('aria-label', halt.title);
     const line = el('i', 'fv-autopilot-line');
     const phoneAccess = createLanAccess(t, api);
-    tools.append(now, lamp, phoneAccess.element, guideButton(t), feedbackButton(t), settings);
+    const versionInfo = createVersionInfo(cn);
+    tools.append(now, lamp, phoneAccess.element, versionInfo.element, guideButton(t), feedbackButton(t), settings);
     // The view chosen next takes over once this page has closed; Escape goes back to what is underneath.
     let next = () => studio?.open ? viewChanged('studio', node) : viewChanged('nodes', node);
     const leave = action => { next = action; closeDialog(dialog); };
@@ -108,7 +109,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     dialog.append(header, body);
     dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(dialog); });
     dialog.onclose = () => {
-        phoneAccess.dispose(); card.stop(); chat.stop(); assets.dispose(); dialog.remove();
+        phoneAccess.dispose(); versionInfo.dispose(); card.stop(); chat.stop(); assets.dispose(); dialog.remove();
         if (current === dialog) current = null;
         next();
     };
