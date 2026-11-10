@@ -744,6 +744,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Windows PowerShell could not start', 'Windows PowerShell 无法启动'),
          ('FreeVideo uses Windows PowerShell to inspect this computer, but Windows PowerShell could not start. Restart the computer, then click "Retry installation". If it fails again, export the report.',
           'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 没能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
+        (r'\[CUDA_INIT_FAILED\]', 'gpu-cuda-init',
+         ('CUDA could not start on this GPU', 'CUDA 未能在这张显卡上启动'),
+         ('The NVIDIA driver is installed. Restart the computer, then open FreeVideo again. If it still fails, export the report.',
+          'NVIDIA 显卡驱动已安装。请重启电脑，然后重新打开 FreeVideo。仍然失败时，可以导出报告。')),
         (r'CURL_REPAIR_(?:TIMEOUT|HTTP|TLS|DNS|FAILED|PROXY_UNSUPPORTED|PROXY_MISSING|REDIRECT|SIZE|INTEGRITY)', 'download-tool-network',
          ('The download tool could not be prepared', '下载工具自动补齐失败'),
          ('Check the connection mode in Downloads and retry. Export the report for the source, route and failure code.',
@@ -884,6 +888,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 found = re.search(r'The path of the dependency folder (.+?) is too long for Git to read', text)
                 if found:
                     detail = ('文件夹：%s' if zh else 'Folder: %s') % found[1]
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'gpu-cuda-init':
+                found = re.search(r'\[CUDA_INIT_FAILED\] NVIDIA driver ([\w.]+) \(([^)]*)\)', text, re.I)
+                if found:
+                    version, model = found.groups()
+                    detail = ('检测到：%s，驱动 %s' if zh else 'Detected: %s, driver %s') % (model, version)
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             return dict(title=title[zh], detail=detail, action=action[zh], kind=kind)
     # Validation messages are already actionable. Show the cause, not a stack
