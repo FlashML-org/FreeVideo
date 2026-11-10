@@ -14,16 +14,20 @@ const failures = () => ({
     invalid: text('This file name cannot be used. Rename the file and try again.', '这个文件名不能使用，请改名后再试。'),
 });
 const generic = () => text('The upload did not finish. Try again.', '上传没有完成，请再试一次。');
-export async function uploadMedia(api, file) {
+// A request that never answers is cut off, so the pickers unlock and the failure line shows: two minutes plus four seconds per MiB, so a slow link is not mistaken for a hang.
+export const uploadTimeoutMs = size => 120000 + Math.ceil(size / 1024 ** 2) * 4000;
+export async function uploadMedia(api, file, {timeoutMs = uploadTimeoutMs(file.size)} = {}) {
     const found = failures();
     if (file.size > MAX_UPLOAD_BYTES) throw new Error(found.too_large);
     if (file.size === 0) throw new Error(found.empty);
     const body = new FormData(); body.append('file', file);
     let response, result = {};
+    const abort = new AbortController(), timer = setTimeout(() => abort.abort(), timeoutMs);
     try {
-        response = await api.fetchApi('/freevideo/media/upload', {method: 'POST', body});
+        response = await api.fetchApi('/freevideo/media/upload', {method: 'POST', body, signal: abort.signal});
         result = await response.json();
     } catch { if (!response || response.ok) throw new Error(generic()); }
+    finally { clearTimeout(timer); }
     if (!response.ok) throw new Error(found[result?.code] || generic());
     return result;
 }
