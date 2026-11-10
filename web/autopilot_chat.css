@@ -55,18 +55,14 @@
 /* A job the agent started: the frame fills like water while it is made, then holds the video. */
 .fv-chat-job{box-sizing:border-box;justify-self:start;width:100%;max-width:560px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;padding:12px;border:1px solid var(--fv-border);border-radius:14px;background:var(--fv-card)}
 .fv-chat-job:is([data-mode=stopped],[data-mode=failed],[data-mode=quiet]){width:auto;display:flex;align-items:center;gap:10px;padding:0;border:0;background:none;color:var(--fv-muted);font-size:13.5px}
-.fv-chat-preview{position:relative;align-self:start;width:124px;aspect-ratio:16/9;border-radius:9px;overflow:hidden;background:#0c121a}
+.fv-chat-preview{position:relative;align-self:start;display:grid;place-items:center;width:124px;aspect-ratio:16/9;border-radius:9px;overflow:hidden;background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent);box-sizing:border-box}
+.fv-chat-preview>.fv-empty-frame-icon{width:24px;height:24px;fill:none;stroke:var(--fv-muted);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.fv-chat-preview:has(>:is(img,video)){border:0;background:#0c121a}
 .fv-chat-preview[data-shape=wide]{width:240px}
 .fv-chat-preview>:is(img,video){position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
 .fv-chat-preview>img{animation:fv-chat-in .3s var(--fv-ease)}.fv-chat-preview[data-video]>img{display:none}
 @keyframes fv-chat-in{from{opacity:0}}
-.fv-chat-water{position:absolute;left:0;right:0;bottom:0;height:var(--level,0%);background:linear-gradient(180deg,#4f9dff66,#2a6fc955 60%,#1d4f9566);transition:height .6s var(--fv-ease)}
-.fv-chat-water::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(180deg,transparent,#4f9dff2e)}
-.fv-chat-water::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,#9fd2ff,#e3f2ff 45%,#9fd2ff) 0 0/200% 100%;box-shadow:0 0 10px #7cc4ff;animation:fv-chat-shine 5s linear infinite}
-@keyframes fv-chat-shine{to{background-position:-200% 0}}
-.fv-chat-percent{position:absolute;left:0;right:0;bottom:calc(var(--level,0%) + 6px);transition:bottom .6s var(--fv-ease);text-align:center;font-size:26px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 2px 10px #000a}
 .fv-chat-length{position:absolute;right:7px;bottom:6px;font-size:11.5px;line-height:1.5;color:#fff;background:#0009;border-radius:4px;padding:0 5px;font-variant-numeric:tabular-nums;pointer-events:none}
-.fv-chat-preview[data-under=true] .fv-chat-percent{bottom:calc(var(--level,0%) - 6px - 1em)}
 .fv-chat-preview[data-video] .fv-chat-length{bottom:16px}
 .fv-studio .fv-chat-play{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent}
 .fv-studio .fv-chat-play:hover{background:transparent}
@@ -170,8 +166,8 @@
 }
 @media(max-width:480px){.fv-chat-main{padding:0 14px 14px}.fv-chat-scroll{margin:0 -14px;padding:16px 14px 2px}.fv-chat-hello{padding-top:32px}.fv-chat-job{max-width:none;gap:12px}.fv-chat-confirm{max-width:none}
 @media(max-width:560px){.fv-studio :is(.fv-chat-scenes,.fv-chat-whitebox){width:36px;padding:0;justify-content:center}:is(.fv-chat-scenes,.fv-chat-whitebox)>span{display:none}}
- .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-chat-percent{font-size:22px}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
-@media(prefers-reduced-motion:reduce){.fv-chat-water,.fv-chat-percent,.fv-chat-parts>i::after{transition:none}.fv-chat-water::after,.fv-chat-dots>i,.fv-chat-preview>img,.fv-chat-menu{animation:none}}
+ .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
+@media(prefers-reduced-motion:reduce){.fv-chat-parts>i::after{transition:none}.fv-chat-dots>i,.fv-chat-preview>img,.fv-chat-menu{animation:none}}
 
 /* Request errors use the card's existing actions and retry button. */
 .fv-chat-error{color:var(--fv-danger);font-size:13px;line-height:1.5;overflow-wrap:anywhere;margin:0}
