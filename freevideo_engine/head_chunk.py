@@ -123,8 +123,9 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
         soft_scale = ColumnScale(len(x), x.device) if cpu_outputs and isinstance(orig.to_out[0], Fp8Linear) else None
         linear_scale = ColumnScale(linear_shape[0], x.device) if cpu_outputs and isinstance(attn.to_out_linear, Fp8Linear) else None
         output_width = orig.to_out[0].weight_fp8.shape[0] if isinstance(orig.to_out[0], Fp8Linear) else orig.to_out[0].out_features
+        fresh_readouts = False
         if grouped_outputs:
-            from .activation_staging import HeadReadouts
+            from .activation_staging import CHECKED_COPIES, HeadReadouts, checked
             widths = [min(chunk, attn.num_heads - start) * attn.head_dim for start in range(0, attn.num_heads, chunk)]
             stores = getattr(policy, 'group_readouts', None)
             if stores is None or any(not store.supports(rows, widths, x.dtype, projection_chunk)
@@ -133,6 +134,7 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
                 release_readouts(policy)
                 policy.group_readouts = tuple(HeadReadouts(rows, widths, x.dtype, projection_chunk)
                                              for rows in (len(x), linear_shape[0]))
+                fresh_readouts = True
             soft, linear = policy.group_readouts
         elif cpu_outputs:
             from .activation_staging import LockedCopies
@@ -284,12 +286,24 @@ def install_head_chunks(transformer, policy, chunk, cpu_outputs=False, projectio
         if grouped_outputs:
             torch.cuda.current_stream(x.device).synchronize()
             out = x.new_empty((len(x), output_width))
-            for rows, part in soft.project(lambda part: part, out, len(x)):
+            # The first tiles of a freshly locked readout set wait for the device
+            # after each stage, so a deferred CUDA error names its stage.
+            for tile, (rows, part) in enumerate(soft.project(lambda part: part, out, len(x))):
                 scale = row_scale(soft_scale, rows) if soft_scale is not None else None
-                out[rows] = orig.to_out[1](project_with_scale(orig.to_out[0], part, scale))
-            for rows, part in linear.project(lambda part: part, out, linear_shape[0]):
+                watch = fresh_readouts and tile < CHECKED_COPIES
+                with checked(watch, 'soft projection', tile=tile, rows=len(x)):
+                    value = orig.to_out[1](project_with_scale(orig.to_out[0], part, scale))
+                with checked(watch, 'soft store', tile=tile, rows=len(x)):
+                    out[rows] = value
+                del value
+            for tile, (rows, part) in enumerate(linear.project(lambda part: part, out, linear_shape[0])):
                 scale = row_scale(linear_scale, rows) if linear_scale is not None else None
-                out[video][rows].add_(project_with_scale(attn.to_out_linear, part, scale))
+                watch = fresh_readouts and tile < CHECKED_COPIES
+                with checked(watch, 'linear projection', tile=tile, rows=linear_shape[0]):
+                    value = project_with_scale(attn.to_out_linear, part, scale)
+                with checked(watch, 'linear add', tile=tile, rows=linear_shape[0]):
+                    out[video][rows].add_(value)
+                del value
             return out
         if cpu_outputs:
             # All D2H writes must finish before the pinned outputs are read by H2D.
