@@ -113,6 +113,8 @@ class Session:
     old_versions_retired = None
     archives_busy = False
     action_notice = ''
+    # The report form opened last: (key, when). The same report is not opened again within REPORT_COOLDOWN.
+    report_opened = ('', 0.)
     pending_update = None
     pending_check = None
     upgrade = image_installer = prompt_installer = None
@@ -2217,6 +2219,24 @@ class Session:
         # The links change with the password; do not wait for the next poll.
         self.controller.access_polled = 0
 
+    REPORT_COOLDOWN = 60.
+
+    @staticmethod
+    def report_key(error, title):
+        return f'{error}\x01{title}'
+
+    def report_cooling(self, key):
+        opened, at = self.report_opened
+        return bool(opened) and opened == key and time.monotonic() - at < self.REPORT_COOLDOWN
+
+    def start_report(self, error, title):
+        """True when the form is to be opened now; a second click on the same report within the cooldown is not."""
+        key = self.report_key(error, title)
+        if self.report_cooling(key):
+            return False
+        self.report_opened = (key, time.monotonic())
+        return True
+
     def snapshot(self):
         from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error, display_launcher_error
         from .launcher_copy import display, progress_view, source_name
@@ -2466,7 +2486,7 @@ class Session:
             # The elapsed row is only shown while working. An idle clock would
             # keep publishing changed snapshots after a launch has failed.
             elapsed=duration(time.monotonic()-self.started) if self.started and busy else '', summary=' · '.join(estimate),
-            failure=failure,
+            failure=failure, report_opened=self.report_opened[0] if self.report_cooling(self.report_opened[0]) else '',
             source=source, source_name=source_name(source, zh), proxy_mode=preferences['proxy_mode'],
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
