@@ -1,7 +1,7 @@
 // The view switch stays centred in the editor's header while the project name next to the logo stays readable.
 // When it would not, the logo first takes its phone size, then gives its place to the name; if that is still too tight, the switch moves to a second row.
 // The feedback entry leaves before the switch moves down, and on two rows when the name is still tight.
-// The Tutorial entry stays on two rows, and leaves after the feedback entry only to keep the switch on one row.
+// The Tutorial entry stays on two rows, and leaves after the feedback entry only to keep the switch on one row, or the name readable.
 // About six Chinese characters or ten Latin letters of the name itself, without the menu arrow.
 const READABLE = 120, COMPACT_MARK = 90;
 
@@ -38,7 +38,7 @@ export function fitEditorHeader(header, brand, title, navigation, actions) {
         // Then the feedback entry steps aside too, rather than let the switch drop to a second row.
         const fitsLean = markWidth => spare && side >= need - away - spare && side - markWidth - spacing >= wanted;
         const fit = fits(mark.offsetWidth) ? '' : fits(compact) ? 'compact' : away && fitsWithout(mark.offsetWidth) ? 'tight' : away && fitsWithout(compact) ? 'compact tight' : away && fitsLean(mark.offsetWidth) ? 'tight lean' : away && fitsLean(compact) ? 'compact tight lean' : bare(need) ? 'bare' : away && bare(need - away) ? 'bare tight' : away && spare && bare(need - away - spare) ? 'bare tight lean' : away && spare && room && bare(need - away - spare - room) ? 'bare tight lean least' : spare && bare(need - spare) ? 'bare lean'
-            : row(mark.offsetWidth) >= wanted ? 'wrap' : row(compact) >= wanted || !spare ? 'wrap compact' : 'wrap compact lean';
+            : row(mark.offsetWidth) >= wanted ? 'wrap' : row(compact) >= wanted || !spare ? 'wrap compact' : row(compact) + spare >= wanted || !room ? 'wrap compact lean' : 'wrap compact lean least';
         if (fit) header.dataset.fit = fit;
     }
     const observer = new ResizeObserver(check);

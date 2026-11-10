@@ -215,30 +215,22 @@ export function openFeedback(t, { open = openPage, version = productVersion,
     return dialog;
 }
 
-// The header entry, in the style of the Settings button beside it.
+// The header entry: text, in the same group as Settings beside it.
 export function feedbackButton(t, className = 'fv-quiet') {
     const label = t('Feedback', '反馈');
     const button = el('button', `${className} fv-feedback-entry`); button.type = 'button';
     button.setAttribute('aria-label', label); button.title = label;
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false');
-    const path = document.createElementNS(icon.namespaceURI, 'path');
-    path.setAttribute('d', 'M13.5 2.5h-11a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2v3l3.5-3h5.5a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1Z');
-    icon.append(path); button.append(icon, el('span', 'fv-feedback-label', label));
+    button.append(el('span', 'fv-feedback-label', label));
     button.onclick = () => openFeedback(t);
     return button;
 }
 
-// The tutorial entry, left of Feedback: same style, icon only where Feedback is.
+// The tutorial entry, left of Feedback: same style.
 export function guideButton(t, className = 'fv-quiet') {
     const label = t('Tutorial', '教程');
     const button = el('button', `${className} fv-feedback-entry fv-guide-entry`); button.type = 'button';
     button.setAttribute('aria-label', label); button.title = label;
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false');
-    const path = document.createElementNS(icon.namespaceURI, 'path');
-    path.setAttribute('d', 'M2.5 3.2c1.9-.5 3.7-.3 5.5.8v9c-1.8-1.1-3.6-1.3-5.5-.8ZM13.5 3.2c-1.9-.5-3.7-.3-5.5.8v9c1.8-1.1 3.6-1.3 5.5-.8Z');
-    icon.append(path); button.append(icon, el('span', 'fv-feedback-label', label));
+    button.append(el('span', 'fv-feedback-label', label));
     button.onclick = () => import('./tutorial_book.js').then(({openTutorialBook}) => openTutorialBook({chapter: 'quick-start'})).catch(() => {});
     return button;
 }

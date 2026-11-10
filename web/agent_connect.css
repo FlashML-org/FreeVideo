@@ -37,10 +37,8 @@
 .fv-autopilot-line[data-on=false]{opacity:0}
 /* Running jobs share the right column; only the title gives up space before fields hide. */
 .fv-studio.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])){grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
-.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-header-actions{justify-self:stretch;min-width:0;justify-content:flex-end;container:fv-autopilot-actions / inline-size;gap:4px}
+.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-header-actions{justify-self:stretch;min-width:0;justify-content:flex-end;container:fv-autopilot-actions / inline-size}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-header-actions>button{flex:none}
-/* Compact spacing only once the column is short of room, so wide headers keep their idle rhythm. */
-@container fv-autopilot-actions (max-width:671px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-header-actions>button{padding-inline:5px}}
 @container fv-autopilot-actions (max-width:632px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh)>span{display:none}}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now{flex:0 1 auto;min-width:0}
 .fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:5px;padding-left:8px}
@@ -49,14 +47,22 @@
 .fv-autopilot-now-go>em{overflow:hidden}
 /* Four-digit minutes; thresholds intentionally stay the same when feedback becomes an icon. */
 @container fv-autopilot-actions (max-width:561px){:lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}:lang(zh) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (max-width:671px){:lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}:lang(en) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (max-width:370px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
-@container fv-autopilot-actions (max-width:425px){:lang(en) .fv-autopilot-now-go>em{display:none}}
+@container fv-autopilot-actions (max-width:720px){:lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}:lang(en) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (max-width:460px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
+@container fv-autopilot-actions (max-width:600px){:lang(en) .fv-autopilot-now-go>em{display:none}}
 @container fv-autopilot-actions (max-width:289px){:lang(zh) .fv-autopilot-now-go>span{display:none}}
 @container fv-autopilot-actions (max-width:322px){:lang(en) .fv-autopilot-now-go>span{display:none}}
 /* Feedback retreats after the phone entry, so the running bar keeps its full content. */
+@container fv-autopilot-actions (max-width:425px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (max-width:363px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (max-width:305px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (max-width:545px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (max-width:458px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (max-width:365px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (max-width:430px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
+@container fv-autopilot-actions (max-width:540px){:lang(en) .fv-autopilot-now-go>i{display:none}}
 @container fv-autopilot-actions (max-width:260px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
 @media(max-width:1050px){.fv-autopilot-now-name{max-width:120px}}
-@media(max-width:825px){.fv-studio.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])){height:auto;min-height:98px;grid-template-columns:auto minmax(0,1fr);padding-block:10px}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-header-actions{grid-column:2;grid-row:1}}
+@media(max-width:1180px){.fv-studio.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])){height:auto;min-height:98px;grid-template-columns:auto minmax(0,1fr);padding-block:10px}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-header-actions{grid-column:2;grid-row:1}}
 @media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12.5px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:5px 2px 5px 10px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:22px}}
 @media(prefers-reduced-motion:reduce){.fv-autopilot-line{transition:none}}
