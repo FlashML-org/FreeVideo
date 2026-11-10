@@ -8,7 +8,7 @@ export {emptyChat, chatMerge, chatEntries, canSend} from './chat_data.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 import {closeDialog} from './motion.js';
 import { estimatedFraction, remainingAbove, remainingShown, createDiagnosticReportControl } from './generation_progress.js';
-import {createErrorReport} from './error_panel.js';
+import {createErrorReport, failureFold} from './error_panel.js';
 import {canDeleteConversation, canRenameConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
 import {renderImageFailure} from './image_generation.js';
 import {issueButton} from './issue_button.js';
@@ -65,6 +65,14 @@ function failureReason(value, t) {
     // `message` is written for programs; people read the engine's own English reason. A refusal the engine
     // did not classify keeps its sentence, as before.
     return t(reasonEn || error?.message || 'Did not finish', reason || GENERIC_FAILURE_ZH);
+}
+
+// A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
+// program text and goes to the technical details, so the card then says only that the generation did not finish.
+function failureCardReason(value, t) {
+    const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
+    const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
+    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish', '生成未完成');
 }
 
 export {about};
@@ -1130,10 +1138,14 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                         label: () => t('Download diagnostic report', '下载诊断报告'),
                         fallback: () => new Blob([JSON.stringify(createErrorReport({error: current.error, exception_type: current.error?.code,
                             details: current.error?.request_id}, {stage: 'execution'}), null, 2)], {type: 'application/json'})});
-                    actions.append(diagnostic.report);
+                    // The shared failure style: one reason line, the fold row, then the secondary buttons.
+                    const fold = failureFold(t);
                     if (retry) actions.append(...again());
-                    links.append(actions); item.replaceChildren(reason, links);
-                    apply = next => { current = next; put(reason, failureReason(next, t));
+                    actions.append(diagnostic.report);
+                    links.append(actions); item.replaceChildren(reason, fold, links);
+                    apply = next => { current = next; put(reason, failureCardReason(next, t));
+                        const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');
+                        fold.querySelector('p').textContent = raw; fold.hidden = !raw;
                         diagnostic.updateReport({report_id: next.report_id}); };
                 } else { item.replaceChildren(); apply = null; }
             }

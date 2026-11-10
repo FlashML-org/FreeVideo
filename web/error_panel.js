@@ -476,21 +476,21 @@ function showFailureDialog(report, t) {
     const panel = createErrorPanel(t); panel.show(report, false);
     // The dialog has no run's report to download; submitting stays on the failure card.
     if (diagnosticReports.has(report)) panel.element.querySelector('.fv-failure-github:not([data-lora])')?.remove();
-    const close = document.createElement('button'); close.type = 'button';
-    close.textContent = t('Got it', '知道了'); close.autofocus = true;
-    close.onclick = () => dialog.close();
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-failure-primary';
+    close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
+    // The title has its own line; the secondary buttons sit at the left of the bottom row, the main button at the right.
+    const footer = document.createElement('div'); footer.className = 'fv-failure-footer';
+    const actions = panel.element.querySelector('.fv-failure-actions');
+    actions.classList.add('fv-failure-buttons');
+    footer.append(actions, close);
     if (panel.element.freevideoKind === 'browser-extension') {
-        // The steps end with a reload: that is the main button. Copy and export
-        // sit at the left of the same row, so a long title keeps its own line.
-        const footer = document.createElement('div'); footer.className = 'fv-failure-footer';
-        const actions = panel.element.querySelector('.fv-failure-actions');
+        // The steps end with a reload: that is the main button.
         actions.querySelector('.fv-failure-reload')?.remove();
         const reload = document.createElement('button'); reload.type = 'button'; reload.className = 'fv-failure-primary';
         reload.textContent = t('Reload page', '刷新页面'); reload.autofocus = true; reload.onclick = () => globalThis.location?.reload();
-        close.textContent = t('Close', '关闭'); close.autofocus = false;
-        footer.append(actions, close, reload);
-        dialog.append(panel.element, footer);
-    } else dialog.append(panel.element, close);
+        close.className = ''; footer.append(reload);
+    } else close.autofocus = true;
+    dialog.append(panel.element, footer);
     dialog.onclose = () => { if (activeDialog === dialog) activeDialog = null; dialog.remove(); };
     document.body.append(dialog);
     if (typeof dialog.showModal !== 'function') { dialog.remove(); return; }
@@ -535,7 +535,7 @@ export function adviceFor(report, t, value) {
 
 // route: where a generation's diagnostic report comes from ({download, fetch, version, has}); without it the
 // button opens the feedback form.
-export function createErrorPanel(t, route = null) {
+function ensureFailureStyle() {
     if (!document.getElementById('freevideo-error-style')) {
         const style = document.createElement('style'); style.id = 'freevideo-error-style';
         style.textContent = `.fv-failure{border:1px solid var(--fv-danger,#dc7c7c);border-radius:var(--fv-r-md,12px);padding:12px 14px;margin:10px 0;text-align:left;min-width:0}
@@ -547,9 +547,29 @@ export function createErrorPanel(t, route = null) {
 .fv-failure-dialog{box-sizing:border-box;font-size:14px;width:min(560px,94vw);max-height:88vh;overflow:auto;padding:22px 24px;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-lg,16px);background:var(--fv-bg,#202126);color:var(--fv-ink,#eee);box-shadow:0 24px 80px #0008}
 .fv-failure-dialog::backdrop{background:#070a0db8;backdrop-filter:blur(6px)}.fv-failure-dialog>.fv-failure{border:0;margin:0 0 16px;padding:0}.fv-failure-dialog>button,.fv-failure-dialog .fv-failure-primary{display:block;margin-left:auto;background:var(--fv-accent,#6db8fa);border-color:var(--fv-accent,#6db8fa);color:var(--fv-bg,#111720);font-weight:var(--fv-semibold,600)}
 .fv-failure .fv-extension-steps{font-size:14px;line-height:1.6}.fv-failure-reload{order:-1}.fv-failure .fv-failure-copy{margin-top:8px}.fv-failure-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.fv-failure-footer>.fv-failure-actions{margin-right:auto}
-.fv-failure-footer button{min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised,#303138);color:var(--fv-ink,#eee);padding:5px 12px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer}.fv-failure-footer .fv-failure-primary{margin-left:0}`;
+.fv-failure-fold{border-top:1px solid var(--fv-border,#45454a);margin-top:12px;padding-top:2px}.fv-failure-fold>summary{display:flex;align-items:center;gap:8px;min-height:var(--fv-h-sm,32px);margin:0;list-style:none;cursor:pointer;color:var(--fv-muted,#bbb);font-size:13px}.fv-failure-fold>summary::-webkit-details-marker{display:none}
+.fv-failure-chevron{flex:none;width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .2s}.fv-failure-fold[open]>summary>.fv-failure-chevron{transform:rotate(45deg)}
+.fv-failure-dialog .fv-failure-head{display:block;margin-bottom:6px}.fv-failure-dialog .fv-failure-head>strong{font-size:16px;line-height:1.5}
+.fv-failure-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.fv-failure-buttons>button{min-height:var(--fv-h-sm,32px);box-sizing:border-box;padding:5px 14px;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised,#303138);color:var(--fv-ink,#eee);font:inherit;font-size:13px;font-weight:var(--fv-medium,500);cursor:pointer;white-space:nowrap}
+.fv-failure-footer button{min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised,#303138);color:var(--fv-ink,#eee);padding:5px 12px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer}.fv-failure-footer .fv-failure-primary{margin-left:auto}`;
         document.head.append(style);
     }
+}
+
+// The fold row shared by every failure message (card, dialog, Agent chat): a chevron and "Technical details".
+export function failureFold(t, text = '') {
+    ensureFailureStyle();
+    const disclosure = document.createElement('details'), summary = document.createElement('summary');
+    disclosure.className = 'fv-failure-fold';
+    const chevron = document.createElement('span'); chevron.className = 'fv-failure-chevron'; chevron.setAttribute('aria-hidden', 'true');
+    summary.append(chevron, t('Technical details', '技术详情'));
+    const body = document.createElement('p'); body.className = 'fv-failure-cause'; body.textContent = text;
+    disclosure.append(summary, body);
+    return disclosure;
+}
+
+export function createErrorPanel(t, route = null) {
+    ensureFailureStyle();
     const element = document.createElement('section'); element.className = 'fv-failure'; element.hidden = true;
     const head = document.createElement('div'); head.className = 'fv-failure-head';
     const title = document.createElement('strong'); title.textContent = t('Generation failed', '生成失败');
@@ -574,7 +594,9 @@ export function createErrorPanel(t, route = null) {
     const downloadStatus = document.createElement('p'); downloadStatus.setAttribute('role', 'status');
     let currentReport = null, githubLora = false;
     const disclosure = document.createElement('details'), summary = document.createElement('summary');
-    summary.textContent = t('Technical details', '技术详情');
+    disclosure.className = 'fv-failure-fold';
+    const chevron = document.createElement('span'); chevron.className = 'fv-failure-chevron'; chevron.setAttribute('aria-hidden', 'true');
+    summary.append(chevron, t('Technical details', '技术详情'));
     const detailLocation = document.createElement('p'); detailLocation.className = 'fv-failure-location'; detailLocation.hidden = true;
     const detailCause = document.createElement('p'); detailCause.className = 'fv-failure-cause'; detailCause.hidden = true;
     const details = document.createElement('textarea'); details.readOnly = true;
@@ -673,7 +695,8 @@ export function createErrorPanel(t, route = null) {
         if (causeInDetails) location.textContent = '';
         cause.hidden = causeInDetails; detailCause.hidden = !causeInDetails;
         cause.textContent = causeInDetails ? '' : causeText;
-        detailCause.textContent = causeInDetails ? causeText : '';
+        // The same text is already in the box below; showing it twice only repeats the Traceback.
+        detailCause.textContent = ''; detailCause.hidden = true;
         details.value = report.details; disclosure.open = false; element.hidden = false;
         downloadStatus.textContent = '';
         download.hidden = diagnosticReports.has(report);
