@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 import importlib.util
 import platform
 import re
+import subprocess
 from pathlib import Path
 
 GiB = 1 << 30
@@ -173,6 +174,134 @@ def cgroup_capacity(*, include_reclaimable=False):
     return state['limit_bytes'], state.get('reclaimable_available_bytes', state['available_bytes']) if include_reclaimable else state['available_bytes']
 
 
+# Names the card and reads its live memory through the driver alone, in the same
+# primary context torch would open, without importing torch.
+_DRIVER_PROBE = r"""
+import ctypes, json, os, sys
+if os.name == 'nt':
+    lib = ctypes.WinDLL('nvcuda')
+    from ctypes import wintypes
+    path = ctypes.create_unicode_buffer(1024)
+    ctypes.windll.kernel32.GetModuleFileNameW.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+    ctypes.windll.kernel32.GetModuleFileNameW(lib._handle, path, 1024)
+    library = path.value
+else:
+    lib = ctypes.CDLL('libcuda.so.1')
+    library = ''
+    for line in open('/proc/self/maps', encoding='utf-8'):
+        if '/libcuda.so' in line:
+            library = line.split(None, 5)[-1].strip()
+            break
+def ok(code):
+    if code:
+        raise RuntimeError(code)
+ok(lib.cuInit(0))
+device = ctypes.c_int()
+ok(lib.cuDeviceGet(ctypes.byref(device), 0))
+name = ctypes.create_string_buffer(256)
+ok(lib.cuDeviceGetName(name, 256, device))
+major, minor = ctypes.c_int(), ctypes.c_int()
+ok(lib.cuDeviceGetAttribute(ctypes.byref(major), 75, device))
+ok(lib.cuDeviceGetAttribute(ctypes.byref(minor), 76, device))
+raw = (ctypes.c_ubyte * 16)()
+ok(lib.cuDeviceGetUuid(raw, device))
+context = ctypes.c_void_p()
+ok(lib.cuDevicePrimaryCtxRetain(ctypes.byref(context), device))
+ok(lib.cuCtxSetCurrent(context))
+free, total = ctypes.c_size_t(), ctypes.c_size_t()
+ok(lib.cuMemGetInfo_v2(ctypes.byref(free), ctypes.byref(total)))
+print(json.dumps(dict(name=name.value.decode('utf-8'), capability=[major.value, minor.value],
+                      uuid=bytes(raw).hex(), free=free.value, total=total.value, library=library)))
+"""
+
+
+def _static_cache_path():
+    from .paths import data_root
+    return data_root() / 'tuning' / 'hardware-static.json'
+
+
+def _static_key(observed):
+    """What the installed torch and driver are; any change makes the saved copy unusable."""
+    import importlib.metadata
+    import importlib.util
+    import sys
+    if not observed['library']:
+        raise ValueError('driver library path unknown')
+    library = Path(observed['library'])
+    spec = importlib.util.find_spec('torch')
+    version = Path(spec.origin).with_name('version.py')
+    return dict(python=sys.executable, torch=importlib.metadata.version('torch'),
+                torch_file=version.stat().st_mtime_ns, library=str(library.resolve()),
+                library_size=library.stat().st_size, library_time=library.stat().st_mtime_ns,
+                name=observed['name'], capability=list(observed['capability']), uuid=observed['uuid'], total=observed['total'])
+
+
+def _light_hardware():
+    """The Hardware a torch probe would report, or None when it must run.
+
+    Card identity and total memory come from the driver each time; only what
+    cannot change without a torch or driver replacement (their version strings)
+    is reused from the last full probe. Free memory and RAM are always read now.
+    """
+    import json
+    import sys
+    from . import subprocess_output
+    try:
+        # No saved copy (first run, or a machine that is not an NVIDIA CUDA one): skip the driver call.
+        saved = json.loads(_static_cache_path().read_text(encoding='utf-8'))
+        result = subprocess_output.run_python([sys.executable, '-c', _DRIVER_PROBE], capture_output=True)
+        if result.returncode:
+            return None
+        observed = json.loads(result.stdout.strip().splitlines()[-1])
+        key = _static_key(observed)
+        if saved.get('key') != key:
+            return None
+        static = saved['static']
+        text = observed['uuid']
+        uuid = 'GPU-%s-%s-%s-%s-%s' % (text[:8], text[8:12], text[12:16], text[16:20], text[20:])
+        if static['gpu_uuid'] != uuid:
+            return None
+        return Hardware(observed['name'], tuple(observed['capability']), observed['total'], observed['free'], 0, 0,
+                        platform.system(), static['torch_version'], static['cuda_version'], None, uuid,
+                        static['driver_version'], None, None)
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, ImportError, subprocess.SubprocessError):
+        return None
+
+
+def _save_static(observed):
+    """Remember the version strings of a full probe for later light ones."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from . import subprocess_output
+    try:
+        if observed.cuda_version in ('', 'None') or not observed.gpu_uuid.startswith('GPU-'):
+            # A ROCm torch (no CUDA version) or a MIG slice: the driver call cannot name this
+            # device, so keep no copy, and drop one left by an earlier card.
+            _static_cache_path().unlink(missing_ok=True)
+            return
+        result = subprocess_output.run_python([sys.executable, '-c', _DRIVER_PROBE], capture_output=True)
+        if result.returncode:
+            return
+        driver = json.loads(result.stdout.strip().splitlines()[-1])
+        key = _static_key(driver)
+        text = driver['uuid']
+        if observed.gpu_uuid != 'GPU-%s-%s-%s-%s-%s' % (text[:8], text[8:12], text[12:16], text[16:20], text[20:]) \
+                or (observed.gpu_name, tuple(observed.capability), observed.vram_total) != (
+                    driver['name'], tuple(driver['capability']), driver['total']):
+            return
+        path = _static_cache_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name('%s.%d.tmp' % (path.name, os.getpid()))
+        temporary.write_text(json.dumps(dict(key=key, static=dict(
+            gpu_uuid=observed.gpu_uuid, torch_version=observed.torch_version, cuda_version=observed.cuda_version,
+            driver_version=observed.driver_version))), encoding='utf-8')
+        os.replace(temporary, path)
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, ImportError, subprocess.SubprocessError):
+        pass
+
+
 def detect():
     # End the detector's CUDA context before starting the model worker. The
     # lightweight parent must not keep another GPU context or Torch heap alive.
@@ -180,15 +309,18 @@ def detect():
     import subprocess
     import sys
     from . import subprocess_output
-    code = 'import json; from freevideo_engine.hardware import _detect_local; print(json.dumps(_detect_local().to_dict()))'
-    result = subprocess_output.run_python([sys.executable, '-c', code], capture_output=True)
-    if result.returncode:
-        error = RuntimeError('Hardware detection failed: ' + result.stderr[-2000:])
-        # The probe imports torch; a damaged library can end it without a word
-        # (a truncated one is a bus error on Linux). See runtime_libraries.
-        error.torch_probe_failed = True
-        raise error
-    observed = Hardware.from_dict(json.loads(result.stdout.strip().splitlines()[-1]))
+    observed = _light_hardware()
+    if observed is None:
+        code = 'import json; from freevideo_engine.hardware import _detect_local; print(json.dumps(_detect_local().to_dict()))'
+        result = subprocess_output.run_python([sys.executable, '-c', code], capture_output=True)
+        if result.returncode:
+            error = RuntimeError('Hardware detection failed: ' + result.stderr[-2000:])
+            # The probe imports torch; a damaged library can end it without a word
+            # (a truncated one is a bus error on Linux). See runtime_libraries.
+            error.torch_probe_failed = True
+            raise error
+        observed = Hardware.from_dict(json.loads(result.stdout.strip().splitlines()[-1]))
+        _save_static(observed)
     # The isolated torch probe has exited. Its temporary Python/CUDA host heap
     # must not be subtracted again from the future worker's whole-process RAM
     # allowance. Refresh RAM in the lightweight controller after that exit.
