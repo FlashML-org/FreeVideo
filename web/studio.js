@@ -56,7 +56,7 @@ import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora
 import { swapLoraDownload } from './swap_lora.js';
 import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow } from './audio_original.js';
-import { waitingText } from './chain_support.js';
+import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
 import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from './dialog_keys.js';
 import { createPassMode } from './pass_mode.js';
@@ -1599,7 +1599,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     chainController = createStudioChain({api, node, onProgress: (message, chain) => {
             const position = chainPosition(chain, message);
             const joining = readChainResult(chain).joining, waiting = chain.state === 'queued' && message.phase === 'prepare';
-            setChainLine(joining ? t('Joining the parts.', '正在接合各段。')
+            setChainLine(joining ? joiningText(chain.joining_part, t)
                 : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t(`Waiting in queue · Part ${position.index + 1} of ${position.count}`, `正在排队 · 第 ${position.index + 1} 段，共 ${position.count} 段`))
                 : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
             progress.element.querySelector('.fv-generation-label').hidden = joining || waiting;
@@ -1618,7 +1618,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             partList.update(chain, active, Boolean(result?.request_id) && result.request_id === chain?.id);
             busy = active || Boolean(queueState?.running || queueState?.pending.length); queued = chain?.state === 'queued';
             chainLine.hidden = !active;
-            setChainLine(outcome?.joining ? t('Joining the parts.', '正在接合各段。')
+            setChainLine(outcome?.joining ? joiningText(chain?.joining_part, t)
                 : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
             if (active && node.properties.freevideo_chain?.width) previewSize(node.properties.freevideo_chain.width, node.properties.freevideo_chain.height);
             if (!active) { cancelling = false; hideProgress(); }
@@ -1772,7 +1772,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // straight to the busy GPU, so its button waits like a full queue does.
         const chainWait = Boolean(chainController?.active && (!chainController.canQueue || !multiple));
         const chainReason = !chainWait ? '' : readChainResult(chain)?.joining
-            ? t('Joining parts…', '正在拼接…')
+            ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
         generate.disabled = submitting || chainWait || lengthControl.blocked || (runMode === 'loop' && queueState?.looping);

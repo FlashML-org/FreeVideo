@@ -163,7 +163,7 @@ def _exact_tail(source, target, wanted, cancelled=None):
 
 
 def join_files(sources, target, cancelled=None, frames=None, leads=None, expected=None, speaking=None, *,
-               original_audio=None):
+               original_audio=None, progress=None):
     """Write `target` from `sources` in order; returns the joined frame and sample counts.
 
     `frames`: stop at this length when a compatible short tail can close it exactly,
@@ -175,24 +175,25 @@ def join_files(sources, target, cancelled=None, frames=None, leads=None, expecte
     without source paths or exception messages.
     `original_audio`: mux the original selection and close the picture on its
     source-sample clock; a rounded completed prefix keeps its existing frames.
+    `progress`: optional `progress(part, count)` called as each part starts being written.
     """
     sources = list(sources)
     try:
-        return _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio)
+        return _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio, progress)
     except _VoiceFailed:
         logging.warning('[FreeVideo] The voice of the parts could not be evened out; they are joined as they are',
                         exc_info=True)
-        return _join_ending(sources, target, cancelled, frames, leads, expected, None, original_audio)
+        return _join_ending(sources, target, cancelled, frames, leads, expected, None, original_audio, progress)
 
 
-def _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio=None):
+def _join_ending(sources, target, cancelled, frames, leads, expected, speaking, original_audio=None, progress=None):
     try:
         return _join_files(sources, target, cancelled, frames, leads=leads, expected=expected, speaking=speaking,
-                           original_audio=original_audio)
+                           original_audio=original_audio, progress=progress)
     except _ExactEndFailed:
         # A late mux or validation error must also leave the original ending available.
         return _join_files(sources, target, cancelled, frames, exact=False, leads=leads, expected=expected,
-                           speaking=speaking, original_audio=original_audio)
+                           speaking=speaking, original_audio=original_audio, progress=progress)
 
 
 def _difference(number, shape, other):
@@ -257,7 +258,7 @@ def _conform(source, shape, directory, cancelled):
 
 
 def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expected=None, speaking=None,
-                original_audio=None):
+                original_audio=None, progress=None):
     import av
     from .comfy_metadata import _copy_stream
     audio_lead_in = apply_audio_lead_in = None
@@ -327,6 +328,11 @@ def _join_files(sources, target, cancelled, frames, exact=True, leads=None, expe
                 _check(cancelled)
                 if wanted is not None and frames >= wanted and picture is not None:
                     break
+                if progress is not None:
+                    try:
+                        progress(index + 1, len(sources))
+                    except Exception:
+                        logging.debug('[FreeVideo] Join progress could not be reported', exc_info=True)
                 last = _last_kept(source, wanted - frames) if wanted is not None else None
                 with av.open(str(source)) as container:
                     if len(container.streams.video) != 1 or _shape(container.streams.video[0]) != shape:
@@ -754,7 +760,7 @@ def _replace_target(root, replace, identity, sources):
 
 
 def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, leads=None, expected_seams=None,
-                 speaking=None, *, original_audio=None):
+                 speaking=None, *, original_audio=None, progress=None):
     """Join relative block outputs into a saved video, replacing only this chain's earlier join."""
     import folder_paths
     root = Path(folder_paths.get_output_directory()).resolve()
@@ -786,7 +792,7 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
             def kept(following, previous):
                 return leads(originals.get(str(following)), originals.get(str(previous)) if previous is not None else None)
         joined = join_files(sources, staged, cancelled, frames, leads=kept, expected=expected_seams, speaking=speaking,
-                            **({'original_audio': original_audio} if original_audio is not None else {}))
+                            progress=progress, **({'original_audio': original_audio} if original_audio is not None else {}))
         # The original selection replaces every block's sound, so there are no seam sounds to repair.
         if original_audio is None and expected_seams is not None and joined['seams_repaired'] < expected_seams:
             # A seam sound left unrepaired is never reported as a finished video.

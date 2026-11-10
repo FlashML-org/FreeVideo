@@ -127,6 +127,8 @@ class ChainRunner:
         chain_leads.prune(store_dir, self.records)
         self.starts, self.success, self.cancel_sent, self.progress_values = {}, {}, set(), {}
         self.progress_messages = {}
+        # While a chain's parts are joined: the part being written (0 before the first) and how many there are.
+        self.joins = {}
         self.estimates, self.queue, self.active = {}, [], None
         self.concurrent = bool(getattr(host, 'concurrent', False))
         if self.concurrent:
@@ -258,6 +260,9 @@ class ChainRunner:
         value['last_heartbeat_at'] = record.get('last_heartbeat_at')
         value['elapsed_seconds'] = max(elapsed, remembered.get('elapsed_seconds', 0.))
         value['joining'] = record['output_state'] == 'joining'
+        joined = self.joins.get(record['id']) if value['joining'] else None
+        if joined is not None:
+            value['joining_part'] = dict(joined)
         if client_id is not None:
             # The owner's ID stays in the record: a page only learns whether a chain is its own.
             value['mine'] = record['client_id'] == client_id
@@ -983,6 +988,12 @@ class ChainRunner:
                 return self.closed.is_set() or (final_state != 'cancelled'
                                                and self.records[identity]['state'] == 'cancelling')
         index_by_output = {row['output']: row['index'] for row in snapshot['blocks'] if row['output']}
+        with self.lock:
+            self.joins[identity] = dict(part=0, count=len(store.leading_blocks(snapshot)))
+        def join_progress(part, count):
+            with self.lock:
+                if identity in self.joins:
+                    self.joins[identity].update(part=part, count=count)
         wanted = set()
         def lead_reader(following, previous):
             # Only a seam that must be repaired gets a sound; another seam is never counted for it.
@@ -999,7 +1010,7 @@ class ChainRunner:
             found, kept = self._seams_kept(snapshot)
             wanted.update(found)
             promised = len(wanted)
-            snapshot = dict(snapshot, lead_reader=lead_reader, expected_seams=promised)
+            snapshot = dict(snapshot, lead_reader=lead_reader, expected_seams=promised, join_progress=join_progress)
             if kept < promised:
                 # A sound seam that cannot be repaired is never published as a finished video.
                 raise ValueError('%d of %d seam sounds were not kept' % (promised - kept, promised))
@@ -1013,6 +1024,7 @@ class ChainRunner:
                     part in message for part in (value, repr(value)[1:-1], json.dumps(value)[1:-1])) for value in texts):
                 failure = 'Joining failed'
         with self.lock:
+            self.joins.pop(identity, None)
             record = self.records[identity]
             if self.closed.is_set():
                 return
