@@ -88,7 +88,9 @@ function install() {
     }, true);
     addEventListener('unhandledrejection', event => {
         const reason = event.reason;
-        if (String(reason?.stack || '').includes(base.href)) note('script', describe(reason));
+        if (!String(reason?.stack || '').includes(base.href)) return;
+        // A script that handled the rejection (preventDefault) has dealt with it: decide after every listener has run.
+        setTimeout(() => { if (!event.defaultPrevented) note('script', describe(reason)); });
     });
     console.error = function (...args) {
         try {
