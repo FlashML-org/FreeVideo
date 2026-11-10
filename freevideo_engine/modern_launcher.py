@@ -44,7 +44,81 @@ def launcher_icon():
     return icon
 
 
-def create_ui(session, *, show=True):
+def tray_available():
+    from PySide6.QtWidgets import QSystemTrayIcon
+    return QSystemTrayIcon.isSystemTrayAvailable()
+
+
+def instance_name():
+    import hashlib
+    from .desktop_runtime import launcher_root
+    return 'FreeVideo-launcher-' + hashlib.sha1(plain(launcher_root()).encode('utf-8')).hexdigest()[:16]
+
+
+def hand_to_running_instance(name):
+    """Ask a launcher already running for this installation to show its window; True once it is there.
+
+    A launcher that is closing says so, so a start during an update hand-over still opens its window.
+    One that accepts the connection but is too busy to answer is still running: it keeps its window."""
+    try:
+        from PySide6.QtNetwork import QLocalSocket
+    except ImportError:
+        return False
+    socket = QLocalSocket()
+    socket.connectToServer(name)
+    if not socket.waitForConnected(500):
+        return False
+    if sys.platform == 'win32':
+        # This start holds the foreground right from the click; hand it over, so the window shown
+        # comes to the front instead of only flashing on the taskbar.
+        try:
+            import ctypes
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+        except (AttributeError, OSError):
+            pass
+    socket.write(b'show')
+    socket.waitForBytesWritten(500)
+    reply = bytes(socket.readAll()) if socket.waitForReadyRead(5000) else b'busy'
+    socket.disconnectFromServer()
+    return reply in (b'ok', b'busy')
+
+
+def serve_instance(app, session, bridge, name):
+    """Answer later starts of the launcher by showing this window instead of starting a second one."""
+    try:
+        from PySide6.QtNetwork import QLocalServer
+    except ImportError:
+        return None
+    server = QLocalServer(app)
+    if not server.listen(name):
+        # A leftover socket file from a launcher that died is stale; one that still accepts connections is not.
+        if hand_to_running_instance(name):
+            return None
+        QLocalServer.removeServer(name)
+        if not server.listen(name):
+            return None
+    def accept():
+        while server.hasPendingConnections():
+            socket = server.nextPendingConnection()
+            pending = bytearray()
+            def ready(socket=socket, pending=pending):
+                pending.extend(bytes(socket.readAll()))
+                if len(pending) < 4:
+                    return
+                if bytes(pending) == b'show' and not session.closing:
+                    bridge.show_window()
+                    socket.write(b'ok')
+                else:
+                    socket.write(b'closing' if session.closing else b'no')
+                socket.flush()
+                socket.disconnectFromServer()
+            socket.readyRead.connect(ready)
+            socket.disconnected.connect(socket.deleteLater)
+    server.newConnection.connect(accept)
+    return server
+
+
+def create_ui(session, *, show=True, instance=None):
     from .windows_ux import taskbar_identity
     taskbar_identity()
     from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, Qt
@@ -82,6 +156,8 @@ def create_ui(session, *, show=True):
             super().__init__(engine)
             self.alerted = None
             self.attended = session.attention
+            self.tray = None
+            self.menu = None
             self.value = session.snapshot()
             self.download_value = session.downloads_view()
             self.timer = QTimer(self)
@@ -393,6 +469,28 @@ def create_ui(session, *, show=True):
         def dismissNotice(self):
             self.invoke(session.dismiss_notice)
 
+        @Slot(result=str)
+        def closeChoice(self):
+            # Closing already decided (an update hand-over, or Exit chosen): nothing more to ask.
+            if session.closing:
+                return ''
+            try:
+                return session.close_choice()
+            except Exception:
+                return ''
+
+        @Slot(result=str)
+        def returnPlace(self):
+            """Where the window can be reopened from while it is in the background."""
+            if not tray_available():
+                return 'taskbar'
+            return 'menubar' if sys.platform == 'darwin' else 'tray'
+
+        @Slot()
+        def runInBackground(self):
+            """Hide the window and leave the launcher, with the ComfyUI it started, running."""
+            self.hide_to_background()
+
         @Slot()
         def close(self):
             self.invoke(session.close)
@@ -400,7 +498,57 @@ def create_ui(session, *, show=True):
         @Slot()
         def shutdown(self):
             self.timer.stop()
+            if self.tray is not None:
+                self.tray.hide()
             session.close()
+
+        def show_window(self):
+            """Bring the window back from the background (tray, Dock, or a second start of the launcher)."""
+            if self.tray is not None:
+                self.tray.hide()
+            window = engine.rootObjects()[0]
+            window.showNormal()
+            window.raise_()
+            window.requestActivate()
+
+        def hide_to_background(self):
+            window = engine.rootObjects()[0]
+            if not tray_available():
+                # No tray to return from: minimise, so the window stays reachable on the taskbar.
+                window.showMinimized()
+                return
+            if self.tray is None:
+                self.tray = self.make_tray()
+            app.setQuitOnLastWindowClosed(False)
+            self.tray.show()
+            window.hide()
+
+        def make_tray(self):
+            from PySide6.QtGui import QAction
+            from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+            tray = QSystemTrayIcon(icon, self)
+            tray.setToolTip('FreeVideo')
+            menu = QMenu()
+            open_action = QAction(session.t('Open FreeVideo', '打开 FreeVideo'), menu)
+            exit_action = QAction(session.t('Exit', '退出'), menu)
+            open_action.triggered.connect(self.show_window)
+            exit_action.triggered.connect(self.exit_from_tray)
+            menu.addAction(open_action)
+            menu.addAction(exit_action)
+            tray.setContextMenu(menu)
+            tray.activated.connect(lambda reason: self.show_window() if reason in (
+                QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick) else None)
+            self.menu = menu
+            return tray
+
+        def exit_from_tray(self):
+            # The same questions as closing the window where work would be lost (a task of the
+            # launcher, or a video being generated), asked in the window brought back; otherwise exit.
+            from PySide6.QtCore import QMetaObject
+            window = engine.rootObjects()[0]
+            QMetaObject.invokeMethod(window, 'askExit')
+            if window.property('closePending') or window.property('closeChoice'):
+                self.show_window()
 
     from .model_guidance import cloud_models
     engine = QQmlApplicationEngine()
@@ -415,6 +563,12 @@ def create_ui(session, *, show=True):
         raise RuntimeError('FreeVideo desktop layout could not be loaded')
     window = engine.rootObjects()[0]
     window.setIcon(icon)
+    bridge.instance = serve_instance(app, session, bridge, instance) if instance else None
+    # Clicking the Dock icon (or any activation) of a launcher running in the background brings the window back.
+    if sys.platform == 'darwin':
+        app.applicationStateChanged.connect(lambda state: bridge.show_window()
+            if state == Qt.ApplicationState.ApplicationActive and not window.isVisible()
+            and not (bridge.menu is not None and bridge.menu.isVisible()) else None)
     if sys.platform == 'darwin':
         # Native traffic lights and resizing, with content behind the titlebar.
         # ApplicationWindow keeps controls inside the platform's safe area.
@@ -623,12 +777,23 @@ def main(session=None):
         if not lib.GetConsoleWindow():
             lib.AllocConsole()
             ctypes.windll.user32.ShowWindow(ctypes.c_void_p(lib.GetConsoleWindow()), 0)
+    instance = None
+    if session is None and not smoke:
+        # A launcher already running for this installation, perhaps in the background, shows its window and
+        # this start ends here: it must neither build a second session nor start a second ComfyUI.
+        from PySide6.QtWidgets import QApplication
+        from .windows_ux import taskbar_identity
+        taskbar_identity()
+        QApplication.instance() or QApplication([sys.argv[0]])
+        instance = instance_name()
+        if hand_to_running_instance(instance):
+            return
     from .launcher_session import Session
     from .launcher_settings import Store
     if session is None:
         session = Session(smoke=smoke, store=Store(launcher_root(),
             documents=launcher_root() / 'smoke-documents' if smoke else None))
-    app, engine, window, bridge = create_ui(session)
+    app, engine, window, bridge = create_ui(session, instance=instance)
     if smoke:
         from PySide6.QtCore import QTimer
         destination = sys.argv[sys.argv.index('--smoke-test')+1]

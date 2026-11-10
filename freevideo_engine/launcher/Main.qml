@@ -24,6 +24,9 @@ ApplicationWindow {
     property string modelInfo: "video"
     property bool modelInfoOpen: false
     property bool closePending: false
+    // What closing asks about the ComfyUI this launcher started: "running" or "generating"; "" is no question.
+    property string closeChoice: ""
+    property string closePlace: "tray"
     property bool cleanupConfirm: false
     property bool releaseConfirm: false
     property bool accepted: false
@@ -289,10 +292,25 @@ ApplicationWindow {
         NumberAnimation { target: page; property: "opacity"; from: 0; to: 1; duration: 220; easing.type: Easing.OutCubic }
         NumberAnimation { target: pageShift; property: "y"; from: 8; to: 0; duration: 260; easing.type: Easing.OutCubic }
     }
+    function askClose() {
+        var choice = backend.closeChoice()
+        if (choice) { closePlace = backend.returnPlace(); closeChoice = choice }
+        else backend.close()
+    }
+    // The tray's Exit: only a video being generated still gets the choice, so it is never stopped unasked.
+    function exitAfterQuestions() {
+        var choice = backend.closeChoice()
+        if (choice === "generating") { closePlace = backend.returnPlace(); closeChoice = choice }
+        else backend.close()
+    }
+    function askExit() {
+        if (s.busy && !s.cleanup.busy) closePending = true
+        else exitAfterQuestions()
+    }
     onClosing: function(event) {
         event.accepted = false
         if (s.busy && !s.cleanup.busy) closePending = true
-        else backend.close()
+        else askClose()
     }
 
     Rectangle {
@@ -1740,7 +1758,7 @@ ApplicationWindow {
 
     FPopup {
         id: archivesDialog; objectName: "archivesDialog"
-        visible: s.archives_dialog.remind && !updateDialogWanted && !settingsOpen && !releaseNotesOpen && !modelInfoOpen && !closePending && !s.notice
+        visible: s.archives_dialog.remind && !updateDialogWanted && !settingsOpen && !releaseNotesOpen && !modelInfoOpen && !closePending && closeChoice === "" && !s.notice
         width: Math.min(480, win.width - 40); closePolicy: Popup.NoAutoClose
         onClosed: archivesExpanded = false
         height: Math.min(archivesContents.implicitHeight + padding * 2 + archivesActions.implicitHeight + archivesFootnote.implicitHeight + 28, win.height - 48)
@@ -1948,12 +1966,25 @@ ApplicationWindow {
         onRejected: releaseConfirm = false
     }
     FDialog {
-        visible: closePending
+        objectName: "closePendingDialog"; visible: closePending
         title: t("Pause and close?", "暂停并退出？")
         text: t("The current task will stop. Downloaded files and your setup are retained for next time.", "会停止当前任务，已下载文件和安装进度会保留，下次可以继续。")
         acceptText: t("Pause and close", "暂停并退出"); rejectText: t("Keep working", "继续处理"); destructive: true
-        onAccepted: backend.close()
+        onAccepted: { closePending = false; exitAfterQuestions() }
         onRejected: closePending = false
+    }
+    FDialog {
+        objectName: "closeChoiceDialog"; visible: closeChoice !== ""
+        title: t("Close FreeVideo?", "关闭 FreeVideo？")
+        text: closeChoice === "generating"
+              ? t("A video is being generated. Exit stops ComfyUI and this generation. In the background, the generation continues, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "正在生成视频。退出会停止 ComfyUI 和这次生成；后台运行时生成会继续，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+              : t("Exit stops ComfyUI. In the background, ComfyUI keeps running, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "退出会停止 ComfyUI。后台运行时 ComfyUI 继续运行，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+        acceptText: t("Run in background", "后台运行"); altText: t("Exit", "退出"); rejectText: t("Cancel", "取消"); defaultFocus: true
+        onAccepted: { closeChoice = ""; backend.runInBackground() }
+        onAlternative: { closeChoice = ""; backend.close() }
+        onRejected: closeChoice = ""
     }
     FDialog {
         visible: !!s.notice

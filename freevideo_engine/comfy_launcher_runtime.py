@@ -511,21 +511,28 @@ def _refused(error):
     return isinstance(error, ConnectionRefusedError) or isinstance(getattr(error, 'reason', None), ConnectionRefusedError)
 
 
-def queue_busy(url):
-    """Preserve the legacy check; a pool must confirm every executor is idle. A refused
-    connection means nothing listens, so there is no job; a timeout is not that answer."""
+def queue_state(url, timeout=3):
+    """'busy' while ComfyUI is running or holding jobs, or a pool has not confirmed every executor idle;
+    'idle' when nothing is running (a refused connection means nothing listens, so there is no job);
+    'unknown' when the queue or the pool cannot be read, a timeout included."""
     from .gpu_pool import pool_enabled
-    pooled = pool_enabled()
     try:
-        value = get_json(loopback_url(url) + '/queue', timeout=3)
+        value = get_json(loopback_url(url) + '/queue', timeout=timeout)
         if value.get('queue_running') or value.get('queue_pending'):
-            return True
-        if pooled:
-            state = get_json(loopback_url(url) + '/freevideo/pool', timeout=3)
-            return state.get('busy') is not False or state.get('confirmed') is not True
-        return False
+            return 'busy'
+        if pool_enabled():
+            state = get_json(loopback_url(url) + '/freevideo/pool', timeout=timeout)
+            return 'idle' if state.get('busy') is False and state.get('confirmed') is True else 'busy'
+        return 'idle'
     except (OSError, ValueError, AttributeError) as error:
-        return pooled and not _refused(error)
+        return 'idle' if _refused(error) else 'unknown'
+
+
+def queue_busy(url, timeout=3):
+    """Preserve the legacy check; a pool must confirm every executor is idle, so an unreadable pool counts as busy."""
+    from .gpu_pool import pool_enabled
+    state = queue_state(url, timeout)
+    return state == 'busy' or state == 'unknown' and pool_enabled()
 
 
 @plain_errors

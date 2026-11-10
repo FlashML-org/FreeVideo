@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from . import __version__
 from . import disk_space
 from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, SETUP_WAITS_FOR_JOB, Controller, layout, local_url, loopback_url,
-                                     managed_frontend, new_layout, queue_busy)
+                                     managed_frontend, new_layout, queue_busy, queue_state)
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
@@ -958,6 +958,18 @@ class Session:
         """Whether the opened ComfyUI is running or holding a job (read from the download thread)."""
         url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
         return queue_busy(url)
+
+    def close_choice(self):
+        """What closing the window asks about the ComfyUI this launcher started.
+
+        '' when there is nothing to keep (none running, or one started elsewhere, which is never stopped),
+        'running' when it is up, 'generating' when it is also making a video. Read when the window is closed,
+        so the queue is asked directly rather than taken from the cached poll; an unreadable queue counts as busy."""
+        owns = getattr(self.controller, 'owns_server', None)
+        if not callable(owns) or owns() is not True:
+            return ''
+        url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
+        return 'running' if queue_state(url, timeout=1) == 'idle' else 'generating'
 
     def image_disk_fits(self, total):
         """Whether the disk the image model downloads to has room for it, by the margin that
