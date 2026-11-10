@@ -763,10 +763,10 @@ export async function openImageEditor({source = null, name = source || '', targe
         if (!layer) return;
         const next = {...layer.text, ...patch};
         if (!fontLoaded(next.font, next.weight)) {
-            message(t('Preparing the font…', '正在准备字体…'));
+            const done = working('Preparing the font', '正在准备字体');
             try { await loadFont(next.font, next.weight); }
             catch (error) { console.warn('FreeVideo image editor font unavailable; using fallback fonts.', error); }
-            message('');
+            done();
         }
         if (dialog.open && doc.layers.some(l => l.id === id)) commit(updateText(id, patch));
     }
@@ -928,8 +928,8 @@ export async function openImageEditor({source = null, name = source || '', targe
     filePicker.onchange = async () => {
         const file = filePicker.files?.[0]; filePicker.value = '';
         if (!file || !upload) return;
-        message(t('Uploading the image…', '正在上传图片…'));
-        try { const result = await upload(file); message(''); await addImageLayer(result.file, file.name); }
+        const done = working('Uploading the image', '正在上传图片');
+        try { const result = await upload(file); done(); await addImageLayer(result.file, file.name); }
         catch (error) { message(error.message || t('Upload failed.', '上传失败。'), ['Image editor upload', '图片编辑器上传']); }
     };
     function duplicateLayer() {
@@ -1250,10 +1250,11 @@ export async function openImageEditor({source = null, name = source || '', targe
             if (!pointInfo?.ready) { flashPointDownload(); return null; }
             if (pointBusy) return null;
             const how = mode || opts.point.mode;
-            pointBusy = true; message(t('Finding the object…', '正在找出物体……'));
+            pointBusy = true; const found = working('Finding the object', '正在找出物体');
             segmentAt(renderer, genClient, doc, src, [u, v]).then(file => {
+                found();
                 if (doc.layers.indexOf(src) < 0) return;
-                addPart({shape: 'mask', layer: src.id, file, upto: src.ops.length}, how); message('');
+                addPart({shape: 'mask', layer: src.id, file, upto: src.ops.length}, how);
             }).catch(error => {
                 message(error?.code === 'busy_video' ? t('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。')
                     : t('Could not find an object here. Try again.', '没能在这里找出物体，请再试一次。'), error?.code === 'busy_video' ? null : ['Image object selection', '图片智能抠图']);
@@ -1331,12 +1332,12 @@ export async function openImageEditor({source = null, name = source || '', targe
                 if (maskTarget && layer.mask) op.tool = kind === 'paint' ? 'hide' : kind === 'erase' ? 'reveal' : kind;
                 if (kind === 'heal') {
                     // Healing a large stroke takes a moment: say so, and keep the stroke on screen until it is done.
-                    liveStroke = held; message(t('Healing…', '正在修复…')); draw();
+                    liveStroke = held; const healed = working('Healing', '正在修复'); draw();
                     healing = new Promise(resolve => setTimeout(() => {
                         if (liveStroke === held) liveStroke = null;
                         const current = dialog.open && doc.layers.find(l => l.id === layer.id);
                         if (current) pushOp(current, op, doc);
-                        healing = null; message(''); resolve();
+                        healing = null; healed(); resolve();
                     }, 40));
                     return;
                 }
@@ -1610,12 +1611,29 @@ export async function openImageEditor({source = null, name = source || '', targe
     // ----- leave / save ----------------------------------------------------------------------------
     let resolveResult;
     const result = new Promise(r => { resolveResult = r; });
-    let messageTimer = null;
+    let messageTimer = null, workingTimer = null;
     function message(text, where = null) {
+        clearInterval(workingTimer); workingTimer = null;
         status.textContent = text;
         if (text && where) status.append(issueButton(t, () => ({where, message: text})));
         clearTimeout(messageTimer);
         if (text) messageTimer = setTimeout(() => { status.textContent = ''; }, where ? 20000 : 5000);
+    }
+    // A running task keeps its line, with the time so far, until it ends or another message replaces it.
+    function working(en, zh) {
+        message('');
+        const since = performance.now();
+        // Only the label is announced; the ticking time is hidden from screen readers.
+        const time = document.createElement('span'); time.setAttribute('aria-hidden', 'true');
+        status.textContent = t(en, zh); status.append(time);
+        const show = () => {
+            const s = Math.floor((performance.now() - since) / 1000), m = Math.floor(s / 60), r = s % 60;
+            time.textContent = s < 1 ? '…' : s < 60 ? t(` · ${s} s`, ` · ${s} 秒`)
+                : t(` · ${m} min${r ? ` ${r} s` : ''}`, ` · ${m} 分${r ? ` ${r} 秒` : ''}`);
+        };
+        show();
+        const timer = workingTimer = setInterval(show, 1000);
+        return () => { if (workingTimer === timer) message(''); };
     }
     async function leave() {
         void generation.cancel();
@@ -1631,7 +1649,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         commitText();
         if (strip(doc) === strip(original())) { close(fresh ? null : {restore: true}); return; }
         if (!changed() && !fresh) { close(null); return; }
-        save.disabled = cancel.disabled = true; message(t('Saving the image…', '正在保存图片…'));
+        save.disabled = cancel.disabled = true; working('Saving the image', '正在保存图片');
         try {
             const {blob, width, height} = await renderer.export(doc, extension === 'jpg' ? 'image/jpeg' : 'image/png');
             close({blob, name: name ? `${stem}-edit.${extension}` : `${stem}.${extension}`, edit: doc, width, height});
@@ -1643,7 +1661,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     function close(value) {
         window.removeEventListener('beforeunload', beforeUnload); unloadWarning = false;
         void generation.dispose();
-        clearInterval(antsTimer); clearTimeout(messageTimer);
+        clearInterval(antsTimer); clearInterval(workingTimer); clearTimeout(messageTimer);
         observer.disconnect();
         dialog.removeEventListener('keydown', keys); dialog.removeEventListener('keyup', keyup);
         window.removeEventListener('keydown', stray, true); window.removeEventListener('keyup', stray, true);
