@@ -1182,7 +1182,7 @@ class Session:
             from .failure_details import launcher_failure
             # Windows words many refusals alike and often names no file; where it happened travels with the message.
             # Only a permission failure takes the line: the other cards read the first lines of the message.
-            if launcher_failure(message)['kind'] == 'permission':
+            if launcher_failure(message)['kind'] in ('permission', 'engine-folder-denied'):
                 message = plain_text(text(row['denied'], self.language.startswith('zh')) + '\n' + message)
         return message
 
@@ -2412,7 +2412,7 @@ class Session:
                 if line.startswith(MISMATCH_PATH + ': ') and line[len(MISMATCH_PATH) + 2:]:
                     failure['path'] = line[len(MISMATCH_PATH) + 2:]
                     break
-        if failure.get('kind') == 'permission' and row.get('error') and row.get('denied'):
+        if failure.get('kind') in ('permission', 'engine-folder-denied') and row.get('error') and row.get('denied'):
             from .denied_access import card_text
             # The card shows the detail instead of the action, so the action goes under the location.
             location = card_text(row['denied'], zh)

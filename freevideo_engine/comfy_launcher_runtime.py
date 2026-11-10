@@ -1146,7 +1146,14 @@ class Controller:
                                   get_folder_paths=lambda _: host.get('libraries', []))
         validator = Setup(self.source, folders, LauncherRunner)
         validator.validate_root(str(engine))
-        source = materialize_source(self.source, engine / 'launcher' / 'source')
+        try:
+            source = materialize_source(self.source, engine / 'launcher' / 'source')
+        except OSError as error:
+            from .denied_access import engine_folder_error
+            explained = engine_folder_error(error, engine)
+            if explained is None:
+                raise
+            raise explained from error
         self.setup = Setup(source, folders, LauncherRunner)
         from .hf_auth import validate
         self.setup.runner.token = validate(values.get('token', ''))

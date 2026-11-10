@@ -10,6 +10,8 @@ import os
 import re
 import tempfile
 
+from .system import windows
+
 DENIED_ERRNO = (errno.EACCES, errno.EPERM)
 # Folders that stay in the description when the denied path is inside one of them.
 OWN_NAME = re.compile(r'^(?:freevideo|fv$)', re.I)
@@ -156,3 +158,37 @@ def card_text(info, zh=False):
         value = re.sub(r'(?<![\w\[])%s(?![\w\]])' % re.escape(token) if token[0] != '[' else re.escape(token),
                        chinese if zh else english, value)
     return ('被拒绝的位置：' if zh else 'Denied location: ') + value
+
+
+# The lead of the error when the engine folder's place refuses new folders; the failure card matches it.
+ENGINE_FOLDER_DENIED = 'Windows does not let this account create folders in'
+# Folders a standard account cannot write to, named as they are because they hold no personal name.
+PROTECTED = ('program files', 'program files (x86)', 'windows')
+
+
+def engine_folder_error(error, engine):
+    """The error to raise when preparing the engine folder was denied on Windows, else None.
+
+    Only a refusal to create something in the engine folder, or in a folder above it, says the place
+    is closed to this account. A file in use (Windows error 32 is also a PermissionError), a rename
+    or copy that names two files, and a file elsewhere (the launcher's own files) keep their cards.
+    The message names a protected system folder (Program Files) and otherwise only the drive,
+    never a user's folder."""
+    if not windows() or not is_denied(error):
+        return None
+    if getattr(error, 'winerror', None) == 32 or getattr(error, 'filename2', None):
+        return None
+    drive, parts = _segments(engine)
+    if getattr(error, 'filename', None):
+        denied_drive, denied = _segments(error.filename)
+        # mkdir(parents=True) can be refused at a folder above the engine folder.
+        if denied_drive != drive or not (_under(denied, parts) or _under(parts, denied)):
+            return None
+    if drive and parts and parts[0].casefold() in PROTECTED:
+        where = (drive + '\\' if drive else '') + parts[0]
+    elif drive:
+        where = 'the chosen location on drive ' + drive[:-1]
+    else:
+        where = 'the chosen location'
+    return ValueError('%s %s. Choose a folder in the user folder or on another drive.'
+                      % (ENGINE_FOLDER_DENIED, where))
