@@ -26,7 +26,7 @@ const frame = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 export function createStage(cn, page) {
     const t = pair => pair[cn ? 1 : 0];
     const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true'); root.dataset.lang = cn ? 'zh' : 'en';
-    let ticker = 0, dragTicker = 0, instantLayout = false, topTarget = null, onsize = null;
+    let ticker = 0, dragTicker = 0, instantLayout = false, need = 0;
     // The generation bar, the lines and the recording bar are the editor's own, under the editor's styles; they share one box above the tracks.
     const top = el('div', null, 'fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor');
     const view = el('section', null, 'fv-ed-track-view'); view.dataset.trackSwitches = 'false';
@@ -51,8 +51,9 @@ export function createStage(cn, page) {
         let low = 24;
         for (const id in names) if (headNodes[id].dataset.on !== 'false') low = Math.max(low, parseFloat(bodies[id].style.top) + names[id].row.height + 6);
         low = Math.max(low, menu.offsetHeight + 40);
-        content.style.height = `${low}px`; view.style.height = `${low + 4}px`;
-        onsize?.((topTarget ?? top.offsetHeight) + low + 4);
+        content.style.height = `${low}px`; playhead.style.bottom = 'auto'; playhead.style.height = `${low}px`;
+        // What the frame needs in this state: the bar and the tracks, or the bar and the lines laid over the lower tracks with the dialogue track left showing.
+        need = Math.max(top.offsetHeight + low + 4, linesBox.hidden ? 0 : top.offsetHeight + 122 + linesBox.offsetHeight);
     };
     const clips = {};
     for (const spec of page.clips) {
@@ -83,7 +84,9 @@ export function createStage(cn, page) {
         const line = el('div', null, 'fv-ed-voice-line'), main = el('div', null, 'fv-ed-voice-main'), time = button(`0:0${[0, 4, 7][i]}`, 'fv-ed-voice-time'), body = el('div', null, 'fv-ed-voice-text');
         main.append(el('span', null, 'fv-ed-voice-mark'), time, body); line.append(main); voiceList.append(line); return {line, body};
     });
-    voice.append(voiceTop, voiceList);
+    // The three lines lie over the lower tracks in a box of their own; the bar keeps one row, with the name and the button.
+    const linesBox = el('div', null, 'fv-whatsnew-lines fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor'); linesBox.hidden = true; linesBox.append(voiceList);
+    voice.append(voiceTop);
     const presets = el('div', null, 'fv-ed-music-presets');
     const picker = (label, options) => {
         const row = el('div', null, 'fv-ed-music-row'), control = segmented(options.map(([value, text]) => ({value, label: t(text)})));
@@ -100,7 +103,7 @@ export function createStage(cn, page) {
     recMain.type = 'button'; recMain.tabIndex = -1;
     const recSide = el('div', null, 'fv-ed-record-side'), recCenter = el('div', null, 'fv-ed-record-center'), recEnd = el('div', null, 'fv-ed-record-side fv-ed-record-end');
     recSide.append(el('span', t(['Record', '录音']))); recCenter.append(recMain); recEnd.append(recNote); record.append(recSide, recCenter, recEnd);
-    top.append(genbar, record); root.append(top, view);
+    top.append(genbar, record); root.append(top, view, linesBox);
     const list = el('ol', null, 'fv-whatsnew-list'); for (const item of page.list || []) list.append(el('li', t(item)));
 
     let typing = 0, timers = [];
@@ -113,9 +116,9 @@ export function createStage(cn, page) {
     };
     // The box above the tracks grows and shrinks to its content over 240 ms.
     const morph = change => {
-        if (instantLayout) { change(); topTarget = top.offsetHeight; return; }
+        if (instantLayout) { change(); return; }
         const from = top.offsetHeight, shown = [voice.hidden, record.hidden, genbar.hidden].join();
-        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight; topTarget = to;
+        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight;
         // A panel that appears or goes is swapped at once, so no half-open frame shows; the other changes grow or shrink over 240 ms.
         if (from === to || shown !== [voice.hidden, record.hidden, genbar.hidden].join()) { top.style.transition = ''; return; }
         top.style.height = `${from}px`; top.getBoundingClientRect(); top.style.transition = ''; top.style.height = `${to}px`;
@@ -135,7 +138,7 @@ export function createStage(cn, page) {
         const mode = bar.mode || 'idle', running = mode === 'running', recording = mode === 'record', open = mode === 'selected' || mode === 'lines';
         genbar.hidden = recording; record.hidden = !recording;
         genbar.dataset.mode = running ? 'running' : open ? 'selected' : 'idle';
-        voice.hidden = !linesState.shown; if (linesState.shown) genbar.dataset.voice = 'true'; else genbar.removeAttribute('data-voice');
+        voice.hidden = linesBox.hidden = !linesState.shown; if (linesState.shown) genbar.dataset.voice = 'true'; else genbar.removeAttribute('data-voice');
         presets.hidden = !bar.presets; genbar.classList.toggle('fv-ed-genbar-music', !!bar.presets);
         styles.value = bar.style; moods.value = bar.mood; styles.disabled = moods.disabled = running;
         text.placeholder = bar.ph ? t(bar.ph) : ''; text.disabled = running;
@@ -157,7 +160,7 @@ export function createStage(cn, page) {
         faders.forEach(n => { n.style.transition = 'none'; }); frame(() => faders.forEach(n => { n.style.transition = ''; }));
         playhead.style.cssText = ''; playhead.dataset.on = 'false'; range.dataset.on = 'false'; range.style.cssText = ''; menuBox.dataset.on = 'false';
         text.value = ''; list.querySelectorAll('li').forEach(li => li.removeAttribute('data-lit'));
-        top.style.height = ''; top.style.transition = ''; topTarget = null;
+        top.style.height = ''; top.style.transition = '';
         paintLines(); paintBar(); fit();
     };
     const set = (ops, instant = false) => {
@@ -221,13 +224,13 @@ export function createStage(cn, page) {
     // Reduced motion shows the finished page: every step applied at once, typed text complete.
     const settle = ops => { const o = {...ops}; if (o.bar?.type) o.bar = {...o.bar, text: o.bar.type, type: null}; if (o.lines?.edit === 'typing') o.lines = {...o.lines, edit: 'done'}; set(o, true); };
     const finish = () => { instantLayout = true; for (const [, ops] of page.steps) settle(ops); range.dataset.on = 'false'; instantLayout = false; };
-    // The tallest the demo gets over the steps; `measure` reads the stage's own height at each state.
-    const tallest = measure => {
-        root.classList.add('fv-whatsnew-measure'); instantLayout = true; reset(); let max = measure();
-        for (const [, ops] of page.steps) { settle(ops); max = Math.max(max, measure()); }
+    // The tallest the demo gets over the steps: the frame has that height from the start to the end, so nothing below it moves.
+    const tallest = () => {
+        root.classList.add('fv-whatsnew-measure'); instantLayout = true; reset(); let max = need;
+        for (const [, ops] of page.steps) { settle(ops); max = Math.max(max, need); }
         instantLayout = false; reset(); root.classList.remove('fv-whatsnew-measure'); return max;
     };
-    return {element: root, list, set, reset, finish, tallest, size: callback => { onsize = callback; }};
+    return {element: root, list, set, reset, finish, tallest, height: value => { root.style.height = `${value}px`; }};
 }
 
 // Plays a page's steps once and stays on the finished state; reduced motion shows that state at once.
@@ -258,16 +261,13 @@ export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
     const page = PAGES[0], stage = createStage(cn, page);
     title.textContent = page.title[cn ? 1 : 0]; stageHost.replaceChildren(stage.element); dialog.insertBefore(stage.list, foot);
     let stop = () => {}, closed = false;
-    // The dialog is as tall as its tallest state (the lines); the demo frame follows its own content over 240 ms, the list sits right under it and the spare height falls between the list and Close.
+    // The demo frame is as tall as its tallest state for the whole run, so the list under it and the dialog never move.
     stageHost.style.visibility = 'hidden';
     const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
     Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
         if (closed) return;
-        stageHost.style.height = ''; dialog.style.height = '';
-        dialog.style.height = `${stage.tallest(() => dialog.offsetHeight)}px`;
-        stageHost.style.transition = 'none'; stage.size(height => { stageHost.style.height = `${height}px`; });
+        stage.height(stage.tallest());
         stageHost.style.visibility = ''; stop = play(stage, page, reduce);
-        stageHost.getBoundingClientRect(); stageHost.style.transition = '';
     });
     close.onclick = () => dialog.close();
     dialog.addEventListener('keydown', event => event.stopPropagation());
