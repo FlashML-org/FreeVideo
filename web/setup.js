@@ -175,7 +175,7 @@ export async function openSetup(options) {
     calibrateRepeats.value = '1';
     calibrateRepeats.className = 'fv-number';
     const repeatsLabel = node('label', t('Passes', '轮数'));
-    repeatsLabel.append(calibrateRepeats);
+    const repeatsUnit = node('span'); repeatsUnit.className = 'fv-unit'; repeatsUnit.append(calibrateRepeats); repeatsLabel.append(repeatsUnit);
     const calibrateButton = node('button', t('Run placement test', '运行放置测试'));
     const calibrateStatus = note('');
     calibration.append(repeatsLabel, note(t(
