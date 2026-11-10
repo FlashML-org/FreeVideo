@@ -145,8 +145,11 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     // A caller that passes a fixed list owns the choice; otherwise the panel offers the same picker as image generation.
     const picker = loras === undefined ? createImageLoras({t: tr, fetchApi: fetcher, getPrompt: () => field.value,
         setPrompt: text => { field.value = text; }, onChange: () => render()}) : null;
-    foot.append(note, action);
-    side.append(field, ...(picker ? [picker.element] : []), foot);
+    // The LoRA capsule and the generate button share one row, at its left and right ends.
+    const row = el('div', 'fv-cg-row');
+    row.append(...(picker ? [picker.element] : []), action);
+    foot.append(note);
+    side.append(field, row, foot);
     const grid = el('div', 'fv-cg-views');
     const cells = names.map((view, index) => {
         const cell = el('div', 'fv-cg-view');
