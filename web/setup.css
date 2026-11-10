@@ -39,6 +39,20 @@
 .fv-setup details[open]>summary{margin-bottom:12px}
 .fv-setup details details{margin:12px 0 0;padding:12px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg)}
 .fv-setup details details>summary{font-weight:var(--fv-medium);font-size:var(--fv-body)}
+.fv-setup details.fv-adv{padding-block:12px 4px}
+.fv-setup details.fv-adv>summary{padding-bottom:10px}
+.fv-setup details.fv-adv>details{margin:0;padding:0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent}
+.fv-setup details.fv-adv>details>summary{padding:12px 0;font-weight:var(--fv-medium)}
+.fv-setup details.fv-adv .fv-unit{display:flex;align-items:center;gap:8px;margin-top:6px}
+.fv-setup details.fv-adv .fv-unit>input.fv-number{width:96px;margin:0}
+.fv-setup details.fv-adv .fv-unit>span{white-space:nowrap}
+.fv-setup details.fv-adv>details[open]>summary{margin-bottom:0}
+.fv-setup details.fv-adv>details[open]{padding-bottom:12px}
+.fv-setup details.fv-adv summary>span{margin-left:auto;font-weight:var(--fv-regular,400);transition:opacity .4s}
+.fv-setup details.fv-adv summary>span.fv-fade{opacity:0}
+.fv-setup details.fv-adv>button.fv-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin:0;padding:12px 0;min-height:0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent;color:inherit;font:inherit;font-size:var(--fv-body);font-weight:var(--fv-medium);text-align:left;cursor:pointer}
+.fv-setup details.fv-adv>button.fv-row[hidden]{display:none}
+.fv-setup details.fv-adv>button.fv-row::after{content:'';flex:none;width:6px;height:6px;margin-right:4px;border-right:1.5px solid var(--fv-muted);border-top:1.5px solid var(--fv-muted);transform:rotate(45deg)}
 .fv-setup details.fv-token{margin:12px 0 0;padding:12px 0 0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent}
 .fv-setup details.fv-token>summary{font-size:13px;font-weight:500;color:var(--fv-muted)}
 .fv-setup .fv-source-row{display:flex;align-items:center;gap:10px;margin-top:6px}
