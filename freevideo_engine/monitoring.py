@@ -12,7 +12,31 @@ from .system import windows
 from .long_paths import io_path, plain_data
 
 
-def save(path, value, *, staging=None, plain_paths=True):
+def load_ledger(path, *, retain=True):
+    """Read a verification ledger; a missing, unreadable or non-object file counts as empty.
+
+    A ledger only caches what was verified, so damage (for example a file zero-filled
+    by a power loss) must lead to a fresh check, never to a failed install or run.
+    A damaged file is renamed to ``<name>.corrupt-<date>`` so it stays available for
+    diagnosis; ``retain=False`` leaves it in place for read-only callers."""
+    path = io_path(path)
+    try:
+        value = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+        if isinstance(value, dict):
+            return value
+    except (OSError, ValueError):
+        pass
+    if retain and path.is_file():
+        try:
+            kept = path.with_name(path.name + '.corrupt-' + time.strftime('%Y%m%d'))
+            if not kept.exists():
+                path.replace(kept)
+        except OSError:
+            pass
+    return {}
+
+
+def save(path, value, *, staging=None, plain_paths=True, durable=False):
     path = io_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Unique, closed staging file; Windows readers/antivirus may briefly hold
@@ -24,6 +48,10 @@ def save(path, value, *, staging=None, plain_paths=True):
             dir=path.parent, delete=False) as stream:
         temporary = Path(stream.name)
         stream.write(json.dumps(plain_data(value) if plain_paths else value, ensure_ascii=False, indent=2) + '\n')
+        if durable:
+            # Without this, a power loss after the replace can leave a zero-filled file.
+            stream.flush()
+            os.fsync(stream.fileno())
     for attempt in range(8):
         try:
             temporary.replace(path)

@@ -276,7 +276,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     import shutil
     import threading
     from . import adaln_assets as assets, network, provision
-    from .monitoring import save
+    from .monitoring import save, load_ledger
     cache = Path(machine['cache'])
     if not (cache / 'manifest.json').is_file():
         return dict(seconds=0., downloaded_bytes=0)  # Generation reports an invalid installation.
@@ -286,7 +286,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     root = Path(root)
     shared = cache_root(machine['model_root'])
     ledger = root / 'verified-models.json'
-    stamps = json.loads(ledger.read_text(encoding='utf-8')) if ledger.is_file() else {}
+    stamps = load_ledger(ledger)
     stop = threading.Event()
     def check():
         if stop.is_set():
@@ -313,7 +313,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
                     network.retain_partial(path.with_suffix('.json'), 'rejected')
             missing.append((table, row, path))
     if len(stamps) != recorded:
-        save(ledger, stamps)
+        save(ledger, stamps, durable=True)
     if not missing:
         retire_superseded(machine)
         return dict(seconds=0., downloaded_bytes=0)
@@ -365,7 +365,7 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
         with lock:
             done[index], speeds[index] = row['bytes'], 0.
             stamps[str(path)] = provision.file_identity(path, row)
-            save(ledger, stamps)
+            save(ledger, stamps, durable=True)
         emit(force=True)
     emit(force=True)
     # Each table is fifty small files; several transfers hide per-file latency.
