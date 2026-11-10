@@ -592,8 +592,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         for (const [id, item] of clips) if (!retained.has(id)) { item.component?.dispose(); item.element.remove(); clips.delete(id); progresses.delete(id); }
         heads.append(addAudio);
         addAudio.style.top = `${top}px`; addAudio.disabled = tracks.find(track => track.id === 'a2')?.clips.some(busy) || false;
-        addAudio.textContent = twoAudio ? t('− Audio track', '－ 声音轨') : t('+ Audio track', '＋ 声音轨');
-        addAudio.dataset.sign = addAudio.textContent.slice(0, 1); // Phone widths show the sign alone.
+        addAudio.textContent = twoAudio ? t('Remove Audio 2', '移除声音 2') : t('+ Audio track', '＋ 声音轨');
+        addAudio.dataset.sign = twoAudio ? '×' : '＋'; // Phone widths show the sign alone.
         addAudio.title = '';
         addAudio.setAttribute('aria-label', addAudio.textContent);
         // Without Audio 2 the guide points at the button that adds it.

@@ -17,7 +17,7 @@
 .fv-ed-text-label{padding:0 10px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:32px;color:var(--fv-ink)}
 .fv-ed-clip[data-text-kind]{background:color-mix(in srgb,var(--fv-accent) 16%,var(--fv-card));border-color:color-mix(in srgb,var(--fv-accent) 35%,var(--fv-border))}
 .fv-ed-text-overflow{position:absolute;right:3px;top:2px;padding:1px 3px;border:1px solid var(--fv-warning);border-radius:3px;background:var(--fv-bg);color:var(--fv-warning);font-size:10px}
-.fv-ed-track-head[data-text-track=true]{padding-left:8px;padding-right:4px}.fv-ed-text-track-controls{margin-left:auto;display:flex;gap:2px}
+.fv-ed-track-head[data-text-track=true]{padding-left:16px;padding-right:4px}.fv-ed-text-track-controls{margin-left:auto;display:flex;gap:2px}
 .fv-editor .fv-ed-text-track-controls button{padding:0;width:20px;height:22px;min-width:0;opacity:.5}.fv-editor .fv-ed-text-track-controls button[aria-pressed=true]{opacity:1;color:var(--fv-accent)}
 .fv-ed-track-row[data-hidden=true] .fv-ed-clip{opacity:.45}.fv-ed-track-row[data-locked=true] .fv-ed-clip{cursor:not-allowed}
 .fv-ed-track-row[data-locked=true]{background-image:repeating-linear-gradient(135deg,color-mix(in srgb,var(--fv-ink) 8%,transparent) 0 2px,transparent 2px 8px)}
