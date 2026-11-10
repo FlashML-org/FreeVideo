@@ -110,9 +110,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const top = el('div', 'fv-cast-top');
         const title = el('h2', '', id ? word(text('Edit character', '编辑角色'), text('Edit scene', '编辑场景'), text('Edit prop', '编辑道具')) : word(text('New character', '新建角色'), text('New scene', '新建场景'), text('New prop', '新建道具')));
         dialog.setAttribute('aria-label', title.textContent);
-        const closeButton = button('fv-cast-close', '×', () => close());
-        closeButton.setAttribute('aria-label', text('Close', '关闭')); top.append(title, closeButton);
-        const name = el('input', 'fv-cast-name'); name.type = 'text'; name.maxLength = 120;
+        top.append(title);
+        const name = el('input', 'fv-cast-name'); name.type = 'text'; name.maxLength = 120; name.autofocus = true;
         name.placeholder = word(text('Name', '名字'), text('Name', '名称')); name.setAttribute('aria-label', name.placeholder);
         name.oninput = () => sync();
         name.onkeydown = event => { if (event.key === 'Enter') event.preventDefault(); };

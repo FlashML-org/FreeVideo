@@ -33,6 +33,16 @@ function mediaElement(media, lang, title) {
     } else {
         node.alt = media.alt?.[lang] || title;
         node.decoding = 'async';
+        node.tabIndex = 0; node.style.cursor = 'zoom-in';
+        const enlarge = () => {
+            const zoom = el('dialog', 'fv-book-zoom'), big = el('img'); big.src = node.src; big.alt = node.alt;
+            const shut = el('button', 'fv-close fv-book-zoom-close', '×'); shut.type = 'button'; shut.setAttribute('aria-label', COPY[language()].close);
+            zoom.append(big, shut); zoom.onclick = () => zoom.close();
+            zoom.addEventListener('close', () => { zoom.remove(); node.focus(); });
+            node.closest('dialog').append(zoom); zoom.showModal();
+        };
+        node.onclick = enlarge;
+        node.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); enlarge(); } };
     }
     return node;
 }
@@ -61,7 +71,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
     dialog.setAttribute('aria-labelledby', 'fv-book-title');
     const header = el('header', 'fv-book-header'), title = el('h1', null, text.book);
     title.id = 'fv-book-title';
-    const close = el('button', 'fv-book-close', text.close); close.type = 'button';
+    const close = el('button', 'fv-close fv-book-close', '×'); close.type = 'button'; close.setAttribute('aria-label', text.close);
     header.append(title, close);
     const layout = el('div', 'fv-book-layout'), nav = el('nav', 'fv-book-nav');
     nav.setAttribute('aria-label', text.contents);
@@ -138,7 +148,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
         article.scrollTop = 0;
     }
     for (const item of TUTORIAL_CHAPTERS) {
-        const button = el('button', 'fv-book-chapter', item.title[lang]); button.type = 'button';
+        const button = el('button', 'fv-book-chapter', item.title[lang]); button.type = 'button'; button.title = item.title[lang];
         button.dataset.chapter = item.id;
         button.onclick = () => select(item.id);
         navButtons.set(item.id, button); nav.append(button);

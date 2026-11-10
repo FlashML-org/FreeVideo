@@ -17,7 +17,6 @@
 .fv-cast-dialog button:hover{background:var(--fv-hover)}
 .fv-cast-dialog button:disabled,.fv-cast-dialog button[aria-disabled=true]{opacity:.45;cursor:default}
 .fv-cast-dialog :focus-visible,.fv-cast-library :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
-.fv-cast-dialog .fv-cast-close{min-height:28px;width:28px;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:22px}
 .fv-cast-name{display:block;width:100%;height:36px;margin:0 0 14px;padding:6px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit}
 .fv-cast-name::placeholder{color:var(--fv-disabled)}
 .fv-cast-tabs{display:flex;gap:3px;margin-bottom:16px;padding:3px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg)}
@@ -30,7 +29,7 @@
 .fv-cast-dialog .fv-cast-choose{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:100%;height:100%;min-height:0;padding:0;border:1px dashed var(--fv-sheen);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-muted);overflow:hidden}
 .fv-cast-choose:has(img){border-style:solid}
 .fv-cast-slot-plus{font-size:24px;line-height:1}
-.fv-cast-choose img{display:block;width:100%;height:100%;object-fit:contain}
+.fv-cast-choose img{display:block;width:100%;height:100%;object-fit:cover}
 .fv-cast-dialog .fv-cast-remove{position:absolute;right:5px;top:5px;width:24px;min-height:24px;padding:0;border-color:var(--fv-sheen);border-radius:50%;background:var(--fv-bg);font-size:18px;line-height:1}
 .fv-cast-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px}
 .fv-cast-dialog .fv-cast-delete{margin-right:auto;color:var(--fv-danger)}
