@@ -11,6 +11,7 @@
 .fv-editor .fv-ed-text-colors button{height:20px;width:20px;padding:0;border-radius:3px;border:1px solid var(--fv-border)}
 .fv-editor .fv-ed-text-colors button.fv-ed-text-custom{width:auto;padding:0 5px;font-size:11px}
 .fv-editor .fv-ed-text-colors input{width:25px;height:22px;padding:0;border:0}
+.fv-editor .fv-select:has(>.fv-ed-text-font){width:100%;max-width:166px}
 .fv-editor .fv-ed-text-font{width:100%;max-width:166px;height:30px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:4px}
 .fv-ed-text-warning{color:var(--fv-warning);font-size:12px;line-height:1.5;overflow-wrap:anywhere;margin:0}
 .fv-ed-subtitle-style-title{font-size:13px;font-weight:600}.fv-ed-adjust-controls hr{width:100%;border:0;border-top:1px solid var(--fv-border);margin:0}

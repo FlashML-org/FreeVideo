@@ -17,6 +17,7 @@ import { createUpdateNotice, createVersionInfo, productVersion } from './updates
 import { createPortNotice } from './port_notice.js';
 import { focusReportTip, hideReportTip, reportIssue, reportTipClosed, showReportTip } from './report_issue.js';
 import { issueButton } from './issue_button.js';
+import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary } from './library.js';
@@ -487,7 +488,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 };
                 select.disabled = strength.disabled = trigger.disabled = row.enabled === false;
                 const remove = button('×', () => { rows.splice(index, 1); write(rows); }); remove.setAttribute('aria-label', t('Remove LoRA', '移除 LoRA'));
-                wrap.append(enabled, select, strength, remove, trigger, strengthMark);
+                wrap.append(enabled, skinSelect(select), strength, remove, trigger, strengthMark);
                 wrap.dataset.index = String(index); wrap.dataset.sortable = String(rows.length > 1);
                 if (rows.length > 1) wrap.prepend(sortGrip(wrap, index));
                 const problem = el('div', null, 'fv-lora-problem'); problem.hidden = true; wrap.append(problem);
@@ -1077,7 +1078,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const name of widget(loraNode, 'lora').options?.values || ['None']) { const o = el('option', name); o.value = name; select.append(o); }
         select.value = value(loraNode, 'lora'); select.onchange = () => { set(loraNode, 'lora', select.value); requestAssets?.refresh(); };
         const {input: strength, mark: strengthMark} = loraStrengthBox(value(loraNode, 'strength'), () => { set(loraNode, 'strength', Number(strength.value)); requestAssets?.refresh(); });
-        loraMount.append(field(t('LoRA', 'LoRA'), select), field(t('Strength', '强度'), strength), strengthMark, el('p', loraWarning(), 'fv-lora-note'));
+        loraMount.append(field(t('LoRA', 'LoRA'), skinSelect(select)), field(t('Strength', '强度'), strength), strengthMark, el('p', loraWarning(), 'fv-lora-note'));
     } else loraMount.append(el('p', loraWarning(), 'fv-lora-note'));
     const [, advanced] = expand(t('Advanced', '高级选项'));
     const custom = el('div', null, 'fv-fields');
@@ -1287,7 +1288,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seed.onchange = () => { if (seed.value && seed.reportValidity()) set(node, 'seed', Number(seed.value)); };
     const mode = el('select'); for (const [v, label] of [['randomize', t('New each run', '每次随机')], ['fixed', t('Keep fixed', '保持固定')], ['increment', t('Increment', '递增')], ['decrement', t('Decrement', '递减')]]) { const o = el('option', label); o.value = v; mode.append(o); }
     mode.value = value(node, 'control_after_generate') || 'fixed'; mode.onchange = () => set(node, 'control_after_generate', mode.value);
-    seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), mode)); advanced.append(seedFields);
+    seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), skinSelect(mode))); advanced.append(seedFields);
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewTools = el('div', null, 'fv-preview-tools');
     const worksButton = button(t('Creations', '作品'), () => {

@@ -9,6 +9,7 @@ import {createSelectionActions, isTyping} from './editor_select.js';
 import {plan} from './editor_geometry.js';
 import {isolateDialogKeys} from './dialog_keys.js';
 import {issueButton} from './issue_button.js';
+import {skinSelect} from './fv_select.js';
 const SPEECH_ISSUE = ['Auto subtitles', '自动字幕'], FONT_ISSUE = ['Editor text fonts', '剪辑器文字字体'];
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -143,7 +144,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         }
         const font=el('select','fv-ed-text-font');font.setAttribute('aria-label',t('Font','字体'));
         for(const key of FONT_KEYS){const option=el('option','',names[key]);option.value=key;option.style.fontFamily=textFontStack(key);font.append(option);}
-        font.onchange=()=>modifyStyle({font:font.value});host.append(row(t('Font','字体'),font));
+        font.onchange=()=>modifyStyle({font:font.value});host.append(row(t('Font','字体'),skinSelect(font)));
         const sizeNumber=number({min:16,max:200,step:1,label:t('Size','大小'),onChange:v=>modifyStyle({size:v/1080})});
         const size=slider({min:16,max:200,value:kind==='text'?64:44,onInput:v=>{sizeNumber.value=Math.round(v);modifyStyle({size:v/1080},true);},onChange:v=>modifyStyle({size:v/1080})});
         host.append(row(t('Size','大小'),size,sizeNumber));

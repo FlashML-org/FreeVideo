@@ -208,6 +208,9 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-field input[type=color]{width:44px;height:28px;padding:0 2px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);cursor:pointer}
 .fv-ie-field input[type=checkbox]{accent-color:var(--fv-accent);margin:0}
 .fv-ie-field .fv-ie-select{flex:1;min-width:0}
+.fv-ie-field>.fv-select{flex:1;min-width:0}
+.fv-ie-gen-shape>.fv-select{flex:1}
+.fv-ie-options>.fv-select{flex:0 0 auto;min-width:132px}
 .fv-ie-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .fv-ie-end{justify-content:flex-end}
 .fv-ie-pair{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:8px}

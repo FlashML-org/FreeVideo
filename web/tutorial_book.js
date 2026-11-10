@@ -1,4 +1,5 @@
 import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
+import {skinSelect} from './fv_select.js';
 
 const COPY = {
     zh: {book: '教程', contents: '目录', close: '关闭', limits: '限制', start: '开始演示', tryIt: '填入示例', goto: '带我去', noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。'},
@@ -76,7 +77,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id} = {}) {
     const layout = el('div', 'fv-book-layout'), nav = el('nav', 'fv-book-nav');
     nav.setAttribute('aria-label', text.contents);
     const mobile = el('label', 'fv-book-picker', text.contents), picker = el('select');
-    picker.setAttribute('aria-label', text.contents); mobile.append(picker);
+    picker.setAttribute('aria-label', text.contents); mobile.append(skinSelect(picker));
     const article = el('article', 'fv-book-article'); article.tabIndex = 0;
     const navButtons = new Map();
     let start = null, tryButton = null;

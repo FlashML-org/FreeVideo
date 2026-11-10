@@ -11,6 +11,7 @@ import {api} from '../../scripts/api.js';
 import {createImageGenClient, createImageGeneration, imageGenerationSupported, blankCanvasSize, blankCanvasRatio, segmentAt} from './image_generation.js';
 import {productVersion} from './updates.js';
 import {issueButton} from './issue_button.js';
+import {skinSelect} from './fv_select.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./image_editor.css', import.meta.url).href;
@@ -577,7 +578,7 @@ export async function openImageEditor({source = null, name = source || '', targe
             const ratio = el('select', null, 'fv-ie-select'); ratio.id = 'fv-ie-ratio'; ratio.setAttribute('aria-label', t('Shape', '比例'));
             for (const [id] of RATIOS) { if (id === 'video' && !target) continue; const o = el('option', ratioLabel(id)); o.value = id; ratio.append(o); }
             ratio.value = doc.ratio; ratio.onchange = () => setRatio(ratio.value);
-            add(label(t('Shape', '比例')), ratio, sep(),
+            add(label(t('Shape', '比例')), skinSelect(ratio), sep(),
                 iconButton('ccw', t('Rotate left 90°', '向左旋转 90°'), () => turn('ccw')), iconButton('cw', t('Rotate right 90°', '向右旋转 90°'), () => turn('cw')),
                 iconButton('flipX', t('Flip horizontally', '水平翻转'), () => turn('flipX')), iconButton('flipY', t('Flip vertically', '垂直翻转'), () => turn('flipY')), sep());
             if (target) add(button(t('Pad to video shape', '补边到视频比例'), t('Extend the canvas with the background color instead of cropping', '用背景色补边到视频比例，不裁掉画面'), () => padToVideo()));
@@ -673,7 +674,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     const blendNames = () => ({'source-over': t('Normal', '正常'), multiply: t('Multiply', '正片叠底'), screen: t('Screen', '滤色'), overlay: t('Overlay', '叠加'),
         'soft-light': t('Soft light', '柔光'), darken: t('Darken', '变暗'), lighten: t('Lighten', '变亮'), 'color-dodge': t('Color dodge', '颜色减淡'),
         'color-burn': t('Color burn', '颜色加深'), difference: t('Difference', '差值')});
-    const field = (text, input) => { const f = el('div', null, 'fv-ie-field'); const l = el('label', text); l.htmlFor = input.id; f.append(l, input); return f; };
+    const field = (text, input) => { const f = el('div', null, 'fv-ie-field'); const l = el('label', text); l.htmlFor = (input.querySelector?.('select') || input).id; f.append(l, input); return f; };
     function renderProps() {
         clearPanel(props);
         const layer = active();
@@ -687,7 +688,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         const blend = el('select', null, 'fv-ie-select'); blend.id = 'fv-ie-blend';
         for (const [value, text] of Object.entries(blendNames())) { const o = el('option', text); o.value = value; blend.append(o); }
         blend.value = layer.blend || 'source-over'; blend.onchange = () => commit(commands.setLayer(doc, layer.id, {blend: blend.value}));
-        const basics = el('div', null, 'fv-ie-basics'); basics.append(opacity.row, field(t('Blend', '混合'), blend));
+        const basics = el('div', null, 'fv-ie-basics'); basics.append(opacity.row, field(t('Blend', '混合'), skinSelect(blend)));
         props.append(basics);
         if (layer.kind === 'text') props.append(textProps(layer));
         else if (layer.kind === 'shape') props.append(shapeProps(layer));
