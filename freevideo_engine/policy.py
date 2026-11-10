@@ -760,15 +760,44 @@ class Policy:
     lora_root_bytes: int = 0
     adaln_extra_bytes: int = 0
     preview_decoder_bytes: int = 0
+    commit_gpu_limit_bytes: int | None = None
 
     def to_dict(self):
-        return asdict(self)
+        # Saved policies of machines without a commit limit keep their shape.
+        value = asdict(self)
+        if value['commit_gpu_limit_bytes'] is None:
+            del value['commit_gpu_limit_bytes']
+        return value
 
     def legacy_profile(self):
         return dict(name='Automatic VDN Engine policy', gpu_budget_gb=self.gpu_budget_bytes / 1e9,
                     inference_ram_budget_gb=self.ram_budget_bytes / 1e9,
                     allocator_config=self.allocator_config, engine=self.engine, decoder=self.decoder,
                     policy=self.to_dict())
+
+
+# Windows charges every byte the CUDA allocator reserves to system commit, and
+# the host's private memory draws on the same headroom. A request whose weights
+# and workspace fit the card can still run the machine out of commit, which is
+# a RAM-guard failure and a fresh worker. A complete 24 GB request measured
+# 20.25 GB reserved beside 4.6 GB of private host memory (pinned buffers,
+# CUDA context and working set, nothing pinned), against 25.6 GB of commit
+# headroom: 0.28 GB was left. The sampling budget therefore keeps the host's
+# private memory and a spare for other programs' growth out of the commit
+# headroom. Below the floor the card's own budget stays, as before.
+WINDOWS_COMMIT_HOST_BYTES = 4608 * 2**20
+WINDOWS_COMMIT_SPARE_BYTES = 2**30
+WINDOWS_COMMIT_GPU_FLOOR = 8 * 2**30
+
+
+def commit_gpu_limit(hardware: Hardware, request_budget):
+    """GPU bytes the commit headroom can back during sampling; None when it does not bind."""
+    commit = hardware.ram_commit_available
+    if hardware.system != 'Windows' or type(commit) is not int or commit < 0:
+        return None
+    limit = max(commit - WINDOWS_COMMIT_HOST_BYTES - WINDOWS_COMMIT_SPARE_BYTES,
+                min(request_budget, WINDOWS_COMMIT_GPU_FLOOR))
+    return int(limit) if limit < request_budget else None
 
 
 def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
@@ -874,7 +903,45 @@ def first_block_cache_bytes(canvas):
     return math.ceil(2 * placement_tokens(canvas) * 5376 * 2 * FIRST_BLOCK_CACHE_RESERVED_SCALE)
 
 
+# Compute shapes the commit cap must leave as planned: it trades resident
+# weights for commit headroom, never the arithmetic partitions or the output
+# placement. Prefetch is a transfer slot and may go with the weights.
+COMMIT_CAP_KEEPS = ('head_chunk', 'window_batch', 'ff_chunk', 'projection_chunk',
+                    'attention_cpu_outputs', 'grouped_attention_outputs',
+                    'fp8_ff_recompute', 'residual_offload')
+
+
 def choose_placement(hardware: Hardware, *, canvas=None, stage='generation', **options):
+    """Placement for a request, with sampling kept inside the Windows commit headroom.
+
+    The plan the card's budget alone gives is made first. Where the machine's
+    commit headroom cannot back that budget beside the host's memory, the
+    smallest cap that keeps every compute shape of that plan is used instead,
+    so only resident weights, pinned weights and the pass cache give way.
+    """
+    base = _choose_with_step_cache(hardware, canvas=canvas, stage=stage, commit_cap=None, **options)
+    if hardware.system != 'Windows' or stage != 'generation':
+        return base
+    limit = commit_gpu_limit(hardware, base.gpu_budget_bytes)
+    if limit is None:
+        return base
+    shape = lambda plan: {key: plan.engine.get(key) for key in COMMIT_CAP_KEEPS}
+    cap = limit
+    while cap < base.gpu_budget_bytes:
+        try:
+            capped = _choose_with_step_cache(hardware, canvas=canvas, stage=stage, commit_cap=cap, **options)
+        except ResourceBudgetError:
+            capped = None
+        if capped is not None and shape(capped) == shape(base):
+            # The decoder runs after sampling has released the transformer and
+            # keeps the request's own budget, prefetch slot included.
+            from dataclasses import replace
+            return capped if capped.decoder == base.decoder else replace(capped, decoder=base.decoder)
+        cap += GiB // 2
+    return base
+
+
+def _choose_with_step_cache(hardware: Hardware, *, canvas=None, stage='generation', **options):
     """Placement for a request; canvas['step_cache'] asks for a step cache.
 
     The first-block cache is kept when reserving its storage only gives up
@@ -933,7 +1000,9 @@ def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
         extra += first_block_cache_bytes({k: v for k, v in canvas.items() if k != 'step_cache'})
     try:
         plain = {k: v for k, v in canvas.items() if k != 'step_cache'}
-        charged = _choose(hardware, canvas=plain, stage=stage, **{**options, 'step_cache_bytes': extra})
+        # The plan's own commit cap is charged too, or its engine could never match.
+        charged = _choose(hardware, canvas=plain, stage=stage, commit_cap=plan.commit_gpu_limit_bytes,
+                          **{**options, 'step_cache_bytes': extra})
     except ResourceBudgetError:
         return plan
     same = {k: v for k, v in plan.engine.items() if k != 'step_cache'}
@@ -946,8 +1015,11 @@ def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
 def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto',
             gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
             demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation',
-            lora_max_block_bytes=0, lora_root_bytes=0, precision='fp8', step_cache_bytes=0):
-    """precision is the prepared cache's: int8 caches run int8 projections."""
+            lora_max_block_bytes=0, lora_root_bytes=0, precision='fp8', step_cache_bytes=0,
+            commit_cap=None):
+    """precision is the prepared cache's: int8 caches run int8 projections.
+
+    commit_cap is the sampling budget the Windows commit headroom allows, or None."""
     from .geometry import geometry
     if stage not in ('encoding', 'generation'):
         raise ValueError('Resource planning stage must be encoding or generation')
@@ -1012,6 +1084,11 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
         reserve_ram = MIN_RAM_RESERVE_GIB
         ram_budget = free_ram - int(reserve_ram * GiB)
     request_gpu_budget = gpu_budget
+    # Sampling (not the decoder, which runs after the transformer is released)
+    # stays inside what the commit headroom can back beside the host's memory.
+    commit_limit = commit_cap if desktop and stage == 'generation' and commit_cap is not None else None
+    if commit_limit is not None:
+        gpu_budget = min(gpu_budget, commit_limit)
     gpu_budget -= placement_workspace
     # What this machine has actually held, for the weight cache only.
     #
@@ -1781,6 +1858,9 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
         notes.append('Ampere keeps FP8 weight storage and uses bounded BF16 compute; no native FP8 tensor-core claim.')
     if desktop:
         notes.append('Windows keeps %.2f GiB beyond current GPU usage and %.2f GiB beyond current available RAM/commit; pagefile capacity is not added to RAM.' % (reserve_gpu, reserve_ram))
+    if commit_limit is not None:
+        notes.append('Windows commit headroom is %.2f GiB: sampling keeps its GPU allocation within %.2f GiB, the most that commit can back beside the host\'s memory without changing the planned compute shapes. Weights beyond that stay streamed; arithmetic and attention are unchanged.'
+                     % ((hardware.ram_commit_available or 0) / GiB, commit_limit / GiB))
     if retention_budget > ram_budget:
         notes.append('Weight caching may keep %.2f GiB rather than the %.2f GiB currently reported available: a complete verified request on this machine, under this compute build and geometry, held that much. The request budget and admission still use the reported figure.'
                      % (retention_budget / GiB, ram_budget / GiB))
@@ -1865,4 +1945,5 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
                                linear_compute_cache=decoder_linear_cache),
                   'Architecture-specific candidate; validate this exact policy on the target GPU.', notes,
                   capacity_trial=capacity_trial, lora_max_block_bytes=lora_max_block_bytes,
-                  lora_root_bytes=lora_root_bytes, adaln_extra_bytes=table_workspace)
+                  lora_root_bytes=lora_root_bytes, adaln_extra_bytes=table_workspace,
+                  commit_gpu_limit_bytes=commit_limit)

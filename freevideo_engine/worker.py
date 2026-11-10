@@ -144,11 +144,15 @@ def generate(request, resident=None):
         metrics['gpu_card'] = observed_card(torch)
         metrics['device_memory'] = device_memory_report(request['gpu_budget_bytes'], request.get('allocator_limit_bytes'),
             reserve_bytes=request.get('gpu_reserve_bytes', 0), capacity_trial=request.get('capacity_trial', False))
+        # What the commit headroom lets sampling reserve (Windows); the decoder runs
+        # after the transformer is released and is not held to it.
+        sampling_limit = request.get('sampling_gpu_limit_bytes')
         if request.get('dynamic_gpu_budget') and metrics['device_memory'].get('windows_allocator_limit_enforced'):
             from .gpu_budget import LiveGPUBudget
             reserve = request.get('gpu_reserve_bytes', 0)
             live_budget = LiveGPUBudget(torch, metrics['device_memory'],
                 request.get('gpu_capacity_bytes', metrics['device_memory']['device_total_bytes']) - reserve, reserve)
+            live_budget.set_ceiling(sampling_limit)
 
         def refresh_budget(stage, reclaim=None, workspace=None, confirm=False):
             def release(target):
@@ -160,6 +164,7 @@ def generate(request, resident=None):
                             break
                         if role != 'engine' or stage == 'decode':
                             resident.drop(role, 'Live GPU budget decreased')
+            live_budget.set_ceiling(None if stage == 'decode' else sampling_limit)
             limit = live_budget.refresh(stage, release, workspace=workspace, confirm=confirm)
             if resident is not None:
                 resident.gpu_budget = limit
@@ -312,6 +317,8 @@ def generate(request, resident=None):
             # Windows charges the allocator room still to be reserved to commit;
             # the engine keeps that room out of its locked weights.
             allocation = metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes']
+            if sampling_limit:
+                allocation = min(allocation, sampling_limit)
             factory = lambda: Engine(request['cache'], input_cache_dir=request.get('input_cache_dir'),
                                      gpu_allocation_bytes=int(allocation),
                                      **dict(options, canvas=request.get('geometry')))
@@ -437,7 +444,8 @@ def generate(request, resident=None):
                                                   total=sampling_plan['total_steps'])), flush=True)
                         else:
                             pass_budget = (min(request['gpu_budget_bytes'],
-                                metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes'])
+                                metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes'],
+                                sampling_limit or request['gpu_budget_bytes'])
                                 if request.get('automatic_pass_cache', False) else None)
                             first_options = request.get('first_pass_policy', {}).get('profile', {}).get('engine')
                             metrics['first_pass_policy'] = request.get('first_pass_policy')
