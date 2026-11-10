@@ -531,7 +531,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         await extension.beforeRegisterNodeDef(MediaNode, {name: 'FreeVideoMedia'});
         const media = new MediaNode(); media.onNodeCreated();
         const panel = media.dom.find(row => row.name === 'freevideo_media').element;
-        const [libraries, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [libraries, toolbar, note, connections] = panel.children;
         const [castRow, sceneRow, propRow] = libraries.children;
         assert.equal(libraries.className, 'fv-cast-libraries');
         assert.equal(castRow, casts[0].element);
@@ -542,9 +542,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(casts[0].options.api, api);
         assert.equal(typeof casts[0].options.uploadOne, 'function');
         assert.equal(typeof casts[0].options.viewURL, 'function');
-        assert.match(mode.textContent, /Reference/);
-        assert.equal(audioHelp.hidden, false);
-        assert.match(audioHelp.textContent, /<Audio 1>/);
+        assert.equal(panel.children.some(e => e.className === 'fv-mode'), false, 'The media card has no mode capsule');
         assert.match(connections.children[0].textContent, /Reference audio.*Connected/);
         const audioButton = toolbar.children.find(e => e.tag === 'button' && e.textContent === 'Reference audio');
         const audioPicker = toolbar.children.find(e => e.tag === 'input' && e.accept.startsWith('.wav'));
@@ -561,9 +559,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
         assert.match(note.textContent, /Choose keyframes or references/);
         media.widgets[0].value = '[]'; media.inputs = []; media.onConnectionsChange(); await Promise.resolve();
-        assert.equal(audioHelp.hidden, true);
-        assert.equal(mode.textContent, '');
-        assert.equal(mode.hidden, true);
+        assert.equal(note.textContent, '');
         const imageRole = toolbar.children.find(e => e.tag === 'div' && e.className === 'fv-select')?.children.find(e => e.tag === 'select');
         const imagePicker = toolbar.children.find(e => e.tag === 'input' && e.accept.startsWith('.png'));
         assert.equal(imageRole.value, 'reference');
