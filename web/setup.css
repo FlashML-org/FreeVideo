@@ -42,9 +42,9 @@
 .fv-setup details.fv-token{margin:12px 0 0;padding:12px 0 0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent}
 .fv-setup details.fv-token>summary{font-size:13px;font-weight:500;color:var(--fv-muted)}
 .fv-setup .fv-source-row{display:flex;align-items:center;gap:10px;margin-top:6px}
-.fv-setup .fv-source-row>select{flex:1;margin:0;height:36px;min-height:36px;padding-block:0}
+.fv-setup .fv-source-row>.fv-select{flex:1;min-width:0}.fv-setup .fv-source-row>.fv-select>select{margin:0;height:36px;min-height:36px;padding-block:0}
 .fv-setup .fv-source-row>button{flex:none;height:36px;min-height:36px;padding:0 14px;white-space:nowrap}
-@media (max-width:480px){.fv-setup .fv-source-row{flex-wrap:wrap}.fv-setup .fv-source-row>select{flex-basis:100%}.fv-setup .fv-source-row>button{margin-left:auto}}
+@media (max-width:480px){.fv-setup .fv-source-row{flex-wrap:wrap}.fv-setup .fv-source-row>.fv-select{flex-basis:100%}.fv-setup .fv-source-row>button{margin-left:auto}}
 
 /* Fields. */
 .fv-setup label{display:block;margin:12px 0 6px;font-size:var(--fv-body);color:var(--fv-muted)}

@@ -5,6 +5,7 @@
 import * as said from './editor_narration_model.js';
 import {EditError, FPS} from './editor_model.js';
 import {registerMenuItem} from './editor_menu.js';
+import {menuSelect} from './fv_select.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const NBSP = ' ';
@@ -107,7 +108,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
             if (clip.source.kind !== 'import' || typeof name !== 'string' || !name) continue;
             const take = RECORDING.test(name) ? ++takes : 0;
             const label = take ? t(`Recording ${take}`, `录音 ${take}`) : name;
-            list.push({key: `clip:${clip.id}`, kind: 'clip', label, reference: {clip_id: clip.id},
+            list.push({key: `clip:${clip.id}`, kind: 'clip', recording: Boolean(take), label, reference: {clip_id: clip.id},
                 listen: {clip: clip.id, start: 0, end: Math.min(clip.frames / FPS, 10)}});
         }
         const picked = pickedClip && state.record.tracks.some(track => track.clips.some(clip => clip.id === pickedClip.id && clip.source)) ? pickedClip : null;
@@ -335,30 +336,31 @@ export function createNarrationRow(host, controller, {t}) {
     const icon = document.createElementNS(SVG, 'svg'); icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('aria-hidden', 'true');
     const shape = document.createElementNS(SVG, 'path'); icon.append(shape); listen.append(icon);
     const none = el('span', 'fv-ed-say-none', t('No voice available. Record or import a voice clip first.', '没有可用的音色。请先录音或导入一段人声。'));
-    element.append(label, select, listen, none); element.hidden = true; host.append(element);
+    const menu = menuSelect(select, {groups: {speaker: t('Speakers', '说话人'), recording: t('Recordings', '录音'), clip: t('Clips', '片段')}});
+    element.append(label, menu.wrap, listen, none); element.hidden = true; host.append(element);
     const PICK = '__pick__';
     select.onchange = () => {
         if (select.value === PICK) { controller.pick(); return; }
         controller.choose(select.value);
     };
     listen.onclick = () => controller.listen();
-    function option(value, text) { const item = el('option', null, text); item.value = value; return item; }
+    function option(value, text, group) { const item = el('option', null, text); item.value = value; if (group) item.dataset.group = group; return item; }
     function update(shown, busy = false) {
         element.hidden = !shown;
         if (!shown) return;
-        select.disabled = busy;
+        select.disabled = busy; menu.refresh();
         const all = controller.voices(), current = controller.voice();
         const empty = !all.speakers.length && !all.clips.length && !all.finding;
-        select.hidden = listen.hidden = empty; none.hidden = !empty; label.hidden = empty;
+        menu.wrap.hidden = listen.hidden = empty; none.hidden = !empty; label.hidden = empty;
         if (empty) return;
         // Nothing shown as chosen while the speakers are still being found and no clip is a voice.
         const blank = option('', ''); blank.hidden = blank.disabled = true;
-        const items = [blank, ...all.speakers.map(voice => option(voice.key, voice.label))];
+        const items = [blank, ...all.speakers.map(voice => option(voice.key, voice.label, 'speaker'))];
         if (all.speakers.length && all.clips.length) { const line = el('hr'); items.push(line); }
-        items.push(...all.clips.map(voice => option(voice.key, voice.label)), option(PICK, t('Pick a sound clip…', '选一个声音片段…')));
+        items.push(...all.clips.map(voice => option(voice.key, voice.label, voice.recording ? 'recording' : 'clip')), option(PICK, t('Pick a sound clip…', '选一个声音片段…')));
         const signature = items.map(item => item.tagName === 'HR' ? '-' : `${item.value}=${item.textContent}`).join('\n');
         if (select.dataset.signature !== signature) { select.replaceChildren(...items); select.dataset.signature = signature; }
-        select.value = controller.picking ? PICK : current?.key ?? '';
+        select.value = controller.picking ? PICK : current?.key ?? ''; menu.refresh();
         listen.disabled = !current || busy;
         const playing = controller.listening();
         listen.setAttribute('aria-pressed', String(playing));

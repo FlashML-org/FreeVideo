@@ -1,4 +1,5 @@
 import { api } from "../../scripts/api.js";
+import { skinSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
 import { openCompatibility } from './compatibility.js';
 import { animateDetails, closeDialog } from './motion.js';
@@ -116,7 +117,7 @@ export async function openSetup(options) {
     for (const [id, name] of [['auto', t('Auto (recommended)', '自动（推荐）')], ['proxy', t('Proxy only', '仅代理')], ['direct', t('Direct only', '仅直连')]]) {
         const option = node('option', name); option.value = id; proxyMode.append(option);
     }
-    modeLabel.append(proxyMode);
+    modeLabel.append(skinSelect(proxyMode));
     downloads.append(modeLabel);
     const sourceLabel = node('label', t('Download source', '下载源'));
     const source = node('select');
@@ -124,7 +125,7 @@ export async function openSetup(options) {
         const option = node('option',name); option.value = id; source.append(option);
     }
     const probeButton = node('button', t('Test source speeds', '重新测速'));
-    const sourceRow = node('div'); sourceRow.className = 'fv-source-row'; sourceRow.append(source, probeButton);
+    const sourceRow = node('div'); sourceRow.className = 'fv-source-row'; sourceRow.append(skinSelect(source), probeButton);
     sourceLabel.append(sourceRow); downloads.append(sourceLabel);
     const sourceStatus = note(''), speeds = node('div');
     downloads.append(sourceStatus, speeds);
