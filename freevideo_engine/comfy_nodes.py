@@ -489,7 +489,7 @@ class FreeVideoMedia(io.ComfyNode):
                         tooltip='Voice, music or rhythm reference, up to 15 seconds. Connect a Load Audio '
                                 'or other AUDIO output. Describe its role using <Audio 1> in the prompt. '
                                 'Experimental; does not guarantee lip sync.'),
-                    io.Combo.Input('audio_use', options=['reference', 'original'], default='reference', optional=True)],
+                    io.Combo.Input('audio_use', display_name='Audio use', options=['reference', 'original'], default='reference', optional=True)],
             outputs=[Media.Output('media')])
 
     @classmethod
