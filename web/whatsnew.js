@@ -26,7 +26,7 @@ const frame = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 export function createStage(cn, page) {
     const t = pair => pair[cn ? 1 : 0];
     const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true'); root.dataset.lang = cn ? 'zh' : 'en';
-    let ticker = 0, dragTicker = 0, instantLayout = false;
+    let ticker = 0, dragTicker = 0, instantLayout = false, topTarget = null, onsize = null;
     // The generation bar, the lines and the recording bar are the editor's own, under the editor's styles; they share one box above the tracks.
     const top = el('div', null, 'fv-whatsnew-top fv-whatsnew-ed fv-studio fv-editor');
     const view = el('section', null, 'fv-ed-track-view'); view.dataset.trackSwitches = 'false';
@@ -50,7 +50,9 @@ export function createStage(cn, page) {
     const fit = () => {
         let low = 24;
         for (const id in names) if (headNodes[id].dataset.on !== 'false') low = Math.max(low, parseFloat(bodies[id].style.top) + names[id].row.height + 6);
+        low = Math.max(low, menu.offsetHeight + 40);
         content.style.height = `${low}px`; view.style.height = `${low + 4}px`;
+        onsize?.((topTarget ?? top.offsetHeight) + low + 4);
     };
     const clips = {};
     for (const spec of page.clips) {
@@ -111,9 +113,9 @@ export function createStage(cn, page) {
     };
     // The box above the tracks grows and shrinks to its content over 240 ms.
     const morph = change => {
-        if (instantLayout) { change(); return; }
+        if (instantLayout) { change(); topTarget = top.offsetHeight; return; }
         const from = top.offsetHeight, shown = [voice.hidden, record.hidden, genbar.hidden].join();
-        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight;
+        top.style.transition = 'none'; top.style.height = ''; change(); const to = top.offsetHeight; topTarget = to;
         // A panel that appears or goes is swapped at once, so no half-open frame shows; the other changes grow or shrink over 240 ms.
         if (from === to || shown !== [voice.hidden, record.hidden, genbar.hidden].join()) { top.style.transition = ''; return; }
         top.style.height = `${from}px`; top.getBoundingClientRect(); top.style.transition = ''; top.style.height = `${to}px`;
@@ -155,7 +157,7 @@ export function createStage(cn, page) {
         faders.forEach(n => { n.style.transition = 'none'; }); frame(() => faders.forEach(n => { n.style.transition = ''; }));
         playhead.style.cssText = ''; playhead.dataset.on = 'false'; range.dataset.on = 'false'; range.style.cssText = ''; menuBox.dataset.on = 'false';
         text.value = ''; list.querySelectorAll('li').forEach(li => li.removeAttribute('data-lit'));
-        top.style.height = ''; top.style.transition = '';
+        top.style.height = ''; top.style.transition = ''; topTarget = null;
         paintLines(); paintBar(); fit();
     };
     const set = (ops, instant = false) => {
@@ -174,7 +176,7 @@ export function createStage(cn, page) {
         if (ops.lit) list.querySelectorAll('li').forEach((li, i) => { if (ops.lit.includes(i)) li.dataset.lit = 'true'; else li.removeAttribute('data-lit'); });
         if (ops.menu) {
             menuBox.dataset.on = String(!!ops.menu.show);
-            menuBox.style.left = `${view.offsetLeft + scroll.offsetLeft + scroll.clientWidth * .38}px`; menuBox.style.top = `${view.offsetTop + 34}px`;
+            menuBox.style.left = `${view.offsetLeft + scroll.offsetLeft + Math.max(8, Math.min(scroll.clientWidth * .38, scroll.clientWidth - menu.offsetWidth - 8))}px`; menuBox.style.top = `${view.offsetTop + 34}px`;
             menu.querySelectorAll('button').forEach((b, i) => { b.dataset.hover = String(ops.menu.hover === i); });
         }
         morph(() => {
@@ -225,7 +227,7 @@ export function createStage(cn, page) {
         for (const [, ops] of page.steps) { settle(ops); max = Math.max(max, measure()); }
         instantLayout = false; reset(); root.classList.remove('fv-whatsnew-measure'); return max;
     };
-    return {element: root, list, set, reset, finish, tallest};
+    return {element: root, list, set, reset, finish, tallest, size: callback => { onsize = callback; }};
 }
 
 // Plays a page's steps once and stays on the finished state; reduced motion shows that state at once.
@@ -256,14 +258,16 @@ export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
     const page = PAGES[0], stage = createStage(cn, page);
     title.textContent = page.title[cn ? 1 : 0]; stageHost.replaceChildren(stage.element); dialog.insertBefore(stage.list, foot);
     let stop = () => {}, closed = false;
-    // The demo frame is as tall as its tallest state, so the list below never moves; that is measured once the editor styles are in.
+    // The dialog is as tall as its tallest state (the lines); the demo frame follows its own content over 240 ms, the list sits right under it and the spare height falls between the list and Close.
     stageHost.style.visibility = 'hidden';
     const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
     Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
         if (closed) return;
-        stageHost.style.height = '';
-        stageHost.style.height = `${stage.tallest(() => stage.element.offsetHeight) + 2}px`;
+        stageHost.style.height = ''; dialog.style.height = '';
+        dialog.style.height = `${stage.tallest(() => dialog.offsetHeight)}px`;
+        stageHost.style.transition = 'none'; stage.size(height => { stageHost.style.height = `${height}px`; });
         stageHost.style.visibility = ''; stop = play(stage, page, reduce);
+        stageHost.getBoundingClientRect(); stageHost.style.transition = '';
     });
     close.onclick = () => dialog.close();
     dialog.addEventListener('keydown', event => event.stopPropagation());

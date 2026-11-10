@@ -42,5 +42,5 @@ export const PAGES = [
         [11300, {done: 'v2', hide: ['v2'], show: ['v2n'], flash: 'v2n', select: null, bar: {mode: 'lines', button: ['Redub', '重新配音']}, lines: {edit: 'done'}}],
         [12600, {lit: [5], select: 'take', rowShow: 'a4', lines: {shown: false}, bar: {mode: 'record', phase: 'idle'}}],
         [13400, {bar: {phase: 'recording'}, rec: {id: 'take', from: .3, to: .52, ms: 3000}, play: [.3, .52, 3000]}],
-        [16500, {bar: {mode: 'idle', phase: null, text: null, button: ['Generate', '生成'], ph: ['Describe this part', '描述这一段']}, select: null}]]},
+        [16500, {bar: {mode: 'idle', phase: null, text: null, button: ['Generate', '生成'], ph: ['Describe this part', '描述这一段']}, select: null, lit: []}]]},
 ];

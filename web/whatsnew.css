@@ -5,7 +5,7 @@
 .fv-whatsnew[open]{display:flex;flex-direction:column;animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}
 .fv-whatsnew>*{flex:none}
 .fv-whatsnew h2{margin:0 0 16px;font-size:20px;font-weight:600}
-.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:12px;overflow:hidden;background:var(--fv-bg)}
+.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:12px;overflow:hidden;background:var(--fv-bg);transition:height .24s var(--fv-ease)}
 .fv-whatsnew-stage{display:flex;flex-direction:column;position:relative}
 .fv-whatsnew-stage .fv-ed-track-view{transition:height .24s var(--fv-ease)}
 .fv-whatsnew-measure,.fv-whatsnew-measure *{transition:none!important}
@@ -41,7 +41,7 @@
 .fv-whatsnew-new{font-weight:400;color:var(--fv-accent)}
 .fv-whatsnew-list li{transition:color .3s}
 .fv-whatsnew-list li[data-lit]{color:var(--fv-accent);font-weight:600}
-@media(prefers-reduced-motion:reduce){.fv-whatsnew[open]{animation:none}.fv-whatsnew-stage *{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.fv-whatsnew[open]{animation:none}.fv-whatsnew-host{transition:none}.fv-whatsnew-stage *{transition:none!important}}
 @media(max-width:520px){.fv-whatsnew{padding:16px}.fv-whatsnew-stage .fv-ed-track-view{--fv-ed-head-width:88px}.fv-whatsnew-stage .fv-ed-track-head>span:first-of-type{display:inline}.fv-whatsnew-stage .fv-ed-track-view .fv-ed-track-head{padding-left:12px;gap:4px;font-size:12px}.fv-whatsnew-stage .fv-ed-track-head svg{width:14px;height:14px}.fv-whatsnew-close{top:8px;right:8px}}
 
 /* The seven features sit under the demo, outside its frame. */
