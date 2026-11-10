@@ -106,6 +106,8 @@ def load_conditioning(path, device, *, task, canvas, target=None):
         validate_conditioning(checked['prompt_embeds'], checked['text_token_tags'], conditions,
                               task, canvas['width'], canvas['height'])
         conditions = (conditions[0], [latent.to(device, torch.float32) for latent in conditions[1]])
+        from .mid_keyframes import install_for
+        install_for(conditions)
     return checked['prompt_embeds'].to(device), checked['text_token_tags'], conditions
 
 

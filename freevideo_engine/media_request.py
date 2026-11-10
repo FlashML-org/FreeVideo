@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 
+MAX_MIDDLE = 3
 TASKS = ('t2va', 'i2va', 'l2va', 'fl2va', 'ref2va', 'ref2va_audio', 'ref2va_av')
 
 
@@ -27,7 +28,7 @@ def read(path):
         raise ValueError('Expected a version 1 FreeVideo media request')
     if 'early_steps' in value:
         raise ValueError('early_steps is only allowed on video references')
-    if set(value) - {'version', 'first', 'last', 'references', 'loras', 'conditioning_info'}:
+    if set(value) - {'version', 'first', 'last', 'middle', 'references', 'loras', 'conditioning_info'}:
         raise ValueError('Unknown media request fields')
     result = {'version': 1}
     def file_info(name):
@@ -43,6 +44,24 @@ def read(path):
     for anchor in ('first', 'last'):
         if value.get(anchor):
             result[anchor] = file_info(value[anchor])
+    middle = value.get('middle')
+    if middle:
+        # Still keyframes between the first and last frame, each at an in-clip frame number.
+        if not (value.get('first') and value.get('last')):
+            raise ValueError('Middle keyframes need both a first and a last frame')
+        if not isinstance(middle, list) or len(middle) > MAX_MIDDLE:
+            raise ValueError('Use at most %d middle keyframes' % MAX_MIDDLE)
+        rows = []
+        for entry in middle:
+            if not isinstance(entry, dict) or set(entry) != {'path', 'frame'}:
+                raise ValueError('A middle keyframe needs a path and a frame')
+            if type(entry['frame']) is not int or entry['frame'] < 1:
+                raise ValueError('A middle keyframe frame must be an integer of at least 1')
+            rows.append(dict(file_info(entry['path']), frame=entry['frame']))
+        rows.sort(key=lambda row: row['frame'])
+        if any(a['frame'] == b['frame'] for a, b in zip(rows, rows[1:])):
+            raise ValueError('Two middle keyframes cannot share a frame')
+        result['middle'] = rows
     for field in ('references', 'loras'):
         entries = value.get(field)
         if entries is None:
@@ -113,6 +132,14 @@ def read(path):
             raise ValueError('Invalid preencoded conditioning information')
         result['conditioning_info'] = info
     return result
+
+
+def validate_middle(media, frames):
+    """Each middle keyframe sits strictly between the first frame (0) and the last (frames - 1)."""
+    for row in media.get('middle', []):
+        if not 1 <= row['frame'] <= frames - 2:
+            raise ValueError('Middle keyframe frame %d is outside the %d-frame video; use 1 to %d'
+                             % (row['frame'], frames, frames - 2))
 
 
 def task_for(media):
@@ -193,7 +220,7 @@ def cache_key(prompt, media, canvas):
         return prompt
     identity = {'version': 1, 'prompt': prompt, 'task': task_for(media),
                 'width': canvas['width'], 'height': canvas['height'], 'frames': canvas['frames']}
-    for key in ('first', 'last', 'references'):
+    for key in ('first', 'last', 'middle', 'references'):
         value = media.get(key)
         if value:
             identity[key] = [{k: v for k, v in row.items() if k not in ('path', 'keep_source_audio')}
@@ -208,6 +235,7 @@ def cache_key(prompt, media, canvas):
 
 def verify_files(media):
     rows = [media[k] for k in ('first', 'last') if media.get(k)]
+    rows += media.get('middle', [])
     rows += media.get('references', []) + media.get('loras', [])
     for row in rows:
         path = Path(row['path'])

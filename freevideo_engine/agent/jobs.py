@@ -154,6 +154,26 @@ def continuation_problems(spec, prefix='', *, editor=None):
     return problems
 
 
+def middle_problems(spec, prefix=''):
+    """A middle picture must sit between the first and last frame of the video, on a frame of its own."""
+    middle = spec['media'].get('middle') if spec['kind'] == 'generate' and not spec.get('refine_from') else None
+    if not middle:
+        return []
+    from ..geometry import geometry
+    frames = geometry(spec['width'], spec['height'], seconds=spec['seconds'])['frames']
+    problems, seen = [], {}
+    for index, item in enumerate(middle):
+        frame = round(item['at'] * 24)
+        where = prefix + '/media/middle/%d/at' % index
+        if not 1 <= frame <= frames - 2:
+            problems.append(schema.diagnostic(where, 'a time from %.2f to %.2f seconds in this %.2f s video' % (
+                1 / 24, (frames - 2) / 24, frames / 24), item['at']))
+        elif frame in seen:
+            problems.append(schema.diagnostic(where, 'a time at least one frame (1/24 s) from picture %d' % seen[frame], item['at']))
+        seen.setdefault(frame, index)
+    return problems
+
+
 def cut_problems(spec, seconds, prefix='', *, editor=None):
     """A shot cut at or after the end of the video never appears; refuse it before anything is generated."""
     if spec['kind'] != 'generate' or spec.get('refine_from') or spec.get('continue_from') or seconds is None:
@@ -834,6 +854,7 @@ class Jobs:
                                                work=self.continued_work(normalized),
                                                planned=self.planned_parts(normalized, rows)))
                 problems.extend(cut_problems(normalized, normalized.get('seconds'), prefix, editor=editor))
+                problems.extend(middle_problems(normalized, prefix))
                 problems.extend(part_prompt_problems(normalized, prefix))
                 try:
                     self.port.check(normalized)
@@ -1670,6 +1691,9 @@ class Jobs:
                         if role in spec['media']:
                             assets.append(dict(file=self.media_file(row, spec['media'][role], role, target=target),
                                                role=role))
+                    for i, item in enumerate(spec['media'].get('middle', []), 1):
+                        assets.append(dict(file=self.media_file(row, item, 'middle-%02d' % i, target=target),
+                                           role='middle', seconds=item['at']))
                     for i, item in enumerate(spec['media'].get('references', []), 1):
                         asset = dict(file=self.media_file(row, item, 'reference-%02d' % i, target=target), role='reference')
                         for key in ('early_steps', 'voice_only'):

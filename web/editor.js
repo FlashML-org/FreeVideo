@@ -369,7 +369,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const text = textLongText(t, Number.isInteger(value.limit) ? value.limit : 8000);
             out(text); return {ok: false, reason: code, say: text};
         }
-        if (code === 'timed_text') { out(value.say); return {ok: false, reason: code, say: value.say}; }
+        if (code === 'timed_text' || code === 'middle_frames') { out(value.say); return {ok: false, reason: code, say: value.say}; }
         if (PARTS_LIMIT_CODES.includes(code)) {
             const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
             const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
@@ -560,7 +560,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 // Each part goes with its own description, as written while it waited.
                 const texts = Object.fromEntries(clips.map(clip => [clip.id, clip.text.trim() || entry.text]));
                 try { await actions.generate({text: texts[clips[0].id], texts, selection, allowEmpty: entry.allowEmpty === true}); }
-                catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason) && reason.reason !== 'timed_text') genbar?.say(reason.say); }
+                catch (value) { const reason = error(value, 'generate'); if (reason && !PARTS_LIMIT_CODES.includes(reason.reason) && reason.reason !== 'timed_text' && reason.reason !== 'middle_frames') genbar?.say(reason.say); }
             }
         } finally { startingHeld = false; }
     }
@@ -683,6 +683,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
         // without a panel to show them they stay out of the request.
         if (!panel.references?.available()) delete inputs.media;
+        else if (partStart() === 'fresh') {
+            // Middle frames that cannot be used stop the run here, with the same sentence the picture strip shows.
+            const range = selectionRange(), problem = panel.references.problem?.(t, range ? range.frames / model.FPS : null);
+            if (problem) throw Object.assign(new Error('middle_frames'), {code: 'middle_frames', say: problem});
+        }
         delete inputs.continue_from; delete inputs.continue_to;
         return {node: String(value.node), prompt: value.prompt, ...(value.extra_data ? {extra_data: value.extra_data} : {}), ...(api.clientId ? {client_id: api.clientId} : {})};
     }
@@ -1151,7 +1156,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 label: t('Run second pass', '继续二采'), secondPass: found.path, allowEmpty: true});
         },
         // Pictures that guide a new part: the creative panel's media rows; a part that continues shows only its references.
-        references: panel.references ? {source: panel.references, notify, size: () => capability.generationSize || generationSize(state.record),
+        references: panel.references ? {source: panel.references, notify, seconds: () => { const range = selectionRange(); return range ? range.frames / model.FPS : null; }, size: () => capability.generationSize || generationSize(state.record),
             visible: () => store.generationAvailable && actions.supportedSelection() ? partStart() : null} : null,
         setFirstFrame: value => { state.apply(t('First-frame reference', '首帧参考'), record => model.setFlag(record, 'first_frame_reference', value)); },
         // The sampling data and models the next generated part would still download first.
@@ -1277,7 +1282,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (epoch === projectEpoch) {
                     if (ids.length) state.settle(record => model.settle(record, ids, 'draft'));
                     // A length limit is the user's to change and is said once in the notice; there is nothing to report.
-                    if (!PARTS_LIMIT_CODES.includes(value?.code) && value?.code !== 'timed_text') {
+                    if (!PARTS_LIMIT_CODES.includes(value?.code) && value?.code !== 'timed_text' && value?.code !== 'middle_frames') {
                         failures.submission(value, frozen, text); submissionFailure = JSON.stringify(state.selection);
                     }
                     genbar?.update(null);

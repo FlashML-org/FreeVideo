@@ -96,7 +96,12 @@ def normalize_references(task, references=None):
     visual = any(r[0] != 'audio' for r in rows)
     audio = any(r[0] == 'audio' or r[4] is not None for r in rows)
     expected = 'ref2va_av' if visual and audio else 'ref2va_audio' if audio else 'ref2va' if visual else None
-    if (task.startswith('ref2va') and task != expected) or (not task.startswith('ref2va') and rows):
+    if task == 'fl2va' and rows:
+        # Rows of a first/last-frame request describe its middle keyframes: stills of the canvas size.
+        from .media_request import MAX_MIDDLE
+        if len(rows) > MAX_MIDDLE or any(r[0] != 'image' for r in rows):
+            raise ValueError('A first and last frame request takes at most %d middle keyframe images.' % MAX_MIDDLE)
+    elif (task.startswith('ref2va') and task != expected) or (not task.startswith('ref2va') and rows):
         raise ValueError('Reference modalities must match the task; keyframes and references cannot be mixed.')
     return tuple(rows)
 
@@ -123,7 +128,7 @@ def _material(canvas, task, references):
     """
     patch = (canvas['height'] // 32) * (canvas['width'] // 32)
     if task in ('t2va', 'i2va', 'l2va', 'fl2va'):
-        count = {'t2va': 0, 'i2va': 1, 'l2va': 1, 'fl2va': 2}[task]
+        count = {'t2va': 0, 'i2va': 1, 'l2va': 1, 'fl2va': 2}[task] + (len(references) if task == 'fl2va' and references else 0)
         return dict(video=count * patch, audio=0), 5. * count
     if references is None:
         seconds = canvas['frames'] / 24.

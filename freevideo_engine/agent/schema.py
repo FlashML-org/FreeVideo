@@ -129,7 +129,7 @@ def edit_document():
             'x-editor-document': True}
 
 
-def media(image=False, *, local=False, clip=False, video=False, early=False):
+def media(image=False, *, local=False, clip=False, video=False, early=False, timed=False):
     properties = dict(file=FILE, from_job=JOB, library=SAVED, frame=FRAME,
                       edit={'oneOf': [edit_recipe(), edit_document()]}, label=string(80))
     if local:
@@ -149,6 +149,10 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
         properties.pop('frame')
         properties.pop('edit')
         properties['frames'] = number(2, 12, integer=True, default=6)
+    if timed:
+        properties['at'] = number(1 / 24, 3600, description=
+            'Seconds into the new video at which this picture is reached. Between the first and last frame; '
+            'rounded to the nearest of the video\'s 24 frames per second.')
     sources = [k for k in ('file', 'path', 'from_job', 'library') if k in properties]
     rules = [dict(oneOf=[{'required': [key]} for key in sources])]
     if not clip and not video:
@@ -157,6 +161,10 @@ def media(image=False, *, local=False, clip=False, video=False, early=False):
         if image:
             rules.append({'if': {'anyOf': [{'required': [k]} for k in ('from_job', 'library')]},
                           'then': {'required': ['frame']}})
+    if timed:
+        # A bare file name has no time to carry.
+        return {'oneOf': [obj(properties, ('at',), allOf=rules)], 'x-media': dict(image=image, clip=clip, video=video),
+                'description': 'Exactly one source, and the time it is reached.'}
     return {'oneOf': [FILE, obj(properties, allOf=rules)], 'x-media': dict(image=image, clip=clip, video=video),
             'description': 'Exactly one source; end after start.' if clip else 'Exactly one source.'}
 
@@ -167,11 +175,19 @@ def common():
 
 
 def generation_media(*, local=False, enhance=False):
-    return obj({'first': nullable(media(True, local=local)), 'last': nullable(media(True, local=local)),
-                'references': nullable(array(media(enhance, local=local, early=not enhance), high=8 if enhance else 32))},
-               description='A first or last frame request does not take a voice reference.',
-               allOf=[{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
-                       'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}])
+    properties = {'first': nullable(media(True, local=local)), 'last': nullable(media(True, local=local)),
+                  'references': nullable(array(media(enhance, local=local, early=not enhance), high=8 if enhance else 32))}
+    rules = [{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
+              'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}]
+    if not enhance:
+        from ..media_request import MAX_MIDDLE
+        properties['middle'] = nullable(array(media(True, local=local, timed=True), high=MAX_MIDDLE, description=
+            'Still pictures the video passes through between its first and last frame, each at a time in seconds. '
+            'Needs both first and last, and no references.'))
+        present = {'required': ['middle'], 'properties': {'middle': {'type': 'array', 'minItems': 1}}}
+        rules.append({'if': present, 'then': {'required': ['first', 'last'], 'properties': {
+            'first': {'not': {'type': 'null'}}, 'last': {'not': {'type': 'null'}}, 'references': {'type': ['null', 'array'], 'maxItems': 0}}}})
+    return obj(properties, description='A first or last frame request does not take a voice reference.', allOf=rules)
 
 
 def generate(*, local=False):

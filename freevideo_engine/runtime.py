@@ -665,6 +665,8 @@ class Engine:
                 validate_conditioning(prompt, tags, conditions, self.task, width, height)
             if conditions:
                 canvas['reference_video_tokens'] = len(conditions[0]) * (width // 32) * (height // 32)
+            from .mid_keyframes import install_for
+            install_for(conditions)
         if self.cursor is not None:
             self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else 0)
         # DecoderReadAhead is CPU/file-cache only, so start it while the last

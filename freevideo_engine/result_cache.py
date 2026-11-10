@@ -239,6 +239,8 @@ def request_key(prompt, seed, canvas, sampling_plan, extra, machine, resources, 
         for name in ('first', 'last'):
             if media.get(name):
                 media[name] = file(media[name], content=True)
+        if media.get('middle'):
+            media['middle'] = [{'frame': row['frame'], 'sha256': file(row['path'], content=True)} for row in media['middle']]
         for name in ('references', 'loras'):
             media[name] = [{**{k: v for k, v in row.items() if k != 'path'},
                             'sha256': file(row['path'], content=True)} for row in media.get(name, [])]

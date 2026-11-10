@@ -1,6 +1,7 @@
 // Reference pictures for a new part, kept small inside the generation bar: thumbnails and one "+".
 // A part that continues the one before keeps its reference pictures (people stay the same) but not its first or last frame.
 // `source` is the media rows of the creative panel (editor_media_references.js); `size()` is the video's shape.
+import {MAX_MIDDLE, middleInfo, secondsOf, defaultTime, timeProblems, timeRange, problemText, labels as middleLabels, shown as shownTime} from './middle_frames.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const IMAGE = /\.(png|jpe?g|webp|bmp|tiff?)$/i;
 const MAX = 32;
@@ -25,7 +26,7 @@ function pickContinued(list) {
     const kept = [...chosen, ...props.slice(0, room - chosen.length)];
     return place ? [...kept, place] : kept;
 }
-export function createEditorReferences({t, source, size = () => null, error = () => {}, notify = () => {}}) {
+export function createEditorReferences({t, source, size = () => null, seconds = null, error = () => {}, notify = () => {}}) {
     const root = el('div', 'fv-ed-refs'), chips = el('div', 'fv-ed-ref-chips');
     const add = el('button', 'fv-ed-ref-add'); add.type = 'button';
     add.setAttribute('aria-haspopup', 'menu'); add.setAttribute('aria-expanded', 'false');
@@ -45,9 +46,22 @@ export function createEditorReferences({t, source, size = () => null, error = ()
     const waitText = () => t('Available after generation finishes', '生成完成后可改');
     const fullText = () => continuing ? t('Up to 3 images when continuing', '接续时最多 3\u00a0张') : t('Up to 32 images', '最多 32\u00a0张');
     const sentence = text => text + t('.', '。');
-    const label = role => role === 'first' ? t('First frame', '首帧') : role === 'last' ? t('Last frame', '尾帧') : t('Reference', '参考');
+    const label = (role, row) => role === 'first' ? t('First frame', '首帧') : role === 'last' ? t('Last frame', '尾帧')
+        : role === 'middle' ? (Number.isFinite(secondsOf(row)) ? middleLabels.chipTitle(secondsOf(row), t) : middleLabels.role(t)) : t('Reference', '参考');
+    // The length of the video, for the range of a middle frame; null when it is not known.
+    const videoSeconds = () => { try { return (seconds ? seconds() : source.seconds?.()) ?? null; } catch { return null; } };
+    const middles = () => active().filter(({row}) => row.role === 'middle');
+    // The first finding about the times of the middle frames, said in the notice line once the menu is closed
+    // (while it is open the finding stands under the time field instead).
+    const timeProblem = () => {
+        const list = middles(), seconds = videoSeconds();
+        const found = timeProblems(list.map(({row}) => secondsOf(row)), seconds)[0];
+        return found ? problemText(found, seconds, t) : '';
+    };
     function close(focus = true) {
+        const wasOpen = !menu.hidden;
         menu.hidden = true; add.setAttribute('aria-expanded', 'false');
+        if (wasOpen && !continuing) { const line = timeProblem(); if (line) notify(line); }
         const back = opener; opener = null;
         if (focus && back?.isConnected) back.focus();
     }
@@ -129,6 +143,33 @@ export function createEditorReferences({t, source, size = () => null, error = ()
         }
         return items;
     }
+    // "At [ 2.5 ] s" under the roles of a middle frame; a finding stands under the field and in the notice line.
+    function timeLine(entry) {
+        const wrap = el('div', 'fv-ed-ref-time-row'), line = el('label', 'fv-ed-ref-time-line');
+        const input = el('input'); input.type = 'number'; input.step = '0.1'; input.min = '0'; input.inputMode = 'decimal';
+        const seconds = videoSeconds(), range = timeRange(seconds);
+        if (range) input.max = shownTime(range.max);
+        input.value = Number.isFinite(secondsOf(entry.row)) ? String(secondsOf(entry.row)) : '';
+        const unit = el('span', null, t('s', '秒'));
+        line.append(el('span', null, t('At', '时间')), input, unit);
+        const problem = el('div', 'fv-ed-ref-time-error'); problem.setAttribute('role', 'alert'); problem.hidden = true;
+        const check = value => {
+            const rows = middles().map(({row, index}) => index === entry.index ? Number(value) : secondsOf(row));
+            const mine = middles().findIndex(({index}) => index === entry.index);
+            const found = timeProblems(rows, seconds).find(item => item.index === mine);
+            problem.hidden = !found; problem.textContent = found ? problemText(found, seconds, t) : '';
+            input.setAttribute('aria-invalid', String(Boolean(found)));
+        };
+        input.onchange = () => {
+            const rows = source.rows(), value = input.value === '' ? NaN : Number(input.value);
+            if (rows[entry.index]?.file === entry.row.file) { rows[entry.index] = {...rows[entry.index], seconds: value}; write(rows); }
+            check(value);
+        };
+        entries.push(input);
+        wrap.append(line, problem);
+        check(input.value === '' ? NaN : Number(input.value));
+        return wrap;
+    }
     function chipMenu(entry) {
         entries = [];
         const remove = () => item(t('Remove', '移除'), () => {
@@ -136,25 +177,55 @@ export function createEditorReferences({t, source, size = () => null, error = ()
             if (rows[entry.index]?.file === entry.row.file) { rows[entry.index] = {...rows[entry.index], enabled: false}; write(rows); }
         });
         if (continuing) return [remove()];
-        const roles = ['reference', 'first', 'last'].map(role => {
-            const b = item(label(role), () => {
+        const full = middles().length >= MAX_MIDDLE && entry.row.role !== 'middle';
+        const roles = ['reference', 'first', 'middle', 'last'].map(role => {
+            const apply = () => {
                 const rows = source.rows();
                 // One first frame and one last frame: the earlier one goes back to being a reference.
-                if (role !== 'reference') for (const other of rows) if (other.role === role && other.enabled !== false) other.role = 'reference';
-                if (rows[entry.index]?.file === entry.row.file) rows[entry.index] = {...rows[entry.index], role};
+                if (role === 'first' || role === 'last') for (const other of rows) if (other.role === role && other.enabled !== false) other.role = 'reference';
+                if (rows[entry.index]?.file === entry.row.file) {
+                    const was = rows[entry.index].role;
+                    rows[entry.index] = {...rows[entry.index], role};
+                    if (role === 'middle' && was !== 'middle') {
+                        rows[entry.index].seconds = defaultTime(rows.filter((other, i) => i !== entry.index && other.enabled !== false && other.role === 'middle').map(secondsOf), videoSeconds());
+                    } else if (role !== 'middle') delete rows[entry.index].seconds;
+                }
                 write(rows);
-            }, 'menuitemradio');
+                return rows[entry.index];
+            };
+            let b;
+            if (role === 'middle') {
+                // The menu stays open: the time of the picture is set under the roles.
+                b = el('button', null, full ? middleLabels.roleFull(t) : middleLabels.role(t)); b.type = 'button'; b.setAttribute('role', 'menuitemradio');
+                b.disabled = full;
+                b.onclick = () => {
+                    if (full) return;
+                    const row = apply();
+                    const at = Array.from(chips.children).findIndex((_, i) => active()[i]?.index === entry.index || false);
+                    const target = chips.children[at] || chips.children[Math.min(entry.index, chips.children.length - 1)] || add;
+                    open(target, chipMenu({row, index: entry.index}));
+                };
+                entries.push(b);
+            } else b = item(label(role), apply, 'menuitemradio');
             b.setAttribute('aria-checked', String((entry.row.role || 'reference') === role)); return b;
         });
+        if (entry.row.role === 'middle') roles.push(timeLine(entry));
         const separator = el('div'); separator.setAttribute('role', 'separator');
         return [...roles, separator, remove()];
     }
     // The line said on a click while a part is made; it goes away with the busy state it describes.
     const wait = () => { waited = true; notify(sentence(waitText())); };
+    // A video of 30 s or more is made in parts and only the first takes the middle frames: said once, in the notice line, as a plain note.
+    let saidInfo = '';
+    function sayInfo() {
+        const line = shown && !continuing ? middleInfo(active().map(({row}) => row), videoSeconds(), t) : '';
+        if (line !== saidInfo) { saidInfo = line; if (line) notify(line); }
+    }
     function update(isBusy = busy, visible = shown) {
         if (waited && busy && !isBusy) { waited = false; notify(''); }
         const was = continuing;
         busy = isBusy; shown = visible; continuing = shown === 'continues';
+        sayInfo();
         root.hidden = !shown || !source.available();
         if ((root.hidden || busy || was !== continuing) && !menu.hidden) close(false);
         // The panel holds at most MAX pictures, a continuing part uses three: a full list greys the plus out rather than ignoring a click.
@@ -167,9 +238,12 @@ export function createEditorReferences({t, source, size = () => null, error = ()
         chips.replaceChildren(...used().map(entry => {
             const chip = el('button', 'fv-ed-ref-chip'); chip.type = 'button'; chip.disabled = working; chip.setAttribute('aria-disabled', String(busy));
             chip.dataset.role = entry.row.role || 'reference';
-            chip.title = busy ? waitText() : label(entry.row.role); chip.setAttribute('aria-haspopup', 'menu');
-            chip.setAttribute('aria-label', label(entry.row.role));
+            chip.title = busy ? waitText() : label(entry.row.role, entry.row); chip.setAttribute('aria-haspopup', 'menu');
+            chip.setAttribute('aria-label', label(entry.row.role, entry.row));
             chip.append(thumb(entry.row.file, 'fv-ed-ref-thumb'));
+            if (entry.row.role === 'middle' && Number.isFinite(secondsOf(entry.row))) {
+                chip.append(el('span', 'fv-ed-ref-time', `${shownTime(secondsOf(entry.row))} ${t('s', '秒')}`));
+            }
             chip.onclick = () => { if (busy) { wait(); return; } if (!menu.hidden && opener === chip) close(); else open(chip, chipMenu(entry)); };
             return chip;
         }));

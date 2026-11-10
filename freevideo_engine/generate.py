@@ -496,6 +496,8 @@ def _run(args):
         validate_frames(frames)
     canvas = original_canvas or geometry(getattr(args, 'width', 1344), getattr(args, 'height', 768),
                       frames=frames, seconds=getattr(args, 'seconds', None))
+    from .media_request import validate_middle
+    validate_middle(media, canvas['frames'])
     visible_canvas = canvas
     canvas, hide_tail = hide_tail_geometry(canvas,
         args.prompt_file.read_text(encoding='utf-8') if getattr(args, 'hide_tail', False) and args.prompt_file else None,

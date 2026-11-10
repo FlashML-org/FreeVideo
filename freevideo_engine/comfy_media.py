@@ -55,7 +55,7 @@ def continued(exported, notes=None):
     from .continuation import PICTURES_MAX, pick_pictures
     media = (exported or {}).get('media') or {}
     kept = {key: value for key, value in media.items()
-            if key not in ('first', 'last', 'references', 'conditioning_info')}
+            if key not in ('first', 'last', 'middle', 'references', 'conditioning_info')}
     pictures = [row for row in media.get('references', []) if row.get('kind') == 'image']
     original = [row for row in media.get('references', []) if row.get('kind') == 'audio' and row.get('use') == 'original']
     keyframes = [name for name in ('first', 'last') if media.get(name)]
@@ -66,6 +66,8 @@ def continued(exported, notes=None):
     if candidates or original:
         kept['references'] = candidates[:PICTURES_MAX] + original
     lines = [continued_note(len(pictures), keyframes, len(candidates[:PICTURES_MAX]))]
+    if media.get('middle'):
+        lines.append('A continued part does not use middle frames.')
     if any(row.get('kind') != 'image' and row not in original for row in media.get('references', [])) \
             or media.get('conditioning_info') \
             or (exported or {}).get('conditioning'):
@@ -96,6 +98,19 @@ def continued_note(pictures, keyframes, used):
     return None
 
 
+def _middle(rows, canvas, *, has_first, has_last):
+    """The panel's middle frames at seconds, as the engine's request names them: at a frame number."""
+    if not (has_first and has_last):
+        raise ValueError('Middle frames need both a first frame and a last frame')
+    fps, frames = canvas.get('fps', 24), canvas['frames']
+    result = [{'path': row['path'], 'frame': round(row['seconds'] * fps)} for row in rows]
+    for row, source in zip(result, rows):
+        if not 1 <= row['frame'] <= frames - 2:
+            raise ValueError('A middle frame at %g s is outside the video; use %.2f to %.2f seconds'
+                             % (source['seconds'], 1 / fps, (frames - 2) / fps))
+    return result
+
+
 def export(run, canvas, *, first=None, last=None, references=None, loras=None, conditioning=None, assets=None,
            continuing=False):
     """continuing: the request continues a video, so keyframes and references may be mixed (see continued)."""
@@ -120,6 +135,9 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
             next(row for row in references if row['kind'] == 'audio')['use'] = 'original'
     if conditioning is not None and (first is not None or last is not None or references):
         raise ValueError('Preencoded conditioning already includes media; do not connect a second set')
+    if media.get('middle'):
+        media['middle'] = _middle(media['middle'], canvas, has_first=first is not None or 'first' in media,
+                                  has_last=last is not None or 'last' in media)
     keyframes = first is not None or last is not None or any(name in media for name in ('first', 'last'))
     if not continuing and keyframes and (references or media.get('references')):
         raise ValueError('Choose keyframes or experimental references; mixed layouts are not supported')

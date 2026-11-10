@@ -3,11 +3,12 @@ import {api} from '../../scripts/api.js';
 import {openImageEditor} from './image_editor.js';
 import {imageGenerationSupported} from './image_generation.js';
 import {uploadMedia} from './media_upload.js';
+import {middleNotice} from './middle_frames.js';
 export const MAX_REFERENCES = 32;
 const IMAGE = /\.(png|jpe?g|webp|bmp|tiff?)$/i;
 export const isImageFile = file => IMAGE.test(file || '');
 const inUse = rows => rows.filter(row => row.enabled !== false).length;
-export const ROLES = ['reference', 'first', 'last'];
+export const ROLES = ['reference', 'first', 'middle', 'last'];
 const upstream = (node, name) => {
     const input = node?.inputs?.find(i => i.name === name);
     const links = node?.graph?.links;
@@ -23,6 +24,18 @@ export function mediaReferences(node) {
     };
     return {
         available: () => !!widget(),
+        // What stops a run with middle frames, as a sentence ('' when nothing does); `seconds` is the length of the part about to be made.
+        problem(t, seconds) {
+            const rows = read().filter(row => row.enabled !== false);
+            if (!rows.some(row => row.role === 'middle')) return '';
+            const node = media(), linked = name => node?.inputs?.find(i => i.name === name)?.link != null;
+            const count = role => rows.filter(row => row.role === role).length;
+            const references = count('reference') + ['reference', ...Array.from({length: 7}, (_, i) => 'reference_' + (i + 2)), 'reference_audio'].filter(linked).length;
+            if (references) return t('Choose keyframes or references. Disable unused cards.', '首尾帧与参考模式不能混用，请关闭本次不用的素材。');
+            return middleNotice(rows, {first: count('first') + Number(linked('first')), last: count('last') + Number(linked('last')), references, seconds}, t);
+        },
+        // The length of the video these pictures are for; null while no generate node is connected.
+        seconds: () => { const value = Number(node?.widgets?.find(w => w.name === 'seconds')?.value); return value > 0 ? value : null; },
         rows: read,
         write(rows) {
             const field = widget(), owner = media();

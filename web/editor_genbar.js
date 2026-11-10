@@ -156,7 +156,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         refNotice.style.left = Math.max(0, (references?.element.getBoundingClientRect().left || 0) - host.getBoundingClientRect().left) + 'px';
         refNoticeTimer = setTimeout(() => { refNotice.hidden = true; }, where ? 20000 : 9000);
     };
-    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, error: value => actions.error(value, null, sayAtRefs), notify: sayAtRefs}) : null;
+    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: value => actions.error(value, null, sayAtRefs), notify: sayAtRefs}) : null;
     if (references) { description.before(references.element); host.append(refNotice); }
     let status = null, serial = 0, disposed = false, pressing = new Set(), previewSelection = null, estimateCache = null, noteTimer = null, queuedAt = null;
     // Which parts are generating, or how the job ended: a "Queued" line goes once this moves on.
@@ -378,7 +378,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         }
         // A specific reason is said once; the planning limits are already shown above.
         catch (error) { const result = actions.error(error, 'generate'); reason = result?.say || '';
-            if (result?.say && !['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'timed_text'].includes(result.reason)) say(result.say, false, ['Editor generation', '剪辑器生成']);
+            if (result?.say && !['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'timed_text', 'middle_frames'].includes(result.reason)) say(result.say, false, ['Editor generation', '剪辑器生成']);
             else if (!result && !note.textContent) { reason = t('Could not start. Try again.', '没能开始，请重试。'); say(reason, false, ['Editor generation', '剪辑器生成']); } }
         finally { pressing.delete(key); render(); }
         return reason;

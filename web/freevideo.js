@@ -33,6 +33,7 @@ import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
 import { uploadMedia } from './media_upload.js';
+import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemText, middleNotice, middleInfo, labels as middleLabels, shown as shownTime } from './middle_frames.js';
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
@@ -58,6 +59,7 @@ style.textContent = `
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
 .fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
+.fv-panel .fv-time{display:flex;align-items:center;gap:8px;margin:8px 0 0}.fv-panel .fv-time input{width:92px;min-height:var(--fv-h-sm,32px);padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg);color:var(--fv-ink);font:inherit;font-size:16px}.fv-panel .fv-time input[aria-invalid=true]{border-color:var(--fv-danger)}.fv-panel .fv-time-error{margin:4px 0 0;color:var(--fv-danger);font-size:var(--fv-micro,12px)}
 .fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
 .fv-card[data-enabled=false]{opacity:.5}.fv-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:60px}
 .fv-preview{display:block;width:100%;max-height:160px;object-fit:contain;margin:8px 0;border-radius:var(--fv-r-sm,8px);background:var(--fv-bg)}
@@ -185,6 +187,16 @@ function mediaPanel(node, mount = null) {
         }
         return null;
     };
+    // The length of the video this panel feeds, for the range of the middle frames; null when it is not connected.
+    const videoSeconds = () => {
+        for (const other of node.graph?._nodes || node.graph?.nodes || []) {
+            const input = other.inputs?.find(i => i.name === 'media' && i.link != null);
+            if (!input || String(graphLink(input.link)?.origin_id) !== String(node.id)) continue;
+            const value = Number(other.widgets?.find(w => w.name === 'seconds')?.value);
+            if (value > 0) return value;
+        }
+        return null;
+    };
     // One file into ComfyUI's input folder, through FreeVideo's streaming upload.
     async function uploadOne(file) {
         return uploadMedia(api, file);
@@ -300,6 +312,25 @@ function mediaPanel(node, mount = null) {
         }});
         return group;
     }
+    // The time of a middle frame, in seconds; a finding about it stands under the field.
+    function timeRow(row, index, rows) {
+        const seconds = videoSeconds(), range = timeRange(seconds);
+        const mine = rows.filter(other => other.enabled !== false && other.role === 'middle');
+        const found = timeProblems(mine.map(secondsOf), seconds).find(item => mine[item.index] === rows[index]);
+        const line = el('div', undefined, 'fv-time');
+        const input = el('input'); input.type = 'number'; input.step = '0.1'; input.min = '0'; input.inputMode = 'decimal';
+        if (range) input.max = shownTime(range.max);
+        input.value = Number.isFinite(secondsOf(row)) ? String(secondsOf(row)) : '';
+        const id = `fv-time-${node.id}-${index}`;
+        input.id = id; input.setAttribute('aria-label', `${middleLabels.time(text)} (${middleLabels.unit(text)})`);
+        if (found) { input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', id + '-error'); }
+        input.onchange = () => { const latest = read(); latest[index] = {...latest[index], seconds: input.value === '' ? NaN : Number(input.value)}; update(latest); };
+        const label = el('label', middleLabels.time(text)); label.htmlFor = id;
+        line.append(label, input, el('span', middleLabels.unit(text)));
+        if (!found) return [line];
+        const error = el('div', problemText(found, seconds, text), 'fv-time-error'); error.id = id + '-error'; error.setAttribute('role', 'alert');
+        return [line, error];
+    }
     function render() {
         for (const preview of cards.querySelectorAll("video,audio")) {
             preview.pause(); preview.removeAttribute("src"); preview.load();
@@ -317,6 +348,7 @@ function mediaPanel(node, mount = null) {
         });
         const first = active.filter(row => row.role === "first").length + Number(linked('first'));
         const last = active.filter(row => row.role === "last").length + Number(linked('last'));
+        const middle = active.filter(row => row.role === 'middle');
         const refs = active.filter(row => row.role === "reference").length + referenceInputs.filter(linked).length + Number(linked('reference_audio'));
         connections.replaceChildren();
         for (const [name, label] of [['first', text('First frame', '首帧')], ['last', text('Last frame', '尾帧')], ...referenceInputs.map((name, index) => [name, referenceLabel(index)]), ['reference_audio', text('Reference audio', '参考音频')]]) {
@@ -326,7 +358,8 @@ function mediaPanel(node, mount = null) {
             const chip = el('span', `${label} · ${text('Connected', '已连接')}`, 'fv-connection');
             chip.title = source?.title || source?.type || label; connections.append(chip);
         }
-        message(refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last) && continuing ? text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。") : refs && (first || last) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : "", Boolean(refs > 32 || refs && (first || last) && !continuing || first > 1 || last > 1));
+        const middleProblem = middleNotice(active, {first, last, references: refs, seconds: videoSeconds()}, text);
+        message(refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : refs && (first || last || middle.length) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(refs > 32 || refs && (first || last || middle.length) && !continuing || first > 1 || last > 1 || middleProblem && !continuing));
         if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Drop images or video here", "拖入图片或视频"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media comes from the connected inputs; no upload is needed.', '素材来自已连接的输入，无需上传。'), 'fv-connected-card'));
         rows.forEach((row, index) => {
@@ -341,15 +374,28 @@ function mediaPanel(node, mount = null) {
             };
             const label = el("span", row.cast?.name || (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
+            // One width for every role, whatever the options say in the current state: "Middle frame" is the longest usual one.
+            select.style.width = cn ? '7.5em' : '10em';
             const kind = mediaKind(row.file);
-            for (const [value, title] of (kind === "image" ? [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")], ["last", text("Last frame", "尾帧")]] : [["reference", text("Reference", "参考")]])) {
-                const option = el("option", title); option.value = value; select.append(option);
+            const full = active.filter(other => other.role === 'middle').length >= MAX_MIDDLE && row.role !== 'middle';
+            for (const [value, title] of (kind === "image" ? [["reference", text("Reference", "参考")], ["first", text("First frame", "首帧")],
+                    ["middle", full ? middleLabels.roleFull(text) : middleLabels.role(text)], ["last", text("Last frame", "尾帧")]] : [["reference", text("Reference", "参考")]])) {
+                const option = el("option", title); option.value = value; if (value === 'middle' && full) option.disabled = true; select.append(option);
             }
-            select.value = row.role; select.onchange = () => { rows[index].role = select.value; update(rows); };
+            select.value = row.role;
+            select.onchange = () => {
+                const was = rows[index].role;
+                rows[index].role = select.value;
+                if (select.value === 'middle' && was !== 'middle') {
+                    rows[index].seconds = defaultTime(rows.filter((other, i) => i !== index && other.enabled !== false && other.role === 'middle').map(secondsOf), videoSeconds());
+                } else if (select.value !== 'middle') delete rows[index].seconds;
+                update(rows);
+            };
             top.append(enabled, label);
             if (row.source) top.append(el('span', text('Edited', '已编辑'), 'fv-edited'));
             if (kind === "audio") top.append(useSwitch(row)); else top.append(select);
             card.append(top);
+            if (row.role === 'middle' && kind === 'image') card.append(...timeRow(row, index, rows));
             if (kind === "audio") {
                 const useBox = el('div', '', 'fv-audio-use-note'); useBox.setAttribute('role', 'status'); useBox.dataset.file = row.file; useBox.hidden = true;
                 if (useNote?.file === row.file) paintUseNote(useBox);
@@ -368,7 +414,7 @@ function mediaPanel(node, mount = null) {
                 preview.title = text("Edit image", "编辑图片"); preview.onclick = () => editImage(row.file);
                 wrap.append(preview, badge); card.append(wrap);
                 const size = videoSize();
-                if (size && (row.role === "first" || row.role === "last")) {
+                if (size && (row.role === "first" || row.role === "middle" || row.role === "last")) {
                     // A keyframe of another shape is centre-cropped when the video starts; offer the crop now.
                     preview.addEventListener("load", () => {
                         const off = Math.abs(Math.log((preview.naturalWidth / preview.naturalHeight) / (size.width / size.height))) > .02;
@@ -432,6 +478,23 @@ function mediaPanel(node, mount = null) {
         });
     }
     let uploading = false;
+    // What stops a run with middle frames before it is queued (the same findings as the notice line).
+    function middleBlock() {
+        let rows;
+        try { rows = read().filter(row => row.enabled !== false); } catch { return ''; }
+        if (!rows.some(row => row.role === 'middle')) return '';
+        const linked = name => node.inputs?.find(i => i.name === name)?.link != null;
+        const continues = (node.outputs?.[0]?.links || []).some(id => {
+            const target = node.graph?.getNodeById(node.graph?.links[id]?.target_id);
+            return target?.type === 'FreeVideoGenerate' && (target.freevideoContinues?.()
+                || optionalInputValue('continue_from', target.widgets?.find(w => w.name === 'continue_from')?.value) !== '');
+        });
+        if (continues) return '';
+        const count = role => rows.filter(row => row.role === role).length;
+        const references = count('reference') + referenceInputs.filter(linked).length + Number(linked('reference_audio'));
+        if (references) return text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。");
+        return middleNotice(rows, {first: count('first') + Number(linked('first')), last: count('last') + Number(linked('last')), references, seconds: videoSeconds()}, text);
+    }
     serialized.serializeValue = () => {
         if (node.isUploading) throw new Error(text("Wait for media uploads to finish before running", "请等待素材上传完成后再生成"));
         // Replace person: the two slots are the media, and both are needed.
@@ -441,7 +504,9 @@ function mediaPanel(node, mount = null) {
             return JSON.stringify(requestRows(swapState(node)));
         }
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range}) => ({file, role, enabled, ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
+        const blocked = middleBlock();
+        if (blocked) throw new Error(blocked);
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range, seconds}) => ({file, role, enabled, ...(role === 'middle' && Number.isFinite(seconds) ? {seconds} : {}), ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
     };
     async function upload(files) {
         if (node.isUploading || !files.length) return;
