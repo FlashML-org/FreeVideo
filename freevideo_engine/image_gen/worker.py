@@ -195,9 +195,14 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         raise InterruptedError('cancelled')
                     # The parent chooses a fresh path under ComfyUI input.
                     # Exclusive creation never replaces an existing user file.
-                    with Path(value['path']).open('xb') as target:
-                        image.save(target, format='PNG')
                     plan = runner.stats().get('plan')
+                    info = None
+                    if isinstance(plan, dict) and type(plan.get('seed')) is int:
+                        from PIL.PngImagePlugin import PngInfo
+                        info = PngInfo()
+                        info.add_text('seed', str(plan['seed']))
+                    with Path(value['path']).open('xb') as target:
+                        image.save(target, format='PNG', **(dict(pnginfo=info) if info else {}))
                     if back_check is not None:
                         plan = dict(plan or {}, back_check=back_check)
                 result = dict(phase='result', path=value['path'], seconds=time.monotonic() - started, plan=plan)

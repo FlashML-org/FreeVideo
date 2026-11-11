@@ -5,6 +5,7 @@ request loop, cancellation and error classes are shared. The sampling itself is 
 (prompt -> text encoding with the video text encoder -> DiT -> tiled VAE -> picture).
 """
 import os
+import secrets
 from pathlib import Path
 
 from . import image_pack
@@ -51,6 +52,10 @@ class H3Runner:
                  setup=None, **_):
         """`setup` is what the service read from the installation: the shared encoder's runtime and the card budget."""
         progress = progress or (lambda stage, fraction: None)
+        # A request without a seed draws a fresh one, as the other image model does; the one used is reported
+        # with the plan so the picture can carry it.
+        seed = secrets.randbits(32) if seed is None else seed
+        self.last_plan = dict(seed=seed)
         if os.environ.get(STUB_ENV) == '1':
             return _stub(prompt, width=width, height=height, seed=seed, progress=progress, cancel=cancel)
         try:
@@ -68,7 +73,7 @@ class H3Runner:
         self.last_stats = dict(h3=stats)
         try:
             return h3_pipeline.generate(
-                prompt, width, height, 0 if seed is None else seed, reference_images or None, report,
+                prompt, width, height, seed, reference_images or None, report,
                 (lambda: bool(cancel and cancel())), dit_path=self.files['dit'], vae_path=self.files['vae'],
                 encoder=setup.get('encoder'), comfy_root=setup.get('comfy_root'), comfy_python=setup.get('comfy_python'),
                 model_paths=setup.get('model_paths'), vram_gib=setup.get('vram_gib'), ram_gib=setup.get('ram_gib'),
@@ -76,7 +81,7 @@ class H3Runner:
         except h3_pipeline.Cancelled:
             raise InterruptedError('cancelled') from None
         finally:
-            self.last_plan = {key: stats[key] for key in ('canvas', 'resident', 'planned_peak_gib', 'host_mode') if key in stats}
+            self.last_plan = dict(seed=seed, **{key: stats[key] for key in ('canvas', 'resident', 'planned_peak_gib', 'host_mode') if key in stats})
 
     def at_boundary(self):
         return True
