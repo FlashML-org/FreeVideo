@@ -319,7 +319,7 @@ class Service:
         else:
             if not assets.settle(root):
                 raise ValueError('model_missing')
-            value = rules.request(value)
+            value = rules.request(self.without_unopenable(value))
             from ..comfy_assets import resolve_assets
             resolved = resolve_assets(json.dumps([dict(file=row['file'], role=row['role']) for row in value['media']]),
                                       self.input_directory())
@@ -345,6 +345,30 @@ class Service:
                                            name='freevideo-prompt-vlm', daemon=True)
             self.thread.start()
         return dict(job=self.key)
+
+    def without_unopenable(self, value):
+        """Rows from connected load nodes are marked optional: the node's file may be gone or of another kind, and
+        then the scene is rewritten without it, keeping its label, as for any connected node the model cannot see."""
+        media = value.get('media') if isinstance(value, dict) else None
+        if not isinstance(media, list):
+            return value
+        from ..comfy_assets import resolve_assets, media_kind
+        kept = []
+        for row in media:
+            if not isinstance(row, dict) or 'optional' not in row:
+                kept.append(row)
+                continue
+            if row['optional'] is not True or not isinstance(row.get('file'), str):
+                raise ValueError('unsupported_media')
+            try:
+                path = resolve_assets(json.dumps([dict(file=row['file'], role='reference')]),
+                                      self.input_directory())['references'][0]['path']
+                if media_kind(path) != row.get('kind', 'image'):
+                    continue
+            except (ValueError, OSError):
+                continue
+            kept.append(row)
+        return dict(value, media=kept)
 
     def ask_images(self, value):
         """Resolve every question's images inside ComfyUI input; images only."""
@@ -406,7 +430,9 @@ class Service:
             pass
 
     def video_frames(self, value, folder):
-        """The model reads pictures: a reference video is shown as its middle frame."""
+        """The model reads pictures: a reference video is shown as its middle frame. A video from a connected load
+        node that cannot be decoded is left out like a missing file; one added in Media is an error."""
+        dropped = []
         for row in value.get('media', ()):
             if row.get('kind') != 'video':
                 continue
@@ -415,7 +441,14 @@ class Service:
                 from ..agent.media import sample_frames
                 row['path'] = sample_frames(row['path'], Path(folder) / str(row['number']), count=1)[0]['path']
             except Exception:
-                raise ValueError('unreadable_video') from None
+                if not row.get('optional'):
+                    raise ValueError('unreadable_video') from None
+                dropped.append(row)
+        if dropped:
+            value['media'] = [row for row in value['media'] if not any(row is gone for gone in dropped)]
+            value['mode'] = rules.mode_of([row['role'] for row in value['media']])
+        for row in value.get('media', ()):
+            row.pop('optional', None)
 
     def work(self, root, machine, action, value):
         from ..locking import runtime_lock

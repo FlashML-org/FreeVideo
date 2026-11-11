@@ -6,6 +6,23 @@ const titles = {image: 'Picture', video: 'Video', audio: 'Audio'};
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
 const linkFor = (node, name) => node?.graph?.links?.[node.inputs?.find(i => i.name === name)?.link];
 const sourceFor = (node, name) => node?.graph?.getNodeById(linkFor(node, name)?.origin_id);
+// Nodes whose picture or video is a file in ComfyUI input: [kind, the widget that names the file].
+const loaders = {LoadImage: ['image', 'image'], LoadVideo: ['video', 'file']};
+// The file a connected loader reads, or null when it is not one the prompt model can be given: a node that is muted or
+// bypassed, a mask output, a file of another kind, or one that lives in ComfyUI output or temp instead of input.
+function loadedFile(owner, name, kind) {
+    let link = linkFor(owner, name), source = sourceFor(owner, name);
+    for (let hops = 0; source?.type === 'Reroute' && hops < 8; hops++) {
+        link = linkFor(source, source.inputs?.[0]?.name); source = sourceFor(source, source.inputs?.[0]?.name);
+    }
+    const spec = loaders[source?.type];
+    if (!spec || spec[0] !== kind || (link?.origin_slot ?? 0) !== 0 || [2, 4].includes(source.mode)) return null;
+    const value = widget(source, spec[1])?.value;
+    if (typeof value !== 'string') return null;
+    const text = value.trim().replace(/\\/g, '/'), note = /^(.+) \[(input|output|temp)\]$/.exec(text), file = note ? note[1] : text;
+    return (!note || note[2] === 'input') && file && referenceKind(file) === kind ? file : null;
+}
+
 export const referenceInputs = ['reference', ...Array.from({length: 7}, (_, i) => `reference_${i + 2}`)];
 export function referenceKind(file) {
     const ext = String(file).split('.').pop().toLowerCase();
@@ -25,8 +42,9 @@ export function referenceItems(node) {
     const refs = [], anchors = {}, seen = new Set();
     const connected = (owner, name, kind) => {
         const link = linkFor(owner, name), source = sourceFor(owner, name);
+        const loaded = link ? loadedFile(owner, name, kind) : null;
         return link ? {key: `node:${owner.id}:${name}:${link.origin_id}:${link.origin_slot}`,
-            kind, name: source?.title || source?.type || name} : null;
+            kind, name: source?.title || source?.type || name, ...(loaded ? {loaded} : {})} : null;
     };
     const media = sourceFor(node, 'media');
     if (media) {
@@ -77,14 +95,22 @@ export function referenceItems(node) {
         token: `<${titles[item.kind]} ${counters[item.kind]}>`}));
 }
 
-// What the prompt model can read: pictures and, as one still frame, videos added in Media. Audio and connected
-// nodes are left out, and keep their labels in the scene; the error names why only when nothing is left.
+// What the prompt model can read: pictures and, as one still frame, videos added in Media or loaded by a connected
+// load-image or load-video node (`optional`: the engine leaves such a row out when its file cannot be opened). Audio and
+// connected nodes that make their picture only when the graph runs are left out, and keep their labels in the scene;
+// only an audio-only scene, or a prompt that is itself encoded elsewhere, is an error.
 export function enhancementMedia(items, conditioningLinked = false) {
-    const media = items.filter(row => row.file && ['image', 'video'].includes(row.kind))
-        .map(row => ({file: row.file, role: row.role || 'reference', kind: row.kind, number: row.number}));
+    const readable = items.filter(row => (row.file || row.loaded) && ['image', 'video'].includes(row.kind));
+    // The engine takes up to 8 rows: the ones added in Media come first, connected files fill what is left.
+    let room = 8 - readable.filter(row => row.file).length;
+    const media = readable.filter(row => row.file || room-- > 0)
+        .map(row => ({file: row.file || row.loaded, role: row.role || 'reference', kind: row.kind, number: row.number,
+            ...(row.file ? {} : {optional: true})}));
     if (media.length) return media;
-    const connected = conditioningLinked || items.some(row => !row.file);
-    if (connected || items.length) throw new Error(connected ? 'connected_media' : 'audio_media');
+    // A prompt encoded elsewhere has nothing here to rewrite; unread connected nodes alone are not an error.
+    if (conditioningLinked) throw new Error('connected_media');
+    if (items.some(row => !row.file)) return media;
+    if (items.length) throw new Error('audio_media');
     return media;
 }
 
