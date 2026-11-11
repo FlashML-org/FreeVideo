@@ -150,7 +150,7 @@ function mediaPanel(node, mount = null) {
     const cards = el("div"), connections = el("div", undefined, "fv-connected");
     const picker = el("input"); picker.type = "file"; picker.multiple = true;
     picker.accept = acceptList(["image", "video", "audio"]); picker.hidden = true;
-    const add = button(text("Upload files", "上传文件"), text("Upload images, video or audio", "上传图片、视频或音频"), () => {
+    const add = button(text("Add", "添加"), text("Add images, video or audio", "添加图片、视频或音频"), () => {
         if (libraryMenu?.box.isConnected) { libraryMenu.close(); return; }
         libraryMenu = openReferenceMenu({api, viewURL, anchor: add, host: panel, onComputer: () => picker.click(),
             onPick: (file, id) => upload([file]).then(() => { picked.add(id); libraryMenu?.refresh(); }),
@@ -205,9 +205,11 @@ function mediaPanel(node, mount = null) {
         return null;
     };
     // One file into ComfyUI's input folder, through FreeVideo's streaming upload.
-    async function uploadOne(file) {
-        return uploadMedia(api, file);
+    async function uploadOne(file, onProgress = null) {
+        return uploadMedia(api, file, {onProgress});
     }
+    // The share of the file sent so far, once at least one percent has gone.
+    const percent = fraction => fraction >= 0.01 ? ` · ${Math.floor(fraction * 100)}%` : '';
     // An agent's edit leaves its editor document beside the picture: open that, so people continue its layers.
     async function agentEdit(file) {
         if (!file.startsWith('freevideo/agent/') || mediaKind(file) !== 'image') return null;
@@ -244,7 +246,8 @@ function mediaPanel(node, mount = null) {
         node.isUploading = true; add.disabled = true; addAudio.disabled = true;
         message(text('Uploading the edited image…', '正在上传编辑后的图片…'));
         try {
-            const result = await uploadOne(new File([outcome.blob], outcome.name, {type: outcome.blob.type}));
+            const result = await uploadOne(new File([outcome.blob], outcome.name, {type: outcome.blob.type}),
+                fraction => message(text('Uploading the edited image', '正在上传编辑后的图片') + percent(fraction)));
             const latest = read(), index = latest.findIndex(row => row.file === file);
             if (index < 0) return;
             const hasOriginal = outcome.edit.layers.some(layer => layer.id === 'base');
@@ -267,8 +270,11 @@ function mediaPanel(node, mount = null) {
         if (!outcome?.blob) return;
         if (read().length >= 32) { message(text('The media list is full (32 items, including disabled ones). Remove some to add more.', '素材已满 32 个（含未启用的），请先移除不用的素材。'), true); return; }
         node.isUploading = true; add.disabled = addAudio.disabled = generateImage.disabled = true;
+        message(text('Saving the image…', '正在保存图片…'));
         try {
-            const result = await uploadOne(new File([outcome.blob], outcome.name, {type: outcome.blob.type}));
+            const result = await uploadOne(new File([outcome.blob], outcome.name, {type: outcome.blob.type}),
+                fraction => message(text('Saving the image', '正在保存图片') + percent(fraction)));
+            message('');
             const latest = read();
             latest.push({file: result.file, role: role.value, enabled: true, edit: outcome.edit});
             update(latest);
@@ -526,8 +532,9 @@ function mediaPanel(node, mount = null) {
             for (const [index, file] of usable.entries()) {
                 if (read().length >= 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
                 const kind = mediaKind(file.name);
-                message(`${text("Uploading", "正在上传")} ${index + 1}/${usable.length} · ${file.name}`);
-                const result = await uploadOne(file);
+                const heading = `${text("Uploading", "正在上传")} ${index + 1}/${usable.length} · ${file.name}`;
+                message(heading);
+                const result = await uploadOne(file, fraction => message(heading + percent(fraction)));
                 // Read again after the wait: another place may have changed the list meanwhile.
                 const rows = read(); if (rows.length >= 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
                 rows.push({file: result.file, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);

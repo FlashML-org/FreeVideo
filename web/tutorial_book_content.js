@@ -82,8 +82,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：素材区域中图片的用途下拉框已用红框标出。', en: 'The creation panel, with the image role selectors in the Media section outlined in red.'},
         },
         steps: {
-            zh: ['在“素材”中点“上传文件”，添加起始图片，并将它的用途下拉框选为“首帧”。', '需要结尾画面时，再添加一张图片并设为“尾⁠帧”。', '在描述中写明两张图之间发生了什么。', '点“生⁠成⁠视⁠频”。'],
-            en: ['Under "Media", choose "Upload files", add the starting image and set its role dropdown to "First frame".', 'For an ending picture, add another image and set it to "Last frame".', 'Describe what happens between the two images.', 'Choose "Generate video".'],
+            zh: ['在“素材”中点“添加”，选择起始图片，并将它的用途下拉框选为“首帧”。', '需要结尾画面时，再添加一张图片并设为“尾⁠帧”。', '在描述中写明两张图之间发生了什么。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Under "Media", choose "Add", pick the starting image and set its role dropdown to "First frame".', 'For an ending picture, add another image and set it to "Last frame".', 'Describe what happens between the two images.', 'Choose "Generate video".'],
         },
         example: {
             assets: [{file: 'anime-first.webp', role: 'first'}, {file: 'anime-last.webp', role: 'last'}],
@@ -105,8 +105,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：素材区域和参考图已用红框标出。', en: 'The creation panel, with the Media section and a reference image outlined in red.'},
         },
         steps: {
-            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：点“上\u2060传\u2060文\u2060件”添加，在描述中输入 @ 引用。', '音频卡片上选“原样使用”时，成片直接使用这段声音，时长随音频而定；一次只能有一段音频原样使用。', '点“生⁠成⁠视⁠频”。'],
-            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them with "Upload files" and mention them in the prompt with @.', 'On an audio card, choose "Use as is" to put that audio into the result unchanged. The duration follows the audio, and only one audio file can be used as is.', 'Choose "Generate video".'],
+            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用。', '音频卡片上选“原样使用”时，成片直接使用这段声音，时长随音频而定；一次只能有一段音频原样使用。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @.', 'On an audio card, choose "Use as is" to put that audio into the result unchanged. The duration follows the audio, and only one audio file can be used as is.', 'Choose "Generate video".'],
         },
         example: {
             assets: [],

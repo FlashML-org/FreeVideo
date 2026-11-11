@@ -90,10 +90,16 @@ def doctor(*, probe=False):
     return result
 
 
+def missing_required_paths(result, *, video_models=True):
+    skipped = () if video_models else ('base', 'checkpoint')
+    return [k for k, row in result['paths'].items() if k not in skipped and not row['exists']]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--require-paths', action='store_true')
+    parser.add_argument('--without-video-models', action='store_true')
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
     result = doctor(probe=args.probe)
@@ -102,7 +108,7 @@ def main():
         save(args.out, result)
     print(json.dumps(result, indent=2))
     return int((args.probe and not result['ready']) or
-               (args.require_paths and not all(row['exists'] for row in result['paths'].values())))
+               (args.require_paths and missing_required_paths(result, video_models=not args.without_video_models)))
 
 
 if __name__ == '__main__':

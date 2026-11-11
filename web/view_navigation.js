@@ -176,8 +176,8 @@ export function installNavigation(openStudio, agent = false, {openWorkflow = nul
         if (created) handle?.notify(t('Created an editing project for you.', '已新建一个剪辑工程'));
         return handle;
     }, true), () => choose(node => openAutopilot(node), true), () => choose(node => openImage(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
-    toolbar.append(createUpdateNotice(cn).element);
-    document.body.append(toolbar); refreshNavigation();
+    // In the node view the notice is the toolbar's second row, as wide as the toolbar.
+    toolbar.append(createUpdateNotice(cn).element); document.body.append(toolbar); refreshNavigation();
     makeMovable(toolbar);
     // health.js asks for this before it reports the toolbar missing. A
     // workspace removed without closing must not keep the toolbar hidden.

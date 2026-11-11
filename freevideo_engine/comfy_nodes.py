@@ -633,7 +633,7 @@ def start_background_compile():
     if os.environ.get('FREEVIDEO_BACKGROUND_COMPILE', 'auto').lower() in ('0', 'off', 'false'):
         return False
     root, machine = comfy_bridge.installation()
-    if machine.get('device_backend') == 'mps' or machine.get('gpu_vendor') == 'amd':
+    if machine.get('device_backend') == 'mps' or machine.get('gpu_vendor') == 'amd' or machine.get('video_model') is False:
         return False
     source = comfy_bridge.source_root()
     environment = comfy_bridge.engine_environment(root, source)

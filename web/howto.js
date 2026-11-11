@@ -26,8 +26,8 @@ const HOWTOS = [
                 zh: '在此添加图片，每张可设为参\u2060考、首\u2060帧或尾\u2060帧。'},
             {id: 'describe', anchor: '[data-fv-guide="describe"]', en: 'Type @ in the prompt and choose an image, then say what it does in the scene.',
                 zh: '在描述中输入 @ 选择图片，并写明它在画面中的作用。'},
-            {id: 'media-av', target: mediaSection, en: 'Videos and audio can be references too: add them with "Upload files" and mention them in the prompt with @.',
-                zh: '视频和音频也可作为参考：点“上\u2060传\u2060文\u2060件”添加，在描述中输入 @ 引用。'},
+            {id: 'media-av', target: mediaSection, en: 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @.',
+                zh: '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用。'},
             {id: 'generate', anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'}]},
     {id: 'long-video', view: 'studio', needsParts: true, title: ['Make a longer video', '连续的长视频'],
         steps: [

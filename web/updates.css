@@ -8,9 +8,18 @@
 .fv-update-notice button:disabled{opacity:.5;cursor:default}
 .fv-update-working>span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--fv-accent);border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:fv-update-spin .9s linear infinite}
 @keyframes fv-update-spin{to{transform:rotate(360deg)}}
-.fv-update-notice :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}.fv-view-navigation>.fv-update-notice{margin-top:8px;max-width:560px}
+.fv-update-notice :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
+/* The update notice is a full-width bar under the header, the same place in every view. */
+.fv-update-bar{flex:none;min-height:54px;box-sizing:border-box;align-items:center;margin:0;max-width:none;border:0;border-bottom:1px solid var(--fv-border);border-radius:0;box-shadow:none;padding:10px 28px;gap:8px 16px;flex-wrap:nowrap;font:14px/1.5 var(--fv-font);background:color-mix(in srgb,var(--fv-accent) 13%,var(--fv-bg))}
+.fv-update-bar>span{min-width:0;color:var(--fv-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-update-bar a,.fv-update-bar button,.fv-studio .fv-update-bar a,.fv-studio .fv-update-bar button{min-height:34px;padding:6px 14px;font-size:14px}
+.fv-update-bar button:not(.fv-update-apply),.fv-studio .fv-update-bar button:not(.fv-update-apply){color:var(--fv-ink);opacity:.75}
+.fv-update-bar .fv-update-apply,.fv-studio .fv-update-bar .fv-update-apply,.fv-update-bar a,.fv-studio .fv-update-bar a{background:transparent;color:var(--fv-accent);box-shadow:inset 0 0 0 1px var(--fv-accent)}
+.fv-update-bar .fv-update-apply:hover,.fv-studio .fv-update-bar .fv-update-apply:hover,.fv-update-bar a:hover,.fv-studio .fv-update-bar a:hover{background:var(--fv-hover)}
+.fv-view-navigation .fv-update-bar a{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:34px;min-height:34px;padding:0 14px;line-height:1}
+.fv-view-navigation .fv-update-bar{margin:8px -20px -8px;border-bottom:0;border-top:1px solid var(--fv-border);border-radius:0 0 var(--fv-r-lg) var(--fv-r-lg);cursor:default}
+@media(max-width:680px){.fv-update-bar{padding:10px 14px;flex-wrap:wrap;justify-content:flex-end}.fv-update-bar>span{flex:1 0 100%;white-space:normal}}
 @media(prefers-reduced-motion:reduce){.fv-update-notice{animation:none}.fv-update-working>span::before{animation:none}}
-.fv-update-summary{flex-basis:100%;font-weight:400;color:var(--fv-muted);overflow-wrap:anywhere}.fv-update-summary[hidden]{display:none}
 .fv-version-info{font:inherit;font-size:12px;color:var(--fv-muted);background:transparent;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;white-space:nowrap}
 .fv-version-info:hover{background:var(--fv-hover);color:var(--fv-ink)}
 /* Inside the studio the general button rule is more specific: keep the version a quiet label like Settings. */

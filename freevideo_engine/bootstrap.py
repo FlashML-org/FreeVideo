@@ -1771,6 +1771,13 @@ class Installer:
             self.ui.end(key, success=False)
             raise
         self.ui.end(key, detail='Verified and ready')
+        self.write_encoder_paths()
+
+    def write_encoder_paths(self):
+        """The text-encoder folder map the shared encoder reads; a video model install writes it with its files."""
+        from .monitoring import save
+        save(self.root / 'encoder-paths.yaml',
+             {'freevideo': {'base_path': str(self.plan['encoder_dir']), 'text_encoders': 'text_encoders/'}})
 
     def missing_files(self, python, role, *, gpu=None, wheels=None):
         """Pinned packages of an environment whose files are gone (runtime_libraries.package_files).
@@ -2240,7 +2247,8 @@ class Installer:
         receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
                    if isinstance(hardware_data, dict) else None)
         if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths', '--out', kernel_report])
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths',
+                                          *(['--without-video-models'] if self.plan.get('only') == 'image' else []), '--out', kernel_report])
         else:
             save(kernel_report, receipt)
             self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')

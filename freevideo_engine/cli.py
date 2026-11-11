@@ -73,6 +73,7 @@ def main():
     doctor = sub.add_parser('doctor', help='Check paths, versions and installed attention kernels')
     doctor.add_argument('--probe', action='store_true', help='Execute small kernels in isolated processes')
     doctor.add_argument('--require-paths', action='store_true', help='Fail if model or source directories are missing')
+    doctor.add_argument('--without-video-models', action='store_true', help='With --require-paths: an image-only installation has no video model directories')
     doctor.add_argument('--out', type=Path, help='Save the complete kernel report, including optional failures')
     sub.add_parser('diagnose', help='Collect bounded local diagnostics, even after a failed setup')
     sub.add_parser('optimize', help='Reuse a test report and validate bounded local tuning')
@@ -202,7 +203,8 @@ def main():
         write_json(result)
         if args.probe and not result['ready']:
             raise SystemExit(1)
-        if args.require_paths and not all(row['exists'] for row in result['paths'].values()):
+        from .doctor import missing_required_paths
+        if args.require_paths and missing_required_paths(result, video_models=not args.without_video_models):
             raise SystemExit(1)
     elif args.command == 'setup':
         from .install import install

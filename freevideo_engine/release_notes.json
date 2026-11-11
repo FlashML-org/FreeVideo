@@ -1,41 +1,76 @@
 {
   "schema": 1,
-  "product_version": "0.5.0",
+  "product_version": "0.5.1",
   "en": {
-    "summary": "H3 Image arrives: a new Images view for H3 Image and Qwen-Image 2.1, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
+    "summary": "Installing only an image model works again, and the image view shows its pictures again. Uploads show progress, and the update notice, retry notice and reference Add menu are clearer.",
     "changes": [
-      "H3 Image: a new image model for NVIDIA graphics cards from 8 GB of video memory, making pictures from 4 MP up to 16 MP. It is installed alone or added to an existing video install, which downloads only the missing files, about 22 GB, and shares the text encoder already installed. One weight file serves every graphics card, and machines with little memory load it in mapped form. Not available on Mac or AMD.",
-      "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. The empty stage shows sample pictures, and the page has a wider layout, a solid Generate button and a clearer error card. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
-      "Autopilot: picture requests use the installed H3 Image at 4 MP or 16 MP; a request below 4 MP is made at 4 MP in the same shape.",
-      "Editor: beat lines on the music track, and clips snap to the beats. The feature tour now starts on the clip just imported.",
-      "Keyframes: still pictures can be placed between the first and last frame, and each is generated one at a time.",
-      "Audio: with \"Use as is\" selected and no audio connected, FreeVideo now says so before generating. When audio used as is cannot be generated in parts, the reason is shown and the request stops before it is submitted.",
-      "Windows: on machines with tight system memory, the second pass no longer stops and restarts for lack of memory. The video is unchanged.",
-      "Long videos: very long high-resolution requests no longer stop on the first step with a numerical error.",
-      "Sampling preview: an optional small preview decoder on CUDA, used only when it does not slow generation.",
-      "Settings: the working files of finished videos can be cleared.",
-      "Launcher: a failure shows one card with the next step and the buttons that resolve it, and the technical details are folded away. A CUDA initialization failure comes with the step to take, an outdated driver gets a card asking to update the driver, and a failed update records why each source failed.",
-      "Interface details: checkboxes share one size; the Passes field is as compact as the Reserved VRAM field; media cards no longer show a mode label; editing a character puts the cursor in its name; Autopilot cards show \"Custom\" for a custom quality and a single progress percentage; and the header and view tabs fit narrow windows without overlap or sideways scrolling."
+      "Install: installing only an image model no longer fails at the verification step for lacking video model folders; the check for a video install is unchanged.",
+      "Image view: the large picture, the work thumbnails and the save link no longer return 404.",
+      "Uploads: while a file is uploaded or an edited image is saved, the media panel shows how much has been sent.",
+      "Update notice: it is a full-width bar, under the header in the studio and as the second row of the node toolbar.",
+      "Retry notice: when a run is retried, the notice says the run mode changes, and names less video memory or less memory by cause, instead of saying settings change.",
+      "Reference Add menu: it opens above when there is no room below, takes the full width on narrow windows and shows four columns at 400 px wide.",
+      "Studio: the mention list refreshes when a tour sample fills the prompt.",
+      "Tutorial and tour: video and audio references are added with Add, the same way as images, and the first-and-last-frame step no longer repeats Add.",
+      "Agent: the width and height descriptions state the nearest-multiple-of-32 rule, and whole-timeline write points to the editor operations for clip edits.",
+      "Image view: when there are many works, the thumbnails in the works column are shown in full instead of being squeezed into thin strips.",
+      "Image view: the large picture shows square, portrait and landscape pictures whole at every width."
     ]
   },
   "zh": {
-    "summary": "H3 Image 上线：图像视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型生成；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
+    "summary": "只装图像模型的安装恢复正常，图像视图的图片重新显示；上传显示进度，更新提示、重试提示和参考图“添加”菜单更清楚。",
     "changes": [
-      "H3 Image：新增图像模型，适用于 8 GB 显存起的 NVIDIA 显卡，可出 4 MP 到 16 MP 的图片。可单独安装，也可加装到已有的视频安装上，加装只下载缺少的文件，约 22 GB，并共用已安装的文本编码器；所有显卡用同一份权重文件，内存较小的机器按映射方式加载。Mac 和 AMD 暂不可用。",
-      "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。空白舞台显示示例图，页面布局更宽，“生成”按钮始终实心，出错时显示更清楚的提示卡。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
-      "AI 全自动：出图请求用已安装的 H3 Image 按 4 MP 或 16 MP 生成；不足 4 MP 的请求按同一比例出 4 MP。",
-      "剪辑：音乐轨新增拍点线，片段可吸附到拍点；功能导览改为从刚导入的片段开始。",
-      "关键帧：首帧和尾帧之间可放置静态图片，每次生成一张。",
-      "音频：选了“原样使用”但没有连接音频时，生成前就会提示；原样使用的音频无法分段生成时，会说明原因并在提交前停止。",
-      "Windows：系统内存紧张的机器上，第二遍不再因内存不足而中途停止并重试；生成的视频不变。",
-      "长视频：很长的高分辨率请求不再在第一步因数值错误停止。",
-      "采样预览：CUDA 上新增可选的小预览解码器，只在不拖慢生成时启用。",
-      "设置：可清理已完成视频的工作文件。",
-      "启动器：失败时只显示一张卡，写明下一步和能解决问题的按钮，技术详情折叠；CUDA 初始化失败会给出可操作的步骤，显卡驱动过旧时显示更新驱动的卡，更新失败时记录每个来源失败的原因。",
-      "界面细节：勾选框统一大小；“轮数”输入框与“预留显存”输入框一样紧凑；素材卡不再显示模式标签；编辑角色时光标先落在名字上；AI 全自动卡片在自定义质量时显示“自定义”，进度只显示一个百分比；顶栏和视图标签在窄窗口里不再重叠，也不再横向滚动。"
+      "安装：只安装图像模型时，安装不再在“验证安装”一步因缺少视频模型目录而失败；安装视频模型时的检查不变。",
+      "图像视图：大图、作品缩略图和保存链接不再 404。",
+      "上传：上传文件或保存编辑后的图片时，素材面板显示已发送的比例。",
+      "更新提示：改为通栏，创作面板里在标题下，节点视图里是工具条的第二行。",
+      "重试提示：运行自动重试时，提示写明换了一种运行方式，并按原因写“更省显存”或“更省内存”，不再写“调整设置”。",
+      "参考图“添加”菜单：下方没有位置时向上展开，窄窗口通宽，400 宽下为四列。",
+      "创作面板：示例图填入描述后，@ 提及列表同步刷新。",
+      "教程与导览：视频和音频参考与图片一样点“添加”，首尾帧一步不再重复“添加”。",
+      "Agent：宽高说明写明取最近的 32 的倍数；整条时间线写入指向剪辑操作，避免用它改片段。",
+      "图像视图：作品较多时，作品栏的缩略图完整显示，不再被压成一条条。",
+      "图像视图：大图完整显示方图、竖图和横图。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.5.0",
+      "en": {
+        "summary": "H3 Image arrives: a new Images view for H3 Image and Qwen-Image 2.1, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
+        "changes": [
+          "H3 Image: a new image model for NVIDIA graphics cards from 8 GB of video memory, making pictures from 4 MP up to 16 MP. It is installed alone or added to an existing video install, which downloads only the missing files, about 22 GB, and shares the text encoder already installed. One weight file serves every graphics card, and machines with little memory load it in mapped form. Not available on Mac or AMD.",
+          "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. The empty stage shows sample pictures, and the page has a wider layout, a solid Generate button and a clearer error card. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
+          "Autopilot: picture requests use the installed H3 Image at 4 MP or 16 MP; a request below 4 MP is made at 4 MP in the same shape.",
+          "Editor: beat lines on the music track, and clips snap to the beats. The feature tour now starts on the clip just imported.",
+          "Keyframes: still pictures can be placed between the first and last frame, and each is generated one at a time.",
+          "Audio: with \"Use as is\" selected and no audio connected, FreeVideo now says so before generating. When audio used as is cannot be generated in parts, the reason is shown and the request stops before it is submitted.",
+          "Windows: on machines with tight system memory, the second pass no longer stops and restarts for lack of memory. The video is unchanged.",
+          "Long videos: very long high-resolution requests no longer stop on the first step with a numerical error.",
+          "Sampling preview: an optional small preview decoder on CUDA, used only when it does not slow generation.",
+          "Settings: the working files of finished videos can be cleared.",
+          "Launcher: a failure shows one card with the next step and the buttons that resolve it, and the technical details are folded away. A CUDA initialization failure comes with the step to take, an outdated driver gets a card asking to update the driver, and a failed update records why each source failed.",
+          "Interface details: checkboxes share one size; the Passes field is as compact as the Reserved VRAM field; media cards no longer show a mode label; editing a character puts the cursor in its name; Autopilot cards show \"Custom\" for a custom quality and a single progress percentage; and the header and view tabs fit narrow windows without overlap or sideways scrolling."
+        ]
+      },
+      "zh": {
+        "summary": "H3 Image 上线：图像视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型生成；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
+        "changes": [
+          "H3 Image：新增图像模型，适用于 8 GB 显存起的 NVIDIA 显卡，可出 4 MP 到 16 MP 的图片。可单独安装，也可加装到已有的视频安装上，加装只下载缺少的文件，约 22 GB，并共用已安装的文本编码器；所有显卡用同一份权重文件，内存较小的机器按映射方式加载。Mac 和 AMD 暂不可用。",
+          "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。空白舞台显示示例图，页面布局更宽，“生成”按钮始终实心，出错时显示更清楚的提示卡。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
+          "AI 全自动：出图请求用已安装的 H3 Image 按 4 MP 或 16 MP 生成；不足 4 MP 的请求按同一比例出 4 MP。",
+          "剪辑：音乐轨新增拍点线，片段可吸附到拍点；功能导览改为从刚导入的片段开始。",
+          "关键帧：首帧和尾帧之间可放置静态图片，每次生成一张。",
+          "音频：选了“原样使用”但没有连接音频时，生成前就会提示；原样使用的音频无法分段生成时，会说明原因并在提交前停止。",
+          "Windows：系统内存紧张的机器上，第二遍不再因内存不足而中途停止并重试；生成的视频不变。",
+          "长视频：很长的高分辨率请求不再在第一步因数值错误停止。",
+          "采样预览：CUDA 上新增可选的小预览解码器，只在不拖慢生成时启用。",
+          "设置：可清理已完成视频的工作文件。",
+          "启动器：失败时只显示一张卡，写明下一步和能解决问题的按钮，技术详情折叠；CUDA 初始化失败会给出可操作的步骤，显卡驱动过旧时显示更新驱动的卡，更新失败时记录每个来源失败的原因。",
+          "界面细节：勾选框统一大小；“轮数”输入框与“预留显存”输入框一样紧凑；素材卡不再显示模式标签；编辑角色时光标先落在名字上；AI 全自动卡片在自定义质量时显示“自定义”，进度只显示一个百分比；顶栏和视图标签在窄窗口里不再重叠，也不再横向滚动。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.38",
       "en": {
@@ -285,39 +320,6 @@
           "Mac：参考视频编码出错时，几秒内即修正或报告，不再等到编码结束。轻量或标准档、不带参考、不续接的文生视频在第一遍被中断后，自动重试会从最后完成的步骤继续，不再从头开始这一遍。",
           "速度：Windows 上的 6 GB 级显卡，带参考的精细档生成每一步采样更快。",
           "音频卡：“先出预览”开启或接着生成时，“原样使用”不再变灰。选择它会关闭预览并用一行说明；接着生成时说明原因和需要移除的内容。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.30",
-      "en": {
-        "summary": "Image generation on Windows machines with little memory no longer stops while the model loads, large requests are steadier in the second pass, and the editor, the launcher and phone access now explain what stopped and what to do next.",
-        "changes": [
-          "Image generation: on Windows machines with little free memory, loading the image model no longer crashes. If loading is interrupted anyway, FreeVideo retries the request once automatically.",
-          "Generation: large requests on Windows are less likely to run out of memory in the second pass, and when they do, the retry is aimed at the memory that actually ran short instead of falling back to much slower settings. A generation also no longer stops when a memory copy is refused during sampling.",
-          "Creation panel: a note appears when other programs are using enough GPU memory or RAM to slow a generation down, and a generation that fails because of that shortage says so.",
-          "Prompt enhancement: a prompt over the 12,000-character limit now shows its current length, counting the descriptions of characters mentioned with @, before anything is sent. When the prompt or references change while a rewrite is running, a plain note says so instead of a red error. Time points later than the end of the video no longer cause an error; they are fitted within the video's length.",
-          "Editor: playback stops with a notice at a clip that cannot be played, instead of running on over a black picture. After FreeVideo restarts, interrupted exports, multi-part generations and subtitle jobs no longer show as in progress, and can be started again or continued.",
-          "Phone access: when phone access cannot be opened, the page says why and offers \"Try again\", instead of showing \"Opening...\" indefinitely.",
-          "Start-up: the launcher's failure cards now explain the cause and the next step. An access-denied error is titled \"Access denied\" and shows where access was denied; a port in use offers \"Change address\"; a refused setup step, an expired diagnostic report and a failed report export also show the next step. When Python fails to install during setup, the card shows the installer's own error message instead of only an exit code. Exporting a report can replace an existing file.",
-          "Install: while a downloaded image model file is being verified, its card says \"Checking\". On Windows, entry folders left in the shared FV folder by removed installations are cleaned up. If the setup tool has gone missing before an install step, it is downloaded again instead of the step failing.",
-          "Multi-GPU machines: requests from the Creation panel and the Agent that include images, continue a clip or are longer now run on a free card alongside other generations. A single very large task runs on its own instead of waiting in the queue indefinitely.",
-          "GPU memory: very long second passes, such as ones with large reference videos, need less GPU memory on smaller cards. When other programs take GPU memory during a run, decoding adapts instead of failing and starting over. Results are unchanged."
-        ]
-      },
-      "zh": {
-        "summary": "内存较小的 Windows 机器生成图片时，不再在加载模型时中断；大画面请求的第二遍更稳定；剪辑视图、启动器和手机访问出问题时，会说明原因和下一步。",
-        "changes": [
-          "图像生成：可用内存较小的 Windows 机器加载图像模型时不再崩溃。加载仍意外中断时，FreeVideo 会自动重试一次。",
-          "生成：Windows 上的大画面请求在第二遍更不容易出现内存不足；出现时，重试会针对实际不足的那部分内存，不再退到慢得多的设置。采样中途内存拷贝被拒绝时，生成也不再中止。",
-          "创作面板：其他程序占用的显存或内存会使生成变慢时，面板会提示；因此类不足导致生成失败时，失败卡片同样说明这一点。",
-          "提示词增强：提示词超过 12,000 字符上限时，发送前会显示当前字数，展开的 @角色描述一并计入。改写过程中原文或素材有改动时，改为普通提示，不再显示红色错误。提示词里晚于视频结尾的时间点不再报错，会调整到视频时长以内。",
-          "剪辑视图：播放到无法播放的素材时会停下并提示，不再黑屏空走。FreeVideo 重启后，中断的导出、分段生成和字幕任务不再显示为进行中，可以重新开始或继续。",
-          "手机访问：手机连接无法打开时，网页会说明原因并提供“重试”，不再一直显示“正在打开…”。",
-          "启动：启动器的失败卡片会说明原因和下一步。拒绝访问类错误的标题为“访问被拒绝”，并写出被拒绝的位置；端口被占用时提供“更改地址”；安装步骤被拒绝、诊断报告过期和导出报告失败时，也会给出下一步。安装过程中 Python 安装失败时，失败卡片会显示安装器的报错，而不只是退出码。导出报告时可以覆盖已有文件。",
-          "安装：下载完成的图像模型文件在校验时，卡片显示“正在校验”。Windows 上，已删除的安装在共用 FV 目录里留下的入口目录会被清理。安装步骤开始前如果安装工具缺失，会重新下载，安装步骤不再因此失败。",
-          "多显卡机器：创作面板和 Agent 发出的带图、续接或较长的请求，现在可以在空闲的显卡上与其他生成同时运行。单个很大的任务改为单独运行，不再一直排队。",
-          "显存：较长的第二遍（例如参考视频很大的请求）在小显存显卡上占用的显存更少。运行中其他程序占用显存时，解码会自行调整，不再失败后重新开始。结果不变。"
         ]
       }
     }
