@@ -1123,6 +1123,8 @@ class ChainRunner:
                 unrepaired = self._unrepaired(reasons, join_result.get('notes', ()), wanted)
                 if unrepaired:
                     record['output_unrepaired'] = unrepaired
+                    # `output_seams.kept` counts the records present when the join began; `output_unrepaired` is the
+                    # final word on what was smoothed, and also names a seam whose record was there but the join rejected.
                 else:
                     record.pop('output_unrepaired', None)
             if record['state'] not in store.ACTIVE:
