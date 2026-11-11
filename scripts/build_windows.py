@@ -98,7 +98,25 @@ VSVersionInfo(
     return path
 
 
-def build_pyinstaller(command, out, *, onefolder):
+def data_hook(datas):
+    """Add files PyInstaller would have taken from --add-data, after Analysis.
+
+    Analysis reuses its cache only when every collected file is older than the
+    previous build. These files are written by every build, so they are merged
+    here with PyInstaller's own formatting and normalization instead: first in
+    the list, deduplicated together with binaries, as Analysis does.
+    """
+    return f'''
+from PyInstaller.building.datastruct import normalize_toc as _normalize_toc
+from PyInstaller.building.utils import format_binaries_and_datas as _format_datas
+_user = sorted(_normalize_toc([(d, s, 'DATA') for d, s in _format_datas({datas!r}, workingdir=SPECPATH)]))
+_combined = _normalize_toc(_user + a.datas + a.binaries)
+a.datas = [e for e in _combined if e[2] not in ('BINARY', 'EXTENSION')]
+a.binaries = [e for e in _combined if e[2] in ('BINARY', 'EXTENSION')]
+'''
+
+
+def build_pyinstaller(command, out, *, onefolder, workpath=None, datas=()):
     # Windows onefile has no tree to prune after EXE: use exactly the same
     # globs on Analysis TOCs before PyInstaller writes its compressed archive.
     # Generate the usual spec so all bootloader/version/manifest defaults stay
@@ -112,14 +130,18 @@ def build_pyinstaller(command, out, *, onefolder):
         if option != '--noconfirm':
             options.append(option)
         i += 1
-    if not onefolder:
-        options += ['--runtime-hook', str(ROOT / 'scripts/pyi_rth_bundle_data.py')]
     subprocess.run([sys.executable, '-m', 'PyInstaller.utils.cliutils.makespec', *options], cwd=ROOT, check=True)
     spec = out / 'FreeVideo.spec'
     from scripts.source_build import spec_hook
     injection = spec_hook(ROOT, out / 'engine-source', out / 'launcher-build.json')
+    # Data files join before pruning, as they did inside Analysis.
+    user = data_hook(list(datas)) if datas else ''
     if not onefolder:
+        # The onefile runtime hook goes in after Analysis, where PyInstaller puts a
+        # --runtime-hook (first script; its imports are all already collected), so both
+        # layouts run the same Analysis and the second build reuses the first's.
         pruning = f'''
+a.scripts = [('pyi_rth_bundle_data', {str(ROOT / 'scripts/pyi_rth_bundle_data.py')!r}, 'PYSOURCE')] + a.scripts
 import sys
 sys.path.insert(0, {str(ROOT)!r})
 from scripts.prune_qt_bundle import prune_qt_toc, write_prune_report
@@ -133,12 +155,13 @@ write_prune_report({str(out)!r}, dict(files=removed_binaries['files'] + removed_
 a.datas, deduplicated = deduplicate_toc(a.datas, {str(out)!r})
 write_data_report({str(out)!r}, deduplicated)
 '''
+    injection = user + injection
     text = spec.read_text(encoding='utf-8')
     if text.count('pyz = PYZ(') != 1:
         raise ValueError('Unexpected PyInstaller spec layout')
     spec.write_text(text.replace('pyz = PYZ(', injection + '\npyz = PYZ('), encoding='utf-8')
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm',
-                    '--distpath', str(out / 'dist'), '--workpath', str(out / 'build'), str(spec)],
+                    '--distpath', str(out / 'dist'), '--workpath', str(workpath or out / 'build'), str(spec)],
                    cwd=ROOT, check=True)
     if onefolder:
         dist = out / 'dist/FreeVideo'
@@ -150,6 +173,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--onefolder', action='store_true', help='Build a folder ZIP that runs without temporary self-extraction')
+    parser.add_argument('--workpath', type=Path,
+                        help='PyInstaller work directory to reuse between builds of the same checkout path')
     args = parser.parse_args()
     if os.name != 'nt' or sys.version_info[:2] != (3, 12):
         parser.error('Build this artifact on Windows x64 with Python 3.12')
@@ -177,22 +202,30 @@ def main():
     stamp = stamp_source(staged, identity)
     notices = staged / 'freevideo_engine/launcher/licenses/bundled'
     collect_notices(ROOT, notices)
+    # Same files and order as --add-data, but merged after Analysis (see data_hook)
+    # so that a new build stamp does not invalidate a reused --workpath.
+    data = [str(staged) + os.pathsep + 'engine-source',
+            str(build_file) + os.pathsep + '.',
+            str(stamp) + os.pathsep + 'freevideo_engine',
+            str(stamp.parent / 'build-identity.json') + os.pathsep + 'freevideo_engine',
+            str(notices) + os.pathsep + 'freevideo_engine/launcher/licenses/bundled',
+            *bundle_data_args(ROOT)[1::2]]
+    datas = [tuple(item.split(os.pathsep, 1)) for item in data]
     command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed', '--noupx',
         '--onedir' if args.onefolder else '--onefile', '--name', 'FreeVideo',
         '--icon', str(ROOT / 'freevideo_engine/assets/icon.ico'),
         '--version-file', str(version_info),
         '--distpath', str(out / 'dist'), '--workpath', str(out / 'build'), '--specpath', str(out),
-        '--paths', str(ROOT), '--add-data', str(staged) + os.pathsep + 'engine-source',
-        '--add-data', str(build_file) + os.pathsep + '.',
-        '--add-data', str(stamp) + os.pathsep + 'freevideo_engine',
-        '--add-data', str(stamp.parent / 'build-identity.json') + os.pathsep + 'freevideo_engine',
-        '--add-data', str(notices) + os.pathsep + 'freevideo_engine/launcher/licenses/bundled',
-        *bundle_data_args(ROOT),
+        '--paths', str(ROOT),
         '--hidden-import', 'psutil',
         '--exclude-module', 'torch', '--exclude-module', 'triton', '--exclude-module', 'numpy',
         '--exclude-module', 'transformers', '--exclude-module', 'tkinter',
+        # PyInstaller appends __main__ to the stored list itself; naming it here keeps the
+        # stored and requested lists equal, so a reused --workpath can skip Analysis.
+        '--exclude-module', '__main__',
         str(ROOT / 'scripts/windows_app.py')]
-    build_pyinstaller(command, out, onefolder=args.onefolder)
+    workpath = args.workpath.resolve() if args.workpath else None
+    build_pyinstaller(command, out, onefolder=args.onefolder, workpath=workpath, datas=datas)
     executable = out / 'dist' / ('FreeVideo/FreeVideo.exe' if args.onefolder else 'FreeVideo.exe')
     digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     (executable.parent / 'SHA256SUMS.txt').write_text(digest + '  FreeVideo.exe\n', encoding='utf-8')
