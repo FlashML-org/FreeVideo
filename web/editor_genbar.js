@@ -337,6 +337,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // part chosen that has no description yet.
     // written: what is to be written, which the enlarged box has before the small one.
     let bound = null, dirty = false, loose = false, committing = false, written = '';
+    let boxFor = null;
     const typed = (value = input.value) => {
         state.setRangeText(value); written = value;
         if (bound) dirty = true; else loose = state.selection?.kind !== 'range';
@@ -388,7 +389,22 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     description.append(expand.element);
     cancel.onclick = () => (!previewSelection && actions.selectionHeld?.() ? Promise.resolve(actions.unhold()).then(render) : actions.cancel()).catch(actions.error);
     resume.onclick = () => actions.resume().catch(value => actions.error(value, 'generate'));
+    // Words written for the picture are not words for the music, and the other way round: moving between the two
+    // keeps each one's own box text, also across a dropped choice, so music never starts from a picture prompt.
+    const boxDrafts = {music: '', video: ''};
     const unsubscribe = state.subscribe(event => {
+        if (event.type === 'selection') {
+            const now = !state.selection ? null : music?.target(state.selection) ? 'music' : 'video';
+            if (!now) { if (boxFor) boxDrafts[boxFor] = input.value; }
+            else {
+                if (boxFor && now !== boxFor) {
+                    boxDrafts[boxFor] = input.value;
+                    input.value = boxDrafts[now];
+                    if (state.selection.kind === 'range') state.setRangeText(input.value);
+                }
+                boxFor = now;
+            }
+        }
         if (event.type === 'selection' && state.selection?.kind === 'range') {
             if (state.rangeText === null) state.setRangeText(input.value);
             else if (input.value !== state.rangeText) input.value = state.rangeText;
