@@ -5,7 +5,7 @@
     "summary": "H3 Image arrives: a new Images view for H3 Image and Qwen-Image 2.1, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
     "changes": [
       "H3 Image: a new image model for NVIDIA graphics cards from 8 GB of video memory, making pictures from 4 MP up to 16 MP. It is installed alone or added to an existing video install, which downloads only the missing files, about 22 GB, and shares the text encoder already installed. One weight file serves every graphics card, and machines with little memory load it in mapped form. Not available on Mac or AMD.",
-      "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
+      "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. The empty stage shows sample pictures, and the page has a wider layout, a solid Generate button and a clearer error card. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
       "Autopilot: picture requests use the installed H3 Image at 4 MP or 16 MP; a request below 4 MP is made at 4 MP in the same shape.",
       "Editor: beat lines on the music track, and clips snap to the beats. The feature tour now starts on the clip just imported.",
       "Keyframes: still pictures can be placed between the first and last frame, and each is generated one at a time.",
@@ -22,7 +22,7 @@
     "summary": "H3 Image 上线：图像视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型生成；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
     "changes": [
       "H3 Image：新增图像模型，适用于 8 GB 显存起的 NVIDIA 显卡，可出 4 MP 到 16 MP 的图片。可单独安装，也可加装到已有的视频安装上，加装只下载缺少的文件，约 22 GB，并共用已安装的文本编码器；所有显卡用同一份权重文件，内存较小的机器按映射方式加载。Mac 和 AMD 暂不可用。",
-      "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
+      "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。空白舞台显示示例图，页面布局更宽，“生成”按钮始终实心，出错时显示更清楚的提示卡。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
       "AI 全自动：出图请求用已安装的 H3 Image 按 4 MP 或 16 MP 生成；不足 4 MP 的请求按同一比例出 4 MP。",
       "剪辑：音乐轨新增拍点线，片段可吸附到拍点；功能导览改为从刚导入的片段开始。",
       "关键帧：首帧和尾帧之间可放置静态图片，每次生成一张。",
