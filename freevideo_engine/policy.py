@@ -592,7 +592,7 @@ class ResourceBudgetError(ValueError):
     """A rejected plan with the exact capacities, reserves and shortfalls."""
     def __init__(self, hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
                  *, gpu_minimum_bytes=5*GiB, gpu_requirement=None, canvas=None,
-                 ram_minimum_bytes=4*GiB, ram_requirement=None):
+                 ram_minimum_bytes=4*GiB, ram_requirement=None, gpu_reserve_explicit=False):
         self.details = dict(gpu=hardware.gpu_name, system=hardware.system,
             gpu_total_bytes=hardware.vram_total, gpu_capacity_bytes=gpu_total,
             gpu_available_bytes=free_gpu, gpu_reserve_bytes=int(reserve_gpu * GiB),
@@ -606,6 +606,15 @@ class ResourceBudgetError(ValueError):
         failed = [name for name in ('gpu', 'ram')
                   if self.details[name+'_budget_bytes'] < self.details[name+'_minimum_bytes']]
         self.details['insufficient'] = failed
+        # A reserve the user set, and which alone keeps the request out: the
+        # automatic reserve would leave enough. Said in the refusal so the
+        # setting is named instead of looking like a shortage of memory.
+        automatic = int(automatic_gpu_reserve_gib(hardware.system == 'Windows', free_gpu) * GiB)
+        automatic_budget = free_gpu - automatic
+        self.details['gpu_reserve_explicit'] = bool(gpu_reserve_explicit)
+        if ('gpu' in failed and gpu_reserve_explicit and int(reserve_gpu * GiB) > automatic
+                and automatic_budget >= gpu_minimum_bytes):
+            self.details['gpu_budget_with_automatic_reserve_bytes'] = automatic_budget
         for name in ('gpu', 'ram'):
             self.details[name+'_shortfall_bytes'] = max(
                 0, self.details[name+'_minimum_bytes'] - self.details[name+'_budget_bytes'])
@@ -644,6 +653,11 @@ class ResourceBudgetError(ValueError):
                           self.details[name+'_total_bytes']/GiB))
             if self.details[name+'_shortfall_bytes']:
                 lines.append('%s shortfall: %.2f GiB.' % (label, self.details[name+'_shortfall_bytes']/GiB))
+            if name == 'gpu' and 'gpu_budget_with_automatic_reserve_bytes' in self.details:
+                lines.append('Reserved VRAM is set to %.2f GiB; with the automatic reserve this request would have '
+                             '%.2f GiB usable. Set Reserved VRAM to automatic to use it.' %
+                             (self.details['gpu_reserve_bytes']/GiB,
+                              self.details['gpu_budget_with_automatic_reserve_bytes']/GiB))
         if hardware.ram_commit_available is not None and hardware.ram_physical_available is not None:
             lines.append('Windows reports %.2f GiB of free physical RAM and %.2f GiB of commit headroom.' %
                          (hardware.ram_physical_available / GiB, hardware.ram_commit_available / GiB))
@@ -800,6 +814,11 @@ def commit_gpu_limit(hardware: Hardware, request_budget):
     return int(limit) if limit < request_budget else None
 
 
+def automatic_gpu_reserve_gib(desktop, free_gpu):
+    """The VRAM growth reserve when none is set: a fixed share on Windows, a fraction of the free card elsewhere."""
+    return .25 if desktop else max(.5, min(1., free_gpu / GiB * .025))
+
+
 def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
                     gpu_reserve_gib=None, ram_reserve_gib=None):
     """Live capacity and growth reserves, without admitting a generation request."""
@@ -823,7 +842,7 @@ def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
     if hardware.cgroup_ram_limit is not None:
         free_ram = min(free_ram, hardware.cgroup_ram_limit)
     reserve_gpu = (gpu_reserve_gib if gpu_reserve_gib is not None else
-                   .25 if desktop else max(.5, min(1., free_gpu / GiB * .025)))
+                   automatic_gpu_reserve_gib(desktop, free_gpu))
     reserve_ram = ram_reserve_gib if ram_reserve_gib is not None else max(2. if desktop else 1., min(4., free_ram / GiB * .05))
     if not math.isfinite(reserve_ram) or reserve_ram < 0:
         raise ValueError('System RAM headroom must be finite and nonnegative.')
@@ -1174,7 +1193,7 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
     if gpu_budget < gpu_minimum or ram_budget < ram_minimum:
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
                                   gpu_minimum_bytes=gpu_minimum + placement_workspace, ram_minimum_bytes=ram_minimum,
-                                  canvas=canvas)
+                                  canvas=canvas, gpu_reserve_explicit=gpu_reserve_gib is not None)
     if ram_budget < ENCODER_HOST_BYTES:
         # Say so here rather than let a request spend a minute loading a
         # 14.6 GiB encoder and die before the first sampling step, which is
@@ -1499,7 +1518,8 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
             # release/remeasurement and loses the actual request shortfall.
             raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
                                       reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor + placement_workspace,
-                                      gpu_requirement='estimated_working_set', canvas=canvas)
+                                      gpu_requirement='estimated_working_set', canvas=canvas,
+                                      gpu_reserve_explicit=gpu_reserve_gib is not None)
         head, reserve = selected
         # The host attention-output buffer was tied to this band with no
         # arithmetic behind it. It saves 0.04 to 0.23 GiB of peak and costs 19%
@@ -1661,7 +1681,8 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
             if gpu_budget < residual_floor and not capacity_trial:
                 raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram,
                     reserve_gpu, reserve_ram, gpu_minimum_bytes=residual_floor + placement_workspace,
-                    gpu_requirement='estimated_working_set', canvas=canvas)
+                    gpu_requirement='estimated_working_set', canvas=canvas,
+                    gpu_reserve_explicit=gpu_reserve_gib is not None)
             head = 4
             residual_offload = True
             # Staging the residual alone is the placement measured under
