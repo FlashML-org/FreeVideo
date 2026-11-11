@@ -150,7 +150,7 @@ function mediaPanel(node, mount = null) {
     const cards = el("div"), connections = el("div", undefined, "fv-connected");
     const picker = el("input"); picker.type = "file"; picker.multiple = true;
     picker.accept = acceptList(["image", "video", "audio"]); picker.hidden = true;
-    const add = button(text("Upload files", "上传文件"), text("Upload images, video or audio", "上传图片、视频或音频"), () => {
+    const add = button(text("Add", "添加"), text("Add images, video or audio", "添加图片、视频或音频"), () => {
         if (libraryMenu?.box.isConnected) { libraryMenu.close(); return; }
         libraryMenu = openReferenceMenu({api, viewURL, anchor: add, host: panel, onComputer: () => picker.click(),
             onPick: (file, id) => upload([file]).then(() => { picked.add(id); libraryMenu?.refresh(); }),

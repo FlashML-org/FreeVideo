@@ -2240,7 +2240,8 @@ class Installer:
         receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
                    if isinstance(hardware_data, dict) else None)
         if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths', '--out', kernel_report])
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths',
+                                          *(['--without-video-models'] if self.plan.get('only') == 'image' else []), '--out', kernel_report])
         else:
             save(kernel_report, receipt)
             self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')

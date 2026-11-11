@@ -70,7 +70,8 @@ class Installer(SharedInstaller):
         # A cheap native execution check is repeated on repair. Do not reuse
         # a CUDA receipt or claim a full model benchmark from this probe.
         self.command('kernels', [python, '-m', 'freevideo_engine.macos_doctor',
-            '--probe', '--require-paths', '--out', kernel_report])
+            '--probe', '--require-paths', *(['--without-video-models'] if self.plan.get('only') == 'image' else []),
+            '--out', kernel_report])
         result = json.loads(kernel_report.read_text(encoding='utf-8'))
         if not result.get('ready') or result.get('device_backend') != 'mps':
             raise RuntimeError('Native GPU checks did not complete; see the retained report')

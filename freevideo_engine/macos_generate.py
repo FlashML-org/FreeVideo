@@ -438,8 +438,9 @@ def dispatch(args):
         from .macos_doctor import doctor
         result = doctor(probe=args.probe)
         write_json(result, args.out)
+        from .macos_doctor import missing_required_paths
         if (args.probe and not result['ready']) or (args.require_paths and
-                not all(row['exists'] for row in result['paths'].values())):
+                missing_required_paths(result, video_models=not args.without_video_models)):
             raise SystemExit(1)
     elif args.command == 'plan':
         write_json(policy(args), args.out)

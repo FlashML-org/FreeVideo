@@ -233,11 +233,13 @@ function activityLabel(message, t, plan = {}, secondPass = false, references = f
 
 function retryText(retry, t) {
     const reason = {gpu_oom: ['Out of GPU memory', '显存不足'], ram_pressure: ['Out of RAM', '内存不足'],
-        unified_memory: ['Not enough memory', '内存不够']}[retry.kind]
+        unified_memory: ['Out of RAM', '内存不足']}[retry.kind]
         || ['Previous attempt did not finish', '上一次尝试没有完成'];
     if (retry.reuse_sampling === true) return t(`${reason[0]}; the generated result is kept, and a retry is in progress.`,
         `${reason[1]}，已保留生成结果，正在重试。`);
-    return t(`${reason[0]}; adjusting settings and retrying.`, `${reason[1]}，正在调整设置后重试。`);
+    const fallback = !['gpu_oom', 'ram_pressure', 'unified_memory'].includes(retry.kind);
+    return fallback ? t(`${reason[0]}; retrying in another mode.`, `${reason[1]}，正在换一种运行方式重试。`)
+        : t(`${reason[0]}; retrying in a mode that uses less memory.`, `${reason[1]}，正在换一种更省${retry.kind === 'gpu_oom' ? '显存' : '内存'}的运行方式重试。`);
 }
 
 function trimStatus(rows, t) {

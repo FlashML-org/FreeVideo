@@ -690,7 +690,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const portNotice = createPortNotice(cn);
     if (portNotice) output.append(portNotice);
     const updateNotice = createUpdateNotice(cn);
-    output.append(updateNotice.element); cleanup.push(updateNotice.dispose);
+    header.after(updateNotice.element); cleanup.push(updateNotice.dispose);
     const section = (label, parent = controls) => { const wrap = el('section', null, 'fv-section'); wrap.append(el('div', label, 'fv-label')); parent.append(wrap); return wrap; };
     const field = (name, input) => { const label = el('label', null, 'fv-field'); label.append(el('span', name), input); return label; };
     const expand = label => { const d = el('details', null, 'fv-section'); d.append(el('summary', label, 'fv-section-title')); const content = el('div', null, 'fv-expand'); d.append(content); controls.append(d); cleanup.push(animateDetails(d)); return [d, content]; };

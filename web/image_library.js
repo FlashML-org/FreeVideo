@@ -46,8 +46,13 @@ export function openReferenceMenu({api, viewURL, anchor, host = document.body, o
     const label = el('div', 'fv-image-menu-label', t('Images', '图片')), grid = el('div', 'fv-image-menu-grid'); label.hidden = grid.hidden = true;
     box.append(computer, label, grid); host.append(box);
     const place = () => {
-        const r = (typeof anchor === 'function' ? anchor() : anchor).getBoundingClientRect(), width = Math.min(innerWidth - 32, 4 * 72 + 3 * 6 + 16);
-        box.style.cssText = `left:${Math.max(16, Math.min(r.left, innerWidth - width - 16))}px;top:${Math.min(r.bottom + 6, innerHeight - 160)}px;width:${width}px`;
+        const r = (typeof anchor === 'function' ? anchor() : anchor).getBoundingClientRect(), narrow = innerWidth <= 420;
+        const width = narrow ? innerWidth - 32 : Math.min(innerWidth - 32, 4 * 72 + 3 * 6 + 16);
+        const left = narrow ? 16 : Math.max(16, Math.min(r.left, innerWidth - width - 16));
+        box.style.cssText = `left:${left}px;top:0;width:${width}px`;
+        const height = box.offsetHeight, below = r.bottom + 6;
+        const top = below + height <= innerHeight - 16 ? below : r.top - 6 - height >= 16 ? r.top - 6 - height : Math.max(16, innerHeight - 16 - height);
+        box.style.top = top + 'px';
     };
     const close = () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key, true); removeEventListener('resize', place); box.remove(); };
     const away = event => { if (!box.contains(event.target) && !(typeof anchor === 'function' ? anchor() : anchor).contains(event.target)) close(); };

@@ -11,6 +11,12 @@ from .monitoring import save
 from . import processes, subprocess_output
 
 
+def missing_required_paths(result, *, video_models=True):
+    """Names of required directories that do not exist; an image-only installation has no video model to check."""
+    skipped = () if video_models else ('base', 'checkpoint')
+    return [k for k, row in result['paths'].items() if k not in skipped and not row['exists']]
+
+
 def doctor(*, probe=False, hardware=None, backends=None, progress=None):
     if progress is None and os.environ.get('FREEVIDEO_INSTALL_PROGRESS') == '1':
         from .install_activity import step

@@ -114,11 +114,10 @@ export function startUpdateChecks() {
 
 export function createUpdateNotice(cn) {
     const t = (en, zh) => cn ? zh : en;
-    const element = document.createElement('aside'); element.className = 'fv-update-notice';
+    const element = document.createElement('aside'); element.className = 'fv-update-notice fv-update-bar';
     element.hidden = true; element.setAttribute('role', 'status');
     const label = document.createElement('span');
     let problem;
-    const summary = document.createElement('small'); summary.className = 'fv-update-summary';
     const details = document.createElement('button'); details.type = 'button';
     details.textContent = t("What's new", '更新内容');
     let closeNotes = () => {};
@@ -142,7 +141,7 @@ export function createUpdateNotice(cn) {
     const stop = document.createElement('button'); stop.type = 'button';
     stop.textContent = t('Cancel update', '取消更新');
     stop.onclick = () => { stop.disabled = true; void cancelUpdate().finally(() => { stop.disabled = false; }); };
-    element.append(label, details, apply, link, dismiss, stop, summary);
+    element.append(label, details, apply, link, dismiss, stop);
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
         const mac = value?.channel === 'macos-preview', linux = value?.channel === 'linux-preview';
@@ -186,10 +185,6 @@ export function createUpdateNotice(cn) {
             problem ||= issueButton(t, () => ({where: ['Update FreeVideo', '更新 FreeVideo'], message: label.textContent}));
             element.append(problem);
         } else problem?.remove();
-        const skipped = actions ? earlierNotes(candidate, productVersion()).length : 0;
-        summary.textContent = actions ? (localizedNotes(candidate, cn)?.summary || '')
-            + (skipped ? ' ' + t(`Includes the changes of ${skipped} earlier version${skipped > 1 ? 's' : ''}.`, `另含此前 ${skipped} 个版本的更新。`) : '') : '';
-        summary.hidden = !summary.textContent;
         details.hidden = !actions;
         const direct = !!launcher && !launcher.manual && !failure;
         apply.hidden = !actions || !direct;
