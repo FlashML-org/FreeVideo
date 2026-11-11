@@ -126,6 +126,9 @@ class ChainRunner:
         self.records = {row['id']: row for row in store.load_all(store_dir)}
         chain_leads.prune(store_dir, self.records)
         self.starts, self.success, self.cancel_sent, self.progress_values = {}, {}, set(), {}
+        # Prompts whose block finished and whose seam record is still being checked, and those whose
+        # block is made again once, because the engine did not leave the record.
+        self.checking, self.redo_lead = set(), set()
         self.progress_messages = {}
         # While a chain's parts are joined: the part being written (0 before the first) and how many there are.
         self.joins = {}
@@ -512,7 +515,7 @@ class ChainRunner:
             identity = source['id']
             while identity in self.records or (Path(self.store_dir) / (identity + '.json')).exists():
                 identity = 'c-' + uuid.uuid4().hex[:12]
-            for key in ('last_report_id', 'last_heartbeat_at', 'output_seams', 'join_final_state'):
+            for key in ('last_report_id', 'last_heartbeat_at', 'output_seams', 'output_unrepaired', 'join_final_state'):
                 record.pop(key, None)
             now = self.wall()
             record.update(id=identity, created=now, state='queued', redo_of=dict(chain=chain_id, block=block_id),
@@ -668,14 +671,27 @@ class ChainRunner:
             block.update(continuation=saved, **skips)
             if report_id is not None:
                 record['last_report_id'] = report_id
-            self.success[prompt_id] = (self.clock(), self.wall())
-            self._save(record)
-            self.wake.set()
             previous = self._sources(record, block)['after']
             # A kept original soundtrack replaces every seam's sound, so there is no lead to save.
             keep = (record['id'], block['index'], output, previous['output'] if previous is not None else None,
                     bool(saved) and record.get('original_audio') is None)
-        self._keep_lead(*keep)
+            # The scheduler must not complete this block before the check below says whether it stays.
+            self.checking.add(prompt_id)
+        try:
+            reason = self._lead_failure(*keep)
+        except BaseException:
+            with self.lock:
+                self.checking.discard(prompt_id)
+            raise
+        with self.lock:
+            self.checking.discard(prompt_id)
+            # A block that continues and whose engine left no readable record is made again, once.
+            if (reason in ('no_record', 'unreadable_record') and keep[4] and isinstance(keep[3], str)
+                    and block['attempts'] < 2):
+                self.redo_lead.add(prompt_id)
+            self.success[prompt_id] = (self.clock(), self.wall())
+            self._save(record)
+            self.wake.set()
 
     def _keep_lead(self, identity, index, output, previous, continues):
         """Copy the block's seam sound out of the shared store before newer records push it out."""
@@ -737,6 +753,24 @@ class ChainRunner:
         return wanted, kept
 
     @staticmethod
+    def _unrepaired(reasons, notes, wanted):
+        """[{index, reason}] sorted by index: the seams joined without sound smoothing, by block index. `reasons`
+        are (index, code) rows from the check before the join, `notes` the seam notes the join itself made.
+        A seam nobody asked to repair (not in `wanted`) is not listed: it has no sound to smooth."""
+        found = {}
+        for index, reason in reasons:
+            found.setdefault(index, str(reason)[:64])
+        for note in notes:
+            if (not isinstance(note, dict) or note.get('step') == 'not_joined' or type(note.get('seam')) is not int
+                    or note['seam'] not in wanted):
+                continue
+            reason = str(note.get('step'))
+            if note.get('exception'):
+                reason += ':' + str(note['exception'])
+            found.setdefault(note['seam'], reason[:64])
+        return [dict(index=index, reason=found[index]) for index in sorted(found)]
+
+    @staticmethod
     def _kept_reasons(reasons):
         """' (seam 2: no_record; seam 3: no_reader; and 1 more)' for the seams whose sound was not kept, at most three named."""
         if not reasons:
@@ -767,6 +801,21 @@ class ChainRunner:
     def _complete(self, record, block, status):
         state = status['state']
         prompt_id = block['prompt_id']
+        if prompt_id in self.checking:
+            return  # finished() is still checking the seam record; the next pass completes the block
+        if prompt_id in self.success and prompt_id in self.redo_lead and record['state'] != 'cancelling':
+            self.redo_lead.discard(prompt_id)
+            block.update(state='pending', prompt_id=None, started=None, finished=None, seconds=None, output=None,
+                         report_id=None, error=None, fraction=0., remaining_seconds=None, continuation=None,
+                         skip_frames=0, skip_audio_samples=0)
+            record['state'] = 'running'
+            self.starts.pop(prompt_id, None)
+            self.success.pop(prompt_id, None)
+            self.cancel_sent.discard(prompt_id)
+            self._save(record)
+            logging.warning('[FreeVideo] A chain block left no seam record; making that block again once')
+            return
+        self.redo_lead.discard(prompt_id)
         ended, finished = self.success.get(prompt_id, (self.clock(), self.wall()))
         block['finished'] = finished
         start = self.starts.get(prompt_id)
@@ -1033,16 +1082,17 @@ class ChainRunner:
                   if isinstance(row, dict) and isinstance(row.get('inputs'), dict)]
         failure = None
         promised = kept = 0
+        reasons, join_result = [], {}
         try:
-            reasons = []
             found, kept = self._seams_kept(snapshot, reasons)
             wanted.update(found)
             promised = len(wanted)
-            snapshot = dict(snapshot, lead_reader=lead_reader, expected_seams=promised, join_progress=join_progress)
+            # A seam without its sound record is joined the ordinary way and named in `output_unrepaired`.
+            snapshot = dict(snapshot, lead_reader=lead_reader, expected_seams=promised, join_progress=join_progress,
+                            allow_unrepaired=True, join_result=join_result)
             if kept < promised:
-                # A sound seam that cannot be repaired is never published as a finished video.
-                raise ValueError('%d of %d seam sounds were not kept' % (promised - kept, promised)
-                                 + self._kept_reasons(reasons))
+                logging.warning('[FreeVideo] Chain seams joined without sound smoothing: %s%s', identity,
+                                self._kept_reasons(reasons))
             output = self.host.join(snapshot, cancelled)
             if not isinstance(output, str) or not output:
                 raise ValueError('Joining did not return a video path')
@@ -1070,6 +1120,11 @@ class ChainRunner:
                 record.update(state=final_state, output=output, output_blocks=len(leading),
                               output_state='done', output_error=None, output_seams=dict(expected=promised, kept=kept),
                               output_parts=output_parts, output_short=output_short)
+                unrepaired = self._unrepaired(reasons, join_result.get('notes', ()), wanted)
+                if unrepaired:
+                    record['output_unrepaired'] = unrepaired
+                else:
+                    record.pop('output_unrepaired', None)
             if record['state'] not in store.ACTIVE:
                 self._release_active(identity)
             self._save(record)

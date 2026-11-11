@@ -204,6 +204,9 @@ class ComfyHost:
                                 frames=frames, replace=record.get('output'), original_audio=info, **shown)
         kept = {'leads': record['lead_reader'], 'expected_seams': record.get('expected_seams')} \
             if record.get('lead_reader') is not None else {}
+        if kept and record.get('allow_unrepaired'):
+            # The runner joins a seam whose sound record is missing the ordinary way and names it.
+            kept.update(allow_unrepaired=True, result=record.get('join_result'))
         from .chain_level import voiced
         # Parts with spoken lines keep their voice level and fullness to the first part's.
         speaking = [voiced(block.get('inputs', {}).get('text')) for block in blocks]

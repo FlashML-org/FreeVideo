@@ -211,7 +211,8 @@ def summary(record):
     return dict({key: deepcopy(record[key]) for key in
                  ('version', 'id', 'node', 'created', 'updated', 'state',
                   'join', 'output', 'output_state', 'output_error', 'output_blocks')},
-                output_seams=deepcopy(record.get('output_seams')), split=deepcopy(record.get('split')),
+                output_seams=deepcopy(record.get('output_seams')),
+                output_unrepaired=deepcopy(record.get('output_unrepaired')), split=deepcopy(record.get('split')),
                 redo_of=deepcopy(record.get('redo_of')),
                 count=len(blocks), done=sum(row['state'] == 'done' for row in blocks),
                 current=current, elapsed_seconds=sum(row['seconds'] or 0 for row in blocks if row['state'] == 'done'),
@@ -301,6 +302,13 @@ def load_all(directory, limit=200, *, identity=None, visitor=None):
             if seams is not None and (not isinstance(seams, dict) or set(seams) != {'expected', 'kept'}
                                       or any(type(value) is not int or value < 0 for value in seams.values())):
                 raise ValueError('Invalid chain seam count')
+            unrepaired = record.get('output_unrepaired')
+            if unrepaired is not None and (not isinstance(unrepaired, list) or any(
+                    not isinstance(row, dict) or set(row) != {'index', 'reason'}
+                    or type(row['index']) is not int or row['index'] < 1
+                    or not isinstance(row['reason'], str) or not 0 < len(row['reason']) <= 80
+                    for row in unrepaired)):
+                raise ValueError('Invalid chain seam list')
             redo = record.get('redo_of')
             if redo is not None and (not isinstance(redo, dict) or set(redo) != {'chain', 'block'}
                                      or not isinstance(redo['chain'], str)

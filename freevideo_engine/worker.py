@@ -782,13 +782,15 @@ def generate(request, resident=None):
                         raise
                     metrics['first_sound_kept'] = dict(saved=False, error=type(error).__name__)
             try:
-                from .continuation_store import save as save_continuation
+                from .continuation_store import save_with_retry as save_continuation
                 metrics['continuation_store'] = dict(save_continuation(request['output'], continuation_data), saved=True)
                 if continuation is not None and 'audio_lead_in' in continuation_data:
                     from .continuation import LEAD_IN_SAMPLES
                     metrics['continuation']['audio_lead_in_samples'] = LEAD_IN_SAMPLES
             except Exception as error:
                 tail_failure(error)
+                if getattr(error, 'freevideo_retried', False) and isinstance(metrics.get('continuation_store'), dict):
+                    metrics['continuation_store']['retried'] = True
         elif continuable:
             metrics.setdefault('continuation_store', dict(saved=False, reason='checkpoint_missing'))
         if resume and artifacts:
