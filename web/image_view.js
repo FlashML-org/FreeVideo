@@ -73,7 +73,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     };
 }
 
-const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'output'})); };
+const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'})); };
 const SAMPLE_PROMPTS = {
     "jazz": "A stylish concert poster in a mid-century modern graphic style: a saxophone player drawn as a bold silhouette in deep navy against a warm mustard-yellow background, with abstract curved shapes in teal and coral. At the top, a large clean title reads \"MIDNIGHT JAZZ\". At the bottom, one smaller line reads \"FRIDAY 9 PM\". All text is spelled exactly as given, with no other words on the poster. Flat print texture, strong composition.",
     "window": "A realistic portrait photograph of a woman in her late twenties sitting by a tall window in a quiet old apartment, soft overcast daylight on one side of her face, loose dark hair tucked behind one ear, wearing a rust-coloured linen shirt, holding a white ceramic cup with both hands, calm thoughtful expression looking slightly away from the camera, natural skin texture with fine detail, muted warm colours, shallow depth of field, 85mm lens, one person, no text.",
