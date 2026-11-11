@@ -224,7 +224,8 @@ class ModelUpgrade:
             self.state = dict(base, phase='plan')
             try:
                 planned = self._run(runner, events, 'plan', root,
-                                    ['setup', '--prepared-format', 'int8', '--plan', '--json'], 'plan')
+                                    ['setup', '--prepared-format', 'int8', '--plan', '--json',
+                                     '--allow-model-restart'], 'plan')
                 if planned['status'] == 'cancelled':
                     self.state = dict(offered)
                     return
@@ -236,6 +237,11 @@ class ModelUpgrade:
                 # Nothing beyond what the user agreed to: the approval receipt
                 # makes the run refuse a larger download or a changed model. A
                 # larger plan is shown on the card and confirmed again first.
+                # A partial file that cannot resume is set aside, never deleted,
+                # and downloaded again: as with every other setup the launcher
+                # starts, so Try again never stops at the same file. The plan
+                # and the download carry the same setting, or the receipt
+                # would not match.
                 planned_bytes = value['model_download_bytes']
                 if planned_bytes > offered['download_bytes'] + 64 * (1 << 20):
                     free = disk_space.free_bytes(root)
@@ -247,7 +253,8 @@ class ModelUpgrade:
                 save(receipt, value)
                 fetched = self._run(runner, events, 'setup', root,
                                     ['setup', '--prepared-format', 'int8', '--prefetch-only', '--yes',
-                                     '--accept-model-license', '--approved-plan', str(receipt)], 'download')
+                                     '--accept-model-license', '--approved-plan', str(receipt),
+                                     '--allow-model-restart'], 'download')
                 if fetched['status'] == 'cancelled':
                     self.state = dict(offered, status='available')
                     return

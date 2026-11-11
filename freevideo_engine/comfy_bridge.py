@@ -1419,6 +1419,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
+        elif continue_from is None:
+            from .output_settings import command_option
+            command += command_option(root)
     if hide_tail and '--hide-tail' not in command:
         command.append('--hide-tail')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),

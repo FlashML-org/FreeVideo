@@ -241,6 +241,28 @@ export async function openSetup(options) {
     dialog.addEventListener('close', stopWatching);
     loadPreviewStyle(api).then(paintPreview);
     preview.append(loopLabel, previewStatus);
+    // The 8-bit video is always written; this adds a 10-bit copy beside it. The section stays hidden where the packaged
+    // encoder cannot write 10-bit, so no switch is shown that would do nothing.
+    const output = node('section'); output.dataset.section = 'output'; output.hidden = true;
+    output.append(node('h3', t('Output', '成片')));
+    const tenLabel = node('label'); tenLabel.className = 'fv-check';
+    const tenSwitch = node('input'); tenSwitch.type = 'checkbox';
+    tenLabel.append(tenSwitch, node('span', t('Also save a 10-bit copy', '同时保存 10 位视频')));
+    let tenSaved = false;
+    tenSwitch.onchange = async () => {
+        const wanted = tenSwitch.checked; tenSwitch.disabled = true;
+        try { tenSaved = (await request('output-settings', {ten_bit: wanted})).ten_bit === true; }
+        catch { /* The switch returns to the saved state. */ }
+        finally { tenSwitch.checked = tenSaved; tenSwitch.disabled = false; }
+    };
+    output.append(tenLabel);
+    (async () => {
+        try {
+            const response = await api.fetchApi('/freevideo/output-settings');
+            const value = response.ok ? await response.json() : null;
+            if (value?.available === true) { tenSaved = value.ten_bit === true; tenSwitch.checked = tenSaved; output.hidden = false; }
+        } catch { /* Without an answer the section stays hidden. */ }
+    })();
     const status = node('section'); status.dataset.section = 'status';
     status.append(node('h3', t('System status', '运行状态')));
     const statusLabel = node('label'); statusLabel.className = 'fv-check';
@@ -256,7 +278,7 @@ export async function openSetup(options) {
         loopSwitch.focus({preventScroll: true});
     };
     dialog.addEventListener('fv-setup-section', event => showSection(event.detail));
-    dialog.append(heading, installation, downloads, preview, status, storage, agentConfirm.element, advanced, guideReplay);
+    dialog.append(heading, installation, downloads, preview, output, status, storage, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();

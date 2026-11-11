@@ -242,10 +242,17 @@ export function play(stage, page, reduce) {
     return () => { dead = true; timers.forEach(clearTimeout); };
 }
 
-const seenSeries = () => { try { return localStorage.getItem(KEY) === SERIES; } catch { return false; } };
-const remember = () => { try { localStorage.setItem(KEY, SERIES); } catch { /* Shown again next time. */ } };
+// Two records: the 0.5 sound page, and the 0.5.1 picture page, which people who already saw the sound page get once more.
+const IMAGE_KEY = 'freevideo.whatsnew-seen-image';
+const read = key => { try { return localStorage.getItem(key); } catch { return null; } };
+const seen = page => page.id === 'image' ? read(IMAGE_KEY) === '1' : read(KEY) === SERIES;
+const remember = pages => { try { for (const page of pages) localStorage.setItem(page.id === 'image' ? IMAGE_KEY : KEY, page.id === 'image' ? '1' : SERIES); } catch { /* Shown again next time. */ } };
+const patch = version => Number((/^0\.5\.(\d+)/.exec(version || '') || [])[1] ?? -1);
+// The pages a version of the product has: the sound page from 0.5.0, the picture page from 0.5.1.
+const forVersion = version => PAGES.filter(page => patch(version) >= (page.patch || 0));
+const unseen = version => forVersion(version).filter(page => !seen(page));
 
-export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
+export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
     const t = (en, zh) => cn ? zh : en;
     const css = document.getElementById('fv-whatsnew-css') || Object.assign(document.createElement('link'), {id: 'fv-whatsnew-css', rel: 'stylesheet', href: new URL('./whatsnew.css', import.meta.url).href});
     if (!css.isConnected) document.head.append(css);
@@ -256,31 +263,77 @@ export function showWhatsNew(cn, {openedBy = 'user'} = {}) {
     const dialog = el('dialog', null, 'fv-whatsnew'); dialog.setAttribute('aria-label', t("What's new", '新功能'));
     const title = el('h2'), stageHost = el('div', null, 'fv-whatsnew-host'), foot = el('div', null, 'fv-whatsnew-foot');
     const close = el('button', t('Close', '关闭'), 'fv-whatsnew-close'); close.type = 'button';
-    foot.append(close); dialog.append(title, stageHost, foot);
+    const next = el('button', t('Next page', '下一页'), 'fv-whatsnew-next'), open = el('button', t('Open Images', '打开图像视图'), 'fv-whatsnew-open fv-primary');
+    next.type = open.type = 'button'; open.hidden = true;
+    // The Images view opens from the generate node; without one the button is not offered.
+    let host = null;
+    const imageNode = () => (host?.app?.graph?._nodes || []).find(item => item.type === 'FreeVideoGenerate');
+    import('../../scripts/app.js').then(module => { host = module; if (!closed && pages[index].kind === 'still') open.hidden = !imageNode(); }).catch(() => {});
+    dialog.append(title, stageHost, foot);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const page = PAGES[0], stage = createStage(cn, page);
-    title.textContent = page.title[cn ? 1 : 0]; stageHost.replaceChildren(stage.element); dialog.insertBefore(stage.list, foot);
-    let stop = () => {}, closed = false;
-    // The demo frame is as tall as its tallest state for the whole run, so the list under it and the dialog never move.
-    stageHost.style.visibility = 'hidden';
-    const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
-    Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
-        if (closed) return;
-        stage.height(stage.tallest());
-        stageHost.style.visibility = ''; stop = play(stage, page, reduce);
-    });
+    let stop = () => {}, closed = false, listNode = null, index = 0;
+    // A page is either a still (a prompt, a picture and a list) or the editor demo, which plays once on arrival.
+    function show(at) {
+        stop(); stop = () => {}; listNode?.remove();
+        index = at; const page = pages[at];
+        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.kind !== 'still' || !imageNode();
+        if (page.kind === 'still') {
+            const figure = el('div', null, 'fv-whatsnew-still'), prompt = el('div', null, 'fv-whatsnew-prompt'), bar = el('i'), barHost = el('div', null, 'fv-whatsnew-bar'), row = el('div', null, 'fv-whatsnew-pictures');
+            const image = el('img'); image.alt = ''; image.draggable = false; row.append(image); barHost.append(bar);
+            figure.append(prompt, row, barHost); stageHost.replaceChildren(figure); stageHost.style.visibility = '';
+            const timers = [], later = (ms, run) => timers.push(setTimeout(run, ms));
+            stop = () => timers.forEach(clearTimeout);
+            // The pictures play in order, round and round: the prompt is typed, a bar fills, the picture arrives and stays a while.
+            const play = at => {
+                const one = page.pictures[at % page.pictures.length], text = one.prompt[cn ? 1 : 0] || one.prompt[0];
+                image.src = new URL('./' + one.src, import.meta.url).href; image.style.aspectRatio = one.ratio;
+                const next = () => play(at + 1);
+                if (reduce) { prompt.textContent = text; image.style.opacity = '1'; barHost.hidden = true; if (page.pictures.length > 1) later(4000, next); return; }
+                image.style.opacity = '0'; prompt.textContent = ''; bar.style.transition = 'none'; bar.style.width = '0'; barHost.dataset.on = 'false';
+                const step = Math.min(60, 1600 / text.length);
+                for (let i = 1; i <= text.length; i++) later(200 + i * step, () => { prompt.textContent = text.slice(0, i); });
+                later(1900, () => { barHost.dataset.on = 'true'; });
+                later(1950, () => { bar.style.transition = 'width 2.2s linear'; bar.style.width = '100%'; });
+                later(4200, () => { barHost.dataset.on = 'false'; image.style.opacity = '1'; });
+                if (page.pictures.length > 1) { later(7200, () => { image.style.opacity = '0'; }); later(7700, next); }
+            };
+            play(0);
+            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', item[cn ? 1 : 0]));
+            dialog.insertBefore(listNode, foot); return;
+        }
+        const stage = createStage(cn, page);
+        stageHost.replaceChildren(stage.element); listNode = stage.list; dialog.insertBefore(stage.list, foot);
+        // The demo frame is as tall as its tallest state for the whole run, so the list under it and the dialog never move.
+        stageHost.style.visibility = 'hidden';
+        const sheets = [...document.querySelectorAll('link[id^="fv-whatsnew-"]')].filter(link => !link.sheet);
+        Promise.all(sheets.map(link => new Promise(done => { link.addEventListener('load', done, {once: true}); link.addEventListener('error', done, {once: true}); }))).then(() => {
+            if (closed || index !== at) return;
+            stage.height(stage.tallest());
+            stageHost.style.visibility = ''; stop = play(stage, page, reduce);
+        });
+    }
+    foot.append(close, ...pages.length > 1 ? [next] : [], open); show(0);
+    next.onclick = () => { show(index + 1); close.focus(); };
     close.onclick = () => dialog.close();
+    open.onclick = async () => {
+        try {
+            const node = imageNode();
+            if (!node) return;
+            dialog.close(); (await import('./view_navigation.js')).openImage(node);
+        } catch (error) { console.warn('FreeVideo image view:', error); }
+    };
     dialog.addEventListener('keydown', event => event.stopPropagation());
-    dialog.addEventListener('close', () => { closed = true; stop(); remember(); dialog.remove(); }, {once: true});
+    dialog.addEventListener('close', () => { closed = true; stop(); remember(pages); dialog.remove(); }, {once: true});
     document.body.append(dialog); dialog.showModal(); dialog.tabIndex = -1; dialog.focus();
     return () => { if (dialog.open) dialog.close(); };
 }
 
-// The first open after upgrading to 0.5: once, and not while something is being generated.
+// The first open after upgrading to 0.5 or 0.5.1: the pages not yet seen, once, and not while something is being generated.
 export function maybeShowWhatsNew({cn, version, busy}) {
-    if (seenSeries() || !version || !version.startsWith(SERIES + '.')) return false;
+    const pages = unseen(version);
+    if (!pages.length) return false;
     if (busy() || document.querySelector('dialog[open]:not(.fv-studio)')) return false;
-    showWhatsNew(cn, {openedBy: 'upgrade'});
+    showWhatsNew(cn, {openedBy: 'upgrade', pages});
     return true;
 }
 
@@ -289,22 +342,22 @@ const usedBefore = () => {
     try {
         for (let index = 0; index < localStorage.length; index++) {
             const key = localStorage.key(index) || '';
-            if (key !== KEY && key !== 'freevideo.page-retry' && (key.startsWith('freevideo.') || key.startsWith('fv-'))) return true;
+            if (key !== KEY && key !== IMAGE_KEY && key !== 'freevideo.page-retry' && (key.startsWith('freevideo.') || key.startsWith('fv-'))) return true;
         }
     } catch { /* Unreadable storage: treat as an upgrade rather than hide the news. */ return true; }
     return false;
 };
 
-// Waits for the version answer and for an idle server, then shows the page once.
+// Waits for the version answer and for an idle server, then shows the pages once.
 export function startWhatsNew({api, cn, productVersion}) {
-    if (seenSeries()) return;
-    if (!usedBefore()) { remember(); return; }
+    if (!usedBefore()) { remember(PAGES); return; }
     let queued = 0, done = false;
     const status = event => { queued = event?.detail?.exec_info?.queue_remaining || 0; };
     try { api.addEventListener('status', status); } catch { /* A page without the event still waits for dialogs. */ }
     const timer = setInterval(() => {
-        if (done || seenSeries()) { done = true; clearInterval(timer); return; }
-        if (maybeShowWhatsNew({cn, version: productVersion(), busy: () => queued > 0})) { done = true; clearInterval(timer); }
+        const version = productVersion();
+        if (done || (version && !unseen(version).length)) { done = true; clearInterval(timer); return; }
+        if (maybeShowWhatsNew({cn, version, busy: () => queued > 0})) { done = true; clearInterval(timer); }
     }, 5000);
 }
 

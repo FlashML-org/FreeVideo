@@ -1089,6 +1089,14 @@ def _run(args):
                 request['continuation'] = continuation
             if hide_tail_frames:
                 request['hide_tail_frames'] = hide_tail_frames
+            if getattr(args, 'ten_bit', None):
+                skipped = ('preview' if preview else 'refine' if refine_source else 'continuation'
+                           if continuation is not None else 'original_audio' if original_audio is not None else None)
+                if skipped is None:
+                    request['output_10bit'] = dict(
+                        path=str(destination.with_name(destination.stem + '-10bit' + destination.suffix)), codec=args.ten_bit)
+                else:
+                    report['output_10bit'] = dict(requested=True, saved=False, reason=skipped)
             if original_audio is not None:
                 request['original_audio'] = original_audio
                 report['original_audio'] = original_audio

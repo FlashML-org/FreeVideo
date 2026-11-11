@@ -224,6 +224,13 @@ class Setup:
             return read(root)
         return write(root, value.get('style'))
 
+    def output_settings(self, value=None):
+        from .output_settings import available, read, write
+        root = installation_root(self.source)
+        if value is None:
+            return dict(read(root), available=available())
+        return dict(write(root, value.get('ten_bit')), available=available())
+
     def downloads(self, root=None):
         from .download_settings import read
         return dict(preferences=read(Path(root or installation_root(self.source))/'download-settings.json'),
@@ -512,6 +519,8 @@ def register():
                 result = setup.resource_settings(value)
             elif name == 'preview-style':
                 result = setup.preview_style(value)
+            elif name == 'output-settings':
+                result = setup.output_settings(value)
             elif name == 'calibrate':
                 running, pending = server.prompt_queue.get_current_queue()
                 if running or pending:

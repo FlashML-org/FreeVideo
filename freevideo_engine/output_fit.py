@@ -1,8 +1,8 @@
 """Scale decoded frames to the requested size when the model rendered a larger one."""
 
 
-def fit_frames(frames, width, height, chunk=16):
-    """Return uint8 frames of exactly height x width; audio is not involved.
+def fit_frames(frames, width, height, chunk=16, dtype='uint8'):
+    """Return uint8 (or uint16, for the 10-bit file) frames of exactly height x width; audio is not involved.
 
     The rendered frames are centre-cropped to the requested shape, then reduced
     with an area filter, so every output pixel averages the rendered pixels it
@@ -22,10 +22,19 @@ def fit_frames(frames, width, height, chunk=16):
     else:
         crop_height = min(source_height, max(height, round(source_width * height / width)))
     left, top = (source_width - crop_width) // 2, (source_height - crop_height) // 2
-    result = torch.empty((count, height, width, 3), dtype=torch.uint8)
+    wide = dtype == 'uint16'
+    maximum = 65535 if wide else 255
+    result = np.empty((count, height, width, 3), dtype=np.uint16) if wide else torch.empty((count, height, width, 3), dtype=torch.uint8)
     for start in range(0, count, chunk):
         block = frames[start:start + chunk, top:top + crop_height, left:left + crop_width]
-        block = torch.from_numpy(np.ascontiguousarray(block)) if not torch.is_tensor(block) else block
+        if wide and not torch.is_tensor(block):
+            block = torch.from_numpy(np.ascontiguousarray(block).astype(np.float32))
+        else:
+            block = torch.from_numpy(np.ascontiguousarray(block)) if not torch.is_tensor(block) else block
         scaled = functional.interpolate(block.permute(0, 3, 1, 2).float(), size=(height, width), mode='area')
-        result[start:start + block.shape[0]] = scaled.round_().clamp_(0, 255).to(torch.uint8).permute(0, 2, 3, 1)
+        scaled = scaled.round_().clamp_(0, maximum).permute(0, 2, 3, 1)
+        if wide:
+            result[start:start + block.shape[0]] = scaled.to(torch.int32).numpy().astype(np.uint16)
+        else:
+            result[start:start + block.shape[0]] = scaled.to(torch.uint8)
     return result

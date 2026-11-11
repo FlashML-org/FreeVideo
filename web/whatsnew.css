@@ -48,7 +48,7 @@
 .fv-whatsnew-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:16px 0 16px;padding:0 0 0 17px;list-style:decimal inside;font-size:13px;line-height:20px}
 .fv-whatsnew-foot{margin-top:auto}
 @media(max-width:520px){.fv-whatsnew-list{grid-template-columns:1fr;padding-left:13px}}
-.fv-whatsnew-close{height:36px;min-height:36px;padding:0 16px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);color:var(--fv-ink);font:inherit;cursor:pointer}
+.fv-whatsnew-close,.fv-whatsnew-next,.fv-whatsnew-open{height:36px;min-height:36px;padding:0 16px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);color:var(--fv-ink);font:inherit;cursor:pointer}
 .fv-whatsnew-foot{display:flex;justify-content:flex-end;position:sticky;bottom:0;margin-top:auto;padding-top:8px;background:var(--fv-canvas)}
 
 /* The editor's own bars and menu set into the dialog: the studio and editor classes bring their styles, not the window. */
@@ -81,3 +81,18 @@
 .fv-whatsnew-top .fv-ed-genbar[data-voice=true] .fv-ed-voice{flex:1 1 0}
 .fv-whatsnew-lines.fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{position:absolute;z-index:3;inset:auto 8px 8px;height:auto;padding:8px;border:1px solid var(--fv-border);border-radius:12px;box-shadow:0 4px 16px #0006}
 .fv-whatsnew-lines[hidden]{display:none!important}
+.fv-whatsnew-foot{gap:8px}
+.fv-whatsnew-foot [hidden]{display:none}
+.fv-whatsnew-close,.fv-whatsnew-next,.fv-whatsnew-open{white-space:nowrap}
+.fv-whatsnew-foot{justify-content:flex-start}.fv-whatsnew-foot .fv-whatsnew-close{margin-right:auto}
+.fv-whatsnew .fv-whatsnew-open{background:var(--fv-accent);color:var(--fv-bg);border-color:var(--fv-accent);font-weight:var(--fv-semibold)}.fv-whatsnew .fv-whatsnew-open:hover{background:var(--fv-accent-hover);border-color:var(--fv-accent-hover)}
+.fv-whatsnew-list[data-plain]{grid-template-columns:1fr;list-style:none;padding-left:0}
+.fv-whatsnew-still{container-type:inline-size;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;position:relative;padding:0 0 8px;box-sizing:border-box}
+.fv-whatsnew-still img{min-width:0;max-width:100%;height:100%;width:auto;border-radius:var(--fv-r-md);object-fit:contain;transition:opacity .5s}
+.fv-whatsnew-pictures{display:flex;justify-content:center;align-items:center;width:100%;height:min(clamp(170px,32dvh,270px),75cqw)}
+.fv-whatsnew-prompt{align-self:stretch;box-sizing:border-box;height:62px;padding:0 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);font-size:13px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.fv-whatsnew-bar{position:absolute;left:0;right:0;bottom:2px;height:3px;border-radius:2px;background:var(--fv-border);overflow:hidden;transition:opacity .3s}
+.fv-whatsnew-bar[data-on=false]{opacity:0}
+.fv-whatsnew-bar[hidden]{display:none}
+.fv-whatsnew-bar i{display:block;height:100%;width:0;background:var(--fv-accent)}
+.fv-whatsnew-host:has(.fv-whatsnew-still){border-color:transparent;background:transparent}

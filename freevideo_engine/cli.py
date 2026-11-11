@@ -113,6 +113,9 @@ def main():
                           help='With --continue-from: also give the model the first frame of the whole film as a '
                                'reference picture. Reduces drift over many parts; holds framing and motion close to '
                                'the opening, so leave it off when later parts should move away from it')
+    generate.add_argument('--ten-bit', choices=('h264', 'hevc'),
+                          help='Also write a 10-bit copy next to the MP4 (name ends -10bit), from the decoder\'s own '
+                               'frames. The usual 8-bit file is unchanged. Direct generation only.')
     generate.add_argument('--hide-tail', action='store_true',
                           help='Generate and discard 17 extra frames for dialogue segments.')
     generate.add_argument('--voice-reference', action='store_true',

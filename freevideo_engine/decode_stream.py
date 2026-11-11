@@ -77,8 +77,12 @@ def iter_decoded_chunks(vae, z):
             keep -= count
 
 
-def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None):
-    """Write exact uint8 output a temporal clip at a time; retain partial data."""
+def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None, wide_path=None):
+    """Write exact uint8 output a temporal clip at a time; retain partial data.
+
+    With wide_path, the same frames are also written there as 16-bit RGB, from the
+    float values and not from the uint8 ones (the optional 10-bit file).
+    """
     import time
     from pathlib import Path
     import numpy as np
@@ -92,12 +96,17 @@ def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None):
     shape = (count, latents.shape[-2] * vae.spatial_compression_ratio,
              latents.shape[-1] * vae.spatial_compression_ratio, vae.config.out_channels)
     mapping = np.lib.format.open_memmap(temporary, mode='w+', dtype=np.uint8, shape=shape)
+    wide = None
+    if wide_path is not None:
+        from .video_10bit import open_store, to_rgb16
+        wide = open_store(wide_path, *shape[:3])
     mean = torch.tensor(pixel_mean).view(1, -1, 1, 1, 1)
     std = torch.tensor(pixel_std).view(1, -1, 1, 1, 1)
     timings = dict(video_decode_seconds=0., video_postprocess_seconds=0., decoded_artifact_save_seconds=0.)
     offset = 0
     iterator = iter_decoded_chunks(vae, latents)
     started = time.perf_counter()
+    complete = False
     try:
         while True:
             tick = time.perf_counter()
@@ -113,6 +122,8 @@ def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None):
                 part = (video[:, :, start:start + 8].float() * std + mean).clamp_(0, 1)
                 rgb = (part[0].permute(1, 2, 3, 0) * 255).round().to(torch.uint8)
                 mapping[offset:offset + len(rgb)] = rgb.numpy()
+                if wide is not None:
+                    wide[offset:offset + len(rgb)] = to_rgb16(part[0].permute(1, 2, 3, 0))
                 offset += len(rgb)
                 del part, rgb
             del video
@@ -126,10 +137,18 @@ def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None):
                 progress(offset, count, time.perf_counter() - started)
         if offset != count:
             raise ValueError('Streamed VAE output length differs from its original temporal plan')
+        complete = True
     finally:
         iterator.close()
         mapping.flush()
         mapping._mmap.close()
+        if wide is not None:
+            wide.flush()
+            wide._mmap.close()
+            if not complete:
+                # A failed or cancelled decode leaves no multi-gigabyte 16-bit store behind.
+                from .video_10bit import discard_store
+                discard_store(None, wide_path)
     temporary.replace(path)
     # Keep one mapped uint8 plane for the original encoder; no full float video
     # or second RGB copy is materialized. The caller owns this mapping's life.

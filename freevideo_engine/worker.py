@@ -704,6 +704,7 @@ def generate(request, resident=None):
                 continuation_data['metadata']['source_id'] = continuation['source_id']
         metrics.update(decode_to_file(latents, audio, request['output'], base=base, artifacts_dir=artifacts,
                                      **({'hide_tail_frames': hide_tail_frames} if hide_tail_frames else {}),
+                                     **({'output_10bit': request['output_10bit']} if request.get('output_10bit') else {}),
                                      **({'original_audio': original_audio} if original_audio is not None else {}),
                                      **({'continuation': continuation} if continuation is not None else {}),
                                      **({'audio_lead_in_callback': keep_audio_lead_in}
