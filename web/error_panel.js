@@ -305,9 +305,19 @@ export function createErrorReport(detail, context = {}) {
     const found = detectBrowserExtension(detail, {kind, known, scrub: clean.inputsOnly});
     // A script name the report would redact is not shown or saved either.
     const extension = found && {...found, script: found.script && clean(found.script) === found.script ? found.script : null};
+    // The facts read right after a lost connection: only these keys, only flags, counts and fixed words.
+    const connection = {};
+    for (const [key, type] of [['online', 'boolean'], ['page_hidden', 'boolean'], ['secure_page', 'boolean'], ['engine_answers_after', 'boolean'],
+        ['probe_timed_out', 'boolean'], ['http_status', 'number'], ['probe_ms', 'number']]) {
+        const item = detail?.connection?.[key];
+        if (typeof item === type && (type !== 'number' || Number.isFinite(item))) connection[key] = item;
+    }
+    if (['this-computer', 'local-network', 'other-address', 'host-name', 'unknown'].includes(detail?.connection?.page_address))
+        connection.page_address = detail.connection.page_address;
     const report = {
         schema: 'freevideo.error-report', schema_version: 1, created_at: new Date().toISOString(),
         stage, message: clean(message),
+        ...(Object.keys(connection).length ? {connection} : {}),
         // Chosen from the original message before redaction removes any input
         // text from it, so a card shown again from this report keeps its advice.
         known_error: known,

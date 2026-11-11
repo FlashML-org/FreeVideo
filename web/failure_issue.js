@@ -56,7 +56,7 @@ export function failureIssue(report, kind, {lora = false, t = en => en, engineEx
     const summary = JSON.stringify({kind: kind || 'unknown', stage: report?.stage, exception_type: report?.exception_type,
         known_error: report?.known_error, nodes: types, settings: report?.settings, progress: report?.progress,
         // Before the long tail: an over-long summary is cut from its end.
-        engine_exit: engineExit || undefined, run, tail: cause(report)});
+        engine_exit: engineExit || undefined, connection: report?.connection, run, tail: cause(report)});
     const title = lora ? t('[Feedback] LoRA compatibility misjudged', '[Feedback] LoRA 兼容判断有误')
         : t('[Feedback] Generation did not finish', '[Feedback] 生成未完成') + (stage ? t(`: ${stage[0]}`, `：${stage[1]}`) : '');
     return {title, text, summary};
