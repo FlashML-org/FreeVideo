@@ -1291,9 +1291,9 @@ class Installer:
         self.system = value['inventory'].get('hardware', {}).get('system', platform.system())
         self.pythons = role_pythons(self.root, self.layout, self.system)
         self.root.mkdir(parents=True, exist_ok=True)
-        self.lock = self.locks.enter_context(runtime_lock(self.root / 'setup.lock', inherit=False))
+        self.lock = self.locks.enter_context(runtime_lock(self.root / 'setup.lock', inherit=False, wait_seconds=3))
         lock_path = os.environ.get('FREEVIDEO_LOCK_PATH', str(self.root / 'engine.lock'))
-        self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path))
+        self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path, wait_seconds=3))
         self.run_dir = self.root / 'setup-runs' / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + str(os.getpid()))
         self.run_dir.mkdir(parents=True, exist_ok=False)
         save(self.run_dir / 'plan.json', value)
@@ -2627,10 +2627,12 @@ def run_main(argv, shown):
     except BlockingIOError:
         prepare_end(ui, False)
         print('Setup, testing or generation is using this installation/GPU lock. Retry after it finishes.', file=sys.stderr)
-        from .locking import lock_holders
-        owners = lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))])
-        if owners:
-            print('Processes with open lock handles: %s. Stop the old task before retrying; do not delete lock files.' % ', '.join(map(str, owners)), file=sys.stderr)
+        from .locking import describe_lock_holders
+        try:
+            for line in describe_lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))]):
+                print(line, file=sys.stderr)
+        except Exception:
+            pass
         return 1
     except (OSError, ValueError) as error:
         prepare_end(ui, False)

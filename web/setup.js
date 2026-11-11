@@ -21,12 +21,19 @@ const t = (en, zh) => cn ? zh : en;
 const INSTALLED_HINT = {en: 'Already installed. To reinstall, click Detect & review first.', zh: '已装好。要重装，请先点“检测并预览”。'};
 const gib = n => Number.isFinite(n) ? (n / 2 ** 30).toFixed(1) + " GiB" : "—";
 const SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".';
+const BUSY_LOCK = /using this installation\/GPU lock/;
+const BUSY_TEXT = {en: 'FreeVideo is busy with another task. Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
+    zh: 'FreeVideo 正在处理另一个任务。请在它完成后重试。若没有其他任务在进行，请关闭重复运行的 FreeVideo 后重试。'};
+// The speed-test row passes text that failureText already turned into the busy message.
+const isBusy = value => BUSY_LOCK.test(value) || value.startsWith(BUSY_TEXT.en) || value.startsWith(BUSY_TEXT.zh);
 // Setup refusals whose cause and next step are known. Repair goes where the server's sentence pointed: the launcher when it watches.
 const repairStep = text => text.includes('In the FreeVideo launcher, open Settings and click Repair.')
     ? t('In the FreeVideo launcher, open Settings and click Repair.', '请在 FreeVideo 启动器的设置里点“修复”。')
     : t('Click Detect & review, then Install / repair.', '请先点“检测并预览”，再点“安装／修复”。');
 const WAIT_REFUSAL = /^Wait for (the installation check|the installation|a placement test|a setup task) to finish; its progress is in this panel\.$/;
 const SETUP_ERRORS = [
+    // Another task holds the installation lock; any "Lock file open:" lines name the holders.
+    [BUSY_LOCK, text => [t(BUSY_TEXT.en, BUSY_TEXT.zh), ...text.split(/\r?\n/).filter(line => line.startsWith('Lock file open:')).slice(0, 6)].join('\n')],
     [/^Choose an engine installation folder$/, () => t('Choose a FreeVideo installation folder first.', '请先选择 FreeVideo 安装目录。')],
     [/^Use a dedicated FreeVideo folder, not the ComfyUI root or its parent$/,
         () => t('Choose a separate folder for FreeVideo, not the ComfyUI folder or the folder that contains it.',
@@ -54,7 +61,7 @@ const SETUP_ERRORS = [
 ];
 const setupError = text => SETUP_ERRORS.find(([pattern]) => pattern.test(text))?.[1](text);
 const reportable = value => !/The installation plan changed\. Detect configuration again|MODEL_MISMATCH_REPAIR:/.test(String(value || ''))
-    && setupError(String(value || '')) === undefined;
+    && setupError(String(value || '')) === undefined && !isBusy(String(value || ''));
 const failureText = value => {
     const text = String(value || ''), matches = [...text.matchAll(/MODEL_MISMATCH_REPAIR: ([^\r\n]+)/g)];
     const known = setupError(text);
