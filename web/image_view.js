@@ -74,6 +74,13 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
 }
 
 const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'output'})); };
+const SAMPLE_PROMPTS = {
+    "jazz": "A stylish concert poster in a mid-century modern graphic style: a saxophone player drawn as a bold silhouette in deep navy against a warm mustard-yellow background, with abstract curved shapes in teal and coral. At the top, a large clean title reads \"MIDNIGHT JAZZ\". At the bottom, one smaller line reads \"FRIDAY 9 PM\". All text is spelled exactly as given, with no other words on the poster. Flat print texture, strong composition.",
+    "window": "A realistic portrait photograph of a woman in her late twenties sitting by a tall window in a quiet old apartment, soft overcast daylight on one side of her face, loose dark hair tucked behind one ear, wearing a rust-coloured linen shirt, holding a white ceramic cup with both hands, calm thoughtful expression looking slightly away from the camera, natural skin texture with fine detail, muted warm colours, shallow depth of field, 85mm lens, one person, no text.",
+    "perfume": "A luxury studio product photograph of an unlabelled faceted glass perfume bottle filled with pale amber liquid and a brushed gold cap, standing on a block of white travertine stone, surrounded by a few floating soap bubbles and a sprig of white jasmine, soft beige background, warm rim light making the glass glow, sharp reflections and caustics on the stone, high-end advertising look, no logo, no text.",
+    "fjord": "A wide landscape photograph of a deep fjord at golden hour, steep green cliffs dropping into still dark-blue water, a thin waterfall falling from the left cliff, low clouds catching orange light, a small red wooden cabin on a grassy ledge near the shore, mirror-like reflections on the water, crisp detail from the foreground rocks to the distant peaks, rich natural colours, no people, no text.",
+    "fox": "A cute 3D clay-style illustration of a small orange fox wearing a knitted green scarf, reading a tiny book while sitting on a mossy tree stump in a miniature forest, little mushrooms and fallen autumn leaves around it, soft studio lighting, visible fingerprint texture in the clay, pastel background with gentle bokeh, playful and warm, an original character, no text."
+};
 const STAGE_WORDS = {load: ['Loading the model', '加载模型'], text: ['Reading the prompt', '读取提示词'], encode: ['Reading the references', '读取参考图'],
     upload: ['Reading the references', '读取参考图'], sample: ['Generating', '正在生成'], decode: ['Generating', '正在生成']};
 const seconds = value => value >= 90 ? t(`about ${Math.round(value / 60)} min`, `约 ${Math.round(value / 60)} 分钟`) : t(`about ${Math.max(5, Math.round(value / 5) * 5)} s`, `约 ${Math.max(5, Math.round(value / 5) * 5)} 秒`);
@@ -139,7 +146,15 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     const canvas = el('div', 'fv-image-canvas'), picture = el('img'), samples = el('div', 'fv-image-card'), block = el('div', 'fv-image-block'), failHost = el('div', 'fv-image-fail');
     picture.alt = ''; const progressText = el('p', 'fv-image-progress'); progressText.setAttribute('role', 'status');
     block.append(el('i'), progressText);
-    canvas.append(picture, samples, block, failHost);
+    const grid = el('div', 'fv-image-samples');
+    for (const key of cn ? ['fox', 'window', 'perfume', 'fjord'] : ['jazz', 'window', 'perfume', 'fjord']) {
+        const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
+        if (key === 'jazz') i.style.objectPosition = '50% 0';
+        b.setAttribute('aria-label', SAMPLE_PROMPTS[key].slice(0, 60)); b.append(i);
+        b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); };
+        grid.append(b);
+    }
+    canvas.append(picture, samples, grid, block, failHost);
     const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info');
     const mk = (text, onClick) => { const b = el('button', 'fv-image-action', text); b.type = 'button'; b.onclick = onClick; return b; };
     const editThis = mk(t('Edit this', '改这张'), () => void useAsReference(shownFile, true));
@@ -257,8 +272,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         if (busy) go.textContent = t('Stop', '停止');
         else if (loading()) go.textContent = t('Pause', '暂停');
         else if (missing()) go.textContent = t('Download model', '下载模型');
-        else { go.textContent = t('Generate', '生成'); go.disabled = tooMany || (!prompt.value.trim() && !references.length); }
-        if (!prompt.value.trim() && !references.length && !busy && canUse) go.title = t('Write a prompt first', '请先填写提示词'); else go.removeAttribute('title');
+        else { go.textContent = t('Generate', '生成'); go.disabled = tooMany; }
+        go.removeAttribute('title');
         drawStage();
     }
 
@@ -266,7 +281,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         const row = entry(), busy = !!running;
         const state = busy ? 'running' : failure ? 'failed' : missing() || loading() ? 'missing' : shownFile ? 'done' : 'blank';
         canvas.dataset.state = stage.dataset.state = state;
-        picture.hidden = state !== 'done'; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing';
+        picture.hidden = state !== 'done'; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
         actions.hidden = info_.hidden = state !== 'done';
         if (state === 'missing') {
             const total = row?.bytes_total || 0, done = row?.bytes_done || 0, gb = n => (n / 1e9).toFixed(1);
@@ -285,7 +300,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     picture.onload = () => { if (!alive) return; const tail = info_.textContent.split(' · ').filter(Boolean); info_.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
 
     function drawWorks() {
-        column.hidden = rows.length === 0 && !running;
+        column.hidden = rows.length === 0 && !running; body.classList.toggle('fv-image-no-works', column.hidden);
         works.replaceChildren(...(running ? [Object.assign(el('div', 'fv-image-work fv-image-work-running'), {})] : []),
             ...rows.map(row => {
                 const b = el('button', 'fv-image-work'); b.type = 'button'; const i = el('img'); i.loading = 'lazy'; i.alt = ''; i.src = pictureURL(row.file);
@@ -346,10 +361,11 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         if (running) { running.cancelled = true; if (running.job) void client.cancel(running.job); running = null; render(); drawWorks(); }
         else if (loading()) void client.packCancel?.(model.id).then(value => { info = value; return client.info(); }).then(value => { info = value; render(); }).catch(() => {});
         else if (missing()) void install();
+        else if (!prompt.value.trim() && !references.length) prompt.focus();
         else void generate();
     };
     prompt.addEventListener('input', render);
-    prompt.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running) void generate(); });
+    prompt.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
     document.addEventListener('click', closeMore, true);
     function closeMore(event) { if (!more.hidden && !moreHost.contains(event.target)) more.hidden = true; }
 
