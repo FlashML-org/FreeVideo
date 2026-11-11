@@ -1,6 +1,6 @@
 // @-mentions of library characters in the prompt box.
 // While editing, the text keeps the character's name ("@Su Wan"); the character's pictures are ordinary reference rows
-// of the media list that carry `cast: {id, name, description}`. When a request is made the names become <Subject N>
+// of the media list that carry `cast: {id, name, description}`, and so is the voice clip of a card that has one. When a request is made the names become <Subject N>
 // and the subject definitions go in front, the same wording the Agent's drama planner writes (agent/drama.py).
 export const MAX_PEOPLE = 3;
 export const MAX_PICTURES_EACH = 2;
@@ -33,7 +33,20 @@ export function subjectDefinitions(subjects) {
 }
 
 const IMAGE = /\.(png|jpe?g|webp|bmp|tiff?)$/i;
+const AUDIO = /\.(wav|mp3|flac|ogg|m4a|aac|opus)$/i;
 const enabled = row => row && row.enabled !== false;
+// The number H3 gives each reference sound: audio files and voice-only videos in list order (media_encoding numbers
+// <Audio N> per kind; a video's own sound has no tag of its own).
+function audioNumbers(rows) {
+    const numbers = new Map();
+    rows.forEach((row, index) => {
+        if (enabled(row) && row.role === 'reference' && (AUDIO.test(row.file || '') || (row.voice_only === true && !IMAGE.test(row.file || '')))) numbers.set(index, numbers.size + 1);
+    });
+    return numbers;
+}
+// The voice clip a person's card holds (the cast library keeps a 2–15 s WAV); places and objects have none.
+const voiceClip = card => card?.kind === 'setting' || card?.kind === 'prop' ? null
+    : AUDIO.test(card?.voice?.clip?.file || '') ? card.voice.clip.file : null;
 // The number H3 gives each reference picture: images in list order (connected inputs come after the list).
 // A part that continues a video keeps CONTINUE_PICTURES of them (continuation.PICTURES_MAX): the first ones, or, with two or
 // more characters, the last picture of each (the face) and then the pictures of no character (continuation.pick_pictures).
@@ -70,6 +83,11 @@ export function castInRows(rows) {
         // `handle` is what the text says after the @: the name, or "name (2)" when another present character has the same name.
         const person = people.get(row.cast.id) || {id: row.cast.id, name, handle: row.cast.handle || name, description: row.cast.description || '', setting: row.cast.setting === true, prop: row.cast.prop === true, rows: []};
         person.rows.push(index); people.set(row.cast.id, person);
+    });
+    // A card's voice rides along as one more reference row; it belongs to a person whose pictures are present.
+    (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+        const person = enabled(row) && row.role === 'reference' && row.cast?.id && AUDIO.test(row.file || '') ? people.get(row.cast.id) : null;
+        if (person && !person.setting && !person.prop && person.voice === undefined) person.voice = index;
     });
     return [...people.values()];
 }
@@ -147,6 +165,8 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
         return `prop: ${thing.name}${description ? ': ' + description : ''}. <Picture ${number}> shows the object.`;
     });
     if (!order.length && !places.length && !objects.length) return {text: result, subjects: []};
+    // A continued part takes pictures only (continuation.continued_assets), so its people carry no voice, as in the Agent.
+    const sounds = continued ? new Map() : audioNumbers(list);
     const subjects = order.map(person => {
         // Consecutive picture numbers make one range; a person whose pictures are apart gets several.
         const ranges = [];
@@ -154,7 +174,7 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
             const last = ranges[ranges.length - 1];
             if (last && number === last[1] + 1) last[1] = number; else ranges.push([number, number]);
         }
-        return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: null};
+        return {name: person.name, handle: person.handle ?? person.name, description: person.description, pictures: ranges, audio: sounds.get(person.voice) ?? null};
     });
     const definitions = [...(subjects.length ? [subjectDefinitions(subjects)] : []), ...places, ...objects].join(' ');
     return {text: definitions + '\n\n' + result, subjects};
@@ -190,8 +210,10 @@ export function cardPictures(card) {
 }
 
 // Whether a character can be mentioned now; `reason` is the one thing in the way.
-// `count` is how many pictures the card would add when only its list row is known.
+// `count` is how many pictures the card would add when only its list row is known; its voice, if any, is one row more
+// (a list row says `voice: true`, a full card holds the clip).
 export function mentionState(rows, card, count = cardPictures(card).length, {continued = false} = {}) {
+    count += count > 0 && card?.kind !== 'setting' && card?.kind !== 'prop' && (card?.voice === true || voiceClip(card)) ? 1 : 0;
     const list = Array.isArray(rows) ? rows : [];
     const people = castInRows(list);
     if (people.some(person => person.id === card.id)) return {ok: true, present: true};
@@ -224,11 +246,14 @@ export function mentionHandle(rows, card, pending = new Map()) {
     return handle;
 }
 
-// The media list with the character's pictures appended together, so one range of picture numbers covers them.
+// The media list with the character's pictures appended together, so one range of picture numbers covers them, and
+// then the card's voice clip, which the definitions name as the person's <Audio N> (agent/drama.py cast_references).
 export function withCharacter(rows, card, typed = '') {
     const list = Array.isArray(rows) ? rows.map(row => ({...row})) : [];
     if (castInRows(list).some(person => person.id === card.id)) return list;
     const handle = typed || mentionHandle(list, card);
     const cast = {id: card.id, name: card.name, description: card.description || '', ...(card.kind === 'setting' ? {setting: true} : card.kind === 'prop' ? {prop: true} : {}), ...(handle === card.name ? {} : {handle})};
-    return [...list, ...cardPictures(card).slice(0, card.kind === 'prop' ? 1 : undefined).map(file => ({file, role: 'reference', enabled: true, cast}))];
+    const pictures = cardPictures(card).slice(0, card.kind === 'prop' ? 1 : undefined).map(file => ({file, role: 'reference', enabled: true, cast}));
+    const voice = pictures.length && voiceClip(card) ? [{file: voiceClip(card), role: 'reference', enabled: true, cast}] : [];
+    return [...list, ...pictures, ...voice];
 }
