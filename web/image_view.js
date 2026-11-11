@@ -301,7 +301,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         const state = busy ? 'running' : failure ? 'failed' : missing() || loading() ? 'missing' : shownFile ? 'done' : 'blank';
         canvas.dataset.state = stage.dataset.state = state;
         picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
-        actions.hidden = info_.hidden = state !== 'done';
+        // While running they keep their room unseen, so a step picture and the finished one sit in the same place.
+        actions.hidden = info_.hidden = state !== 'done' && state !== 'running';
         if (state === 'missing') {
             const total = row?.bytes_total || 0, done = row?.bytes_done || 0, gb = n => (n / 1e9).toFixed(1);
             samples.replaceChildren(el('b', '', model.name), loading()

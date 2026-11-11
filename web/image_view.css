@@ -45,7 +45,10 @@
 .fv-studio .fv-image-action{min-height:32px;padding:0 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);color:var(--fv-ink);font-size:var(--fv-body);cursor:pointer;display:inline-flex;align-items:center;text-decoration:none}
 .fv-image-more-host{position:relative}.fv-image-more{position:absolute;right:0;top:36px;z-index:3;display:grid;min-width:140px;padding:4px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-raised)}.fv-image-more[hidden]{display:none}
 .fv-image-more .fv-image-action{border:0;background:transparent;justify-content:flex-start}
-.fv-image-info{margin:0;color:var(--fv-muted);font-size:var(--fv-micro)}
+.fv-image-info{margin:0;color:var(--fv-muted);font-size:var(--fv-micro);min-height:1lh}
+.fv-image-stage[data-state=running]>.fv-image-actions,.fv-image-stage[data-state=running]>.fv-image-info{visibility:hidden}
+/* Narrow: the canvas keeps its square either way, so nothing to hold. */
+@media(max-width:760px){.fv-image-stage[data-state=running]>.fv-image-actions,.fv-image-stage[data-state=running]>.fv-image-info{display:none}}
 .fv-image-works-column{min-height:0;display:flex;flex-direction:column;gap:8px;overflow:hidden}.fv-image-works-column[hidden]{display:none}
 .fv-image-works{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start;grid-auto-rows:max-content}
 .fv-studio .fv-image-work{aspect-ratio:1;min-height:0;padding:0;overflow:hidden;border-radius:var(--fv-r-sm);position:relative}
