@@ -2,37 +2,37 @@
   "schema": 1,
   "product_version": "0.5.0",
   "en": {
-    "summary": "H3 Image arrives: one image view for H3 Image and Qwen-Image, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
+    "summary": "H3 Image arrives: a new Images view for H3 Image and Qwen-Image 2.1, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
     "changes": [
       "H3 Image: a new image model for NVIDIA graphics cards from 8 GB of video memory, making pictures from 4 MP up to 16 MP. It is installed alone or added to an existing video install, which downloads only the missing files, about 22 GB, and shares the text encoder already installed. One weight file serves every graphics card, and machines with little memory load it in mapped form. Not available on Mac or AMD.",
-      "Image view: one input for H3 Image and Qwen-Image with a works column. Generated pictures are saved to the asset library and offered under the reference + button; the more menu offers Download, Open folder, Copy prompt and Delete. H3 Image takes no reference pictures yet. With the prompt rewrite model installed, a switch enhances H3 Image prompts without adding anything the request did not ask for.",
-      "Autopilot: a picture request uses the installed H3 Image at 4 MP or 16 MP, and a request below 4 MP is made at 4 MP in the same ratio.",
+      "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
+      "Autopilot: picture requests use the installed H3 Image at 4 MP or 16 MP; a request below 4 MP is made at 4 MP in the same shape.",
       "Editor: beat lines on the music track, and clips snap to the beats. The feature tour now starts on the clip just imported.",
       "Keyframes: still pictures can be placed between the first and last frame, and each is generated one at a time.",
-      "Audio: with \"Use as is\" selected and no audio connected, FreeVideo now says so before generating. When audio used as is cannot be generated in parts, the reason is explained and the request is stopped before it is submitted.",
+      "Audio: with \"Use as is\" selected and no audio connected, FreeVideo now says so before generating. When audio used as is cannot be generated in parts, the reason is shown and the request stops before it is submitted.",
       "Windows: on machines with tight system memory, the second pass no longer stops and restarts for lack of memory. The video is unchanged.",
       "Long videos: very long high-resolution requests no longer stop on the first step with a numerical error.",
       "Sampling preview: an optional small preview decoder on CUDA, used only when it does not slow generation.",
       "Settings: the working files of finished videos can be cleared.",
-      "Launcher: a failure shows one card with the next step and the buttons that resolve it, and the technical details are folded away. A CUDA initialization failure comes with the step to take, an outdated driver gets an update-the-driver card, and a failed update records why each source failed.",
-      "Interface details: checkboxes share one size, the passes field is as compact as the reserved video memory field, the media card no longer shows a mode label, an edited character opens on its name, Autopilot cards show a custom quality state and one progress percentage, and the header and view tabs fit narrow windows without overlap or sideways scrolling."
+      "Launcher: a failure shows one card with the next step and the buttons that resolve it, and the technical details are folded away. A CUDA initialization failure comes with the step to take, an outdated driver gets a card asking to update the driver, and a failed update records why each source failed.",
+      "Interface details: checkboxes share one size; the Passes field is as compact as the Reserved VRAM field; media cards no longer show a mode label; editing a character puts the cursor in its name; Autopilot cards show \"Custom\" for a custom quality and a single progress percentage; and the header and view tabs fit narrow windows without overlap or sideways scrolling."
     ]
   },
   "zh": {
-    "summary": "H3 Image 上线：图片视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型走；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
+    "summary": "H3 Image 上线：图像视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型生成；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
     "changes": [
       "H3 Image：新增图像模型，适用于 8 GB 显存起的 NVIDIA 显卡，可出 4 MP 到 16 MP 的图片。可单独安装，也可加装到已有的视频安装上，加装只下载缺少的文件，约 22 GB，并共用已安装的文本编码器；所有显卡用同一份权重文件，内存较小的机器按映射方式加载。Mac 和 AMD 暂不可用。",
-      "图片视图：H3 Image 和 Qwen-Image 共用一个输入，带作品栏；生成的图片存入素材库，并出现在参考图“+”下；更多菜单提供下载、打开文件夹、复制提示词和删除。H3 Image 暂不支持参考图。装有提示词改写模型时，可用开关增强 H3 Image 的提示词，不会加入请求没有要求的内容。",
-      "AI 全自动：图片请求按已安装的 H3 Image 以 4 MP 或 16 MP 生成，不足 4 MP 的请求按同比例出 4 MP。",
+      "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
+      "AI 全自动：出图请求用已安装的 H3 Image 按 4 MP 或 16 MP 生成；不足 4 MP 的请求按同一比例出 4 MP。",
       "剪辑：音乐轨新增拍点线，片段可吸附到拍点；功能导览改为从刚导入的片段开始。",
       "关键帧：首帧和尾帧之间可放置静态图片，每次生成一张。",
-      "音频：选择“按原样使用”但没有连接音频时，生成前就会告知；按原样使用的音频无法分段生成时，说明原因并在提交前停止。",
+      "音频：选了“原样使用”但没有连接音频时，生成前就会提示；原样使用的音频无法分段生成时，会说明原因并在提交前停止。",
       "Windows：系统内存紧张的机器上，第二遍不再因内存不足而中途停止并重试；生成的视频不变。",
       "长视频：很长的高分辨率请求不再在第一步因数值错误停止。",
       "采样预览：CUDA 上新增可选的小预览解码器，只在不拖慢生成时启用。",
       "设置：可清理已完成视频的工作文件。",
       "启动器：失败时只显示一张卡，写明下一步和能解决问题的按钮，技术详情折叠；CUDA 初始化失败会给出可操作的步骤，显卡驱动过旧时显示更新驱动的卡，更新失败时记录每个来源失败的原因。",
-      "界面细节：勾选框统一大小，“轮数”输入框与预留显存输入框一样紧凑，素材卡不再显示模式标签，编辑后的角色打开时定位到名称，AI 全自动卡片显示自定义质量状态并只显示一个进度百分比，顶栏和视图标签在窄窗口里不再重叠或横向滚动。"
+      "界面细节：勾选框统一大小；“轮数”输入框与“预留显存”输入框一样紧凑；素材卡不再显示模式标签；编辑角色时光标先落在名字上；AI 全自动卡片在自定义质量时显示“自定义”，进度只显示一个百分比；顶栏和视图标签在窄窗口里不再重叠，也不再横向滚动。"
     ]
   },
   "history": [
