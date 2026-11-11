@@ -24,7 +24,16 @@ def files(model_root):
     return found
 
 
-def _stub(prompt, *, width, height, seed, progress, cancel):
+def _previewer(send):
+    """The sampler's per-step preview callback for `send`, or None when previews are off or unavailable."""
+    if send is None:
+        return None
+    from . import step_preview
+    previewer = step_preview.Previewer(send)
+    return previewer if previewer.active else None
+
+
+def _stub(prompt, *, width, height, seed, progress, cancel, preview=None):
     """A flat picture of the asked size with the stage callbacks, for protocol tests and page checks only."""
     from PIL import Image
     shade = (seed or 0) % 160 + 40
@@ -32,6 +41,13 @@ def _stub(prompt, *, width, height, seed, progress, cancel):
         if cancel is not None and cancel():
             raise InterruptedError('cancelled')
         progress('denoise', (index + 1) / 6)
+        if preview is not None:
+            import io
+            scale = min(1., 512 / max(width, height))
+            small = (max(1, round(width * scale)), max(1, round(height * scale)))
+            buffer = io.BytesIO()
+            Image.new('RGB', small, (shade * (index + 1) // 6, 90, 255 - shade)).save(buffer, 'JPEG', quality=80)
+            preview(step=index + 1, total=6, width=small[0], height=small[1], jpeg=buffer.getvalue())
     return Image.new('RGB', (width, height), (shade, 90, 255 - shade))
 
 
@@ -49,15 +65,20 @@ class H3Runner:
             progress('load', 1.)
 
     def generate(self, prompt, *, width, height, seed=None, reference_images=None, progress=None, cancel=None,
-                 setup=None, **_):
-        """`setup` is what the service read from the installation: the shared encoder's runtime and the card budget."""
+                 setup=None, preview=None, **_):
+        """`setup` is what the service read from the installation: the shared encoder's runtime and the card budget.
+
+        `preview(step=, total=, width=, height=, jpeg=)` receives a small picture after each sampling step."""
         progress = progress or (lambda stage, fraction: None)
         # A request without a seed draws a fresh one, as the other image model does; the one used is reported
         # with the plan so the picture can carry it.
         seed = secrets.randbits(32) if seed is None else seed
         self.last_plan = dict(seed=seed)
+        from ..frame_preview import disabled
+        if disabled():
+            preview = None
         if os.environ.get(STUB_ENV) == '1':
-            return _stub(prompt, width=width, height=height, seed=seed, progress=progress, cancel=cancel)
+            return _stub(prompt, width=width, height=height, seed=seed, progress=progress, cancel=cancel, preview=preview)
         try:
             from . import h3_pipeline
         except ImportError:
@@ -77,7 +98,7 @@ class H3Runner:
                 (lambda: bool(cancel and cancel())), dit_path=self.files['dit'], vae_path=self.files['vae'],
                 encoder=setup.get('encoder'), comfy_root=setup.get('comfy_root'), comfy_python=setup.get('comfy_python'),
                 model_paths=setup.get('model_paths'), vram_gib=setup.get('vram_gib'), ram_gib=setup.get('ram_gib'),
-                stats=stats)
+                stats=stats, preview=_previewer(preview))
         except h3_pipeline.Cancelled:
             raise InterruptedError('cancelled') from None
         finally:

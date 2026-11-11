@@ -1,5 +1,6 @@
 """Persistent ImageRunner owner; stdin/stdout contain one JSON object per line."""
 import argparse
+import base64
 from contextlib import ExitStack, redirect_stdout
 import json
 import os
@@ -11,6 +12,7 @@ import time
 
 from . import keep
 from .failure import Context, classify_exception, exception_details, host_memory_shortage, safe_plan
+from .step_preview import LIMIT as PREVIEW_LIMIT
 
 
 class Inbox:
@@ -174,13 +176,19 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         region['edit_mask'].load()
                     loras = value.get('loras') or None
                     back_check = None
+                    def preview(*, step, total, width, height, jpeg):
+                        data = base64.b64encode(jpeg).decode('ascii')
+                        if len(data) <= PREVIEW_LIMIT:
+                            send(phase='preview', step=step, total=total, width=width, height=height, jpeg=data)
+
                     def generate(seed):
                         return runner.generate(
                             value['prompt'], width=value['width'], height=value['height'],
                             seed=seed, reference_images=references, **region,
                             **(dict(loras=loras) if loras else {}),
                             progress=progress, cancel=inbox.cancel.is_set,
-                            **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}))
+                            **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}),
+                            **(dict(preview=preview) if model == 'minimax-h3-image' else {}))
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
                         from .back_view import generate_back, load_detector

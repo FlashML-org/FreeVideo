@@ -48,7 +48,7 @@ export function imageSize(ratio, tier = 'standard', same = null, model = '') {
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null} = {}) {
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0} = {}) {
     const items = []; let count = 0; const jobs = new Map(), state = {...ready}; const loading = new Map();
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id),
         bytes_total: 12.5e9, bytes_done: loading.has(m.id) ? Math.min(12.5e9, (Date.now() - loading.get(m.id)) * 5e6) : 0}));
@@ -62,9 +62,18 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
-            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32)};
+            // With steps, one picture per sampling step after the load, as the H3 worker sends them.
+            const step = steps && fraction >= .3 ? Math.min(steps, 1 + Math.floor((fraction - .3) / .7 * steps)) : 0;
+            const preview = step ? {step, total: steps, serial: step, width: 256, height: 256} : undefined;
+            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32), preview};
             const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15)});
             return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32)};
+        },
+        async previewImage(job) {
+            const row = jobs.get(job); if (!steps || !row) return null;
+            const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+            g.fillStyle = `hsl(${(Date.now() - row.at) / delay * 300} 60% 50%)`; g.fillRect(0, 0, 256, 256);
+            return new Promise(resolve => c.toBlob(resolve, 'image/jpeg', .8));
         },
         cancel: async job => { jobs.delete(job); },
         history: async () => items.slice(),
@@ -145,6 +154,10 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     // Stage: the work, or the state that stands in for it; below it the actions and one line of facts.
     const canvas = el('div', 'fv-image-canvas'), picture = el('img'), samples = el('div', 'fv-image-card'), block = el('div', 'fv-image-block'), failHost = el('div', 'fv-image-fail');
+    // While sampling: the model's own picture after each step, in place of the wave once the first one arrives.
+    const stepFrame = el('div', 'fv-image-step'), stepPicture = el('img'); stepPicture.alt = ''; stepFrame.hidden = true; stepFrame.append(stepPicture); let stepURL = '';
+    const showStep = blob => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = URL.createObjectURL(blob); stepPicture.src = stepURL; stepFrame.hidden = false; block.classList.add('fv-image-block-low'); };
+    const clearStep = () => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
     picture.alt = ''; const progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
     progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
@@ -159,7 +172,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); };
         grid.append(b);
     }
-    canvas.append(picture, samples, grid, block, failHost);
+    canvas.append(picture, stepFrame, samples, grid, block, failHost);
     const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
     info_.append(infoText, doneReport);
     const mk = (text, onClick) => { const b = el('button', 'fv-image-action', text); b.type = 'button'; b.onclick = onClick; return b; };
@@ -287,7 +300,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         const row = entry(), busy = !!running;
         const state = busy ? 'running' : failure ? 'failed' : missing() || loading() ? 'missing' : shownFile ? 'done' : 'blank';
         canvas.dataset.state = stage.dataset.state = state;
-        picture.hidden = state !== 'done'; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
+        picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
         actions.hidden = info_.hidden = state !== 'done';
         if (state === 'missing') {
             const total = row?.bytes_total || 0, done = row?.bytes_done || 0, gb = n => (n / 1e9).toFixed(1);
@@ -341,7 +354,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
-        let reportId = null;
+        clearStep();
+        let reportId = null, stepSerial = 0;
         try {
             const names = []; for (const r of references.slice(0, model.references)) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
@@ -357,6 +371,12 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 // The second line changes with every poll, so the page never looks stuck.
                 progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, left].filter(Boolean).join(' · ');
                 level.dataset.counted = Number.isFinite(status.overall) ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(fraction * 100));
+                const serial = status.state === 'running' ? status.preview?.serial : undefined;
+                if (Number.isInteger(serial) && serial > stepSerial && client.previewImage) {
+                    stepSerial = serial;
+                    const blob = await client.previewImage(row.job).catch(() => null);
+                    if (blob && alive && !mine.cancelled && running === mine) showStep(blob);
+                }
                 if (status.report_id && status.report_id !== reportId) {
                     reportId = status.report_id; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
                 }
@@ -366,7 +386,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         } catch (error) {
             if (alive && !mine.cancelled) { failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
                 renderFailure(); }
-        } finally { level.hidden = true; if (running === mine) { running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
+        } finally { level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
     }
     function renderFailure() {
         renderImageFailure(failHost, {...failure, info}, t);
@@ -389,7 +409,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     dialog.addEventListener('cancel', event => { event.preventDefault(); if (!more.hidden) more.hidden = true; else closeDialog(dialog); });
     dialog.onclose = () => {
         alive = false; stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
-        if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); dialog.remove();
+        if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
         if (current === dialog) current = null;
         next();
     };

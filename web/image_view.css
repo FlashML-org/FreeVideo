@@ -29,6 +29,10 @@
 .fv-image-download{display:block;width:240px;height:4px;border-radius:2px;background:var(--fv-border);overflow:hidden;position:relative}
 .fv-image-download::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(var(--p,0) * 1%);background:var(--fv-accent)}
 .fv-image-block{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px}
+.fv-image-step{position:absolute;inset:0;background:var(--fv-canvas,var(--fv-card))}.fv-image-step[hidden]{display:none}
+.fv-image-step>img{width:100%;height:100%;object-fit:contain}
+.fv-image-block.fv-image-block-low{align-content:end;padding-bottom:12px;background:linear-gradient(to top,rgba(7,19,32,.88),rgba(7,19,32,.6) 30%,transparent 60%)}
+.fv-image-block-low .fv-image-progress{text-shadow:0 1px 3px rgba(7,19,32,.9)}
 .fv-image-canvas>.fv-empty-frame-icon{display:none}
 .fv-image-progress{position:relative;margin:0;display:grid;gap:6px;justify-items:center;text-align:center;padding:18px 40px;color:var(--fv-muted);font-size:var(--fv-body);background:radial-gradient(ellipse 60% 60% at 50% 50%,rgba(7,19,32,.55),transparent 72%)}
 .fv-image-progress b{color:var(--fv-ink,#edf2f9);font-weight:inherit;font-size:clamp(20px,2.4vw,30px)}

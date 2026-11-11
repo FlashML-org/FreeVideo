@@ -134,6 +134,7 @@ class Service:
         self.worker = None
         self.key = None
         self.state = {}
+        self.preview = None  # {'serial', 'jpeg'}: the running job's newest step picture
         self._busy = False
         self.closed = False
         self.yielding = False
@@ -662,6 +663,7 @@ class Service:
         self.key = key
         self.stop.clear()
         self.state = dict(phase='starting', stage='start')
+        self.preview = None
         if 'fitted' in value:
             self.state['fitted'] = deepcopy(value['fitted'])
         self.context = context
@@ -894,6 +896,36 @@ class Service:
         seconds = {row['stage']: row['seconds'] for row in context.timing.snapshot()}
         context.forecast_history.record(context.forecast_key, seconds)
 
+    def keep_preview(self, row):
+        """Keep the worker's newest step picture; the status row says which one it is, and `preview_image` returns it."""
+        from .step_preview import LIMIT
+        step, total, width, height, data = (row.get(name) for name in ('step', 'total', 'width', 'height', 'jpeg'))
+        if not (type(step) is int and type(total) is int and 1 <= step <= total <= 64
+                and type(width) is int and type(height) is int and 1 <= width <= 1024 and 1 <= height <= 1024
+                and isinstance(data, str) and len(data) <= LIMIT):
+            return
+        import base64
+        try:
+            jpeg = base64.b64decode(data, validate=True)
+        except ValueError:
+            return
+        if not jpeg.startswith(b'\xff\xd8'):
+            return
+        with self.mutex:
+            if self.state.get('phase') not in ('starting', 'progress', 'cancelling'):
+                return
+            serial = (self.preview or {}).get('serial', 0) + 1
+            self.preview = dict(serial=serial, jpeg=jpeg)
+            self.state['preview'] = dict(step=step, total=total, serial=serial, width=width, height=height)
+
+    def preview_image(self, key):
+        """(serial, JPEG bytes) of the running job's newest step picture, or None."""
+        with self.mutex:
+            if (isinstance(key, str) and self.key is not None and self.preview is not None
+                    and secrets.compare_digest(key.encode('utf-8'), self.key.encode('utf-8'))):
+                return self.preview['serial'], self.preview['jpeg']
+        return None
+
     def status(self, key):
         with self.mutex:
             if isinstance(key, str):
@@ -1122,6 +1154,7 @@ class Service:
                                                    video_busy=failure == 'busy_video'))
                     if fitted is not None:
                         self.state['fitted'] = fitted
+                    self.preview = None
                     self._busy = False
                     self.context = None
                 self.queue_wake.set()
@@ -1257,6 +1290,8 @@ class Service:
                             context.forecast.update(stage, float(fraction))
                         self.state.update(phase='cancelling' if self.stop.is_set() else 'progress',
                                           stage=stage, fraction=fraction)
+            elif phase == 'preview':
+                self.keep_preview(row)
             elif phase in ('result', 'error'):
                 if self.stop.is_set() or row.get('code') == 'cancelled':
                     result = dict(phase='cancelled')
@@ -1298,6 +1333,7 @@ class Service:
                     if 'fitted' in self.state:
                         result['fitted'] = self.state['fitted']
                     self.state = result
+                    self.preview = None
                     self._busy = False
                     self.context = None
                     self.queue_wake.set()
@@ -1390,6 +1426,12 @@ def register():
                 result = page_views(value.get('description'), value.get('kind', 'character'))
             elif name == 'status':
                 result = service.status(value.get('job'))
+            elif name == 'preview':
+                found = service.preview_image(value.get('job'))
+                if found is None:
+                    return web.json_response(dict(error='no_preview'), status=404, headers={'Cache-Control': 'no-store'})
+                return web.Response(body=found[1], content_type='image/jpeg',
+                                    headers={'Cache-Control': 'no-store', 'X-FreeVideo-Preview-Serial': str(found[0])})
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
             elif name in ('pack-install', 'pack-cancel'):

@@ -100,6 +100,13 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
                 ...(phase === 'cancelled' ? {error: 'cancelled'} : {})};
         },
         cancel: job => post('cancel', {[p.job]: job}),
+        // The running job's newest step picture (a small JPEG of what the model predicts so far), or null.
+        async previewImage(job) {
+            if (!token) await info();
+            const response = await fetchImpl(`${p.root}/preview`, {method: 'POST', cache: 'no-store', headers: {
+                'Content-Type': 'application/json', [p.header]: token}, body: JSON.stringify({[p.job]: job})});
+            return response.ok ? response.blob() : null;
+        },
         // The image models are fetched by this page's own engine; the reply is the new info.
         async packInstall(model) { const value = await post('pack-install', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         async packCancel(model) { const value = await post('pack-cancel', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },

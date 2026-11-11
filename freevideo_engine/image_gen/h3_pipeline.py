@@ -51,7 +51,8 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
 
 def generate(prompt, width, height, seed, references=None, progress_cb=None, cancel=None, *, dit_path, vae_path,
              encoder='qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', comfy_root=None, comfy_python=None,
-             model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True):
+             model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True,
+             preview=None):
     """Return a PIL image for the prompt.
 
     ``progress_cb(stage, done, total)`` is called with stage in encode, denoise, decode;
@@ -59,6 +60,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     with less memory than the 21 GB of weights loads them and pins what live memory allows.
     ``resident`` overrides the planned
     layer count. ``stats`` (a dict) receives timings, the plan and the peak memory.
+    ``preview`` is the sampler's ``preview_callback`` (see ``step_preview``); it never changes the picture.
     """
     if references:
         raise ValueError('H3 Image does not take reference images yet')
@@ -112,7 +114,8 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     tick = time.perf_counter()
     try:
         latents = h3_dit.sample(model, cond['prompt_embeds'], cond['text_token_tags'], canvas_h // 16, canvas_w // 16,
-                                generator, noise_device='cpu' if cpu_noise else None, step_callback=step)
+                                generator, noise_device='cpu' if cpu_noise else None, step_callback=step,
+                                preview_callback=preview)
         torch.cuda.synchronize()
         stats['sample_s'] = round(time.perf_counter() - tick, 2)
         stats['denoise_peak_gib'] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
