@@ -1,4 +1,12 @@
 # Shared by the launcher and CPU checks. Compatible with PowerShell 5.1 and 7.
+function Clear-FreeVideoDebuggerState {
+    # A breakpoint or step trace left in the session stops the setup at a
+    # debugger prompt that nobody can answer. Setup never needs a debugger.
+    try { Get-PSBreakpoint | Remove-PSBreakpoint } catch { }
+    try { Set-PSDebug -Off } catch { }
+}
+Clear-FreeVideoDebuggerState
+
 function Invoke-FreeVideoBootstrapCommand {
     param(
         [Parameter(Mandatory=$true)][string]$Executable,
@@ -13,6 +21,7 @@ function Invoke-FreeVideoBootstrapCommand {
     # exit code; keep these preferences local to this function.
     $ErrorActionPreference = 'Continue'
     $PSNativeCommandUseErrorActionPreference = $false
+    Clear-FreeVideoDebuggerState
     $encoding = [Text.UTF8Encoding]::new($false)
     if (Test-Path -LiteralPath $LogPath) {
         # Preserve older PowerShell 5.1 UTF-16 logs when appending a retry.
