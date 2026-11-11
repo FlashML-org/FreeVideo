@@ -728,7 +728,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const {applyTourExample} = await import('./tour_try.js');
         const target = castAssets();
         const result = await applyTourExample({node, api, cn, rows: () => mediaRows(node), canApply: canTryTour,
-            setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); },
+            setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); castOverlay.refresh(); },
             // Two-pass and preview settle into one pass mode, whichever of the two the example lists first.
             setSetting: (name, input) => {
                 if (name === 'quality') {
