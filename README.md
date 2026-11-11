@@ -19,6 +19,7 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## News
 
+- **2026-11-10** · **[v0.5.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.5.0): H3 Image.** Pictures up to 16 MP locally, from 8 GB of VRAM.
 - **2026-10-13** · **[v0.4.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.4.0): AI agents, minute-long videos and an editing view.** Let an AI agent such as Claude Code or Codex make videos on its own, generate videos over a minute long, and edit them on a timeline.
 - **2026-10-07** · **[v0.3.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.2): preview first.** See a half-resolution preview first and finish only the videos you like.
 - **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0): a faster int8 model.** GeForce and RTX 30-series cards switch to int8; an RTX 3090 makes a 5-second video about 2.3x faster.

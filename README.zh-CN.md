@@ -19,6 +19,7 @@ https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
 ## 更新动态
 
+- **2026-11-10** · **[v0.5.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.5.0)：H3 Image 生图。** 8GB 显存起，本机出最高 16 MP 的图片。
 - **2026-10-13** · **[v0.4.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.4.0)：Agent 全自动生成、分钟级长视频和剪辑视图。** 连接 Claude Code、Codex 等 AI Agent，让它全自动生成视频；一条视频可以生成到一分钟以上；在时间线上剪辑。
 - **2026-10-07** · **[v0.3.2](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.2)：先出预览。** 先看半分辨率预览，满意的再继续生成。
 - **2026-10-07** · **[v0.3.0](https://github.com/FlashML-org/FreeVideo/releases/tag/v0.3.0)：更快的 int8 模型。** GeForce 和 RTX 30 系显卡改用 int8，RTX 3090 生成 5 秒视频快约 2.3 倍。
