@@ -944,7 +944,10 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                         if (entry.errorCode === 'session_full') { void startChat(original || entry); return; }
                         if (original) void send(original.text, original);
                     });
-                    report = issueButton(t, () => ({where: CHAT_ISSUE, message: error.textContent}));
+                    report = issueButton(t, () => {
+                        const live = pending.find(value => value.id === entry.id) || entry;
+                        return {where: CHAT_ISSUE, message: error.textContent, kind: live.failureKind || null, facts: live.failureFacts || null};
+                    });
                     status.append(error, retry, report); item.append(status);
                 }
                 quoted(error, entry.error || ''); error.hidden = !entry.error;
@@ -1544,6 +1547,10 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             }
             const error = await sendError(response), refused = sendRefused(error, response);
             entry.errorCode = error?.code;
+            // What a feedback report carries for this failure: how the answer failed, never text or paths.
+            entry.failureKind = error?.code || (response ? 'http_' + response.status : 'no_response');
+            entry.failureFacts = {attempts: entry.attempts, http_status: response?.status ?? null, agent_connected: state.agent.connected === true,
+                page_online: typeof navigator === 'object' ? navigator.onLine !== false : null};
             const waiting = !refused && (WAIT_FOR_AGENT.includes(error?.code) || !error && state.agent.connected !== true);
             const exhausted = entry.attempts >= SEND_ATTEMPTS;
             entry.automatic = waiting && !exhausted;
