@@ -1164,7 +1164,8 @@ class Controller:
                 _, machine = installation(source, {'FREEVIDEO_HOME': str(engine)})
                 # With every quality level requested, set up again only while some are missing.
                 from .sampling_assets import installed as sampling_installed
-                ready = not values.get('sampling_caches') or sampling_installed(machine)
+                ready = (not values.get('sampling_caches') or machine.get('video_model') is False
+                         or sampling_installed(machine))
             except (OSError, ValueError, KeyError):
                 pass
         self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready,

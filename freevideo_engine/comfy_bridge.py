@@ -892,6 +892,9 @@ def installation(source=None, environ=None):
                          'A prepared engine installation is required.') from error
     required = ('root', 'python', 'cache', 'base', 'checkpoint', 'comfy_python',
                 'comfy_root', 'vdn_root', 'model_paths', 'model_root', 'encoder')
+    if isinstance(machine, dict) and machine.get('video_model') is False:
+        # An image-only installation has no prepared video model, so no sampling cache.
+        required = tuple(k for k in required if k != 'cache')
     if not isinstance(machine, dict) or not machine.get('ready') or any(not machine.get(k) for k in required):
         raise ValueError('FreeVideo setup is incomplete in %s. %s Existing files are reused.' % (root, repair_hint()))
     identity = 'device_identity' if machine.get('device_backend') == 'mps' else 'gpu_uuid'
