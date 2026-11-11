@@ -20,6 +20,15 @@ from .h3_weights import load_h3_dit
 MAX_REFERENCES = 0  # reference images are not supported by this engine yet
 
 
+def free_host_memory():
+    """Return the request's weights to the host: the hooks make a stack a reference cycle, and torch keeps freed locked pages cached, so the next request in the same process would find them still charged."""
+    import gc
+    from ..torch_compat import empty_host_cache
+    gc.collect()
+    torch.cuda.empty_cache()
+    empty_host_cache(torch)
+
+
 class Cancelled(Exception):
     pass
 
@@ -108,8 +117,9 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
         stats['sample_s'] = round(time.perf_counter() - tick, 2)
         stats['denoise_peak_gib'] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
     finally:
+        stack.close()
         del model, stack
-        torch.cuda.empty_cache()
+        free_host_memory()
     report('denoise', 6, 6)
     check()
     report('decode', 0, 1)
@@ -119,6 +129,6 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     image = Image.fromarray((pixels[0].clamp(0, 1) * 255).round().byte().permute(1, 2, 0).cpu().numpy())
     stats['decode_peak_gib'] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
     del decoder
-    torch.cuda.empty_cache()
+    free_host_memory()
     report('decode', 1, 1)
     return image
