@@ -126,9 +126,18 @@ def audio_lead_in(video, previous=None):
     return audio_lead_in_checked(video, previous)[0]
 
 
+def _record_file_exists(path, directory):
+    """Whether the record file of this video is on disk, however it reads. Only asked after a failed read."""
+    try:
+        from .continuation_store import _path, video_id
+        return _path(video_id(path), directory).is_file()
+    except Exception:
+        return False
+
+
 def audio_lead_in_checked(video, previous=None):
     """(the seam audio, None) as audio_lead_in reads it, or (None, why it could not be read): no_video,
-    no_record, old_record, source_changed or read_failed:<error type>. Never a path or a text."""
+    no_record, unreadable_record, old_record, source_changed or read_failed:<error type>. Never a path or a text."""
     try:
         import numpy as np
         from av import FFmpegError
@@ -161,7 +170,8 @@ def audio_lead_in_checked(video, previous=None):
             return None, 'no_video'
         value = load(path, directory=directory)
         if value is None:
-            return None, 'no_record'
+            # load() also answers None for a record file that is there but fails to read or check.
+            return None, 'unreadable_record' if _record_file_exists(path, directory) else 'no_record'
         if 'audio_lead_in' not in value:
             return None, 'old_record'
         if previous is not None:

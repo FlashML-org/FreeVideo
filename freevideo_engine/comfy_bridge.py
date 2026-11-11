@@ -1721,6 +1721,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 # The ending was encoded by the engine, which is where the real counters come from.
                 state['continuation'] = dict(receipt)
             state['continuation']['audio_lead_in_samples'] = receipt.get('audio_lead_in_samples', 0)
+            # When the engine could not keep this block's seam record, say why, so a join that
+            # later finds no record can name it. Only a short word, never a path or a text.
+            stored = engine.get('continuation_store')
+            if isinstance(stored, dict) and stored.get('saved') is False:
+                why = stored.get('reason') or stored.get('error')
+                if isinstance(why, str) and why.isascii() and why.isidentifier() and len(why) <= 64:
+                    state['continuation']['record_not_kept'] = why
         if comfy_metadata:
             # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
             # Written before the result cache records the file's size and hash.
