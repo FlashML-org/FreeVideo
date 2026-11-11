@@ -77,6 +77,42 @@ def iter_decoded_chunks(vae, z):
             keep -= count
 
 
+def count_decoded_clips(vae, latent_frames, progress):
+    """Report each finished temporal clip of the original whole-video decode.
+
+    Wraps only the instance's `_decode_clip`; the arithmetic and call order are
+    unchanged. `progress(done_frames, total_frames, elapsed)` gets the frames
+    the finished clips cover, which is exact except for trailing padding.
+    Returns a callable that removes the wrapper.
+    """
+    import time
+    try:
+        tokens = vae.tokens_chunk_size
+        drop = vae.config.token_drop
+        padding = (-(latent_frames + drop)) % tokens
+        clips = (latent_frames + drop + padding) // tokens - int(drop > 0)
+        total = decoded_frames(vae, latent_frames)
+        per_clip = tokens * vae.temporal_compression_ratio - vae.frame_pre_padding
+        original = vae._decode_clip
+    except Exception:
+        return lambda: None  # a decoder without these fields is decoded without counts, never refused
+    own = vae.__dict__.get('_decode_clip')
+    state = dict(done=0, started=time.perf_counter())
+    def counted(*values, **kwargs):
+        result = original(*values, **kwargs)
+        state['done'] += 1
+        done = total if state['done'] >= clips else min(total, state['done'] * per_clip)
+        progress(done, total, time.perf_counter() - state['started'])
+        return result
+    vae._decode_clip = counted
+    def restore():
+        if own is not None:
+            vae._decode_clip = own
+        else:
+            vae.__dict__.pop('_decode_clip', None)
+    return restore
+
+
 def render_rgb(vae, latents, pixel_mean, pixel_std, path, progress=None, wide_path=None):
     """Write exact uint8 output a temporal clip at a time; retain partial data.
 

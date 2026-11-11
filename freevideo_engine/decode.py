@@ -161,17 +161,22 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         # Autocast follows the original renderer. The opt-in Linear cache stores
         # its existing FP16 compute values once; all other weights stay FP32.
         with torch.autocast(device_type='cuda', dtype=torch.float16, cache_enabled=not offload):
+            def decoded(done, total, elapsed):
+                print(json.dumps(dict(event='decode_progress', done=done, total=total,
+                                      elapsed_seconds=elapsed)), flush=True)
             if stream_output:
                 from .decode_stream import render_rgb
                 directory = Path(artifacts_dir) if artifacts_dir else Path(out_path).with_suffix('.artifacts')
-                def decoded(done, total, elapsed):
-                    print(json.dumps(dict(event='decode_progress', done=done, total=total,
-                                          elapsed_seconds=elapsed)), flush=True)
                 frames, rgb_mapping, streamed_timings = render_rgb(vae, latents * std + mean,
                     PIXEL_MEAN, PIXEL_STD, directory/'rgb.npy', progress=decoded,
                     **({'wide_path': wide_path} if wide_path is not None else {}))
             else:
-                video = vae.decode(latents * std + mean, return_dict=False)[0]
+                from .decode_stream import count_decoded_clips
+                uncount = count_decoded_clips(vae, latents.shape[2], decoded)
+                try:
+                    video = vae.decode(latents * std + mean, return_dict=False)[0]
+                finally:
+                    uncount()
                 video = video.cpu()
         if offloader is not None:
             offload_stats = offloader.stats()

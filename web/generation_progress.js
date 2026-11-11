@@ -148,6 +148,10 @@ const DOWNLOADS = {
     sources_download: ['Downloading model files', '下载模型文件'],
     reference_download: ['Downloading model files', '下载模型文件'],
 };
+// Stages whose engine counts are real completed work inside one long step.
+const COUNTED_STAGES = new Set(['video', 'media', 'weight_pin', 'weight_read',
+  'encoder_device_load', 'encoder_compute', 'encoder_compute_reference', 'media_encode_audio']);
+const COUNT_UNITS = {frames: ['frames', '帧'], layers: ['layers', '层'], files: ['files', '个文件'], chunks: ['parts', '段']};
 const size = (bytes, unit) => (bytes / (unit === 'GiB' ? 2**30 : 2**20)).toFixed(1);
 // Asked for two passes with a first pass other than 8 steps: the engine ran one pass.
 const ranOnePass = plan => plan.requested === true && plan.enabled === false && plan.preview !== true
@@ -155,6 +159,20 @@ const ranOnePass = plan => plan.requested === true && plan.enabled === false && 
 // The fixed stage key (for the small bar and replays) and its sentence. Each
 // number appears once: sampling says the step, a download says its size and speed.
 function activityLabel(message, t, plan = {}, secondPass = false, references = false) {
+    const result = baseActivityLabel(message, t, plan, secondPass, references);
+    if (!result || !COUNTED_STAGES.has(message.stage) || !valid(message.total) || message.total < 1) return result;
+    const done = valid(message.done) ? Math.min(message.done, message.total) : 0;
+    let detail;
+    if (message.unit === 'bytes') {
+        const unit = message.total >= 2**30 ? 'GiB' : 'MiB';
+        detail = `${size(done, unit)} / ${size(message.total, unit)} ${unit}`;
+    } else if (COUNT_UNITS[message.unit]) {
+        const [en, zh] = COUNT_UNITS[message.unit];
+        detail = t(`${done} / ${message.total} ${en}`, `${done} / ${message.total} ${zh}`);
+    } else return result;
+    return {...result, text: `${result.text} · ${detail}`};
+}
+function baseActivityLabel(message, t, plan = {}, secondPass = false, references = false) {
     const phase = message.phase || message.timing_phase || message.stage;
     const named = key => ({key, text: t(...ACTIVITY[key])});
     if (phase === 'dependencies' && message.stage === 'probe') return named('prepare');

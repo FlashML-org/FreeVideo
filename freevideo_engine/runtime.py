@@ -435,6 +435,13 @@ class Engine:
         if pin_host_weights or pin_host_gb:
             host_headroom = self.weight_cache_headroom_bytes
             if not incremental_pinning:
+                from .work_progress import WorkProgress
+                pin_state = {}
+                def pin_report(pinned, required):
+                    # Bytes already copied into locked host memory.
+                    if 'report' not in pin_state:
+                        pin_state['report'] = WorkProgress('load', 'weight_pin', max(1, required), 'bytes')
+                    pin_state['report'].update(pinned)
                 pin_start = time.perf_counter()
                 pin_layers = self.offload_layers
                 if stream_weights and attention_cpu_outputs and cache_refined_text and not windows():
@@ -444,7 +451,8 @@ class Engine:
                 self.pinned_model_bytes = self.device_backend.pin_layer_weights(pin_layers, max_bytes=int(pin_host_gb * 1e9) if pin_host_gb else None,
                                                            headroom_bytes=host_headroom,
                                                            nonlocal_reserve_bytes=self.nonlocal_reserve_bytes,
-                                                           commit_reserve_bytes=self.gpu_commit_reserve())
+                                                           commit_reserve_bytes=self.gpu_commit_reserve(),
+                                                           progress=pin_report)
                 pin_seconds = time.perf_counter() - pin_start
             self.pinned_host_allocated_bytes = self.device_backend.host_memory_stats()['allocated_bytes.current']
             print(json.dumps({'event': 'host_weights_pinned', 'seconds': pin_seconds,
@@ -457,12 +465,16 @@ class Engine:
         if preload_host:
             preload_start = time.perf_counter()
             buffer = bytearray(8 * 1024 * 1024)
-            for group in manifest['groups']:
-                if group['group'].startswith('adaln/') and adaln_cache:
-                    continue
-                with (self.cache / group['file']).open('rb', buffering=0) as stream:
-                    while stream.readinto(buffer):
-                        pass
+            from .work_progress import WorkProgress
+            read_files = [self.cache / group['file'] for group in manifest['groups']
+                          if not (group['group'].startswith('adaln/') and adaln_cache)]
+            read_report = WorkProgress('load', 'weight_read', max(1, sum(path.stat().st_size for path in read_files)), 'bytes')
+            bytes_read = 0
+            for path in read_files:
+                with path.open('rb', buffering=0) as stream:
+                    while count := stream.readinto(buffer):
+                        bytes_read += count
+                        read_report.update(bytes_read)
             del buffer
             self.host_preload_seconds = time.perf_counter() - preload_start
             print(json.dumps({'event': 'host_weights_read', 'seconds': self.host_preload_seconds}), flush=True)

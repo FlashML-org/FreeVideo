@@ -127,7 +127,9 @@ def start_read_ahead(trace, path, request):
         return
     try:
         from .encoder_read_ahead import EncoderReadAhead
-        trace.read_ahead = EncoderReadAhead(path, ram_budget_bytes=request.get('ram_budget_bytes')).start()
+        from .encoder_progress import checkpoint_read_reporter
+        trace.read_ahead = EncoderReadAhead(path, ram_budget_bytes=request.get('ram_budget_bytes'),
+                                            progress=checkpoint_read_reporter()).start()
     except Exception as error:
         trace.data['encoder_read_ahead'] = dict(state='failed', reason=type(error).__name__ + ': ' + str(error))
 
@@ -511,7 +513,8 @@ def _encode(args, request, resident, trace):
         from .encoder_memory import encode_with_recovery
         from .encoder_pinning import readonly_pinning
         import comfy.model_management as memory
-        with readonly_pinning(torch, memory):
+        from .encoder_progress import layer_progress
+        with readonly_pinning(torch, memory), layer_progress(clip.cond_stage_model):
             encoded, attempts = encode_with_recovery(clip, tokens, memory, torch, phase, max_attempts=4,
                                                      attempt=attempt)
         loading['encoder_attempts'] = attempts
@@ -524,7 +527,7 @@ def _encode(args, request, resident, trace):
                 tokens = clip.tokenize(prompt, **reference_options(normalized, media_kwargs, step))
                 size = input_size(tokens)
                 current.clear()
-                with readonly_pinning(torch, memory):
+                with readonly_pinning(torch, memory), layer_progress(clip.cond_stage_model, 'encoder_compute_reference'):
                     stage_encoded, stage_attempts = encode_with_recovery(
                         clip, tokens, memory, torch, phase, max_attempts=4, attempt=attempt)
                 stage_task = task_for(stage_media)

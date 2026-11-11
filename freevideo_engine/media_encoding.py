@@ -650,6 +650,12 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
             std = torch.tensor(vae.config.latents_std).view(1, 1, -1)
             if vae.config.sampling_rate != 32000:
                 raise ValueError('Reference audio normalization requires the pinned 32 kHz H3 VAE')
+            from .work_progress import WorkProgress
+            pending_audio = sum(1 for i in audio_rows if i not in audio_latents)  # cached files are not work
+            audio_work = WorkProgress('encoding', 'media_encode_audio', pending_audio, 'files') if pending_audio else None
+            if audio_work:
+                audio_work.update(0)
+            encoded_audio = 0
             for index in audio_rows:
                 if index not in audio_latents:
                     audio = torch.from_numpy(np.load(normalized[index]['audio'], allow_pickle=False)).to(device)
@@ -659,6 +665,9 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
                         _remember_latent(audio_cache, audio_keys[index], audio_latents[index],
                                          Path(normalized[index]['audio']).parent)
                     del audio, latent
+                    encoded_audio += 1
+                    if audio_work:
+                        audio_work.update(encoded_audio)
             del vae
             gc.collect()
             empty_cache()

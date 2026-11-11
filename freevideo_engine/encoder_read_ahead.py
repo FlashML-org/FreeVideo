@@ -31,8 +31,9 @@ MEMORY_CHECK_BYTES = 256 * 2**20
 
 
 class EncoderReadAhead:
-    def __init__(self, path, *, ram_budget_bytes=None):
+    def __init__(self, path, *, ram_budget_bytes=None, progress=None):
         self.path = Path(path)
+        self.progress = progress  # progress(read_bytes, total_bytes) after each chunk; reporting only
         self.ram_budget_bytes = ram_budget_bytes
         self.cancelled = threading.Event()
         self.thread = None
@@ -87,6 +88,8 @@ class EncoderReadAhead:
                         raise ValueError('Encoder checkpoint truncated during read-ahead')
                     remaining -= count
                     self.result['read_bytes'] += count
+                    if self.progress is not None:
+                        self.progress(self.result['read_bytes'], total)
             current = self.path.stat()
             if (current.st_size, current.st_mtime_ns) != (stamp.st_size, stamp.st_mtime_ns):
                 raise ValueError('Encoder checkpoint changed during read-ahead')

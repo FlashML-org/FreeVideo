@@ -76,6 +76,8 @@ STAGES = frozenset((
     'complete',
     'encode',
     'encoder_compute',
+    'encoder_compute_reference',
+    'encoder_device_load',
     'encoder_load',
     'encoder_save',
     'encoder_tokenize',
@@ -90,6 +92,7 @@ STAGES = frozenset((
     'latent_upscale',
     'latent_validation',
     'layers',
+    'media_encode_audio',
     'media_vae',
     'offload_release',
     'other',
@@ -102,6 +105,8 @@ STAGES = frozenset((
     'transformer_release',
     'verify',
     'video',
+    'weight_pin',
+    'weight_read',
 ))
 
 TIMING_PHASES = frozenset((

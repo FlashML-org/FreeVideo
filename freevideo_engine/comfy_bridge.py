@@ -154,6 +154,9 @@ def _engine_version():
 
 
 # Names emitted by both decoders; forecast keys use the same suffixes.
+WORK_LABELS = {'encoding': 'Encoding text and images', 'load': 'Preparing offloaded weight storage',
+               'decode': 'Decoding the video'}
+WORK_UNITS = ('bytes', 'layers', 'files', 'frames', 'chunks')
 _DECODE_PARTS = {'Loading video VAE': 'vae_load', 'Decoding the video': 'video_decode',
                  'Loading and decoding audio': 'audio_load_decode', 'Saving MP4 and audio': 'encode'}
 
@@ -1124,6 +1127,15 @@ def progress_message(event):
         return dict(label='Decoding the video', timing_phase='decode', phase='decode', stage='video',
                     done=event.get('done'), total=event.get('total'), unit='frames',
                     elapsed_seconds=event.get('elapsed_seconds'))
+    if name == 'work_progress':
+        # Real completed counts inside a long step that otherwise prints nothing.
+        group, stage = event.get('group'), event.get('stage')
+        done, total, unit = event.get('done'), event.get('total'), event.get('unit')
+        if (group not in WORK_LABELS or type(done) is not int or type(total) is not int
+                or not 0 <= done <= total or total < 1 or unit not in WORK_UNITS):
+            return None
+        return dict(label=WORK_LABELS[group], timing_phase=group, phase=group, stage=stage,
+                    done=done, total=total, unit=unit, elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}
     if name == 'media_encode_progress':
