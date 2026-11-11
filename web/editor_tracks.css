@@ -68,6 +68,8 @@
 .fv-ed-range-border[data-limited=true]{border-color:var(--fv-warning)}
 .fv-ed-range-border[data-limited=true] .fv-ed-boundary-handle{background:var(--fv-warning)}
 .fv-ed-snap-line,.fv-ed-insertion-line{position:absolute;top:24px;bottom:0;width:1px;background:var(--fv-accent)}
+.fv-ed-beat-lines{position:absolute;inset:0;pointer-events:none}
+.fv-ed-beat-line{position:absolute;width:1px;background:var(--fv-muted);opacity:.45}
 .fv-ed-insertion-line{width:2px;background:var(--fv-ink)}
 .fv-ed-insertion-line:before{content:"";position:absolute;top:-3px;left:-3px;width:8px;height:6px;background:inherit;clip-path:polygon(0 0,100% 0,50% 100%)}
 .fv-ed-playhead{position:absolute;top:18px;width:1px;background:var(--fv-ink);z-index:6;pointer-events:none}
@@ -85,7 +87,7 @@
 .fv-ed-clip-popover{max-height:calc(100% - 16px);overflow:auto}
 .fv-ed-track-view [hidden]{display:none!important}
 @media(max-width:520px){.fv-ed-track-view,.fv-ed-track-view[data-track-switches=true],.fv-studio.fv-editor .fv-ed-track-view[data-track-switches],.fv-studio.fv-editor[data-text-tracks] .fv-ed-track-view{--fv-ed-head-width:64px}.fv-studio.fv-editor .fv-ed-track-head>svg{display:none}.fv-ed-track-view .fv-ed-track-heads .fv-ed-track-head,.fv-ed-track-view .fv-ed-track-heads .fv-ed-track-head[data-text-track=true]{padding:0 2px 0 12px;box-sizing:border-box}.fv-ed-track-head>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.fv-ed-track-zoom{right:8px}.fv-ed-clip-status{left:5px;font-size:11px}}
-@media(forced-colors:active){.fv-ed-clip,.fv-ed-selection,.fv-ed-gesture-preview{border-color:Highlight}.fv-ed-playhead,.fv-ed-snap-line{background:CanvasText}}
+@media(forced-colors:active){.fv-ed-clip,.fv-ed-selection,.fv-ed-gesture-preview{border-color:Highlight}.fv-ed-playhead,.fv-ed-snap-line{background:CanvasText}.fv-ed-beat-line{background:GrayText;opacity:1}}
 
 /* Gesture affordances; track slots and heads are owned by the track layout. */
 .fv-ed-selection.fv-ed-range{pointer-events:auto;cursor:grab}

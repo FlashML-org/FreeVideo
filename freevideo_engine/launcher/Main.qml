@@ -58,7 +58,11 @@ ApplicationWindow {
     readonly property bool separateVersions: !!currentRelease.product_version && !!engineRelease.product_version && currentRelease.product_version !== engineRelease.product_version
     // One line for the current step: the installer's text when it has one (a download and its size,
     // a resumed download, a check), else the step's own detail (keeping the original file), else nothing.
-    readonly property string stepText: s.progress_text || s.detail || ""
+    // The line under the bar adds to the title; it does not say the title again.
+    readonly property string stepText: {
+        const line = s.progress_text || s.detail || "", head = s.overall.label || ""
+        return head && line.indexOf(head) === 0 && line.length > head.length ? line.slice(head.length).replace(/^\s*[·:：]\s*/, "") : line
+    }
     // While something downloads, the installer gives the seconds left from its bytes and speed; nothing otherwise.
     readonly property string remainingText: !number(s.remaining_seconds) || s.remaining_seconds <= 0 ? ""
         : s.remaining_seconds < 60 ? t("Less than a minute left", "预计还需不到 1 分钟")
@@ -174,6 +178,10 @@ ApplicationWindow {
         if (code === "active-variant-incomplete") return t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
         return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
     }
+    function upgradeReportText() {
+        // A failed upgrade reports the whole failure, including the step log, not only the first line shown on the card.
+        return upgrade.status === "failed" && upgrade.error ? upgrade.error : upgradeExplanation()
+    }
     function upgradeExplanation() {
         var u = upgrade
         var lora = u.lora_variants && u.lora_variants.length
@@ -249,6 +257,9 @@ ApplicationWindow {
     }
     function retryText() {
         if (s.retry_kind === "check") return t("Check again", "重新检查")
+        // The failure text names the button that rechecks, so the button carries the same name.
+        if (s.retry_kind === "launch" && s.failure.kind === "disk") return t("Check again", "重新检查")
+        if (s.retry_kind === "launch" && s.failure.kind === "comfy-restart") return t("Connect again", "重新连接")
         if (s.retry_kind === "launch") return t("Retry launch", "重试启动")
         if (s.retry_kind === "prepare" && usingRuntime && !offlineSelected) return t("Retry download", "重试下载")
         if (s.retry_kind === "import" || s.retry_kind === "prepare") return t("Retry import", "重试导入")
@@ -308,8 +319,8 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true; Layout.bottomMargin: 8; implicitHeight: busyBody.implicitHeight + 28
                 radius: theme.radiusMd; color: theme.surface; border.color: theme.border
-                // Waiting for the person to confirm the plan is not work in progress.
-                opacity: s.working ? 1 : 0; visible: !win.narrow && opacity > 0
+                // Waiting for the person to confirm the plan is not work in progress; the install page shows its own progress.
+                opacity: s.working && s.page === "launcher" ? 1 : 0; visible: !win.narrow && opacity > 0
                 Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                 ColumnLayout {
                     id: busyBody; x: 14; y: 14; width: parent.width - 28; spacing: 8
@@ -467,6 +478,7 @@ ApplicationWindow {
                                 text: t("Repair also updates the engine to " + releaseVersion(currentRelease) + ".", "修复时会一并更新到新版引擎 " + releaseVersion(currentRelease) + "。") }
                         Flow {
                             visible: !notAFault; Layout.fillWidth: true; spacing: 8
+                            // Actions that resolve the problem first, then the report buttons.
                             FButton { objectName: "moveToDisk"; visible: diskFailure && s.form.new_comfy && !!bestDisk; enabled: !s.busy; primary: true
                                       text: bestDisk ? t("Install on \"" + bestDisk.name + "\"", "改装到“" + bestDisk.name + "”") : ""
                                       onClicked: backend.useDisk(bestDisk.path) }
@@ -478,15 +490,25 @@ ApplicationWindow {
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
-                            FButton { objectName: "copyError"; visible: !diskFailure && !notAFault; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
-                            FButton { objectName: "showError"; visible: !notAFault; text: errorDetailsOpen ? t("Hide details", "收起详情") : t("Show details", "查看详情"); flat: true; onClicked: errorDetailsOpen = !errorDetailsOpen }
                             FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                        }
+                        FButton {
+                            objectName: "showError"; visible: !notAFault; text: t("Technical details", "技术详情"); flat: true
+                            leftPadding: 30; Layout.leftMargin: -8; onClicked: errorDetailsOpen = !errorDetailsOpen
+                            Rectangle {
+                                x: 14; anchors.verticalCenter: parent.verticalCenter; width: 7; height: 7; color: "transparent"
+                                border.width: 0; clip: false
+                                rotation: errorDetailsOpen ? 45 : -45
+                                Rectangle { anchors.right: parent.right; width: parent.width; height: 1.5; color: theme.muted; anchors.bottom: parent.bottom }
+                                Rectangle { anchors.right: parent.right; width: 1.5; height: parent.height; color: theme.muted; anchors.bottom: parent.bottom }
+                            }
                         }
                         ScrollView {
                             visible: errorDetailsOpen && !notAFault; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
                             TextArea { id: errorText; objectName: "failureDetails"; text: s.error; readOnly: true; selectByMouse: true; wrapMode: Text.Wrap; color: theme.muted; font.family: theme.mono; font.pixelSize: theme.micro; background: null; textFormat: TextEdit.PlainText }
                         }
+                        FButton { objectName: "copyError"; visible: errorDetailsOpen && !diskFailure && !notAFault; text: t("Copy details", "复制详情"); onClicked: backend.copy(s.error) }
                     }
                 }
 
@@ -885,7 +907,7 @@ ApplicationWindow {
                             FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
                                       text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
                             FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
-                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeExplanation(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(upgradeExplanation(), t("Model upgrade", "模型升级")) }
+                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(upgradeReportText(), t("Model upgrade", "模型升级")) }
                             FButton {
                                 objectName: "modelUpgradeButton"; primary: true
                                 visible: upgrade.status === "available" || upgrade.status === "releasable"
@@ -902,6 +924,8 @@ ApplicationWindow {
                         }
                     }
                     FCard {
+                        // A failed start is told once, by the problem card above; this card is for every other state.
+                        objectName: "statusCard"; visible: !(s.status === "failed" && !!s.error)
                         Layout.fillWidth: true; padding: 26; spacing: 18
                         RowLayout {
                             spacing: 20; Layout.fillWidth: true
@@ -952,11 +976,13 @@ ApplicationWindow {
                         Layout.fillWidth: true; padding: 22; spacing: 12
                         FText { text: t("Installation", "安装信息"); font.weight: Font.DemiBold }
                         GridLayout {
+                            visible: !!s.form.comfy || !!s.form.engine
                             Layout.fillWidth: true; columns: 2; columnSpacing: 16; rowSpacing: 8
-                            FText { text: "ComfyUI"; color: theme.muted; font.pixelSize: theme.micro + 1 }
-                            FText { text: s.form.comfy; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; elide: Text.ElideMiddle; maximumLineCount: 1 }
-                            FText { text: "FreeVideo"; color: theme.muted; font.pixelSize: theme.micro + 1 }
-                            FText { text: s.form.engine; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; elide: Text.ElideMiddle; maximumLineCount: 1 }
+                            // A row appears only when it has a value.
+                            FText { visible: !!s.form.comfy; text: "ComfyUI"; color: theme.muted; font.pixelSize: theme.micro + 1 }
+                            FText { visible: !!s.form.comfy; text: s.form.comfy; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; elide: Text.ElideMiddle; maximumLineCount: 1 }
+                            FText { visible: !!s.form.engine; text: "FreeVideo"; color: theme.muted; font.pixelSize: theme.micro + 1 }
+                            FText { visible: !!s.form.engine; text: s.form.engine; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; elide: Text.ElideMiddle; maximumLineCount: 1 }
                         }
                         RowLayout {
                             spacing: 12; Layout.topMargin: 4

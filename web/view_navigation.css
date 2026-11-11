@@ -32,3 +32,4 @@ html.fv-toolbar-dragging,html.fv-toolbar-dragging *{cursor:grabbing!important;us
 
 /* A long export hint must not enlarge the shared header's internal grid row. */
 @media(min-width:681px){.fv-studio .fv-header:has(.fv-view-switch){grid-template-rows:minmax(0,1fr)}}
+@media(max-width:480px){.fv-studio .fv-header>.fv-view-switch{display:flex;width:100%;box-sizing:border-box;min-width:0}.fv-studio .fv-view-switch button{flex:1 1 0;min-width:0;padding:5px 2px;font-size:13px;text-align:center;justify-content:center}}

@@ -31,7 +31,8 @@ VERSION = re.compile(r'\d+\.\d+\.\d+')
 TOP_FILES = {'pyproject.toml', 'README.md', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md',
              'MANIFEST.in', '__init__.py', 'freevideo_source_bootstrap.py', 'freevideo_ed25519.py',
              'freevideo_update_keys.py', 'freevideo', 'freevideo.ps1', 'freevideo.cmd',
-             'setup.sh', 'setup.ps1', 'setup.cmd', 'test.sh', 'test.ps1', 'test.cmd'}
+             'setup.sh', 'setup.ps1', 'setup.cmd', 'test.sh', 'test.ps1', 'test.cmd',
+             'freevideo_engine/frame_preview_decoder.safetensors'}
 EXTENSIONS = {'.py', '.json', '.txt', '.ps1', '.sh', '.js', '.css', '.svg', '.png', '.ico',
               '.qml', '.woff2', '.otf', '.webp'}
 ACTIVE = None
@@ -74,6 +75,11 @@ TOUR_FILES = frozenset((
     'web/assets/tour/c1-s2.mp4',
     'web/assets/tour/c1-s2.webp',
     'web/assets/tour/c2-product.webp',
+    'web/assets/tour/sample-fjord.webp',
+    'web/assets/tour/sample-jazz.webp',
+    'web/assets/tour/sample-perfume.webp',
+    'web/assets/tour/sample-fox.webp',
+    'web/assets/tour/sample-window.webp',
     'web/assets/tour/c2-whitemodel.webp',
     'web/assets/tour/c2g-s3.mp4',
     'web/assets/tour/c2g-s3.webp',

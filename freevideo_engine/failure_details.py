@@ -655,6 +655,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         (r'Continue from video cannot be used with these settings\. Turn on "Two-pass', 'continuation-passes',
          ('Continuing needs two-pass acceleration', '接续需要二次采样加速'),
          ('Turn on "Two-pass acceleration" and turn off the first-pass preview.', '请打开“二次采样加速”，并关闭先出预览。')),
+        (r'audio_original_passes: ', 'audio-original-passes',
+         ('This audio needs two-pass acceleration', '这段音频需要二次采样加速'),
+         ('Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二次采样加速”，或把音频改选“参考”。')),
+        (r'audio_original_route: ', 'audio-original-route',
+         ('"Use as is" is not available here', '这里还不能用“原样使用”'),
+         ('Set the audio to "Reference".', '请把音频改选“参考”。')),
         (r'Continue from video cannot be used with these settings\. Clear either', 'continuation-refine',
          ('A continued part is made in full', '接续会完整生成这一段'),
          ('Clear either "Second pass of preview" or "Continue from video".', '请清空“继续二采”或“接着生成”其中一项。')),
@@ -744,6 +750,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Windows PowerShell could not start', 'Windows PowerShell 无法启动'),
          ('FreeVideo uses Windows PowerShell to inspect this computer, but Windows PowerShell could not start. Restart the computer, then click "Retry installation". If it fails again, export the report.',
           'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 没能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
+        (r'\[CUDA_INIT_FAILED\]', 'gpu-cuda-init',
+         ('CUDA could not start on this GPU', 'CUDA 未能在这张显卡上启动'),
+         ('The NVIDIA driver is installed. Restart the computer, then open FreeVideo again. If it still fails, export the report.',
+          'NVIDIA 显卡驱动已安装。请重启电脑，然后重新打开 FreeVideo。仍然失败时，可以导出报告。')),
         (r'CURL_REPAIR_(?:TIMEOUT|HTTP|TLS|DNS|FAILED|PROXY_UNSUPPORTED|PROXY_MISSING|REDIRECT|SIZE|INTEGRITY)', 'download-tool-network',
          ('The download tool could not be prepared', '下载工具自动补齐失败'),
          ('Check the connection mode in Downloads and retry. Export the report for the source, route and failure code.',
@@ -885,6 +895,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 if found:
                     detail = ('文件夹：%s' if zh else 'Folder: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'gpu-cuda-init':
+                found = re.search(r'\[CUDA_INIT_FAILED\] NVIDIA driver ([\w.]+) \(([^)]*)\)', text, re.I)
+                if found:
+                    version, model = found.groups()
+                    detail = ('检测到：%s，驱动 %s' if zh else 'Detected: %s, driver %s') % (model, version)
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             return dict(title=title[zh], detail=detail, action=action[zh], kind=kind)
     # Validation messages are already actionable. Show the cause, not a stack
     # trace or a guessed hardware diagnosis, and leave long details expandable.
@@ -904,11 +920,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     # failed step's own line is found anywhere in the text.
     step = re.search(r'^Failed step: ([\w.-]+) \(exit code (-?\w+)\)', text, re.M)
     if step:
-        # The internal step id never reaches the card; the exit code stays as the detail.
+        # The internal step id never reaches the card; the exit code stays in the technical details.
         name = _step_name(step.group(1), zh)
         if name:
             title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
-        detail = ('退出码 %s' if zh else 'Exit code %s') % step.group(2)
+        detail = ''
     # A message the launcher raised itself (a ValueError) is the next step already.
     unexpected = 'Traceback' in text and not re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '')
     detail = lan_error(detail, zh)

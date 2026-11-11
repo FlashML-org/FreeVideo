@@ -84,13 +84,13 @@ def new_id():
     return 'j' + secrets.token_hex(6)
 
 
-def media_item(value, path, *, image=False, frame_default=None, early=False):
+def media_item(value, path, *, image=False, frame_default=None, early=False, timed=False):
     if isinstance(value, str):
         value = {'file': value}
     value = dict(value) if isinstance(value, dict) else value
     if isinstance(value, dict) and frame_default is not None and any(k in value for k in ('from_job', 'library')):
         value.setdefault('frame', frame_default)
-    errors = contract.issues(contract.media(image, local=True, early=early), value, path)
+    errors = contract.issues(contract.media(image, local=True, early=early, timed=timed), value, path)
     if errors:
         raise SpecError(errors)
     if 'file' in value and re.fullmatch(contract.CHAT_ATTACHMENT_NAME['pattern'], value['file']):
@@ -177,6 +177,8 @@ def generation_media(value):
     result = {role: media_item(value[role], '/media/' + role, image=True) for role in FRAMES if value.get(role) is not None}
     if value.get('references'):
         result['references'] = [media_item(v, '/media/references/%d' % i, early=True) for i, v in enumerate(value['references'])]
+    if value.get('middle'):
+        result['middle'] = [media_item(v, '/media/middle/%d' % i, image=True, timed=True) for i, v in enumerate(value['middle'])]
     return result
 
 
@@ -279,6 +281,10 @@ def normalize(value, *, port=None):
                          contract.IMAGE_ASPECTS[value.get('aspect', '1:1')])
         result.update(prompt=value.get('prompt', ''), width=width, height=height,
                       images=[item if isinstance(item, str) else item['file'] for item in value.get('images', [])])
+        # The size is final only when the model is: a shape without width and height is sized again for H3 Image.
+        if 'width' not in value:
+            result['aspect'] = value.get('aspect', '1:1')
+        result.update({k: value[k] for k in ('model', 'tier') if k in value})
         if value.get('seed') is not None:
             result['seed'] = value['seed']
         if value.get('people'):

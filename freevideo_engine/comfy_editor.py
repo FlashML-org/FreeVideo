@@ -408,6 +408,9 @@ def _import_path(root, identity, filename='import.json'):
     return _editor_path(root, 'imports/' + identity + '/' + filename)
 
 
+BEAT_CONFIDENCE = 0.5
+
+
 def _read_json(path, limit=BODY_BYTES):
     with path.open('rb') as stream:
         data = stream.read(limit + 1)
@@ -1181,6 +1184,31 @@ def thumbnail(root, key):
     return cached
 
 
+def beats(root, key):
+    from . import beats as analysis
+    path = media_path(root, key)
+    probe(path)
+    cached = _cache(root, 'beats', key, path, str(analysis.VERSION)).with_suffix('.json')
+    cached = _safe(root, cached.relative_to(Path(root).resolve()).as_posix())
+    try:
+        record = _read_json(cached, 256 * 1024)
+        if (type(record['confidence']) in (int, float) and 0 <= record['confidence'] <= 1
+                and all(type(x) in (int, float) and x >= 0 for x in record['beats'])):
+            return record
+    except (OSError, ValueError, TypeError, KeyError):
+        pass
+    found = analysis.analyse(path)
+    # Below this confidence the pulse is a guess, so no beats are offered at all.
+    record = dict(confidence=found['confidence'], bpm=found['bpm'],
+                  beats=found['beats'] if found['confidence'] >= BEAT_CONFIDENCE else [])
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        _write(cached, record)
+    except OSError:
+        pass  # Beats still work on a read-only output disk.
+    return record
+
+
 def waveform(root, key, points=200):
     import av
     import numpy as np
@@ -1422,6 +1450,12 @@ def register():
         async with previews:
             result = await asyncio.to_thread(waveform, root(), request.query.get('key'), int(request.query.get('points', '200')))
         return web.json_response(dict(peaks=result), headers=_HEADERS)
+
+    @endpoint('get', '/freevideo/editor/beats')
+    async def pulse(request):
+        async with previews:
+            result = await asyncio.to_thread(beats, root(), request.query.get('key'))
+        return web.json_response(result, headers=_HEADERS)
 
     @endpoint('get', '/freevideo/editor/thumbnail')
     async def cover(request):

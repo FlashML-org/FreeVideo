@@ -164,21 +164,22 @@ def prepare(media, canvas, directory):
     result, key_images, ref_items = [], [], []
     limit = reference_frames(canvas)
     numbers = {'image': 0, 'video': 0, 'audio': 0}
-    for anchor in ('first', 'last'):
-        if not media.get(anchor):
-            continue
-        c_hash = media[anchor].get('sha256')
-        if not c_hash and media[anchor].get('path'):
+    keyframe_rows = ([('first', media['first'])] if media.get('first') else []) + [
+        ('mid:%d' % row['frame'], row) for row in media.get('middle', [])] + (
+        [('last', media['last'])] if media.get('last') else [])
+    for anchor, info in keyframe_rows:
+        c_hash = info.get('sha256')
+        if not c_hash and info.get('path'):
             from .input_cache import digest
-            c_hash = digest(media[anchor]['path'])
-        with Image.open(media[anchor]['path']) as source:
+            c_hash = digest(info['path'])
+        with Image.open(info['path']) as source:
             image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'),
                                  (canvas['width'], canvas['height']), method=Image.Resampling.LANCZOS)
-        target = directory / (anchor + '.npy')
+        target = directory / (anchor.replace(':', '_') + '.npy')
         np.save(target, np.array(image)[None], allow_pickle=False)
         key_images.append(torch.from_numpy(np.array(image)).float().div_(255)[None])
         result.append({'kind': 'image', 'anchor': anchor, 'pixels': str(target), 'frames': 1,
-                       'content_hash': c_hash, 'source_path': media[anchor]['path'],
+                       'content_hash': c_hash, 'source_path': info['path'],
                        'width': canvas['width'], 'height': canvas['height'], 'crop_mode': 'fit'})
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']

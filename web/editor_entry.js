@@ -4,7 +4,7 @@ import {api} from '../../scripts/api.js';
 import {app} from '../../scripts/app.js';
 import {openStudio, showNodes} from './studio.js';
 import {cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
-import {openAutopilot, viewChanged} from './view_navigation.js';
+import {openAutopilot, openImage, viewChanged} from './view_navigation.js';
 import {mediaReferences} from './editor_media_references.js';
 import {turnNodeOn} from './studio_queue.js';
 function editorPanel(node) {
@@ -62,6 +62,7 @@ export function openEditorView(node, {studio, work = null, extend = false, onPro
     const handle = openEditor({api, app, panel, from: work ? {work, ...(extend ? {extend: true} : {})} : null, onView(view, options = {}) {
         if (view === 'nodes') showNodes(node, studio);
         else if (view === 'autopilot') openAutopilot(node, {studio, ...options});
+        else if (view === 'image') openImage(node, {studio});
         else if (studio?.open) viewChanged('studio', node);
         else openStudio(node);
     }});

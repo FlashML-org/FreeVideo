@@ -202,6 +202,9 @@ class LiveGPUBudget:
         self.maximum = min(maximum_bytes, self.total,
                            report.get('benchmark_allocator_limit_bytes') or self.total)
         self.reserve = reserve_bytes
+        # A ceiling the request's own placement sets below the driver's budget,
+        # such as the commit headroom sampling can be backed by; None for none.
+        self.ceiling = None
         self.pending = None
         self.settle_seconds, self.sleep, self.clock = settle_seconds, sleep, clock
         self.started = clock()
@@ -231,6 +234,17 @@ class LiveGPUBudget:
         except (OSError, RuntimeError, AttributeError, ValueError) as error:
             self._error(error)
 
+    def set_ceiling(self, ceiling):
+        """Hold the limit at or below `ceiling` (None lifts it).
+
+        Lifting it only removes the cap: growth still needs the same
+        confirmed driver reading as any other increase.
+        """
+        if ceiling is None and self.ceiling is not None:
+            # A growth the old cap held back is not a reading of the lifted limit.
+            self.pending = None
+        self.ceiling = ceiling
+
     def _error(self, error):
         errors = self.receipt['errors']
         if len(errors) < 8 and str(error) not in errors:
@@ -253,6 +267,8 @@ class LiveGPUBudget:
         known = 'wddm_pool_capacity_bytes' in decision['bounds']
         if not known:
             candidate = min(candidate, self.limit)
+        if self.ceiling is not None:
+            candidate = min(candidate, self.ceiling)
         self.device_memory = None
         if self.device is not None:
             try:

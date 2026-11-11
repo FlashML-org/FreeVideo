@@ -95,8 +95,11 @@ def resolve_assets(serialized, input_directory):
     result = {}
     for row in rows:
         if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'voice_only', 'keep_source_audio', 'depth',
-                                                    'use', 'range', 'segment'}:
+                                                    'use', 'range', 'segment', 'seconds'}:
             raise ValueError('Invalid media item')
+        if 'seconds' in row and (row.get('role') != 'middle' or type(row['seconds']) not in (int, float)
+                                 or not math.isfinite(row['seconds']) or row['seconds'] <= 0):
+            raise ValueError('seconds is a positive time on a middle frame')
         if 'depth' in row:
             if type(row['depth']) is not bool:
                 raise ValueError('Media depth must be a boolean')
@@ -168,8 +171,17 @@ def resolve_assets(serialized, input_directory):
                 if row['keep_source_audio']:
                     reference['keep_source_audio'] = True
             result.setdefault('references', []).append(reference)
+        elif role == 'middle':
+            from .media_request import MAX_MIDDLE
+            if kind != 'image':
+                raise ValueError('Middle frames must be images')
+            if 'seconds' not in row:
+                raise ValueError('Set the time of each middle frame in seconds')
+            if len(result.get('middle', ())) >= MAX_MIDDLE:
+                raise ValueError('Use at most %d middle frames' % MAX_MIDDLE)
+            result.setdefault('middle', []).append({'path': str(path), 'seconds': row['seconds']})
         else:
-            raise ValueError('Media role must be first, last or reference')
+            raise ValueError('Media role must be first, last, middle or reference')
     from .original_audio import original
     original(result)
     # Mixing keyframes and references is checked when the video is made (comfy_media.export):

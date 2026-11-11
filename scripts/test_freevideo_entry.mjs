@@ -15,7 +15,12 @@ import {cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputV
 class Element {
     constructor(tag) {
         this.tag = tag; this.children = []; this.dataset = {}; this.attributes = {};
-        this.classList = {toggle() {}, add() {}};
+        const classes = new Set();
+        this.classList = {toggle(name, force) {
+            const enabled = force ?? !classes.has(name);
+            if (enabled) classes.add(name); else classes.delete(name);
+            return enabled;
+        }, add(...names) { names.forEach(name => classes.add(name)); }, contains: name => classes.has(name)};
         this.style = {setProperty(name, value) { this[name] = value; }}; this.offsetHeight = 66;
     }
     append(...children) { for (const child of children) { child.parentNode = this; this.children.push(child); } }
@@ -119,6 +124,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
+        source = source.replace("from './middle_frames.js'", `from '${new URL('../web/middle_frames.js', import.meta.url).href}'`);
         source = source
             .replace("import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';", 'const {createErrorPanel,errorText,createErrorReport,adviceFor} = globalThis.__freevideoEntryTest;')
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
@@ -133,6 +139,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';", 'const {startDoneNotify} = globalThis.__freevideoEntryTest; const askDesktopPermission = (...args) => globalThis.__permissionAsks.push(args); const DESKTOP_SETTING = "FreeVideo.DoneNotify.Desktop";')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
+            .replace("import { openReferenceMenu } from './image_library.js';", 'const openReferenceMenu = () => {};')
             .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
             .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
@@ -525,7 +532,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         await extension.beforeRegisterNodeDef(MediaNode, {name: 'FreeVideoMedia'});
         const media = new MediaNode(); media.onNodeCreated();
         const panel = media.dom.find(row => row.name === 'freevideo_media').element;
-        const [libraries, toolbar, mode, note, audioHelp, connections] = panel.children;
+        const [libraries, toolbar, note, connections] = panel.children;
         const [castRow, sceneRow, propRow] = libraries.children;
         assert.equal(libraries.className, 'fv-cast-libraries');
         assert.equal(castRow, casts[0].element);
@@ -536,9 +543,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(casts[0].options.api, api);
         assert.equal(typeof casts[0].options.uploadOne, 'function');
         assert.equal(typeof casts[0].options.viewURL, 'function');
-        assert.match(mode.textContent, /Reference/);
-        assert.equal(audioHelp.hidden, false);
-        assert.match(audioHelp.textContent, /<Audio 1>/);
+        assert.equal(panel.children.some(e => e.className === 'fv-mode'), false, 'The media card has no mode capsule');
         assert.match(connections.children[0].textContent, /Reference audio.*Connected/);
         const audioButton = toolbar.children.find(e => e.tag === 'button' && e.textContent === 'Reference audio');
         const audioPicker = toolbar.children.find(e => e.tag === 'input' && e.accept.startsWith('.wav'));
@@ -555,9 +560,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
         assert.match(note.textContent, /Choose keyframes or references/);
         media.widgets[0].value = '[]'; media.inputs = []; media.onConnectionsChange(); await Promise.resolve();
-        assert.equal(audioHelp.hidden, true);
-        assert.equal(mode.textContent, '');
-        assert.equal(mode.hidden, true);
+        assert.equal(note.textContent, '');
         const imageRole = toolbar.children.find(e => e.tag === 'div' && e.className === 'fv-select')?.children.find(e => e.tag === 'select');
         const imagePicker = toolbar.children.find(e => e.tag === 'input' && e.accept.startsWith('.png'));
         assert.equal(imageRole.value, 'reference');
@@ -577,6 +580,78 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(mounted.children[0].children[0].children[1], casts[4].element);
         assert.equal(mounted.children[0].children[0].children[2], casts[5].element);
         disposeMedia(); assert.equal(casts[3].destroyed, true); assert.equal(casts[4].destroyed, true); assert.equal(casts[5].destroyed, true);
+
+        for (const language of ['en', 'zh']) {
+            await t.test(`${language} audio warning follows the widget, connections and restored workflows`, async () => {
+                navigator.language = language;
+                const calls = [], changes = [];
+                const callback = function (...args) { calls.push({receiver: this, args}); return 'chosen'; };
+                try {
+                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// audio warning: ${language}`).toString('base64'));
+                    class AudioMedia extends GenerateNode {
+                        constructor() {
+                            super(); this.id = 570; this.type = 'FreeVideoMedia';
+                            this.widgets = [{name: 'assets', value: '[]'}, {name: 'audio_use', value: 'original', callback}];
+                            this.graph = {links: {}, change: () => changes.push('changed')};
+                        }
+                    }
+                    await extensions.at(-1).beforeRegisterNodeDef(AudioMedia, {name: 'FreeVideoMedia'});
+                    const owner = new AudioMedia(); owner.onNodeCreated();
+                    const nodePanel = owner.dom.find(row => row.name === 'freevideo_media').element;
+                    const warning = nodePanel.children.find(child => child.className === 'fv-note');
+                    const expected = language === 'zh'
+                        ? '请连接“Reference audio”，或把“Audio use”改为“reference”后再生成。'
+                        : 'Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.';
+                    const assertWarning = enabled => {
+                        assert.equal(warning.textContent === expected, enabled);
+                        assert.equal(warning.classList.contains('fv-error'), enabled);
+                    };
+                    assertWarning(true);
+                    const widget = owner.widgets[1], receiver = {fixture: true};
+                    widget.value = 'reference';
+                    const before = changes.length;
+                    assert.equal(widget.callback.call(receiver, 'reference', 12), 'chosen');
+                    assert.deepEqual(calls, [{receiver, args: ['reference', 12]}]);
+                    assert.equal(changes.length, before + 1, 'one graph update per widget callback');
+                    assertWarning(false);
+                    widget.value = 'original'; widget.callback('original'); assertWarning(true);
+                    // Link id zero is valid; an unrelated image connection does not count as audio.
+                    for (const link of [0, 23]) {
+                        owner.inputs = [{name: 'reference_audio', link}]; owner.onConnectionsChange();
+                        await Promise.resolve(); assertWarning(false);
+                    }
+                    owner.inputs = [{name: 'reference_audio', link: null}, {name: 'reference', link: 1}];
+                    owner.onConnectionsChange(); await Promise.resolve(); assertWarning(true);
+                    // Uploaded audio has its own use switch and does not satisfy the connected input.
+                    owner.widgets[0].value = JSON.stringify([{file: 'voice.wav', role: 'reference'}]);
+                    owner.onConfigure(); await Promise.resolve(); assertWarning(true);
+                    widget.value = ''; owner.onConfigure(); await Promise.resolve();
+                    assert.equal(widget.value, 'reference'); assertWarning(false);
+                    widget.value = 'original'; owner.inputs = [];
+                    owner.onConfigure(); await Promise.resolve(); assertWarning(true);
+                    const wrapped = widget.callback, mount = new Element('mount');
+                    const dispose = owner.freevideoCreateMediaEditor(mount);
+                    assert.equal(widget.callback, wrapped, 'opening the Studio editor does not wrap again');
+                    const mountedWarning = mount.children[0].children.find(child => child.className === 'fv-note');
+                    assert.equal(mountedWarning.textContent, expected);
+                    widget.value = 'reference'; widget.callback('reference');
+                    assertWarning(false); assert.notEqual(mountedWarning.textContent, expected);
+                    dispose(); owner.onRemoved();
+                    // A new widget without a prior callback and old saves without the widget both work.
+                    for (const widgets of [[{name: 'audio_use', value: 'reference'}], []]) {
+                        const legacy = new AudioMedia(); legacy.widgets.splice(1, 1, ...widgets);
+                        legacy.onNodeCreated();
+                        if (widgets.length) {
+                            legacy.widgets[1].value = 'original';
+                            assert.doesNotThrow(() => legacy.widgets[1].callback('original'));
+                            const legacyWarning = legacy.dom.find(row => row.name === 'freevideo_media').element.children.find(child => child.className === 'fv-note');
+                            assert.equal(legacyWarning.textContent, expected);
+                        }
+                        legacy.onRemoved();
+                    }
+                } finally { navigator.language = 'en'; }
+            });
+        }
 
         await t.test('Generate node removal preserves the original hook when setSize throws', async () => {
             const previousInterval = globalThis.setInterval, previousClear = globalThis.clearInterval;

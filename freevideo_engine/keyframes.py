@@ -45,7 +45,9 @@ def validate_conditioning(prompt, tags, conditions, task, width, height):
     if task not in expected_anchors or not conditions:
         raise ValueError('Keyframe task requires its encoded anchors')
     anchors, latents = conditions
-    if tuple(anchors) != expected_anchors[task] or len(latents) != len(anchors):
+    from .mid_keyframes import native_anchors, validate_order
+    validate_order(tuple(anchors), task)
+    if native_anchors(anchors) != expected_anchors[task] or len(latents) != len(anchors):
         raise ValueError(task + ' requires anchors ' + repr(expected_anchors[task]))
     if not bool((tags == 0).any()):
         raise ValueError('Keyframes require prompt embeddings encoded with their images')

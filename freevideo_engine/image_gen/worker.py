@@ -107,10 +107,17 @@ def load_runner(pack_dir, device, *, progress=None):
     return ImageRunner(pack_dir, device=device, progress=progress)
 
 
-def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None, factory=None):
+def load_h3_runner(pack_dir, device, *, progress=None):
+    from .h3_runner import H3Runner
+    return H3Runner(pack_dir, device=device, progress=progress)
+
+
+def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None, factory=None, h3_factory=None):
     stream = sys.stdin if stream is None else stream
     output = sys.stdout if output is None else output
     factory = factory or load_runner
+    h3_factory = h3_factory or load_h3_runner
+    runner_model = None
     output_mutex = threading.Lock()
 
     def send(**row):
@@ -140,9 +147,20 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         context.timing.enter(stage)
                         send(phase='progress', stage=stage, fraction=fraction)
 
+                    model = value.get('model') or 'qwen-image-2.1-turbo'
+                    if runner is not None and runner_model != model:
+                        # One model's weights at a time on the card.
+                        runner.close()
+                        runner = None
+                        import gc
+                        gc.collect()
+                        torch = sys.modules.get('torch')
+                        if torch is not None and torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                     if runner is None:
                         context.timing.enter('load')
-                        runner = factory(pack_dir, device, progress=progress)
+                        runner = (h3_factory if model == 'minimax-h3-image' else factory)(pack_dir, device, progress=progress)
+                        runner_model = model
                     if hasattr(runner, 'last_plan'):
                         runner.last_plan = None
                     context.timing.enter('start')
@@ -161,7 +179,8 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                             value['prompt'], width=value['width'], height=value['height'],
                             seed=seed, reference_images=references, **region,
                             **(dict(loras=loras) if loras else {}),
-                            progress=progress, cancel=inbox.cancel.is_set)
+                            progress=progress, cancel=inbox.cancel.is_set,
+                            **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}))
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
                         from .back_view import generate_back, load_detector
@@ -176,9 +195,14 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         raise InterruptedError('cancelled')
                     # The parent chooses a fresh path under ComfyUI input.
                     # Exclusive creation never replaces an existing user file.
-                    with Path(value['path']).open('xb') as target:
-                        image.save(target, format='PNG')
                     plan = runner.stats().get('plan')
+                    info = None
+                    if isinstance(plan, dict) and type(plan.get('seed')) is int:
+                        from PIL.PngImagePlugin import PngInfo
+                        info = PngInfo()
+                        info.add_text('seed', str(plan['seed']))
+                    with Path(value['path']).open('xb') as target:
+                        image.save(target, format='PNG', **(dict(pnginfo=info) if info else {}))
                     if back_check is not None:
                         plan = dict(plan or {}, back_check=back_check)
                 result = dict(phase='result', path=value['path'], seconds=time.monotonic() - started, plan=plan)

@@ -97,11 +97,12 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; };
     const element = el('div', 'fv-effort');
     const header = el('div', 'fv-effort-heading');
+    const custom = el('span', 'fv-effort-custom', t('Custom', '自定义')); custom.hidden = true;
     const label = el('span', '', t('Quality', '质量'));
     const estimate = el('span', 'fv-effort-estimate');
     const warning = el('div', 'fv-effort-warning'); warning.hidden = true;
     // The names under the track show the level; the heading does not repeat it.
-    header.append(label, estimate);
+    header.append(label, custom, estimate);
     const rail = el('div', 'fv-effort-rail'); rail.tabIndex = 0;
     rail.setAttribute('role', 'slider'); rail.setAttribute('aria-label', label.textContent);
     rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', '3');
@@ -119,8 +120,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         b.onclick = () => { if (!disabled && pointer === null) commit(i); };
         names.append(b); return b;
     });
-    const custom = el('span', 'fv-effort-custom', t('Custom steps', '自定义步数')); custom.hidden = true;
-    element.append(header, warning, rail, names, custom);
+    element.append(header, warning, rail, names);
     let selected = 0, disabled = false, pointer = null, draft = 0, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '';
     function paint(position) {
         element.style.setProperty('--fv-position', position / 3);
@@ -186,9 +186,9 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         const isCustom = !level;
         element.dataset.custom = String(isCustom); custom.hidden = !isCustom;
         const unit = currentSteps === 1 && !twoPass ? t('step', '步') : t('steps', '步');
-        custom.textContent = `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`;
         paint(selected);
-        if (isCustom) rail.setAttribute('aria-valuetext', custom.textContent);
+        if (isCustom) nameButtons.forEach(b => b.removeAttribute('data-active'));  // No level is highlighted for custom steps.
+        if (isCustom) rail.setAttribute('aria-valuetext', `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`);
         rail.title = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。')
             : t('Same model. Higher effort uses more sampling steps; results vary by scene.', '使用同一模型，提高档位会增加采样步数；效果因场景而异。');
         for (const name of nameButtons) { name.disabled = disabled; name.title = ''; }

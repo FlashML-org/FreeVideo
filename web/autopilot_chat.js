@@ -1,6 +1,7 @@
 // The conversation with the connected agent: what the user says, what the agent answers, and the agent's jobs as
 // cards at the place they happened. Reads and sends use the page session; the agent's token never enters the page.
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
+import {emptyFrameIcon} from './empty_frame.js';
 import {ATTACH, attachmentURL, pickPictures, thumbnail, uploadPicture} from './chat_attachments.js';
 import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
 import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError} from './chat_data.js';
@@ -962,7 +963,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         return {box, shape};
     }
     function working(item, job) {
-        const {box} = preview(job), water = el('i', 'fv-chat-water'), percent = el('b', 'fv-chat-percent'); box.append(water, percent);
+        const {box} = preview(job); box.append(emptyFrameIcon());
         const info = el('div', 'fv-chat-info'), head = el('div'), name = el('h3'), meta = el('p', 'fv-chat-meta'); head.append(name, meta);
         const middle = el('div', 'fv-chat-where'), parts = el('div', 'fv-chat-parts'), line = el('p', 'fv-chat-line'), part = el('span'), step = el('span'); line.append(part, step);
         middle.append(parts, line);
@@ -977,13 +978,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (key !== signature) { signature = key; changed = performance.now(); }
             return next.status === 'running' && performance.now() - changed >= STALL_MS;
         };
-        // The number rides on the water, and goes under the line once there is no room left above it.
+        // The page header carries the one overall percentage; the card keeps the parts and the time left.
         const level = next => {
-            const fraction = fractionOf(next);
-            box.style.setProperty('--level', `${fraction * 100}%`);
-            percent.textContent = next.status === 'running' && fraction >= .01 ? `${Math.floor(fraction * 100)}%` : '';
-            const high = box.clientHeight;
-            box.dataset.under = String(high > 0 && high * (1 - fraction) < percent.offsetHeight + 10);
             const seconds = leftOf(next);
             left.textContent = seconds === null ? '' : about(seconds, t);
         };

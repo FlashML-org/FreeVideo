@@ -496,6 +496,8 @@ def _run(args):
         validate_frames(frames)
     canvas = original_canvas or geometry(getattr(args, 'width', 1344), getattr(args, 'height', 768),
                       frames=frames, seconds=getattr(args, 'seconds', None))
+    from .media_request import validate_middle
+    validate_middle(media, canvas['frames'])
     visible_canvas = canvas
     canvas, hide_tail = hide_tail_geometry(canvas,
         args.prompt_file.read_text(encoding='utf-8') if getattr(args, 'hide_tail', False) and args.prompt_file else None,
@@ -1058,6 +1060,8 @@ def _run(args):
                     if 'policy' in selected:
                         selected['policy'].update({k: v for k, v in live.get('policy', {}).items()
                                                   if k not in ('engine', 'decoder')})
+                        if 'commit_gpu_limit_bytes' not in live.get('policy', {}):
+                            selected['policy'].pop('commit_gpu_limit_bytes', None)
                 report['resource_prediction'] = predict(observations, resource_identity, selected, canvas, text_tokens=tokens)
                 show_prediction(report['resource_prediction'])
             def validate(metrics, telemetry, selected):
@@ -1119,6 +1123,7 @@ def _run(args):
                                gpu_budget_bytes=round(selected['gpu_budget_gb'] * 1e9),
                                gpu_reserve_bytes=selected.get('policy', {}).get('gpu_system_reserve_bytes', 0),
                                capacity_trial=bool(selected.get('policy', {}).get('capacity_trial')),
+                               preview_decoder_bytes=selected.get('policy', {}).get('preview_decoder_bytes', 0),
                                resource_attempt=attempt)
                 request.pop('first_pass_policy', None)
                 request['automatic_pass_cache'] = not bool(args.profile) and len(report.get('resource_attempts', [])) <= 1
@@ -1129,6 +1134,11 @@ def _run(args):
                     request['automatic_pass_cache'] and getattr(args, 'gpu_reserve_gib', None) is None)
                 request['gpu_capacity_bytes'] = min(hardware.vram_total,
                     int(args.vram_gib * 2**30) if args.vram_gib else hardware.vram_total)
+                limit = selected.get('policy', {}).get('commit_gpu_limit_bytes')
+                if limit:
+                    request['sampling_gpu_limit_bytes'] = limit
+                else:
+                    request.pop('sampling_gpu_limit_bytes', None)
                 from .two_pass import clamp_first_pass_for_retry, first_pass_policy, keeps_first_pass_on_retry
                 retry_keeps = (not args.profile and not request['automatic_pass_cache'] and keeps_first_pass_on_retry(
                     report.get('resource_attempts'), getattr(args, 'resource_retries', 2)))

@@ -498,13 +498,14 @@ _RELEASED = '.decoded-released.json'
 _RELEASING = threading.Lock()
 
 
-def release_decoded(folder):
+def release_decoded(folder, names=_DECODED, measure=False):
     """Delete a saved creation's decoded frames and audio, retried attempts' included.
 
     Only where the engine writes them: video.artifacts itself and its
     attempts/NN-id folders. A folder holding anything FreeVideo did not write,
     or any link, is left alone, as delete_video leaves it. Paths Windows still
-    has open are listed.
+    has open are listed. ``names`` and ``measure`` serve clear_working_files, which
+    counts what it would free before it deletes.
     """
     try:
         folder = io_path(checked_real_path(folder))
@@ -521,9 +522,9 @@ def release_decoded(folder):
         except OSError:
             left.append(_OWNED_FOLDER + '/attempts')  # retried at a later start
         for place in places:
-            paths = [place / name for name in _DECODED]
+            paths = [place / name for name in names]
             try:
-                if (place / _REFERENCE_FRAMES).is_dir() and _plain(place / _REFERENCE_FRAMES):
+                if tuple(names) == _DECODED and (place / _REFERENCE_FRAMES).is_dir() and _plain(place / _REFERENCE_FRAMES):
                     paths += sorted((place / _REFERENCE_FRAMES).glob('*.npy'))
             except OSError:
                 left.append((place / _REFERENCE_FRAMES).relative_to(folder).as_posix())
@@ -532,7 +533,8 @@ def release_decoded(folder):
                     if not _plain(path):
                         continue
                     size = path.stat().st_size
-                    path.unlink()
+                    if not measure:
+                        path.unlink()
                     freed += size
                 except FileNotFoundError:
                     continue
@@ -542,6 +544,51 @@ def release_decoded(folder):
     except OSError:
         # Listed as left, so a later start tries the whole folder again.
         return dict(freed_bytes=0, left=['.'], skipped='unreadable')
+
+
+# What a finished video's folder keeps for resuming a decode and for a preview's
+# upscale: the sampling input, the sampled latents and a refinement's input. The
+# MP4 is all that playback, export, a continuation (which re-reads the footage
+# from it) and the editor use.
+_WORKING = ('conditioning.pt', 'latents.pt', 'refine-input.pt')
+
+
+def clear_working_files(output_directory, *, apply=False):
+    """Bytes the finished, non-preview videos' working files hold; deleted when ``apply``.
+
+    A preview keeps them, since its upscale needs the first pass and the sampling
+    input. Nothing is touched for a video without a finished MP4 summary or one
+    whose request is still queued or running. Paths Windows has open are counted
+    in ``left`` and stay.
+    """
+    try:
+        output_directory = checked_real_path(output_directory)
+    except AliasUnavailable:
+        raise OSError('The output folder cannot be accessed') from None
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    totals = dict(bytes=0, freed_bytes=0, left=0)
+    if not root.is_dir():
+        return totals
+    with _RELEASING:
+        for path in sorted(root.glob('*/*/video.mp4')):
+            folder = path.parent
+            try:
+                if (not _ID.fullmatch(folder.relative_to(root).as_posix())
+                        or not _plain(folder.parent) or not _plain(folder)):
+                    continue
+                if _report(path).get('preview'):
+                    continue
+                request = folder / 'comfy-request.json'
+                if request.is_file():
+                    state = json.loads(request.read_text(encoding='utf-8')) if request.stat().st_size <= 1024 * 1024 else {}
+                    if not isinstance(state, dict) or state.get('status') in ('queued', 'starting', 'running'):
+                        continue
+            except (OSError, ValueError, TypeError):
+                continue
+            result = release_decoded(folder, _WORKING, measure=not apply)
+            totals['freed_bytes' if apply else 'bytes'] += result['freed_bytes']
+            totals['left'] += len(result['left'])
+    return totals
 
 
 # What an interrupted share or editor export leaves beside a creation: its working copy,
@@ -1402,6 +1449,23 @@ def register():
             # The creation is there but its favorite could not be written; another try may work.
             raise web.HTTPInternalServerError(text='Could not save the favorite') from None
         return web.json_response(result, headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/library/working-files')
+    async def working_files(request):
+        try:
+            result = await asyncio.to_thread(clear_working_files, folder_paths.get_output_directory())
+        except OSError:
+            raise web.HTTPInternalServerError(text='The output folder cannot be accessed') from None
+        return web.json_response(dict(bytes=result['bytes']), headers={'Cache-Control': 'no-store'})
+
+    @server.routes.post('/freevideo/library/working-files/clear')
+    async def clear_working(request):
+        try:
+            result = await asyncio.to_thread(clear_working_files, folder_paths.get_output_directory(), apply=True)
+        except OSError:
+            raise web.HTTPInternalServerError(text='The output folder cannot be accessed') from None
+        return web.json_response(dict(freed_bytes=result['freed_bytes'], left=result['left']),
+                                 headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/library/thumbnail')
     async def preview(request):

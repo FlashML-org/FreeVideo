@@ -357,6 +357,22 @@ def reduced_pinning(profile, failure, phase, previous_ram_retries):
                'Retain host caches with a smaller pin budget; a second RAM failure uses the bounded streaming fallback.')
 
 
+def commit_shortfall(failure):
+    """Commit headroom left when it, not physical RAM, ended the request; else None.
+
+    Windows charges the GPU's reserved memory to commit, so resident weights
+    are part of what ran out. The guard saw less commit headroom than physical
+    memory and the emergency floor was crossed on that reading.
+    """
+    guard = failure.get('ram_guard')
+    if not isinstance(guard, dict) or 'system_or_commit_pressure' not in (guard.get('reasons') or ()):
+        return None
+    commit, physical = guard.get('commit_available_bytes'), guard.get('physical_available_bytes')
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value < 0 for value in (commit, physical)):
+        return None
+    return commit if commit < physical else None
+
+
 def nonlocal_exhausted(failure):
     """A CUDA out-of-memory raised while the WDDM non-local budget, not VRAM, was full.
 
@@ -633,6 +649,13 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
             change('decoder', 'stream_output', True)
             if decoder.get('offload'):
                 change('decoder', 'stream_weights', True)
+        left = commit_shortfall(failure)
+        if left is not None and phase in ('load', 'sample') and engine.get('resident_blocks', 0) > 0:
+            # Fewer pins did not return GPU commit. Leave 2 GiB of commit
+            # headroom by streaming that many resident blocks instead.
+            from .policy import BLOCK_BYTES
+            blocks = max(1, math.ceil(max(0, 2 * 2**30 - left) / BLOCK_BYTES))
+            change('engine', 'resident_blocks', max(0, engine['resident_blocks'] - blocks))
     if not changes and resume_finalization and failure['kind'] in ('gpu_oom', 'ram_pressure'):
         # A fresh decode worker never loads the transformer whose finalization
         # failed. This single transition remains within the normal retry bound.

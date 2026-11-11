@@ -67,10 +67,16 @@ export async function openAutopilot(node, options) {
     catch (error) { console.warn('FreeVideo autopilot view:', error); return null; }
 }
 
-export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot) {
+// The Image page loads on demand too; a failure leaves the current view as it is.
+export async function openImage(node, options) {
+    try { return (await import('./image_view.js')).openImageView(node, options); }
+    catch (error) { console.warn('FreeVideo image view:', error); return null; }
+}
+
+export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onImage = () => {}) {
     const group = document.createElement('div'); group.className = 'fv-view-switch';
     group.setAttribute('role', 'group'); group.setAttribute('aria-label', t('FreeVideo view', 'FreeVideo 视图'));
-    for (const [id, label, action] of [['studio', t('Create', '创作面板'), onStudio], ['nodes', t('Nodes', '节点视图'), onNodes], ['editor', t('Edit', '剪辑视图'), onEditor],
+    for (const [id, label, action] of [['studio', t('Create', '创作面板'), onStudio], ['image', t('Images', '图像视图'), onImage], ['nodes', t('Nodes', '节点视图'), onNodes], ['editor', t('Edit', '剪辑视图'), onEditor],
         ['autopilot', t('Autopilot', 'AI 全自动'), onAutopilot]]) {
         const button = document.createElement('button'); button.type = 'button';
         const text = document.createElement('span'); text.textContent = label; button.append(text);
@@ -169,7 +175,7 @@ export function installNavigation(openStudio, agent = false, {openWorkflow = nul
         const handle = await openEditorView(node);
         if (created) handle?.notify(t('Created an editing project for you.', '已新建一个剪辑工程'));
         return handle;
-    }, true), () => choose(node => openAutopilot(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
+    }, true), () => choose(node => openAutopilot(node), true), () => choose(node => openImage(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
     toolbar.append(createUpdateNotice(cn).element);
     document.body.append(toolbar); refreshNavigation();
     makeMovable(toolbar);

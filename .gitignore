@@ -70,3 +70,4 @@ engine-gpu-*.lock
 /optional/
 *.gguf
 /out/
+!freevideo_engine/frame_preview_decoder.safetensors

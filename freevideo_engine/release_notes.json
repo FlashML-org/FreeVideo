@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.4.38",
+  "product_version": "0.5.0",
   "en": {
-    "summary": "Agent connections handle picture-only requests, long-video and download failures name their cause, the editor and tutorials are tidier, dropdowns, checkboxes and failure dialogs share one look, and an optional system status panel is added.",
+    "summary": "H3 Image arrives: a new Images view for H3 Image and Qwen-Image 2.1, pictures up to 16 MP on graphics cards from 8 GB, and Autopilot pictures follow the installed model. Beat lines join the editor, and launcher failures, settings and cards are clearer.",
     "changes": [
-      "Agent: a request for one picture is handled as a single picture task, without video planning or a video. The activity list names picture, edit, music, track, sound, lines and dubbing jobs and shows their share, line count and time left, and keeps its scroll position.",
-      "Connection card: when FreeVideo on this computer cannot be reached, the card says so and the feedback report names the kind of failure. Report a problem buttons show that the form has opened and do not open it twice.",
-      "Launcher: a graphics card below the hardware floor shows the unsupported-card notice even when its driver is also old; on Windows, a component blocked by application control shows a card with how to allow it, and a folder that Windows does not let the account create shows a card asking for another folder; on Mac, a failed Git setup names the step and its cause; a newer ComfyUI front end no longer leaves a rejection when the launch workflow loads.",
-      "Long videos: when seam sounds were not kept before parts are joined, the error names the seams and the reason, and while the parts are joined the panel shows which part is being written.",
-      "Model download: after a pause for low free memory, an agreed re-download now proceeds with a streamed download instead of pausing again; a damaged verification record is treated as empty and rewritten.",
-      "Linux: machines with 8 GB of RAM and about 3.6 GiB free can now generate instead of being refused.",
-      "Music: generated music follows the written description over the style and mood, avoids an instrument it rules out, and a default prompt that asks for no background music gets no music.",
-      "Editor: with the lines panel open it takes at most 40% of the height and scrolls inside, the re-dub button stays visible, track names are no longer cut off, a second sound track can be removed from its row, the Creations list follows deletes, undos and new results, and the Media section lays characters, scenes and props in one row.",
-      "Tutorial and tour: new chapters for adding a spoken line, scenes and props, and changing part of a picture; a first-and-last-frame card first on the media tour; Take me there opens the right view before pointing at a control.",
-      "System status: a new optional setting shows graphics memory and temperature in the top bar, with a panel for the graphics card, memory, utilization, temperature and free disk space, and a two-step Stop now.",
-      "Waiting prompts: the image editor keeps its upload, font, object-finding and save status visible until each task finishes, a shared video export shows the frame reached and the time used, and an upload that never answers is cut off so the panels unlock and show the failure line.",
-      "Interface: dropdowns, checkboxes and settings rows share one style, advanced settings sit in one card of flat rows, the top-right entries form one tidy text group, failure dialogs and Autopilot failure messages show one reason line with the details folded, and close buttons and the tutorial layout are consistent."
+      "H3 Image: a new image model for NVIDIA graphics cards from 8 GB of video memory, making pictures from 4 MP up to 16 MP. It is installed alone or added to an existing video install, which downloads only the missing files, about 22 GB, and shares the text encoder already installed. One weight file serves every graphics card, and machines with little memory load it in mapped form. Not available on Mac or AMD.",
+      "Images view: H3 Image and Qwen-Image 2.1 share one prompt box, and finished pictures gather in the Works column. Generated pictures are saved to the asset library and appear under Images in the reference \"+\" menu. The More menu offers Open folder, Copy prompt and Delete. The empty stage shows sample pictures, and the page has a wider layout, a solid Generate button and a clearer error card. H3 Image does not take reference pictures yet. With the prompt rewrite model installed, the \"FreeToken enhancement\" switch rewrites H3 Image prompts without adding anything the request did not ask for.",
+      "Autopilot: picture requests use the installed H3 Image at 4 MP or 16 MP; a request below 4 MP is made at 4 MP in the same shape.",
+      "Editor: beat lines on the music track, and clips snap to the beats. The feature tour now starts on the clip just imported.",
+      "Keyframes: still pictures can be placed between the first and last frame, and each is generated one at a time.",
+      "Audio: with \"Use as is\" selected and no audio connected, FreeVideo now says so before generating. When audio used as is cannot be generated in parts, the reason is shown and the request stops before it is submitted.",
+      "Windows: on machines with tight system memory, the second pass no longer stops and restarts for lack of memory. The video is unchanged.",
+      "Long videos: very long high-resolution requests no longer stop on the first step with a numerical error.",
+      "Sampling preview: an optional small preview decoder on CUDA, used only when it does not slow generation.",
+      "Settings: the working files of finished videos can be cleared.",
+      "Launcher: a failure shows one card with the next step and the buttons that resolve it, and the technical details are folded away. A CUDA initialization failure comes with the step to take, an outdated driver gets a card asking to update the driver, and a failed update records why each source failed.",
+      "Interface details: checkboxes share one size; the Passes field is as compact as the Reserved VRAM field; media cards no longer show a mode label; editing a character puts the cursor in its name; Autopilot cards show \"Custom\" for a custom quality and a single progress percentage; and the header and view tabs fit narrow windows without overlap or sideways scrolling."
     ]
   },
   "zh": {
-    "summary": "Agent 连接能处理只要一张图的请求，长视频和下载失败时写明原因，剪辑与教程更整齐，下拉框、勾选框和失败对话框样式统一，并新增可选的运行状态面板。",
+    "summary": "H3 Image 上线：图像视图同时支持两个图像模型，8 GB 显存起即可出最高 16 MP 的图片，AI 全自动出图按已安装的模型生成；剪辑新增拍点线，启动器失败提示、设置和卡片更清楚。",
     "changes": [
-      "Agent：只要一张图的请求作为单次图片任务处理，不做视频规划、不生成视频；活动列表为图片、编辑图片、配乐、音轨、声音、台词、配音任务命名，并显示份额、行数和剩余时间，轮询时保持滚动位置。",
-      "连接卡：连不上本机 FreeVideo 时，卡片给出提示，反馈报告写明故障类型；“提交问题”按钮点击后显示已打开，不会重复打开。",
-      "启动器：显卡低于硬件下限时，即使驱动也过旧，仍显示不支持的显卡提示；Windows 上，应用控制拦截运行组件时显示放行指引，所选文件夹不允许当前账户创建时提示改选其他文件夹；Mac 上，Git 准备失败时写明失败步骤和原因；加载启动工作流时，新版 ComfyUI 前端不再留下拒绝记录。",
-      "长视频：合并前接缝声音没有保住时，错误文字写出是哪几个接缝、什么原因；接合过程中，面板显示正在写第几段。",
-      "模型下载：因可用内存不足暂停后，已同意的重下现在改走流式下载，不再再次暂停；校验记录损坏时按空记录处理并重写。",
-      "Linux：内存 8 GB、可用约 3.6 GiB 的电脑现在能生成，不再被拒绝。",
-      "配乐：生成的配乐以所写描述为准，不再被风格和情绪盖过，会避开描述排除的乐器；默认提示词里写了“不要背景音乐”时不再生成配乐。",
-      "剪辑：打开台词面板时，面板最高占编辑器高度的 40%，列表在内部滚动，“重新配音”始终可见；轨道名不再被截断，存在声音 2 时可在其行里移除；创作列表随删除、撤销和新结果更新；创作面板素材区的角色、场景、道具排成一行。",
-      "教程与导览：新增“为一句话配音”“场景和道具”“局部改图”教程章节；素材导览先介绍首帧 + 尾帧；“带我去”先打开章节所在的视图，再指向控件。",
-      "运行状态：设置新增可选的“运行状态”，顶栏显示显存和温度，面板列出显卡、显存、使用率、温度和硬盘剩余空间，并提供两步确认的“立即停止”。",
-      "等待提示：图片编辑器的上传、字体、找出物体和保存提示显示到任务完成并显示已用时间；分享视频导出显示已到的帧和用时；一直没有回应的上传会被中止，各处面板解锁并显示失败提示。",
-      "界面：下拉框、勾选框和设置项样式统一，高级设置收进一张卡片逐行排列，右上角入口排成一组文字，失败对话框和 AI 全自动的失败消息只写一行原因并把详情折叠，关闭按钮和教程排版一致。"
+      "H3 Image：新增图像模型，适用于 8 GB 显存起的 NVIDIA 显卡，可出 4 MP 到 16 MP 的图片。可单独安装，也可加装到已有的视频安装上，加装只下载缺少的文件，约 22 GB，并共用已安装的文本编码器；所有显卡用同一份权重文件，内存较小的机器按映射方式加载。Mac 和 AMD 暂不可用。",
+      "图像视图：H3 Image 和 Qwen-Image 2.1 共用一个提示词输入框，生成的图片集中在“作品”栏。生成的图片会存入素材库，并出现在参考图“+”菜单的“图片”下；“更多”菜单提供打开文件夹、复制提示词和删除。空白舞台显示示例图，页面布局更宽，“生成”按钮始终实心，出错时显示更清楚的提示卡。H3 Image 暂不支持参考图。装有提示词改写模型时，可打开“FreeToken 提示词增强”改写 H3 Image 的提示词，不会加入请求里没有的内容。",
+      "AI 全自动：出图请求用已安装的 H3 Image 按 4 MP 或 16 MP 生成；不足 4 MP 的请求按同一比例出 4 MP。",
+      "剪辑：音乐轨新增拍点线，片段可吸附到拍点；功能导览改为从刚导入的片段开始。",
+      "关键帧：首帧和尾帧之间可放置静态图片，每次生成一张。",
+      "音频：选了“原样使用”但没有连接音频时，生成前就会提示；原样使用的音频无法分段生成时，会说明原因并在提交前停止。",
+      "Windows：系统内存紧张的机器上，第二遍不再因内存不足而中途停止并重试；生成的视频不变。",
+      "长视频：很长的高分辨率请求不再在第一步因数值错误停止。",
+      "采样预览：CUDA 上新增可选的小预览解码器，只在不拖慢生成时启用。",
+      "设置：可清理已完成视频的工作文件。",
+      "启动器：失败时只显示一张卡，写明下一步和能解决问题的按钮，技术详情折叠；CUDA 初始化失败会给出可操作的步骤，显卡驱动过旧时显示更新驱动的卡，更新失败时记录每个来源失败的原因。",
+      "界面细节：勾选框统一大小；“轮数”输入框与“预留显存”输入框一样紧凑；素材卡不再显示模式标签；编辑角色时光标先落在名字上；AI 全自动卡片在自定义质量时显示“自定义”，进度只显示一个百分比；顶栏和视图标签在窄窗口里不再重叠，也不再横向滚动。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.4.38",
+      "en": {
+        "summary": "Agent connections handle picture-only requests, long-video and download failures name their cause, the editor and tutorials are tidier, dropdowns, checkboxes and failure dialogs share one look, and an optional system status panel is added.",
+        "changes": [
+          "Agent: a request for one picture is handled as a single picture task, without video planning or a video. The activity list names picture, edit, music, track, sound, lines and dubbing jobs and shows their share, line count and time left, and keeps its scroll position.",
+          "Connection card: when FreeVideo on this computer cannot be reached, the card says so and the feedback report names the kind of failure. Report a problem buttons show that the form has opened and do not open it twice.",
+          "Launcher: a graphics card below the hardware floor shows the unsupported-card notice even when its driver is also old; on Windows, a component blocked by application control shows a card with how to allow it, and a folder that Windows does not let the account create shows a card asking for another folder; on Mac, a failed Git setup names the step and its cause; a newer ComfyUI front end no longer leaves a rejection when the launch workflow loads.",
+          "Long videos: when seam sounds were not kept before parts are joined, the error names the seams and the reason, and while the parts are joined the panel shows which part is being written.",
+          "Model download: after a pause for low free memory, an agreed re-download now proceeds with a streamed download instead of pausing again; a damaged verification record is treated as empty and rewritten.",
+          "Linux: machines with 8 GB of RAM and about 3.6 GiB free can now generate instead of being refused.",
+          "Music: generated music follows the written description over the style and mood, avoids an instrument it rules out, and a default prompt that asks for no background music gets no music.",
+          "Editor: with the lines panel open it takes at most 40% of the height and scrolls inside, the re-dub button stays visible, track names are no longer cut off, a second sound track can be removed from its row, the Creations list follows deletes, undos and new results, and the Media section lays characters, scenes and props in one row.",
+          "Tutorial and tour: new chapters for adding a spoken line, scenes and props, and changing part of a picture; a first-and-last-frame card first on the media tour; Take me there opens the right view before pointing at a control.",
+          "System status: a new optional setting shows graphics memory and temperature in the top bar, with a panel for the graphics card, memory, utilization, temperature and free disk space, and a two-step Stop now.",
+          "Waiting prompts: the image editor keeps its upload, font, object-finding and save status visible until each task finishes, a shared video export shows the frame reached and the time used, and an upload that never answers is cut off so the panels unlock and show the failure line.",
+          "Interface: dropdowns, checkboxes and settings rows share one style, advanced settings sit in one card of flat rows, the top-right entries form one tidy text group, failure dialogs and Autopilot failure messages show one reason line with the details folded, and close buttons and the tutorial layout are consistent."
+        ]
+      },
+      "zh": {
+        "summary": "Agent 连接能处理只要一张图的请求，长视频和下载失败时写明原因，剪辑与教程更整齐，下拉框、勾选框和失败对话框样式统一，并新增可选的运行状态面板。",
+        "changes": [
+          "Agent：只要一张图的请求作为单次图片任务处理，不做视频规划、不生成视频；活动列表为图片、编辑图片、配乐、音轨、声音、台词、配音任务命名，并显示份额、行数和剩余时间，轮询时保持滚动位置。",
+          "连接卡：连不上本机 FreeVideo 时，卡片给出提示，反馈报告写明故障类型；“提交问题”按钮点击后显示已打开，不会重复打开。",
+          "启动器：显卡低于硬件下限时，即使驱动也过旧，仍显示不支持的显卡提示；Windows 上，应用控制拦截运行组件时显示放行指引，所选文件夹不允许当前账户创建时提示改选其他文件夹；Mac 上，Git 准备失败时写明失败步骤和原因；加载启动工作流时，新版 ComfyUI 前端不再留下拒绝记录。",
+          "长视频：合并前接缝声音没有保住时，错误文字写出是哪几个接缝、什么原因；接合过程中，面板显示正在写第几段。",
+          "模型下载：因可用内存不足暂停后，已同意的重下现在改走流式下载，不再再次暂停；校验记录损坏时按空记录处理并重写。",
+          "Linux：内存 8 GB、可用约 3.6 GiB 的电脑现在能生成，不再被拒绝。",
+          "配乐：生成的配乐以所写描述为准，不再被风格和情绪盖过，会避开描述排除的乐器；默认提示词里写了“不要背景音乐”时不再生成配乐。",
+          "剪辑：打开台词面板时，面板最高占编辑器高度的 40%，列表在内部滚动，“重新配音”始终可见；轨道名不再被截断，存在声音 2 时可在其行里移除；创作列表随删除、撤销和新结果更新；创作面板素材区的角色、场景、道具排成一行。",
+          "教程与导览：新增“为一句话配音”“场景和道具”“局部改图”教程章节；素材导览先介绍首帧 + 尾帧；“带我去”先打开章节所在的视图，再指向控件。",
+          "运行状态：设置新增可选的“运行状态”，顶栏显示显存和温度，面板列出显卡、显存、使用率、温度和硬盘剩余空间，并提供两步确认的“立即停止”。",
+          "等待提示：图片编辑器的上传、字体、找出物体和保存提示显示到任务完成并显示已用时间；分享视频导出显示已到的帧和用时；一直没有回应的上传会被中止，各处面板解锁并显示失败提示。",
+          "界面：下拉框、勾选框和设置项样式统一，高级设置收进一张卡片逐行排列，右上角入口排成一组文字，失败对话框和 AI 全自动的失败消息只写一行原因并把详情折叠，关闭按钮和教程排版一致。"
+        ]
+      }
+    },
     {
       "product_version": "0.4.37",
       "en": {
@@ -281,144 +318,6 @@
           "安装：下载完成的图像模型文件在校验时，卡片显示“正在校验”。Windows 上，已删除的安装在共用 FV 目录里留下的入口目录会被清理。安装步骤开始前如果安装工具缺失，会重新下载，安装步骤不再因此失败。",
           "多显卡机器：创作面板和 Agent 发出的带图、续接或较长的请求，现在可以在空闲的显卡上与其他生成同时运行。单个很大的任务改为单独运行，不再一直排队。",
           "显存：较长的第二遍（例如参考视频很大的请求）在小显存显卡上占用的显存更少。运行中其他程序占用显存时，解码会自行调整，不再失败后重新开始。结果不变。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.29",
-      "en": {
-        "summary": "Music can be generated on the second audio track from the generation bar (not on Mac), scenes can be added to the character library, long videos can be extended by typing a length in seconds, and Autopilot chat continues a failed or stopped video from where it left off.",
-        "changes": [
-          "Editor: music can be made from the generation bar by dragging a range on the second audio track, which new edits now show by default. Choose a style and a mood and optionally describe the music; if the music model is not installed yet, it is downloaded first. A selected generated piece can be regenerated in place, and one undo restores the previous piece. Generated music is lowered while someone speaks; this can be turned off with Lower during speech in the clip properties. Not available on Mac.",
-          "Editor: the timeline scrolls vertically when the second audio track, text or subtitle rows do not fit, with the ruler kept in place.",
-          "Character library: scenes can be added from your own pictures or from several AI candidates, and mentioned with @ in the prompt; the time of day, weather, light and tone written in the prompt are kept in the generated video.",
-          "Long videos: when an ungenerated draft part or a range on the picture track is selected, the generation bar shows a Duration field in whole seconds. A typed length follows the same rules as dragging the right edge; a value out of range is clamped with a short note, and one undo restores the previous length. When a video is extended, the last continuation part, including a single added part, can be as short as 2 s; parts in the middle still last at least 5 s.",
-          "Long videos: joining parts no longer fails at the last step when one part differs from the first in size or encoding; such a part is now matched to the first part before the parts are joined, and when that is not possible, the message names the part and the property that differs. A video that already has the most parts a continuous shot can have now says so as soon as it is chosen to be extended, and the limit is checked before generation starts.",
-          "Autopilot: Continue generating on a failed or stopped video picks up the same request and keeps the parts already made, also when the Agent is offline. A failed picture is submitted again with the original request. The latest message can be edited and sent again; unfinished tasks after it are stopped first.",
-          "Agent: when the Connect an agent card cannot get an address, it explains the reason, for example when the page was opened from another device or by machine name; the feedback report includes the status code and error code.",
-          "Prompts: when the Agent is asked to improve the prompt before generating, the generation uses the improved text exactly, and is no longer treated as a different prompt because quotation marks were changed while the text was copied. Asking for no background music in the scene text now works when the prompt still has the starter prompt's music section: the unchanged starter score is replaced with N/A, and a rewritten prompt ends with N/A. A music section written by the user is kept.",
-          "Speed: the background compile also prepares portrait videos and videos with a reference picture, so their first request no longer compiles GPU programs at the first step of each pass. The one-time background compile takes about 80 seconds longer; results are unchanged.",
-          "Install: a damaged offline package is now reported by name with a request to download it again, instead of a raw decompression error, and downloads over an unstable connection continue from the part already downloaded instead of stopping after the first round.",
-          "Install: on Windows, when another program, such as security software, holds FreeVideo's Python file open, setup now waits and creates the Python environment again instead of failing at the first attempt. When Windows refuses to run that file, the failure message says so in any system language and points to the security software.",
-          "Start-up: a downloaded source update is verified against the release signature again every time the launcher starts, not only when it is downloaded, and the diagnostic log times each start-up step of the video worker."
-        ]
-      },
-      "zh": {
-        "summary": "可以在第二条声音轨上用生成栏生成配乐（暂不支持 Mac）；角色库可以新建场景；长视频可以直接填写秒数来接着生成；AI 全自动对话中失败或停止的视频可以从中断处继续生成。",
-        "changes": [
-          "剪辑视图：在第二条声音轨上拖出一段，即可用生成栏生成配乐；新剪辑默认显示这条声音轨。可选择风格和情绪，也可另写描述；配乐模型未安装时会先下载。选中已生成的配乐可以原位重新生成，一次撤销即可恢复原来那段。生成的配乐在有人说话处自动降低音量，可在片段属性中取消“对白时降低音量”。暂不支持 Mac。",
-          "剪辑视图：第二条声音轨、文字或字幕行放不下时，时间线可以纵向滚动，标尺保持固定。",
-          "角色库：可以用自己的图片或从 AI 生成的多张候选中新建场景，并在提示词中用 @ 引用；提示词里写的时间、天气、光线和色调会保留到生成的视频中。",
-          "长视频：选中未生成的草稿段或画面轨上的一段范围时，生成栏显示以整秒为单位的“时长”输入框。填写的时长与拖动右边缘规则相同；超出范围时自动取到边界并给出简短提示，一次撤销即可恢复原来的时长。接着生成时，最后一个接续段（包括只补一段的情况）最短可为 2 秒，中间的接续段仍至少 5 秒。",
-          "长视频：某一段的尺寸或编码与第 1 段不同时，不再在最后一步接合失败：接合前会先把这样的段转换为与第 1 段一致；无法转换时，提示会指明是哪一段、哪一项不同。已达到连续镜头最多段数的视频，选中接着生成时就会说明原因，生成前也会检查。",
-          "AI 全自动：视频失败或被停止后，点“继续生成”会按原请求接着做，保留已完成的段，Agent 不在线时同样可用。图片失败时按原请求重新提交。最后一条消息可以修改后重新发送，其后未完成的任务会先停止。",
-          "Agent：“连接 Agent”卡片取不到地址时，会说明原因（例如从其他设备或用机器名打开页面）；反馈报告附带状态码和错误码。",
-          "提示词：让 Agent 先润色提示词再生成时，生成使用的就是润色后的原文，不会因抄写时引号被改动而被当作另一段提示词。在场景文字里要求不要背景音乐，而提示词仍带着默认示例的配乐段时，这一要求现在会生效：没改过的默认配乐会被换成 N/A，提示词重写的结果也以 N/A 结尾。用户自己写的配乐段保持不变。",
-          "速度：后台预编译也准备竖向视频和带参考图的视频，它们的第一次请求不再在每遍的第一步现场编译 GPU 程序。一次性的后台编译多约 80 秒，结果不变。",
-          "安装：离线包损坏时，现在会指出文件名并提示重新下载，不再显示解压缩的原始错误；网络不稳定时，下载会接着已下载的部分继续，不再在第一轮失败后直接停止。",
-          "安装：在 Windows 上，FreeVideo 的 Python 文件被其他程序（例如安全软件）占用时，安装程序会等待并重新创建 Python 环境，不再第一次失败就停止；Windows 拒绝运行这个文件时，失败提示会说明原因并指向安全软件，不受系统语言影响。",
-          "启动：已下载的源码更新在启动器每次启动时都会再按发布签名校验，不只在下载时校验；诊断日志也为视频 worker 的启动各步计时。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.28",
-      "en": {
-        "summary": "Image generation, editing and character generation accept LoRAs, the image model stays on the card longer for people who mostly make pictures, and Repair replaces Python packages whose files are missing.",
-        "changes": [
-          "Image generation: image generation, image editing and character generation each have a LoRA control. Up to 8 LoRAs can be added, each with a file, a strength and a trigger word that is added to the prompt. Video and image LoRAs are told apart and a wrong choice is explained in one sentence. Without a LoRA the output is unchanged.",
-          "Speed: for people who mostly make pictures, the image model stays loaded for up to 10 minutes when it fits on the card, so the next picture starts sooner. It gives the card back at once when a video or another program needs it.",
-          "Speed: the usage habit that decides which model parts stay in memory (only the kind of each operation and its count, nothing from prompts or images) is now kept across restarts. When prompts change often, the text encoder is loaded while the engine is idle, as far as free video and system memory allow, and stops when a new job starts.",
-          "Speed: after the engine starts, the model files for the first request are read ahead as far as free memory allows: the video model for people who mostly generate again with the same prompt and images, and the text encoder otherwise. A new request or a busy queue stops the reading, and a machine with little free memory reads less.",
-          "Install: Repair now reinstalls Python packages whose files are missing or cut short, for example a numpy library that has gone missing, which setup did not notice before when the package was already at the required version; the repair review counts them in the download. When the hardware check before a request fails to load such a package, the message names the missing file and offers Repair.",
-          "Windows: on machines with little memory, a long video whose second pass stops for lack of system memory now retries in a fresh process, keeping the finished first pass, and can finish instead of failing.",
-          "Guide: the tutorial book covers the additions of 0.4.25 and 0.4.26 and has a new chapter on replacing a person, with a matching guide card. In the Chinese book, quoted interface names of up to eight characters and numbers with their units are no longer split across lines."
-        ]
-      },
-      "zh": {
-        "summary": "图片生成、改图和角色生成可以使用 LoRA；以做图为主时，图片模型在显存中保留更久；“修复”会重新安装文件缺失的 Python 包。",
-        "changes": [
-          "图片生成：图片生成、改图和角色生成各增加了 LoRA 控件。最多可添加 8 个 LoRA，每个可选择文件、调整强度，触发词会加入提示词。视频和图片的 LoRA 分开识别，选错时用一句话说明。不使用 LoRA 时输出不变。",
-          "速度：以做图为主的用户，图片模型在能完整放进显存时最多保留 10 分钟，下一张图开始更快；视频或其他程序需要显存时立即让出。",
-          "速度：决定哪些模型部分驻留内存的操作习惯（只记录每次操作的类型和次数，不含提示词和图片的任何内容）现在会跨重启保存。经常更换提示词时，引擎空闲期间会预先载入文本编码器，只载入空闲显存和内存放得下的部分，新任务开始即停止。",
-          "速度：引擎启动后，按空闲内存的允许范围预先读入第一次请求要用的模型文件：以相同提示词和图片反复生成为主时读视频模型，其余情况读文本编码器。新请求到来或队列忙碌时停止读取，空闲内存较少的机器读得更少。",
-          "安装：“修复”现在会重新安装文件缺失或被截短的 Python 包（例如 numpy 的某个库文件丢失）；此前包已是所需版本时，这类问题安装流程检测不到。修复审阅页会把它们计入下载量。请求前的硬件检测因此类包无法加载而失败时，失败信息会点名缺失的文件并提供“修复”。",
-          "Windows：内存较小的机器生成长视频时，第二遍因系统内存不足中断后，会保留已完成的第一遍，改在新进程里重试，可以继续完成，而不是整次失败。",
-          "教程：教程书补充了 0.4.25 和 0.4.26 新增功能的说明，并新增“替换人物”一章和对应的导览卡。中文教程书中，八个字以内的带引号界面名称以及数字与单位，不再被拆在两行。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.27",
-      "en": {
-        "summary": "The Agent can make music for a project, an update started during a generation waits for it to finish, and a preview can keep the guide clip's sound.",
-        "changes": [
-          "Agent: a new music tool makes a soundtrack for a project and places it on an audio track. The music model is downloaded on first use (about 20 GB); cards with little video memory use a built-in 8-bit form. If two attempts fail, the Agent synthesizes the music itself.",
-          "Updates: when \"Update now\" is pressed while a video is generating, the page shows a waiting screen instead of a failure card, and the update starts when the job ends. The wait also covers a job on a server that another program started.",
-          "Audio: a kept original audio track is written as lossless audio that browsers can play. A preview made with a guide clip keeps the clip's sound when that was requested.",
-          "Long videos: when seams cannot be joined, the notes name the seams that failed first, with the step and the format. The how-to for a long video points to \"Extend\" below the finished video.",
-          "Phone access: the password page is shown in Chinese when the browser's preferred language is Chinese.",
-          "Speed: the encoded text of a prompt is kept per encoder file and prompt, so a repeated prompt starts sooner.",
-          "Precompile: the status keeps the order of its writes, stopping responds quickly, and the diagnostic report includes the status.",
-          "Decoding and reports: a CUDA error while decoding after sampling has finished no longer fails the video; the saved result is decoded once more in a fresh process. A process that keeps running after a CUDA error is ended, so the failure is reported instead of waiting. Diagnostic reports record the polling of Agent generations.",
-          "Errors: a refused offline package says why, and a slow ComfyUI page is no longer blamed on the browser.",
-          "Install: on Windows the portable Git is used when the installed Git cannot load libcurl, and the Windows certificate store is used for HTTPS checks, skipping a certificate that cannot be read. A rejected token or address stays explained under its field until it is accepted.",
-          "Linux: on Arch, the setup names the pacman command for missing basic tools.",
-          "Mac: after two Metal command buffer failures during sampling, a third attempt runs with Torch attention."
-        ]
-      },
-      "zh": {
-        "summary": "Agent 可以为作品制作配乐；生成中点击更新会等任务结束后再更新；预览也可以保留引导片段的声音。",
-        "changes": [
-          "Agent：新增配乐工具，为作品制作配乐并放到一条音频轨上。配乐模型首次使用时下载（约 20 GB）；显存较小的显卡使用内置的 8 位形式。两次尝试都失败时，由 Agent 自己合成。",
-          "更新：有视频正在生成时点击“立即更新”，页面显示等待画面，不再出现失败卡片，任务结束后开始更新。由其他程序启动的服务上的任务也会等待。",
-          "音频：保留的原始音轨以浏览器可播放的无损音频写入。使用引导片段的预览在要求保留时，也保留该片段的声音。",
-          "长视频：接缝无法衔接时，说明先列出失败的接缝及其步骤和格式。长视频的使用指引改为指向成片下方的“接着生成”。",
-          "手机访问：浏览器的首选语言为中文时，密码页显示中文。",
-          "速度：提示词的文本编码结果按编码器文件和提示词保存，重复使用同一提示词时更快开始。",
-          "预编译：状态按写入顺序保存，停止时响应更快，诊断报告包含该状态。",
-          "解码与诊断报告：采样完成后解码时出现 CUDA 错误，不再整条失败，已保存的结果会在新进程中重新解码一次；出现 CUDA 错误后仍不退出的进程会被结束，直接报告失败，不再一直等待。诊断报告记录 Agent 生成任务的轮询情况。",
-          "错误提示：离线包被拒绝时说明原因；ComfyUI 页面加载较慢时不再归咎于浏览器。",
-          "安装：Windows 上已安装的 Git 无法载入 libcurl 时改用便携版 Git；HTTPS 检查使用 Windows 证书库，遇到无法读取的证书时跳过。令牌或地址被拒绝后，说明一直显示在对应输入框下，直到输入被接受。",
-          "Linux：在 Arch 上缺少基础工具时，安装脚本给出对应的 pacman 命令。",
-          "Mac：采样时连续两次 Metal 命令缓冲区失败后，用 Torch 注意力再试第三次。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.26",
-      "en": {
-        "summary": "Recent videos open at every window width, when every download source fails the launcher shows the reason for each source, and replacing a person runs on 16 GB Macs.",
-        "changes": [
-          "Creation panel: \"Recent videos\" can be opened at every window width; in a narrow window the list opens over the preview. The @ character menu shows each character's face close-up instead of the full-length picture. When a part length is refused, the length panel says whether it is too short or too long instead of asking to try again. When the connection to FreeVideo drops briefly, the queue no longer reports browser extension interference; a loop that cannot submit its next job stops with the error instead of retrying.",
-          "Install: when every source for a download fails, the launcher's error card lists each source with its reason and time, and the copied details and the diagnostic report include the same list. Git errors name the folder of the dependency. Account names, passwords, tokens and local paths are removed from the listed addresses. The video text encoder can also be downloaded from ModelScope, so a first install no longer depends on Hugging Face alone for this file; a download that fails the integrity check falls back to Hugging Face.",
-          "Prompt enhancement: when the connection to FreeVideo is lost, a connection-lost message is shown instead of the browser's raw error, and a failed progress check is retried before the rewrite stops. After a rewrite, characters mentioned with @ are still shown by name in the prompt box. When the prompt or references change during a rewrite, a note asks for a new rewrite instead of an error with a report button.",
-          "Prompt enhancement: the rewrite tab shows the scene description followed by a separate \"Sound:\" section instead of the model's field names. With several shots, each shot is its own paragraph labelled with its number and start time. A rewrite that is not edited is submitted exactly as the model wrote it. The default prompt in a prompt box that has not been edited uses the same layout and is also submitted unchanged. A prompt filled in with \"Reuse settings\" or opened from a workflow saved by an earlier version also uses this layout and, when not edited, is submitted unchanged.",
-          "Editor: when the last edit can no longer be found, a blank edit opens with a message saying so; clicking the edit name at the top opens another edit.",
-          "Settings: a new AI Agent section chooses whether an agent asks before starting a film and before a long reshoot, and how many minutes make a reshoot long. Both ask by default. When an agent's white-model scene fails, the agent receives the reason instead of a generic connection error.",
-          "Install: when the NVIDIA driver is installed but not running, for example right after it was installed, the launcher's error card asks for a restart instead of showing the raw detection error. When the NVIDIA driver is missing, the card adds one line naming the graphics card Windows lists; when Windows lists only AMD or Intel graphics, the card says FreeVideo supports NVIDIA graphics cards only.",
-          "Video generation: when a generation falls back to a freshly started worker, the result is the same as in the worker that was already running. After a driver or FreeVideo update, or on another graphics card in the same computer, the first generation no longer fails because an attention method the card cannot run was chosen.",
-          "Image generation: when Windows runs out of virtual memory while loading the image model, the failure card says so and suggests closing other apps or increasing virtual memory.",
-          "Linux: when no file manager can open a folder, the launcher and the image history show a message, and the image history also shows the images folder. The default save location follows the desktop's Documents folder. Curly apostrophes in English text are drawn at normal width instead of full width.",
-          "Mac: encoding a reference video (replace person, extending a video) needs about half the unified memory per tile, so it runs on 16 GB Macs where it stopped with a unified-memory error, including at the lowest resolution. Results are unchanged.",
-          "Mac: before installing, the launcher checks whether the disk of the chosen folder supports the file operations the Python environment needs. Without hard links the installation copies files instead; when links or renaming are not supported, a card asks for a folder on the Mac's built-in disk before anything is installed."
-        ]
-      },
-      "zh": {
-        "summary": "任何窗口宽度下都能打开“最近作品”，依赖下载在所有源都失败时，启动器列出每个源的原因；16 GB 的 Mac 上也能替换人物。",
-        "changes": [
-          "创作面板：任何窗口宽度下都能打开“最近作品”；窗口较窄时，列表盖在预览上打开。输入 @ 时，角色头像改为脸部特写，不再是全身图。每段时长被拒绝时，长度面板会说明是过短还是过长，不再提示重试。与 FreeVideo 的连接短暂中断时，队列不再提示浏览器扩展干扰；循环生成提交下一个任务失败时，循环停止并显示错误，不再重试。",
-          "安装：依赖下载在所有源都失败时，启动器错误卡片逐个列出每个源的失败原因和耗时，复制的详情和诊断报告中也附有这份列表。Git 报错会写明对应依赖的文件夹。列出的地址会去掉账号、密码、令牌和本地路径。视频文本编码器增加魔搭下载源，首次安装下载这个文件时不再只依赖 Hugging Face；下载的文件校验不通过时改从 Hugging Face 下载。",
-          "提示词增强：与 FreeVideo 的连接中断时，显示连接断开的提示，而不是浏览器的原始错误；改写进度读取失败时先重试，不再立即中止。改写后，人物仍以“@人物名”显示在提示词框中。改写过程中原文或素材有改动时，显示一条提醒，请按新内容重新改写，不再显示错误和报告按钮。",
-          "提示词增强：“改写”页签只显示画面描述，下面单独列出“声音：”段，不再显示模型的字段名；有多个镜头时，每个镜头单独成段，标出镜头编号和开始时间。未修改的改写结果按模型原文提交。提示词框里未改动的默认提示词也按同样方式显示，提交时仍用原文。用“复用设置”填入的提示词和旧版本保存的工作流里的提示词同样按这种方式显示，未修改时按原文提交。",
-          "剪辑视图：上次的剪辑已找不到时，打开空白剪辑并给出说明；点击顶部的剪辑名可打开其他剪辑。",
-          "设置：新增“AI Agent”区块，可选择 Agent 在开拍整部片前、以及耗时较长的重拍前是否先询问，并设置重拍达到多少分钟算较长。两项默认都询问。Agent 搭建的白模场景失败时，Agent 收到具体原因，不再是笼统的连接错误。",
-          "安装：NVIDIA 显卡驱动已安装但未运行时（例如刚装好还未重启），启动器错误卡片提示重启电脑，不再显示原始的检测失败信息。未找到 NVIDIA 显卡驱动时，提示卡新增一行，写出系统列出的显卡；系统只列出 AMD 或 Intel 显卡时，卡片说明 FreeVideo 只支持 NVIDIA 显卡。",
-          "视频生成：生成改由新启动的进程完成时，结果与原先运行中的进程相同。驱动或 FreeVideo 更新后，或换用同一台电脑里的另一张显卡时，首次生成不再因选用这张显卡无法运行的注意力方式而失败。",
-          "图像生成：Windows 虚拟内存不足、无法载入图像模型时，失败卡片会说明原因，并建议关闭其他程序或调大虚拟内存。",
-          "Linux：没有可用的文件管理器打开文件夹时，启动器和图片历史给出提示，图片历史同时显示图片文件夹的路径；默认保存位置跟随桌面设置的文档文件夹。英文中的弯撇号按西文宽度显示，不再显示为全角。",
-          "Mac：编码参考视频（替换人物、接着生成）时，每个瓦片所需的统一内存约减半，在 16 GB 的 Mac 上不再因统一内存不足而中止，最低分辨率下也是如此；结果不变。",
-          "Mac：安装开始前，启动器先检查所选文件夹所在磁盘是否支持 Python 运行环境所需的文件操作。不支持硬链接时改用复制继续安装；不支持链接或改名时，在安装任何内容之前提示选择 Mac 内置硬盘上的文件夹。"
         ]
       }
     }

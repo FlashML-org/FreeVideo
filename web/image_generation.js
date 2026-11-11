@@ -84,14 +84,14 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
     }
     return {
         info,
-        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view}) {
-            const value = await post('generate', {[p.prompt]: prompt, [p.width]: width, [p.height]: height,
+        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view, model, remember}) {
+            const value = await post('generate', {...(model ? {model} : {}), [p.prompt]: prompt, [p.width]: width, [p.height]: height,
                 [p.images]: images, ...(mask ? {[p.mask]: mask} : {}), ...(seed === undefined ? {} : {[p.seed]: seed}),
-                ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {})});
+                ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {}), ...(remember === true ? {remember} : {})});
             return {...value, job: value[p.job]};
         },
-        async status(job) {
-            const value = await post('status', {[p.job]: job});
+        async status(job, model) {
+            const value = await post('status', {[p.job]: job, ...(model ? {model} : {})});
             const phase = value[p.phase];
             return {...value, state: value.state || p.states[phase] || 'error',
                 stage: value[p.stage] || (phase === 'starting' ? 'load' : ''),
@@ -101,14 +101,14 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         },
         cancel: job => post('cancel', {[p.job]: job}),
         // The image models are fetched by this page's own engine; the reply is the new info.
-        async packInstall() { const value = await post('pack-install', {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
-        async packCancel() { const value = await post('pack-cancel', {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
+        async packInstall(model) { const value = await post('pack-install', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
+        async packCancel(model) { const value = await post('pack-cancel', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         // Click select: the engine finds the object under a point; the pack it needs is fetched on demand like the image models.
         async segment({image, points}) { return post('segment', {image, points}); },
         segmentInstall: () => post('segment-install', {}),
         segmentCancel: () => post('segment-cancel', {}),
         // Every picture generated on this machine, newest first; the engine keeps them in a folder.
-        async history() { return (await post('history', {})).items || []; },
+        async history(model) { return (await post('history', model ? {model} : {})).items || []; },
         async historyDelete(file) { return (await post('history-delete', {file})).items || []; },
         async historyDeleteMany(files) { const answer = await post('history-delete-many', {files}); return {items: answer.items || [], failed: answer.failed || []}; },
         historyOpen: () => post('history-open', {}),

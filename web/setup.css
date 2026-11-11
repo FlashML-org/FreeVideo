@@ -72,7 +72,7 @@
 .fv-setup input.fv-minutes:not([type=checkbox]):not([type=range]){display:inline-block;width:96px;margin:0 6px}
 .fv-setup textarea{resize:vertical;line-height:1.6}
 .fv-setup label.fv-check{display:flex;align-items:flex-start;gap:9px;color:var(--fv-ink)}
-.fv-setup input[type=checkbox]{flex:none;width:16px;height:16px;margin:3px 0 0;accent-color:var(--fv-accent)}
+.fv-setup input[type=checkbox]{margin:3px 0 0}
 .fv-setup input[type=range]{display:block;width:100%;margin:8px 0 4px;accent-color:var(--fv-accent)}
 
 /* Buttons. */
@@ -114,3 +114,9 @@
 .fv-setup .fv-folder-save p{flex:1 1 240px;min-width:0;margin:0;padding-top:7px;line-height:1.6}
 @media(max-width:480px){.fv-setup{padding:0 16px 18px}.fv-setup-head{margin:0 -16px 8px;padding:14px 12px 12px 16px}.fv-setup-head .fv-wordmark{width:92px}.fv-setup>details,.fv-setup>section{padding:14px}}
 .fv-setup p .fv-issue-button{margin:4px 0 4px 8px;vertical-align:middle}
+
+.fv-setup .fv-storage-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;margin-top:6px}
+.fv-setup .fv-storage-row>span:first-child{flex:none}
+.fv-setup .fv-storage-end{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-left:auto;min-width:0}
+.fv-setup .fv-storage-end>[role=status]{min-width:0;text-align:right}
+.fv-setup .fv-storage-end>button{flex:none;height:36px;min-height:36px;padding:0 14px;white-space:nowrap}

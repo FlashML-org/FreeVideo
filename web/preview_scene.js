@@ -1,9 +1,11 @@
+import { emptyFrameIcon } from './empty_frame.js';
 // A small, local canvas scene. The sea keeps moving while the water level follows
 // the existing estimate; animation never advances the reported progress itself.
 export function createPreviewScene(stage, progress, media) {
     const canvas = document.createElement('canvas');
     canvas.className = 'fv-preview-scene'; canvas.setAttribute('aria-hidden', 'true');
     stage.prepend(canvas);
+    const emptyIcon = emptyFrameIcon(); stage.append(emptyIcon);
     const ctx = canvas.getContext('2d', {alpha: false});
     if (!ctx) return () => canvas.remove();
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -92,7 +94,10 @@ export function createPreviewScene(stage, progress, media) {
     }
     function state() {
         generating = !progress.hidden;
-        visible = generating || !media.querySelector('video');
+        const empty = !generating && !media.firstElementChild;
+        // Before the first video the frame is a plain placeholder; the sea only moves while a request runs.
+        stage.dataset.empty = String(empty); canvas.hidden = empty;
+        visible = !empty && (generating || !media.querySelector('video'));
         const value = parseFloat(progress.style.getPropertyValue('--fv-progress'));
         target = generating ? progress.dataset.counted === 'true' && Number.isFinite(value)
             ? Math.min(1.06, Math.max(0, value / 100) + (value === 100 ? .06 : 0)) : .08 : .16;
@@ -117,6 +122,6 @@ export function createPreviewScene(stage, progress, media) {
     return () => {
         disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resize.disconnect();
         document.removeEventListener('visibilitychange', visibility); reduced.removeEventListener('change', schedule);
-        canvas.remove();
+        canvas.remove(); emptyIcon.remove();
     };
 }

@@ -74,6 +74,8 @@ export function liftBlock(t) {
     return originalBlocked() ? {ok: false, text: stuckText(t)} : {ok: true, note: notes.join(' ')};
 }
 
+export const partsNeedTwoPassText = t => t('Audio longer than 30 seconds used as is is made in parts, which needs "Two-pass acceleration". Turn it on or set the audio to "Reference".',
+    '超过 30 秒的音频选“原样使用”时会分段生成，需要“二次采样加速”。请打开“二次采样加速”，或把音频改选“参考”。');
 export const multipleText = t => t('Choose "Use as is" for only one audio file.', '一次只能有一段音频选择“原样使用”。');
 
 // The two-way switch on an audio card. `onPick` receives 'reference' or 'original'.

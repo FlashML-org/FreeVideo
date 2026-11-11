@@ -45,6 +45,7 @@ export function referenceItems(node) {
                 ...(row.sound === false && kind === 'video' ? {sound: false} : {})};
             if (row.role === 'reference') refs.push(item);
             else if (kind === 'image' && ['first','last'].includes(row.role) && !anchors[row.role]) anchors[row.role] = item;
+            else if (kind === 'image' && row.role === 'middle') continue; // a timed picture: the prompt does not name it
             else throw new Error('invalid_media');
         }
         for (const name of ['first','last']) {

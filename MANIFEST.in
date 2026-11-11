@@ -37,6 +37,11 @@ include web/assets/tour/anime-last.webp
 include web/assets/tour/c1-s2.mp4
 include web/assets/tour/c1-s2.webp
 include web/assets/tour/c2-product.webp
+include web/assets/tour/sample-fjord.webp
+include web/assets/tour/sample-jazz.webp
+include web/assets/tour/sample-perfume.webp
+include web/assets/tour/sample-fox.webp
+include web/assets/tour/sample-window.webp
 include web/assets/tour/c2-whitemodel.webp
 include web/assets/tour/c2g-s3.mp4
 include web/assets/tour/c2g-s3.webp

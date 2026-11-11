@@ -208,7 +208,38 @@ def _detect_local():
     import subprocess
     import torch
     if not torch.cuda.is_available():
-        raise RuntimeError('A CUDA GPU is required for VDN generation; plan --hardware-json can inspect presets offline.')
+        # Only a missing nvidia-smi means there is no driver. A query that fails
+        # (timeout, driver/library mismatch, unreadable output) is an installed
+        # driver whose CUDA did not start, so it must not ask for an install.
+        diagnosis = '[CUDA_INIT_FAILED] NVIDIA driver query failed.'
+        try:
+            executable = nvidia_smi()
+        except Exception:
+            diagnosis = 'NVIDIA driver/nvidia-smi is missing. Install NVIDIA driver 580+ and restart before setup.'
+        else:
+            try:
+                query = [executable, '--query-gpu=name,driver_version', '--format=csv,noheader']
+                row = subprocess_output.output_external(query, stderr=subprocess.DEVNULL, timeout=5).strip().splitlines()[0]
+                model, driver = (value.strip() for value in row.rsplit(',', 1))
+                model = re.sub(r'[()\r\n]', '', model).strip()
+                major = int(driver.split('.')[0])
+                if major < 580:
+                    diagnosis = ('NVIDIA driver %s (%s) is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
+                                 % (driver, model))
+                else:
+                    diagnosis = '[CUDA_INIT_FAILED] NVIDIA driver %s (%s).' % (driver, model)
+            except Exception:
+                # Diagnostics must never replace the original CUDA failure.
+                pass
+        message = 'A CUDA GPU is required for VDN generation; plan --hardware-json can inspect presets offline.'
+        try:
+            # is_available() reports only False; init() retains PyTorch's reason.
+            torch.cuda.init()
+        except Exception as error:
+            message += ' CUDA initialization error: ' + str(error)
+        # detect() retains only the final 2000 stderr characters. Keep the
+        # classification and GPU identity after the potentially long raw error.
+        raise RuntimeError(message + '\n' + diagnosis) from None
     index = torch.cuda.current_device()
     free, total = torch.cuda.mem_get_info(index)
     ram = system_memory()

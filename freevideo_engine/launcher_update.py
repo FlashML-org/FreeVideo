@@ -12,6 +12,8 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -154,6 +156,94 @@ def error_text(row, zh=False):
                        ' FreeVideo will try again later. You can keep using the current version.')
     return text + ('请重试，或去发布页手动下载。' if zh else
                    ' Try again, or download it from the release page.')
+
+
+# One line per failed update source, kept beside the update cache and added to
+# a diagnostic report. The interface keeps showing error_text() only.
+SOURCE_LOG = 'update-sources.log'
+SOURCE_LOG_LINES = 200
+_source_log_lock = threading.Lock()
+
+
+def _timed_out(error):
+    return isinstance(error, (TimeoutError, socket.timeout))
+
+
+def source_failure(error):
+    """(kind, HTTP status or None, short redacted message) for one source."""
+    # Classify the text only: an HTTPError proxies attribute reads to its
+    # response body, which may be missing or already closed.
+    text = str(error)
+    status = None
+    if isinstance(error, UpdateUnavailable):
+        kind = error.kind
+    elif isinstance(error, urllib.error.HTTPError):
+        kind, status = 'http', error.code
+    elif isinstance(error, urllib.error.URLError) and not isinstance(error.reason, str):
+        reason = error.reason
+        if isinstance(reason, socket.gaierror):
+            kind = 'dns'
+        elif isinstance(reason, ssl.SSLError):
+            kind = 'tls'
+        elif _timed_out(reason):
+            kind = 'connect-timeout'
+        else:
+            kind = network.failure_reason(str(reason))[0]
+    elif isinstance(error, ssl.SSLError):
+        kind = 'tls'
+    elif _timed_out(error):
+        # Our own budgets say "deadline"/"time limit"; anything else stalled mid-response.
+        kind = 'timeout' if re.search(r'deadline|time limit', text, re.I) else 'read-timeout'
+    elif isinstance(error, (ValueError, TypeError, AttributeError)):
+        kind = 'invalid'
+    else:
+        kind = network.failure_reason(text)[0]
+    detail = network.failure_reason(text)[1] if not isinstance(error, UpdateUnavailable) else ''
+    message = type(error).__name__ + (': ' + detail if detail else '')
+    return kind, status, message[:160]
+
+
+def failure_row(name, error, seconds):
+    kind, status, message = source_failure(error)
+    row = dict(source=name, error_class=kind, message=message, elapsed_seconds=round(max(0., seconds), 1))
+    if status:
+        row['code'] = status
+    return row
+
+
+def log_source_failures(root, operation, rows):
+    """Append report-safe lines; a log that cannot be written never blocks an update."""
+    lines = []
+    stamp = time.strftime('%Y-%m-%d %H:%M:%S %z')
+    for row in rows or ():
+        head = str(row.get('source') or 'unknown')
+        if row.get('route'):
+            head += '/' + str(row['route'])
+        if row.get('host'):
+            head += ' (%s)' % row['host']
+        parts = [str(row.get('error_class') or 'other')]
+        if row.get('code'):
+            parts.append(str(row['code']))
+        parts.append('%.1f s' % float(row.get('elapsed_seconds') or 0))
+        message = re.sub(r'\S*<REDACTED>\S*', '<REDACTED>', network._redact(row.get('message') or ''))
+        message = ' '.join(message.split())[:160]
+        line = '%s %s %s: %s' % (stamp, operation, head, ', '.join(parts)) + (': ' + message if message else '')
+        lines.append(line)
+        log.info('Update source failed: %s', line[len(stamp) + 1:])
+    if not lines or root is None:
+        return
+    try:
+        path = io_path(root) / 'updates' / SOURCE_LOG
+        with _source_log_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                old = path.read_text(encoding='utf-8', errors='replace').splitlines()
+            except FileNotFoundError:
+                old = []
+            kept = (old + lines)[-SOURCE_LOG_LINES:]
+            path.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+    except OSError:
+        pass
 
 
 def asset_url(tag, name):
@@ -505,7 +595,8 @@ def _choose_release(found, order):
     return result
 
 
-def latest_release(token='', *, channel=CHANNEL, track='stable', language=None, on_candidate=None):
+def latest_release(token='', *, channel=CHANNEL, track='stable', language=None, on_candidate=None,
+                   on_failure=None):
     """Race bounded metadata requests; reconcile both before explicit download.
 
     A first valid result can immediately display a reminder. The background
@@ -514,17 +605,31 @@ def latest_release(token='', *, channel=CHANNEL, track='stable', language=None, 
     """
     if channel not in CHANNELS or track not in TRACKS:
         raise ValueError('Unknown launcher update channel or track')
+    def failed(name, error, seconds):
+        if on_failure is not None:
+            try:
+                on_failure(name, error, seconds)
+            except Exception:  # Logging a failure never changes the result.
+                log.debug('Update failure callback failed', exc_info=True)
     if track != 'stable':
-        return _github_release(token, channel=channel, track=track)
+        started = time.monotonic()
+        try:
+            return _github_release(token, channel=channel, track=track)
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            failed('github', error, time.monotonic() - started)
+            raise
     order = [name for name in source_order(language) if name == 'github' or channel in MIRROR_CHANNELS]
     calls = dict(github=lambda: _github_release(token, channel=channel, track=track),
                  mirror=lambda: _mirror_release(channel, track))
+    elapsed = {}
     def fetch(name):
-        _metadata_budget.deadline = time.monotonic() + MANIFEST_CHECK_SECONDS
+        started = time.monotonic()
+        _metadata_budget.deadline = started + MANIFEST_CHECK_SECONDS
         try:
             return calls[name]()
         finally:
             del _metadata_budget.deadline
+            elapsed[name] = time.monotonic() - started
     found, failures = {}, {}
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix='launcher-manifest') as pool:
         pending = {pool.submit(fetch, name): name for name in order}
@@ -534,6 +639,7 @@ def latest_release(token='', *, channel=CHANNEL, track='stable', language=None, 
                 found[name] = future.result()
             except (OSError, ValueError, TypeError, AttributeError) as error:
                 failures[name] = error
+                failed(name, error, elapsed.get(name, 0.))
             if found and on_candidate:
                 on_candidate(_choose_release(found, order))
     if not found:
@@ -541,13 +647,15 @@ def latest_release(token='', *, channel=CHANNEL, track='stable', language=None, 
     return _choose_release(found, order)
 
 
-def check(current, token='', *, language=None, on_candidate=None):
+def check(current, token='', *, language=None, on_candidate=None, on_failure=None):
     current = build_identity(current)
     options = {}
     if language is not None:
         options['language'] = language
     if on_candidate is not None:
         options['on_candidate'] = on_candidate
+    if on_failure is not None:
+        options['on_failure'] = on_failure
     candidate = latest_release(token, channel=current['channel'], track=build_track(current), **options)
     return candidate if newer(candidate, current) else None
 
@@ -673,6 +781,7 @@ def download(candidate, root, token='', *, progress=None, cancel=None, language=
             category='launcher-update', validate_url=_trusted_url, verify=verify_signature,
             fallbacks=download_fallbacks(candidate, token))
     except network.DownloadError as error:
+        log_source_failures(root, 'download', getattr(error, 'package_attempts', None))
         raise UpdateUnavailable('invalid' if getattr(error, 'integrity', False) else 'connection') from error
     cancelled()
     if build_target(candidate) == 'linux-x86_64':
@@ -853,6 +962,8 @@ class UpdateClient:
         quiet = background and operation == 'check'
         if not quiet:
             self.state = dict(status='checking' if operation == 'check' else 'downloading', candidate=candidate)
+        def source_failed(name, error, seconds):
+            log_source_failures(self.root, 'check', [failure_row(name, error, seconds)])
         def work():
             selected = candidate
             try:
@@ -862,7 +973,8 @@ class UpdateClient:
                             shown = self.available
                             if shown is None or newer(value, shown):
                                 self.state = dict(status='available', candidate=value)
-                    found = check(self.current, self.token, language=self.language, on_candidate=noticed)
+                    found = check(self.current, self.token, language=self.language, on_candidate=noticed,
+                                  on_failure=source_failed)
                     if self.cancelled.is_set():
                         raise InterruptedError('Update check cancelled')
                     if found and (self.available is None or newer(found, self.available)
@@ -878,7 +990,8 @@ class UpdateClient:
                     if _retry and (not candidate['asset'].get('url') or build_track(candidate) == 'nightly'
                                    or candidate['asset']['url'] == asset_url(candidate['channel'], RELEASE_ASSETS[candidate['channel']][0])):
                         # A rolling release or a legacy latest URL may have moved.
-                        found = check(self.current, self.token, language=self.language)
+                        found = check(self.current, self.token, language=self.language,
+                                      on_failure=source_failed)
                         if found and newer(found, candidate):
                             selected = found
                     def prepare_app(dmg):

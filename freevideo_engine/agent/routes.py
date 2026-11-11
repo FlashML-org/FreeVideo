@@ -295,8 +295,9 @@ def plan(port, value, jobs=None):
     result = dict(spec={k: v for k, v in spec.items() if k != 'depends_on'}, warnings=[])
     if spec['kind'] != 'generate' or spec.get('refine_from'):
         return result
-    from .jobs import continuation_problems, cut_problems, part_prompt_problems, parts_problems
-    problems = continuation_problems(spec) + cut_problems(spec, spec['seconds']) + part_prompt_problems(spec)
+    from .jobs import continuation_problems, cut_problems, middle_problems, part_prompt_problems, parts_problems
+    problems = (continuation_problems(spec) + cut_problems(spec, spec['seconds']) + middle_problems(spec)
+                + part_prompt_problems(spec))
     if jobs is not None:
         problems += parts_problems(spec, jobs.port.chain_runner(), work=jobs.continued_work(spec),
                                    planned=jobs.planned_parts(spec))
@@ -689,7 +690,7 @@ def register():
         if isinstance(identity, str):
             if identity.startswith('d') and 'shots' in value:
                 refs['drama'] = identity
-            elif identity.startswith('c') and value.get('kind') in ('character', 'setting', 'prop'):
+            elif identity.startswith('c') and value.get('kind') in ('character', 'setting', 'prop', 'image'):
                 refs['cast'] = identity
         return refs
 
