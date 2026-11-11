@@ -32,7 +32,7 @@ from .comfy_source import RECEIPT, SOURCE_DISK_BYTES, new_layout, validate_targe
 from .desktop_runtime import materialize_source, source_release
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_text, plain_error, plain_errors
-from . import engine_binding, processes, lan_password
+from . import engine_binding, processes, lan_password, uv_restore
 
 PROTOCOL = 1
 TEMPLATE = 'FreeVideo-All-in-One.json'
@@ -1240,7 +1240,12 @@ class Controller:
                 raise RuntimeError(ENGINE_UPDATE_WAITS + '. Try again after it finishes; the job is left running.')
             self._stop_server_for_setup(selected['url'])
         self.stage('nodes', label='Connecting workflow nodes')
-        engine_binding.rebind(selected['engine'], machine, selected['source'])
+        def stopped():
+            if self.cancelled.is_set():
+                raise RuntimeError('Stopped; files retained')
+        # A uv that security software removed is downloaded again, as the installer does.
+        engine_binding.rebind(selected['engine'], machine, selected['source'],
+                              restore=lambda root, system: uv_restore.restore(root, system, cancelled=stopped))
         self.stage('nodes', label='Install FreeVideo workflow')
         deployed = deploy(selected['root'], selected['source'], selected['engine'])
         selected['ready'] = True

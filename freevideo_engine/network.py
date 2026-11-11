@@ -407,7 +407,7 @@ def probe_score(row, family):
 
 
 def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=False, env=None,
-         model_only=False, measure_speed=True, progress=None, proxy_mode='auto', git_available=True):
+         model_only=False, measure_speed=True, progress=None, proxy_mode='auto', git_available=True, only=None):
     from .environments import ENVIRONMENTS, environment_names
     env = proxy_environment(env)
     started = time.monotonic()
@@ -429,6 +429,8 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
             families.append(family)
     if model_only:
         families=[family for family in families if family in ('models','encoder-models','vdn-models','edge-models','image-models')]
+    if only is not None:
+        families = [family for family in families if family in only]
     selections, jobs = {}, []
     for family in families:
         group = 'torch' if family.startswith('torch-') else 'github' if family == 'git' else family

@@ -1136,6 +1136,32 @@ def unpack(archive, destination):
         tar.extractall(io_path(destination))
 
 
+def prepare_uv(system, root, uv_spec, networking, env, fetch):
+    """Put the pinned uv under root/tools and return its path: from a verified local copy when one exists, else downloaded.
+
+    The installer and the launcher's source update share it, so a missing uv is restored the same way in both.
+    """
+    root = Path(root)
+    if system == 'Windows':
+        from .uv_bootstrap import prepare_windows
+        return prepare_windows(root, uv_spec, networking, env, fetch)
+    if system == 'Darwin':
+        from . import macos_bootstrap
+        return macos_bootstrap.prepare_uv(root, networking, env, fetch)
+    archive = root / 'downloads' / 'uv.tar.gz'
+    from .system import bootstrap_root
+    previous = bootstrap_root(root) / ('uv-' + uv_spec['version'] + '.tar.gz')
+    if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(previous, archive)
+        except OSError:
+            shutil.copyfile(previous, archive)
+    fetch(uv_spec['url'], archive, uv_spec['sha256'])
+    unpack_folder(archive, root / 'tools', 'uv-x86_64-unknown-linux-gnu')
+    return root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
+
+
 def unpack_folder(archive, destination, name):
     """Unpack the archive's top-level folder `name` to destination/name, replacing what is there.
 
@@ -2264,24 +2290,7 @@ class Installer:
         save(sage_manifest, sage_record)
 
     def prepare_tools(self):
-        uv_spec = self.versions['uv']
-        if self.system == 'Windows':
-            from .uv_bootstrap import prepare_windows
-            uv = prepare_windows(self.root, uv_spec, self.network, self.env, self.fetch)
-        else:
-            archive = self.root / 'downloads' / 'uv.tar.gz'
-            from .system import bootstrap_root
-            previous = bootstrap_root(self.root) / ('uv-' + uv_spec['version'] + '.tar.gz')
-            if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
-                archive.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    os.link(previous, archive)
-                except OSError:
-                    shutil.copyfile(previous, archive)
-            self.fetch(uv_spec['url'], archive, uv_spec['sha256'])
-            unpack_folder(archive, self.root / 'tools', 'uv-x86_64-unknown-linux-gnu')
-            uv = self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
-        return uv
+        return prepare_uv(self.system, self.root, self.versions['uv'], self.network, self.env, self.fetch)
 
     def execute(self):
         if self.int8_check_first:
