@@ -13,10 +13,26 @@ DiT blocks each denoising step, 36 encoder layers once per prompt.
 from ..offload import LayerOffloader, pin_layer_weights
 
 
+IMAGE_WORKING_RESERVE = 6 * 2**30  # private memory beyond the weights: tensors, tokenizer, decoder, the process itself
+
+
+def cgroup_pin_cap(reserve=IMAGE_WORKING_RESERVE):
+    """Bytes of locked weights a memory-limited group can take, or None without a limit.
+
+    ``live_pin_capacity`` reads the machine's free memory, which a container or
+    systemd scope with a lower cap does not share; locked pages cannot be
+    reclaimed, so what is left of the cap after the working set bounds them.
+    """
+    from ..hardware import cgroup_memory
+    group = cgroup_memory()
+    room = group.get('reclaimable_available_bytes', group.get('available_bytes'))
+    return None if room is None else max(0, room - reserve)
+
+
 class StreamedStack:
     """``layers`` hold frozen CPU weights; they are moved to the card on use."""
 
-    def __init__(self, layers, *, name, device='cuda', pin=True, max_pin_bytes=None, prefetch=True,
+    def __init__(self, layers, *, name, device='cuda', pin=True, max_pin_bytes=None, prefetch=True, host_prefetch=None,
                  progress=None):
         self.name = name
         self.layers = list(layers)
@@ -30,8 +46,11 @@ class StreamedStack:
         # speed, not the request (pin_layer_weights keeps the unpinned layers
         # on their ordinary storage and the offloader stages them).
         pin_options = {'progress': progress} if progress is not None else {}
+        cap = cgroup_pin_cap()
+        if cap is not None:
+            max_pin_bytes = cap if max_pin_bytes is None else min(max_pin_bytes, cap)
         self.pinned_bytes = pin_layer_weights(self.layers, max_bytes=max_pin_bytes, **pin_options) if pin else 0
-        self.offloader = LayerOffloader(self.layers, device=device, prefetch=prefetch, host_prefetch=False)
+        self.offloader = LayerOffloader(self.layers, device=device, prefetch=prefetch, host_prefetch=host_prefetch)
         self.layer_bytes = max(sum(count * parameter.element_size()
                                    for parameter, _, _, _, count, _ in entries)
                                for entries in self.offloader.layout)

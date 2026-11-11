@@ -12,11 +12,12 @@ import queue
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import uuid
 
-from . import image_pack, keep
+from . import image_model, image_pack, keep
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
@@ -25,6 +26,10 @@ from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, Fa
 BODY_LIMIT = 64 * 1024
 CANCEL_GRACE = 5.
 MAX_IMAGES = 4
+H3_MAX_IMAGES = 16
+H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
+H3_MAX_SIDE = 8192
+H3_GROUP = 'h3-image:' + image_pack.default_tier()
 REPORT_LIMIT = 16
 HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.png')
 LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
@@ -32,6 +37,7 @@ HISTORY_LIMIT = 500
 # The 高清 size is offered from this much card memory; smaller cards keep one size.
 HIGH_SIZE_MIN_TOTAL = 6 * 1024 ** 3
 INFERENCE_TIMEOUT = 600.
+H3_INFERENCE_TIMEOUT = 1800.
 QUEUE_TIMEOUT = 600.
 QUEUE_POLL = .1
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
@@ -142,6 +148,7 @@ class Service:
         self.queue_wake = threading.Event()
         self.finished = OrderedDict()
         self.pack_installer = None
+        self.h3_installer = None
         self.segment_installer = None
         self.segment_worker = None
         self.segmenting = False
@@ -162,9 +169,10 @@ class Service:
         engine_root, machine = self.installation()
         spec = image_pack.catalog()
         ready = image_pack.ready(machine['model_root'])
-        return dict(ready=ready, model=spec['repo'],
+        downloading = not ready and image_pack.downloading(machine['model_root'], engine_root)
+        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading),
                     checking=not ready and image_pack.checking(machine['model_root']),
-                    downloading=not ready and image_pack.downloading(machine['model_root'], engine_root),
+                    downloading=downloading,
                     bytes=sum(row['bytes'] for row in spec['groups']['image']), busy=self.busy(),
                     max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready),
                     segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
@@ -172,6 +180,27 @@ class Service:
                                  install=self.segment_installer.state() if self.segment_installer else None),
                     bytes_per_second=None if ready else observed_speed(engine_root),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
+
+    def model_rows(self, machine, qwen_ready, qwen_downloading):
+        """Both picture models for the page: installed, or being fetched with the bytes still to download."""
+        root = machine['model_root']
+        h3_ready = sys.platform != 'darwin' and image_pack.ready(root, group=H3_GROUP)
+        h3_status = {} if h3_ready or sys.platform == 'darwin' else image_pack.status(root, group=H3_GROUP)
+        installer = self.h3_installer
+        h3_state = None if h3_ready or installer is None else installer.state()
+        h3_active = h3_state is not None and h3_state['state'] in ('running', 'paused_for_generation')
+        qwen_state = None if qwen_ready else self.pack_state(False)
+        rows = []
+        if sys.platform != 'darwin':
+            rows.append(dict(id=image_model.H3, label='MiniMax H3 Image', ready=h3_ready,
+                             downloading=h3_active, sizes=['standard', 'high'], max_images=H3_MAX_IMAGES,
+                             bytes_total=h3_status.get('total_bytes', 0), bytes=h3_status.get('bytes', 0),
+                             bytes_done=(h3_state or {}).get('done', 0), install=h3_state))
+        rows.append(dict(id=image_model.QWEN, label='Qwen-Image 2.1', ready=qwen_ready, max_images=MAX_IMAGES,
+                         downloading=qwen_downloading and not h3_active,
+                         bytes_total=sum(row['bytes'] for row in image_pack.catalog()['groups']['image']),
+                         bytes_done=(qwen_state or {}).get('done', 0), install=qwen_state))
+        return rows
 
     @staticmethod
     def unified_total(machine):
@@ -222,12 +251,21 @@ class Service:
                        message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])
         return row
 
-    def pack_action(self, action, *, group='image'):
-        """Start or pause the image model download from the page; it yields to a running video."""
+    def pack_action(self, action, *, group='image', model=None):
+        """Start or pause the image model download from the page; it yields to a running video.
+
+        `model` names the H3 Image pack (Qwen-Image is the default); the two are fetched one at a time."""
         engine_root, machine = self.installation()
         root = machine['model_root']
+        if model is not None and model not in image_model.MODELS:
+            raise ValueError('invalid_request')
+        if model == image_model.H3:
+            if sys.platform == 'darwin':
+                raise ValueError('invalid_request')
+            group = H3_GROUP
         with self.mutex:
-            attribute = 'segment_installer' if group == 'segment' else 'pack_installer'
+            attribute = ('segment_installer' if group == 'segment' else 'h3_installer' if group == H3_GROUP
+                         else 'pack_installer')
             installer = getattr(self, attribute)
             if action == 'cancel':
                 if installer is not None:
@@ -473,8 +511,20 @@ class Service:
         prompt = value.get('prompt')
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 2000:
             raise ValueError('invalid_prompt')
+        model = value.get('model')
+        if model is not None and model not in image_model.MODELS:
+            raise ValueError('invalid_request')
         dimensions = [value.get(name) for name in ('width', 'height')]
-        if any(type(size) is not int or not 256 <= size <= 2048 for size in dimensions):
+        if model == image_model.H3:
+            # 4 MP up to 16 MP; a smaller shape is asked for again at 4 MP in the same proportion.
+            if any(type(size) is not int or not 256 <= size <= H3_MAX_SIDE for size in dimensions):
+                raise ValueError('invalid_dimensions')
+            dimensions = list(image_model.at_least_four_megapixels(model, *dimensions))
+            if dimensions[0] * dimensions[1] > H3_MAX_AREA * 1.05:
+                raise ValueError('invalid_dimensions')
+            if any(value.get(name) is not None for name in ('mask', 'cast_view', 'loras')):
+                raise ValueError('invalid_request')
+        elif any(type(size) is not int or not 256 <= size <= 2048 for size in dimensions):
             raise ValueError('invalid_dimensions')
         seed = value.get('seed')
         if seed is not None and (type(seed) is not int or not -2**63 <= seed < 2**64):
@@ -484,7 +534,7 @@ class Service:
             images = []
         if not isinstance(images, list):
             raise ValueError('invalid_media')
-        if len(images) > MAX_IMAGES:
+        if len(images) > (H3_MAX_IMAGES if model == image_model.H3 else MAX_IMAGES):
             raise ValueError('too_many_images')
         paths = [self.media_path(name) for name in images]
         mask = value.get('mask')
@@ -511,7 +561,7 @@ class Service:
         result = dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
                       steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
                       **(dict(cast_view='back') if cast_view == 'back' else {}), path=self.output_path(named=True),
-                      **(dict(loras=loras) if loras else {}))
+                      **(dict(loras=loras) if loras else {}), **(dict(model=model) if model else {}))
         # Leave room for action, kind and the small size-fit record added at dispatch.
         if loras and len(json.dumps(result, ensure_ascii=True).encode('utf-8')) > BODY_LIMIT - 1024:
             raise ValueError('invalid_loras')
@@ -537,6 +587,9 @@ class Service:
                        and self.thread.is_alive() and self.session_stop.is_set())
             raw = deepcopy(value)
             root, machine, prepared = self.prepare(action, raw, context, waiting=waiting)
+            if raw.get('remember') is True:
+                # Only the picture page asks for this; the Agent's own choice leaves the page's menu alone.
+                image_model.remember(machine['model_root'], raw.get('model'))
             key = secrets.token_urlsafe(24)
             if waiting:
                 self.queued = dict(key=key, action=action, value=raw, context=context,
@@ -559,8 +612,12 @@ class Service:
         context.set_machine(machine)
         self.last_machine = machine
         try:
-            if not image_pack.ready(machine['model_root']):
+            model = value.get('model') if isinstance(value, dict) else None
+            h3 = model == image_model.H3
+            if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
                 raise ValueError('pack_missing')
+            if h3 and action != 'generate':
+                raise ValueError('invalid_request')
             from .image_policy import UNIFIED_MIN_TOTAL
             unified = self.unified_total(machine)
             if unified is not None and unified < UNIFIED_MIN_TOTAL:
@@ -571,8 +628,13 @@ class Service:
                 value = compose.build(value, self.input_directory())
             value = self.request(value)
             value['kind'] = context.kind
+            if h3:
+                # What the worker needs to run the video text encoder for this prompt and to plan against the card.
+                value['h3'] = dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),
+                                   comfy_python=machine.get('comfy_python'), model_paths=machine.get('model_paths'))
             context.update_request(value)
-            context.plan = self.preflight(machine, value, fit=not waiting)
+            # H3 Image plans its own residency in the worker; the Qwen plan below does not describe it.
+            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting)
             # Live free memory while another job owns the GPU is advisory. Keep
             # the original request for dispatch, when the owner has released it.
             if not waiting and context.plan is not None and not context.plan['feasible']:
@@ -1029,7 +1091,8 @@ class Service:
         The ladder is the one start-up fitting uses (32-pixel grid, 512 pixels at the least);
         the step grows with the size so a big canvas needs few tries. False at the smallest size.
         """
-        if (row.get('code') != 'no_memory' or row.get('stage') in ('load', 'text', 'encode')
+        if (value.get('model') == image_model.H3 or row.get('code') != 'no_memory'
+                or row.get('stage') in ('load', 'text', 'encode')
                 or self.stop.is_set() or self.session_stop.is_set()):
             return False
         width, height = value['width'], value['height']
@@ -1111,12 +1174,13 @@ class Service:
         # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
         value['keep_seconds'] = keep.keep_seconds(habit)
         loading = True
+        limit = H3_INFERENCE_TIMEOUT if value.get('model') == image_model.H3 else INFERENCE_TIMEOUT
         try:
             session.send(action='generate', **value)
         except OSError:
             raise self.worker_gone(session, heard, self.stop.is_set())
         cancelled_at = None
-        deadline = time.monotonic() + INFERENCE_TIMEOUT
+        deadline = time.monotonic() + limit
         while True:
             if self.stop.is_set() and cancelled_at is None:
                 session.send(action='cancel')
@@ -1141,7 +1205,7 @@ class Service:
                 if (stage in STAGES and type(fraction) in (int, float)
                         and math.isfinite(fraction) and 0 <= fraction <= 1):
                     # The limit is for a worker that stops reporting, not for a slow first load.
-                    deadline = time.monotonic() + INFERENCE_TIMEOUT
+                    deadline = time.monotonic() + limit
                     with self.mutex:
                         if self.state.get('stage') == stage and type(self.state.get('fraction')) in (int, float):
                             fraction = max(fraction, self.state['fraction'])
@@ -1154,7 +1218,7 @@ class Service:
                 elif phase == 'error' and self.shrink(value, row, context):
                     # The memory estimate was optimistic for this machine: same worker, next size down.
                     session.send(action='generate', **value)
-                    deadline = time.monotonic() + INFERENCE_TIMEOUT
+                    deadline = time.monotonic() + limit
                     continue
                 elif phase == 'error':
                     code = row.get('code')
@@ -1274,7 +1338,7 @@ def register():
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
             elif name in ('pack-install', 'pack-cancel'):
-                result = service.pack_action(name.split('-')[1])
+                result = service.pack_action(name.split('-')[1], model=value.get('model'))
             elif name in ('segment-install', 'segment-cancel'):
                 result = service.pack_action(name.split('-')[1], group='segment')
             elif name == 'segment':

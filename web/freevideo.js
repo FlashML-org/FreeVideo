@@ -20,6 +20,7 @@ import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
+import { openReferenceMenu } from './image_library.js';
 import { requestText } from './prompt_sections.js';
 import { timedText } from './timed_prompt.js';
 import { outputDownloadURL } from './output_download.js';
@@ -149,7 +150,13 @@ function mediaPanel(node, mount = null) {
     const cards = el("div"), connections = el("div", undefined, "fv-connected");
     const picker = el("input"); picker.type = "file"; picker.multiple = true;
     picker.accept = acceptList(["image", "video", "audio"]); picker.hidden = true;
-    const add = button(text("Upload files", "上传文件"), text("Upload images, video or audio", "上传图片、视频或音频"), () => picker.click());
+    const add = button(text("Upload files", "上传文件"), text("Upload images, video or audio", "上传图片、视频或音频"), () => {
+        if (libraryMenu?.box.isConnected) { libraryMenu.close(); return; }
+        libraryMenu = openReferenceMenu({api, viewURL, anchor: add, host: panel, onComputer: () => picker.click(),
+            onPick: (file, id) => upload([file]).then(() => { picked.add(id); libraryMenu?.refresh(); }),
+            state: () => ({used: picked, full: read().length >= 32})});
+    });
+    let libraryMenu = null; const picked = new Set();
     const generateImage = button(text('Generate with AI', 'AI 生成'), text('Generate with AI', 'AI 生成'), () => newImage());
     generateImage.hidden = !imageGenerationSupported();
     const audioPicker = el('input'); audioPicker.type = 'file'; audioPicker.multiple = true;

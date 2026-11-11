@@ -646,7 +646,14 @@ def plan(args, *, local_progress=None, stage=None):
     if sampling_caches is None:
         sampling_caches = prior['sampling_caches'] if isinstance(prior.get('sampling_caches'), bool) else not saved.get('ready')
     sampling_caches = bool(sampling_caches)
-    files = installation_model_files(prepared, reuse_cache, sampling_caches)
+    only_image = getattr(args, 'only', 'all') == 'image'
+    image_group = image_download = None
+    if only_image:
+        from .image_gen import image_pack
+        image_group = 'h3-image:' + image_pack.default_tier()
+        found = image_pack.status(model_dir, group=image_group)
+        image_download = found['total_bytes'] - found['verified_bytes']
+    files = [] if only_image else installation_model_files(prepared, reuse_cache, sampling_caches)
     local_reuse = None
     local_folder = getattr(args, 'reuse_models', None)
     local_manifest = getattr(args, 'reuse_models_manifest', None)
@@ -866,7 +873,9 @@ def plan(args, *, local_progress=None, stage=None):
                                 if snapshot.get('git_found') else '')),
             'wheel_cache': str(Path(getattr(args, 'wheel_cache', None) or saved.get('wheel_cache') or root / 'wheels').expanduser().resolve()),
             'rebuild_sage': getattr(args, 'rebuild_sage', False),
-            'model_download_bytes': sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0),
+            'only': 'image' if only_image else 'all', 'image_group': image_group,
+            'model_download_bytes': (image_download if only_image else
+                                     sum(r['bytes'] for r in files) - present - (local_reuse or {}).get('reused_bytes', 0)),
             'package_download_bytes': package_download_bytes,
             'existing_model_bytes_size_matched': present, 'disks': disk_plan['disks'],
             'additional_environment_cache_safety_gib': extra,
@@ -1701,8 +1710,11 @@ class Installer:
              (name + '-torch',), ('environment:' + name,))
         # Enqueue downloads as soon as their SDKs exist, before waiting for
         # source setup, encoder checks or acceleration compilation.
-        task('models', lambda: self.command('models', [python, '-m', 'freevideo_engine.provision',
-            '--plan', self.run_dir / 'plan.json']), ('runtime',))
+        if self.plan.get('only') == 'image':
+            task('models', self.install_image_only, ('runtime',))
+        else:
+            task('models', lambda: self.command('models', [python, '-m', 'freevideo_engine.provision',
+                '--plan', self.run_dir / 'plan.json']), ('runtime',))
         task('vdn-install', lambda: self.command('vdn', [python, '-m', 'freevideo_engine', 'setup', '--install-packages']),
              ('runtime', 'vdn-source'), ('environment:' + name,))
         encoder_after = 'runtime'
@@ -1741,6 +1753,24 @@ class Installer:
             task('package-cache', lambda: self.release_package_cache(uv), prerequisites)
             tasks['models']['after'] = ('package-cache',)
         return tasks, pythons, comfy
+
+    def install_image_only(self):
+        """The MiniMax H3 Image weights of a first installation that skips the video model."""
+        from .image_gen import image_pack
+        key = 'image-model'
+        self.ui.begin(key, 'Download MiniMax H3 Image', detail='Download and verify the image model files')
+        def progress(value):
+            if self.cancel.is_set():
+                raise RuntimeError('Installation cancelled; partial download retained.')
+            done, total = value.get('done') or 0, value.get('total') or 0
+            self.ui.update(key, done=done, total=total, unit='bytes', activity='download', name='MiniMax H3 Image',
+                           detail='%.1f GiB / %.1f GiB' % (done / 2**30, total / 2**30))
+        try:
+            image_pack.install(Path(self.plan['model_dir']), progress, engine_root=SOURCE, group=self.plan['image_group'])
+        except BaseException:
+            self.ui.end(key, success=False)
+            raise
+        self.ui.end(key, detail='Verified and ready')
 
     def missing_files(self, python, role, *, gpu=None, wheels=None):
         """Pinned packages of an environment whose files are gone (runtime_libraries.package_files).
@@ -2185,7 +2215,8 @@ class Installer:
             'encoder_model_root': self.plan['encoder_dir'], 'wheel_cache': self.plan['wheel_cache'],
             'base': str(Path(self.plan['model_dir']) / 'h3-base'),
             'checkpoint': str(Path(self.plan['model_dir']) / 'stage-dmd-step-250'),
-            'cache': json.loads(prepared.read_text(encoding='utf-8'))['cache'],
+            **({'video_model': False, 'image_group': self.plan['image_group']} if self.plan.get('only') == 'image' else
+               {'cache': json.loads(prepared.read_text(encoding='utf-8'))['cache']}),
             'encoder': self.spec['models']['encoder_file'].split('/')[-1],
             'model_paths': str(self.root / 'encoder-paths.yaml'),
             **self.device_configuration(),
@@ -2297,8 +2328,10 @@ class Installer:
         python, encoder_python = self.pythons['engine'], self.pythons['encoder']
         prepared = self.run_dir / 'prepared.json'
         self.ui.phase('Optimize model storage', total - 3, total)
-        self.command('prepare', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
-                                '--prepare', '--out', prepared])
+        image_only = self.plan.get('only') == 'image'
+        if not image_only:
+            self.command('prepare', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
+                                    '--prepare', '--out', prepared])
         self.ui.phase('Verify installation on your GPU', total - 2, total)
         for name, executable in pythons.items():
             self.command(name + '-dependency-check', [uv, 'pip', 'check', '--python', executable])
@@ -2306,8 +2339,9 @@ class Installer:
         kernel_report = self.run_dir / 'kernel-capabilities.json'
         self.check_kernels(python, kernel_report)
         require_int8_kernels(self.plan, kernel_report)
-        self.command('storage', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
-                                 '--cleanup', '--out', self.run_dir / 'storage.json'])
+        if not image_only:
+            self.command('storage', [python, '-m', 'freevideo_engine.provision', '--plan', self.run_dir / 'plan.json',
+                                     '--cleanup', '--out', self.run_dir / 'storage.json'])
         self.record_kernel_validation(results, kernel_report)
         self.ui.phase('Finish setup', total - 1, total)
         configuration = self.machine_configuration(python, encoder_python, comfy, prepared)
@@ -2462,6 +2496,8 @@ def run_main(argv, shown):
     parser.add_argument('--sampling-caches', action=argparse.BooleanOptionalAction, default=None,
                         help='Install every quality level in advance (default for new installations; existing ones keep '
                              'their choice). The default 8 + 3 refinement tables are always installed.')
+    parser.add_argument('--only', choices=('all', 'image'), default='all',
+                        help='image: install only the MiniMax H3 Image model, without the video model; the video model can be added later')
     parser.add_argument('--image-model', action='store_true',
                         help='After setup, also download the optional image generation model (about 16 GiB). '
                              'A failure here does not fail setup; the launcher can download it later')

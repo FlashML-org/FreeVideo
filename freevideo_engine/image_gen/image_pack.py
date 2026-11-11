@@ -30,6 +30,8 @@ from ..locking import runtime_lock
 from ..monitoring import save
 from ..failure_details import Redactor, image_pack_error_code, redacted_launcher_error
 
+H3_TIERS = ('int8',)
+H3_GROUPS = ('h3-image-core', 'h3-text-encoder') + tuple('h3-image-dit-' + tier for tier in H3_TIERS)
 LEDGER = 'download-verified.json'
 OWNERSHIP = 'owned-files.json'
 RESERVE = 256 * 2**20
@@ -141,8 +143,9 @@ def validate_catalog(spec):
         image_rows = spec['groups']['image']
         # A group of its own holds only its own component; the image group holds neither.
         own = {group: spec['groups'].get(group, []) for group in ('segment', 'music', 'stems')}
-        found = image_rows + [row for found in own.values() for row in found]
-        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own}
+        h3 = {group: spec['groups'].get(group, []) for group in H3_GROUPS}
+        found = image_rows + [row for found in own.values() for row in found] + [row for found in h3.values() for row in found]
+        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own, *h3}
                 or any(row['component'] in own for row in image_rows)
                 or any(row['component'] != group for group, found in own.items() for row in found)):
             raise PackError('invalid_catalog')
@@ -150,7 +153,8 @@ def validate_catalog(spec):
             _relative(row['file'])
             if (type(row['bytes']) is not int or row['bytes'] <= 0
                     or not re.fullmatch('[0-9a-f]{64}', row['sha256'])
-                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'segment', 'music', 'stems')):
+                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'config', 'segment', 'music', 'stems')
+                    or row.get('shared', 'video-encoder') != 'video-encoder'):
                 raise PackError('invalid_catalog')
             ids = [s['id'] for s in row['sources']]
             required = {'official', 'modelscope'}
@@ -165,10 +169,25 @@ def validate_catalog(spec):
         raise PackError('invalid_catalog') from error
 
 
+def group_names(group):
+    """'h3-image:<tier>' is the files one machine needs: shared setup, text encoder and that tier's DiT."""
+    if isinstance(group, str) and group.startswith('h3-image:'):
+        tier = group.split(':', 1)[1]
+        if tier not in H3_TIERS:
+            raise PackError('invalid_catalog')
+        return ['h3-image-core', 'h3-text-encoder', 'h3-image-dit-' + tier]
+    return [group]
+
+
+def default_tier(vram_gib=None):
+    """The H3 Image weights for every machine: one file for all GPUs, int8 convrot until the final choice."""
+    return 'int8'
+
+
 def rows(spec=None, *, group='image'):
     spec = spec if spec is not None else catalog()
     validate_catalog(spec)
-    groups = spec['groups'].values() if group is None else [spec['groups'][group]]
+    groups = spec['groups'].values() if group is None else [spec['groups'][name] for name in group_names(group)]
     return [dict(row, family='image', model_id=row.get('model_id', spec['model_id']),
                  repo=row.get('repo', spec['repo']), revision=row.get('revision', spec['revision']))
             for found in groups for row in found]
@@ -194,8 +213,33 @@ def _path(folder, name):
     return path
 
 
+def shared_root(root=None):
+    """Where setup puts the video text encoder (<encoder_dir>/text_encoders/...), which H3 Image uses as is."""
+    if root is None:
+        import os
+        from ..paths import data_root, installed_model_root
+        if not os.environ.get('FREEVIDEO_MODEL_ROOT'):
+            try:
+                saved = json.loads((data_root() / 'machine.json').read_text(encoding='utf-8'))['encoder_model_root']
+                if isinstance(saved, str) and saved:
+                    return Path(saved).expanduser()
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        root = installed_model_root()
+    return Path(root).expanduser().absolute().parent / 'encoder'
+
+
 def target(row, root=None):
+    if row.get('shared'):
+        return shared_root(root) / _relative(row['file'])
     return _path(base(root), row['file'])
+
+
+def _side(folder, row, root, suffix):
+    """A partial or source record sits next to its file, also for a file outside the pack folder."""
+    if row.get('shared'):
+        return Path(str(target(row, root)) + suffix)
+    return _path(folder, row['file'] + suffix)
 
 
 def _read(folder, name):
@@ -237,7 +281,9 @@ STEMS_NOTICE_TEXT = (b'Bandit Plus (cocktail-party separation model). Weights: W
                      b'freevideo_engine/licenses/Bandit-CC-BY-NC-4.0.txt.\nhttps://zenodo.org/records/10160698\n'
                      b'Code: Copyright (c) the Bandit authors, Apache-2.0; see freevideo_engine/licenses/Bandit-Apache-2.0.txt.\n'
                      b'https://github.com/kwatcharasupat/source-separation\n')
-NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
+H3_NOTICE_TEXT = (b'MiniMax-H3-Image is licensed under the MiniMax-H3-Image Community License Agreement, '
+                  b'Copyright \xc2\xa9 2026 MiniMax. All Rights Reserved.\n')
+NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'h3-image': ('MINIMAX-H3-IMAGE-NOTICE.txt', H3_NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
            'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT),
            'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT)}
 
@@ -246,10 +292,14 @@ def _notice():
     return NOTICE_TEXT
 
 
+def _notice_key(group):
+    return 'h3-image' if isinstance(group, str) and group.startswith('h3-') else group
+
+
 def _notice_ready(path, *, group='image'):
     """Informational only: a missing or different notice never makes the pack unusable."""
     try:
-        return path.is_file() and path.read_bytes() == NOTICES[group][1]
+        return path.is_file() and path.read_bytes() == NOTICES[_notice_key(group)][1]
     except OSError:
         return False
 
@@ -257,10 +307,10 @@ def _notice_ready(path, *, group='image'):
 def _write_notice(folder, owned, *, group='image'):
     """Put the notice into the model folder when possible; a failure is logged and the install goes on."""
     try:
-        notice = _path(folder, NOTICES[group][0])
+        notice = _path(folder, NOTICES[_notice_key(group)][0])
         if notice.exists():
             return   # present (ours or the user's own text): left as it is
-        notice.write_bytes(NOTICES[group][1])
+        notice.write_bytes(NOTICES[_notice_key(group)][1])
         _own(folder, owned, notice)
     except Exception as error:
         logging.warning('[FreeVideo] Could not write the image model notice: %s', redacted_launcher_error(error))
@@ -386,17 +436,20 @@ def status(root=None, *, group='image'):
         if old:
             stale.append(path)
         size = path.stat().st_size if path.is_file() else 0
-        part = _path(folder, row['file'] + '.partial')
+        part = _side(folder, row, root, '.partial')
         partial = part.stat().st_size if part.is_file() else 0
         retained = row['bytes'] if intact else min(row['bytes'], max(size, partial))
+        # A file the video install put there is not downloaded again; install() checks its hash.
+        present = bool(row.get('shared')) and not intact and size == row['bytes']
         downloaded += retained
         verified_bytes += row['bytes'] if intact else 0
         if not intact:
             missing.append(row['file'])
-        files.append(dict(file=row['file'], bytes=row['bytes'], ready=intact, downloaded_bytes=retained, stale=old))
+        files.append(dict(file=row['file'], bytes=row['bytes'], ready=intact, downloaded_bytes=retained, stale=old,
+                          present=present))
     checking = bool(stale) and _start_recheck(root, folder, stale)
     try:
-        notice_ready = _notice_ready(_path(folder, NOTICES[group][0]), group=group)
+        notice_ready = _notice_ready(_path(folder, NOTICES[_notice_key(group)][0]), group=group)
     except PackError:
         notice_ready = False
     total = sum(r['bytes'] for r in files)
@@ -404,8 +457,8 @@ def status(root=None, *, group='image'):
     # Files being re-checked are all there: nothing to download for them.
     return dict(installable=True, ready=available, total_bytes=total, verified_bytes=verified_bytes,
                 downloaded_bytes=downloaded,
-                bytes=sum(r['bytes'] for r in files if not r['ready'] and not (checking and r['stale'])),
-                remaining_bytes=sum(r['bytes'] - r['downloaded_bytes'] for r in files if not r['ready']),
+                bytes=sum(r['bytes'] for r in files if not r['ready'] and not r['present'] and not (checking and r['stale'])),
+                remaining_bytes=sum(r['bytes'] - r['downloaded_bytes'] for r in files if not r['ready'] and not r['present']),
                 missing=missing, notice_ready=notice_ready, files=files, checking=checking,
                 state='ready' if available else 'partial' if downloaded else 'missing')
 
@@ -512,7 +565,7 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
                                       method='sha256' if hashed else 'receipt' if intact else 'size')))
         if not intact:
             ledger.pop(str(path), None)
-            if path.exists():
+            if path.exists() and not row.get('shared'):
                 model_repair.record(folder, path, row, before)
             todo.append(row)
         done += row['bytes']
@@ -613,7 +666,7 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
             total = sum(r['bytes'] for r in todo)
             retained = 0
             for row in todo:
-                partial = _path(folder, row['file'] + '.partial')
+                partial = _side(folder, row, root, '.partial')
                 if partial.is_file() and partial.stat().st_size < row['bytes']:
                     retained += partial.stat().st_size
             reserve = BACKGROUND_RESERVE if _background is not None else RESERVE
@@ -630,14 +683,14 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
             if _background is not None:
                 done = sum(r['bytes'] for r in rows(group=group)) - total
                 total += done
-                pending_prefixes = sum(min(row['bytes'], _path(folder, row['file'] + '.partial').stat().st_size)
-                                       for row in todo if _path(folder, row['file'] + '.partial').is_file())
+                pending_prefixes = sum(min(row['bytes'], _side(folder, row, root, '.partial').stat().st_size)
+                                       for row in todo if _side(folder, row, root, '.partial').is_file())
                 progress(dict(phase='download', done=done + pending_prefixes, total=total))
             for row in todo:
                 check()
                 path = target(row, root)
                 if path.exists():
-                    if not repair:
+                    if not repair or row.get('shared'):
                         raise PackError('needs_repair')
                     approved = model_repair.replacement(path, row, model_repair.read(folder), set())
                     if approved is None:
@@ -645,11 +698,11 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                     model_repair.retain(folder, path, approved)
                     owned.pop(row['file'], None)
                     save(_path(folder, OWNERSHIP), owned)
-                partial = _path(folder, row['file'] + '.partial')
+                partial = _side(folder, row, root, '.partial')
                 if _background is not None and partial.is_file():
                     pending_prefixes -= min(row['bytes'], partial.stat().st_size)
-                affinity = _path(folder, row['file'] + '.partial.source.json')
-                may_own = {p: not p.exists() or _owned_intact(p, owned.get(p.relative_to(folder).as_posix()))
+                affinity = _side(folder, row, root, '.partial.source.json')
+                may_own = {p: not row.get('shared') and (not p.exists() or _owned_intact(p, owned.get(p.relative_to(folder).as_posix())))
                            for p in (partial, affinity)}
                 def moved(current, size, speed, **kwargs):
                     progress(dict(phase='download', done=done + current + pending_prefixes, total=total))
@@ -659,11 +712,12 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 finally:
                     # Completed files and cancellable prefixes have separate identities.
                     for artifact in (partial, affinity):
-                        if may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix()).is_file():
+                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix()).is_file():
                             _own(folder, owned, artifact)
                 ledger[str(path)] = provision.file_identity(path, row)
                 save(_path(folder, LEDGER), ledger)
-                _own(folder, owned, path, row)
+                if not row.get('shared'):
+                    _own(folder, owned, path, row)   # the video's text encoder is never ours to remove
                 done += row['bytes']
                 progress(dict(phase='download', done=done + pending_prefixes, total=total))
             check()
@@ -683,10 +737,11 @@ def repair(root=None, progress=None, check=None, *, engine_root=None, group='ima
 def removal_plan(root=None, *, group='image'):
     folder = base(root)
     owned = _read(folder, OWNERSHIP)
-    notice = NOTICES[group][0]
+    notice = NOTICES[_notice_key(group)][0]
     allowed = {notice}
     for row in rows(group=group):
-        allowed.update((row['file'], row['file'] + '.partial', row['file'] + '.partial.source.json'))
+        if not row.get('shared'):
+            allowed.update((row['file'], row['file'] + '.partial', row['file'] + '.partial.source.json'))
     for name in allowed:
         if name == notice:
             continue
@@ -949,7 +1004,10 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     download = commands.add_parser('download')
     download.add_argument('--background', action='store_true')
-    download.add_argument('--group', choices=('image', 'segment', 'music', 'stems'), default='image')
+    download.add_argument('--group', default='image',
+                          type=lambda name: name if name in ('image', 'segment', 'music', 'stems') or (
+                              name.startswith('h3-image:') and name[9:] in H3_TIERS) else
+                          parser.error('unknown group ' + name))
     download.add_argument('--root', type=Path)
     download.add_argument('--engine-root', type=Path)
     download.add_argument('--status-file', type=Path, required=True)

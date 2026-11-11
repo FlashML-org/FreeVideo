@@ -355,6 +355,21 @@ class ComfyPort:
         except Exception:  # noqa: BLE001 - an optional service must not prevent video generation
             return False
 
+    def image_model(self, requested=None, *, prefer=None):
+        """The picture model for a request: the one named, else the installed one, else the page's last choice."""
+        from ..image_gen import image_model
+        if requested:
+            return requested
+        try:
+            service = self._image()
+            info = service.info() if service is not None else None
+            root = service.installation()[1].get('model_root') if service is not None and hasattr(service, 'installation') else None
+        except Exception:  # noqa: BLE001 - an unreadable state keeps the default model
+            return image_model.QWEN
+        choice = image_model.choose(info, image_model.remembered(root) if root else None)
+        ready = [row.get('id') for row in (info or {}).get('models') or () if row.get('ready')]
+        return prefer if prefer in ready else choice
+
     def image_start(self, action, value):
         try:
             return self.image.start(action, value)['job']

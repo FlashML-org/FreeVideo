@@ -117,7 +117,7 @@ class Session:
     report_opened = ('', 0.)
     pending_update = None
     pending_check = None
-    upgrade = image_installer = prompt_installer = None
+    upgrade = image_installer = h3_installer = prompt_installer = None
     model_switch = None
     language = 'en'
 
@@ -172,7 +172,7 @@ class Session:
         self.tail = Tail()
         self.log_source = None
         self.model_groups = []
-        self.image_installer = self.prompt_installer = None
+        self.image_installer = self.h3_installer = self.prompt_installer = None
         self.download_export = self.download_error = self.download_error_key = ''
         self._download_view = None
         # 'image' opens the image model's own list, which needs no file check; any other value is the video list.
@@ -765,23 +765,42 @@ class Session:
         root = Path(os.environ.get('FREEVIDEO_MODEL_ROOT') or machine.get('model_root') or engine / 'models')
         return root.expanduser(), engine
 
+    def h3_group(self):
+        """The MiniMax H3 Image files of this machine: its weights tier plus the shared files."""
+        from .image_gen import image_pack
+        try:
+            vram = json.loads((Path(self.engine_root()) / 'machine.json').read_text(encoding='utf-8')).get('vram_gib')
+        except (OSError, ValueError, TypeError):
+            vram = None
+        return 'h3-image:' + image_pack.default_tier(vram)
+
     def image_pack_action(self, action):
         from .image_gen import image_pack
+        # "h3:install" acts on MiniMax H3 Image, a plain action on the image model that was there before.
+        h3 = action.startswith('h3:')
+        action = action[3:] if h3 else action
+        installer = self.h3_installer if h3 else self.image_installer
         if action == 'cancel':
-            if self.image_installer:
-                self.image_installer.cancel()
+            if installer:
+                installer.cancel()
             return
         if (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
                 or self.closing or self.engine_updating or self.update_intent or self.upgrade.active or self.model_switch
                 or self.updater and self.updater.busy):
             return
         root, engine = self._image_location()
-        if self.image_installer and self.image_installer.busy:
+        # Both packs share one lease and one disk: one download at a time.
+        if any(item and item.busy for item in (self.image_installer, self.h3_installer)):
             return
         # An install is the quiet kind: it stops while a video is generating and carries on afterwards.
-        if not (self.image_installer and self.image_installer.root == root and self.image_installer.engine_root == engine):
-            self.image_installer = image_pack.Installer(root, engine_root=engine, busy=self.generating)
-        self.image_installer.start(action, background=action == 'install')
+        group = self.h3_group() if h3 else 'image'
+        if not (installer and installer.root == root and installer.engine_root == engine and installer.group == group):
+            installer = image_pack.Installer(root, engine_root=engine, busy=self.generating, group=group)
+            if h3:
+                self.h3_installer = installer
+            else:
+                self.image_installer = installer
+        installer.start(action, background=action == 'install')
 
     def generating(self):
         """Whether the opened ComfyUI is running or holding a job (read from the download thread)."""
@@ -811,27 +830,29 @@ class Session:
         except Exception:  # A page reading the disk must never fail to draw.
             return True
 
-    def image_pack_view(self):
+    def image_pack_view(self, model='image'):
         from .image_gen import image_pack
         from .failure_details import image_pack_failure
+        group = self.h3_group() if model == 'h3-image' else 'image'
+        title = ('MiniMax H3 Image', 'MiniMax H3 Image') if model == 'h3-image' else NAMES['image']
         try:
-            total = sum(r['bytes'] for r in image_pack.rows())
+            total = sum(r['bytes'] for r in image_pack.rows(group=group))
         except image_pack.PackError:
             total = 0
         if not self.installation_engine():
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
-                        title=self.t(*NAMES['image']), detail=self.t('Not installed', '未安装'),
+                        title=self.t(*title), detail=self.t('Not installed', '未安装'),
                         install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None)
         root, engine = self._image_location()
         try:
-            value = image_pack.status(root)
-            removable = image_pack.removal_plan(root)['bytes']
+            value = image_pack.status(root, group=group)
+            removable = image_pack.removal_plan(root, group=group)['bytes']
         except (OSError, ValueError, image_pack.PackError):
             value = dict(installable=False, ready=False, state='invalid', downloaded_bytes=0, verified_bytes=0,
                          total_bytes=total, bytes=0)
             removable = 0
-        installer = self.image_installer
+        installer = self.h3_installer if model == 'h3-image' else self.image_installer
         active = installer.state() if installer and installer.root == root and installer.engine_root == engine else {}
         busy = bool(active and installer.busy)
         failure = {}
@@ -859,7 +880,7 @@ class Session:
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
                    or self.closing or self.engine_updating or self.update_intent or self.upgrade.active or self.model_switch
                    or self.updater and self.updater.busy)
-        return dict(value, visible=bool(self.installation_engine()), title=self.t(*NAMES['image']),
+        return dict(value, visible=bool(self.installation_engine()), title=self.t(*title),
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
                     repairable=repairable, failure=failure, report_id=active.get('report_id'))
@@ -894,7 +915,7 @@ class Session:
             self.persist()
 
     def background_download_busy(self):
-        return bool(self.image_installer and self.image_installer.busy or self.prompt_installer and self.prompt_installer.busy)
+        return bool(any(item and item.busy for item in (self.image_installer, self.h3_installer)) or self.prompt_installer and self.prompt_installer.busy)
 
     def prompt_model_action(self, action):
         from .prompt_vlm import installer as prompt_installer
@@ -1341,8 +1362,9 @@ class Session:
                 and not self.closing and not self.upgrade.active and not self.model_switch):
             # An explicit update goes first. The image model download is the long, quiet kind and
             # keeps what it has; it carries on from there when the user continues it.
-            if self.image_installer:
-                self.image_installer.cancel()
+            for installer in (self.image_installer, self.h3_installer):
+                if installer:
+                    installer.cancel()
             if self.prompt_installer:
                 self.prompt_installer.cancel()
         if self.task_busy() or self.updater and self.updater.busy:
@@ -1701,10 +1723,11 @@ class Session:
             if self.updater:
                 self.updater.cancelled.set()
             self.upgrade.close()
-            if self.image_installer:
-                self.image_installer.cancel()
-                if self.image_installer.thread:
-                    self.image_installer.thread.join(5)
+            for installer in (self.image_installer, self.h3_installer):
+                if installer:
+                    installer.cancel()
+                    if installer.thread:
+                        installer.thread.join(5)
             if self.prompt_installer:
                 self.prompt_installer.cancel()
                 if self.prompt_installer.thread:
@@ -2320,6 +2343,11 @@ class Session:
             speed = observed_speed(self.engine_root()) or 0
         except Exception:
             speed = 0
+        h3 = self.image_pack_view('h3-image')
+        if h3['visible'] and sys.platform != 'darwin' and 'h3-image' not in by_id:
+            models.append(dict(id='h3-image', title=h3['title'], state=h3['state'], detail=h3['detail'],
+                               done=h3['downloaded_bytes'], total=h3['total_bytes'], found=h3['verified_bytes'],
+                               download=h3['bytes'], rate=''))
         if image_pack['visible'] and 'image' not in by_id:
             models.append(dict(id='image', title=image_pack['title'], state=image_pack['state'],
                                detail=image_pack['detail'], done=image_pack['downloaded_bytes'],

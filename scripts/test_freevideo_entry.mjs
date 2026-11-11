@@ -139,6 +139,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';", 'const {startDoneNotify} = globalThis.__freevideoEntryTest; const askDesktopPermission = (...args) => globalThis.__permissionAsks.push(args); const DESKTOP_SETTING = "FreeVideo.DoneNotify.Desktop";')
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
+            .replace("import { openReferenceMenu } from './image_library.js';", 'const openReferenceMenu = () => {};')
             .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
             .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')

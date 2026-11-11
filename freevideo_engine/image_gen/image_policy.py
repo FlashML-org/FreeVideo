@@ -51,6 +51,11 @@ class ImageShape:
 # Peaks are linear in megapixels; the streamed-stage figures are within 0.1 GiB.
 _ENCODE_BASE = 2.7 * GiB          # prompt length, not image size, drives this stage
 _DENOISE_BASE, _DENOISE_PER_MP = 1.06 * GiB, 0.554 * GiB
+# The small-image fit holds to about 4.2 MP (2048 x 2048). Beyond it the denoise
+# activations grow much more slowly (int8 H3 Image, nothing resident, B200 real cap:
+# 4.72 GiB at 16.8 MP where the line gives 10.4), 0.147 GiB per megapixel; each
+# resident block adds its own size. Continued from the line's value at 4.2 MP.
+_DENOISE_FIT_MP, _DENOISE_LARGE_PER_MP = 4.2, 0.147 * GiB
 _DECODE_BASE, _DECODE_PER_MP = 2.10 * GiB, 0.15 * GiB
 # Decoding the whole image at once instead of in tiles. A single frame keeps no
 # causal cache: the whole-image decoder workspace is 3.49 GiB per megapixel
@@ -130,7 +135,9 @@ def stage_peaks(shape, dit_resident, te_resident, *, width, height, reference_pi
     kept = dit_resident if dit_kept is None else min(dit_kept, dit_resident)
     resident = kept * shape.dit_block_bytes + te_resident * shape.te_layer_bytes
     encode = _ENCODE_BASE + resident
-    denoise = _DENOISE_BASE + _DENOISE_PER_MP * mp + resident + (dit_resident - kept) * shape.dit_block_bytes
+    denoise = (_DENOISE_BASE + _DENOISE_PER_MP * min(mp, _DENOISE_FIT_MP)
+               + _DENOISE_LARGE_PER_MP * max(0.0, mp - _DENOISE_FIT_MP)
+               + resident + (dit_resident - kept) * shape.dit_block_bytes)
     decode = _DECODE_BASE + _DECODE_PER_MP * mp + resident
     if not vae_tiling:
         decode += _UNTILED_DECODE_PER_MP * mp

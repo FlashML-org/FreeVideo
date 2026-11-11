@@ -10,7 +10,7 @@ import { openSetup } from './setup.js';
 import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
 import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
-import { viewSwitch, viewChanged, agentTabReady, openAutopilot } from './view_navigation.js';
+import { viewSwitch, viewChanged, agentTabReady, openAutopilot, openImage } from './view_navigation.js';
 import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { createUpdateNotice, createVersionInfo, productVersion } from './updates.js';
@@ -678,7 +678,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The length hint links to the same two views, through the same actions.
     const toEditor = () => { firstStart?.dismiss(); return openEditorView(node, {studio: dialog}); };
     const toAutopilot = () => { firstStart?.dismiss(); return openAutopilot(node, {studio: dialog}); };
-    const navigation = viewSwitch('studio', () => {}, () => showNodes(node, dialog), toEditor, toAutopilot);
+    const toImage = () => openImage(node, {studio: dialog});
+    const navigation = viewSwitch('studio', () => {}, () => showNodes(node, dialog), toEditor, toAutopilot, toImage);
     const autopilotTab = navigation.querySelector('[data-view="autopilot"]');
     // The guide starts after the tab settles: it fixes its steps from the anchors present at that moment.
     const agentDiscovery = navigation.ready;

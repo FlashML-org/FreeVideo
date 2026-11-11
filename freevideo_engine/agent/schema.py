@@ -276,8 +276,11 @@ def image_loras():
 def image(*, local=False):
     return obj(dict(kind={'const': 'image', 'type': 'string'},
         prompt=dict(type='string', minLength=1, maxLength=2000),
-        width=number(256, 2048, integer=True), height=number(256, 2048, integer=True),
+        width=number(256, 4096, integer=True), height=number(256, 4096, integer=True),
         aspect=enum(IMAGE_ASPECTS, description='Instead of width and height; 1:1 when all three are omitted.'),
+        model=enum(('minimax-h3-image', 'qwen-image-2.1-turbo'), description='The picture model; leave it out to use the installed one, '
+            'or the one chosen on the picture page when both are installed.'),
+        tier=enum(('standard', 'high'), description='With aspect on H3 Image: standard is about 4 MP, high about 16 MP. Not used by Qwen.'),
         seed=nullable(number(-2**63, 2**64 - 1, integer=True)),
         loras=image_loras(),
         images=array({'oneOf': [FILE, obj(dict(file=FILE), ('file',))]}, high=4, description='Pictures to change '
@@ -303,8 +306,8 @@ def image(*, local=False):
 
 
 def image_result():
-    return obj(dict(file=FILE, url=string(), width=number(256, 2048, integer=True),
-        height=number(256, 2048, integer=True), seed=number(-2**63, 2**64 - 1, integer=True),
+    return obj(dict(file=FILE, url=string(), width=number(256, 4096, integer=True),
+        height=number(256, 4096, integer=True), seed=number(-2**63, 2**64 - 1, integer=True),
         thumbnail=string()), ('file', 'url', 'width', 'height', 'thumbnail'))
 
 
@@ -758,7 +761,7 @@ def cast_schema(name, *, local=False):
                   images=array(obj(dict(media=picture, label=enum(LABELS)), ('media',)), 0, 6),
                   voice=nullable(obj(dict(media=sound, start=number(0, 3600, default=0), end=number(0, 3600)), ('media',))))
     if name == 'create':
-        return obj(dict(kind=enum(('character', 'setting', 'prop'), default='character'), **fields, ref=REF), ('name',))
+        return obj(dict(kind=enum(('character', 'setting', 'prop', 'image'), default='character'), **fields, ref=REF), ('name',))
     if name == 'update':
         fields['images']['items']['properties']['label'] = {'type': 'string'}
         return obj(dict(fields, revision=number(1, integer=True), ref=REF))
@@ -772,7 +775,7 @@ def cast_schema(name, *, local=False):
                                      description='Replace pictures the user did not add; default fills empty slots.'),
                         revision=number(1, integer=True), ref=REF))
     if name == 'list':
-        return obj(dict(q=string(200), kind=enum(('character', 'setting', 'prop')), origin=enum(('user', 'agent', 'builtin')),
+        return obj(dict(q=string(200), kind=enum(('character', 'setting', 'prop', 'image')), origin=enum(('user', 'agent', 'builtin')),
                         production=PRODUCTION, limit=number(1, 200, integer=True, default=50)))
     return EMPTY
 
@@ -787,7 +790,7 @@ def cast_view():
     generated = obj(dict(job=JOB, face_job=nullable(JOB), source=enum(('image', 'video')),
         seed=number(0, 2**53 - 1, integer=True), prompt_version=number(1, integer=True)),
         ('job', 'face_job', 'seed', 'prompt_version'))
-    return dict(obj(dict(id=CAST, kind=enum(('character', 'setting', 'prop')), name=string(120),
+    return dict(obj(dict(id=CAST, kind=enum(('character', 'setting', 'prop', 'image')), name=string(120),
         description=nullable(string(1000)), revision=number(1, integer=True),
         images=array(picture, 0, 6), candidates=array(picture, 0, 6),
         generating=nullable(generating), generated=nullable(generated),

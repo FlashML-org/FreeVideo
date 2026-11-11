@@ -2104,6 +2104,19 @@ class Jobs:
         spec = row['spec']
         row['_phase'] = 'preparing images'
         value = {k: spec[k] for k in ('width', 'height', 'seed', 'loras') if k in spec}
+        # People are placed by the Qwen composer when it is installed; every other request goes to the installed
+        # or chosen model, and a shape without width and height is sized for it (H3 Image starts at 4 MP).
+        model = self.port.image_model(spec.get('model'), prefer='qwen-image-2.1-turbo' if spec.get('people') else None)
+        if model != 'qwen-image-2.1-turbo' or spec.get('model'):
+            value['model'] = model
+        from ..image_gen import image_model
+        if 'aspect' in spec:
+            value.update(zip(('width', 'height'), image_model.size(model, spec['aspect'], spec.get('tier', 'standard')) or
+                             (spec['width'], spec['height'])))
+        elif model == 'qwen-image-2.1-turbo' and max(value['width'], value['height']) > 2048:
+            raise JobError('invalid_request', IMAGE_ERRORS['invalid_request'])
+        else:
+            value.update(zip(('width', 'height'), image_model.at_least_four_megapixels(model, value['width'], value['height'])))
         if spec.get('people'):
             # A first frame: the people's pictures at the asked places, in the scene shown or described.
             action = 'compose'

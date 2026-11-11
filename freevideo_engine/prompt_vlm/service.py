@@ -709,6 +709,8 @@ class Service:
                     rules.validate_answers(result.get('answers'), value)
                 elif value.get('mode') == 'split':
                     rules.validate_parts(result.get('parts'), value)
+                elif value.get('mode') == 'image':
+                    rules.validate_image(result.get('text'), value)
                 else:
                     try:
                         rules.validate_output(result.get('text'), value)

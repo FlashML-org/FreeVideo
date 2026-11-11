@@ -21,7 +21,7 @@ from . import assets, errors, operation_receipts, schema, spec
 from .jobs import ACTIVE, DONE, JobError, iso
 
 CARD = re.compile(r'c[0-9a-f]{12}')
-KINDS = ('character', 'setting', 'prop')
+KINDS = ('character', 'setting', 'prop', 'image')
 ORIGINS = ('user', 'agent', 'builtin')
 LABELS = schema.LABELS
 EDITABLE = ('name', 'description', 'images', 'voice')

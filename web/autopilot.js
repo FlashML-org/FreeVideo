@@ -10,7 +10,7 @@ import { createVersionInfo, productVersion } from './updates.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
 import { openExtendEditor, openStudio, showNodes } from './studio.js';
-import { agentTabReady, viewChanged, viewSwitch } from './view_navigation.js';
+import { agentTabReady, openImage, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -43,7 +43,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     let next = () => studio?.open ? viewChanged('studio', node) : viewChanged('nodes', node);
     const leave = action => { next = action; closeDialog(dialog); };
     const navigation = viewSwitch('autopilot', () => leave(() => studio?.open ? viewChanged('studio', node) : openStudio(node)),
-        () => leave(() => showNodes(node, studio)), () => leave(() => openEditorView(node, {studio: studio?.open ? studio : undefined})), () => {});
+        () => leave(() => showNodes(node, studio)), () => leave(() => openEditorView(node, {studio: studio?.open ? studio : undefined})), () => {}, () => leave(() => openImage(node, {studio: studio?.open ? studio : undefined})));
     header.append(brand, navigation, tools, line);
     const inSight = () => dialog.open && dialog.dataset.closing !== 'true';
     const body = el('div', 'fv-autopilot-body');

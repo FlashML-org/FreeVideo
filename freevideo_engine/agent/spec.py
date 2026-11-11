@@ -281,6 +281,10 @@ def normalize(value, *, port=None):
                          contract.IMAGE_ASPECTS[value.get('aspect', '1:1')])
         result.update(prompt=value.get('prompt', ''), width=width, height=height,
                       images=[item if isinstance(item, str) else item['file'] for item in value.get('images', [])])
+        # The size is final only when the model is: a shape without width and height is sized again for H3 Image.
+        if 'width' not in value:
+            result['aspect'] = value.get('aspect', '1:1')
+        result.update({k: value[k] for k in ('model', 'tier') if k in value})
         if value.get('seed') is not None:
             result['seed'] = value['seed']
         if value.get('people'):

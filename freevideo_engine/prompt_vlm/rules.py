@@ -19,6 +19,13 @@ def request(value):
     prompt, seconds, media = value.get('text'), value.get('seconds'), value.get('media', [])
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
         raise ValueError('invalid_prompt')
+    if value.get('target', 'video') not in ('video', 'image'):
+        raise ValueError('invalid_request')
+    if value.get('target') == 'image':
+        # A text-to-image prompt: no length and no media.
+        if media:
+            raise ValueError('unsupported_media')
+        return dict(text=prompt, media=[], mode='image')
     if type(seconds) not in (float, int) or not math.isfinite(seconds) or not 1 <= seconds <= 60:
         raise ValueError('invalid_duration')
     if not isinstance(media, list) or len(media) > 8:
@@ -503,7 +510,49 @@ def parse_json(text):
     raise ValueError('invalid_json')
 
 
-ANSWER_KEYS = {'text', 'json', 'tokens', 'seconds', 'error', 'truncated', 'retried'}
+# Image prompts -------------------------------------------------------------------------------------------
+# The H3 Image expansion prompt as published, plus one rule: the expansion invents no writing of its own
+# (taglines, release dates, logos), since every word in the caption is drawn in the picture. The published
+# guide asks posters and covers for a title/subtitle/tagline hierarchy; the rule only holds against that
+# right before the user's prompt (at the end of the system prompt FreeToken still added them).
+IMAGE_RULE = ('This rule overrides the guidance above: add no text the user did not ask for. The only visible text '
+              'in the image is the text the input asks for; do not add a tagline, subtitle, release date, logo, '
+              'credits, QR code, author name or any other wording, even on a poster, cover or package.')
+IMAGE_INPUT = 'input_text: {input text}\noutput_text:'
+IMAGE_OUTPUT_TOKENS = 1024
+
+
+def image_instruction(value):
+    from .h3_image_prompt import SYSTEM
+    return SYSTEM.strip()
+
+
+def image_user_text(value):
+    from .h3_image_prompt import TASK
+    return TASK.replace(IMAGE_INPUT, IMAGE_RULE + '\n\n' + IMAGE_INPUT).replace('{input text}', value['text'])
+
+
+def image_caption(text, value):
+    """The expanded caption from the model's JSON reply; every quoted text the user wrote stays verbatim."""
+    try:
+        _, answer = parse_json(text)
+    except ValueError:
+        raise InvalidOutput('json', text, value) from None
+    return validate_image(answer.get('expanded_caption') if isinstance(answer, dict) else None, value)
+
+
+def validate_image(text, value):
+    """A caption is plain text that keeps every quoted text of the user's prompt verbatim."""
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 20000:
+        raise InvalidOutput('type_or_length', text, value)
+    for found in QUOTED.finditer(value['text']):
+        words = next(each for each in found.groups() if each is not None).strip()
+        if words and words not in text:
+            raise InvalidOutput('missing_text', text, value)
+    return text.strip()
+
+
+ANSWER_KEYS ={'text', 'json', 'tokens', 'seconds', 'error', 'truncated', 'retried'}
 
 
 def validate_answers(answers, value):

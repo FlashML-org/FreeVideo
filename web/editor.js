@@ -225,7 +225,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const adjustHost = el('aside', 'fv-ed-adjust-host');
     tracksHost.dataset.fvGuide = 'editor-timeline'; tracksHost.dataset.tourId = 'editor-timeline';
     const button = (label, action, cls = '') => { const value = el('button', cls, label); value.type = 'button'; value.onclick = action; return value; };
-    const navigation = viewSwitch('editor', () => handle.switchView('studio'), () => handle.switchView('nodes'), () => {}, () => handle.switchView('autopilot'));
+    const navigation = viewSwitch('editor', () => handle.switchView('studio'), () => handle.switchView('nodes'), () => {}, () => handle.switchView('autopilot'), () => handle.switchView('image'));
     for (const control of navigation.querySelectorAll('button')) control.removeAttribute('title');
     const brand = el('div', 'fv-brand');
     const headerActions = el('div', 'fv-header-actions');

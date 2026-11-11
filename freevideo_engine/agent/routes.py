@@ -690,7 +690,7 @@ def register():
         if isinstance(identity, str):
             if identity.startswith('d') and 'shots' in value:
                 refs['drama'] = identity
-            elif identity.startswith('c') and value.get('kind') in ('character', 'setting', 'prop'):
+            elif identity.startswith('c') and value.get('kind') in ('character', 'setting', 'prop', 'image'):
                 refs['cast'] = identity
         return refs
 

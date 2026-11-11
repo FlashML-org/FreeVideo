@@ -437,7 +437,54 @@ def run(folder, value, *, stats=None):
         return ask(folder, value, stats)
     if value.get('mode') == 'split':
         return split(folder, value, stats)
+    if value.get('mode') == 'image':
+        return image(folder, value, stats)
     return rewrite(folder, value, stats)
+
+
+def image(folder, value, stats):
+    """One expanded text-to-image caption; text leaves only via stdout."""
+    from .rules import IMAGE_OUTPUT_TOKENS, image_caption, image_instruction, image_user_text
+    limit = IMAGE_OUTPUT_TOKENS
+    stats.update(stage='imports', pid=os.getpid(), image_count=0, mode='image', answer_tokens=limit,
+                 dtype='bfloat16', attention='sdpa', kv_cache='dynamic', backend='transformers', accelerations=[],
+                 persistent_model=False)
+    torch, checkpoint = begin(stats)
+    from transformers import AutoProcessor
+    checkpoint('preprocess')
+    preparing = time.monotonic()
+    processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
+    messages = [{'role': 'system', 'content': image_instruction(value)},
+                {'role': 'user', 'content': [{'type': 'text', 'text': image_user_text(value)}]}]
+    inputs = tokenize(processor, messages)
+    if inputs.input_ids.shape[-1] > 6500:
+        raise ValueError('context_length')
+    stats.update(input_tokens=int(inputs.input_ids.shape[-1]), preprocess_seconds=time.monotonic() - preparing)
+    model, device = load_model(folder, torch, stats, checkpoint)
+    loaded = time.monotonic()
+    checkpoint('prefill', 'rewriting')
+    shown = [0.]
+    def on_token(timing):
+        stats.update(output_tokens=timing['output_tokens'], decode_seconds=timing['decode_seconds'],
+                     decode_tokens_per_second=timing['decode_tokens_per_second'])
+        stats['time_to_first_output_seconds'] = timing['first_output_seconds']
+        stats.setdefault('first_output_epoch', timing['first_output_epoch'])
+        if time.monotonic() - shown[0] > .5:
+            checkpoint('decode', 'rewriting')
+            shown[0] = time.monotonic()
+    ids, _ = generate(torch, model, inputs.to(device), limit, loaded, on_token)
+    stats.update(rewrite_seconds=time.monotonic() - loaded, output_tokens=len(ids))
+    checkpoint('validate', 'rewriting')
+    if len(ids) >= limit:
+        raise ValueError('context_length')
+    try:
+        caption = image_caption(processor.decode(ids, skip_special_tokens=True), value)
+    except ValueError as error:
+        if hasattr(error, 'details'):
+            stats.setdefault('output_rejections', []).append(error.details)
+        raise
+    stats['stage'] = 'complete'
+    emit(phase='complete', text=caption, diagnostics=dict(stats))
 
 
 def validate_rewrite(text, value, stats, retried=False):
