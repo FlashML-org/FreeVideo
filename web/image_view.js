@@ -14,7 +14,9 @@ import { segmented } from './editor_adjust.js';
 import { menuSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
 import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
+import { duration } from './generation_progress.js';
+import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 
 const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
 const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
@@ -60,9 +62,9 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
-            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction};
+            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32)};
             const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15)});
-            return {state: 'done', file, fraction: 1};
+            return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32)};
         },
         cancel: async job => { jobs.delete(job); },
         history: async () => items.slice(),
@@ -83,7 +85,6 @@ const SAMPLE_PROMPTS = {
 };
 const STAGE_WORDS = {load: ['Loading the model', '加载模型'], text: ['Reading the prompt', '读取提示词'], encode: ['Reading the references', '读取参考图'],
     upload: ['Reading the references', '读取参考图'], sample: ['Generating', '正在生成'], decode: ['Generating', '正在生成']};
-const seconds = value => value >= 90 ? t(`about ${Math.round(value / 60)} min`, `约 ${Math.round(value / 60)} 分钟`) : t(`about ${Math.max(5, Math.round(value / 5) * 5)} s`, `约 ${Math.max(5, Math.round(value / 5) * 5)} 秒`);
 
 let current = null;
 // Opens above the studio when one is open, as the editing view does, so going back finds it as it was.
@@ -105,7 +106,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     // State of the page.
     let info = null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0], ratio = '1:1', tier = 'standard';
     const promptOf = {};
-    let ratioChosen = false, running = null, failure = null, alive = true, shownFile = '', started = 0, selecting = false;
+    let ratioChosen = false, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false;
     let menu = null; const references = [], picked = new Set(); let rows = [];
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
     const missing = () => entry() ? entry().ready === false : false;
@@ -144,8 +145,12 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     // Stage: the work, or the state that stands in for it; below it the actions and one line of facts.
     const canvas = el('div', 'fv-image-canvas'), picture = el('img'), samples = el('div', 'fv-image-card'), block = el('div', 'fv-image-block'), failHost = el('div', 'fv-image-fail');
-    picture.alt = ''; const progressText = el('p', 'fv-image-progress'); progressText.setAttribute('role', 'status');
-    block.append(el('i'), progressText);
+    picture.alt = ''; const progressText = el('p', 'fv-image-progress');
+    const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
+    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
+    // The video's rising wave: it reads the level from this element, as in the studio.
+    const level = el('div'); level.hidden = true; canvas.append(level);
+    const stopScene = createPreviewScene(canvas, level, el('div'));
     const grid = el('div', 'fv-image-samples');
     for (const key of cn ? ['fox', 'window', 'perfume', 'fjord'] : ['jazz', 'window', 'perfume', 'fjord']) {
         const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
@@ -155,7 +160,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         grid.append(b);
     }
     canvas.append(picture, samples, grid, block, failHost);
-    const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info');
+    const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
+    info_.append(infoText, doneReport);
     const mk = (text, onClick) => { const b = el('button', 'fv-image-action', text); b.type = 'button'; b.onclick = onClick; return b; };
     const editThis = mk(t('Edit this', '改这张'), () => void useAsReference(shownFile, true));
     const asReference = mk(t('Use as reference', '用作参考图'), () => void useAsReference(shownFile, false));
@@ -290,14 +296,18 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 : el('p', '', total ? t(`About ${gb(total)} GB to download. Files shared with video are not downloaded again.`, `下载约 ${gb(total)} GB。和视频共用的文件不重复下载。`) : t('Not installed yet.', '尚未安装。')));
             if (loading()) { const bar = el('i', 'fv-image-download'); bar.style.setProperty('--p', String(total ? Math.min(100, done / total * 100) : 0)); samples.append(bar); }
         }
-        if (state === 'running') { const size_ = size(); block.style.aspectRatio = `${size_.width} / ${size_.height}`; }
         if (state === 'done') {
+            const mine = lastReport?.file === shownFile ? lastReport.id : null;
+            if (doneReport.dataset.id !== String(mine)) {
+                doneReport.dataset.id = String(mine); doneReport.replaceChildren();
+                if (mine) doneReport.append(imageReportBar(doneReport, mine, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
+            }
             picture.src = pictureURL(shownFile); save.href = pictureURL(shownFile); save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
             editThis.disabled = asReference.disabled = references.length >= 16 || model.references === 0;
-            info_.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+            infoText.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
         }
     }
-    picture.onload = () => { if (!alive) return; const tail = info_.textContent.split(' · ').filter(Boolean); info_.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
+    picture.onload = () => { if (!alive) return; const tail = infoText.textContent.split(' · ').filter(Boolean); infoText.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
 
     function drawWorks() {
         column.hidden = rows.length === 0 && !running; body.classList.toggle('fv-image-no-works', column.hidden);
@@ -329,7 +339,9 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     }
     async function generate() {
         say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
-        render(); drawWorks(); progressText.textContent = '';
+        render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
+        level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
+        let reportId = null;
         try {
             const names = []; for (const r of references.slice(0, model.references)) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
@@ -340,16 +352,21 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             for (;;) {
                 await new Promise(done => setTimeout(done, poll)); if (!alive || mine.cancelled) return;
                 const status = await client.status(row.job, model.id);
-                const fraction = imageGenProgress(status.stage, status.fraction, withImages), left = fraction > .05 ? (Date.now() - begun) / 1000 * (1 - fraction) / fraction : null;
-                progressText.textContent = [t(...(STAGE_WORDS[status.stage] || STAGE_WORDS.sample)), `${Math.floor(fraction * 100)}%`, left != null ? t(`${seconds(left)} left`, `剩余${seconds(left)}`) : ''].filter(Boolean).join(' · ');
-                block.style.setProperty('--p', String(fraction * 100));
-                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); break; }
+                const fraction = imageGenProgress(status.stage, status.fraction, withImages, status.overall), left = imageRemainingText(status.remaining_seconds, t);
+                progressLine.textContent = [t(...(STAGE_WORDS[status.stage] || STAGE_WORDS.sample)), `${Math.floor(fraction * 100)}%`].join(' · ');
+                // The second line changes with every poll, so the page never looks stuck.
+                progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, left].filter(Boolean).join(' · ');
+                level.dataset.counted = Number.isFinite(status.overall) ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(fraction * 100));
+                if (status.report_id && status.report_id !== reportId) {
+                    reportId = status.report_id; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
+                }
+                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); lastReport = status.report_id || reportId ? {file: status.file, id: status.report_id || reportId} : null; break; }
                 if (status.state === 'error') throw Object.assign(new Error(status.error), {...status, code: status.error});
             }
         } catch (error) {
             if (alive && !mine.cancelled) { failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
                 renderFailure(); }
-        } finally { if (running === mine) { running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
+        } finally { level.hidden = true; if (running === mine) { running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
     }
     function renderFailure() {
         renderImageFailure(failHost, {...failure, info}, t);
@@ -371,7 +388,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     dialog.addEventListener('cancel', event => { event.preventDefault(); if (!more.hidden) more.hidden = true; else closeDialog(dialog); });
     dialog.onclose = () => {
-        alive = false; enhancer.dispose(); document.removeEventListener('click', closeMore, true);
+        alive = false; stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
         if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); dialog.remove();
         if (current === dialog) current = null;
         next();

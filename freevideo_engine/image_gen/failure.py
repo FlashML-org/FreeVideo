@@ -249,7 +249,7 @@ class Context:
             seed_redactor(self.redactor, machine)
             self.machine = machine
 
-    def report(self, code, *, row=None, error=None, video_busy=False, worker_restarts=0):
+    def report(self, code, *, row=None, error=None, video_busy=False, worker_restarts=0, outcome='failed', forecast=None):
         row = row if isinstance(row, dict) else {}
         seed_redactor(self.redactor, row)
         stage = row.get('stage') if row.get('stage') in STAGES else self.timing.stage
@@ -312,11 +312,14 @@ class Context:
         # Macs only: which attention kernel ran and why it left MLX (mlx_attention.summary).
         attention = row.get('attention')
         extra = dict(attention=clean(attention, self.redactor)) if isinstance(attention, dict) else {}
+        if isinstance(forecast, dict):
+            extra['forecast'] = {key: value for key, value in forecast.items() if key in ('basis', 'typical_seconds', 'predicted') and clean(value, self.redactor) is not None}
         return dict(schema='freevideo.image-report', schema_version=1, **extra,
                     created_at=datetime.now(timezone.utc).isoformat(), kind=self.kind,
                     analysis=dict(version=__version__, hardware=hardware, geometry=geometry),
                     summary=dict(request_seconds=self.timing.seconds()), request=dict(self.request),
-                    plan=plan, stages=stages, stage_at_failure=stage, error=details, pack=clean(pack, self.redactor),
+                    outcome=outcome, plan=plan, stages=stages, stage_at_failure=stage if outcome == 'failed' else None,
+                    current_stage=stage if outcome == 'running' else None, error=details if outcome == 'failed' else None, pack=clean(pack, self.redactor),
                     service=self.service(video_busy, worker_restarts, error))
 
     def service(self, video_busy, worker_restarts, error):

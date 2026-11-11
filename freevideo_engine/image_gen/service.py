@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 
-from . import image_model, image_pack, keep
+from . import image_model, image_pack, keep, progress_model
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
@@ -843,8 +843,9 @@ class Service:
             report = context.report(code, row=row, error=error, video_busy=video_busy,
                                     worker_restarts=self.worker_restarts)
             with self.mutex:
-                report_id = uuid.uuid4().hex
+                report_id = getattr(context, 'report_id', None) or uuid.uuid4().hex
                 self.reports[report_id] = report
+                self.reports.move_to_end(report_id)
                 while len(self.reports) > REPORT_LIMIT:
                     self.reports.popitem(last=False)
             result['report_id'] = report_id
@@ -856,8 +857,42 @@ class Service:
             return None
         with self.mutex:
             report = self.reports.get(report_id)
+            context = self.context
+            if report is None and context is not None and getattr(context, 'report_id', None) == report_id and self._busy:
+                report = self.progress_report(context)
             # Callers cannot mutate a retained report through an in-process reference.
             return json.loads(json.dumps(report, allow_nan=False)) if report is not None else None
+
+    def forecast_facts(self, context):
+        forecast = getattr(context, 'forecast', None)
+        if forecast is None:
+            return None
+        return dict(basis=forecast.kind, typical_seconds=round(sum(forecast.predicted.values()), 1),
+                    predicted={stage: round(seconds, 1) for stage, seconds in forecast.predicted.items()})
+
+    def progress_report(self, context):
+        """The report of a request that is still running: what has happened so far."""
+        return context.report('running', outcome='running', worker_restarts=self.worker_restarts,
+                              forecast=self.forecast_facts(context))
+
+    def start_forecast(self, context, value, habit):
+        """The stage-time forecast of this request: this machine's earlier runs of the same size, else priors."""
+        try:
+            images = value.get('images') or []
+            key = progress_model.key_for(value.get('model') or '', value['width'], value['height'], len(images))
+            history = progress_model.History(Path(habit).with_name('image-stage-times.json'))
+            predicted, kind = history.predict(key, bool(images))
+            context.forecast = progress_model.Forecast(predicted, kind)
+            context.forecast.update('load', 0.)
+            context.forecast_key, context.forecast_history = key, history
+        except (KeyError, TypeError, ValueError, OSError):
+            context.forecast = None
+
+    def keep_forecast(self, context):
+        if getattr(context, 'forecast', None) is None:
+            return
+        seconds = {row['stage']: row['seconds'] for row in context.timing.snapshot()}
+        context.forecast_history.record(context.forecast_key, seconds)
 
     def status(self, key):
         with self.mutex:
@@ -865,7 +900,13 @@ class Service:
                 def matches(candidate):
                     return candidate is not None and secrets.compare_digest(key.encode('utf-8'), candidate.encode('utf-8'))
                 if matches(self.key):
-                    return deepcopy(self.state)
+                    row = deepcopy(self.state)
+                    forecast = getattr(self.context, 'forecast', None)
+                    if forecast is not None and row.get('phase') in ('progress', 'cancelling'):
+                        row.update(forecast.view())
+                    if row.get('phase') in ('progress', 'cancelling') and getattr(self.context, 'report_id', None):
+                        row['report_id'] = self.context.report_id
+                    return row
                 if self.queued is not None and matches(self.queued['key']):
                     return deepcopy(self.queued['state'])
                 for candidate, state in self.finished.items():
@@ -1173,6 +1214,8 @@ class Service:
             keep.note('image', habit)
         # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
         value['keep_seconds'] = keep.keep_seconds(habit)
+        context.report_id = uuid.uuid4().hex
+        self.start_forecast(context, value, habit)
         loading = True
         limit = H3_INFERENCE_TIMEOUT if value.get('model') == image_model.H3 else INFERENCE_TIMEOUT
         try:
@@ -1210,6 +1253,8 @@ class Service:
                         if self.state.get('stage') == stage and type(self.state.get('fraction')) in (int, float):
                             fraction = max(fraction, self.state['fraction'])
                         context.timing.enter(stage)
+                        if getattr(context, 'forecast', None) is not None:
+                            context.forecast.update(stage, float(fraction))
                         self.state.update(phase='cancelling' if self.stop.is_set() else 'progress',
                                           stage=stage, fraction=fraction)
             elif phase in ('result', 'error'):
@@ -1235,8 +1280,18 @@ class Service:
                     seconds = row.get('seconds')
                     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
                         raise RuntimeError('worker_exit')
+                    self.keep_forecast(context)
+                    report_id = getattr(context, 'report_id', None)
+                    if report_id:
+                        done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,
+                                              forecast=self.forecast_facts(context))
+                        with self.mutex:
+                            self.reports[report_id] = done
+                            self.reports.move_to_end(report_id)
+                            while len(self.reports) > REPORT_LIMIT:
+                                self.reports.popitem(last=False)
                     result = dict(phase='complete', file='freevideo-image/' + path.name,
-                                  seconds=seconds, plan=row.get('plan'))
+                                  seconds=seconds, plan=row.get('plan'), report_id=report_id)
                     if isinstance(row.get('attention'), dict):
                         result['attention'] = row['attention']
                 with self.mutex:

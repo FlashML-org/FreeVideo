@@ -224,6 +224,47 @@ export const REPORT_LABELS = Object.freeze({
     gone: REPORT_GONE,
 });
 
+// The report download and its "send as an issue" card; the request carries only the opaque report ID.
+export function imageReportBar(card, report_id, t, {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), quiet = false} = {}) {
+    // `quiet` is the picture page's own: the video page's wording and weight, not a bordered button.
+    const download = quiet ? ['Download report', '下载报告'] : REPORT_LABELS.download;
+    const doc = card.ownerDocument || document;
+    const fetchReport = async () => {
+        const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});
+        if (!response.ok) throw reportFetchError(response);
+        return response.blob();
+    };
+    const version = () => typeof productVersion === 'function' ? productVersion() : productVersion;
+    const bar = doc.createElement('div'); bar.className = 'fv-actions';
+    const anchor = doc.createElement('button'); anchor.type = 'button';
+    anchor.className = 'fv-action fv-action-secondary fv-action-report' + (quiet ? ' fv-image-report-quiet' : '');
+    anchor.textContent = t(...download); anchor.title = t(...REPORT_LABELS.description);
+    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}));
+    issue.hidden = true;
+    anchor.onclick = async () => {
+        if (anchor.disabled) return;
+        if (focusReportTip(bar)) return;
+        const restoreFocus = doc.activeElement === anchor;
+        issue.hidden = true;
+        anchor.disabled = true; anchor.textContent = t(...REPORT_LABELS.preparing);
+        let gone = false;
+        try {
+            await saveReport(await fetchReport());
+            if (card.isConnected) showReportTip(bar, anchor, t, {mode: 'downloaded',
+                submit: () => reportIssue(fetchReport, version(), {save: false}), onHide: () => anchor.focus()});
+            anchor.textContent = t(...download);
+        } catch (error) {
+            gone = Boolean(error?.gone);
+            anchor.textContent = t(...(gone ? REPORT_LABELS.gone : REPORT_LABELS.unavailable)); issue.hidden = gone;
+        } finally {
+            anchor.disabled = gone;
+            if (restoreFocus && card.isConnected && doc.activeElement === doc.body) anchor.focus({preventScroll: true});
+        }
+    };
+    bar.append(anchor, issue);
+    return {bar, anchor};
+}
+
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
 export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
@@ -240,44 +281,13 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage}, t);
     card.append(reason); host.append(card);
     if (!report_id) return card;
-    const fetchReport = async () => {
-        const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});
-        if (!response.ok) throw reportFetchError(response);
-        return response.blob();
-    };
-    const version = () => typeof productVersion === 'function' ? productVersion() : productVersion;
-    const bar = doc.createElement('div'); bar.className = 'fv-actions';
-    const anchor = doc.createElement('button'); anchor.type = 'button';
-    anchor.className = 'fv-action fv-action-secondary fv-action-report';
-    anchor.textContent = t(...REPORT_LABELS.download); anchor.title = t(...REPORT_LABELS.description);
-    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}));
-    issue.hidden = true;
-    anchor.onclick = async () => {
-        if (anchor.disabled) return;
-        if (focusReportTip(bar)) return;
-        const restoreFocus = doc.activeElement === anchor;
-        issue.hidden = true;
-        anchor.disabled = true; anchor.textContent = t(...REPORT_LABELS.preparing);
-        let gone = false;
-        try {
-            await saveReport(await fetchReport());
-            if (card.isConnected) showReportTip(bar, anchor, t, {mode: 'downloaded',
-                submit: () => reportIssue(fetchReport, version(), {save: false}), onHide: () => anchor.focus()});
-            anchor.textContent = t(...REPORT_LABELS.download);
-        } catch (error) {
-            gone = Boolean(error?.gone);
-            anchor.textContent = t(...(gone ? REPORT_LABELS.gone : REPORT_LABELS.unavailable)); issue.hidden = gone;
-        } finally {
-            anchor.disabled = gone;
-            if (restoreFocus && card.isConnected && doc.activeElement === doc.body) anchor.focus({preventScroll: true});
-        }
-    };
+    const {bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi});
+    card.append(bar);
     // Let native Enter/Space activate these buttons without invoking editor
     // canvas shortcuts. Tab and the shared card's Escape handling still work.
     card.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
     });
-    bar.append(anchor, issue); card.append(bar);
     return card;
 }
 export function imagePackUnavailableMessage(info, t) {
@@ -399,14 +409,15 @@ export function insertGenerationResult(doc, result, context, t) {
     return next;
 }
 
-// The worker counts every stage from 0 to 1. One bar for the whole picture: each stage owns a
-// slice in the order it runs (the reference encode only exists with reference images), and the
-// bar stays below 100% until the result is placed.
+// One bar for the whole picture. The service predicts how long each stage takes on this machine
+// and sends the finished share and the time left; the bar stays below 100% until the result is placed.
+// A row without them (an older service) falls back to a plain share per stage.
 const STAGE_SLICES = {
     new: [['load', .15], ['text', .15], ['denoise', .5], ['decode', .2]],
     edit: [['load', .15], ['text', .15], ['encode', .05], ['denoise', .45], ['decode', .2]],
 };
-export function imageGenProgress(stage, fraction, withImages = false) {
+export function imageGenProgress(stage, fraction, withImages = false, overall = null) {
+    if (Number.isFinite(overall)) return Math.min(.99, Math.max(0, overall));
     const own = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
     let start = 0;
     for (const [name, weight] of STAGE_SLICES[withImages ? 'edit' : 'new']) {
@@ -414,6 +425,12 @@ export function imageGenProgress(stage, fraction, withImages = false) {
         start += weight;
     }
     return Math.min(.99, own);
+}
+// Seconds left as the service predicts them, in the video's words; null while there is none.
+export function imageRemainingText(seconds, t) {
+    if (!Number.isFinite(seconds)) return '';
+    return seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)}\u00a0min left`, `预计还需约 ${Math.ceil(seconds / 60)}\u00a0分钟`)
+        : t('Less than a minute left', '预计还需不到 1\u00a0分钟');
 }
 
 // An epoch rejects late uploads/status/results. A generate response arriving
@@ -423,7 +440,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     schedule = setTimeout, unschedule = clearTimeout, store = null,
     visible = () => globalThis.document?.visibilityState !== 'hidden'}) {
     let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null;
-    let state = {info: null, checking: false, running: false, job: null, fraction: 0, stage: '', error: '', report_id: null,
+    let state = {info: null, checking: false, running: false, job: null, fraction: 0, remaining: null, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
@@ -458,8 +475,10 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             try {
                 const row = await client.status(job);
                 if (!alive()) return;
-                const fraction = imageGenProgress(row.stage, row.fraction, withImages);
+                const fraction = imageGenProgress(row.stage, row.fraction, withImages, row.overall);
                 emit({fraction: Math.max(state.fraction, fraction), stage: row.stage || '', waiting: row.waiting || '',
+                    remaining: Number.isFinite(row.remaining_seconds) ? row.remaining_seconds : null,
+                    report_id: row.report_id || state.report_id,
                     fitted: row.fitted || state.fitted});
                 if (row.state === 'done') {
                     if (!row.file) throw failure();

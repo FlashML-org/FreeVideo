@@ -386,7 +386,8 @@ class QwenImageGenerator:
             latents = self._unpack_latents(latents, height, width).to(dtype=_dtype(self.vae))
             mean, std = self._stats(latents)
             latents = latents * std + mean
-            kwargs = {"return_dict": False}
+            # Tiles are most of a large decode; the blend and the copy to the host take the rest.
+            kwargs = {"return_dict": False, "progress": lambda done, total: report("decode", .9 * done / total)}
             if self.vae_tile:
                 kwargs["tile"] = True
                 if self.vae_tile_size:

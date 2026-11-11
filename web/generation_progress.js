@@ -7,7 +7,7 @@ css.rel = 'stylesheet'; css.href = new URL('./generation_progress.css', import.m
 document.head.append(css);
 const el = (tag, cls) => { const node = document.createElement(tag); node.className = cls; return node; };
 const valid = value => Number.isFinite(value) && value >= 0;
-const duration = value => {
+export const duration = value => {
     const seconds = Math.floor(value);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 };
