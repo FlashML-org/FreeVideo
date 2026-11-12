@@ -30,11 +30,28 @@ export function noAnswerHint(kind, t) {
     return kind ? t('Could not reach FreeVideo on this computer. Make sure it is still running, then retry.', '无法连接本机的 FreeVideo 服务，请确认它仍在运行后重试。') : '';
 }
 
+// How this page was opened, as a kind only: a computer or network name does not belong in a report that may be
+// sent along. '' when the page has no address to tell.
+export function addressKind(host) {
+    const name = String(host || '').replace(/^\[|\]$/g, '').toLowerCase();
+    if (!name) return '';
+    if (name === 'localhost' || name === '::1' || /^127(\.\d{1,3}){3}$/.test(name)) return 'localhost';
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.includes(':') ? 'IP address' : 'name';
+}
+
 // What to tell the user when the address lookup is refused: only refusals that say what to do are named; any other
-// failure keeps the plain "could not get address".
-export function refusalHint(code, t) {
+// failure keeps the plain "could not get address". A page opened by any address but localhost is refused for that
+// alone when FreeVideo runs on the same computer, so then the hint names the localhost address to open, as plain
+// text: a link would not open on another device.
+export function localhostAddress(location = globalThis.location) {
+    return location?.protocol ? `${location.protocol}//localhost${location.port ? ':' + location.port : ''}` : '';
+}
+
+export function refusalHint(code, t, kind = addressKind(globalThis.location?.hostname), address = localhostAddress()) {
     if (code === 'origin_forbidden') return t('Open FreeVideo on this computer with a localhost address, then retry.', '请在本机使用 localhost 地址打开 FreeVideo，然后重试。');
-    if (code === 'local_only') return t('Agents can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接 Agent。');
+    if (code === 'local_only') return kind && kind !== 'localhost' && address
+        ? t(`On the computer that runs FreeVideo, open ${address}, then retry.`, `请在运行 FreeVideo 的电脑上打开 ${address}，然后重试。`)
+        : t('Agents can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接 Agent。');
     if (code === 'not_ready') return t('The agent connection service is not ready. Restart FreeVideo, then retry.', 'Agent 连接服务尚未就绪，请重启 FreeVideo 后重试。');
     return '';
 }
@@ -74,11 +91,12 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
 
     let feedback = false, text = '', failures = 0, refusal = null, noAnswer = null;
     let timer, feedbackTimer, controller, generation = 0;
+    const opened = addressKind(globalThis.location?.hostname);
     const active = () => body.isConnected && shown();
     const render = () => {
         label.textContent = !text && failures >= 3 ? t('Could not get address. Retry', '获取失败，重试') : feedback ? t('Copied', '已复制') : t('Copy', '复制');
         if (!text && failures >= 3) {
-            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
+            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
         button.disabled = !text && failures < 3;
         button.title = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
