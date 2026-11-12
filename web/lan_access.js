@@ -1,6 +1,7 @@
 import {longGeneration} from './phone_model.js';
 import {agentGet, agentPost} from './agent_session.js';
 import {qrcodegen} from './qrcodegen.js';
+import {listenDialogKey} from './dialog_keys.js';
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./lan_access.css', import.meta.url).href; document.head.append(css);
 const seenKey = 'freevideo.phone.opened';
 export function qrMatrix(link) { return qrcodegen.QrCode.encodeText(link, qrcodegen.QrCode.Ecc.MEDIUM); }
@@ -126,5 +127,7 @@ export function createLanAccess(t, api) {
     window.addEventListener('freevideo-phone-opened', opened); window.addEventListener('storage', storage);
     const progress = event => observe(event.detail), outside = event => { if (!element.contains(event.target)) close(); }, keys = event => { if (!panel.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); trigger.focus(); } };
     api.addEventListener?.('freevideo_progress', progress); document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', keys, true); window.addEventListener('resize', position);
-    return {element, observe, dispose() { disposed = true; close(); clearTimeout(copied); api.removeEventListener?.('freevideo_progress', progress); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', keys, true); window.removeEventListener('resize', position); window.removeEventListener('freevideo-phone-opened', opened); window.removeEventListener('storage', storage); }};
+    // Inside a modal view the dialog routes keys itself, so the document listener never hears Escape.
+    const unlistenLocal = listenDialogKey(element, 'keydown', keys);
+    return {element, observe, dispose() { disposed = true; close(); unlistenLocal(); clearTimeout(copied); api.removeEventListener?.('freevideo_progress', progress); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', keys, true); window.removeEventListener('resize', position); window.removeEventListener('freevideo-phone-opened', opened); window.removeEventListener('storage', storage); }};
 }
