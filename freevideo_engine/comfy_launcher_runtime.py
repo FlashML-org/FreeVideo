@@ -1166,6 +1166,9 @@ class Controller:
                 from .sampling_assets import installed as sampling_installed
                 ready = (not values.get('sampling_caches') or machine.get('video_model') is False
                          or sampling_installed(machine))
+                # An installation without the video model sets up again when the video model is asked for.
+                if machine.get('video_model') is False and values.get('only') != 'image':
+                    ready = False
             except (OSError, ValueError, KeyError):
                 pass
         self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready,
@@ -1186,7 +1189,7 @@ class Controller:
             extra = [p for p in dict.fromkeys(extra) if p.strip() and io_path(Path(p).expanduser()).is_dir()]
             self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
                 sampling_caches=bool(values.get('sampling_caches')), prepared_format=values.get('prepared_format'),
-                **({'download_list': True} if checked else {}),
+                **({'download_list': True} if checked else {}), **({'only': 'image'} if values.get('only') == 'image' else {}),
                 frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh,
                               repair_python=host['python'] if repair_comfy else None)))
             row = self._wait_setup()

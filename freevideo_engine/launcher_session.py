@@ -120,6 +120,9 @@ class Session:
     upgrade = image_installer = h3_installer = prompt_installer = None
     model_switch = None
     language = 'en'
+    # Raised when the app asks for the launcher (adding the video model); the window comes to the front once per raise.
+    attention = 0
+    add_video_seen = None
 
     def __init__(self, source=None, *, controller=None, store=None, updater=None, smoke=False):
         from .offline_packages import Importer
@@ -140,7 +143,8 @@ class Session:
                          url='http://127.0.0.1:8188', models='', model_dirs=[], model_method='auto', environment_method='auto',
                          separate=False, repair=False, new_comfy=True, offline_runtime='', offline_models=[],
                          imported_archives=[], kept_archives=[], sampling_caches=not saved.get('installation'),
-                         image_model=False, prompt_model=False, prompt_hint_dismissed=False)
+                         image_model=False, prompt_model=False, prompt_hint_dismissed=False,
+                         install_model='video')
         self.form['lan_access'] = False
         self.form.update({k: v for k, v in saved.items() if k in self.form})
         if 'environment_method' not in saved and self.form['offline_runtime']:
@@ -338,6 +342,8 @@ class Session:
                                    '%s 运行环境由安装器自动准备，请在下一步导入模型包。' % system))
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
+        if key == 'install_model' and value not in ('video', 'image'):
+            raise ValueError('Unknown model to install')
         if self.form[key] == value:
             return
         self.repair_request = None
@@ -516,10 +522,56 @@ class Session:
         else:
             self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
 
+    def installed_machine(self):
+        """machine.json of the installation this form points at; empty before one is ready."""
+        try:
+            value = json.loads((self.engine_root() / 'machine.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError, TypeError):
+            return {}
+        return value if isinstance(value, dict) and value.get('ready') else {}
+
+    def video_missing(self):
+        """The selected installation was set up with MiniMax H3 Image alone (home shows "Add" for the video model)."""
+        engine = (self.selected or {}).get('engine')
+        if not isinstance(engine, str) or not engine:
+            return False
+        try:
+            value = json.loads((Path(engine) / 'machine.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError, TypeError):
+            return False
+        return isinstance(value, dict) and value.get('ready') is True and value.get('video_model') is False
+
+    def adding_video(self):
+        """The model step of an installation with MiniMax H3 Image alone, now with MiniMax H3 Video chosen:
+        "Check & continue" plans that installation even while its ComfyUI is open (setup stops it first)."""
+        return (self.page == 'models' and self.form.get('install_model') == 'video'
+                and self.installed_machine().get('video_model') is False)
+
+    def model_choice(self, form=None):
+        """Whether this setup can install MiniMax H3 Image instead of the video model.
+
+        Only a first installation (or one that already has no video model) offers it, on the
+        systems that carry MiniMax H3 Image, with the automatic environment.
+        """
+        form = self.form if form is None else form
+        if sys.platform == 'darwin' or form.get('offline_runtime'):
+            return False
+        machine = self.installed_machine()
+        return not machine or machine.get('video_model') is False
+
+    def image_only_choice(self, form=None):
+        form = self.form if form is None else form
+        return form.get('install_model') == 'image' and self.model_choice(form)
+
     def setup_values(self, form=None, **extra):
         """Only the visible automatic-setup option can request every quality level."""
         form = self.form if form is None else form
         values = dict(form, token=self.token, **extra)
+        if self.image_only_choice(form):
+            # MiniMax H3 Image alone: an automatic download of the engine and the image model, nothing of the video model.
+            values.update(only='image', model_method='auto', offline_models=[], sampling_caches=False,
+                          image_model=False, prompt_model=False)
+            return values
         if (form['model_method'] == 'manual' or
                 (runtime_packages_supported() and form['new_comfy']
                  and form['environment_method'] == 'manual')):
@@ -605,6 +657,21 @@ class Session:
             self.page = 'progress'
             self.model_groups = []
             self.started = time.monotonic()
+            return
+        if name == 'add-video':
+            # An installation with MiniMax H3 Image alone adds the video model: its model step opens with
+            # MiniMax H3 Video chosen. "Check & continue" plans it, and the review downloads only once accepted;
+            # files already there are kept.
+            if not self.can_repair():
+                return
+            self.remember(self.selected, persist=False)
+            if self.installed_machine().get('video_model') is not False:
+                return
+            self.form['install_model'] = 'video'
+            self.repair_request = None
+            self.persist()
+            self.page = 'models'
+            self.attention += 1
             return
         if name == 'retry':
             kind = retry or self.retry_kind()
@@ -702,7 +769,7 @@ class Session:
             if not accepted or self.controller.state.get('errors'):
                 raise ValueError(self.t('Accept the reviewed installation plan to continue.', '请先同意本次安装计划及许可证。'))
             self.controller.run('install', True)
-        elif state in ('open', 'restart-required'):
+        elif state in ('open', 'restart-required') and not self.adding_video():
             self.controller.run('connect')
         else:
             self.persist()
@@ -895,6 +962,8 @@ class Session:
 
     def start_image_model_after_install(self):
         """The installer's "also install the image model": once ComfyUI opens, the download runs in the background."""
+        if self.image_only_choice():
+            return  # A MiniMax H3 Image installation hides these ticks; an earlier tick must not start a download.
         if self.form['prompt_model'] and self.installation_engine() and self.controller.state.get('status') == 'open' \
                 and not self.controller.busy and not (self.prompt_installer and self.prompt_installer.busy):
             from .prompt_vlm import assets
@@ -1988,6 +2057,16 @@ class Session:
         address = row['url'].split('/?')[0]
         self.page_check.poll(address)
         self.page_error = self.page_check.text(self.t, self.browser_opened, address)
+        request = self.page_check.report.get('add_video')
+        at = request.get('at') if isinstance(request, dict) else None
+        if type(at) in (int, float) and at != self.add_video_seen:
+            # Only a click from the last minute: a launcher started later does not replay an old one.
+            if abs(time.time() - at) >= 60:
+                self.add_video_seen = at
+            # A busy launcher, or an installation review on screen, takes the click once it is free again.
+            elif self.can_repair() and self.page != 'progress':
+                self.add_video_seen = at
+                self.action('add-video', False)
 
     def engine_exit_text(self, row):
         """The sentence for a ComfyUI that stopped by itself while it was open; empty otherwise."""
@@ -2337,6 +2416,9 @@ class Session:
                 rate='%.1f MiB/s' % (item['bytes_per_second']/2**20) if item.get('bytes_per_second') else ''))
         image_pack = self.image_pack_view()
         image_pack['enough_disk'] = self.image_disk_fits(image_pack['total_bytes'])
+        if self.video_missing():
+            # Set up with MiniMax H3 Image alone: the older image models are not offered beside it.
+            image_pack['visible'] = False
         prompt_model = self.prompt_model_view()
         try:
             from .download_settings import observed_speed
@@ -2489,6 +2571,9 @@ class Session:
         return plain_data(dict(download_list=download_state, sampling_cache_bytes=total_bytes(), version=__version__, image_pack=image_pack,
             prompt_model=prompt_model, bytes_per_second=speed,
             disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
+            model_choice=self.model_choice(), image_only=self.image_only_choice(),
+            image_installed=self.installed_machine().get('video_model') is False,
+            video_missing=self.page == 'launcher' and self.video_missing(), can_add_video=self.can_repair(),
             page=self.page, status=row.get('status', 'idle'), busy=busy, working=working,
             action_notice=self.t(*ACTION_COPY[self.action_notice]) if self.action_notice else '',
             setup_pending=bool(self.pending_action) or self.setup_job_wait, setup_job_wait=self.setup_job_wait,

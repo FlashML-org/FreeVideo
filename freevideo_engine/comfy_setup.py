@@ -334,6 +334,8 @@ class Setup:
             arguments.append('--copy-existing-models')
         if value.get('download_list'):
             arguments.append('--download-list')
+        if value.get('only') == 'image':
+            arguments += ['--only', 'image']
         self.selection = dict(root=str(root), arguments=arguments)
         self.plan = None
         self.state = dict(status='running', action='plan', libraries=libraries)

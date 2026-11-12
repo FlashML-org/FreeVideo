@@ -126,6 +126,7 @@
 .fv-studio .fv-runbar .fv-primary{width:100%;min-height:var(--fv-h-lg);font-size:14px}
 .fv-studio .fv-runrow{display:flex;gap:6px;align-items:stretch}
 .fv-studio .fv-runrow>.fv-primary{flex:1;min-width:0}
+.fv-studio .fv-add-video-note{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--fv-muted);text-align:center}
 .fv-studio .fv-run-options{position:relative;flex:none}
 .fv-studio .fv-run-options>summary{display:grid;place-items:center;height:100%;width:42px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);cursor:pointer;list-style:none}
 .fv-studio .fv-run-options>summary::-webkit-details-marker,.fv-studio .fv-queue-details>summary::-webkit-details-marker{display:none}

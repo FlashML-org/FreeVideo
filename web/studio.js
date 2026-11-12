@@ -38,6 +38,7 @@ import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js'
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
 import { resultActions, previewBadge, icon, actionsUnavailable } from './result_actions.js';
 import { framesOf } from './result_reuse.js';
+import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
@@ -1680,6 +1681,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     generate.dataset.fvGuide = 'generate'; generate.dataset.tourId = 'generate-btn';
     runrow.append(generate, runOptions);
     runButtonReady = true;
+    // An installation with MiniMax H3 Image alone: the main button adds the video model instead of generating.
+    let videoMissing = false;
+    const addVideoNote = el('p', '', 'fv-add-video-note'); addVideoNote.hidden = true;
+    addVideoNote.setAttribute('role', 'status');
+    videoModelState((path, options) => api.fetchApi(path, options)).then(state => {
+        if (disposed || state.installed) return;
+        videoMissing = true;
+        if (!status.textContent.trim()) status.textContent = missingVideoText(t);
+        updateRunButton();
+    });
     const queueActions = el('div', null, 'fv-queue-actions');
     const queueDetails = el('details', null, 'fv-queue-details');
     const queueToggle = el('summary'), queueList = el('div', null, 'fv-queue-list');
@@ -1703,7 +1714,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     const otherUsage = createOtherUsageNotice(runbar, t, api.fetchApi.bind(api));
     cleanup.push(() => otherUsage.dispose());
-    runbar.append(requestAssets.element, runrow, queueActions); controls.append(runbar);
+    runbar.append(requestAssets.element, runrow, addVideoNote, queueActions); controls.append(runbar);
     const queueError = error => ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
         cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
@@ -1790,6 +1801,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
         generate.title = (lengthControl.blocked ? lengthControl.message : '');
+        if (videoMissing) { generate.textContent = addVideoLabel(t); generate.disabled = false; generate.title = ''; }
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         for (const b of modeButtons) if (b.dataset.mode !== 'single') b.disabled = multiple;
         countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';
@@ -1922,6 +1934,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
     async function submitDraft(options) {
+        if (videoMissing) {
+            // The answer comes from this computer at once; the button waits for it so a click is never silent.
+            generate.disabled = true;
+            // The answer sits right under the button; the status under the preview keeps saying what is missing.
+            try { addVideoNote.textContent = await addVideoModel((path, request) => api.fetchApi(path, request), t); }
+            finally { generate.disabled = false; addVideoNote.hidden = !addVideoNote.textContent; }
+            return;
+        }
         const emptyAllowed = options?.allowEmpty === true;
         if (capturing || queueState?.submitting) return;
         // Ctrl+Enter leaves focus in a field: commit its edit (change fires on blur) first.

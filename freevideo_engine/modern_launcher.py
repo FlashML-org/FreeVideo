@@ -81,6 +81,7 @@ def create_ui(session, *, show=True):
         def __init__(self):
             super().__init__(engine)
             self.alerted = None
+            self.attended = session.attention
             self.value = session.snapshot()
             self.download_value = session.downloads_view()
             self.timer = QTimer(self)
@@ -123,6 +124,11 @@ def create_ui(session, *, show=True):
                     window = engine.rootObjects()[0]
                     if not window.isActive():
                         window.alert(0)
+                if session.attention != self.attended and engine.rootObjects():
+                    # The app asked for the launcher (adding the video model): bring it in front of the browser.
+                    self.attended = session.attention
+                    window = engine.rootObjects()[0]
+                    window.showNormal(); window.raise_(); window.requestActivate()
                 if session.closing:
                     self.timer.stop()
                     app.quit()
