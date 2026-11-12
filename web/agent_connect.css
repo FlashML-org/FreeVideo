@@ -35,32 +35,32 @@
 .fv-autopilot-now-stop[aria-busy=true]::after{display:none}
 .fv-autopilot-line{position:absolute;left:0;bottom:-1px;height:2px;border-radius:0 2px 2px 0;background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-hover));transition:width .6s var(--fv-ease),opacity .4s;pointer-events:none}
 .fv-autopilot-line[data-on=false]{opacity:0}
-/* Running jobs share the right column; only the title gives up space before fields hide. */
+/* Running jobs share the right column. Fields give way in order while the title would fall below 96px (about six
+   characters); a shorter title keeps its full width. Widths below are measured with four-digit minutes. */
 .fv-studio.fv-autopilot .fv-header{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
 .fv-autopilot .fv-header>.fv-header-actions{justify-self:stretch;min-width:0;justify-content:flex-end;container:fv-autopilot-actions / inline-size}
 .fv-autopilot .fv-header .fv-header-actions>button{flex:none}
-@container fv-autopilot-actions (max-width:645px){.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-lamp:lang(zh)>span{display:none}}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now{flex:0 1 auto;min-width:0}
 .fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:5px;padding-left:8px}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go>:not(.fv-autopilot-now-name){flex:none}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-name{flex:0 1 auto;min-width:0;white-space:nowrap}
 .fv-autopilot-now-go>em{overflow:hidden}
-/* Four-digit minutes; thresholds intentionally stay the same when feedback becomes an icon. */
-@container fv-autopilot-actions (max-width:574px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (max-width:732px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (max-width:460px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
-@container fv-autopilot-actions (max-width:608px){:lang(en) .fv-autopilot-now-go>em{display:none}}
+/* Order: connection label, time left, phone, progress ring, feedback, tutorial; thresholds intentionally stay the
+   same when feedback becomes an icon. */
+@container fv-autopilot-actions (width<619px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (width<786px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (width<565px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
+@container fv-autopilot-actions (width<704px){:lang(en) .fv-autopilot-now-go>em{display:none}}
 @container fv-autopilot-actions (max-width:289px){:lang(zh) .fv-autopilot-now-go>span{display:none}}
 @container fv-autopilot-actions (max-width:330px){:lang(en) .fv-autopilot-now-go>span{display:none}}
-/* Feedback retreats after the phone entry, so the running bar keeps its full content. */
-@container fv-autopilot-actions (max-width:425px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
-@container fv-autopilot-actions (max-width:363px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
-@container fv-autopilot-actions (max-width:305px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
-@container fv-autopilot-actions (max-width:553px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
-@container fv-autopilot-actions (max-width:466px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
-@container fv-autopilot-actions (max-width:373px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
-@container fv-autopilot-actions (max-width:430px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
-@container fv-autopilot-actions (max-width:548px){:lang(en) .fv-autopilot-now-go>i{display:none}}
+@container fv-autopilot-actions (width<483px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (width<433px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
+@container fv-autopilot-actions (width<412px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<362px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (width<601px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (width<537px){:lang(en) .fv-autopilot-now-go>i{display:none}}
+@container fv-autopilot-actions (width<516px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<431px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
 @container fv-autopilot-actions (max-width:260px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
 /* Then the version entry, so the running job keeps its percentage and Stop beside the dot and Settings. */
 @container fv-autopilot-actions (width<203px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-version-info{display:none}}
