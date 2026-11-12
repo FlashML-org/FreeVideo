@@ -68,8 +68,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     };
     function render() {
         avatars.replaceChildren(); 
-        skipped.textContent = unreadable > 0 ? text(`${unreadable} ${unreadable === 1 ? 'character' : 'characters'} could not be read`, `另有 ${unreadable} 个角色无法读取`) : '';
-        skipped.hidden = !unreadable;
+        // The count covers every kind (a file that cannot be read does not say what it was), so only the first row shows it.
+        const shown = kind === 'character' ? unreadable : 0;
+        skipped.textContent = shown > 0 ? text(`${shown} ${shown === 1 ? 'item' : 'items'} could not be read`, `另有 ${shown} 项无法读取`) : '';
+        skipped.hidden = !shown;
         for (const row of rows) {
             const avatar = button('fv-cast-avatar', '', () => openDialog(row.id));
             avatar.classList.toggle('fv-cast-mentioned', mentioned.has(row.id));
@@ -357,12 +359,13 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     window.addEventListener('focus', changed);
     window.addEventListener('freevideo-cast-changed', changed);
     render(); changed();
-    return {element, list: () => rows, get, refresh,
+    // notice: the could-not-read line, which a page showing several libraries may move below all of them.
+    return {element, notice: skipped, list: () => rows, get, refresh,
         subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); },
         openNew: () => openDialog(), openEdit: id => openDialog(id),
         destroy() {
             if (disposed) return;
-            disposed = true; request++; current?.close(); subscribers.clear(); element.remove();
+            disposed = true; request++; current?.close(); subscribers.clear(); element.remove(); skipped.remove();
             window.removeEventListener('freevideo-cast-mentioned', mentions);
             window.removeEventListener('focus', changed);
             window.removeEventListener('freevideo-cast-changed', changed);

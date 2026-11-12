@@ -173,7 +173,7 @@ function mediaPanel(node, mount = null) {
     const cast = createCastLibrary({api, text, viewURL, uploadOne});
     const places = createCastLibrary({api, text, viewURL, uploadOne, kind: 'setting'});
     const props = createCastLibrary({api, text, viewURL, uploadOne, kind: 'prop'});
-    const libraries = el('div', undefined, 'fv-cast-libraries'); libraries.append(cast.element, places.element, props.element);
+    const libraries = el('div', undefined, 'fv-cast-libraries'); libraries.append(cast.element, places.element, props.element, cast.notice);
     panel.prepend(libraries);
     const read = () => {
         const rows = JSON.parse(serialized.value || "[]");
