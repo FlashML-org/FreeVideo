@@ -196,6 +196,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     dialog.addEventListener('wheel', stop); dialog.addEventListener('contextmenu', stop);
     // Equal shares unless a choice's words, bold when picked, would not fit on one line.
     const fitSegments = () => {
+        if (typeof globalThis.getComputedStyle !== 'function') return; // no layout to measure (Node tests)
         for (const {controls} of groups) {
             // A hidden row has no width yet; it is measured again when update() shows it.
             if (!controls.clientWidth) { delete controls.dataset.fit; continue; }
@@ -206,7 +207,8 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
             if (tight) controls.dataset.fit = 'text'; else delete controls.dataset.fit;
         }
     };
-    addEventListener('resize', fitSegments); cleanups.push(() => removeEventListener('resize', fitSegments));
+    // Through globalThis, so a page without a window (the Node tests) still opens the dialog.
+    globalThis.addEventListener?.('resize', fitSegments); cleanups.push(() => globalThis.removeEventListener?.('resize', fitSegments));
     parent.append(dialog); update(); dialog.showModal(); fitSegments(); confirm.focus();
     return result;
 }
