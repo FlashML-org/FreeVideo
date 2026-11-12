@@ -36,7 +36,9 @@ def run(args):
                 'comfy_root': str(args.comfy_root or comfy_root()),
                 'model_paths': str(args.model_paths.resolve()) if args.model_paths else None,
                 'output': str(destination), 'gpu_budget_gb': policy.gpu_budget_bytes / 1e9,
-                'metrics': str(destination.with_suffix('.encoding.json'))}) + '\n', encoding='utf-8')
+                'metrics': str(destination.with_suffix('.encoding.json')),
+                **({'h3_image_references': [str(Path(p).resolve()) for p in args.h3_image_references]}
+                   if getattr(args, 'h3_image_references', None) else {})}) + '\n', encoding='utf-8')
             env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
                        PYTORCH_ALLOC_CONF=policy.allocator_config,
                        PYTORCH_CUDA_ALLOC_CONF=policy.allocator_config,

@@ -18,10 +18,31 @@ SIGMAS = (1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
 REFERENCE_TIME = 0.999
 
 
+# Sequences longer than this (references make them several times the image's own rows) run their row-wise work
+# in slices of this many rows. A whole-sequence MLP of 48k rows holds 5 GiB of temporaries of four sizes beside the
+# streamed weights, and the card ran out at 9 of 12 GiB with 2.5 GiB held free in pieces. Every slice is the same
+# arithmetic on the same rows (int8 activations carry one scale per row), so the result does not change.
+ROW_SLICE = 16384
+
+
 def rms(x, weight, eps=EPS):
+    if x.shape[0] > ROW_SLICE:
+        return by_rows(x, lambda part: rms(part, weight, eps))
     value = x.float()
     value = value * torch.rsqrt(value.pow(2).mean(-1, keepdim=True) + eps)
     return (value * weight.float()).to(x.dtype)
+
+
+def by_rows(x, fn):
+    """``fn`` over ``ROW_SLICE``-row slices of ``x``, written into one output."""
+    out = None
+    for start in range(0, x.shape[0], ROW_SLICE):
+        part = fn(x[start:start + ROW_SLICE])
+        if out is None:
+            out = part.new_empty((x.shape[0],) + tuple(part.shape[1:]))
+        out[start:start + part.shape[0]] = part
+        del part
+    return out
 
 
 class Attention(nn.Module):
@@ -35,7 +56,7 @@ class Attention(nn.Module):
         self.q_norm.register_parameter('weight', nn.Parameter(torch.empty(HEAD_DIM), requires_grad=False))
         self.k_norm.register_parameter('weight', nn.Parameter(torch.empty(HEAD_DIM), requires_grad=False))
 
-    def forward(self, x, rotation=None):
+    def project(self, x, rotation=None):
         rows = x.shape[0]
         q, k, v = self.qkv_proj(x).split(HEADS * HEAD_DIM, dim=-1)
         q = rms(q.view(rows, HEADS, HEAD_DIM), self.q_norm.weight)
@@ -43,10 +64,25 @@ class Attention(nn.Module):
         if rotation is not None:
             cos, sin = rotation
             q, k = rotate(q, cos, sin), rotate(k, cos, sin)
-        v = v.view(rows, HEADS, HEAD_DIM)
+        return q, k, v.view(rows, HEADS, HEAD_DIM)
+
+    def forward(self, x, rotation=None):
+        rows = x.shape[0]
+        if rows > ROW_SLICE:
+            q, k, v = (x.new_empty(rows, HEADS, HEAD_DIM) for _ in range(3))
+            for start in range(0, rows, ROW_SLICE):
+                part = slice(start, start + ROW_SLICE)
+                turn = None if rotation is None else (rotation[0][part], rotation[1][part])
+                q[part], k[part], v[part] = self.project(x[part], turn)
+        else:
+            q, k, v = self.project(x, rotation)
         out = F.scaled_dot_product_attention(q.transpose(0, 1)[None], k.transpose(0, 1)[None],
                                              v.transpose(0, 1)[None])
-        return self.out_proj(out[0].transpose(0, 1).reshape(rows, HEADS * HEAD_DIM))
+        del q, k, v
+        out = out[0].transpose(0, 1)
+        if rows > ROW_SLICE:
+            return by_rows(out, lambda part: self.out_proj(part.reshape(part.shape[0], HEADS * HEAD_DIM)))
+        return self.out_proj(out.reshape(rows, HEADS * HEAD_DIM))
 
 
 def rotate(x, cos, sin):
@@ -64,6 +100,8 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(FFN, HIDDEN, bias=False)
 
     def forward(self, x):
+        if x.shape[0] > ROW_SLICE:
+            return by_rows(x, self.forward)
         gate, up = self.fc1(x).chunk(2, dim=-1)
         return self.fc2(F.silu(gate) * up)
 
@@ -269,26 +307,50 @@ def unpatchify(rows, height, width, channels=24):
     return rows.reshape(height // 2, width // 2, channels, 2, 2).permute(2, 0, 3, 1, 4).reshape(channels, height, width)
 
 
+def reference_rows(references, generator, device, noise_device=None):
+    """The rows of normalised reference latents ([24, h, w] each), noised to ``REFERENCE_TIME`` with one noise
+    tensor per reference drawn from ``generator`` in order, as the released edit pipeline does after the target
+    noise. The level is a float32 tensor, so ``1 - t`` is evaluated in float32 as the released model mixes it."""
+    level = torch.tensor(REFERENCE_TIME, dtype=torch.float32, device=device)
+    rows = []
+    for latent in references:
+        latent = latent.to(device, torch.float32)
+        noise = torch.randn(latent.shape, generator=generator, device=noise_device or device,
+                            dtype=torch.float32).to(device)
+        rows.append(patchify(level * latent + (1.0 - level) * noise))
+    return torch.cat(rows) if rows else None
+
+
 @torch.no_grad()
 def sample(dit, features, tags, latent_h, latent_w, generator, device='cuda', dtype=torch.bfloat16, blocks=None,
-           noise_device=None, step_callback=None, preview_callback=None):
-    """Text-to-image: six velocity-Euler steps from noise; returns [24, H, W] float32 latents.
+           noise_device=None, step_callback=None, preview_callback=None, references=()):
+    """Six velocity-Euler steps from noise; returns [24, H, W] float32 latents.
 
+    ``references`` are normalised reference latents ([24, h, w], each at its own size, rows of 2x2 patches). Their
+    rows go in front of the generated ones, held at ``REFERENCE_TIME`` for every step; only the generated rows move.
     ``preview_callback(step, total, rows, velocity, sigma, latent_h, latent_w)`` runs after each step's velocity, before
-    the update; it only reads the two tensors (the clean prediction is ``rows + sigma * velocity``)."""
+    the update, with the generated rows only; it only reads the two tensors (the clean prediction is
+    ``rows + sigma * velocity``)."""
     text = dit.embed_text(features.to(device))
     noise = torch.randn((1, 24, 1, latent_h, latent_w), generator=generator,
                         device=noise_device or device, dtype=torch.float32).to(device)
     rows = patchify(noise[0, :, 0])
-    positions = positions_for(features.shape[0], [], latent_h, latent_w).to(device)
-    segments = segments_for([int(t) for t in tags], 0, rows.shape[0])
+    held = reference_rows(references, generator, device, noise_device)
+    count = 0 if held is None else held.shape[0]
+    grids = [tuple(latent.shape[-2:]) for latent in references]
+    positions = positions_for(features.shape[0], grids, latent_h, latent_w).to(device)
+    segments = segments_for([int(t) for t in tags], count, rows.shape[0])
     steps = torch.tensor([1.0 - s for s in SIGMAS[:-1]], dtype=torch.float32)
     sigmas = torch.cat([1.0 - steps, torch.zeros(1)])
     for i in range(len(steps)):
         if step_callback is not None:
             step_callback(i, len(steps))
-        times = steps[i:i + 1].to(device)
-        velocity = dit(text, rows, positions, segments, times, i, blocks=blocks)
+        times = steps[i:i + 1] if held is None else torch.unique(
+            torch.tensor([float(steps[i]), REFERENCE_TIME], dtype=torch.float32), sorted=True)
+        if times.numel() != (1 if held is None else 2) or float(times[0]) != float(steps[i]):
+            raise ValueError('a step time at or above the reference time breaks the row layout')
+        velocity = dit(text, rows if held is None else torch.cat([held, rows]), positions, segments, times.to(device),
+                       i, blocks=blocks)[count:]
         if preview_callback is not None:
             preview_callback(i + 1, len(steps), rows, velocity, float(sigmas[i]), latent_h, latent_w)
         rows = rows + (sigmas[i] - sigmas[i + 1]).to(device) * velocity

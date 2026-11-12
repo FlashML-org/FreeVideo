@@ -198,6 +198,36 @@ def stop_model_read_ahead(trace):
         trace.data['model_read_ahead'] = reader.close()
 
 
+def h3_image_presentation(clip, prompt, paths):
+    """Tokens of an H3 Image edit: per reference ``Picture N: `` and its vision block, then the prompt.
+
+    The released H3 Image pipeline labels its references without the angle brackets the
+    video model's presentation uses (the prompt still refers to them as ``<Picture N>``);
+    the vision block, its tags and the prompt are the same. The images arrive already
+    sized for the vision tower (short edge 1024, sides multiples of 32).
+    """
+    import numpy as np
+    import torch
+    from PIL import Image
+    from comfy.text_encoders.minimax import VISION_START, VISION_END
+    tokenizer = clip.tokenizer
+    entries = []
+
+    def add_text(text):
+        batches = tokenizer.qwen3vl_32b.tokenize_with_weights(text, return_word_ids=False, disable_weights=True)
+        if len(batches) != 1:
+            raise ValueError('MiniMax H3 text segment exceeds the supported prompt length.')
+        entries.extend(batches[0])
+
+    for index, path in enumerate(paths):
+        with Image.open(path) as image:
+            pixels = torch.from_numpy(np.array(image.convert('RGB'))).float().div_(255)[None]
+        add_text('Picture %d: ' % (index + 1))
+        entries.extend([(VISION_START, 1.0), (tokenizer._vision_entry(pixels), 1.0), (VISION_END, 1.0)])
+    add_text(prompt)
+    return {'qwen3vl_32b': [entries]}
+
+
 def encode(args, request, resident=None, diagnostics=None):
     from .encoder_diagnostics import EncoderTrace
     trace = diagnostics or EncoderTrace(request, resident=resident is not None)
@@ -392,7 +422,10 @@ def _encode(args, request, resident, trace):
         import numpy as np
         vision_kwargs['images'] = [torch.from_numpy(np.array(image)).float().div_(255)[None] for image in images]
     print(json.dumps({'event': 'encoder_tokenize_start'}), flush=True)
-    tokens = clip.tokenize(prompt, **vision_kwargs)
+    if request.get('h3_image_references'):
+        tokens = h3_image_presentation(clip, prompt, request['h3_image_references'])
+    else:
+        tokens = clip.tokenize(prompt, **vision_kwargs)
     from .encoder_memory import token_counts
     loading['token_summary'] = token_counts(tokens)
     tokenize_seconds = time.perf_counter() - encode_started
@@ -552,7 +585,7 @@ def _encode(args, request, resident, trace):
             reader.close()
     del timed_load, native_load, attempt
     del tokens
-    task = 'fl2va' if images is not None else task
+    task = 'fl2va' if images is not None else 'ref2va' if request.get('h3_image_references') else task
     value = to_cache(encoded, prompt, task=task)
     value['task'] = task
     if early_reference is not None:
