@@ -73,7 +73,7 @@ function failureReason(value, t) {
 function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
     const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
-    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish', '生成未完成');
+    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish.', '生成未完成。');
 }
 
 export {about};
@@ -273,7 +273,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const down = press('fv-chat-down', null, () => { scroller.scrollTo({top: scroller.scrollHeight, behavior: 'smooth'}); });
     down.append(glyph('M12 5v14M5 12l7 7 7-7')); down.setAttribute('aria-label', t('Latest', '最新')); down.hidden = true;
     const form = el('form', 'fv-chat-input'), input = el('textarea'), sendButton = el('button', 'fv-chat-send');
-    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Message the agent', '对 Agent 说'));
+    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Ask Autopilot', '对 AI 全自动说'));
     sendButton.type = 'submit'; sendButton.setAttribute('aria-label', t('Send', '发送')); sendButton.append(glyph('M12 19V5M5 12l7-7 7 7'));
     // While the agent is thinking and has started nothing, the send key is the stop key: same place, a solid square.
     let stopMode = false;
@@ -1414,7 +1414,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         attachButton.disabled = builtinScene();
         input.disabled = !(state.agent.connected === true || builtinScene() && !!state.session) || creating || !!selectedSession && selectedSession !== state.session;
         input.placeholder = builtinScene() ? t(...SCENE_TEXT.describe)
-            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Message the agent…', '对 Agent 说…');
+            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Ask Autopilot…', '对 AI 全自动说…');
         refreshSend();
         if (focusSession === state.session && focusSession && !input.disabled && active()) { focusSession = null; input.focus(); }
         if (stick) { pinned = true; scroller.scrollTop = scroller.scrollHeight; down.hidden = true; }
