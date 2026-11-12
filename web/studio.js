@@ -620,10 +620,15 @@ export function showNodes(node, dialog = null) {
     const left = Math.min(...nodes.map(n => n.pos[0])), top = Math.min(...nodes.map(n => n.pos[1] - 32));
     const width = Math.max(...nodes.map(n => n.pos[0] + n.size[0])) - left;
     const height = Math.max(...nodes.map(n => n.pos[1] + n.size[1])) - top;
-    const scale = Math.min(1, (canvas.clientWidth - 96) / width, (canvas.clientHeight - 96) / height);
+    // The view bar floats over the top of the canvas; fit below it so it never covers the node title or outputs.
+    const box = canvas.getBoundingClientRect?.() || {top: 0, left: 0, right: canvas.clientWidth}, bar = document.querySelector('.fv-view-navigation:not([hidden])')?.getBoundingClientRect();
+    const inset = bar && bar.height && bar.left < box.right && bar.right > box.left && bar.top < box.top + canvas.clientHeight / 2
+        ? Math.max(0, Math.min(bar.bottom - box.top, canvas.clientHeight / 2)) : 0;
+    const room = canvas.clientHeight - inset;
+    const scale = Math.min(1, (canvas.clientWidth - 96) / width, (room - 96) / height);
     if (scale > 0) {
         app.canvas.ds.scale = scale;
-        app.canvas.ds.offset = [-left + (canvas.clientWidth / scale - width) / 2, -top + (canvas.clientHeight / scale - height) / 2];
+        app.canvas.ds.offset = [-left + (canvas.clientWidth / scale - width) / 2, -top + inset / scale + (room / scale - height) / 2];
         app.canvas.setDirty(true, true);
     }
 }
