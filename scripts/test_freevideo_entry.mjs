@@ -150,7 +150,9 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';", 'const {regenerateResult,createSecondPassQueue,enableNode} = globalThis.__freevideoEntryTest;')
             .replace("import { secondPassAction } from './result_actions.js';", 'const {secondPassAction} = globalThis.__freevideoEntryTest;')
             .replace("import { openImageEditor, icon } from './image_editor.js';", 'const {openImageEditor,icon} = globalThis.__freevideoEntryTest;')
-            .replace("import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest; const collapseWorkspaces = () => { globalThis.__freevideoEntryTest.collapsed = (globalThis.__freevideoEntryTest.collapsed || 0) + 1; };')
+            .replace("import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest; const collapseWorkspaces = () => { globalThis.__freevideoEntryTest.collapsed = (globalThis.__freevideoEntryTest.collapsed || 0) + 1; }; const openImage = async () => false;')
+            // The video model is installed here, so the workspace opens on Create as before the Images view existed.
+            .replace("import { videoModelState } from './video_model.js';", 'const videoModelState = async () => ({installed: true});')
             .replace("import { isLaunchVisit } from './launch_visit.js';", 'const isLaunchVisit = () => false;')
             .replace("import { openFreeVideoWorkflow } from './launcher.js';", 'const openFreeVideoWorkflow = (...args) => globalThis.__freevideoEntryTest.openFreeVideoWorkflow?.(...args);')
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
@@ -310,7 +312,8 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(opened.length, quiet, 'a tab restored with the page does not open the workspace on its own');
         assert.equal(restoreReleases, releasesBefore + 1, 'the page-load cover is released when nothing opens');
         events.dispatchEvent(new Event('pointerdown'));
-        extension.afterConfigureGraph();
+        // With no remembered view the entry first asks whether the video model is installed, then opens Create.
+        extension.afterConfigureGraph(); for (let i = 0; i < 10; i++) await Promise.resolve();
         assert.deepEqual(opened, [node, node]);
         // A workflow without FreeVideo nodes is the user's own: every workspace makes way and none opens.
         const nodes = app.graph._nodes, collapsed = dependencies.collapsed || 0;
