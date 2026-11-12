@@ -74,7 +74,8 @@
 .fv-chat-seek::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:#ffffff40}
 .fv-chat-seek::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;margin-top:-3px;border-radius:50%;background:#fff}
 .fv-chat-seek::-moz-range-track{height:3px;border-radius:9px;background:#ffffff40}.fv-chat-seek::-moz-range-thumb{width:9px;height:9px;border:0;border-radius:50%;background:#fff}
-.fv-chat-info{display:grid;align-content:space-between;gap:12px;min-width:0;padding:4px 4px 2px 0}
+/* One shrinkable track: a long title ellipsizes instead of widening the column past the card. */
+.fv-chat-info{display:grid;grid-template-columns:minmax(0,1fr);align-content:space-between;gap:12px;min-width:0;padding:4px 4px 2px 0}
 /* Finished cards have only a heading and any available actions; an empty footer takes no room. */
 .fv-chat-job[data-kind=image][data-mode=done] .fv-chat-preview{max-width:calc(160px * var(--fv-chat-ratio,1.7778))}
 .fv-chat-job[data-mode=done]:not(:has(.fv-chat-preview)){grid-template-columns:minmax(0,1fr)}
