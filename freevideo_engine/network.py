@@ -906,10 +906,16 @@ def retain_partial(path, reason):
 
 
 RETRY_DELAYS = (2, 5)
+# Large files that have no model-style retry (GPU wheels) ask for patience: after
+# the fast round has tried every source, each further round waits first and
+# allows a longer connect time, so a slow or unstable link is not given up on
+# within seconds. Round 0 is unchanged.
+PATIENT_WAITS = (5, 15, 30)
+PATIENT_CONNECT_SECONDS = (None, 15, 30, 60)
 
 
-def retry_wait(network, attempt, **details):
-    delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS)-1)]
+def retry_wait(network, attempt, *, delays=RETRY_DELAYS, **details):
+    delay = delays[min(attempt, len(delays)-1)]
     event(network, action='retry', retry_number=attempt+1, wait_seconds=delay, **details)
     deadline = time.monotonic() + delay
     while time.monotonic() < deadline:
@@ -1028,8 +1034,11 @@ def download(candidates, path, expected, *args, **options):
 def download_here(candidates, path, expected, progress=None, *, network=None, env=None, size=None,
              algorithm='sha256', git_blob=False, headers_for=None, stall_seconds=None, category='download',
              low_speed_limit=1024, max_seconds=None, cycles=2, slow_seconds=None, keep_partial=False,
-             validate_url=None, verify=None, fallbacks=None):
+             validate_url=None, verify=None, fallbacks=None, patient=False):
     """Resume ranked sources; defaults retain rejected bytes.
+
+    patient adds waiting and longer connect times to the rounds after the
+    first, but only while the previous round failed for connection reasons.
 
     validate_url checks each redirect before curl can follow it; verify runs
     after the digest and before publication. fallbacks maps a source name to
@@ -1150,6 +1159,18 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     for cycle in range(cycles):
         # Per round: a source refused the retained prefix / another was only slow,
         # stalled or interrupted (those may still finish from the same bytes).
+        if patient and cycle:
+            # From the third round on, only connection-type failures earn more waiting.
+            if cycle >= 2 and not retryable:
+                break
+            retry_wait(network, cycle - 1, delays=PATIENT_WAITS, category=category,
+                       file=path.name, reason='connection-interrupted',
+                       resume_bytes=partial.stat().st_size if partial.exists() else 0)
+        connect_timeout = timeout
+        if patient and cycle:
+            connect_timeout = max(timeout, PATIENT_CONNECT_SECONDS[min(cycle, len(PATIENT_CONNECT_SECONDS) - 1)] or 0)
+        # The stall clock starts with the request, so a longer connect wait must not be cut short by it.
+        stall_limit = max(stall_seconds, connect_timeout + 5) if patient and cycle else stall_seconds
         resume_refused = retryable = False
         # Once every route has been tried, keep the fastest observed route even
         # if the user's entire connection is slow. Do not oscillate forever.
@@ -1193,7 +1214,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     remember_source()
                 event(network, category=category, source=name, route=route, file=path.name, action='attempt', method='curl', cycle=cycle, resume_bytes=offset)
                 attempt_env = route_environment(network, category, name, env, route)
-                command = curl_command(timeout, attempt_env) + ['--output', str(partial), '--write-out', '%{http_code}']
+                command = curl_command(connect_timeout, attempt_env) + ['--output', str(partial), '--write-out', '%{http_code}']
                 if validate_url:
                     command += ['--disable', '--max-redirs', '0', '--write-out', '%{http_code}\n%{redirect_url}']
                     # --disable must be the first option to suppress .curlrc.
@@ -1239,7 +1260,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                             previous_done, last_body = done, time.monotonic()
                             remember_source()
                         now = time.monotonic()
-                        if now-last_body > stall_seconds:
+                        if now-last_body > stall_limit:
                             stalled = True
                             break
                         if size is not None and done > size:

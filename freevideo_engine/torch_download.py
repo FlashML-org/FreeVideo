@@ -47,6 +47,10 @@ def fetch(row, root, family, networking, env, ui, check):
     def feedback(event):
         nonlocal source
         source = {'official': 'PyTorch', 'nju': 'Nanjing University mirror'}.get(event.get('source'), '')
+        if event['action'] == 'retry':
+            # A patient round is about to start: the same notice the Python and package retries show.
+            ui.update(key, activity='resume', name=name, detail=network.PATIENT_DOWNLOAD_NOTICE)
+            return
         ui.update(key, activity='resume' if event['action'] in ('retry', 'route-retry') else '', name=name,
                   detail=row['package'] + (' · Source: ' + source if source else '') +
                   ' · ' + event['action'] + (' · ' + event['reason'] if event.get('reason') else ''))
@@ -65,7 +69,7 @@ def fetch(row, root, family, networking, env, ui, check):
         network.download(candidates, path, row['sha256'], progress,
             network=dict(networking, event_callback=feedback, resource_check=check), env=env,
             size=row['bytes'], category=family, low_speed_limit=256 * 1024,
-            slow_seconds=30, stall_seconds=30, keep_partial=True)
+            slow_seconds=30, stall_seconds=30, keep_partial=True, cycles=4, patient=True)
         success = True
     finally:
         ui.end(key, success=success, detail='Verified and ready' if success else None)
