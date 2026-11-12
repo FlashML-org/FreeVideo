@@ -107,8 +107,10 @@ def main():
         from .monitoring import save
         save(args.out, result)
     print(json.dumps(result, indent=2))
-    return int((args.probe and not result['ready']) or
-               (args.require_paths and missing_required_paths(result, video_models=not args.without_video_models)))
+    not_ready = bool(args.probe and not result['ready'])
+    missing = bool(args.require_paths and
+                   missing_required_paths(result, video_models=not args.without_video_models))
+    return int(not_ready or missing)
 
 
 if __name__ == '__main__':
