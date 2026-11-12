@@ -155,6 +155,10 @@ const EXPORT_TO_DOWNLOAD = [
     ['仍然失败时，请导出报告。', DOWNLOAD_ADVICE[1]],
 ];
 
+// Precomputed tables installed with the video model: missing, truncated or damaged.
+export const modelTableDamaged = text => /AdaLN table integrity failure|AdaLN table (?:schedule length|shape or dtype) mismatch|(?:Truncated|Invalid) AdaLN tensor|Truncated or oversized AdaLN tensor payload|(?:Incomplete|Nonfinite) AdaLN model asset/i
+    .test(String(text).slice(0, 65536));
+
 // A permission error counts as the output folder's only when the path it names is not a model or cache file.
 export function outputNotWritable(text) {
     const value = String(text).slice(0, 65536);
@@ -454,6 +458,10 @@ export function failureAdvice(value, t, known = knownError(value)) {
             || /manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
         return row('model-files', ['The model is not fully installed', '模型没有装全'],
             ['Some of the model files FreeVideo needs are missing.', 'FreeVideo 需要的部分模型文件缺失。'],
+            repairAction());
+    if (modelTableDamaged(text))
+        return row('model-files', ['The model is not fully installed', '模型没有装全'],
+            ['Some of the model files FreeVideo needs are missing or damaged.', 'FreeVideo 需要的部分模型文件缺失或已损坏。'],
             repairAction());
     // The second form is the tokenizers library's own error when its vocab or merges file is gone.
     if (/FreeVideo text encoder files are missing|`vocab` and `merges` must be both be from memory/i.test(text))

@@ -316,8 +316,8 @@ export function encoderFileText(file, t) {
         ' Select "Repair" in the launcher under Settings > Environment to restore the tested file; the current file is kept.',
         '可在启动器“设置 → 环境”中点“修复”恢复已验证的文件，原文件会保留。');
     else message += t(
-        ' Select "Install / repair" in the page settings to restore the tested file; the current file is kept.',
-        '可在页面设置中点“安装／修复”恢复已验证的文件，原文件会保留。');
+        ' In the page settings, select "Detect & review", then "Install / repair" to restore the tested file; the current file is kept.',
+        '可在页面设置中先点“检测并预览”，再点“安装／修复”恢复已验证的文件，原文件会保留。');
     return message;
 }
 
