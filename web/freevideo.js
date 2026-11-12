@@ -968,8 +968,11 @@ app.registerExtension({
                         ['continue_from', '接着生成'],
                         ['frames', '帧数'],
                         ['first_frame_reference', '首帧参考', '减小漂移'],
+                        ['voice_reference', '声音参考', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
+                        ['hide_tail', '隐藏对白尾段', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
                         ['step_cache', '步间缓存', '复用相近采样步之间的计算，更快完成，结果会有细微变化。'],
                         ['upscale_factor', '放大倍数', '二次采样时成片相对首遍的放大倍数。'],
+                        ['allow_empty_prompt', '允许空描述', '描述为空时直接生成，不再提示。'],
                     ]) {
                         const widget = this.widgets?.find(w => w.name === name);
                         if (widget) {
