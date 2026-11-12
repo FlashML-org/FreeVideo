@@ -13,6 +13,12 @@ front of the pass: it reads their byte ranges in large blocks (the faults then
 find the pages in the OS cache) and gives the pages of finished layers back, so
 the encoder never holds more than a few hundred MB beyond what it is using.
 It keeps no private copy, CUDA allocation or pinned memory.
+
+One handle reading a layer front to back leaves most of a fast drive idle, as
+it does for the video model's streamed layers, so each layer is read in large
+pieces on a few handles at once, with the same reader count and piece layout
+(FREEVIDEO_READ_THREADS=1 reads on one handle). The bytes the encoder later
+uses are unchanged; only the order the drive is asked for them in differs.
 """
 import ctypes
 import json
@@ -27,6 +33,7 @@ from pathlib import Path
 from .encoder_prewarm import CHUNK
 from .hardware import cgroup_memory
 from .system import system_memory
+from .tensor_io import read_threads
 
 LEAD_LAYERS = 3
 # The window holds a few layers and gives finished ones back, so it needs no
@@ -105,6 +112,9 @@ class LayerWindow:
         self.path = Path(path)
         self.modules = modules
         self.lead = max(1, int(lead))
+        self.threads = read_threads()
+        self.local = threading.local()
+        self.streams = []       # one read handle per pool thread, closed when the window ends
         self.release = release
         self.cond = threading.Condition()
         self.cancelled = False
@@ -118,7 +128,7 @@ class LayerWindow:
         self.mapping = None
         self.address = None
         self.result = dict(state='not-started', layers=0, read_bytes=0, released_bytes=0, stalls=0,
-                           sweeps=0, elapsed_seconds=0., lead_layers=self.lead,
+                           sweeps=0, elapsed_seconds=0., lead_layers=self.lead, read_threads=self.threads,
                            scope='Streamed encoder layers; reclaimable OS cache, no GPU residency')
 
     def start(self):
@@ -155,10 +165,72 @@ class LayerWindow:
                 self.cond.notify_all()
         return hook
 
+    def _read_parallel(self, pool, spans):
+        """Read one layer's ranges in CHUNK pieces on the pool's handles; return the bytes read.
+
+        Neighbouring pieces go to different handles, so together they still
+        move through the layer from front to back. Each pool thread keeps its
+        own handle and scratch buffer for the whole window: the bytes are only
+        brought into the OS cache. A failure on one handle stops the others
+        at their next piece."""
+        pieces = []
+        for begin, end in spans:
+            while begin < end:
+                length = min(CHUNK, end - begin)
+                pieces.append((begin, length))
+                begin += length
+        threads = min(self.threads, len(pieces))
+        failed = threading.Event()
+
+        def read(group):
+            total = 0
+            local = self.local
+            stream = getattr(local, 'stream', None)
+            if stream is None:
+                stream = local.stream = self.path.open('rb', buffering=0)
+                local.scratch = bytearray(CHUNK)
+                with self.cond:
+                    self.streams.append(stream)
+            scratch = local.scratch
+            try:
+                for position, length in group:
+                    if self.cancelled or failed.is_set():
+                        break
+                    stream.seek(position)
+                    done = 0
+                    while done < length:
+                        count = stream.readinto(memoryview(scratch)[:length - done])
+                        if not count:
+                            raise ValueError('Encoder checkpoint truncated during read window')
+                        done += count
+                    total += length
+            except BaseException:
+                failed.set()    # the other handles stop before their next piece
+                raise
+            return total
+
+        futures = [pool.submit(read, pieces[first::threads]) for first in range(threads)]
+        total, failure = 0, None
+        for future in futures:
+            try:
+                total += future.result()
+            except BaseException as error:
+                failed.set()
+                failure = failure or error
+        if failure is not None:
+            raise failure
+        return total
+
     def _run(self):
         started = time.monotonic()
-        scratch = bytearray(CHUNK)
+        scratch = None
+        pool = None
         try:
+            if self.threads > 1:
+                from concurrent.futures import ThreadPoolExecutor
+                pool = ThreadPoolExecutor(self.threads, thread_name_prefix='freevideo-encoder-window')
+            else:
+                scratch = bytearray(CHUNK)
             with self.path.open('rb', buffering=0) as file:
                 while True:
                     with self.cond:
@@ -175,17 +247,20 @@ class LayerWindow:
                     if not self._room(size):
                         self.result.update(state='stopped', reason='Live RAM stayed too low to read ahead')
                         return
-                    for begin, end in spans:
-                        file.seek(begin)
-                        remaining = end - begin
-                        while remaining:
-                            if self.cancelled:
-                                break
-                            count = file.readinto(memoryview(scratch)[:min(CHUNK, remaining)])
-                            if not count:
-                                raise ValueError('Encoder checkpoint truncated during read window')
-                            remaining -= count
-                            self.result['read_bytes'] += count
+                    if pool is None:
+                        for begin, end in spans:
+                            file.seek(begin)
+                            remaining = end - begin
+                            while remaining:
+                                if self.cancelled:
+                                    break
+                                count = file.readinto(memoryview(scratch)[:min(CHUNK, remaining)])
+                                if not count:
+                                    raise ValueError('Encoder checkpoint truncated during read window')
+                                remaining -= count
+                                self.result['read_bytes'] += count
+                    else:
+                        self.result['read_bytes'] += self._read_parallel(pool, spans)
                     with self.cond:
                         if self.next == position:
                             self.next = position + 1
@@ -194,6 +269,15 @@ class LayerWindow:
             # Speculative I/O never replaces the loader's own reads and validation.
             self.result.update(state='failed', reason=type(error).__name__ + ': ' + str(error))
         finally:
+            if pool is not None:
+                pool.shutdown(wait=True)
+            with self.cond:
+                streams, self.streams = self.streams, []
+            for stream in streams:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
             self.result['elapsed_seconds'] = time.monotonic() - started
 
     def _room(self, size):
