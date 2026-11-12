@@ -401,7 +401,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
         if (fits.length) {
             const en = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} up to ${f.seconds.toFixed(1)}\u00a0s` : `${f.width}\u00a0×\u00a0${f.height} at ${f.seconds.toFixed(1)}\u00a0s`).join(', or ');
             const zh = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} 最长 ${f.seconds.toFixed(1)}\u00a0秒` : `${f.width}\u00a0×\u00a0${f.height} 生成 ${f.seconds.toFixed(1)}\u00a0秒`).join('，或 ');
-            return row('resources', ['Not enough GPU memory', '显存不够'],
+            return row('resources', ['Not enough GPU memory', '显存不足'],
                 ['Generation needs more GPU memory than is currently available.', '生成所需显存超过当前可用量。'],
                 [`This computer can make ${en} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.`,
                  `现在可以生成：${zh}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。`]);

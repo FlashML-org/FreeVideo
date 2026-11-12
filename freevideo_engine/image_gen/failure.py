@@ -25,7 +25,7 @@ STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 MESSAGE_ZH = {
     **LORA_MESSAGE_ZH,
-    'no_memory': '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。',
+    'no_memory': '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。',
     'small_memory': '这台 Mac 的内存不足 16 GB，无法生成图片。',
     'busy_video': '视频正在生成，完成后再试。',
     'busy': '已有一张图在生成，请等它完成。',
@@ -57,7 +57,7 @@ _MODEL = re.compile(
 _MPS_MEMORY = re.compile(r'MPS backend out of memory', re.I)
 _LIMIT = 16 * 1024
 # On a Mac the GPU's memory is the machine's: the same failure, in its words.
-UNIFIED_MESSAGE_ZH = {'no_memory': '内存不够，最小尺寸也没能生成。关掉其他程序后再试。'}
+UNIFIED_MESSAGE_ZH = {'no_memory': '内存不足，最小尺寸也无法生成。请关闭其他程序后重试。'}
 HOST_MESSAGE_ZH = '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。'
 
 

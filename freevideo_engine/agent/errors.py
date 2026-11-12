@@ -150,7 +150,7 @@ IMAGE_REASONS = {
     'small_memory': ('This Mac has less than 16 GB of memory and cannot generate pictures.',
                      '这台 Mac 的内存不足 16 GB，无法生成图片。'),
     'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
-                  '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'),
+                  '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'),
     'busy_video': ('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'),
     'pack_missing': ('Download "Image generation models" in the launcher first.',
                      '请先在启动器里下载“图像生成模型”。'),

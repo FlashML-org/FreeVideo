@@ -174,7 +174,7 @@ export function imageGenError(code, info, t) {
         lora_not_found: ['The LoRA file could not be found. Choose it again.', 'LoRA 文件找不到，请重新选择。'],
         invalid_lora_model: ['This LoRA cannot be used for pictures. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
-            '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'],
+            '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
@@ -203,13 +203,13 @@ export function imageGenError(code, info, t) {
         const stage = info?.stage, size = info?.fitted;
         if (stage === 'encode')
             return say('Not enough GPU memory to load the reference images. Use fewer reference images, or close other apps using the GPU, then try again.',
-                '显存不够，参考图没能载入。少用几张参考图，或关掉其他占用显卡的程序后再试。');
+                '显存不足，无法载入参考图。请减少参考图，或关闭其他占用显卡的程序后重试。');
         if (stage === 'load' || stage === 'text')
             return say('Not enough GPU memory to load the model. Close other apps using the GPU, then try again.',
-                '显存不够，模型没能载入。关掉其他占用显卡的程序后再试。');
+                '显存不足，无法载入模型。请关闭其他占用显卡的程序后重试。');
         if (size?.width && size?.height)
             return say(`Not enough GPU memory, even at ${size.width}\u00a0×\u00a0${size.height}. Close other apps using the GPU, then try again.`,
-                `显存不够，${size.width}\u00a0×\u00a0${size.height} 也没能生成。关掉其他占用显卡的程序后再试。`);
+                `显存不足，${size.width}\u00a0×\u00a0${size.height} 也无法生成。请关闭其他占用显卡的程序后重试。`);
     }
     const known = Object.hasOwn(reasons, code) ? code : 'generation_failed';
     // An unnamed error still says which step it stopped at; a page with its own
