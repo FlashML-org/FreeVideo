@@ -105,6 +105,7 @@
 .fv-setup .fv-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 18px;margin:4px 0 12px;font-size:var(--fv-body)}
 .fv-setup .fv-facts dt{color:var(--fv-muted)}
 .fv-setup .fv-facts dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fv-setup .fv-facts .fv-fact-part{display:inline-block;max-width:100%;white-space:pre-wrap}
 .fv-setup table.fv-speed{width:100%;margin-top:12px;border-collapse:collapse;font-size:var(--fv-body);font-variant-numeric:tabular-nums}
 .fv-setup table.fv-speed th{font-weight:var(--fv-medium);font-size:var(--fv-micro);color:var(--fv-muted);text-align:left;padding:0 8px 6px 0;border-bottom:1px solid var(--fv-border)}
 .fv-setup table.fv-speed td{padding:7px 8px 7px 0;border-bottom:1px solid var(--fv-border)}

@@ -482,11 +482,16 @@ export async function openSetup(options) {
             [t("Hardlinked / copied", "硬链接／复制"), `${bytesText(local.linked_bytes || 0)} / ${bytesText(local.copy_bytes || 0)}`],
             [t("Additional disk estimate", "额外磁盘预估"), bytesText(value.disks?.reduce((sum, d) => sum + d.needed_bytes, 0))],
         ];
-        if (value.prepared_model) facts.push([t("Model", "模型"), `${value.prepared_model.repo} · ${value.prepared_model.scale_granularity === "int8_convrot"
-            ? t("slim ConvRot int8, no local conversion", "精简 ConvRot int8，无需本地转换")
-            : t("slim FP8, no local conversion", "精简 FP8，无需本地转换")}`]);
+        // Segments wrap as whole units, so a phrase never leaves its last character alone on the next line.
+        if (value.prepared_model) facts.push([t("Model", "模型"), [`${value.prepared_model.repo} · `, value.prepared_model.scale_granularity === "int8_convrot"
+            ? t("slim ConvRot int8, ", "精简 ConvRot int8，") : t("slim FP8, ", "精简 FP8，"),
+            t("no local conversion", "无需本地转换")]]);
         const list = node('dl'); list.className = 'fv-facts';
-        for (const [key, shown] of facts) list.append(node('dt', key), node('dd', shown));
+        for (const [key, shown] of facts) {
+            const cell = node('dd', Array.isArray(shown) ? '' : shown);
+            if (Array.isArray(shown)) cell.append(...shown.map(part => { const e = node('span', part); e.className = 'fv-fact-part'; return e; }));
+            list.append(node('dt', key), cell);
+        }
         plan.append(list);
         for (const line of value.replace_models_text?.[cn ? 'zh' : 'en'] || []) {
             const replacement = node('div'); replacement.className = 'fv-model-repair';
