@@ -1126,6 +1126,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
+                    // The same fold row as a video failure card, between the reason and the buttons.
+                    const raw = [job.error?.code, job.error?.message, job.error?.request_id].filter(Boolean).join('\n');
+                    if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
                     if (retry && card) {
                         // In the chat it is the same outlined button as on a video failure card.
                         const again = card.querySelector('.fv-image-retry');
