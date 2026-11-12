@@ -9,10 +9,17 @@ import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
 import {createPassMode} from './pass_mode.js';
+import {createSamplingEffort, continuationUpscale, effortFor} from './sampling_effort.js';
 import {createVoicePanel} from './editor_voice.js';
 import {createInstallPanel} from './editor_voice_install.js';
 import * as dubbing from './editor_voice_model.js';
 import {createNarrationRow} from './editor_narration.js';
+// The quality control's own sheet; the creative panel loads the same file, so a second link is skipped.
+const effortSheet = new URL('./sampling_effort.css', import.meta.url).href;
+function loadEffortSheet() {
+    if ([...document.querySelectorAll('link[rel=stylesheet]')].some(link => link.href === effortSheet)) return;
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = effortSheet; document.head.append(link);
+}
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
@@ -63,12 +70,26 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // The editor routes keys itself and calls a control's onkeydown, as for the toolbar's ⋯ panel.
     const routed = (target, type, handler) => { target.onkeydown = handler; return () => { target.onkeydown = null; }; };
     const passControl = passMenu ? createPassMode({t, onChoose: mode => { actions.choosePass(mode); render(); }, listen: routed}) : null;
-    let stopPass = null;
+    // The creative panel's quality control (same component, same levels), above the two-pass choice in the same menu.
+    // The steps are told where the control shows its estimate, which an edit has no use for: "8 + 3 steps", "8 steps", "12 steps".
+    const stepsText = (steps, twoPass, refine) => `${steps}${twoPass ? ' + ' + refine : ''} ${steps === 1 && !twoPass ? t('step', '步') : t('steps', '步')}`;
+    let quality = null, previewing = false, twoPassTitle = null;
+    const effortControl = passMenu && actions.effort ? createSamplingEffort(t, {onChange: tier => { previewing = false; actions.chooseEffort(tier); render(); },
+        onPreview: tier => {
+            previewing = !!tier;
+            if (tier) effortControl.setEstimate(stepsText(tier.steps, tier.twoPass, 3));
+            else if (quality) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
+        },
+        levels: actions.effortLevels?.() || undefined}) : null;
+    if (effortControl) loadEffortSheet();
+    let stopPass = null, stopEffort = null;
     if (passMenu) {
-        const toggle = el('summary'); toggle.setAttribute('aria-label', t('Two-pass', '二次采样')); toggle.append(el('span', 'fv-chevron'));
-        const panel = el('div', 'fv-ed-pass-menu'); panel.append(el('strong', null, t('Two-pass', '二次采样')), passControl.element);
+        const toggle = el('summary'); toggle.setAttribute('aria-label', t('Sampling', '采样')); toggle.append(el('span', 'fv-chevron'));
+        const panel = el('div', 'fv-ed-pass-menu'); twoPassTitle = el('strong', 'fv-ed-pass-sub', t('Two-pass', '二次采样'));
+        panel.append(el('strong', null, t('Sampling', '采样')), ...(effortControl ? [effortControl.element, twoPassTitle] : []), passControl.element);
         passMenu.append(toggle, panel); passMenu.hidden = true; generate.after(passMenu);
         stopPass = actions.onPass?.(() => render()) || null;
+        stopEffort = effortControl ? actions.onEffort?.(() => render()) || null : null;
     }
     const closePass = event => { if (passMenu?.open && !passMenu.contains(event.target)) passMenu.open = false; };
     document.addEventListener('pointerdown', closePass, true);
@@ -289,6 +310,26 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             // While a part generates, the bar shows its progress and Cancel; the choice waits for the next press.
             passMenu.hidden = !pass || musical || narrated || voiced || generate.hidden || busy;
             if (pass) passControl.sync(pass);
+            quality = effortControl && actions.effort();
+            // Without a quality state (a panel that has only the two-pass choice) the menu shows that choice alone.
+            if (effortControl) { effortControl.element.hidden = !quality; if (twoPassTitle) twoPassTitle.hidden = !quality; }
+            if (quality) {
+                const levels = actions.effortLevels?.(); if (levels) effortControl.setLevels(levels);
+                // A part that continues, or one of several parts, samples 8 + 3 steps at the Light or Medium level: the control says so and is not offered.
+                const lock = !musical && !narrated ? actions.effortLock?.(selection) : null;
+                if (lock) {
+                    const factor = continuationUpscale(quality.baseSteps, quality.twoPass, quality.refineSteps, quality.stepCache, quality.upscale, levels || undefined);
+                    const medium = effortFor(8, true, 3, null, levels || undefined, Number(factor))?.name === 'Medium';
+                    quality = {baseSteps: 8, refineSteps: 3, twoPass: true, stepCache: null, upscale: Number(factor), disabled: true,
+                        reason: lock === 'continuation'
+                            ? (medium ? t('A continuation uses the Medium level.', '接着生成使用标准档。') : t('A continuation uses the Light level.', '接着生成使用轻量档。'))
+                            : (medium ? t('Each part of a video made in parts uses the Medium level.', '分段生成时，每段使用标准档。') : t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'))};
+                }
+                effortControl.update(quality);
+                // On the wrapper too: a disabled control may not raise its own hover.
+                effortControl.element.title = lock ? quality.reason : '';
+                if (!previewing) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
+            }
             if (passMenu.hidden) passMenu.open = false;
         }
         if (voiced) generate.textContent = dubbing.redubLabel(voice.controller.changed(dub).length, t);
@@ -425,6 +466,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // Picking a voice on the timeline stops; the stretch stays chosen.
         if (narration?.picking) { event.preventDefault(); event.stopPropagation(); narration.stopPicking(); return true; }
         if (!passMenu?.open) return false;
+        // Escape while the knob is dragged is the control's own cancel (it handles it); the menu stays.
+        if (effortControl?.element.querySelector('.fv-effort-rail[data-dragging]')) return false;
         event.preventDefault(); event.stopPropagation(); passMenu.open = false; passMenu.querySelector('summary').focus();
         return true;
     }
@@ -434,7 +477,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

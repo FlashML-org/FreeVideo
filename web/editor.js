@@ -1121,6 +1121,34 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else genbar?.update(mostRecentJob ? jobStatuses.get(mostRecentJob) ?? null : null);
         },
         onPass: listener => panel.passMode?.subscribe(listener) || (() => {}),
+        // The quality control as this edit uses it: the sampling settings the edit holds decide, the panel's fill in what it lacks.
+        // Null without an open panel.
+        effort() {
+            const shared = panel.effort; if (!shared) return null;
+            const now = shared.state(), set = state.record.settings || {};
+            return {...now, baseSteps: Number(set.base_steps ?? now.baseSteps), refineSteps: Number(set.refine_steps ?? now.refineSteps),
+                twoPass: set.two_pass ?? now.twoPass, stepCache: 'step_cache' in set ? set.step_cache : now.stepCache,
+                upscale: set.upscale_factor ?? now.upscale};
+        },
+        effortLevels: () => panel.effort?.levels() || null,
+        // Why the quality control cannot apply to what the next press makes: a part that continues another one, or any part of a video
+        // made in parts, samples 8 + 3 steps whatever the control says (the engine continues in two passes only). null when it applies.
+        effortLock(selection = state.selection) {
+            if (!panel.effort || music.target(selection) || narration.target(selection)) return null;
+            const run = partRun(selection), range = selectionRange(run ? clipChoice(run) : selection); if (!range) return null;
+            if (continuesEarlier(range)) return 'continuation';
+            try { return model.rangeParts(state.record, {...range, ...capability}).length > 1 ? 'parts' : null; }
+            catch (value) { if (value instanceof model.EditError) return null; throw value; }
+        },
+        // One choice for both places, as for the two-pass choice above.
+        chooseEffort(tier) {
+            const shared = panel.effort; if (!shared) return;
+            shared.choose(tier);
+            const now = panel.sampling?.() || {}, set = state.record.settings || {};
+            if (Object.entries(now).some(([key, value]) => set[key] !== value)) state.settle(record => model.setSampling(record, now));
+            else genbar?.update(mostRecentJob ? jobStatuses.get(mostRecentJob) ?? null : null);
+        },
+        onEffort: listener => panel.effort?.subscribe(listener) || (() => {}),
         // A part made as a half-resolution preview: one part only, as the next part continues from this one's last
         // frames, which the second pass changes. It may continue the part before it where the engine can.
         previewFirst(selection = state.selection) {

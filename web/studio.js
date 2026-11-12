@@ -949,7 +949,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The two-pass learned upscale factor; a single pass has none (2).
     const upscaleNow = () => upscaleOf(value(node, 'upscale_factor'));
     const setUpscale = factor => { if (widget(node, 'upscale_factor') && value(node, 'upscale_factor') !== String(factor)) set(node, 'upscale_factor', String(factor)); };
-    const effort = createSamplingEffort(t, {onChange: tier => {
+    const chooseEffort = tier => {
         baseSteps.value = tier.steps;
         refineSteps.value = 3;
         twoPass.checked = tier.twoPass;
@@ -959,7 +959,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
         set(node, 'step_cache', tier.stepCache || 'none');
         set(node, 'upscale_factor', String(tier.upscale));
         syncSamplingSteps();
-    }, onPreview: tier => tier ? showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale) : showEffortEstimate()});
+    };
+    const effort = createSamplingEffort(t, {onChange: chooseEffort, onPreview: tier => tier ? showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale) : showEffortEstimate()});
+    // What the quality control shows now; the editor's generation bar shows the same control from this.
+    const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
+        twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
+        disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps') || linked(node, 'step_cache') || linked(node, 'upscale_factor'),
+        reason: extension.source ? continuationReason() : ''});
+    const effortListeners = new Set();
+    const sharedEffort = {state: effortState, choose: chooseEffort, levels: () => effort.levels(),
+        subscribe(listener) { effortListeners.add(listener); return () => effortListeners.delete(listener); }};
+    node.freevideoEffort = sharedEffort;
+    cleanup.push(() => { effortListeners.clear(); if (node.freevideoEffort === sharedEffort) delete node.freevideoEffort; });
     const samplingSettings = el('div', null, 'fv-sampling-settings');
     const previewFirst = el('input'); previewFirst.type = 'checkbox'; previewFirst.checked = value(node, 'preview') === true;
     function choosePassMode(mode) {
@@ -1186,10 +1197,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 set(node, name, Number(input.value));
             }
         }
-        effort.update({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
-            twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
-            disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps') || linked(node, 'step_cache') || linked(node, 'upscale_factor'),
-            reason: extension.source ? continuationReason() : ''});
+        const effortValue = effortState();
+        effort.update(effortValue);
+        for (const listener of [...effortListeners]) listener(effortValue);
         refreshEffortEstimate();
     }
     syncSamplingSteps();

@@ -85,7 +85,12 @@
 .fv-ed-pass-options>summary:focus-visible{outline:2px solid var(--fv-accent);outline-offset:1px}
 .fv-editor .fv-ed-pass-options[open] .fv-chevron{transform:rotate(225deg)}
 .fv-ed-pass-menu{position:absolute;bottom:calc(100% + 10px);right:0;width:max-content;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 14px 45px #0006;animation:fv-preview-appear .16s ease;z-index:10}
-.fv-ed-pass-menu>strong{display:block;padding:0 2px 8px;font-size:var(--fv-micro);color:var(--fv-muted);font-weight:var(--fv-medium)}
+.fv-ed-pass-menu>strong{display:block;padding:0 0 8px;font-size:var(--fv-micro);color:var(--fv-muted);font-weight:var(--fv-medium)}
+.fv-ed-pass-menu .fv-effort{width:280px;max-width:calc(100vw - 56px)}
+.fv-ed-pass-menu .fv-effort[data-disabled=true]{opacity:1}
+/* Locked: the dimming goes on the parts one by one, so the level the knob rests on stays at the menu's own text colour, as the Two-pass title. */
+.fv-ed-pass-menu .fv-effort[data-disabled=true] :is(.fv-effort-heading,.fv-effort-rail,.fv-effort-name:not([data-active])){opacity:.5}
+.fv-ed-pass-menu .fv-effort[data-disabled=true] .fv-effort-name[data-active]{color:var(--fv-muted);font-weight:500;opacity:1}.fv-ed-pass-menu>.fv-ed-pass-sub{padding-top:28px}
 .fv-ed-gen-note:has(.fv-issue-button){white-space:normal;overflow:visible}
 .fv-ed-gen-note .fv-issue-button,.fv-ed-library-message .fv-issue-button{margin-left:8px}
 .fv-editor .fv-ed-gen-retry{height:auto;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
