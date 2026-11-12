@@ -5,6 +5,7 @@ import {createEditorReferences} from './editor_references.js';
 import {createExpandButton} from './editor_expand.js';
 import {createRequestAssets} from './request_assets.js';
 import {issueButton} from './issue_button.js';
+import {pageRepair, repairButton} from './repair_hint.js';
 import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
@@ -163,7 +164,9 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
     const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download report', '下载报告')); report.type = 'button';
-    failureBar.append(failureReason, report); failure.append(failureBar); failure.hidden = true; host.append(failure);
+    // Beside a reason whose hint names the page settings.
+    const repair = repairButton(t, {className: 'fv-action fv-action-secondary'}); repair.hidden = true;
+    failureBar.append(failureReason, repair, report); failure.append(failureBar); failure.hidden = true; host.append(failure);
     let failureId = null, downloading = false;
     // Reference pictures for a part that starts fresh: thumbnails and a small "+" before the description.
     // What goes wrong with a reference picture is said above the "+", where the eyes are, not in the page-wide line.
@@ -214,6 +217,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         }
         failure.hidden = !selectedFailure;
         failureReason.textContent = selectedFailure?.text || '';
+        repair.hidden = !pageRepair(selectedFailure?.text);
         // A piece of music has no generation receipt to report.
         report.hidden = !selectedFailure || selectedFailure.report === false;
         const running = ['queued', 'running', 'cancelling'].includes(status?.state);

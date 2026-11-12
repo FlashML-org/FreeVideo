@@ -284,6 +284,13 @@ export async function openSetup(options) {
     dialog.addEventListener('close', stopStatusWatching);
     status.append(statusLabel);
     const showSection = name => {
+        // 'repair': a failure card's "Open settings" lands on Detect & review, the first step its hint names.
+        if (name === 'repair') {
+            installation.open = true;
+            inspect.scrollIntoView({block: 'center'});
+            inspect.focus({preventScroll: true});
+            return;
+        }
         if (name !== 'preview') return;
         preview.scrollIntoView({block: 'center'});
         loopSwitch.focus({preventScroll: true});

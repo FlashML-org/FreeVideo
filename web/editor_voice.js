@@ -3,8 +3,8 @@
 // the user typed, the progress, the original/new choice for playback and the lines that did not fit.
 import * as voice from './editor_voice_model.js';
 import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
-import {issueButton} from './issue_button.js';
-import {repairAction} from './repair_hint.js';
+import {issueButton, style as issueButtonStyle} from './issue_button.js';
+import {pageRepair, repairAction, repairButton} from './repair_hint.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
@@ -186,6 +186,8 @@ export function createVoicePanel(host, controller, {t}) {
         note.replaceChildren();
         if (failure) {
             note.append(failure.text);
+            // A hint that names the page settings opens them; the button looks like the report button beside notes.
+            if (pageRepair(failure.text)) { issueButtonStyle(); note.append(repairButton(t, {className: 'fv-issue-button'})); }
             if (failure.report) note.append(issueButton(t, () => ({where: ['Editor generation', '剪辑器生成'], message: failure.text + (current.failure?.detail ? `\n${current.failure.detail}` : ''), kind: current.failure?.code || null})));
         } else note.textContent = current.notice === 'changed' ? t('This part changed during dubbing, so the new voice was not placed. Redub it.', '这一段在配音期间有改动，新声未放入。请重新配音。') : current.phase === 'none' ? t('No lines were found in this part.', '这一段没有识别到台词。') : current.phase === 'done' && current.failed ? voice.failedText(current.failed, t) : '';
         note.hidden = !note.textContent;

@@ -40,7 +40,8 @@ function icon() {
 }
 
 let sheet = null;
-function style() {
+// Also used by a plain secondary button that sits beside this one (a note's "Open settings").
+export function style() {
     if (sheet?.parentNode) return;
     sheet = document.createElement('style'); sheet.id = 'freevideo-issue-button-style';
     sheet.textContent = `.fv-issue-button{display:inline-flex;align-items:center;gap:6px;min-height:var(--fv-h-sm,32px);box-sizing:border-box;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:transparent;color:var(--fv-muted,#bbb);padding:4px 11px;font:inherit;font-size:13px;cursor:pointer}

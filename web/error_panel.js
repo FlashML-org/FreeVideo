@@ -1,6 +1,6 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 import {readOtherUsage, otherUsageText} from './other_usage.js';
-import {repairAction} from './repair_hint.js';
+import {pageRepair, repairAction, repairButton} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
@@ -608,9 +608,11 @@ export function createErrorPanel(t, route = null) {
     // Shown only for a browser extension, whose steps end with a reload.
     const reload = document.createElement('button'); reload.type = 'button'; reload.className = 'fv-failure-reload';
     reload.textContent = t('Reload page', '刷新页面'); reload.hidden = true; reload.onclick = () => globalThis.location?.reload();
+    // Shown only when the advice says to repair in the page settings; a failure dialog closes so Settings is on top.
+    const repair = repairButton(t, {before: () => element.closest('dialog.fv-failure-dialog')?.close()}); repair.hidden = true;
     const actions = document.createElement('div'); actions.className = 'fv-failure-actions';
     // Last in the DOM, first on screen (CSS order), so copy stays the first child.
-    actions.append(copy, download, reload, github);
+    actions.append(copy, download, reload, repair, github);
     const explanation = document.createElement('p'), action = document.createElement('p');
     const location = document.createElement('p'), cause = document.createElement('p'); cause.className = 'fv-failure-cause';
     location.className = 'fv-failure-location';
@@ -736,6 +738,7 @@ export function createErrorPanel(t, route = null) {
                 if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, to);
         }
         action.hidden = !action.textContent;
+        repair.hidden = !pageRepair(action.textContent);
         privacy.textContent = download.hidden
             ? t('Select "Download report" in the preview to save the full diagnostic information.', '可在预览区点“下载报告”保存完整诊断信息。')
             : t('Paths and typed text are removed.', '已去掉路径和输入的文字。');
