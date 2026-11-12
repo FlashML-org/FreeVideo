@@ -14,9 +14,9 @@
 .fv-studio .fv-header{height:76px;display:grid;grid-template-columns:1fr auto;align-items:center;padding:0 28px;border-bottom:1px solid var(--fv-border);gap:12px}
 .fv-brand{display:flex;min-width:0;align-items:center;gap:10px;font-size:var(--fv-strong);letter-spacing:-.5px;font-weight:var(--fv-semibold)}
 .fv-studio .fv-title{text-align:center}.fv-studio .fv-title strong{font-size:var(--fv-body);font-weight:var(--fv-medium)}.fv-studio .fv-header-actions{display:flex;justify-content:flex-end;align-items:center;gap:5px}
-.fv-studio[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
+.fv-studio:not(.fv-editor)[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
 .fv-studio .fv-body{display:grid;grid-template-columns:420px minmax(0,1fr);flex:1 1 auto;min-height:0}
-@media(max-width:680px){.fv-studio[open]{display:block}}
+@media(max-width:680px){.fv-studio:not(.fv-editor)[open]{display:block}}
 .fv-studio .fv-controls{min-height:0;overflow:auto;padding:25px 26px 0;border-right:1px solid var(--fv-border);scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-studio .fv-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-weight:var(--fv-semibold);color:var(--fv-ink);font-size:var(--fv-body)}
 .fv-studio .fv-muted{color:var(--fv-muted);font-size:var(--fv-micro);font-weight:var(--fv-regular)}
