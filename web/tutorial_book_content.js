@@ -73,6 +73,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'image-gen',
+        title: {zh: '生成图片', en: 'Make a picture'},
+        summary: {zh: '在图像视图中用一段描述生成图片，也可以在 AI 全自动中请 Agent 出图。', en: 'Make a picture from a description in the Images view, or ask an agent for one in Autopilot.'},
+        media: {
+            type: 'image',
+            src: {zh: 'image-gen-1.webp', en: 'image-gen-2.webp'},
+            alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接 Agent 后说“画一张……”，Agent 只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
+            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an agent and say "Draw a picture of …". The agent makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
+        },
+        limits: {
+            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', 'H3 Image 不支持参考图。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
+            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'H3 Image does not take reference pictures.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+        },
+    },
+    {
         id: 'first-last-frame',
         title: {zh: '首帧和尾帧', en: 'First and last frames'},
         summary: {zh: '指定视频从哪张图开始、到哪张图结束。', en: 'Choose the image the video starts from and the one it ends on.'},
