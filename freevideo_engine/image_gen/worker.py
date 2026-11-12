@@ -188,7 +188,8 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                             **(dict(loras=loras) if loras else {}),
                             progress=progress, cancel=inbox.cancel.is_set,
                             **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}),
-                            **(dict(preview=preview) if model == 'minimax-h3-image' else {}))
+                            # Which stage a failure belongs to, without a progress row the page would show.
+                            **(dict(preview=preview, stage=context.timing.enter) if model == 'minimax-h3-image' else {}))
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
                         from .back_view import generate_back, load_detector

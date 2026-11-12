@@ -65,7 +65,7 @@ class H3Runner:
             progress('load', 1.)
 
     def generate(self, prompt, *, width, height, seed=None, reference_images=None, progress=None, cancel=None,
-                 setup=None, preview=None, **_):
+                 setup=None, preview=None, stage=None, **_):
         """`setup` is what the service read from the installation: the shared encoder's runtime and the card budget.
 
         `preview(step=, total=, width=, height=, jpeg=)` receives a small picture after each sampling step."""
@@ -98,7 +98,7 @@ class H3Runner:
                 (lambda: bool(cancel and cancel())), dit_path=self.files['dit'], vae_path=self.files['vae'],
                 encoder=setup.get('encoder'), comfy_root=setup.get('comfy_root'), comfy_python=setup.get('comfy_python'),
                 model_paths=setup.get('model_paths'), vram_gib=setup.get('vram_gib'), ram_gib=setup.get('ram_gib'),
-                stats=stats, preview=_previewer(preview))
+                stats=stats, preview=_previewer(preview), enter=stage)
         except h3_pipeline.Cancelled:
             raise InterruptedError('cancelled') from None
         finally:

@@ -52,7 +52,7 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
 def generate(prompt, width, height, seed, references=None, progress_cb=None, cancel=None, *, dit_path, vae_path,
              encoder='qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', comfy_root=None, comfy_python=None,
              model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True,
-             preview=None):
+             preview=None, enter=None):
     """Return a PIL image for the prompt.
 
     ``progress_cb(stage, done, total)`` is called with stage in encode, denoise, decode;
@@ -61,6 +61,8 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     ``resident`` overrides the planned
     layer count. ``stats`` (a dict) receives timings, the plan and the peak memory.
     ``preview`` is the sampler's ``preview_callback`` (see ``step_preview``); it never changes the picture.
+    ``enter(stage)`` names the stage a failure belongs to without moving the progress: the DiT loads after the
+    text, so a load error would otherwise be filed under the text stage.
     """
     if references:
         raise ValueError('H3 Image does not take reference images yet')
@@ -91,6 +93,8 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     if vram_gib:
         torch.cuda.set_per_process_memory_fraction(min(1.0, budget / total))
     canvas_h, canvas_w = h3_dit.canvas_size(height, width)
+    if enter is not None:
+        enter('load')
     tick = time.perf_counter()
     model = load_h3_dit(str(dit_path), 'cpu', mapped=mapped)
     for name, child in model.named_children():
