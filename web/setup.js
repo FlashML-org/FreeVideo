@@ -204,7 +204,10 @@ export async function openSetup(options) {
     const more = node("details"); more.append(node("summary", t("Details and retained logs", "详细信息与保留日志"))); const log = node("pre"); more.append(log);
     installation.append(overall, state, bar, counters, detail, plan, more);
     const acceptLabel = node("label"); acceptLabel.className = 'fv-check'; const accept = node("input"); accept.type = "checkbox";
-    acceptLabel.append(accept, node('span', t("I accept the displayed installation plan and model/toolkit licenses", "我同意当前展示的安装计划和模型／工具包许可证")));
+    // The closing phrase wraps as one unit, so no character is left alone on the next line.
+    const acceptText = node('span', t("I accept the displayed installation plan and model/toolkit licenses", "我同意当前展示的安装计划和"));
+    if (cn) { const phrase = node('span', '模型／工具包许可证'); phrase.className = 'fv-check-phrase'; acceptText.append(phrase); }
+    acceptLabel.append(accept, acceptText);
     acceptLabel.hidden = true; installation.append(acceptLabel);
     const actions = node("div"); actions.className = "fv-actions";
     const inspect = node("button", t("Detect & review", "检测并预览")); inspect.className = "fv-primary";
