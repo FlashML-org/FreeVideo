@@ -1352,10 +1352,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => cancelAnimationFrame(seamFrame));
     const progress = createGenerationProgress(t, undefined, {compact: true, api}); stage.append(progress.element);
     const chainLine = el('div', '', 'fv-muted fv-chain-position'); chainLine.hidden = true; progress.element.prepend(chainLine);
-    // The queued count sits after the part number; a line too narrow for both keeps the part number only.
+    // The queued count sits after the part number; a line too narrow for both puts the count on its own line.
     const setChainLine = text => {
-        const main = el('span', text), more = chainController?.waiting;
-        chainLine.replaceChildren(main, ...(more ? [el('span', t(` · ${more} more queued`, ` · 另有 ${more} 条排队`), 'fv-chain-queued')] : []));
+        const main = el('span', text), more = chainController?.waiting, queued = el('span', null, 'fv-chain-queued');
+        if (more) queued.append(el('span', ' · ', 'fv-chain-sep'), t(`${more} more queued`, `另有 ${more} 条排队`));
+        chainLine.replaceChildren(main, ...(more ? [queued] : []));
     };
     progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
@@ -1844,7 +1845,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!item || item.classList.contains('fv-queue-moved')) return;
         item.classList.add('fv-queue-moved');
         const chip = el('span', t('Moved to front', '已排到最前'), 'fv-queue-chip');
-        item.insertBefore(chip, item.querySelector('button'));
+        item.querySelector('.fv-queue-buttons').prepend(chip);
         queueList.scrollTop = 0;
         clearTimeout(movedTimer); movedTimer = setTimeout(clearMoved, 2800);
     }
@@ -1905,6 +1906,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 remove.setAttribute('aria-label', executing ? t(`Cancel ${size} · ${row.inputs.seconds} s`, `取消 ${size} · ${row.inputs.seconds} 秒`)
                     : t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
                 item.append(description);
+                // The buttons move together: on a narrow list they drop below the text, aligned right.
+                const actions = el('div', null, 'fv-queue-buttons');
                 if (!executing && index > 0) {
                     const first = button(t('Move to front', '排到最前'), async () => {
                         first.disabled = remove.disabled = true;
@@ -1913,9 +1916,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
                         catch (error) { movedId = null; showQueueError(error); first.disabled = remove.disabled = false; }
                     }, 'fv-quiet');
                     first.setAttribute('aria-label', t(`Move queued video ${index + 1} to front`, `把排队的第 ${index + 1} 个排到最前`));
-                    item.append(first);
+                    actions.append(first);
                 }
-                item.append(remove); queueList.append(item);
+                actions.append(remove); item.append(actions); queueList.append(item);
             });
         }
         if (movedId && state.pending.some(row => row.id === movedId) && !queueList.querySelector('.fv-queue-moved')) showMoved();

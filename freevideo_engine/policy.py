@@ -951,6 +951,16 @@ def choose_placement(hardware: Hardware, *, canvas=None, stage='generation', **o
             capped = _choose_with_step_cache(hardware, canvas=canvas, stage=stage, commit_cap=cap, **options)
         except ResourceBudgetError:
             capped = None
+        if capped is not None and shape(capped) != shape(base) and capped.engine.get('prefetch'):
+            # The slot's block can be what moves a compute shape at this cap:
+            # it gives way to the weights here rather than raising the cap.
+            try:
+                unslotted = _choose_with_step_cache(hardware, canvas=canvas, stage=stage, commit_cap=cap,
+                                                    slot_from_cap=True, **options)
+            except ResourceBudgetError:
+                unslotted = None
+            if unslotted is not None and shape(unslotted) == shape(base):
+                capped = unslotted
         if capped is not None and shape(capped) == shape(base):
             # The decoder runs after sampling has released the transformer and
             # keeps the request's own budget, prefetch slot included.
@@ -1021,6 +1031,7 @@ def choose(hardware: Hardware, *, canvas=None, stage='generation', **options):
         plain = {k: v for k, v in canvas.items() if k != 'step_cache'}
         # The plan's own commit cap is charged too, or its engine could never match.
         charged = _choose(hardware, canvas=plain, stage=stage, commit_cap=plan.commit_gpu_limit_bytes,
+                          slot_from_cap=plan.commit_gpu_limit_bytes is not None and not plan.engine.get('prefetch'),
                           **{**options, 'step_cache_bytes': extra})
     except ResourceBudgetError:
         return plan
@@ -1035,10 +1046,12 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
             gpu_reserve_gib=None, ram_reserve_gib=None, available_backends=None, canvas=None,
             demonstrated_ram_bytes=None, allow_capacity_trial=False, stage='generation',
             lora_max_block_bytes=0, lora_root_bytes=0, precision='fp8', step_cache_bytes=0,
-            commit_cap=None):
+            commit_cap=None, slot_from_cap=False):
     """precision is the prepared cache's: int8 caches run int8 projections.
 
-    commit_cap is the sampling budget the Windows commit headroom allows, or None."""
+    commit_cap is the sampling budget the Windows commit headroom allows, or None.
+    slot_from_cap judges the second transfer slot against that capped budget, as
+    a plan without the slot's own allowance would."""
     from .geometry import geometry
     if stage not in ('encoding', 'generation'):
         raise ValueError('Resource planning stage must be encoding or generation')
@@ -1240,7 +1253,21 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
     # which made residency drop as the budget grew: three blocks at 10.1 GiB
     # against one at 10.3 GiB.
     twelve = not small and gpu_budget < 14 * GiB
-    prefetch = prefetch_for_budget(gpu_budget, twelve=twelve, ampere=ampere, system=hardware.system)
+    # The second transfer slot is judged against what the card itself can hold.
+    # A commit cap lowers what sampling may reserve, and the slot is one block
+    # of that allowance: the checks below still give it up when the capped
+    # budget cannot hold it with the workspace, and residency, which buys no
+    # time, pays for it. Judging it against the capped budget instead removed
+    # the slot from every 16 GiB card whose commit headroom put the cap under
+    # 13.5 GiB, and each streamed layer was then copied between two layers'
+    # compute. The small band sizes its resident blocks from the whole budget
+    # and takes no allowance for the slot, so there the capped budget decides,
+    # as it always has; slot_from_cap asks for the same where giving the slot
+    # up is all that lets the cap keep the plan's compute shapes.
+    slot_budget = (gpu_budget if commit_limit is None or small or slot_from_cap
+                   else request_gpu_budget - placement_workspace)
+    prefetch = prefetch_for_budget(slot_budget, twelve=not small and slot_budget < 14 * GiB, ampere=ampere,
+                                   system=hardware.system)
     # The larger head group is worth about 10% at no extra peak at all. Paying
     # for its wider activation allowance out of residency, measured on an H200
     # at 1344x768x243 with the card as the ceiling:

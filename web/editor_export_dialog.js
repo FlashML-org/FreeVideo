@@ -104,7 +104,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
         controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', label); controls.dataset.option = name;
         for (const [choice, text] of choices) {
             const node = button(text, () => { value[name] = choice; update(); });
-            node.dataset.value = String(choice ?? 'same'); controls.append(node);
+            node.dataset.value = String(choice ?? 'same'); node.dataset.label = text; controls.append(node);
         }
         row.append(title, controls); host.append(row); groups.push({name, row, controls, choices});
         return row;
@@ -154,6 +154,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
         pending.hidden = !seconds;
         pending.textContent = t(`${seconds} s still generating; that part exports as black.`, `有 ${seconds} 秒还在生成，导出后这部分是黑屏`);
         links.hidden = sound || !n; notices.hidden = links.hidden && pending.hidden;
+        if (dialog.open) fitSegments();
         fit.disabled = parts.some(clip => ['queued', 'running'].includes(clip.pending));
         const size = exportSizes(state.record).find(size => size.short === value.short) || state.record;
         // Same rounding as the player's total, so one edit never reads 0:31 there and 0:32 here.
@@ -193,6 +194,19 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     dialog.addEventListener('mousedown', stop); dialog.addEventListener('mouseup', stop);
     dialog.addEventListener('click', stop); dialog.addEventListener('dblclick', stop);
     dialog.addEventListener('wheel', stop); dialog.addEventListener('contextmenu', stop);
-    parent.append(dialog); update(); dialog.showModal(); confirm.focus();
+    // Equal shares unless a choice's words, bold when picked, would not fit on one line.
+    const fitSegments = () => {
+        for (const {controls} of groups) {
+            // A hidden row has no width yet; it is measured again when update() shows it.
+            if (!controls.clientWidth) { delete controls.dataset.fit; continue; }
+            controls.dataset.fit = 'measure';
+            const nodes = [...controls.children], css = getComputedStyle(controls);
+            const room = controls.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight) - parseFloat(css.columnGap || 0) * (nodes.length - 1);
+            const tight = nodes.some(node => node.offsetWidth > room / nodes.length + .5);
+            if (tight) controls.dataset.fit = 'text'; else delete controls.dataset.fit;
+        }
+    };
+    addEventListener('resize', fitSegments); cleanups.push(() => removeEventListener('resize', fitSegments));
+    parent.append(dialog); update(); dialog.showModal(); fitSegments(); confirm.focus();
     return result;
 }

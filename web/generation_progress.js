@@ -170,7 +170,7 @@ function activityLabel(message, t, plan = {}, secondPass = false, references = f
         const [en, zh] = COUNT_UNITS[message.unit];
         detail = t(`${done} / ${message.total} ${en}`, `${done} / ${message.total} ${zh}`);
     } else return result;
-    return {...result, text: `${result.text} · ${detail}`};
+    return {...result, text: `${result.text} · ${detail}`, parts: [...result.parts || [result.text], detail]};
 }
 function baseActivityLabel(message, t, plan = {}, secondPass = false, references = false) {
     const phase = message.phase || message.timing_phase || message.stage;
@@ -178,17 +178,19 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
     if (phase === 'dependencies' && message.stage === 'probe') return named('prepare');
     const download = DOWNLOADS[message.stage] || (phase === 'dependencies' ? DOWNLOADS.dependencies : null);
     if (download) {
-        let detail = '';
+        const detail = [];
         if (valid(message.total) && message.total > 0) {
             const unit = message.total >= 2**30 ? 'GiB' : 'MiB';
             const done = valid(message.done) ? Math.min(message.done, message.total) : 0;
-            detail = ` · ${size(done, unit)} / ${size(message.total, unit)} ${unit}`;
+            detail.push(`${size(done, unit)} / ${size(message.total, unit)} ${unit}`);
             if (valid(message.bytes_per_second) && message.bytes_per_second > 0) {
                 const speed = message.bytes_per_second / 2**20;
-                detail += ` · ${speed >= 10 ? Math.round(speed) : speed.toFixed(1)} MiB/s`;
+                detail.push(`${speed >= 10 ? Math.round(speed) : speed.toFixed(1)} MiB/s`);
             }
         }
-        return {key: 'download', text: t(download[0], download[1]) + detail};
+        // The sentence, then its size and speed: the parts the stage line keeps whole (see renderLabel).
+        const parts = [t(download[0], download[1]), ...detail];
+        return {key: 'download', text: parts.join(' · '), parts};
     }
     const steps = (key, name, step, total) => {
         const [en, zh, enSteps, zhSteps] = SAMPLING_NAME[name];
@@ -792,7 +794,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     // coming back within 2 s, whatever came between was stray messages (e.g. the
     // sampling plan and the upscaler being prepared during encoding): the stage
     // resumes with its own clock and bar, and the stage line never shows the others.
-    let stageId = null, stageSince = 0, labelId = null, labelText = '', away = null;
+    let stageId = null, stageSince = 0, labelId = null, labelText = '', labelParts = null, away = null;
     // Small bar under the stage line. A counted stage shows its real share after
     // 5 s; a slow stage without counts sweeps after 10 s; a shown bar stays at
     // least 1 s, and a counted stage without progress for 15 s gets a moving light.
@@ -829,7 +831,8 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     // The current stage has lasted 2 s: the stage line names it from now on.
     function settle(at) {
         if (stageId !== null && stageId !== labelId && at - stageSince >= 2000) {
-            labelId = stageId; labelText = lastActivity ? lastActivity.text : labelText; away = null;
+            labelId = stageId; away = null;
+            if (lastActivity) { labelText = lastActivity.text; labelParts = lastActivity.parts || null; }
         }
     }
     function enterStage(id, at) {
@@ -845,7 +848,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         stageId = id; stageSince = at; miniFraction = null; miniShownAt = null;
     }
     function resetMini() {
-        stageId = null; away = null; labelId = null; labelText = '';
+        stageId = null; away = null; labelId = null; labelText = ''; labelParts = null;
         miniFraction = null; miniShownAt = null; miniMode = null; miniShown = null; miniShimmer = false; holdUntil = 0;
         mini.hidden = true; mini.dataset.mode = ''; mini.dataset.shimmer = 'false'; miniFill.style.width = '';
     }
@@ -874,14 +877,49 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         if (!lastActivity) { labelId = null; return t(...ACTIVITY.prepare); }
         settle(now());
         if (labelId === null) { labelId = stageId; away = null; }
-        if (labelId === stageId) labelText = lastActivity.text;
+        if (labelId === stageId) { labelText = lastActivity.text; labelParts = lastActivity.parts || null; }
         return labelText;
+    }
+    // A sentence with its numbers: each part stays whole. When the line does not fit, the numbers after the
+    // sentence go to the next line as one unit; between parts a line breaks only where they do not fit, and
+    // the separator there is not shown. The text stays the same string for reports and assistive technology.
+    const labelWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitLabel()) : null;
+    function renderLabel(text, parts) {
+        if (!parts || parts.length < 2 || parts.join(' · ') !== text) { label.textContent = text; return; }
+        const line = el('span', 'fv-generation-label-text');
+        let holder = line;
+        parts.forEach((part, index) => {
+            const piece = el('span', index ? 'fv-generation-label-part' : '');
+            piece.textContent = part; holder.append(piece);
+            if (index === parts.length - 1) return;
+            const sep = el('span', 'fv-generation-label-sep'), rest = el('span', 'fv-generation-label-rest');
+            sep.textContent = ' ·'; holder.append(sep, ' ', rest); holder = rest;
+        });
+        label.replaceChildren(line);
+        fitLabel();
+    }
+    function fitLabel() {
+        const rests = [...label.querySelectorAll('.fv-generation-label-rest')];
+        if (!rests.length) return;
+        labelWatch?.observe(label); if (element.parentElement) labelWatch?.observe(element.parentElement);
+        for (const rest of rests) { delete rest.dataset.cut; delete rest.previousElementSibling.dataset.cut; }
+        const pieces = [label.firstElementChild.firstElementChild, ...rests.map(rest => rest.firstElementChild)];
+        const rects = pieces.map(piece => [...piece.getClientRects()]);
+        if (!rects[0].length) return; // not shown; the observer lays it out once it is
+        const tops = rects.flat().map(rect => rect.top), half = rects[0][0].height / 2;
+        if (tops.every(top => Math.abs(top - tops[0]) < half)) return;
+        const cut = index => { rests[index].dataset.cut = 'true'; rests[index].previousElementSibling.dataset.cut = 'true'; };
+        cut(0);
+        for (let index = 1; index < rests.length; index++) {
+            const before = [...pieces[index].getClientRects()].at(-1), after = pieces[index + 1].getClientRects()[0];
+            if (before && after && after.top - before.top >= half) cut(index);
+        }
     }
     function drawActivity(age, ended) {
         const paused = !ended && age > 15;
         const base = ended ? (overall.status === 'complete' || state.phase === 'complete' ? savedText() : t('Stopped', '已停止'))
             : paused ? detail?.text || stageText() : stageText();
-        if (label.textContent !== base) label.textContent = base;
+        if (label.textContent !== base) renderLabel(base, base === labelText ? labelParts : null);
         drawMini(age, ended);
         const automatic = compatibility?.origin === 'automatic' && compatibility.level > 0;
         const compatibilityText = !ended && automatic ? compatibility.recovery_disabled

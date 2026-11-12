@@ -619,17 +619,25 @@ def plan(args, *, local_progress=None, stage=None):
     model_dir = Path(args.models or saved.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
     encoder_dir = Path(args.encoder_models or saved.get('encoder_model_root') or prior.get('encoder_dir') or root / 'models' / 'encoder').expanduser().resolve()
     reuse_cache = args.cache.expanduser().resolve() if args.cache else None
+    own_model = False
     if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
         revision = json.loads((PACKAGE / 'dependencies.json').read_text(encoding='utf-8'))['models']['vdn_revision']
+        from . import prepared_model
+        own = prepared_model.select(root=root, **cache_format) if getattr(args, 'model_source', 'prepared') == 'prepared' else None
         for name in ('machine.json', 'prepared-cache.json'):
             cache_record = root / name
             if cache_record.is_file():
                 record = json.loads(cache_record.read_text(encoding='utf-8'))
                 candidate = record.get('cache')
                 if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
+                    if own and Path(candidate).resolve() == Path(own['cache']).resolve():
+                        # The installation's own downloaded model: plan it like a fresh
+                        # download, so a missing or damaged file is listed and fetched again.
+                        own_model = True
+                        break
                     reuse_cache = Path(candidate)
                     break
-    if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
+    if reuse_cache is None and not own_model and not getattr(args, 'rebuild_cache', False):
         from .install_tuning import discover_prepared
         reuse_cache = discover_prepared(getattr(args, 'reuse_models', None), **cache_format)
     from . import prepared_model

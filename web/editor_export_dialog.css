@@ -9,6 +9,12 @@
 .fv-ed-export-dialog .fv-ed-export-segments button{flex:1;min-width:0;height:auto;min-height:28px;padding:4px 5px;border:0;border-radius:7px;background:transparent;color:var(--fv-muted);font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:normal}
 .fv-ed-export-dialog .fv-ed-export-segments button[aria-pressed=true]{background:var(--fv-raised);color:var(--fv-ink);font-weight:600}
 .fv-ed-export-dialog .fv-ed-export-segments button:hover:not(:disabled){background:var(--fv-hover)}
+/* Choices share a row equally; a row whose words do not fit that way gives each choice its text width and shares the rest.
+   The hidden bold copy keeps a choice's width when it is picked. */
+.fv-ed-export-segments[data-fit] button{display:grid;place-content:center}
+.fv-ed-export-segments[data-fit] button::after{content:attr(data-label);display:block;height:0;overflow:hidden;visibility:hidden;font-weight:600}
+.fv-ed-export-dialog .fv-ed-export-segments[data-fit=measure] button{flex:none;white-space:nowrap}
+.fv-ed-export-dialog .fv-ed-export-segments[data-fit=text] button{flex:1 1 auto}
 .fv-ed-export-notices{border-top:1px solid var(--fv-border);padding-top:20px;margin-top:24px;font-size:12px}
 .fv-ed-export-notices p{margin:0}
 .fv-ed-export-crop{color:var(--fv-warning)}
