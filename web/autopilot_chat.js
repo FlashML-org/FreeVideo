@@ -367,7 +367,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (item.failed === 'failed') {
                 li.tabIndex = 0; li.setAttribute('role', 'button'); li.title = t(...ATTACH.retry); li.setAttribute('aria-label', li.title);
                 li.addEventListener('click', event => { if (event.target === drop) return; void upload(item, list); });
-                li.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void upload(item, list); } });
+                listenDialogKey(li, 'keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void upload(item, list); } });
             }
             return li;
         }));
@@ -1540,7 +1540,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         grow(); if (unsaidSessions.has(draftSession)) renderConversations();
     });
     // Enter sends, Shift+Enter starts a new line; Enter that confirms an input-method candidate does neither.
-    input.addEventListener('keydown', event => {
+    // Registered through listenDialogKey so Enter still reaches it when this
+    // page opens above the creation panel, whose window gate routes upper keys.
+    listenDialogKey(input, 'keydown', event => {
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
         event.preventDefault(); if (!stopMode) form.requestSubmit();
     });

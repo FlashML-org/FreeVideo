@@ -3,6 +3,7 @@
 // rules are the editor's own (image_generation.js); this page only lays them out.
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
+import { listenDialogKey } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
@@ -200,7 +201,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     body.append(left, main); dialog.append(header, body);
     inputs.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
     inputs.addEventListener('drop', event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); addFiles([...event.dataTransfer.files]); } });
-    prompt.addEventListener('paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
+    listenDialogKey(prompt, 'paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
 
     const say = text => { note.textContent = text || ''; };
     const label = number => t(`Image ${number}`, `图 ${number}`);
@@ -402,7 +403,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         else void generate();
     };
     prompt.addEventListener('input', render);
-    prompt.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
+    listenDialogKey(prompt, 'keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
     document.addEventListener('click', closeMore, true);
     function closeMore(event) { if (!more.hidden && !moreHost.contains(event.target)) more.hidden = true; }
 
