@@ -172,7 +172,7 @@
 }
 @media(max-width:480px){.fv-chat-main{padding:0 14px 14px}.fv-chat-scroll{margin:0 -14px;padding:16px 14px 2px}.fv-chat-hello{padding-top:32px}.fv-chat-job{max-width:none;gap:12px}.fv-chat-confirm{max-width:none}
 @media(max-width:560px){.fv-studio :is(.fv-chat-scenes,.fv-chat-whitebox){width:36px;padding:0;justify-content:center}:is(.fv-chat-scenes,.fv-chat-whitebox)>span{display:none}}
- .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
+ .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-chat-input{gap:6px;padding-left:12px}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
 @media(prefers-reduced-motion:reduce){.fv-chat-parts>i::after{transition:none}.fv-chat-dots>i,.fv-chat-preview>img,.fv-chat-menu{animation:none}}
 
 /* Request errors use the card's existing actions and retry button. */
