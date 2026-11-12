@@ -9,6 +9,7 @@ import threading
 import time
 
 from . import launcher_update
+from .paths import data_root
 from .release_notes import installed_details, public_details
 
 
@@ -31,6 +32,14 @@ def installed_build(package):
         return dict(version=version, built_at=int(stamp.timestamp()), revision=None)
     except (OSError, ValueError):
         return None
+
+
+def offline_installation():
+    """Whether this folder was installed from offline packages (same test as bootstrap)."""
+    try:
+        return (data_root().parent / 'portable.json').is_file()
+    except OSError:
+        return False
 
 
 def launcher_view(status):
@@ -84,6 +93,7 @@ class UpdateStatus:
             state = dict(self.state)
             # Pages that reload themselves after an update polled recently.
             state['clients'] = int(now - self.client_seen < 20)
+        state['offline_installation'] = offline_installation()
         if launcher is not None:
             if launcher.get('channel') in launcher_update.CHANNELS:
                 state['channel'] = launcher['channel']

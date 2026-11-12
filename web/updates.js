@@ -1,5 +1,5 @@
 import { api } from '../../scripts/api.js';
-import { setLauncherPresent } from './repair_hint.js';
+import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
@@ -54,6 +54,7 @@ export async function checkUpdates() {
         }
         value = next; offline = false;
         setLauncherPresent(next.launcher);
+        setOfflineInstall(next.offline_installation);
         const phase = next.launcher?.phase || '';
         // Switching to a faster model also restarts ComfyUI once.
         if (working.has(phase) || next.launcher?.model) updating = true;
