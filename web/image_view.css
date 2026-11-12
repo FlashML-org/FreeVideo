@@ -66,7 +66,7 @@
  .fv-image-shape>.fv-image-models{flex:1 1 100%}.fv-image-shape>.fv-select-menu-host:not(.fv-image-models){flex:1 1 0;min-width:96px}
  .fv-image-inputs{order:2;flex:none;max-height:50%;overflow:auto;padding:12px 12px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--fv-border);background:var(--fv-bg)}
 }
-.fv-image-shape{flex-wrap:wrap}.fv-image-shape>.fv-image-models{flex:none}
+.fv-image-shape{flex-wrap:wrap}.fv-image-shape>.fv-image-models{flex:none}.fv-image-shape>.fv-select-menu-host:not(.fv-image-models){min-width:max-content}
 .fv-studio .fv-image-add-model{min-height:28px;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:var(--fv-body);cursor:pointer;flex-basis:100%;text-align:left}.fv-image-add-model[hidden]{display:none}
 .fv-studio .fv-image-add-model:hover{color:var(--fv-ink)}
 /* Until H3 and the rewrite model are both there, the box is the plain one. */
@@ -89,7 +89,7 @@
  .fv-image-stage[data-state=blank]{flex:1 0 auto}
  .fv-image-canvas[data-state=blank]{flex:1 0 auto;aspect-ratio:auto}}
 .fv-image-shape{gap:8px}
-.fv-image-shape .fv-select-menu-host>button{min-height:40px;font-size:14px;justify-content:space-between;text-align:left;padding:0 12px}
+.fv-image-shape .fv-select-menu-host>button{min-height:40px;font-size:14px;justify-content:space-between;text-align:left;padding:0 36px 0 12px}
 .fv-image-shape .fv-ed-adjust-segmented{min-height:40px;padding:3px}
 .fv-image-shape .fv-ed-adjust-segmented>button{min-height:32px;font-size:14px;padding:0 14px}
 .fv-studio .fv-image-prompt:focus,.fv-studio .fv-image-prompt:focus-visible{outline:none;border-color:var(--fv-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--fv-accent) 22%,transparent)}
