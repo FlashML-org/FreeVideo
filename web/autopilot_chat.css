@@ -183,7 +183,9 @@
 .fv-chat-delete-error p{margin:0 0 4px}
 .fv-chat-delete-actions{display:flex;flex-wrap:wrap;gap:4px}
 .fv-chat-me>.fv-chat-actions{margin-top:6px;flex-wrap:wrap;justify-content:flex-end}
+/* The reason takes the message's width on a line of its own; Retry and Report follow on the next line. */
 .fv-chat-me .fv-chat-error{flex:1;min-width:0}
+.fv-chat-me>.fv-chat-actions:not(.fv-chat-edit-actions)>.fv-chat-error{flex-basis:100%}
 .fv-chat-error.fv-chat-calm{color:var(--fv-muted)}
 .fv-chat-keep{white-space:nowrap}
 .fv-chat-scene-menu{box-sizing:border-box;justify-self:center;width:100%;max-width:720px;display:grid;gap:2px;padding:6px;margin-bottom:6px;border:1px solid var(--fv-border);border-radius:12px;background:var(--fv-raised)}
