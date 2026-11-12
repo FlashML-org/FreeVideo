@@ -135,7 +135,9 @@
 .fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-actions{justify-content:flex-start}
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold{margin-top:8px;max-width:440px}.fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold[hidden]{display:none}
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold>.fv-failure-cause{margin:2px 0 8px;font-size:12.5px;line-height:1.5;color:var(--fv-muted);white-space:pre-wrap;overflow-wrap:anywhere}
-.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-chat-retry){min-height:var(--fv-h-sm,32px);box-sizing:border-box;margin:0;padding:5px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font-size:13px;font-weight:var(--fv-medium,500)}
+.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action){min-height:var(--fv-h-sm,32px);box-sizing:border-box;margin:0;padding:5px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font-size:13px;font-weight:var(--fv-medium,500)}
+/* A picture's failure row (Send again, the report) takes the video failure card's button size, not the result bar's 38 px. */
+.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links .fv-actions>.fv-action{height:auto;line-height:inherit}
 .fv-chat-job .fv-report-tip{max-width:100%}
 .fv-chat-main{grid-template-rows:auto minmax(0,1fr) auto auto}
 .fv-chat-tools{grid-row:1}.fv-chat-scroll{grid-row:2}.fv-chat-notice-row{grid-row:3}.fv-chat-input{grid-row:4}
