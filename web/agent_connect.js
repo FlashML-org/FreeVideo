@@ -58,7 +58,8 @@ export function refusalHint(code, t, kind = addressKind(globalThis.location?.hos
 
 export async function agentInterfaceEnabled(api) { return await agentInterfaceState(api) === 'on'; }
 
-const ICONS = {plug: ['M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5', 1.8], copy: ['M11 9h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM5 15V5a2 2 0 0 1 2-2h8', 2]};
+const ICONS = {plug: ['M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5', 1.8], copy: ['M11 9h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM5 15V5a2 2 0 0 1 2-2h8', 2],
+    retry: ['M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', 2]};
 function icon(name) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
@@ -81,10 +82,14 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const subtitle = el('p', 'fv-muted', t('Claude Code, Codex, FreeToken and others', 'Claude Code、Codex、FreeToken 等'));
     const actions = el('div', 'fv-agent-connect-actions');
     const button = el('button', 'fv-primary'); button.type = 'button'; button.disabled = true;
-    const label = el('span'); button.append(icon('copy'), label);
+    // The button's picture follows what it does: copy, or retry once the lookup has failed.
+    const label = el('span'), pictures = {copy: icon('copy'), retry: icon('retry')}; button.append(pictures.copy, label);
+    for (const [name, picture] of Object.entries(pictures)) picture.dataset.icon = name;
     let issue = null;
     const arrow = el('span', 'fv-agent-connect-arrow', '→'); arrow.setAttribute('aria-hidden', 'true');
-    actions.append(button, arrow, el('span', 'fv-agent-connect-hint', t('Paste to your agent', '粘贴给 Agent')));
+    // The arrow and its words wrap as one piece.
+    const next = el('span', 'fv-agent-connect-next'); next.append(arrow, el('span', 'fv-agent-connect-hint', t('Paste to your agent', '粘贴给 Agent')));
+    actions.append(button, next);
     const sentence = el('p', 'fv-agent-sentence'); sentence.hidden = true;
     const status = el('p', 'fv-agent-connect-status', t('Getting the connection address…', '正在获取连接地址…')); status.setAttribute('role', 'status');
     body.append(mark, title, intro, subtitle, actions, sentence, status);
@@ -95,9 +100,12 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const active = () => body.isConnected && shown();
     const render = () => {
         label.textContent = !text && failures >= 3 ? t('Could not get address. Retry', '获取失败，重试') : feedback ? t('Copied', '已复制') : t('Copy', '复制');
+        const picture = pictures[!text && failures >= 3 ? 'retry' : 'copy'];
+        if (button.firstChild !== picture) button.firstChild.replaceWith(picture);
         if (!text && failures >= 3) {
             if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
+        next.hidden = !!issue;
         button.disabled = !text && failures < 3;
         button.title = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
         status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) || noAnswerHint(noAnswer, t) : '';

@@ -9,6 +9,7 @@
 .fv-agent-connect-body>.fv-muted{margin-top:-10px;font-size:13.5px;color:var(--fv-muted)}
 .fv-agent-connect-actions{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
 .fv-studio .fv-agent-connect-actions button{padding:9px 20px;font-size:14px}.fv-agent-connect-actions button svg{width:16px;height:16px}
+.fv-agent-connect-actions button{display:inline-flex;align-items:center;gap:8px}.fv-agent-connect-next{display:inline-flex;align-items:center;gap:12px;white-space:nowrap}.fv-agent-connect-next[hidden]{display:none}
 .fv-agent-connect-arrow{color:var(--fv-disabled)}.fv-agent-connect-hint{color:var(--fv-muted);font-size:13.5px}
 .fv-agent-connect-body .fv-agent-sentence{justify-self:stretch;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);color:var(--fv-ink);font-size:var(--fv-body);overflow-wrap:anywhere;user-select:all}
 /* The Autopilot page: the card in the very middle, or one conversation column under the top bar. */
