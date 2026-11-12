@@ -14,6 +14,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { segmented } from './editor_adjust.js';
 import { menuSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
+import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
@@ -112,6 +113,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         () => leave(() => showNodes(node, studio)), () => leave(() => openEditorView(node, {studio: studio?.open ? studio : undefined})),
         () => leave(() => openAutopilot(node, {studio: studio?.open ? studio : undefined})), () => {});
     header.append(brand, navigation, tools);
+    const place = keepViewSwitchPlace(header, navigation);
 
     // State of the page.
     let info = null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0], ratio = '1:1', tier = 'standard';
@@ -427,7 +429,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     dialog.addEventListener('cancel', event => { event.preventDefault(); if (!more.hidden) more.hidden = true; else closeDialog(dialog); });
     dialog.onclose = () => {
-        alive = false; stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
+        alive = false; place.dispose(); stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
         if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
         if (current === dialog) current = null;
         next();

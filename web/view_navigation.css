@@ -44,6 +44,15 @@ html.fv-toolbar-dragging,html.fv-toolbar-dragging *{cursor:grabbing!important;us
 @media(max-width:480px){.fv-view-navigation .fv-view-actions>button,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger{font-size:12px}.fv-view-navigation{padding-left:12px;padding-right:12px}.fv-view-grip{left:-10px}.fv-view-navigation .fv-update-bar.fv-update-bar{margin-left:-12px;margin-right:-12px}}
 @media(max-width:380px){.fv-view-navigation .fv-view-switch button{padding:7px 4px}}
 
+/* view_switch_place.js: on two rows the switch is centred below the logo and the entries, in every view alike. */
+.fv-studio .fv-header.fv-header[data-place=wrap]{height:auto;min-height:98px;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:minmax(40px,auto) auto;padding-block:10px}
+.fv-studio .fv-header.fv-header[data-place=wrap]>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}
+.fv-studio .fv-header.fv-header[data-place=wrap]>.fv-header-actions{grid-column:2;grid-row:1}
+.fv-studio .fv-header.fv-header[data-place=row]>.fv-header-actions{grid-column:3}
+/* The nodes view's floating bar shows the switch at the same size as the headers do. */
+@media(min-width:681px){.fv-view-navigation .fv-view-switch button{padding:5px 14px;min-height:var(--fv-h-sm);line-height:1.6}}
+@media(min-width:681px) and (max-width:1050px){.fv-view-navigation .fv-view-switch button{padding-inline:10px}}
+
 /* A long export hint must not enlarge the shared header's internal grid row. */
 @media(min-width:681px){.fv-studio .fv-header:has(.fv-view-switch){grid-template-rows:minmax(0,1fr)}}
 @media(max-width:480px){.fv-studio .fv-header>.fv-view-switch{display:flex;width:100%;box-sizing:border-box;min-width:0}.fv-studio .fv-view-switch button{flex:1 1 0;min-width:0;padding:5px 2px;font-size:13px;text-align:center;justify-content:center}}

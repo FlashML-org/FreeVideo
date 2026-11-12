@@ -12,6 +12,7 @@ import { feedbackButton, guideButton } from './feedback.js';
 import { openExtendEditor, openStudio, showNodes } from './studio.js';
 import { agentTabReady, openImage, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
+import { keepViewSwitchPlace } from './view_switch_place.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -45,6 +46,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     const navigation = viewSwitch('autopilot', () => leave(() => studio?.open ? viewChanged('studio', node) : openStudio(node)),
         () => leave(() => showNodes(node, studio)), () => leave(() => openEditorView(node, {studio: studio?.open ? studio : undefined})), () => {}, () => leave(() => openImage(node, {studio: studio?.open ? studio : undefined})));
     header.append(brand, navigation, tools, line);
+    const place = keepViewSwitchPlace(header, navigation);
     const inSight = () => dialog.open && dialog.dataset.closing !== 'true';
     const body = el('div', 'fv-autopilot-body');
     const card = agentConnectCard(t, api, () => inSight() && !card.element.hidden, value => {
@@ -109,7 +111,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     dialog.append(header, body);
     dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(dialog); });
     dialog.onclose = () => {
-        phoneAccess.dispose(); versionInfo.dispose(); card.stop(); chat.stop(); assets.dispose(); dialog.remove();
+        place.dispose(); phoneAccess.dispose(); versionInfo.dispose(); card.stop(); chat.stop(); assets.dispose(); dialog.remove();
         if (current === dialog) current = null;
         next();
     };

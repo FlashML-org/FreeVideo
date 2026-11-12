@@ -42,9 +42,8 @@
 .fv-agent-foot button:disabled{opacity:.5;cursor:default}
 .fv-agent-divider{padding:12px 12px 4px;font-size:var(--fv-micro);color:var(--fv-disabled);letter-spacing:.02em}
 @media(max-width:680px){.fv-agent-pill{padding:0 9px 0 8px}.fv-agent-panel{right:16px;top:64px}}
-/* The pill shares the header with the centred view switch. Below 1050px it keeps only "Agent" and the percentage;
-   below 820px the switch takes its own row while the pill shows, as it already does below 480px. */
+/* The pill sits among the header's entries beside the view switch's shared place (view_switch_place.js). Below
+   1050px it keeps only "Agent" and the percentage; with less room the entries give way in their usual order. */
 @media(max-width:1050px){.fv-agent-pill :is(.fv-agent-state-text,.fv-agent-more){display:none}}
-@media(max-width:820px){.fv-studio .fv-header:has(>.fv-view-switch):has(.fv-agent-pill:not([hidden])){height:auto;min-height:98px;grid-template-columns:1fr auto;padding-block:10px}.fv-studio .fv-header:has(.fv-agent-pill:not([hidden]))>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}.fv-studio .fv-header:has(.fv-agent-pill:not([hidden]))>.fv-header-actions{grid-column:2;grid-row:1}}
 @media(max-width:480px){.fv-agent-panel{top:104px;left:16px;right:16px;width:auto}}
 .fv-agent-panel:focus{outline:none}

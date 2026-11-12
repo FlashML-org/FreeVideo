@@ -1,6 +1,7 @@
 // The node view's floating bar in a narrow window: the same order as the creation panel's header. The phone entry steps
-// aside first, then Feedback; then the entries move to a second row below the view switch, and on two rows the same
-// entries leave in that order, Tutorial last.
+// aside first; then the entries move to a second row below the view switch, and on two rows the same entries leave in
+// that order, Tutorial last. (The switch has the headers' size, so a single row that also gave up Feedback would show
+// fewer entries than the two rows do.)
 export function fitNavigation(bar, row, actions) {
     if (typeof ResizeObserver !== 'function' || typeof getComputedStyle !== 'function') return {check() {}, dispose() {}};
     const px = value => parseFloat(value) || 0;
@@ -22,7 +23,7 @@ export function fitNavigation(bar, row, actions) {
         const order = [['tight', saved('.fv-lan')], ['lean', saved('.fv-feedback-entry:not(.fv-guide-entry)')], ['least', saved('.fv-guide-entry')]];
         const steps = [['', need, (entries) => head + gap + entries <= room]];
         let left = need, tokens = [];
-        for (const [token, less] of order.slice(0, 2)) { left -= less; tokens.push(token); steps.push([tokens.join(' '), left, entries => head + gap + entries <= room]); }
+        for (const [token, less] of order.slice(0, 1)) { left -= less; tokens.push(token); steps.push([tokens.join(' '), left, entries => head + gap + entries <= room]); }
         // On two rows the first row may itself wrap (the wordmark above the switch), so each of its parts must fit.
         const widest = first.reduce((most, child) => Math.max(most, wide(child)), 0);
         const both = entries => widest <= room && entries <= room;

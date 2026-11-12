@@ -62,6 +62,9 @@
 @container fv-autopilot-actions (max-width:430px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
 @container fv-autopilot-actions (max-width:548px){:lang(en) .fv-autopilot-now-go>i{display:none}}
 @container fv-autopilot-actions (max-width:260px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+/* Then the version entry, so the running job keeps its percentage and Stop beside the dot and Settings. */
+@container fv-autopilot-actions (width<203px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-version-info{display:none}}
+@container fv-autopilot-actions (width<256px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-version-info{display:none}}
 /* Without a job nothing but the entries share the column; they yield in the same order, by the width they need. */
 @container fv-autopilot-actions (width<480px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(en){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(en)>span{display:none}}
 @container fv-autopilot-actions (width<398px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-lan:lang(en){display:none}}
@@ -73,7 +76,7 @@
 @container fv-autopilot-actions (width<231px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-feedback-entry:not(.fv-guide-entry):lang(zh){display:none}}
 @container fv-autopilot-actions (width<181px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-guide-entry:lang(zh){display:none}}
 @media(max-width:1050px){.fv-autopilot-now-name{max-width:120px}}
-@media(max-width:1180px){.fv-studio.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden])){height:auto;min-height:98px;grid-template-columns:auto minmax(0,1fr);padding-block:10px}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}.fv-autopilot .fv-header:has(.fv-autopilot-now:not([hidden]))>.fv-header-actions{grid-column:2;grid-row:1}}
-@media(max-width:825px){.fv-studio.fv-autopilot .fv-header{height:auto;min-height:98px;grid-template-columns:auto minmax(0,1fr);padding-block:10px}.fv-autopilot .fv-header>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}.fv-autopilot .fv-header>.fv-header-actions{grid-column:2;grid-row:1}}
+/* On two rows the actions keep the flexible column, so the entries above measure their real room. */
+.fv-studio.fv-autopilot .fv-header.fv-header[data-place=wrap]{grid-template-columns:auto minmax(0,1fr)}
 @media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12.5px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:5px 2px 5px 10px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:22px}}
 @media(prefers-reduced-motion:reduce){.fv-autopilot-line{transition:none}}
