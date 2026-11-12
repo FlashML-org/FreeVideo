@@ -50,6 +50,24 @@ export function isNetworkTypeError(error) {
 // One sentence for a dropped connection (engine closed, network lost); the raw
 // browser wording stays in the technical details.
 export function connectionLostText(t) { return t('Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'); }
+// A read the engine did not answer: the status was a success but the body is a web page (a page shown while the
+// engine restarts, or one put in front of it by a proxy or tunnel), not JSON. It is raised as the same kind of
+// error as a lost connection, so retries, the delay between polls and the notice that clears itself apply
+// unchanged. Only the status, the content type and the kind of body are kept; the body itself never is.
+export async function readEngineJson(response) {
+    // A reply object without a readable body text (a test double) is parsed as before.
+    if (typeof response?.text !== 'function') return response.json();
+    const text = await response.text();
+    try { return JSON.parse(text); } catch (parse) {
+        if (!(parse instanceof SyntaxError)) throw parse;
+        const type = string(response.headers?.get?.('content-type')).split(';')[0].trim().toLowerCase().slice(0, 60) || 'none';
+        const body = /^\s*</.test(text) ? 'an HTML page' : text.trim() ? 'text that is not JSON' : 'an empty body';
+        const error = new TypeError('Failed to fetch: the engine address answered with a web page or text instead of FreeVideo data');
+        error.details = `HTTP ${Number.isInteger(response.status) ? response.status : 'unknown'}, content type ${type}, body is ${body} (${text.length} characters).`;
+        error.notEngineReply = true;
+        throw error;
+    }
+}
 // Which kind of address the page was opened from, as one word: a host name or number is never kept.
 export function pageAddressKind(location = globalThis.location) {
     const host = string(location?.hostname).replace(/^\[|\]$/g, '').toLowerCase();

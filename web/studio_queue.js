@@ -1,6 +1,6 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
-import {fetchQueueRead, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, connectionFacts} from './browser_extension.js';
+import {fetchQueueRead, readEngineJson, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, connectionFacts} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
 import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
@@ -202,7 +202,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
             // Stop may be clicked while the server is acknowledging submission.
             if (!session.active) {
                 const response = await fetchQueueRead(api, '/queue');
-                if (response.ok && (await response.json()).queue_pending?.some(row => row[1] === reply.prompt_id)) await cancel(reply.prompt_id);
+                if (response.ok && (await readEngineJson(response)).queue_pending?.some(row => row[1] === reply.prompt_id)) await cancel(reply.prompt_id);
             }
         }
         api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
@@ -214,7 +214,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (runningAll.some(row => row.id === session.waiting) || pending.some(row => row.id === session.waiting)) return;
         const response = await fetchQueueRead(api, '/history/' + encodeURIComponent(session.waiting));
         if (!response.ok) throw new Error('queue_unavailable');
-        const history = (await response.json())[session.waiting];
+        const history = (await readEngineJson(response))[session.waiting];
         if (loop !== session || !session.active) return;
         result(session.waiting, history?.outputs?.[nodeId]);
         // A missing entry can mean a deleted queued request or cleared history.
@@ -231,7 +231,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     async function readQueue() {
         const response = await fetchQueueRead(api, '/queue');
         if (!response.ok) throw new Error('queue_unavailable');
-        const queue = await response.json();
+        const queue = await readEngineJson(response);
         runningAll = (queue.queue_running || []).filter(matches).map(entry);
         running = runningAll[0] || null;
         // Comfy returns its heap array; the queue number gives the real running order.
