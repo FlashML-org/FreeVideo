@@ -533,6 +533,25 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'beat-snap',
+        view: 'editor',
+        title: {zh: '对齐音乐节拍', en: 'Cut to the beat'},
+        summary: {zh: '“声音 2”轨上有音乐时，拖动片段会吸附到音乐的拍点。', en: 'With music on the "Audio 2" track, clips you drag snap to its beats.'},
+        media: {
+            type: 'image',
+            src: {zh: 'beat-snap-1.webp', en: 'beat-snap-2.webp'},
+            alt: {zh: '剪辑视图：正在拖动的画面片段和工具栏的“吸附”按钮已用红框标出，“声音 2”轨上显示灰色拍点线。', en: 'The Edit view, with the clip being dragged and the "Snapping" button outlined in red, and grey beat lines on the "Audio 2" track.'},
+        },
+        steps: {
+            zh: ['点“＋ 声音轨”添加“声音 2”，把音乐放到这条轨上：从“已导入”拖入，或按“加配乐”一章生成。', '确认工具栏的“吸附”按钮（磁铁图标）已打开，也可按 S 键切换。', '拖动画面片段或片段的边缘，“声音 2”轨上会出现灰色的拍点线。', '片段的开头或结尾靠近拍点时会对齐到该拍点，松开鼠标后片段停在这里。'],
+            en: ['Choose "+ Audio track" to add "Audio 2", then put music on it: drag it in from "Imported", or make it as in the "Add music" chapter.', 'Make sure the "Snapping" button (magnet icon) in the toolbar is on. The S key turns it on and off.', 'Drag a picture clip or the edge of a clip. Grey beat lines appear on the "Audio 2" track.', 'When the start or end of the clip comes near a beat, it lines up with that beat. Release the mouse to leave it there.'],
+        },
+        limits: {
+            zh: ['只有“声音 2”轨上的音乐有拍点；节奏不明显的音乐没有拍点线。', '拍点线过密时不显示，放大时间线后出现；附近有片段边缘、播放头等其他吸附点时，优先对齐它们。', '拖动时按住 Alt 可临时反转吸附。'],
+            en: ['Only music on the "Audio 2" track has beats. Music without a clear pulse shows no beat lines.', 'Beat lines are hidden while they are too close together; zoom in on the timeline to see them. Other snap points nearby, such as clip edges or the playhead, take priority over beats.', 'Hold Alt while dragging to reverse snapping for that drag.'],
+        },
+    },
+    {
         id: 'voice-recording',
         view: 'editor',
         goto: ['record-entry'],
@@ -666,6 +685,24 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出过程中取消不会留下不完整的文件。'],
             en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'Cancelling an export leaves no unfinished file.'],
+        },
+    },
+    {
+        id: 'system-status',
+        title: {zh: '运行状态', en: 'System status'},
+        summary: {zh: '在顶栏查看显存、温度和硬盘空间，必要时立即停止生成。', en: 'Watch VRAM, temperature and disk space from the top bar, and stop a generation at once when needed.'},
+        media: {
+            type: 'image',
+            src: {zh: 'system-status-1.webp', en: 'system-status-2.webp'},
+            alt: {zh: '顶栏的运行状态和展开的面板：运行状态和“立即停止”按钮已用红框标出。', en: 'The system status in the top bar with its panel open; the status and the "Stop now" button are outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“设置”，在“运行状态”下勾选“在顶栏显示运行状态”。', '顶栏出现运行状态，显示显存占用和显卡温度；顶栏放不下时只显示图标。', '点运行状态打开面板，查看显卡名称、显存、使用率、温度和硬盘剩余空间，数值每 2 秒更新一次。', '要马上停下正在进行的生成时，点“立即停止”，再在 4 秒内点“确认停止”；队列随之暂停，点“继续队列”恢复。'],
+            en: ['Choose "Settings" at the top, and under "System status" turn on "Show system status in the top bar".', 'The status appears in the top bar, with the VRAM in use and the graphics card temperature. When the top bar is short of room, only its icon is shown.', 'Choose the status to open its panel: the graphics card name, VRAM, utilization, temperature and free disk space, updated every 2 seconds.', 'To stop the running generation at once, choose "Stop now", then "Confirm stop" within 4 seconds. The queue is paused; choose "Resume queue" to continue.'],
+        },
+        limits: {
+            zh: ['显存达到 95% 或温度达到 85 °C 时，数值以红色显示。', '“立即停止”只在有生成正在进行时可用。', '窗口很窄时，顶栏不显示运行状态。'],
+            en: ['VRAM at 95% or more, or a temperature of 85 °C or more, is shown in red.', '"Stop now" is available only while a generation is running.', 'In a very narrow window, the top bar does not show the status.'],
         },
     },
     {
