@@ -57,9 +57,9 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > 12.5e9 / 5e6) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, models: models()}; },
         packInstall: async id => { loading.set(id, Date.now()); return {installed: true, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, models: models()}; },
-        async generate({prompt, width, height}) {
+        async generate({prompt, width, height, seed}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height}); return {job};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed}); return {job};
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
@@ -139,6 +139,11 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     tierPick.setAttribute('aria-label', t('Clarity', '清晰度'));
     const shape = el('div', 'fv-image-shape'); const addModel = el('button', 'fv-image-add-model', t('Add MiniMax H3 Image', '添加 MiniMax H3 Image')); addModel.type = 'button'; addModel.hidden = true;
     addModel.onclick = () => { model = IMAGE_MODELS[0]; render(); void install(); };
+    // Advanced holds the video panel's own seed field and wording: empty draws a new seed for each picture, a number keeps it.
+    const advanced = el('details', 'fv-section fv-image-advanced'); advanced.append(el('summary', 'fv-section-title', t('Advanced', '高级选项')));
+    const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
+    seedInput.placeholder = t('New each run', '每次随机'); seedInput.setAttribute('aria-label', t('Seed', '种子'));
+    const seedField = el('label', 'fv-image-seed'); seedField.append(el('span', '', t('Seed', '种子')), seedInput); advanced.append(seedField);
     const go = el('button', 'fv-primary fv-image-go'); go.type = 'button';
     const note = el('p', 'fv-image-note'); note.setAttribute('role', 'status');
     shape.append(modelPick, ratioHost, tierPick, addModel);
@@ -150,7 +155,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     const enhancerOff = () => !enhancerReady || model.id !== 'minimax-h3-image';
     enhancer.element.classList.add('fv-image-enhance');
     enhancer.model.read().then(info => { enhancerReady = info?.ready === true; render(); }).catch(() => {});
-    inputs.append(enhancer.element, strip, notice, pick, shape, go, note);
+    inputs.append(enhancer.element, strip, notice, pick, shape, advanced, go, note);
     left.append(inputs);
 
     // Stage: the work, or the state that stands in for it; below it the actions and one line of facts.
@@ -293,7 +298,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         else if (loading()) go.textContent = t('Pause', '暂停');
         else if (missing()) go.textContent = t('Download model', '下载模型');
         else { go.textContent = t('Generate', '生成'); go.disabled = tooMany; }
-        go.removeAttribute('title');
+        go.removeAttribute('title'); seedInput.disabled = busy;
         drawStage();
     }
 
@@ -353,6 +358,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         }
     }
     async function generate() {
+        if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
+        const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
         say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
@@ -362,7 +369,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             const names = []; for (const r of references.slice(0, model.references)) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
-            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names});
+            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})});
             mine.job = row.job; if (!row.job) throw Object.assign(new Error(row.error), {code: row.error, ...row});
             if (mine.cancelled) { void client.cancel(row.job); return; }
             for (;;) {

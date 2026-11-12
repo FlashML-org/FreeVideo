@@ -93,3 +93,8 @@
 .fv-image-shape .fv-ed-adjust-segmented{min-height:40px;padding:3px}
 .fv-image-shape .fv-ed-adjust-segmented>button{min-height:32px;font-size:14px;padding:0 14px}
 .fv-studio .fv-image-prompt:focus,.fv-studio .fv-image-prompt:focus-visible{outline:none;border-color:var(--fv-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--fv-accent) 22%,transparent)}
+.fv-image-inputs>.fv-image-advanced{margin:0}.fv-image-advanced>summary{min-height:32px;color:var(--fv-muted)}
+.fv-image-seed{display:flex;flex-direction:column;gap:6px;margin-top:8px;font-size:var(--fv-body)}
+.fv-image-seed>input{width:100%;box-sizing:border-box;min-height:40px;padding:0 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);color:var(--fv-ink);font:inherit;font-size:14px}
+.fv-image-seed>input:focus-visible{outline:none;border-color:var(--fv-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--fv-accent) 22%,transparent)}
+.fv-image-seed>input:disabled{opacity:.6}
