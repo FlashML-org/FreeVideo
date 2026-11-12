@@ -292,21 +292,20 @@
  .fv-ed-toolbar .fv-ed-track-zoom{display:flex;align-items:center}
  .fv-editor .fv-ed-toolbar .fv-ed-track-zoom>button:not(.fv-ed-fit){display:none}
  .fv-ed-toolbar .fv-ed-zoom-slider{flex:1 1 auto;width:auto;min-width:48px}
- /* Track heads become a 32 px icon column; a press opens that track's switches beside it. */
- .fv-studio.fv-editor .fv-ed-track-view[data-track-switches],.fv-studio.fv-editor[data-text-tracks] .fv-ed-track-view{--fv-ed-head-width:32px}
- .fv-studio.fv-editor .fv-ed-track-head{justify-content:center;padding:0;cursor:pointer}
- .fv-studio.fv-editor .fv-ed-track-head>svg{display:block;width:16px;height:16px}
- .fv-studio.fv-editor .fv-ed-track-head[data-text-track=true]>svg{display:none}
- .fv-studio.fv-editor .fv-ed-track-head[data-text-track=true]::before{content:"T";font-weight:600}
- .fv-studio.fv-editor .fv-ed-track-head>[class$=-track-controls]{display:none}
- .fv-studio.fv-editor .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:2px;padding:2px 4px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px}
- .fv-studio.fv-editor .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
  .fv-studio.fv-editor .fv-ed-add-audio{padding:0;font-size:0}
  .fv-studio.fv-editor .fv-ed-add-audio::before{content:attr(data-sign);font-size:16px;line-height:18px;display:inline-block;width:20px;height:20px;border:1px solid var(--fv-border);border-radius:6px}
  .fv-studio.fv-editor .fv-ed-add-audio:disabled{display:none}
  .fv-editor .fv-ed-playhead-handle{left:0}
  .fv-editor .fv-ed-library{grid-area:auto;top:116px;bottom:0;z-index:8}
  .fv-editor:has(.fv-ed-library[data-open=true]) .fv-ed-drawer-toggle{position:fixed;top:128px;right:20px;z-index:9}
+}
+/* Up to 520 px the track heads keep only the name; a press opens that track's switches beside it.
+   Names stay plain text, like Video and Audio, so "Subtitles" fits the narrow column. */
+@media(max-width:520px){
+ .fv-studio.fv-editor .fv-ed-track-head{justify-content:center;padding:0;cursor:pointer}
+ .fv-studio.fv-editor .fv-ed-track-head>[class$=-track-controls]{display:none}
+ .fv-studio.fv-editor .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:2px;padding:2px 4px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px}
+ .fv-studio.fv-editor .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
 }
 /* "Generate · about 4 minutes" in English does not fit beside the seconds field below 550 px: it keeps a line of its own,
    and the line above it stays whether the field shows or not, so choosing a clip or a draft does not move the timeline. */
