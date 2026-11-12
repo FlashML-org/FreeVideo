@@ -185,7 +185,18 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     const editThis = mk(t('Edit this', '改这张'), () => void useAsReference(shownFile, true));
     const asReference = mk(t('Use as reference', '用作参考图'), () => void useAsReference(shownFile, false));
     const save = el('a', 'fv-image-action', t('Download', '下载')); save.setAttribute('download', '');
-    const moreButton = mk('⋯', () => { more.hidden = !more.hidden; }); moreButton.setAttribute('aria-label', t('More', '更多')); moreButton.setAttribute('aria-haspopup', 'true');
+    // Open downward when the four rows fit inside the nearest box that clips them, otherwise upward over the picture.
+    const clipBox = node => {
+        for (let e = node.parentElement; e && e !== document.body; e = e.parentElement) if (getComputedStyle(e).overflow !== 'visible') return e;
+        return document.documentElement;
+    };
+    const moreButton = mk('⋯', () => {
+        more.hidden = !more.hidden; if (more.hidden) return;
+        delete more.dataset.up;
+        const edge = clipBox(moreHost).getBoundingClientRect(), bottom = Math.min(edge.bottom, innerHeight);
+        const button = moreButton.getBoundingClientRect(), below = more.getBoundingClientRect().bottom;
+        if (below > bottom - 8 && button.top - Math.max(edge.top, 0) > bottom - button.bottom) more.dataset.up = 'true';
+    }); moreButton.setAttribute('aria-label', t('More', '更多')); moreButton.setAttribute('aria-haspopup', 'true');
     const more = el('div', 'fv-image-more'); more.hidden = true;
     const folder = mk(t('Open folder', '打开文件夹'), () => { more.hidden = true; void client.historyOpen?.(); });
     const remove = mk(t('Delete', '删除'), () => { more.hidden = true; void deleteFiles([shownFile]); });
