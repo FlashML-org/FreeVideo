@@ -713,7 +713,7 @@ class Jobs:
                 error = errors.build(code, details=error.get('details'),
                     request=row.get('request_id'), action_required=code != 'cancelled',
                     kind=row['kind'], stage='terminal', resumable=not row['spec'].get('refine_from'),
-                    report_id=error.get('report_id'), memory=error.get('memory'),
+                    report_id=error.get('report_id'), memory=error.get('memory'), image_stage=error.get('stage'),
                     other_usage=error.get('other_usage'))
                 if row['kind'] == 'image':
                     reason_zh, reason_en = error['error_zh'], error['error_en']
@@ -1264,6 +1264,7 @@ class Jobs:
                 result['error'] = errors.build(result['error']['code'], kind='image', stage='terminal',
                     details=result['error'].get('details'), request=row.get('request_id'),
                     action_required=result['error']['code'] != 'cancelled', report_id=row['error'].get('report_id'),
+                    memory=row['error'].get('memory'), image_stage=row['error'].get('stage'),
                     other_usage=row['error'].get('other_usage'))
             else:
                 result['error'] = dict(result['error'], **errors.reasons(row['error']))
@@ -2168,7 +2169,7 @@ class Jobs:
             code = code or 'generation_failed'
             if not self.wait_image(row, code):
                 self.finish(row, 'failed', error=dict(code=code, report_id=state.get('report_id'), memory=state.get('memory'),
-                                                     other_usage=state.get('other_usage')))
+                                                     stage=state.get('stage'), other_usage=state.get('other_usage')))
 
     # Local VLM -----------------------------------------------------------------------------------------
     def start_vlm(self, row):

@@ -7,6 +7,7 @@
 .fv-actions .fv-action-primary{padding:0 18px;border-color:transparent;background:var(--fv-accent,#6db8fa);color:var(--fv-bg,#111720)}
 .fv-actions .fv-action-primary:hover{border-color:transparent;background:var(--fv-accent-hover,#91cbff);color:var(--fv-bg,#111720)}
 .fv-actions .fv-action[hidden]{display:none}
+.fv-actions .fv-image-retry{min-width:92px}
 .fv-icon{display:inline-flex;width:16px;height:16px;flex:none}.fv-icon svg{width:100%;height:100%}
 .fv-action-menu{position:relative}
 .fv-action-menu>summary{list-style:none}.fv-action-menu>summary::-webkit-details-marker{display:none}

@@ -211,8 +211,28 @@ export function imageGenError(code, info, t) {
             return say(`Not enough GPU memory, even at ${size.width}\u00a0×\u00a0${size.height}. Close other apps using the GPU, then try again.`,
                 `显存不够，${size.width}\u00a0×\u00a0${size.height} 也没能生成。关掉其他占用显卡的程序后再试。`);
     }
-    return say(...(Object.hasOwn(reasons, code) ? reasons[code] : reasons.generation_failed));
+    const known = Object.hasOwn(reasons, code) ? code : 'generation_failed';
+    // An unnamed error still says which step it stopped at; a page with its own
+    // Retry button does not repeat "try again" in the sentence.
+    if (known === 'generation_failed' && Object.hasOwn(FAILED_AT, info?.stage)) {
+        const [en, zh] = FAILED_AT[info.stage];
+        return info?.retried ? say(en, zh) : say(`${en} Try again.`, `${zh}请再试一次。`);
+    }
+    return say(...(info?.retried && Object.hasOwn(RETRIED, known) ? RETRIED[known] : reasons[known]));
 }
+const RETRIED = Object.freeze({
+    worker_exit: ['Image generation stopped unexpectedly.', '图像生成意外停止。'],
+    timeout: ['This image took too long and was stopped.', '本次生成用时过长，已停止。'],
+    reload: ['Image generation was interrupted.', '图像生成中途被打断。'],
+    generation_failed: ['Image generation ran into an error.', '图像生成出错。'],
+});
+const FAILED_AT = Object.freeze({
+    load: ['An error occurred while loading the image model.', '加载图像模型时出错。'],
+    text: ['An error occurred while reading the prompt.', '读取提示词时出错。'],
+    encode: ['An error occurred while reading the reference images.', '读取参考图时出错。'],
+    denoise: ['An error occurred while generating the image.', '生成画面时出错。'],
+    decode: ['An error occurred while producing the image.', '输出图像时出错。'],
+});
 
 // Keep image failure copy here for editorial review. The submit card and its
 // wording belong to report_issue.js, shared with video reports.
@@ -227,7 +247,7 @@ export const REPORT_LABELS = Object.freeze({
     download: ['Diagnostic report', '诊断报告'],
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
     preparing: ['Preparing…', '正在整理…'],
-    unavailable: ['Report unavailable · retry', '报告暂不可用 · 重试'],
+    unavailable: ['Report unavailable · fetch again', '报告暂不可用 · 重新获取'],
     gone: REPORT_GONE,
 });
 
@@ -275,7 +295,9 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
 export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
-    {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis)} = {}) {
+    {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
+    // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
+    // `retried` alone says the caller shows a Retry of its own elsewhere.
     host.replaceChildren();
     if (!error || error === 'cancelled') return null;
     const doc = host.ownerDocument || document;
@@ -285,10 +307,19 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried}, t);
     card.append(reason); host.append(card);
-    if (!report_id) return card;
-    const {bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi});
+    let again = null;
+    if (retry) {
+        again = doc.createElement('button'); again.type = 'button';
+        again.className = 'fv-action fv-action-primary fv-image-retry'; again.textContent = t(...retry.label);
+        again.onclick = () => retry.onClick();
+    }
+    if (!report_id && !again) return card;
+    let bar;
+    if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
+    else { bar = doc.createElement('div'); bar.className = 'fv-actions'; }
+    if (again) bar.prepend(again);
     card.append(bar);
     // Let native Enter/Space activate these buttons without invoking editor
     // canvas shortcuts. Tab and the shared card's Escape handling still work.

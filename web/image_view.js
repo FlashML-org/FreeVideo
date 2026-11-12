@@ -390,10 +390,9 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         } finally { level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
     }
     function renderFailure() {
-        renderImageFailure(failHost, {...failure, info}, t);
-        const retry = el('button', 'fv-primary fv-image-retry', failure.retryStandard ? t('Retry at Standard', '改用标准并重试') : t('Retry', '重试')); retry.type = 'button';
-        retry.onclick = () => { if (failure.retryStandard) { tier = 'standard'; tierPick.value = 'standard'; } void generate(); };
-        failHost.append(retry);
+        renderImageFailure(failHost, {...failure, info}, t, {retry: {
+            label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
+            onClick: () => { if (failure.retryStandard) { tier = 'standard'; tierPick.value = 'standard'; } void generate(); }}});
     }
     go.onclick = () => {
         if (running) { running.cancelled = true; if (running.job) void client.cancel(running.job); running = null; render(); drawWorks(); }

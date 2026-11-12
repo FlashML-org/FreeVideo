@@ -1096,7 +1096,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             // What the user stopped says so; a video with finished parts can go on from there.
             const byUser = jobMode(job) === 'stopped' && job.cancelled_by === 'user' && VIDEOS.includes(job.kind || 'generate');
             const next = card ? jobMode(job) + (jobMode(job) === 'done' ? `:${job.play}:${job.thumbnail}:${job.work}`
-                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}:${job.error?.memory || ''}`
+                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}:${job.error?.memory || ''}:${job.error?.stage || ''}`
                 : byUser ? `:user:${retry && job.again === 'continue' ? 'continue' : ''}` : '')
                 : WORKING.includes(job.status) ? 'quiet' : 'none';
             if (next !== mode) {
@@ -1119,12 +1119,20 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 else if (next === 'stopped:user:' || next === 'stopped' && (!job.error || job.kind === 'image')) { item.replaceChildren(el('span', null, t('Stopped', '已停止'))); apply = null; }
                 else if (next.startsWith('failed') && job.kind === 'image') {
                     // Picture failures name their step with the picture's own report card.
+                    // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
-                    renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        memory: job.error?.memory}, t,
-                        {productVersion, fetchApi: (path, options) => api.fetchApi(path, options)});
+                    const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
+                        stage: job.error?.stage, memory: job.error?.memory}, t,
+                        {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
+                            retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
-                    if (retry) { const row = el('div', 'fv-chat-actions'); row.append(...again()); item.append(row); }
+                    if (retry && card) {
+                        // In the chat it is the same outlined button as on a video failure card.
+                        const again = card.querySelector('.fv-image-retry');
+                        again?.classList.remove('fv-action-primary');
+                        again?.classList.add('fv-chat-retry');
+                        card.append(el('span', 'fv-chat-error fv-chat-again-note'));
+                    }
                     apply = null;
                 }
                 else if (next === 'failed' || next === 'stopped') {

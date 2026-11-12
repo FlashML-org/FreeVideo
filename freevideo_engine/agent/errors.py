@@ -7,6 +7,7 @@ from contextvars import ContextVar
 import math
 import re
 import uuid
+from ..image_gen.failure import STAGES as IMAGE_STAGES
 from ..image_gen.loras import ERRORS as LORA_ERRORS, MESSAGE_EN as LORA_MESSAGE_EN, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 REQUEST_ID = ContextVar('agent_request_id', default=None)
@@ -466,7 +467,7 @@ def with_reason(error):
 
 def build(code, *, details=None, request=None, validation=False, message=None, next_action=None,
           action_required=True, retry_after_seconds=None, owner=None, kind=None, stage='request', resumable=True,
-          report_id=None, memory=None, other_usage=_UNREAD_USAGE):
+          report_id=None, memory=None, image_stage=None, other_usage=_UNREAD_USAGE):
     code = code if code in ERRORS else 'internal_error'
     _, retryable, default_message, _ = ERRORS[code]
     action = recovery(code, kind=kind, stage=stage, resumable=resumable)
@@ -482,6 +483,8 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
         result.update(image_failure(code, report_id))
         if code == 'no_memory' and memory == 'host':
             result['memory'] = 'host'
+        if image_stage in IMAGE_STAGES:
+            result['stage'] = image_stage
     if other_usage is not _UNREAD_USAGE:
         result['other_usage'] = other_usage
     result = capture_other_usage(result)
