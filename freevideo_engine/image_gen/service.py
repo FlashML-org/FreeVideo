@@ -26,7 +26,8 @@ from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, Fa
 BODY_LIMIT = 64 * 1024
 CANCEL_GRACE = 5.
 MAX_IMAGES = 4
-H3_MAX_IMAGES = 16
+# Reference pictures H3 Image really takes; 0 until the engine passes them on (it then takes 16, as the model does).
+H3_MAX_IMAGES = 0
 H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
