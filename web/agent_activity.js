@@ -27,7 +27,7 @@ const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], 
 // Short reasons for the failures people can act on; the engine's own message stays in the tooltip.
 const REASONS = {
     out_of_memory: ['Out of memory', '显存或内存不足'],
-    insufficient_memory: ['Not enough memory for this video', '显存或内存不够生成这段视频'],
+    insufficient_memory: ['Not enough memory for this video', '可用显存或内存不足，无法生成这段视频'],
     interrupted: ['ComfyUI restarted during this job', 'ComfyUI 中途重启'],
     lost: ['Ended without a result', '没有返回结果'],
     dependency_failed: ['An earlier step did not succeed', '前序任务未成功'],
