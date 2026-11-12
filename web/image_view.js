@@ -3,6 +3,7 @@
 // rules are the editor's own (image_generation.js); this page only lays them out.
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
+import { listenDialogKey } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
@@ -13,8 +14,11 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { segmented } from './editor_adjust.js';
 import { menuSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
+import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
+import { duration } from './generation_progress.js';
+import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
 
 const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
 const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
@@ -46,7 +50,7 @@ export function imageSize(ratio, tier = 'standard', same = null, model = '') {
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null} = {}) {
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0} = {}) {
     const items = []; let count = 0; const jobs = new Map(), state = {...ready}; const loading = new Map();
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id),
         bytes_total: 12.5e9, bytes_done: loading.has(m.id) ? Math.min(12.5e9, (Date.now() - loading.get(m.id)) * 5e6) : 0}));
@@ -54,15 +58,24 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > 12.5e9 / 5e6) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, models: models()}; },
         packInstall: async id => { loading.set(id, Date.now()); return {installed: true, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, models: models()}; },
-        async generate({prompt, width, height}) {
+        async generate({prompt, width, height, seed}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height}); return {job};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed}); return {job};
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
-            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction};
+            // With steps, one picture per sampling step after the load, as the H3 worker sends them.
+            const step = steps && fraction >= .3 ? Math.min(steps, 1 + Math.floor((fraction - .3) / .7 * steps)) : 0;
+            const preview = step ? {step, total: steps, serial: step, width: 256, height: 256} : undefined;
+            if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32), preview};
             const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15)});
-            return {state: 'done', file, fraction: 1};
+            return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32)};
+        },
+        async previewImage(job) {
+            const row = jobs.get(job); if (!steps || !row) return null;
+            const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+            g.fillStyle = `hsl(${(Date.now() - row.at) / delay * 300} 60% 50%)`; g.fillRect(0, 0, 256, 256);
+            return new Promise(resolve => c.toBlob(resolve, 'image/jpeg', .8));
         },
         cancel: async job => { jobs.delete(job); },
         history: async () => items.slice(),
@@ -83,7 +96,6 @@ const SAMPLE_PROMPTS = {
 };
 const STAGE_WORDS = {load: ['Loading the model', '加载模型'], text: ['Reading the prompt', '读取提示词'], encode: ['Reading the references', '读取参考图'],
     upload: ['Reading the references', '读取参考图'], sample: ['Generating', '正在生成'], decode: ['Generating', '正在生成']};
-const seconds = value => value >= 90 ? t(`about ${Math.round(value / 60)} min`, `约 ${Math.round(value / 60)} 分钟`) : t(`about ${Math.max(5, Math.round(value / 5) * 5)} s`, `约 ${Math.max(5, Math.round(value / 5) * 5)} 秒`);
 
 let current = null;
 // Opens above the studio when one is open, as the editing view does, so going back finds it as it was.
@@ -101,11 +113,12 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         () => leave(() => showNodes(node, studio)), () => leave(() => openEditorView(node, {studio: studio?.open ? studio : undefined})),
         () => leave(() => openAutopilot(node, {studio: studio?.open ? studio : undefined})), () => {});
     header.append(brand, navigation, tools);
+    const place = keepViewSwitchPlace(header, navigation);
 
     // State of the page.
     let info = null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0], ratio = '1:1', tier = 'standard';
     const promptOf = {};
-    let ratioChosen = false, running = null, failure = null, alive = true, shownFile = '', started = 0, selecting = false;
+    let ratioChosen = false, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false;
     let menu = null; const references = [], picked = new Set(); let rows = [];
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
     const missing = () => entry() ? entry().ready === false : false;
@@ -128,6 +141,11 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     tierPick.setAttribute('aria-label', t('Clarity', '清晰度'));
     const shape = el('div', 'fv-image-shape'); const addModel = el('button', 'fv-image-add-model', t('Add MiniMax H3 Image', '添加 MiniMax H3 Image')); addModel.type = 'button'; addModel.hidden = true;
     addModel.onclick = () => { model = IMAGE_MODELS[0]; render(); void install(); };
+    // Advanced holds the video panel's own seed field and wording: empty draws a new seed for each picture, a number keeps it.
+    const advanced = el('details', 'fv-section fv-image-advanced'); advanced.append(el('summary', 'fv-section-title', t('Advanced', '高级选项')));
+    const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
+    seedInput.placeholder = t('New each run', '每次随机'); seedInput.setAttribute('aria-label', t('Seed', '种子'));
+    const seedField = el('label', 'fv-image-seed'); seedField.append(el('span', '', t('Seed', '种子')), seedInput); advanced.append(seedField);
     const go = el('button', 'fv-primary fv-image-go'); go.type = 'button';
     const note = el('p', 'fv-image-note'); note.setAttribute('role', 'status');
     shape.append(modelPick, ratioHost, tierPick, addModel);
@@ -139,13 +157,21 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     const enhancerOff = () => !enhancerReady || model.id !== 'minimax-h3-image';
     enhancer.element.classList.add('fv-image-enhance');
     enhancer.model.read().then(info => { enhancerReady = info?.ready === true; render(); }).catch(() => {});
-    inputs.append(enhancer.element, strip, notice, pick, shape, go, note);
+    inputs.append(enhancer.element, strip, notice, pick, shape, advanced, go, note);
     left.append(inputs);
 
     // Stage: the work, or the state that stands in for it; below it the actions and one line of facts.
     const canvas = el('div', 'fv-image-canvas'), picture = el('img'), samples = el('div', 'fv-image-card'), block = el('div', 'fv-image-block'), failHost = el('div', 'fv-image-fail');
-    picture.alt = ''; const progressText = el('p', 'fv-image-progress'); progressText.setAttribute('role', 'status');
-    block.append(el('i'), progressText);
+    // While sampling: the model's own picture after each step, in place of the wave once the first one arrives.
+    const stepFrame = el('div', 'fv-image-step'), stepPicture = el('img'); stepPicture.alt = ''; stepFrame.hidden = true; stepFrame.append(stepPicture); let stepURL = '';
+    const showStep = blob => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = URL.createObjectURL(blob); stepPicture.src = stepURL; stepFrame.hidden = false; block.classList.add('fv-image-block-low'); };
+    const clearStep = () => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
+    picture.alt = ''; const progressText = el('p', 'fv-image-progress');
+    const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
+    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
+    // The video's rising wave: it reads the level from this element, as in the studio.
+    const level = el('div'); level.hidden = true; canvas.append(level);
+    const stopScene = createPreviewScene(canvas, level, el('div'));
     const grid = el('div', 'fv-image-samples');
     for (const key of cn ? ['fox', 'window', 'perfume', 'fjord'] : ['jazz', 'window', 'perfume', 'fjord']) {
         const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
@@ -154,13 +180,25 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); };
         grid.append(b);
     }
-    canvas.append(picture, samples, grid, block, failHost);
-    const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info');
+    canvas.append(picture, stepFrame, samples, grid, block, failHost);
+    const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
+    info_.append(infoText, doneReport);
     const mk = (text, onClick) => { const b = el('button', 'fv-image-action', text); b.type = 'button'; b.onclick = onClick; return b; };
     const editThis = mk(t('Edit this', '改这张'), () => void useAsReference(shownFile, true));
     const asReference = mk(t('Use as reference', '用作参考图'), () => void useAsReference(shownFile, false));
     const save = el('a', 'fv-image-action', t('Download', '下载')); save.setAttribute('download', '');
-    const moreButton = mk('⋯', () => { more.hidden = !more.hidden; }); moreButton.setAttribute('aria-label', t('More', '更多')); moreButton.setAttribute('aria-haspopup', 'true');
+    // Open downward when the four rows fit inside the nearest box that clips them, otherwise upward over the picture.
+    const clipBox = node => {
+        for (let e = node.parentElement; e && e !== document.body; e = e.parentElement) if (getComputedStyle(e).overflow !== 'visible') return e;
+        return document.documentElement;
+    };
+    const moreButton = mk('⋯', () => {
+        more.hidden = !more.hidden; if (more.hidden) return;
+        delete more.dataset.up;
+        const edge = clipBox(moreHost).getBoundingClientRect(), bottom = Math.min(edge.bottom, innerHeight);
+        const button = moreButton.getBoundingClientRect(), below = more.getBoundingClientRect().bottom;
+        if (below > bottom - 8 && button.top - Math.max(edge.top, 0) > bottom - button.bottom) more.dataset.up = 'true';
+    }); moreButton.setAttribute('aria-label', t('More', '更多')); moreButton.setAttribute('aria-haspopup', 'true');
     const more = el('div', 'fv-image-more'); more.hidden = true;
     const folder = mk(t('Open folder', '打开文件夹'), () => { more.hidden = true; void client.historyOpen?.(); });
     const remove = mk(t('Delete', '删除'), () => { more.hidden = true; void deleteFiles([shownFile]); });
@@ -181,7 +219,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     body.append(left, main); dialog.append(header, body);
     inputs.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
     inputs.addEventListener('drop', event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); addFiles([...event.dataTransfer.files]); } });
-    prompt.addEventListener('paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
+    listenDialogKey(prompt, 'paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
 
     const say = text => { note.textContent = text || ''; };
     const label = number => t(`Image ${number}`, `图 ${number}`);
@@ -273,7 +311,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         else if (loading()) go.textContent = t('Pause', '暂停');
         else if (missing()) go.textContent = t('Download model', '下载模型');
         else { go.textContent = t('Generate', '生成'); go.disabled = tooMany; }
-        go.removeAttribute('title');
+        go.removeAttribute('title'); seedInput.disabled = busy;
         drawStage();
     }
 
@@ -281,8 +319,9 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         const row = entry(), busy = !!running;
         const state = busy ? 'running' : failure ? 'failed' : missing() || loading() ? 'missing' : shownFile ? 'done' : 'blank';
         canvas.dataset.state = stage.dataset.state = state;
-        picture.hidden = state !== 'done'; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
-        actions.hidden = info_.hidden = state !== 'done';
+        picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
+        // While running they keep their room unseen, so a step picture and the finished one sit in the same place.
+        actions.hidden = info_.hidden = state !== 'done' && state !== 'running';
         if (state === 'missing') {
             const total = row?.bytes_total || 0, done = row?.bytes_done || 0, gb = n => (n / 1e9).toFixed(1);
             samples.replaceChildren(el('b', '', model.name), loading()
@@ -290,14 +329,18 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 : el('p', '', total ? t(`About ${gb(total)} GB to download. Files shared with video are not downloaded again.`, `下载约 ${gb(total)} GB。和视频共用的文件不重复下载。`) : t('Not installed yet.', '尚未安装。')));
             if (loading()) { const bar = el('i', 'fv-image-download'); bar.style.setProperty('--p', String(total ? Math.min(100, done / total * 100) : 0)); samples.append(bar); }
         }
-        if (state === 'running') { const size_ = size(); block.style.aspectRatio = `${size_.width} / ${size_.height}`; }
         if (state === 'done') {
+            const mine = lastReport?.file === shownFile ? lastReport.id : null;
+            if (doneReport.dataset.id !== String(mine)) {
+                doneReport.dataset.id = String(mine); doneReport.replaceChildren();
+                if (mine) doneReport.append(imageReportBar(doneReport, mine, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
+            }
             picture.src = pictureURL(shownFile); save.href = pictureURL(shownFile); save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
             editThis.disabled = asReference.disabled = references.length >= 16 || model.references === 0;
-            info_.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+            infoText.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
         }
     }
-    picture.onload = () => { if (!alive) return; const tail = info_.textContent.split(' · ').filter(Boolean); info_.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
+    picture.onload = () => { if (!alive) return; const tail = infoText.textContent.split(' · ').filter(Boolean); infoText.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
 
     function drawWorks() {
         column.hidden = rows.length === 0 && !running; body.classList.toggle('fv-image-no-works', column.hidden);
@@ -328,34 +371,49 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         }
     }
     async function generate() {
+        if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
+        const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
         say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
-        render(); drawWorks(); progressText.textContent = '';
+        render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
+        level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
+        clearStep();
+        let reportId = null, stepSerial = 0;
         try {
             const names = []; for (const r of references.slice(0, model.references)) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
-            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names});
+            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})});
             mine.job = row.job; if (!row.job) throw Object.assign(new Error(row.error), {code: row.error, ...row});
             if (mine.cancelled) { void client.cancel(row.job); return; }
             for (;;) {
                 await new Promise(done => setTimeout(done, poll)); if (!alive || mine.cancelled) return;
                 const status = await client.status(row.job, model.id);
-                const fraction = imageGenProgress(status.stage, status.fraction, withImages), left = fraction > .05 ? (Date.now() - begun) / 1000 * (1 - fraction) / fraction : null;
-                progressText.textContent = [t(...(STAGE_WORDS[status.stage] || STAGE_WORDS.sample)), `${Math.floor(fraction * 100)}%`, left != null ? t(`${seconds(left)} left`, `剩余${seconds(left)}`) : ''].filter(Boolean).join(' · ');
-                block.style.setProperty('--p', String(fraction * 100));
-                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); break; }
+                const fraction = imageGenProgress(status.stage, status.fraction, withImages, status.overall), left = imageRemainingText(status.remaining_seconds, t);
+                progressLine.textContent = [t(...(STAGE_WORDS[status.stage] || STAGE_WORDS.sample)), `${Math.floor(fraction * 100)}%`].join(' · ');
+                // The second line changes with every poll, so the page never looks stuck.
+                progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, left].filter(Boolean).join(' · ');
+                level.dataset.counted = Number.isFinite(status.overall) ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(fraction * 100));
+                const serial = status.state === 'running' ? status.preview?.serial : undefined;
+                if (Number.isInteger(serial) && serial > stepSerial && client.previewImage) {
+                    stepSerial = serial;
+                    const blob = await client.previewImage(row.job).catch(() => null);
+                    if (blob && alive && !mine.cancelled && running === mine) showStep(blob);
+                }
+                if (status.report_id && status.report_id !== reportId) {
+                    reportId = status.report_id; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
+                }
+                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); lastReport = status.report_id || reportId ? {file: status.file, id: status.report_id || reportId} : null; break; }
                 if (status.state === 'error') throw Object.assign(new Error(status.error), {...status, code: status.error});
             }
         } catch (error) {
             if (alive && !mine.cancelled) { failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
                 renderFailure(); }
-        } finally { if (running === mine) { running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
+        } finally { level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
     }
     function renderFailure() {
-        renderImageFailure(failHost, {...failure, info}, t);
-        const retry = el('button', 'fv-primary fv-image-retry', failure.retryStandard ? t('Retry at Standard', '改用标准并重试') : t('Retry', '重试')); retry.type = 'button';
-        retry.onclick = () => { if (failure.retryStandard) { tier = 'standard'; tierPick.value = 'standard'; } void generate(); };
-        failHost.append(retry);
+        renderImageFailure(failHost, {...failure, info}, t, {retry: {
+            label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
+            onClick: () => { if (failure.retryStandard) { tier = 'standard'; tierPick.value = 'standard'; } void generate(); }}});
     }
     go.onclick = () => {
         if (running) { running.cancelled = true; if (running.job) void client.cancel(running.job); running = null; render(); drawWorks(); }
@@ -365,14 +423,14 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         else void generate();
     };
     prompt.addEventListener('input', render);
-    prompt.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
+    listenDialogKey(prompt, 'keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
     document.addEventListener('click', closeMore, true);
     function closeMore(event) { if (!more.hidden && !moreHost.contains(event.target)) more.hidden = true; }
 
     dialog.addEventListener('cancel', event => { event.preventDefault(); if (!more.hidden) more.hidden = true; else closeDialog(dialog); });
     dialog.onclose = () => {
-        alive = false; enhancer.dispose(); document.removeEventListener('click', closeMore, true);
-        if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); dialog.remove();
+        alive = false; place.dispose(); stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
+        if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
         if (current === dialog) current = null;
         next();
     };

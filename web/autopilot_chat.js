@@ -73,7 +73,7 @@ function failureReason(value, t) {
 function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
     const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
-    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish', '生成未完成');
+    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish.', '生成未完成。');
 }
 
 export {about};
@@ -273,7 +273,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const down = press('fv-chat-down', null, () => { scroller.scrollTo({top: scroller.scrollHeight, behavior: 'smooth'}); });
     down.append(glyph('M12 5v14M5 12l7 7 7-7')); down.setAttribute('aria-label', t('Latest', '最新')); down.hidden = true;
     const form = el('form', 'fv-chat-input'), input = el('textarea'), sendButton = el('button', 'fv-chat-send');
-    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Message the agent', '对 Agent 说'));
+    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Ask Autopilot', '对 AI 全自动说'));
     sendButton.type = 'submit'; sendButton.setAttribute('aria-label', t('Send', '发送')); sendButton.append(glyph('M12 19V5M5 12l7-7 7 7'));
     // While the agent is thinking and has started nothing, the send key is the stop key: same place, a solid square.
     let stopMode = false;
@@ -367,7 +367,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (item.failed === 'failed') {
                 li.tabIndex = 0; li.setAttribute('role', 'button'); li.title = t(...ATTACH.retry); li.setAttribute('aria-label', li.title);
                 li.addEventListener('click', event => { if (event.target === drop) return; void upload(item, list); });
-                li.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void upload(item, list); } });
+                listenDialogKey(li, 'keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void upload(item, list); } });
             }
             return li;
         }));
@@ -1096,7 +1096,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             // What the user stopped says so; a video with finished parts can go on from there.
             const byUser = jobMode(job) === 'stopped' && job.cancelled_by === 'user' && VIDEOS.includes(job.kind || 'generate');
             const next = card ? jobMode(job) + (jobMode(job) === 'done' ? `:${job.play}:${job.thumbnail}:${job.work}`
-                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}:${job.error?.memory || ''}`
+                : jobMode(job) === 'failed' && job.kind === 'image' ? `:${job.error?.code}:${job.error?.report_id}:${job.error?.memory || ''}:${job.error?.stage || ''}`
                 : byUser ? `:user:${retry && job.again === 'continue' ? 'continue' : ''}` : '')
                 : WORKING.includes(job.status) ? 'quiet' : 'none';
             if (next !== mode) {
@@ -1119,19 +1119,30 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 else if (next === 'stopped:user:' || next === 'stopped' && (!job.error || job.kind === 'image')) { item.replaceChildren(el('span', null, t('Stopped', '已停止'))); apply = null; }
                 else if (next.startsWith('failed') && job.kind === 'image') {
                     // Picture failures name their step with the picture's own report card.
+                    // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
-                    renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        memory: job.error?.memory}, t,
-                        {productVersion, fetchApi: (path, options) => api.fetchApi(path, options)});
+                    const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
+                        stage: job.error?.stage, memory: job.error?.memory}, t,
+                        {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
+                            retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
-                    if (retry) { const row = el('div', 'fv-chat-actions'); row.append(...again()); item.append(row); }
+                    // The same fold row as a video failure card, between the reason and the buttons.
+                    const raw = [job.error?.code, job.error?.message, job.error?.request_id].filter(Boolean).join('\n');
+                    if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
+                    if (retry && card) {
+                        // In the chat it is the same outlined button as on a video failure card.
+                        const again = card.querySelector('.fv-image-retry');
+                        again?.classList.remove('fv-action-primary');
+                        again?.classList.add('fv-chat-retry');
+                        card.append(el('span', 'fv-chat-error fv-chat-again-note'));
+                    }
                     apply = null;
                 }
                 else if (next === 'failed' || next === 'stopped') {
                     const reason = el('p'), actions = el('div', 'fv-chat-actions fv-actions'), links = el('div', 'fv-result-links');
                     let current = job;
                     const diagnostic = createDiagnosticReportControl(t, {api, tip: true, version: productVersion,
-                        label: () => t('Download diagnostic report', '下载诊断报告'),
+                        label: () => t('Download report', '下载报告'),
                         fallback: () => new Blob([JSON.stringify(createErrorReport({error: current.error, exception_type: current.error?.code,
                             details: current.error?.request_id}, {stage: 'execution'}), null, 2)], {type: 'application/json'})});
                     // The shared failure style: one reason line, the fold row, then the secondary buttons.
@@ -1403,7 +1414,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         attachButton.disabled = builtinScene();
         input.disabled = !(state.agent.connected === true || builtinScene() && !!state.session) || creating || !!selectedSession && selectedSession !== state.session;
         input.placeholder = builtinScene() ? t(...SCENE_TEXT.describe)
-            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Message the agent…', '对 Agent 说…');
+            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Ask Autopilot…', '对 AI 全自动说…');
         refreshSend();
         if (focusSession === state.session && focusSession && !input.disabled && active()) { focusSession = null; input.focus(); }
         if (stick) { pinned = true; scroller.scrollTop = scroller.scrollHeight; down.hidden = true; }
@@ -1532,7 +1543,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         grow(); if (unsaidSessions.has(draftSession)) renderConversations();
     });
     // Enter sends, Shift+Enter starts a new line; Enter that confirms an input-method candidate does neither.
-    input.addEventListener('keydown', event => {
+    // Registered through listenDialogKey so Enter still reaches it when this
+    // page opens above the creation panel, whose window gate routes upper keys.
+    listenDialogKey(input, 'keydown', event => {
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
         event.preventDefault(); if (!stopMode) form.requestSubmit();
     });

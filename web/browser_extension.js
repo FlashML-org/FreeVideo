@@ -50,6 +50,33 @@ export function isNetworkTypeError(error) {
 // One sentence for a dropped connection (engine closed, network lost); the raw
 // browser wording stays in the technical details.
 export function connectionLostText(t) { return t('Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'); }
+// Which kind of address the page was opened from, as one word: a host name or number is never kept.
+export function pageAddressKind(location = globalThis.location) {
+    const host = string(location?.hostname).replace(/^\[|\]$/g, '').toLowerCase();
+    if (!host) return 'unknown';
+    if (host === 'localhost' || host === '::1' || /^127\./.test(host)) return 'this-computer';
+    if (/^(?:10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(host) || /^f[cd][0-9a-f]{2}:/.test(host) || host.endsWith('.local')) return 'local-network';
+    return /^\d+(?:\.\d+){3}$/.test(host) || host.includes(':') ? 'other-address' : 'host-name';
+}
+// What a failed request can say about itself, read right after it failed: whether the browser is
+// online, whether the engine answers a small read now, and what kind of address the page came from.
+// One failed read tells an engine that has stopped from a request that alone was cut off.
+export async function connectionFacts(api, {timeout = 2000, now = Date.now} = {}) {
+    const facts = {online: globalThis.navigator?.onLine ?? null, page_hidden: globalThis.document?.hidden ?? null,
+        page_address: pageAddressKind(), secure_page: globalThis.location?.protocol === 'https:'};
+    const started = now();
+    let timer;
+    try {
+        const reply = await Promise.race([api.fetchApi('/queue', {cache: 'no-store'}),
+            new Promise((_, stop) => { timer = setTimeout(() => stop(new Error('timeout')), timeout); })]);
+        facts.engine_answers_after = true; facts.http_status = Number.isInteger(reply?.status) ? reply.status : null;
+    } catch (error) {
+        facts.engine_answers_after = false;
+        if (error?.message === 'timeout') facts.probe_timed_out = true;
+    } finally { clearTimeout(timer); }
+    facts.probe_ms = Math.max(0, Math.round(now() - started));
+    return facts;
+}
 export function nativeFetch(fetchFunction = globalThis.fetch) {
     try { return typeof fetchFunction === 'function' && /\[native code\]/.test(Function.prototype.toString.call(fetchFunction)); }
     catch { return false; }

@@ -669,7 +669,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     function failedPopover(item) {
         failedPopoverId = item.clip.id;
         const reason = create('p', '', actions.failureText?.(item.clip.id) || actions.reasonText?.(item.clip.reason) || item.clip.reason || t('Generation failed', '生成时出错'));
-        const report = create('button', 'fv-ed-clip-report', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
+        const report = create('button', 'fv-ed-clip-report', t('Download report', '下载报告')); report.type = 'button';
         report.onclick = event => { event.stopPropagation(); popover.hidden = true;
             Promise.resolve(actions.downloadFailure?.(item.clip.id)).catch(error => actions.editError?.(error)); };
         const retry = create('button', '', t('Retry', '重试')); retry.type = 'button';

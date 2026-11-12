@@ -271,8 +271,11 @@ def unpatchify(rows, height, width, channels=24):
 
 @torch.no_grad()
 def sample(dit, features, tags, latent_h, latent_w, generator, device='cuda', dtype=torch.bfloat16, blocks=None,
-           noise_device=None, step_callback=None):
-    """Text-to-image: six velocity-Euler steps from noise; returns [24, H, W] float32 latents."""
+           noise_device=None, step_callback=None, preview_callback=None):
+    """Text-to-image: six velocity-Euler steps from noise; returns [24, H, W] float32 latents.
+
+    ``preview_callback(step, total, rows, velocity, sigma, latent_h, latent_w)`` runs after each step's velocity, before
+    the update; it only reads the two tensors (the clean prediction is ``rows + sigma * velocity``)."""
     text = dit.embed_text(features.to(device))
     noise = torch.randn((1, 24, 1, latent_h, latent_w), generator=generator,
                         device=noise_device or device, dtype=torch.float32).to(device)
@@ -286,5 +289,7 @@ def sample(dit, features, tags, latent_h, latent_w, generator, device='cuda', dt
             step_callback(i, len(steps))
         times = steps[i:i + 1].to(device)
         velocity = dit(text, rows, positions, segments, times, i, blocks=blocks)
+        if preview_callback is not None:
+            preview_callback(i + 1, len(steps), rows, velocity, float(sigmas[i]), latent_h, latent_w)
         rows = rows + (sigmas[i] - sigmas[i + 1]).to(device) * velocity
     return unpatchify(rows, latent_h, latent_w)

@@ -25,7 +25,7 @@ STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 MESSAGE_ZH = {
     **LORA_MESSAGE_ZH,
-    'no_memory': '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。',
+    'no_memory': '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。',
     'small_memory': '这台 Mac 的内存不足 16 GB，无法生成图片。',
     'busy_video': '视频正在生成，完成后再试。',
     'busy': '已有一张图在生成，请等它完成。',
@@ -57,7 +57,7 @@ _MODEL = re.compile(
 _MPS_MEMORY = re.compile(r'MPS backend out of memory', re.I)
 _LIMIT = 16 * 1024
 # On a Mac the GPU's memory is the machine's: the same failure, in its words.
-UNIFIED_MESSAGE_ZH = {'no_memory': '内存不够，最小尺寸也没能生成。关掉其他程序后再试。'}
+UNIFIED_MESSAGE_ZH = {'no_memory': '内存不足，最小尺寸也无法生成。请关闭其他程序后重试。'}
 HOST_MESSAGE_ZH = '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。'
 
 
@@ -209,6 +209,9 @@ class StageTimes:
         return max(0., self.clock() - self.started)
 
 
+_GPU_READING = ('total_bytes', 'used_bytes', 'budget_bytes', 'owned_credit_bytes', 'native_credit_bytes')
+
+
 class Context:
     def __init__(self, action, value):
         self.redactor = Redactor()
@@ -219,6 +222,8 @@ class Context:
         self.plan = None
         self.pack = None
         self.start_memory = None
+        # The card as the admission check read it (memory_budget): numbers only.
+        self.gpu_reading = {}
         # ComfyUI's own models this request unloaded before its worker started (comfy_residency.release_native).
         self.native_release = None
         self.update_request(value)
@@ -249,7 +254,7 @@ class Context:
             seed_redactor(self.redactor, machine)
             self.machine = machine
 
-    def report(self, code, *, row=None, error=None, video_busy=False, worker_restarts=0):
+    def report(self, code, *, row=None, error=None, video_busy=False, worker_restarts=0, outcome='failed', forecast=None):
         row = row if isinstance(row, dict) else {}
         seed_redactor(self.redactor, row)
         stage = row.get('stage') if row.get('stage') in STAGES else self.timing.stage
@@ -312,17 +317,26 @@ class Context:
         # Macs only: which attention kernel ran and why it left MLX (mlx_attention.summary).
         attention = row.get('attention')
         extra = dict(attention=clean(attention, self.redactor)) if isinstance(attention, dict) else {}
+        if isinstance(forecast, dict):
+            extra['forecast'] = {key: value for key, value in forecast.items() if key in ('basis', 'typical_seconds', 'predicted') and clean(value, self.redactor) is not None}
         return dict(schema='freevideo.image-report', schema_version=1, **extra,
                     created_at=datetime.now(timezone.utc).isoformat(), kind=self.kind,
                     analysis=dict(version=__version__, hardware=hardware, geometry=geometry),
                     summary=dict(request_seconds=self.timing.seconds()), request=dict(self.request),
-                    plan=plan, stages=stages, stage_at_failure=stage, error=details, pack=clean(pack, self.redactor),
+                    outcome=outcome, plan=plan, stages=stages, stage_at_failure=stage if outcome == 'failed' else None,
+                    current_stage=stage if outcome == 'running' else None, error=details if outcome == 'failed' else None, pack=clean(pack, self.redactor),
                     service=self.service(video_busy, worker_restarts, error))
 
     def service(self, video_busy, worker_restarts, error):
         service = dict(video_busy=bool(video_busy), worker_restarts=worker_restarts)
         if self.start_memory:
             service['memory_at_request_start'] = clean_sample(self.start_memory)
+        gpu = {key: self.gpu_reading[key] for key in _GPU_READING if type(self.gpu_reading.get(key)) is int
+               and self.gpu_reading[key] >= 0}
+        if type(self.gpu_reading.get('owned_unreported')) is bool and gpu:
+            gpu['owned_unreported'] = self.gpu_reading['owned_unreported']
+        if gpu:
+            service['gpu_at_request_start'] = gpu
         released = self.native_release
         if isinstance(released, dict):
             service['comfy_models_released'] = {key: released[key] for key in

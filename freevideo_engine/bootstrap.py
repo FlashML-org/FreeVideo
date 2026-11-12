@@ -1136,6 +1136,32 @@ def unpack(archive, destination):
         tar.extractall(io_path(destination))
 
 
+def prepare_uv(system, root, uv_spec, networking, env, fetch):
+    """Put the pinned uv under root/tools and return its path: from a verified local copy when one exists, else downloaded.
+
+    The installer and the launcher's source update share it, so a missing uv is restored the same way in both.
+    """
+    root = Path(root)
+    if system == 'Windows':
+        from .uv_bootstrap import prepare_windows
+        return prepare_windows(root, uv_spec, networking, env, fetch)
+    if system == 'Darwin':
+        from . import macos_bootstrap
+        return macos_bootstrap.prepare_uv(root, networking, env, fetch)
+    archive = root / 'downloads' / 'uv.tar.gz'
+    from .system import bootstrap_root
+    previous = bootstrap_root(root) / ('uv-' + uv_spec['version'] + '.tar.gz')
+    if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(previous, archive)
+        except OSError:
+            shutil.copyfile(previous, archive)
+    fetch(uv_spec['url'], archive, uv_spec['sha256'])
+    unpack_folder(archive, root / 'tools', 'uv-x86_64-unknown-linux-gnu')
+    return root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
+
+
 def unpack_folder(archive, destination, name):
     """Unpack the archive's top-level folder `name` to destination/name, replacing what is there.
 
@@ -1265,9 +1291,9 @@ class Installer:
         self.system = value['inventory'].get('hardware', {}).get('system', platform.system())
         self.pythons = role_pythons(self.root, self.layout, self.system)
         self.root.mkdir(parents=True, exist_ok=True)
-        self.lock = self.locks.enter_context(runtime_lock(self.root / 'setup.lock', inherit=False))
+        self.lock = self.locks.enter_context(runtime_lock(self.root / 'setup.lock', inherit=False, wait_seconds=3))
         lock_path = os.environ.get('FREEVIDEO_LOCK_PATH', str(self.root / 'engine.lock'))
-        self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path))
+        self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path, wait_seconds=3))
         self.run_dir = self.root / 'setup-runs' / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + str(os.getpid()))
         self.run_dir.mkdir(parents=True, exist_ok=False)
         save(self.run_dir / 'plan.json', value)
@@ -2264,24 +2290,7 @@ class Installer:
         save(sage_manifest, sage_record)
 
     def prepare_tools(self):
-        uv_spec = self.versions['uv']
-        if self.system == 'Windows':
-            from .uv_bootstrap import prepare_windows
-            uv = prepare_windows(self.root, uv_spec, self.network, self.env, self.fetch)
-        else:
-            archive = self.root / 'downloads' / 'uv.tar.gz'
-            from .system import bootstrap_root
-            previous = bootstrap_root(self.root) / ('uv-' + uv_spec['version'] + '.tar.gz')
-            if not archive.exists() and previous.is_file() and digest(previous) == uv_spec['sha256']:
-                archive.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    os.link(previous, archive)
-                except OSError:
-                    shutil.copyfile(previous, archive)
-            self.fetch(uv_spec['url'], archive, uv_spec['sha256'])
-            unpack_folder(archive, self.root / 'tools', 'uv-x86_64-unknown-linux-gnu')
-            uv = self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
-        return uv
+        return prepare_uv(self.system, self.root, self.versions['uv'], self.network, self.env, self.fetch)
 
     def execute(self):
         if self.int8_check_first:
@@ -2618,10 +2627,12 @@ def run_main(argv, shown):
     except BlockingIOError:
         prepare_end(ui, False)
         print('Setup, testing or generation is using this installation/GPU lock. Retry after it finishes.', file=sys.stderr)
-        from .locking import lock_holders
-        owners = lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))])
-        if owners:
-            print('Processes with open lock handles: %s. Stop the old task before retrying; do not delete lock files.' % ', '.join(map(str, owners)), file=sys.stderr)
+        from .locking import describe_lock_holders
+        try:
+            for line in describe_lock_holders([Path(value['root']) / 'setup.lock', os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(value['root']) / 'engine.lock'))]):
+                print(line, file=sys.stderr)
+        except Exception:
+            pass
         return 1
     except (OSError, ValueError) as error:
         prepare_end(ui, False)

@@ -1,6 +1,7 @@
 import {longGeneration} from './phone_model.js';
 import {agentGet, agentPost} from './agent_session.js';
 import {qrcodegen} from './qrcodegen.js';
+import {listenDialogKey} from './dialog_keys.js';
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./lan_access.css', import.meta.url).href; document.head.append(css);
 const seenKey = 'freevideo.phone.opened';
 export function qrMatrix(link) { return qrcodegen.QrCode.encodeText(link, qrcodegen.QrCode.Ecc.MEDIUM); }
@@ -55,10 +56,16 @@ export function createLanAccess(t, api) {
     try { seen = localStorage.getItem(seenKey) === '1'; } catch {}
     const windows = /Win/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
     function fail() { error.hidden = false; }
+    // A toolbar with a transform or blur becomes the frame of fixed children; take its offset back out so they sit by the button.
+    function place(node, top, left) {
+        node.style.right = ''; node.style.top = `${top}px`; node.style.left = `${left}px`;
+        const got = node.getBoundingClientRect();
+        if (got.top !== top || got.left !== left) { node.style.top = `${2 * top - got.top}px`; node.style.left = `${2 * left - got.left}px`; }
+    }
     function position() {
         if (panel.hidden) return;
-        const box = trigger.getBoundingClientRect(); panel.style.top = `${box.bottom + 8}px`;
-        panel.style.left = `${Math.max(8, Math.min(box.right - 264, window.innerWidth - 272))}px`;
+        const box = trigger.getBoundingClientRect();
+        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - 264, window.innerWidth - 272)));
     }
     function render() {
         // No launcher installation: the switch cannot work from this page, so say why instead of "Please try again".
@@ -89,7 +96,7 @@ export function createLanAccess(t, api) {
         } catch { if (!disposed) fail(); }
         finally { reading = false; if (!disposed && !panel.hidden) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
     }
-    trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.style.top = `${box.bottom + 8}px`; tip.style.right = `${Math.max(8, window.innerWidth - box.right)}px`; tip.hidden = false; };
+    trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.hidden = false; place(tip, box.bottom + 8, Math.max(8, Math.min(box.right, window.innerWidth - 8) - tip.offsetWidth)); };
     trigger.onpointerleave = trigger.onblur = () => { tip.hidden = true; };
     function close() { tip.hidden = true; panel.hidden = true; trigger.setAttribute('aria-expanded', 'false'); clearTimeout(timer); form.hidden = true; password.value = ''; }
     function toggle() {
@@ -120,5 +127,7 @@ export function createLanAccess(t, api) {
     window.addEventListener('freevideo-phone-opened', opened); window.addEventListener('storage', storage);
     const progress = event => observe(event.detail), outside = event => { if (!element.contains(event.target)) close(); }, keys = event => { if (!panel.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); trigger.focus(); } };
     api.addEventListener?.('freevideo_progress', progress); document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', keys, true); window.addEventListener('resize', position);
-    return {element, observe, dispose() { disposed = true; close(); clearTimeout(copied); api.removeEventListener?.('freevideo_progress', progress); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', keys, true); window.removeEventListener('resize', position); window.removeEventListener('freevideo-phone-opened', opened); window.removeEventListener('storage', storage); }};
+    // Inside a modal view the dialog routes keys itself, so the document listener never hears Escape.
+    const unlistenLocal = listenDialogKey(element, 'keydown', keys);
+    return {element, observe, dispose() { disposed = true; close(); unlistenLocal(); clearTimeout(copied); api.removeEventListener?.('freevideo_progress', progress); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', keys, true); window.removeEventListener('resize', position); window.removeEventListener('freevideo-phone-opened', opened); window.removeEventListener('storage', storage); }};
 }

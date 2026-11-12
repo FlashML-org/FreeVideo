@@ -100,6 +100,13 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
                 ...(phase === 'cancelled' ? {error: 'cancelled'} : {})};
         },
         cancel: job => post('cancel', {[p.job]: job}),
+        // The running job's newest step picture (a small JPEG of what the model predicts so far), or null.
+        async previewImage(job) {
+            if (!token) await info();
+            const response = await fetchImpl(`${p.root}/preview`, {method: 'POST', cache: 'no-store', headers: {
+                'Content-Type': 'application/json', [p.header]: token}, body: JSON.stringify({[p.job]: job})});
+            return response.ok ? response.blob() : null;
+        },
         // The image models are fetched by this page's own engine; the reply is the new info.
         async packInstall(model) { const value = await post('pack-install', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         async packCancel(model) { const value = await post('pack-cancel', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
@@ -167,7 +174,7 @@ export function imageGenError(code, info, t) {
         lora_not_found: ['The LoRA file could not be found. Choose it again.', 'LoRA 文件找不到，请重新选择。'],
         invalid_lora_model: ['This LoRA cannot be used for pictures. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
-            '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'],
+            '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
@@ -196,16 +203,36 @@ export function imageGenError(code, info, t) {
         const stage = info?.stage, size = info?.fitted;
         if (stage === 'encode')
             return say('Not enough GPU memory to load the reference images. Use fewer reference images, or close other apps using the GPU, then try again.',
-                '显存不够，参考图没能载入。少用几张参考图，或关掉其他占用显卡的程序后再试。');
+                '显存不足，无法载入参考图。请减少参考图，或关闭其他占用显卡的程序后重试。');
         if (stage === 'load' || stage === 'text')
             return say('Not enough GPU memory to load the model. Close other apps using the GPU, then try again.',
-                '显存不够，模型没能载入。关掉其他占用显卡的程序后再试。');
+                '显存不足，无法载入模型。请关闭其他占用显卡的程序后重试。');
         if (size?.width && size?.height)
             return say(`Not enough GPU memory, even at ${size.width}\u00a0×\u00a0${size.height}. Close other apps using the GPU, then try again.`,
-                `显存不够，${size.width}\u00a0×\u00a0${size.height} 也没能生成。关掉其他占用显卡的程序后再试。`);
+                `显存不足，${size.width}\u00a0×\u00a0${size.height} 也无法生成。请关闭其他占用显卡的程序后重试。`);
     }
-    return say(...(Object.hasOwn(reasons, code) ? reasons[code] : reasons.generation_failed));
+    const known = Object.hasOwn(reasons, code) ? code : 'generation_failed';
+    // An unnamed error still says which step it stopped at; a page with its own
+    // Retry button does not repeat "try again" in the sentence.
+    if (known === 'generation_failed' && Object.hasOwn(FAILED_AT, info?.stage)) {
+        const [en, zh] = FAILED_AT[info.stage];
+        return info?.retried ? say(en, zh) : say(`${en} Try again.`, `${zh}请再试一次。`);
+    }
+    return say(...(info?.retried && Object.hasOwn(RETRIED, known) ? RETRIED[known] : reasons[known]));
 }
+const RETRIED = Object.freeze({
+    worker_exit: ['Image generation stopped unexpectedly.', '图像生成意外停止。'],
+    timeout: ['This image took too long and was stopped.', '本次生成用时过长，已停止。'],
+    reload: ['Image generation was interrupted.', '图像生成中途被打断。'],
+    generation_failed: ['Image generation ran into an error.', '图像生成出错。'],
+});
+const FAILED_AT = Object.freeze({
+    load: ['An error occurred while loading the image model.', '加载图像模型时出错。'],
+    text: ['An error occurred while reading the prompt.', '读取提示词时出错。'],
+    encode: ['An error occurred while reading the reference images.', '读取参考图时出错。'],
+    denoise: ['An error occurred while generating the image.', '生成画面时出错。'],
+    decode: ['An error occurred while producing the image.', '输出图像时出错。'],
+});
 
 // Keep image failure copy here for editorial review. The submit card and its
 // wording belong to report_issue.js, shared with video reports.
@@ -217,29 +244,18 @@ export const QUEUE_LABELS = Object.freeze({
 export const fittedNote = (size, t, unified = false) => t(...memoryWords([`Not enough GPU memory. Made at ${size.width}\u00a0×\u00a0${size.height} instead.`,
     `显存不足，已改为 ${size.width}\u00a0×\u00a0${size.height} 生成。`], unified));
 export const REPORT_LABELS = Object.freeze({
-    download: ['Diagnostic report', '诊断报告'],
+    download: ['Download report', '下载报告'],
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
     preparing: ['Preparing…', '正在整理…'],
-    unavailable: ['Report unavailable · retry', '报告暂不可用 · 重试'],
+    unavailable: ['Report unavailable · fetch again', '报告暂不可用 · 重新获取'],
     gone: REPORT_GONE,
 });
 
-// Shared by the editor and the other image entry points. Only the opaque report
-// ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
-    {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis)} = {}) {
-    host.replaceChildren();
-    if (!error || error === 'cancelled') return null;
-    const doc = host.ownerDocument || document;
-    const cssURL = new URL('./result_actions.css', import.meta.url).href;
-    if (!doc.querySelector(`link[href="${cssURL}"]`)) {
-        const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = cssURL; doc.head.append(css);
-    }
-    const card = doc.createElement('div'); card.className = 'fv-result-links';
-    const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage}, t);
-    card.append(reason); host.append(card);
-    if (!report_id) return card;
+// The report download and its "send as an issue" card; the request carries only the opaque report ID.
+export function imageReportBar(card, report_id, t, {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), quiet = false} = {}) {
+    // `quiet` is the picture page's own: the video page's weight, not a bordered button. Every surface says "Download report".
+    const download = REPORT_LABELS.download;
+    const doc = card.ownerDocument || document;
     const fetchReport = async () => {
         const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});
         if (!response.ok) throw reportFetchError(response);
@@ -248,8 +264,8 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     const version = () => typeof productVersion === 'function' ? productVersion() : productVersion;
     const bar = doc.createElement('div'); bar.className = 'fv-actions';
     const anchor = doc.createElement('button'); anchor.type = 'button';
-    anchor.className = 'fv-action fv-action-secondary fv-action-report';
-    anchor.textContent = t(...REPORT_LABELS.download); anchor.title = t(...REPORT_LABELS.description);
+    anchor.className = 'fv-action fv-action-secondary fv-action-report' + (quiet ? ' fv-image-report-quiet' : '');
+    anchor.textContent = t(...download); anchor.title = t(...REPORT_LABELS.description);
     const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}));
     issue.hidden = true;
     anchor.onclick = async () => {
@@ -263,7 +279,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
             await saveReport(await fetchReport());
             if (card.isConnected) showReportTip(bar, anchor, t, {mode: 'downloaded',
                 submit: () => reportIssue(fetchReport, version(), {save: false}), onHide: () => anchor.focus()});
-            anchor.textContent = t(...REPORT_LABELS.download);
+            anchor.textContent = t(...download);
         } catch (error) {
             gone = Boolean(error?.gone);
             anchor.textContent = t(...(gone ? REPORT_LABELS.gone : REPORT_LABELS.unavailable)); issue.hidden = gone;
@@ -272,12 +288,44 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
             if (restoreFocus && card.isConnected && doc.activeElement === doc.body) anchor.focus({preventScroll: true});
         }
     };
+    bar.append(anchor, issue);
+    return {bar, anchor};
+}
+
+// Shared by the editor and the other image entry points. Only the opaque report
+// ID goes in the request; raw service messages are never shown in the page.
+export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
+    {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
+    // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
+    // `retried` alone says the caller shows a Retry of its own elsewhere.
+    host.replaceChildren();
+    if (!error || error === 'cancelled') return null;
+    const doc = host.ownerDocument || document;
+    const cssURL = new URL('./result_actions.css', import.meta.url).href;
+    if (!doc.querySelector(`link[href="${cssURL}"]`)) {
+        const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = cssURL; doc.head.append(css);
+    }
+    const card = doc.createElement('div'); card.className = 'fv-result-links';
+    const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried}, t);
+    card.append(reason); host.append(card);
+    let again = null;
+    if (retry) {
+        again = doc.createElement('button'); again.type = 'button';
+        again.className = 'fv-action fv-action-primary fv-image-retry'; again.textContent = t(...retry.label);
+        again.onclick = () => retry.onClick();
+    }
+    if (!report_id && !again) return card;
+    let bar;
+    if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
+    else { bar = doc.createElement('div'); bar.className = 'fv-actions'; }
+    if (again) bar.prepend(again);
+    card.append(bar);
     // Let native Enter/Space activate these buttons without invoking editor
     // canvas shortcuts. Tab and the shared card's Escape handling still work.
     card.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
     });
-    bar.append(anchor, issue); card.append(bar);
     return card;
 }
 export function imagePackUnavailableMessage(info, t) {
@@ -399,14 +447,15 @@ export function insertGenerationResult(doc, result, context, t) {
     return next;
 }
 
-// The worker counts every stage from 0 to 1. One bar for the whole picture: each stage owns a
-// slice in the order it runs (the reference encode only exists with reference images), and the
-// bar stays below 100% until the result is placed.
+// One bar for the whole picture. The service predicts how long each stage takes on this machine
+// and sends the finished share and the time left; the bar stays below 100% until the result is placed.
+// A row without them (an older service) falls back to a plain share per stage.
 const STAGE_SLICES = {
     new: [['load', .15], ['text', .15], ['denoise', .5], ['decode', .2]],
     edit: [['load', .15], ['text', .15], ['encode', .05], ['denoise', .45], ['decode', .2]],
 };
-export function imageGenProgress(stage, fraction, withImages = false) {
+export function imageGenProgress(stage, fraction, withImages = false, overall = null) {
+    if (Number.isFinite(overall)) return Math.min(.99, Math.max(0, overall));
     const own = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
     let start = 0;
     for (const [name, weight] of STAGE_SLICES[withImages ? 'edit' : 'new']) {
@@ -414,6 +463,12 @@ export function imageGenProgress(stage, fraction, withImages = false) {
         start += weight;
     }
     return Math.min(.99, own);
+}
+// Seconds left as the service predicts them, in the video's words; null while there is none.
+export function imageRemainingText(seconds, t) {
+    if (!Number.isFinite(seconds)) return '';
+    return seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)}\u00a0min left`, `预计还需约 ${Math.ceil(seconds / 60)}\u00a0分钟`)
+        : t('Less than a minute left', '预计还需不到 1\u00a0分钟');
 }
 
 // An epoch rejects late uploads/status/results. A generate response arriving
@@ -423,7 +478,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     schedule = setTimeout, unschedule = clearTimeout, store = null,
     visible = () => globalThis.document?.visibilityState !== 'hidden'}) {
     let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null;
-    let state = {info: null, checking: false, running: false, job: null, fraction: 0, stage: '', error: '', report_id: null,
+    let state = {info: null, checking: false, running: false, job: null, fraction: 0, remaining: null, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
@@ -458,8 +513,10 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             try {
                 const row = await client.status(job);
                 if (!alive()) return;
-                const fraction = imageGenProgress(row.stage, row.fraction, withImages);
+                const fraction = imageGenProgress(row.stage, row.fraction, withImages, row.overall);
                 emit({fraction: Math.max(state.fraction, fraction), stage: row.stage || '', waiting: row.waiting || '',
+                    remaining: Number.isFinite(row.remaining_seconds) ? row.remaining_seconds : null,
+                    report_id: row.report_id || state.report_id,
                     fitted: row.fitted || state.fitted});
                 if (row.state === 'done') {
                     if (!row.file) throw failure();

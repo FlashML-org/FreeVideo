@@ -72,13 +72,33 @@ def request_repair(text, server=None):
 
 
 def launcher_view(page, server, now=None):
-    """What the launcher reads: the page check and any repair a failed run asked for."""
+    """What the launcher reads: the page check, any repair a failed run asked for, and the page's
+    request to add the video model."""
     server._freevideo_launcher_seen = time.monotonic() if now is None else now
     value = dict(page)
     repair = getattr(server, '_freevideo_repair', None)
     if isinstance(repair, dict):
         value['repair'] = repair
+    add_video = getattr(server, '_freevideo_add_video', None)
+    if isinstance(add_video, dict):
+        value['add_video'] = add_video
     return value
+
+
+def video_model_installed(engine_root):
+    """False only for an installation set up with MiniMax H3 Image alone (machine.json says so)."""
+    try:
+        machine = json.loads((Path(engine_root) / 'machine.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return True
+    return not (isinstance(machine, dict) and machine.get('video_model') is False)
+
+
+def request_add_video(server, now=None):
+    """The page asks the launcher reading this server to open its installation with the video model.
+    Returns whether a launcher is reading, so the page can say where to continue."""
+    server._freevideo_add_video = dict(at=time.time() if now is None else now)
+    return launcher_watching(server)
 
 
 def page_notice(server):
@@ -181,3 +201,15 @@ def register():
     @server.routes.get('/freevideo/launcher/ui')
     async def page_state(request):
         return web.json_response(launcher_view(page, server))
+
+    @server.routes.get('/freevideo/launcher/models')
+    async def installed_models(request):
+        return web.json_response(dict(video=video_model_installed(info['engine_root']), launcher=launcher_watching(server)),
+                                 headers={'Cache-Control': 'no-store'})
+
+    @server.routes.post('/freevideo/launcher/add-video')
+    async def add_video(request):
+        # A JSON body: a plain cross-site form cannot send one, so another site cannot open the installation.
+        if request.content_type != 'application/json':
+            return web.json_response(dict(error='Expected application/json'), status=415)
+        return web.json_response(dict(launcher=request_add_video(server)))

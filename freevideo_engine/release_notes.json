@@ -1,39 +1,76 @@
 {
   "schema": 1,
-  "product_version": "0.5.1",
+  "product_version": "0.5.2",
   "en": {
-    "summary": "Installing only an image model works again, and the image view shows its pictures again. Uploads show progress, and the update notice, retry notice and reference Add menu are clearer.",
+    "summary": "The editor shows its preview and timeline again, and Mac installs no longer stop at the GPU check. Images show each step while they generate, have a Seed field and clearer failure cards, and narrow windows fit better.",
     "changes": [
-      "Install: installing only an image model no longer fails at the verification step for lacking video model folders; the check for a video install is unchanged.",
-      "Image view: the large picture, the work thumbnails and the save link no longer return 404.",
-      "Uploads: while a file is uploaded or an edited image is saved, the media panel shows how much has been sent.",
-      "Update notice: it is a full-width bar, under the header in the studio and as the second row of the node toolbar.",
-      "Retry notice: when a run is retried, the notice says the run mode changes, and names less video memory or less memory by cause, instead of saying settings change.",
-      "Reference Add menu: it opens above when there is no room below, takes the full width on narrow windows and shows four columns at 400 px wide.",
-      "Studio: the mention list refreshes when a tour sample fills the prompt.",
-      "Tutorial and tour: video and audio references are added with Add, the same way as images, and the first-and-last-frame step no longer repeats Add.",
-      "Agent: the width and height descriptions state the nearest-multiple-of-32 rule, and whole-timeline write points to the editor operations for clip edits.",
-      "Image view: when there are many works, the thumbnails in the works column are shown in full instead of being squeezed into thin strips.",
-      "Image view: the large picture shows square, portrait and landscape pictures whole at every width."
+      "Editor: the edit page keeps its layout again, so the preview and the timeline are no longer pushed off the screen by the media library.",
+      "Mac install: an installation or repair no longer stops at the GPU check step when every check has passed.",
+      "Install and update: a first installation offers H3 Video or H3 Image, and an image-only installation adds the video model later. Graphics package downloads keep trying through a slow connection, a model download that cannot resume starts again, an update restores a missing tool, and setup waits briefly for another running installation and names it.",
+      "Images view: the picture is shown after each step while it generates, and progress follows time with one percentage and the remaining time. A Seed field under Advanced keeps a number, or draws a new seed for each picture when empty.",
+      "Picture failures: the reason and Retry sit inside the card, Autopilot cards open technical details as video cards do, and memory reasons use formal wording. The report button reads \"Download report\" on the image page, in Autopilot and in the editor.",
+      "Edit page: the quality setting sits beside Generate and shows the number of steps. Music on the second sound track starts from its own description box.",
+      "Output: an Output setting can write a separate 10-bit copy of each generated video; the regular file and the page preview are unchanged.",
+      "Narrow windows: the node view top bar steps entries aside and then wraps, the view switch sits in the same place in every view, and Escape in the phone panel closes only the panel. At 400 px the image model name and ratio menu show whole, image editor tools wrap, the result menu opens upward when needed, and editor track names show in full.",
+      "Autopilot: Enter, Ctrl+Enter and paste work in the chat and image pages, the message hint fits one line on phones, the header keeps a readable job title, and long titles stay inside the job card.",
+      "Progress: long quiet stages of a video run show real counts, such as frames, layers or files, after the stage text.",
+      "Generation: the text encoder loads faster from slow drives when memory is short, and a loaded engine is reused when only the tiling changes. A library character's voice comes into the shot with its pictures, and prompt enhancement reads the picture or video of a connected load node.",
+      "Tutorial and messages: the tutorial adds chapters on making pictures, middle frames and saving a frame. A refusal caused by Reserved VRAM names that setting, the connection card names the localhost address to open, and a long-video join failure says whether the seam record is missing or unreadable."
     ]
   },
   "zh": {
-    "summary": "只装图像模型的安装恢复正常，图像视图的图片重新显示；上传显示进度，更新提示、重试提示和参考图“添加”菜单更清楚。",
+    "summary": "编辑页重新显示预览和时间线，Mac 安装不再停在 GPU 检查一步；图片生成时逐步显示画面，新增种子输入，失败卡片更清楚，窄窗口排版更合适。",
     "changes": [
-      "安装：只安装图像模型时，安装不再在“验证安装”一步因缺少视频模型目录而失败；安装视频模型时的检查不变。",
-      "图像视图：大图、作品缩略图和保存链接不再 404。",
-      "上传：上传文件或保存编辑后的图片时，素材面板显示已发送的比例。",
-      "更新提示：改为通栏，创作面板里在标题下，节点视图里是工具条的第二行。",
-      "重试提示：运行自动重试时，提示写明换了一种运行方式，并按原因写“更省显存”或“更省内存”，不再写“调整设置”。",
-      "参考图“添加”菜单：下方没有位置时向上展开，窄窗口通宽，400 宽下为四列。",
-      "创作面板：示例图填入描述后，@ 提及列表同步刷新。",
-      "教程与导览：视频和音频参考与图片一样点“添加”，首尾帧一步不再重复“添加”。",
-      "Agent：宽高说明写明取最近的 32 的倍数；整条时间线写入指向剪辑操作，避免用它改片段。",
-      "图像视图：作品较多时，作品栏的缩略图完整显示，不再被压成一条条。",
-      "图像视图：大图完整显示方图、竖图和横图。"
+      "编辑页：版面恢复正常，预览和时间线不再被素材库挤出屏幕。",
+      "Mac 安装：安装或修复时，各项检查都已通过却仍停在 GPU 检查一步的问题已修复。",
+      "安装和更新：首次安装可选 H3 Video 或 H3 Image，只装图像模型的以后可再加视频模型。GPU 组件下载在网络慢时持续重试，无法续传的模型下载重新开始，更新补回缺失的工具，另一个安装进行中时稍等并说明是哪一个。",
+      "图像视图：生成时每一步都显示当前画面，进度按时间推进，只显示一个百分比和剩余时间。“高级”里新增“种子”，填数字固定种子，留空则每张图重新取种子。",
+      "图片失败：原因和“重试”放在卡片内，AI 全自动中的卡片和视频卡片一样可展开技术详情，内存不足的原因改为书面措辞。图像页、AI 全自动和编辑页的报告按钮统一为“下载报告”。",
+      "编辑页：画质设置放在“生成”旁边，并显示步数。第二条声音轨上的音乐从自己的描述框开始填写。",
+      "输出：可在设置中另外写一份 10 位视频，原有文件和页面预览不变。",
+      "窄窗口：节点视图顶栏的入口先依次让位再折行，各视图的切换位置一致，手机面板里按 Esc 只关闭面板。400 宽下图像模型名称和比例菜单完整显示，图像编辑工具折行，结果菜单放不下时向上展开，剪辑轨道名称完整显示。",
+      "AI 全自动：对话页和图像页的 Enter、Ctrl+Enter 和粘贴恢复正常，手机上的输入提示一行放下，顶栏保留可读的任务名，长标题不再超出任务卡片。",
+      "进度：视频生成中较长的无变化阶段，在阶段文字后显示真实计数，例如帧数、层数或文件数。",
+      "生成：内存紧张时，文本编码器从慢速硬盘加载更快；只有分块变化时复用已加载的引擎。素材库角色的声音随其图片一起带入镜头，提示词增强会读取所连加载节点中的图片或视频。",
+      "教程和提示：教程新增生成图片、中间帧和保存帧三章。只因“预留显存”导致的拒绝会指出该设置，连接卡片会给出应打开的 localhost 地址，长视频拼接失败时说明接缝记录是缺失还是无法读取。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.5.1",
+      "en": {
+        "summary": "Installing only an image model works again, and the image view shows its pictures again. Uploads show progress, and the update notice, retry notice and reference Add menu are clearer.",
+        "changes": [
+          "Install: installing only an image model no longer fails at the verification step for lacking video model folders; the check for a video install is unchanged.",
+          "Image view: the large picture, the work thumbnails and the save link no longer return 404.",
+          "Uploads: while a file is uploaded or an edited image is saved, the media panel shows how much has been sent.",
+          "Update notice: it is a full-width bar, under the header in the studio and as the second row of the node toolbar.",
+          "Retry notice: when a run is retried, the notice says the run mode changes, and names less video memory or less memory by cause, instead of saying settings change.",
+          "Reference Add menu: it opens above when there is no room below, takes the full width on narrow windows and shows four columns at 400 px wide.",
+          "Studio: the mention list refreshes when a tour sample fills the prompt.",
+          "Tutorial and tour: video and audio references are added with Add, the same way as images, and the first-and-last-frame step no longer repeats Add.",
+          "Agent: the width and height descriptions state the nearest-multiple-of-32 rule, and whole-timeline write points to the editor operations for clip edits.",
+          "Image view: when there are many works, the thumbnails in the works column are shown in full instead of being squeezed into thin strips.",
+          "Image view: the large picture shows square, portrait and landscape pictures whole at every width."
+        ]
+      },
+      "zh": {
+        "summary": "只装图像模型的安装恢复正常，图像视图的图片重新显示；上传显示进度，更新提示、重试提示和参考图“添加”菜单更清楚。",
+        "changes": [
+          "安装：只安装图像模型时，安装不再在“验证安装”一步因缺少视频模型目录而失败；安装视频模型时的检查不变。",
+          "图像视图：大图、作品缩略图和保存链接不再 404。",
+          "上传：上传文件或保存编辑后的图片时，素材面板显示已发送的比例。",
+          "更新提示：改为通栏，创作面板里在标题下，节点视图里是工具条的第二行。",
+          "重试提示：运行自动重试时，提示写明换了一种运行方式，并按原因写“更省显存”或“更省内存”，不再写“调整设置”。",
+          "参考图“添加”菜单：下方没有位置时向上展开，窄窗口通宽，400 宽下为四列。",
+          "创作面板：示例图填入描述后，@ 提及列表同步刷新。",
+          "教程与导览：视频和音频参考与图片一样点“添加”，首尾帧一步不再重复“添加”。",
+          "Agent：宽高说明写明取最近的 32 的倍数；整条时间线写入指向剪辑操作，避免用它改片段。",
+          "图像视图：作品较多时，作品栏的缩略图完整显示，不再被压成一条条。",
+          "图像视图：大图完整显示方图、竖图和横图。"
+        ]
+      }
+    },
     {
       "product_version": "0.5.0",
       "en": {

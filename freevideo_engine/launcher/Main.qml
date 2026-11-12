@@ -42,7 +42,7 @@ ApplicationWindow {
     readonly property bool usingRuntime: manualEnvironment && s.offline.runtime
     readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
     // An imported environment can take its models from packages or download them.
-    readonly property bool offlineSelected: s.form.model_method === "manual"
+    readonly property bool offlineSelected: s.form.model_method === "manual" && !s.image_only
     readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && (usingRuntime || s.form.model_dirs.length === 0)
     readonly property int step: s.page === "comfy" ? 0 : s.page === "models" ? 1 : 2
     property string previousPage: ""
@@ -614,8 +614,28 @@ ApplicationWindow {
                 ColumnLayout {
                     objectName: "modelsPage"
                     visible: s.page === "models"; Layout.fillWidth: true; spacing: 16
+                    // One model or the other, never both at once; the one not chosen can be added later in the app.
+                    FText { objectName: "installModelHeading"; visible: !!s.model_choice; text: t("Which model to install?", "选择模型"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                    RowLayout {
+                        objectName: "installModelChoice"; visible: !!s.model_choice
+                        Layout.fillWidth: true; spacing: 12
+                        FChoice {
+                            objectName: "installVideoModel"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
+                            text: "MiniMax H3\u00a0Video"
+                            detail: checked ? t("Makes videos.", "生成视频。") : t("Makes videos. Can be added later in the app.", "生成视频。以后可在应用内添加。")
+                            checked: !s.image_only; enabled: !s.busy
+                            onClicked: backend.edit("install_model", "video")
+                        }
+                        FChoice {
+                            objectName: "installImageModel"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
+                            text: "MiniMax H3\u00a0Image"
+                            detail: s.image_installed ? t("Installed.", "已安装。") : checked ? t("Makes pictures.", "生成图片。") : t("Makes pictures. Can be added later in the app.", "生成图片。以后可在应用内添加。")
+                            checked: !!s.image_only; enabled: !s.busy
+                            onClicked: backend.edit("install_model", "image")
+                        }
+                    }
                     FCard {
-                        objectName: "modelLibraries"; visible: !usingRuntime; Layout.fillWidth: true; padding: 20; spacing: 10
+                        objectName: "modelLibraries"; visible: !usingRuntime && !s.image_only; Layout.fillWidth: true; padding: 20; spacing: 10
                         RowLayout {
                             Layout.fillWidth: true; spacing: 12
                             ColumnLayout {
@@ -644,8 +664,10 @@ ApplicationWindow {
                         FText { objectName: "runtimeReadyOnModels"; text: t("✓ Environment ready · now the models", "✓ 运行环境已就绪 · 接下来准备模型"); color: theme.success; Layout.fillWidth: true }
                         FButton { text: t("Change", "更改"); flat: true; enabled: !s.busy; onClicked: backend.action("back", false) }
                     }
-                    FText { text: usingRuntime ? t("Where should the models come from?", "选择模型来源") : t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
+                    FText { visible: !s.image_only; text: usingRuntime ? t("Where should the models come from?", "选择模型来源") : t("How would you like to get the rest?", "选择下载方式"); font.pixelSize: theme.strong; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.topMargin: 6 }
                     RowLayout {
+                        // MiniMax H3 Image downloads by itself; the offline packages hold the video model.
+                        objectName: "modelMethodChoice"; visible: !s.image_only
                         Layout.fillWidth: true; spacing: 12
                         FChoice {
                             objectName: "automaticMethod"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
@@ -715,7 +737,7 @@ ApplicationWindow {
                     }
                     FCard {
                         objectName: "aheadCard"
-                        visible: !manualEnvironment && !offlineSelected; Layout.fillWidth: true; padding: 16; spacing: 12
+                        visible: !manualEnvironment && !offlineSelected && !s.image_only; Layout.fillWidth: true; padding: 16; spacing: 12
                         FText { text: t("Download ahead", "提前下载"); font.weight: Font.DemiBold; Layout.fillWidth: true }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 14
@@ -996,6 +1018,20 @@ ApplicationWindow {
                         FButton { objectName: "bundleLicensesButton"; visible: s.needs_consent; text: t("View licenses", "查看许可证"); flat: true; implicitHeight: theme.heightSm - 2; leftPadding: 32; font.pixelSize: theme.micro + 1; onClicked: licensesOpen = true }
                     }
                     FCard {
+                        // Set up with MiniMax H3 Image alone: the video model is added through a reviewed installation.
+                        objectName: "videoModelCard"; visible: !!s.video_missing
+                        Layout.fillWidth: true; padding: 22; spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 14
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 4
+                                FText { objectName: "videoModelTitle"; text: "MiniMax H3\u00a0Video"; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                FText { objectName: "videoModelStatus"; text: t("Not installed", "未安装"); color: theme.muted; Layout.fillWidth: true }
+                            }
+                            FButton { objectName: "videoModelAdd"; text: t("Add", "添加"); enabled: !!s.can_add_video; onClicked: backend.action("add-video", false) }
+                        }
+                    }
+                    FCard {
                         objectName: "imagePackCard"
                         visible: !!s.image_pack && s.image_pack.visible
                         Layout.fillWidth: true; padding: 22; spacing: 10
@@ -1008,7 +1044,7 @@ ApplicationWindow {
                                 FText { objectName: "imagePackTitle"; text: s.image_pack.title; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                 FText { objectName: "imagePackStatus"; visible: s.image_pack.install.state !== "failed"; text: s.image_pack.detail; color: theme.muted; Layout.fillWidth: true }
                             }
-                            FText { objectName: "imagePackSize"; text: bytes(s.image_pack.total_bytes).replace(" ", "\u00a0"); color: theme.muted }
+                            FText { objectName: "imagePackSize"; text: gb(s.image_pack.total_bytes); color: theme.muted }
                             FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
                             FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
                             FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("repair") }

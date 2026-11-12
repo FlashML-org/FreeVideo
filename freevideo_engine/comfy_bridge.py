@@ -154,6 +154,9 @@ def _engine_version():
 
 
 # Names emitted by both decoders; forecast keys use the same suffixes.
+WORK_LABELS = {'encoding': 'Encoding text and images', 'load': 'Preparing offloaded weight storage',
+               'decode': 'Decoding the video'}
+WORK_UNITS = ('bytes', 'layers', 'files', 'frames', 'chunks')
 _DECODE_PARTS = {'Loading video VAE': 'vae_load', 'Decoding the video': 'video_decode',
                  'Loading and decoding audio': 'audio_load_decode', 'Saving MP4 and audio': 'encode'}
 
@@ -1124,6 +1127,15 @@ def progress_message(event):
         return dict(label='Decoding the video', timing_phase='decode', phase='decode', stage='video',
                     done=event.get('done'), total=event.get('total'), unit='frames',
                     elapsed_seconds=event.get('elapsed_seconds'))
+    if name == 'work_progress':
+        # Real completed counts inside a long step that otherwise prints nothing.
+        group, stage = event.get('group'), event.get('stage')
+        done, total, unit = event.get('done'), event.get('total'), event.get('unit')
+        if (group not in WORK_LABELS or type(done) is not int or type(total) is not int
+                or not 0 <= done <= total or total < 1 or unit not in WORK_UNITS):
+            return None
+        return dict(label=WORK_LABELS[group], timing_phase=group, phase=group, stage=stage,
+                    done=done, total=total, unit=unit, elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}
     if name == 'media_encode_progress':
@@ -1419,6 +1431,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 command += ['--' + field.replace('_', '-'), str(reserve)]
         if preview:
             command.append('--preview')
+        elif continue_from is None:
+            from .output_settings import command_option
+            command += command_option(root)
     if hide_tail and '--hide-tail' not in command:
         command.append('--hide-tail')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
@@ -1718,6 +1733,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 # The ending was encoded by the engine, which is where the real counters come from.
                 state['continuation'] = dict(receipt)
             state['continuation']['audio_lead_in_samples'] = receipt.get('audio_lead_in_samples', 0)
+            # When the engine could not keep this block's seam record, say why, so a join that
+            # later finds no record can name it. Only a short word, never a path or a text.
+            stored = engine.get('continuation_store')
+            if isinstance(stored, dict) and stored.get('saved') is False:
+                why = stored.get('reason') or stored.get('error')
+                if isinstance(why, str) and why.isascii() and why.isidentifier() and len(why) <= 64:
+                    state['continuation']['record_not_kept'] = why
         if comfy_metadata:
             # Dropping the video on the canvas restores this graph, as with ComfyUI's own video nodes.
             # Written before the result cache records the file's size and hash.

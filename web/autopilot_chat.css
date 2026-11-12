@@ -74,7 +74,8 @@
 .fv-chat-seek::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:#ffffff40}
 .fv-chat-seek::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;margin-top:-3px;border-radius:50%;background:#fff}
 .fv-chat-seek::-moz-range-track{height:3px;border-radius:9px;background:#ffffff40}.fv-chat-seek::-moz-range-thumb{width:9px;height:9px;border:0;border-radius:50%;background:#fff}
-.fv-chat-info{display:grid;align-content:space-between;gap:12px;min-width:0;padding:4px 4px 2px 0}
+/* One shrinkable track: a long title ellipsizes instead of widening the column past the card. */
+.fv-chat-info{display:grid;grid-template-columns:minmax(0,1fr);align-content:space-between;gap:12px;min-width:0;padding:4px 4px 2px 0}
 /* Finished cards have only a heading and any available actions; an empty footer takes no room. */
 .fv-chat-job[data-kind=image][data-mode=done] .fv-chat-preview{max-width:calc(160px * var(--fv-chat-ratio,1.7778))}
 .fv-chat-job[data-mode=done]:not(:has(.fv-chat-preview)){grid-template-columns:minmax(0,1fr)}
@@ -132,9 +133,15 @@
 .fv-chat-preview[data-loading=true] .fv-chat-play::before{border-color:var(--fv-accent);animation:fv-chat-breathe 1s infinite}
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped]){display:block;width:100%}.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-chat-actions{margin-top:10px;flex-wrap:wrap}
 .fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links{justify-content:flex-start}
-.fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold{margin-top:8px;max-width:440px}.fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold[hidden]{display:none}
-.fv-chat-job:is([data-mode=failed],[data-mode=stopped])>.fv-failure-fold>.fv-failure-cause{margin:2px 0 8px;font-size:12.5px;line-height:1.5;color:var(--fv-muted);white-space:pre-wrap;overflow-wrap:anywhere}
-.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-chat-actions>button{min-height:var(--fv-h-sm,32px);box-sizing:border-box;margin:0;padding:5px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font-size:13px;font-weight:var(--fv-medium,500)}
+.fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-actions{justify-content:flex-start}
+.fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links:has(>.fv-image-failure-reason){display:grid;grid-template-columns:minmax(0,1fr);justify-items:start;gap:12px;width:100%}
+.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold{margin-top:8px;max-width:440px}.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold[hidden]{display:none}
+/* A picture's card is a 12 px grid; the fold keeps the video card's 8 px under the reason and 10 px above the buttons. */
+.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-failure-fold{margin:-4px 0 -2px;justify-self:stretch}
+.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold>.fv-failure-cause{margin:2px 0 8px;font-size:12.5px;line-height:1.5;color:var(--fv-muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action){min-height:var(--fv-h-sm,32px);box-sizing:border-box;margin:0;padding:5px 14px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font-size:13px;font-weight:var(--fv-medium,500)}
+/* A picture's failure row (Send again, the report) takes the video failure card's button size, not the result bar's 38 px. */
+.fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links .fv-actions>.fv-action{height:auto;min-width:0;line-height:inherit}
 .fv-chat-job .fv-report-tip{max-width:100%}
 .fv-chat-main{grid-template-rows:auto minmax(0,1fr) auto auto}
 .fv-chat-tools{grid-row:1}.fv-chat-scroll{grid-row:2}.fv-chat-notice-row{grid-row:3}.fv-chat-input{grid-row:4}
@@ -166,7 +173,7 @@
 }
 @media(max-width:480px){.fv-chat-main{padding:0 14px 14px}.fv-chat-scroll{margin:0 -14px;padding:16px 14px 2px}.fv-chat-hello{padding-top:32px}.fv-chat-job{max-width:none;gap:12px}.fv-chat-confirm{max-width:none}
 @media(max-width:560px){.fv-studio :is(.fv-chat-scenes,.fv-chat-whitebox){width:36px;padding:0;justify-content:center}:is(.fv-chat-scenes,.fv-chat-whitebox)>span{display:none}}
- .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
+ .fv-chat-preview,.fv-chat-preview[data-shape=wide]{width:98px}.fv-chat-length{display:none}.fv-chat-input{gap:6px;padding-left:12px}.fv-studio.fv-autopilot .fv-chat-input textarea{font-size:16px}.fv-studio .fv-chat-down{right:14px;bottom:84px}}
 @media(prefers-reduced-motion:reduce){.fv-chat-parts>i::after{transition:none}.fv-chat-dots>i,.fv-chat-preview>img,.fv-chat-menu{animation:none}}
 
 /* Request errors use the card's existing actions and retry button. */

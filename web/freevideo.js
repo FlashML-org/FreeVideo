@@ -14,7 +14,8 @@ import { startUpdateChecks, productVersion } from './updates.js';
 import { startWhatsNew } from './whatsnew.js';
 import { startWhiteboxWorker } from './whitebox_worker.js';
 import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';
-import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces } from './view_navigation.js';
+import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';
+import { videoModelState } from './video_model.js';
 import { isLaunchVisit } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
@@ -1021,7 +1022,15 @@ app.registerExtension({
         requestAnimationFrame(async () => {
             const launch = waitForLauncherRestore(); if (launch) await launch;
             if (epoch !== configuration) return;
-            if (!opening) { showStudio(node); return; }
+            if (!opening) {
+                // Set up with MiniMax H3 Image alone, the app opens on Images unless Create was the last view chosen.
+                if (rememberedView !== 'studio' && !(await videoModelState((path, options) => api.fetchApi(path, options))).installed) {
+                    if (epoch !== configuration) return;
+                    if (await openImage(node)) return;
+                }
+                if (epoch === configuration) showStudio(node);
+                return;
+            }
             try {
                 const handle = await openEditorView(node, {isCurrent: () => epoch === configuration,
                     onProjectLoaded: record => opening.setName(record.name),

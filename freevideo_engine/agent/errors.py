@@ -7,6 +7,7 @@ from contextvars import ContextVar
 import math
 import re
 import uuid
+from ..image_gen.failure import STAGES as IMAGE_STAGES
 from ..image_gen.loras import ERRORS as LORA_ERRORS, MESSAGE_EN as LORA_MESSAGE_EN, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 REQUEST_ID = ContextVar('agent_request_id', default=None)
@@ -149,7 +150,7 @@ IMAGE_REASONS = {
     'small_memory': ('This Mac has less than 16 GB of memory and cannot generate pictures.',
                      '这台 Mac 的内存不足 16 GB，无法生成图片。'),
     'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
-                  '显存不够，最小尺寸也没能生成。关掉其他占用显卡的程序后再试。'),
+                  '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'),
     'busy_video': ('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'),
     'pack_missing': ('Download "Image generation models" in the launcher first.',
                      '请先在启动器里下载“图像生成模型”。'),
@@ -297,8 +298,8 @@ FAILURE_REASONS_ZH = {
     'lan_unavailable': '局域网设置需要启动器安装记录',
     'capabilities_computing': '正在计算这台电脑的生成能力，稍后再试',
     'out_of_memory': '生成时显存或内存不足',
-    'insufficient_memory': '可用显存或内存不够生成这段内容',
-    'no_memory': '可用显存或内存不够生成这张图片',
+    'insufficient_memory': '可用显存或内存不足，无法生成这段内容',
+    'no_memory': '可用显存或内存不足，无法生成这张图片',
     'ram_space': '加载模型时系统内存不足',
     'model_missing': '需要的模型还没有安装好',
     'pack_missing': '图片模型还没有安装好',
@@ -466,7 +467,7 @@ def with_reason(error):
 
 def build(code, *, details=None, request=None, validation=False, message=None, next_action=None,
           action_required=True, retry_after_seconds=None, owner=None, kind=None, stage='request', resumable=True,
-          report_id=None, memory=None, other_usage=_UNREAD_USAGE):
+          report_id=None, memory=None, image_stage=None, other_usage=_UNREAD_USAGE):
     code = code if code in ERRORS else 'internal_error'
     _, retryable, default_message, _ = ERRORS[code]
     action = recovery(code, kind=kind, stage=stage, resumable=resumable)
@@ -482,6 +483,8 @@ def build(code, *, details=None, request=None, validation=False, message=None, n
         result.update(image_failure(code, report_id))
         if code == 'no_memory' and memory == 'host':
             result['memory'] = 'host'
+        if image_stage in IMAGE_STAGES:
+            result['stage'] = image_stage
     if other_usage is not _UNREAD_USAGE:
         result['other_usage'] = other_usage
     result = capture_other_usage(result)

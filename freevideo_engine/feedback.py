@@ -65,6 +65,24 @@ def summary(report, machine=None):
     return out
 
 
+def setup_hardware(machine):
+    """The hardware the setup run recorded for this machine's device, or {}.
+
+    machine.json carries only the device identity; the totals are in the plan of
+    the setup run it names, the same place the progress forecast reads them from.
+    """
+    try:
+        from pathlib import Path
+        from .effort_forecast import same_device
+        device = machine.get('device_identity') if machine.get('device_backend') == 'mps' else machine.get('gpu_uuid')
+        with (Path(machine['setup_run']) / 'plan.json').open('rb') as stream:
+            raw = stream.read(1024 * 1024 + 1)
+        found = json.loads(raw).get('inventory', {}).get('hardware', {}) if len(raw) <= 1024 * 1024 else {}
+        return found if isinstance(found, dict) and same_device(found, device) else {}
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return {}
+
+
 def collect(report_id=None):
     """The diagnostic summary for the latest generation, or for this machine alone before any."""
     report = machine = None
@@ -79,6 +97,8 @@ def collect(report_id=None):
     try:
         from .comfy_bridge import installation
         machine = installation()[1]
+        if not isinstance(machine.get('hardware'), dict):
+            machine = dict(machine, hardware=setup_hardware(machine))
     except Exception:  # Setup problems must not stop a suggestion from being sent.
         machine = None
     return summary(report, machine)

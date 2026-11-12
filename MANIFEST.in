@@ -6,6 +6,7 @@ recursive-include example_workflows *.json
 recursive-include web *.js *.css
 include web/vendor/three/LICENSE
 include web/assets/*.svg web/assets/*.png web/assets/*.webp
+recursive-include web/assets/image *.webp
 recursive-include web/howto *.png
 recursive-include web/fonts *.woff2
 recursive-include web/tutorial *.webp *.mp4

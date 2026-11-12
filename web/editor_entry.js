@@ -15,6 +15,8 @@ function editorPanel(node) {
         step_cache: values.step_cache, upscale_factor: values.upscale_factor, seed: values.seed, sampling_effort: values.sampling_effort}).filter(([, value]) => value !== undefined)),
         // The creative panel's two-pass choices, which the generation bar shows too; null without an open panel.
         get passMode() { return node.freevideoPassMode || null; },
+        // The creative panel's quality control (levels and steps), shared the same way; null without an open panel.
+        get effort() { return node.freevideoEffort || null; },
         // What a two-pass choice leaves in the panel's sampling settings now.
         sampling() {
             const now = read();

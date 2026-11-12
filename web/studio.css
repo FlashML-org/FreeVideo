@@ -14,9 +14,9 @@
 .fv-studio .fv-header{height:76px;display:grid;grid-template-columns:1fr auto;align-items:center;padding:0 28px;border-bottom:1px solid var(--fv-border);gap:12px}
 .fv-brand{display:flex;min-width:0;align-items:center;gap:10px;font-size:var(--fv-strong);letter-spacing:-.5px;font-weight:var(--fv-semibold)}
 .fv-studio .fv-title{text-align:center}.fv-studio .fv-title strong{font-size:var(--fv-body);font-weight:var(--fv-medium)}.fv-studio .fv-header-actions{display:flex;justify-content:flex-end;align-items:center;gap:5px}
-.fv-studio[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
+.fv-studio:not(.fv-editor)[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
 .fv-studio .fv-body{display:grid;grid-template-columns:420px minmax(0,1fr);flex:1 1 auto;min-height:0}
-@media(max-width:680px){.fv-studio[open]{display:block}}
+@media(max-width:680px){.fv-studio:not(.fv-editor)[open]{display:block}}
 .fv-studio .fv-controls{min-height:0;overflow:auto;padding:25px 26px 0;border-right:1px solid var(--fv-border);scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-studio .fv-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-weight:var(--fv-semibold);color:var(--fv-ink);font-size:var(--fv-body)}
 .fv-studio .fv-muted{color:var(--fv-muted);font-size:var(--fv-micro);font-weight:var(--fv-regular)}
@@ -126,6 +126,7 @@
 .fv-studio .fv-runbar .fv-primary{width:100%;min-height:var(--fv-h-lg);font-size:14px}
 .fv-studio .fv-runrow{display:flex;gap:6px;align-items:stretch}
 .fv-studio .fv-runrow>.fv-primary{flex:1;min-width:0}
+.fv-studio .fv-add-video-note{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--fv-muted);text-align:center}
 .fv-studio .fv-run-options{position:relative;flex:none}
 .fv-studio .fv-run-options>summary{display:grid;place-items:center;height:100%;width:42px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);cursor:pointer;list-style:none}
 .fv-studio .fv-run-options>summary::-webkit-details-marker,.fv-studio .fv-queue-details>summary::-webkit-details-marker{display:none}
@@ -311,11 +312,8 @@
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=tight] .fv-lan{display:none}
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=lean] .fv-lan,.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=lean] .fv-feedback-entry:not(.fv-guide-entry){display:none}
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=least] .fv-guide-entry{display:none}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=wrap]{height:auto;min-height:98px;grid-template-columns:minmax(0,1fr) auto;padding-block:10px}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=wrap]>.fv-view-switch{grid-column:1/-1;grid-row:2;justify-self:center}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=wrap]>.fv-header-actions{grid-column:2;grid-row:1}
+/* The first row matches the edit view's (its name field is 40 px), so the wrapped switch stays put when the view changes. */
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=small] .fv-wordmark{width:150px}
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=compact] .fv-monitor-text{display:none}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=shift]{grid-template-columns:minmax(0,1fr) auto auto}
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=gone] .fv-monitor{display:none}
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=compact] .fv-monitor .fv-monitor-trigger{padding:0 8px}

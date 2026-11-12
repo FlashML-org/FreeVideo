@@ -1193,6 +1193,8 @@ class QwenImageVAE(nn.Module):
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
+        # Called as (tiles done, tiles in all) while a tiled decode runs; set by the caller.
+        self.tile_progress = None
 
         # Precompute and cache conv counts for encoder and decoder for clear_cache speedup
         self._cached_conv_counts = {
@@ -1358,9 +1360,10 @@ class QwenImageVAE(nn.Module):
 
     # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.decode
     def decode(self, z: torch.Tensor, return_dict: bool = True, *, tile: bool | None = None,
-               tile_size: int | None = None, tile_stride: int | None = None) -> DecoderOutput | torch.Tensor:
+               tile_size: int | None = None, tile_stride: int | None = None,
+               progress=None) -> DecoderOutput | torch.Tensor:
         r"""
-        Decode a batch of images.
+        Decode a batch of images; ``progress(done, total)`` is called after each tile of a tiled decode.
 
         Args:
             z (`torch.Tensor`): Input batch of latent vectors.
@@ -1375,6 +1378,7 @@ class QwenImageVAE(nn.Module):
         previous_tiling = self.use_tiling
         previous_tiles = (self.tile_sample_min_height, self.tile_sample_min_width,
                           self.tile_sample_stride_height, self.tile_sample_stride_width)
+        self.tile_progress = progress
         if tile is not None:
             self.use_tiling = tile
         if tile_size is not None:
@@ -1389,6 +1393,7 @@ class QwenImageVAE(nn.Module):
             else:
                 decoded = self._decode(z).sample
         finally:
+            self.tile_progress = None
             self.use_tiling = previous_tiling
             (self.tile_sample_min_height, self.tile_sample_min_width,
              self.tile_sample_stride_height, self.tile_sample_stride_width) = previous_tiles
@@ -1530,9 +1535,12 @@ class QwenImageVAE(nn.Module):
         rows = []
         # Stop once a tile already covers the edge: a redundant narrow last tile has little
         # context and leaves coloured seams.
-        for i in range(0, max(0, height - tile_latent_min_height) + tile_latent_stride_height, tile_latent_stride_height):
+        tile_rows = range(0, max(0, height - tile_latent_min_height) + tile_latent_stride_height, tile_latent_stride_height)
+        tile_columns = range(0, max(0, width - tile_latent_min_width) + tile_latent_stride_width, tile_latent_stride_width)
+        tile_count, tiles_done = len(tile_rows) * len(tile_columns), 0
+        for i in tile_rows:
             row = []
-            for j in range(0, max(0, width - tile_latent_min_width) + tile_latent_stride_width, tile_latent_stride_width):
+            for j in tile_columns:
                 self.clear_cache()
                 time = []
                 for k in range(num_frames):
@@ -1545,6 +1553,9 @@ class QwenImageVAE(nn.Module):
                     )
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
+                tiles_done += 1
+                if self.tile_progress is not None:
+                    self.tile_progress(tiles_done, tile_count)
             rows.append(row)
         self.clear_cache()
 

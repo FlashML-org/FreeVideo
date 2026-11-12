@@ -296,14 +296,15 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
   .fv-ie-header{grid-template-columns:minmax(0,1fr) auto;padding:8px 10px}
   .fv-ie-zoom{display:none}
   .fv-ie-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(240px,1fr) minmax(0,38dvh)}
-  .fv-ie-toolbar{flex-direction:row;padding:6px 8px;border-right:0;border-bottom:1px solid var(--fv-border);overflow-x:auto}
+  /* Narrow screens wrap tools and options onto more rows: no hidden sideways scrolling. */
+  .fv-ie-toolbar{flex-direction:row;flex-wrap:wrap;row-gap:4px;padding:6px 8px;border-right:0;border-bottom:1px solid var(--fv-border);overflow:visible}
   .fv-ie-tool-gap{width:1px;height:22px;margin:0 4px}
   .fv-ie-tool-fill{flex:1;min-width:6px}
   /* One scrolling column under the picture: properties, then layers, never squeezed. */
   .fv-ie-panel{display:flex;flex-direction:column;border-left:0;border-top:1px solid var(--fv-border);overflow:auto}
   .fv-ie-props,.fv-ie-layers{flex:none;min-height:auto;overflow:visible}
   .fv-ie-layer-list{overflow:visible}
-  .fv-ie-options{overflow-x:auto;flex-wrap:nowrap}
+  .fv-ie-options{flex-wrap:wrap}
   .fv-ie-file,.fv-ie-size{display:none}
 }
 @media (max-width:560px){

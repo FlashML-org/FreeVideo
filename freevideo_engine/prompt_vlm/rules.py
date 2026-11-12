@@ -34,7 +34,8 @@ def request(value):
     for row in media:
         # kind and number say which <Picture N> / <Video N> label the scene uses for the row; connected
         # nodes and audio are left out of the list, so the numbers can skip.
-        if (not isinstance(row, dict) or not {'file', 'role'} <= set(row) <= {'file', 'role', 'kind', 'number'} or
+        if (not isinstance(row, dict) or not {'file', 'role'} <= set(row) <= {'file', 'role', 'kind', 'number', 'optional'} or
+                row.get('optional', True) is not True or
                 not isinstance(row['file'], str) or row['role'] not in ('first', 'last', 'reference') or
                 row.get('kind', 'image') not in ('image', 'video') or
                 (row.get('kind') == 'video' and row['role'] != 'reference') or
@@ -45,8 +46,7 @@ def request(value):
         raise ValueError('mixed_media')
     if roles.count('first') > 1 or roles.count('last') > 1:
         raise ValueError('mixed_media')
-    mode = ('ref2va' if 'reference' in roles else 'fl2va' if 'first' in roles and 'last' in roles
-            else 'i2va' if 'first' in roles else 'l2va' if 'last' in roles else 't2va')
+    mode = mode_of(roles)
     # Anchor numbering must match the encoder even when the UI added last first.
     if mode != 'ref2va':
         media = sorted(media, key=lambda r: r['role'] != 'first')
@@ -56,11 +56,17 @@ def request(value):
     for row in media:
         kind = row.get('kind', 'image')
         counters[kind] = counters.get(kind, 0) + 1
-        rows.append(dict(file=row['file'], role=row['role'], kind=kind, number=row.get('number', counters[kind])))
+        rows.append(dict(file=row['file'], role=row['role'], kind=kind, number=row.get('number', counters[kind]),
+                         **({'optional': True} if row.get('optional') else {})))
     media = rows
     if len({label(row) for row in media}) != len(media):
         raise ValueError('unsupported_media')
     return dict(text=prompt, seconds=float(seconds), media=media, mode=mode)
+
+
+def mode_of(roles):
+    return ('ref2va' if 'reference' in roles else 'fl2va' if 'first' in roles and 'last' in roles
+            else 'i2va' if 'first' in roles else 'l2va' if 'last' in roles else 't2va')
 
 
 LABEL = re.compile(r'<(Picture|Video|Audio) (\d+)>')

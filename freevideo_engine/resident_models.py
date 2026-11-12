@@ -19,6 +19,16 @@ DECODE_SLACK_FRACTION = 0.1
 # Where a preview's sampling peak is kept, apart from its complete request's.
 PREVIEW_STAGE = 'engine_preview'
 HABIT_WINDOW = 4
+# Options of one pass's tiling and pipelining. A kept engine is reused across their values and
+# every request applies its own (pass_configuration.COMPUTE_KEYS holds the same names and more:
+# the host-memory ones stay in the reuse key).
+ENGINE_PASS_OPTIONS = ('head_chunk', 'window_batch', 'ff_chunk', 'projection_chunk', 'prefetch')
+# Chunks whose wrappers exist only when they were on at load.
+ENGINE_CHUNK_SWITCHES = ('head_chunk', 'ff_chunk', 'projection_chunk')
+# Pass options that also change the arithmetic of the refined text a kept engine remembers.
+ENGINE_ARITHMETIC_OPTIONS = ('head_chunk', 'projection_chunk')
+# Resident blocks that a kept engine may lack against the plan and still be reused.
+RESIDENT_BLOCK_SHORTFALL = 2
 
 
 def retention_order(history):
@@ -525,16 +535,59 @@ class ModelBank:
         entry = self.entries.get('engine')
         return entry is not None and not is_parked(entry['model'])
 
+    def engine_peak_key(self, request):
+        """The request's complete options: what its measured sampling peak and its refined text belong to."""
+        options = request['engine_options']
+        return key(dict(engine=self.engine_key(request),
+                        plan={name: options.get(name) for name in (*ENGINE_PASS_OPTIONS, 'resident_blocks')}))
+
     def engine_key(self, request):
+        """What a kept engine must share with a request to serve it, as opposed to engine_peak_key().
+
+        The tiling and pipelining of a pass (head, window, feed-forward and projection chunks,
+        prefetch) change neither the weights nor where they live, and every request re-applies
+        its own values to a reused engine (pass_configuration). Planning picks them from the
+        free memory of the moment, so a plan that drifted by a few hundred MiB must not discard
+        a loaded engine. Whether a chunk exists at all stays in the key: the wrappers that a
+        later change replaces are installed only for chunks that were on at load.
+        """
+        options = {k: v for k, v in request['engine_options'].items() if k != 'pin_host_gb'}
+        for name in ENGINE_PASS_OPTIONS:
+            options.pop(name, None)
+        for name in ENGINE_CHUNK_SWITCHES:
+            if request['engine_options'].get(name):
+                options[name + '_on'] = True
+        options.pop('resident_blocks', None)
         return key(dict(cache=file_identity(Path(request['cache'])/'manifest.json'),
-                        options={k: v for k, v in request['engine_options'].items() if k != 'pin_host_gb'},
-                        geometry=request.get('geometry'),
+                        options=options, geometry=request.get('geometry'),
                         inputs=request.get('input_cache_dir')))
 
+    @staticmethod
+    def resident_blocks_serve(retained, wanted):
+        """A kept engine with a few blocks fewer on the card than planned still serves the request.
+
+        The missing blocks stream like every other offloaded one, which costs far less than loading
+        the engine again. One with more blocks resident than planned does not: the plan counted on
+        that memory being free."""
+        if type(retained) is not int or type(wanted) is not int:
+            return True  # Nothing to compare: the rest of the key decided.
+        return wanted - RESIDENT_BLOCK_SHORTFALL <= retained <= wanted
+
     def engine(self, request, factory):
-        identity = self.engine_key(request)
-        found = self.take('engine', identity)
+        identity = self.engine_peak_key(request)
         options, canvas = request['engine_options'], request.get('geometry', {})
+        reuse_identity = self.engine_key(request)
+        entry = self.entries.get('engine')
+        if (entry is not None and entry['identity'] == reuse_identity and not self.resident_blocks_serve(
+                getattr(entry['model'], 'config', {}).get('resident_blocks'), options.get('resident_blocks', 0))):
+            self.drop('engine', 'Resident block count no longer fits the plan')
+        found = self.take('engine', reuse_identity)
+        if found is not None:
+            # The refined-text memo was computed with the arithmetic that the engine was loaded with.
+            held = getattr(found, 'config', {})
+            if isinstance(getattr(found, 'refined_text_memo', None), dict) and any(
+                    name in held and held[name] != options.get(name) for name in ENGINE_ARITHMETIC_OPTIONS):
+                found.refined_text_memo = {}
         # A larger host-cache allowance does not change weights or arithmetic.
         # Keep the existing affordable cache rather than rereading every block
         # just to pin one more layer. A lower cap must still release the old
@@ -598,7 +651,7 @@ class ModelBank:
                                        seconds=time.perf_counter() - started))
         if found is None:
             found = factory()
-            self.put('engine', identity, found)
+            self.put('engine', reuse_identity, found)
         memo = getattr(found, 'refined_text_memo', None)
         if isinstance(memo, dict):
             cached = self.take('conditioning', identity)

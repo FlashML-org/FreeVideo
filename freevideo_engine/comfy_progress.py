@@ -475,6 +475,16 @@ def register():
     async def preview_style_route(request):
         return web.json_response(preview_style(), headers={'Cache-Control': 'no-store'})
 
+    @server.routes.get('/freevideo/output-settings')
+    async def output_settings_route(request):
+        try:
+            from .comfy_bridge import installation_root
+            from .output_settings import available, read
+            value = dict(read(installation_root()), available=await asyncio.to_thread(available))
+        except Exception:
+            value = dict(ten_bit=False, available=False)
+        return web.json_response(value, headers={'Cache-Control': 'no-store'})
+
     @server.routes.post('/freevideo/node-view-opened')
     async def node_view_opened(request):
         from .comfy_host_stats import record_node_view

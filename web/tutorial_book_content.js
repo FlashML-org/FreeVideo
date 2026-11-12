@@ -73,6 +73,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'image-gen',
+        title: {zh: '生成图片', en: 'Make a picture'},
+        summary: {zh: '在图像视图中用一段描述生成图片，也可以在 AI 全自动中请 Agent 出图。', en: 'Make a picture from a description in the Images view, or ask an agent for one in Autopilot.'},
+        media: {
+            type: 'image',
+            src: {zh: 'image-gen-1.webp', en: 'image-gen-2.webp'},
+            alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接 Agent 后说“画一张……”，Agent 只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
+            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an agent and say "Draw a picture of …". The agent makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
+        },
+        limits: {
+            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', 'H3 Image 不支持参考图。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
+            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'H3 Image does not take reference pictures.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+        },
+    },
+    {
         id: 'first-last-frame',
         title: {zh: '首帧和尾帧', en: 'First and last frames'},
         summary: {zh: '指定视频从哪张图开始、到哪张图结束。', en: 'Choose the image the video starts from and the one it ends on.'},
@@ -93,6 +111,24 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['图片会按所选画幅居中裁切。', '首帧、尾帧不能与参考图、角色同时使用。'],
             en: ['Images are center-cropped to the chosen shape.', 'First and last frames cannot be used with reference images or characters.'],
+        },
+    },
+    {
+        id: 'middle-frames',
+        title: {zh: '中间帧', en: 'Middle frames'},
+        summary: {zh: '在首帧和尾帧之间再指定最多 3 张画面，并设定各自出现的时间。', en: 'Add up to 3 pictures between the first and last frames, each at a time you choose.'},
+        media: {
+            type: 'image',
+            src: {zh: 'middle-frames-1.webp', en: 'middle-frames-2.webp'},
+            alt: {zh: '创作面板：素材中一张图片的用途已选为“中间帧”，用途下拉框和时间输入框已用红框标出。', en: 'The creation panel, with an image in Media set to "Middle frame". The role dropdown and the time field are outlined in red.'},
+        },
+        steps: {
+            zh: ['在“素材”中添加首帧和尾帧两张图片，做法见“首帧和尾帧”一章。', '再点“添⁠加”选一张图片，将它的用途下拉框选为“中间帧”。', '在“时间”中填写这张图出现在第几秒；默认值位于前后两帧的正中，可直接修改。', '需要更多中间画面时重复上两步，最多 3 张，各张时间不能相同。', '在描述中写明画面如何变化，点“生⁠成⁠视⁠频”。'],
+            en: ['Under "Media", add a first frame and a last frame, as in the chapter "First and last frames".', 'Choose "Add" again, pick an image and set its role dropdown to "Middle frame".', 'Under "At", enter the second at which this picture appears. The default lies halfway between its neighbors and can be changed.', 'Repeat the last two steps for more pictures, up to 3, each at a different time.', 'Describe how the picture changes, then choose "Generate video".'],
+        },
+        limits: {
+            zh: ['中间帧需要同时有首帧和尾帧，时间需在视频时长以内。', '30 秒及以上的视频分段生成，中间帧只用于第一段。', '接续视频时不使用中间帧，首尾帧会用作参考图。'],
+            en: ['Middle frames need both a first and a last frame, and each time must fall within the video.', 'A video of 30 seconds or longer is made in parts, and middle frames apply to the first part only.', 'When continuing a video, middle frames are not used, and the first and last frames are used as references.'],
         },
     },
     {
@@ -393,6 +429,25 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'save-frame',
+        view: 'editor',
+        title: {zh: '保存当前帧', en: 'Save the current frame'},
+        summary: {zh: '把时间线上某一刻的画面存成图片，可再用作首帧、参考图或继续修图。', en: 'Keep the picture at one moment of the timeline as an image, to use as a first frame, a reference or for further editing.'},
+        media: {
+            type: 'image',
+            src: {zh: 'save-frame-1.webp', en: 'save-frame-2.webp'},
+            alt: {zh: '剪辑视图：时间线上的播放头和预览下方的“保存当前帧”按钮已用红框标出。', en: 'The Edit view, with the playhead on the timeline and the "Save current frame" button below the preview outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“剪辑视图”。', '把播放头拖到想要的画面上，也可按空格播放、暂停后停在该处。', '点预览右下方的“保存当前帧”按钮（相机图标）。', '保存后，在“编辑图片 > AI 生成 > 历史”中找到这张图片。'],
+            en: ['Choose "Edit" at the top.', 'Drag the playhead to the picture you want, or press Space to play and pause there.', 'Choose the "Save current frame" button (camera icon) at the lower right of the preview.', 'Find the saved picture under "Edit image > Generate with AI > History".'],
+        },
+        limits: {
+            zh: ['保存的图片与导出视频中这一刻的画面相同。', '播放头下方须有片段；正在生成的一段完成后才能保存。', '时间线为空时按钮不可用。'],
+            en: ['The saved picture is the same as this moment of the exported video.', 'There must be a clip under the playhead. A part that is still being generated can be saved once it is done.', 'The button is unavailable while the timeline is empty.'],
+        },
+    },
+    {
         id: 'editor-extend-refs',
         view: 'editor',
         title: {zh: '在剪辑视图延长时加参考图', en: 'Add reference images when extending in Edit'},
@@ -567,8 +622,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: 'AI 全自动：连接 Agent 的按钮已用红框标出。', en: 'Autopilot, with the button that connects an agent outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”或所连 Agent 的名字后，在“对 Agent 说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
-            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" or the agent\'s name, describe the video under "Message the agent…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
+            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”或所连 Agent 的名字后，在“对 AI 全自动说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
+            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" or the agent\'s name, describe the video under "Ask Autopilot…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
         },
         limits: {
             zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。', 'Agent 开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI Agent”中选择。'],

@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 
-from . import image_model, image_pack, keep
+from . import image_model, image_pack, keep, progress_model
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
@@ -134,6 +134,7 @@ class Service:
         self.worker = None
         self.key = None
         self.state = {}
+        self.preview = None  # {'serial', 'jpeg'}: the running job's newest step picture
         self._busy = False
         self.closed = False
         self.yielding = False
@@ -141,6 +142,8 @@ class Service:
         self.context = None
         self.last_machine = {}
         self.worker_restarts = 0
+        # The last memory_budget reading of each calling thread, for the report.
+        self.budget_reading = threading.local()
         self.worker_started = False
         self.queued = None
         self.habit_root = None
@@ -634,7 +637,7 @@ class Service:
                                    comfy_python=machine.get('comfy_python'), model_paths=machine.get('model_paths'))
             context.update_request(value)
             # H3 Image plans its own residency in the worker; the Qwen plan below does not describe it.
-            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting)
+            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting, reading=context.gpu_reading)
             # Live free memory while another job owns the GPU is advisory. Keep
             # the original request for dispatch, when the owner has released it.
             if not waiting and context.plan is not None and not context.plan['feasible']:
@@ -662,6 +665,7 @@ class Service:
         self.key = key
         self.stop.clear()
         self.state = dict(phase='starting', stage='start')
+        self.preview = None
         if 'fitted' in value:
             self.state['fitted'] = deepcopy(value['fitted'])
         self.context = context
@@ -745,6 +749,7 @@ class Service:
         from ..comfy_residency import native_reclaimable
         # ComfyUI's own idle models in this process: work() unloads them before the worker starts.
         native = native_reclaimable(comfy_server())
+        seen = {}
 
         def read():
             gpu = Gpu(machine.get('gpu_uuid'))
@@ -755,6 +760,7 @@ class Service:
                 used, total = memory
                 if not total or not 0 <= used <= total:
                     return None
+                seen.update(total_bytes=total, used_bytes=used, native_credit_bytes=native)
                 # work() releases idle video/compile models; the image worker
                 # reuses its own allocator. Never credit an unrelated process.
                 owned = set()
@@ -766,19 +772,29 @@ class Service:
                               or any(rows.get(pid) is None for pid in owned if pid in rows)):
                     # An unreported owned pool must not cause a false refusal.
                     # The worker still checks live capacity before inference.
+                    seen.update(owned_unreported=True, budget_bytes=total)
                     return total
                 credit = sum(size for pid, size in rows.items() if pid in owned)
-                return min(total, total - used + credit + native)
+                budget = min(total, total - used + credit + native)
+                seen.update(owned_credit_bytes=credit, budget_bytes=budget)
+                return budget
             finally:
                 gpu.close()
 
         try:
-            return open_bounded(read, .5)
+            budget = open_bounded(read, .5)
         except (OSError, RuntimeError, AttributeError, ValueError):
             return None
+        # What the plan was made from, for the report: a refusal at 0 s otherwise says
+        # only that the budget was small, not how much of the card was in use.
+        self.budget_reading.value = dict(seen) if budget is not None else None
+        return budget
 
-    def preflight(self, machine, value, *, fit=True):
+    def preflight(self, machine, value, *, fit=True, reading=None):
+        self.budget_reading.value = None
         budget = self.memory_budget(machine)
+        if reading is not None:
+            reading.update(self.budget_reading.value or {})
         if budget is None:
             return
         from PIL import Image
@@ -843,8 +859,9 @@ class Service:
             report = context.report(code, row=row, error=error, video_busy=video_busy,
                                     worker_restarts=self.worker_restarts)
             with self.mutex:
-                report_id = uuid.uuid4().hex
+                report_id = getattr(context, 'report_id', None) or uuid.uuid4().hex
                 self.reports[report_id] = report
+                self.reports.move_to_end(report_id)
                 while len(self.reports) > REPORT_LIMIT:
                     self.reports.popitem(last=False)
             result['report_id'] = report_id
@@ -856,8 +873,72 @@ class Service:
             return None
         with self.mutex:
             report = self.reports.get(report_id)
+            context = self.context
+            if report is None and context is not None and getattr(context, 'report_id', None) == report_id and self._busy:
+                report = self.progress_report(context)
             # Callers cannot mutate a retained report through an in-process reference.
             return json.loads(json.dumps(report, allow_nan=False)) if report is not None else None
+
+    def forecast_facts(self, context):
+        forecast = getattr(context, 'forecast', None)
+        if forecast is None:
+            return None
+        return dict(basis=forecast.kind, typical_seconds=round(sum(forecast.predicted.values()), 1),
+                    predicted={stage: round(seconds, 1) for stage, seconds in forecast.predicted.items()})
+
+    def progress_report(self, context):
+        """The report of a request that is still running: what has happened so far."""
+        return context.report('running', outcome='running', worker_restarts=self.worker_restarts,
+                              forecast=self.forecast_facts(context))
+
+    def start_forecast(self, context, value, habit):
+        """The stage-time forecast of this request: this machine's earlier runs of the same size, else priors."""
+        try:
+            images = value.get('images') or []
+            key = progress_model.key_for(value.get('model') or '', value['width'], value['height'], len(images))
+            history = progress_model.History(Path(habit).with_name('image-stage-times.json'))
+            predicted, kind = history.predict(key, bool(images))
+            context.forecast = progress_model.Forecast(predicted, kind)
+            context.forecast.update('load', 0.)
+            context.forecast_key, context.forecast_history = key, history
+        except (KeyError, TypeError, ValueError, OSError):
+            context.forecast = None
+
+    def keep_forecast(self, context):
+        if getattr(context, 'forecast', None) is None:
+            return
+        seconds = {row['stage']: row['seconds'] for row in context.timing.snapshot()}
+        context.forecast_history.record(context.forecast_key, seconds)
+
+    def keep_preview(self, row):
+        """Keep the worker's newest step picture; the status row says which one it is, and `preview_image` returns it."""
+        from .step_preview import LIMIT
+        step, total, width, height, data = (row.get(name) for name in ('step', 'total', 'width', 'height', 'jpeg'))
+        if not (type(step) is int and type(total) is int and 1 <= step <= total <= 64
+                and type(width) is int and type(height) is int and 1 <= width <= 1024 and 1 <= height <= 1024
+                and isinstance(data, str) and len(data) <= LIMIT):
+            return
+        import base64
+        try:
+            jpeg = base64.b64decode(data, validate=True)
+        except ValueError:
+            return
+        if not jpeg.startswith(b'\xff\xd8'):
+            return
+        with self.mutex:
+            if self.state.get('phase') not in ('starting', 'progress', 'cancelling'):
+                return
+            serial = (self.preview or {}).get('serial', 0) + 1
+            self.preview = dict(serial=serial, jpeg=jpeg)
+            self.state['preview'] = dict(step=step, total=total, serial=serial, width=width, height=height)
+
+    def preview_image(self, key):
+        """(serial, JPEG bytes) of the running job's newest step picture, or None."""
+        with self.mutex:
+            if (isinstance(key, str) and self.key is not None and self.preview is not None
+                    and secrets.compare_digest(key.encode('utf-8'), self.key.encode('utf-8'))):
+                return self.preview['serial'], self.preview['jpeg']
+        return None
 
     def status(self, key):
         with self.mutex:
@@ -865,7 +946,13 @@ class Service:
                 def matches(candidate):
                     return candidate is not None and secrets.compare_digest(key.encode('utf-8'), candidate.encode('utf-8'))
                 if matches(self.key):
-                    return deepcopy(self.state)
+                    row = deepcopy(self.state)
+                    forecast = getattr(self.context, 'forecast', None)
+                    if forecast is not None and row.get('phase') in ('progress', 'cancelling'):
+                        row.update(forecast.view())
+                    if row.get('phase') in ('progress', 'cancelling') and getattr(self.context, 'report_id', None):
+                        row['report_id'] = self.context.report_id
+                    return row
                 if self.queued is not None and matches(self.queued['key']):
                     return deepcopy(self.queued['state'])
                 for candidate, state in self.finished.items():
@@ -1081,6 +1168,7 @@ class Service:
                                                    video_busy=failure == 'busy_video'))
                     if fitted is not None:
                         self.state['fitted'] = fitted
+                    self.preview = None
                     self._busy = False
                     self.context = None
                 self.queue_wake.set()
@@ -1173,6 +1261,8 @@ class Service:
             keep.note('image', habit)
         # How long the worker may wait for the next picture; it applies that only with the whole model on the card.
         value['keep_seconds'] = keep.keep_seconds(habit)
+        context.report_id = uuid.uuid4().hex
+        self.start_forecast(context, value, habit)
         loading = True
         limit = H3_INFERENCE_TIMEOUT if value.get('model') == image_model.H3 else INFERENCE_TIMEOUT
         try:
@@ -1210,8 +1300,12 @@ class Service:
                         if self.state.get('stage') == stage and type(self.state.get('fraction')) in (int, float):
                             fraction = max(fraction, self.state['fraction'])
                         context.timing.enter(stage)
+                        if getattr(context, 'forecast', None) is not None:
+                            context.forecast.update(stage, float(fraction))
                         self.state.update(phase='cancelling' if self.stop.is_set() else 'progress',
                                           stage=stage, fraction=fraction)
+            elif phase == 'preview':
+                self.keep_preview(row)
             elif phase in ('result', 'error'):
                 if self.stop.is_set() or row.get('code') == 'cancelled':
                     result = dict(phase='cancelled')
@@ -1235,14 +1329,25 @@ class Service:
                     seconds = row.get('seconds')
                     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
                         raise RuntimeError('worker_exit')
+                    self.keep_forecast(context)
+                    report_id = getattr(context, 'report_id', None)
+                    if report_id:
+                        done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,
+                                              forecast=self.forecast_facts(context))
+                        with self.mutex:
+                            self.reports[report_id] = done
+                            self.reports.move_to_end(report_id)
+                            while len(self.reports) > REPORT_LIMIT:
+                                self.reports.popitem(last=False)
                     result = dict(phase='complete', file='freevideo-image/' + path.name,
-                                  seconds=seconds, plan=row.get('plan'))
+                                  seconds=seconds, plan=row.get('plan'), report_id=report_id)
                     if isinstance(row.get('attention'), dict):
                         result['attention'] = row['attention']
                 with self.mutex:
                     if 'fitted' in self.state:
                         result['fitted'] = self.state['fitted']
                     self.state = result
+                    self.preview = None
                     self._busy = False
                     self.context = None
                     self.queue_wake.set()
@@ -1335,6 +1440,12 @@ def register():
                 result = page_views(value.get('description'), value.get('kind', 'character'))
             elif name == 'status':
                 result = service.status(value.get('job'))
+            elif name == 'preview':
+                found = service.preview_image(value.get('job'))
+                if found is None:
+                    return web.json_response(dict(error='no_preview'), status=404, headers={'Cache-Control': 'no-store'})
+                return web.Response(body=found[1], content_type='image/jpeg',
+                                    headers={'Cache-Control': 'no-store', 'X-FreeVideo-Preview-Serial': str(found[0])})
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
             elif name in ('pack-install', 'pack-cancel'):

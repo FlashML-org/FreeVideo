@@ -85,14 +85,23 @@ def source_version(source):
 
 
 @plain_errors
-def _uv(engine_root, machine):
+def _uv(engine_root, machine, restore=None):
     system = machine.get('system') or ('Windows' if os.name == 'nt' else
                                       'Darwin' if sys.platform == 'darwin' else 'Linux')
     relative = {'Windows': 'uv.exe', 'Darwin': 'uv', 'Linux': 'uv-x86_64-unknown-linux-gnu/uv'}.get(system)
     tool = io_path(engine_root) / 'tools' / relative if relative else None
     if tool is None or not tool.is_file():
-        raise RuntimeError('The engine\'s uv is missing from %s/tools (%s); run Install / repair. '
-                           'Source rebinding does not download tools.' % (engine_root, system))
+        where = 'The engine\'s uv is missing from %s/tools (%s)' % (engine_root, system)
+        if restore is None or tool is None:
+            raise RuntimeError(where + '; run Install / repair. Source rebinding does not download tools.')
+        # Security software can remove it after installation; download the pinned one again. A tool in place stays.
+        try:
+            restore(engine_root, system)
+            if not tool.is_file():
+                raise RuntimeError('it was not found after the download')
+        except Exception as error:
+            reason = (str(error).strip().splitlines() or [type(error).__name__])[0]
+            raise RuntimeError('%s and could not be downloaded again (%s); run Install / repair.' % (where, reason)) from error
     return Path(plain(tool))
 
 
@@ -154,11 +163,13 @@ def pending(machine, source):
 
 
 @plain_errors
-def rebind(engine_root, machine, source, *, uv=None, run=subprocess.run):
+def rebind(engine_root, machine, source, *, uv=None, run=subprocess.run, restore=None):
     """Rebind E/T, verify fresh imports, then atomically record the new source.
 
     A failure restores every attempted environment whose previous source still
     exists, including a failed uv install that may have partially replaced it.
+    A missing uv is restored through `restore(engine_root, system)` when the caller passes one; a failed
+    restore stops the update before any environment is touched.
     """
     engine_root = Path(plain(io_path(checked_real_path(engine_root))))
     source = Path(plain(resolved(checked_real_path(source))))
@@ -166,7 +177,7 @@ def rebind(engine_root, machine, source, *, uv=None, run=subprocess.run):
     environments = pending(machine, source)
     if environments:
         try:
-            uv = Path(plain(uv)) if uv is not None else _uv(engine_root, machine)
+            uv = Path(plain(uv)) if uv is not None else _uv(engine_root, machine, restore)
             if not io_path(uv).is_file():
                 raise RuntimeError('The engine\'s uv is missing: ' + str(uv))
         except RuntimeError as error:

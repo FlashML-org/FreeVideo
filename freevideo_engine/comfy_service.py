@@ -27,7 +27,7 @@ import time
 
 from . import execution_paths
 from .monitoring import save
-from . import engine_binding
+from . import engine_binding, uv_restore
 
 DIAGNOSE = 'If it keeps failing, run ./freevideo diagnose and send the report.'
 
@@ -160,7 +160,7 @@ def install(root, source, machine, port, out=say):
     else:
         add_node_packages(root, source, machine, comfy, out)
     if switching:
-        engine_binding.rebind(root, machine, source)
+        engine_binding.rebind(root, machine, source, restore=uv_restore.restore)
     deploy(comfy, source, root)
     record = dict(root=str(comfy), engine=str(Path(root)), source=str(source), python=python,
                   url='http://127.0.0.1:%d' % port)

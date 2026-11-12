@@ -726,6 +726,10 @@ class ChainRunner:
                 kept += 1
             else:
                 reason = self._lead_failure(identity, row['index'], row['output'], neighbour['output'], True)
+                told = row['continuation'].get('record_not_kept') if isinstance(row['continuation'], dict) else None
+                if reason == 'no_record' and isinstance(told, str):
+                    # The engine already said when the block finished that it could not keep this record.
+                    reason = 'not_saved:' + told[:64]
                 if reason is None:
                     kept += 1
                 elif reasons is not None:

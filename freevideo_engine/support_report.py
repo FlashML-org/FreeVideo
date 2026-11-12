@@ -270,7 +270,7 @@ REQUEST_FIELDS = ('seed', 'encoder_mode', 'profile', 'resource_planning', 'compa
     'reclaimable_resident_models', 'idle_resources', 'tuning', 'input_cache', 'resource_attempts',
     'resource_prediction', 'resource_prediction_error', 'error', 'error_message', 'error_type',
     'resource_error', 'exception', 'encoding_failure', 'phase', 'continuation', 'preflight_memory',
-    'gpu_card')
+    'gpu_card', 'output_10bit')
 
 
 def preview_receipts(output, read_json):

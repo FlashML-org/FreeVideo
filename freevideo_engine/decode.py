@@ -26,13 +26,21 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
                    preload=False, pin_weights=False, artifacts_dir=None, phase_callback=None,
                    stream_output=False, stream_weights=False, resident_blocks=0, model_cache=None,
                    linear_compute_cache=False, continuation=None, audio_lead_in_callback=None, output_size=None,
-                   hide_tail_frames=0, ram_budget_bytes=None, original_audio=None):
+                   hide_tail_frames=0, ram_budget_bytes=None, original_audio=None, output_10bit=None):
     from .continuation import validate_hide_tail
     validate_hide_tail(hide_tail_frames)
     def phase(name):
         if phase_callback is not None:
             phase_callback(name)
         print(json.dumps({'event': 'decode_phase', 'phase': DECODE_LABELS[name]}), flush=True)
+    # The optional 10-bit file: output_10bit = dict(path=..., codec='h264'|'hevc'). The usual
+    # 8-bit file is written exactly as before; this one is made from the same float frames.
+    wide_path = wide = wide_map = None
+    if output_10bit is not None:
+        if original_audio is not None:
+            raise ValueError('10-bit output is not available with the original sound')
+        wide_path = Path(output_10bit['path']).with_name(Path(output_10bit['path']).stem + '.rgb16.partial.npy')
+        wide_path.parent.mkdir(parents=True, exist_ok=True)
     phase('vae_load')
     from diffusers import AutoencoderKLMiniMaxH3
     from diffusers.utils.export_utils import encode_video
@@ -153,19 +161,30 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         # Autocast follows the original renderer. The opt-in Linear cache stores
         # its existing FP16 compute values once; all other weights stay FP32.
         with torch.autocast(device_type='cuda', dtype=torch.float16, cache_enabled=not offload):
+            def decoded(done, total, elapsed):
+                print(json.dumps(dict(event='decode_progress', done=done, total=total,
+                                      elapsed_seconds=elapsed)), flush=True)
             if stream_output:
                 from .decode_stream import render_rgb
                 directory = Path(artifacts_dir) if artifacts_dir else Path(out_path).with_suffix('.artifacts')
-                def decoded(done, total, elapsed):
-                    print(json.dumps(dict(event='decode_progress', done=done, total=total,
-                                          elapsed_seconds=elapsed)), flush=True)
                 frames, rgb_mapping, streamed_timings = render_rgb(vae, latents * std + mean,
-                    PIXEL_MEAN, PIXEL_STD, directory/'rgb.npy', progress=decoded)
+                    PIXEL_MEAN, PIXEL_STD, directory/'rgb.npy', progress=decoded,
+                    **({'wide_path': wide_path} if wide_path is not None else {}))
             else:
-                video = vae.decode(latents * std + mean, return_dict=False)[0]
+                from .decode_stream import count_decoded_clips
+                uncount = count_decoded_clips(vae, latents.shape[2], decoded)
+                try:
+                    video = vae.decode(latents * std + mean, return_dict=False)[0]
+                finally:
+                    uncount()
                 video = video.cpu()
         if offloader is not None:
             offload_stats = offloader.stats()
+    except BaseException:
+        if wide_path is not None:
+            from .video_10bit import discard_store
+            discard_store(None, wide_path)
+        raise
     finally:
         if offloader is not None:
             offloader.close()
@@ -183,18 +202,30 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         if not stream_output:
             phase('video_postprocess')
             frames = torch.empty((video.shape[2], video.shape[3], video.shape[4], 3), dtype=torch.uint8)
+            if wide_path is not None:
+                from .video_10bit import open_store, to_rgb16
+                wide = wide_map = open_store(wide_path, *frames.shape[:3])
             pixel_mean = torch.tensor(PIXEL_MEAN).view(1, -1, 1, 1, 1)
             pixel_std = torch.tensor(PIXEL_STD).view(1, -1, 1, 1, 1)
             for start in range(0, video.shape[2], 8):
                 chunk = (video[:, :, start:start + 8].float() * pixel_std + pixel_mean).clamp_(0, 1)
                 frames[start:start + chunk.shape[2]] = (chunk[0].permute(1, 2, 3, 0) * 255).round().to(torch.uint8)
+                if wide is not None:
+                    wide[start:start + chunk.shape[2]] = to_rgb16(chunk[0].permute(1, 2, 3, 0))
             del video
+        if wide_path is not None and wide is None:
+            import numpy as np
+            wide = wide_map = np.load(wide_path, mmap_mode='r', allow_pickle=False)
         if hide_tail_frames:
             kept_frames = len(frames) - hide_tail_frames
             frames = frames[:kept_frames]
+            if wide is not None:
+                wide = wide[:kept_frames]
         if continuation is not None:
             from .continuation import OVERLAP_FRAMES
             frames = frames[OVERLAP_FRAMES:]
+            if wide is not None:
+                wide = wide[OVERLAP_FRAMES:]
         if original_audio is not None and 'segment' not in original_audio:
             from .original_audio import verify
             verify(original_audio)
@@ -307,7 +338,13 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             encode_video(picture, fps=FPS, output_path=str(temporary), audio=audio, audio_sample_rate=rate)
             temporary.replace(destination)
         frame_count = len(frames)
+        if wide is not None:
+            tenbit = _write_10bit(wide, output_10bit, output_size, audio, rate, FPS, phase)
     finally:
+        if wide_path is not None:
+            from .video_10bit import discard_store
+            wide = picture = None
+            discard_store(wide_map, wide_path)
         if rgb_mapping is not None:
             del frames
             rgb_mapping._mmap.close()
@@ -315,6 +352,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             if (continuation is not None or hide_tail_frames or original_audio is not None) and (retained / 'rgb-new.npy').is_file():
                 (retained / 'rgb-new.npy').replace(retained / 'rgb.npy')
     return {**({'original_audio': original_receipt} if original_receipt is not None else {}),
+            **({'output_10bit': tenbit} if output_10bit is not None else {}),
             'vae_load_seconds': load_seconds, 'video_decode_seconds': video_decode_seconds,
             'vae_linear_compute_cache': linear_compute_cache, 'vae_compute_cache_preparation': compute_cache_metrics,
             'resident_vae_cache_hit': vae_cache_hit, 'resident_audio_vae_cache_hit': audio_cache_hit,
@@ -329,3 +367,27 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             'vae_pinned_weight_bytes': pinned_bytes,
             'decode_save_seconds': time.perf_counter() - started,
             'vae_offload': offload_stats, 'frames': frame_count, 'output': str(destination)}
+
+
+def _write_10bit(wide, output_10bit, output_size, audio, rate, fps, phase):
+    """Encode the 16-bit frames as the 10-bit file. The 8-bit file is already saved, so a
+    failure here is reported in the result and does not fail the generation."""
+    started = time.perf_counter()
+    destination = Path(output_10bit['path'])
+    temporary = destination.with_name(destination.stem + '.partial' + destination.suffix)
+    try:
+        from . import video_10bit
+        phase('mp4_save')
+        picture = video_10bit.fit_frames16(wide, *output_size) if output_size is not None else wide
+        video_10bit.write(picture, temporary, fps=fps, codec=output_10bit.get('codec', 'h264'),
+                          audio=audio, audio_sample_rate=rate)
+        temporary.replace(destination)
+        return dict(saved=True, path=str(destination), codec=output_10bit.get('codec', 'h264'),
+                    seconds=time.perf_counter() - started)
+    except Exception as error:
+        if isinstance(error, MemoryError) or type(error).__name__ in (
+                'OutOfMemoryError', 'CancelledError', 'InterruptProcessingException'):
+            raise
+        return dict(saved=False, error=type(error).__name__, seconds=time.perf_counter() - started)
+    finally:
+        temporary.unlink(missing_ok=True)

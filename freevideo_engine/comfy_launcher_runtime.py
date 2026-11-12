@@ -32,7 +32,7 @@ from .comfy_source import RECEIPT, SOURCE_DISK_BYTES, new_layout, validate_targe
 from .desktop_runtime import materialize_source, source_release
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_text, plain_error, plain_errors
-from . import engine_binding, processes, lan_password
+from . import engine_binding, processes, lan_password, uv_restore
 
 PROTOCOL = 1
 TEMPLATE = 'FreeVideo-All-in-One.json'
@@ -1166,6 +1166,9 @@ class Controller:
                 from .sampling_assets import installed as sampling_installed
                 ready = (not values.get('sampling_caches') or machine.get('video_model') is False
                          or sampling_installed(machine))
+                # An installation without the video model sets up again when the video model is asked for.
+                if machine.get('video_model') is False and values.get('only') != 'image':
+                    ready = False
             except (OSError, ValueError, KeyError):
                 pass
         self.selection = dict(descriptor, engine=str(engine), source=str(source), url=url, ready=ready,
@@ -1186,7 +1189,7 @@ class Controller:
             extra = [p for p in dict.fromkeys(extra) if p.strip() and io_path(Path(p).expanduser()).is_dir()]
             self.setup.inspect(dict(root=str(engine), extra_libraries=extra, copy=False,
                 sampling_caches=bool(values.get('sampling_caches')), prepared_format=values.get('prepared_format'),
-                **({'download_list': True} if checked else {}),
+                **({'download_list': True} if checked else {}), **({'only': 'image'} if values.get('only') == 'image' else {}),
                 frontend=dict(root=descriptor['root'], separate=descriptor['separate'], download=fresh,
                               repair_python=host['python'] if repair_comfy else None)))
             row = self._wait_setup()
@@ -1240,7 +1243,12 @@ class Controller:
                 raise RuntimeError(ENGINE_UPDATE_WAITS + '. Try again after it finishes; the job is left running.')
             self._stop_server_for_setup(selected['url'])
         self.stage('nodes', label='Connecting workflow nodes')
-        engine_binding.rebind(selected['engine'], machine, selected['source'])
+        def stopped():
+            if self.cancelled.is_set():
+                raise RuntimeError('Stopped; files retained')
+        # A uv that security software removed is downloaded again, as the installer does.
+        engine_binding.rebind(selected['engine'], machine, selected['source'],
+                              restore=lambda root, system: uv_restore.restore(root, system, cancelled=stopped))
         self.stage('nodes', label='Install FreeVideo workflow')
         deployed = deploy(selected['root'], selected['source'], selected['engine'])
         selected['ready'] = True

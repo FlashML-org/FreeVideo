@@ -305,9 +305,19 @@ export function createErrorReport(detail, context = {}) {
     const found = detectBrowserExtension(detail, {kind, known, scrub: clean.inputsOnly});
     // A script name the report would redact is not shown or saved either.
     const extension = found && {...found, script: found.script && clean(found.script) === found.script ? found.script : null};
+    // The facts read right after a lost connection: only these keys, only flags, counts and fixed words.
+    const connection = {};
+    for (const [key, type] of [['online', 'boolean'], ['page_hidden', 'boolean'], ['secure_page', 'boolean'], ['engine_answers_after', 'boolean'],
+        ['probe_timed_out', 'boolean'], ['http_status', 'number'], ['probe_ms', 'number']]) {
+        const item = detail?.connection?.[key];
+        if (typeof item === type && (type !== 'number' || Number.isFinite(item))) connection[key] = item;
+    }
+    if (['this-computer', 'local-network', 'other-address', 'host-name', 'unknown'].includes(detail?.connection?.page_address))
+        connection.page_address = detail.connection.page_address;
     const report = {
         schema: 'freevideo.error-report', schema_version: 1, created_at: new Date().toISOString(),
         stage, message: clean(message),
+        ...(Object.keys(connection).length ? {connection} : {}),
         // Chosen from the original message before redaction removes any input
         // text from it, so a card shown again from this report keeps its advice.
         known_error: known,
@@ -391,7 +401,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
         if (fits.length) {
             const en = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} up to ${f.seconds.toFixed(1)}\u00a0s` : `${f.width}\u00a0×\u00a0${f.height} at ${f.seconds.toFixed(1)}\u00a0s`).join(', or ');
             const zh = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} 最长 ${f.seconds.toFixed(1)}\u00a0秒` : `${f.width}\u00a0×\u00a0${f.height} 生成 ${f.seconds.toFixed(1)}\u00a0秒`).join('，或 ');
-            return row('resources', ['Not enough GPU memory', '显存不够'],
+            return row('resources', ['Not enough GPU memory', '显存不足'],
                 ['Generation needs more GPU memory than is currently available.', '生成所需显存超过当前可用量。'],
                 [`This computer can make ${en} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.`,
                  `现在可以生成：${zh}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。`]);
