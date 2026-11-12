@@ -81,13 +81,15 @@
 
 /* Buttons. */
 .fv-setup button{background:var(--fv-raised);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);min-height:var(--fv-h);padding:7px 14px;color:var(--fv-ink);cursor:pointer;font:inherit;font-weight:var(--fv-medium);transition:background .2s,border-color .2s}
-.fv-setup button:hover{background:var(--fv-hover)}
+.fv-setup button:hover:not(:disabled){background:var(--fv-hover)}
 .fv-setup button:active:not(:disabled){filter:brightness(.9);transition-duration:.06s}
 .fv-setup button.fv-primary{background:var(--fv-accent);color:var(--fv-bg);border-color:var(--fv-accent);font-weight:var(--fv-semibold)}
-.fv-setup button.fv-primary:hover{background:var(--fv-accent-hover)}
+.fv-setup button.fv-primary:hover:not(:disabled){background:var(--fv-accent-hover)}
 .fv-setup button.fv-quiet{background:transparent;border-color:transparent;color:var(--fv-muted)}
-.fv-setup button.fv-quiet:hover{background:var(--fv-raised);color:var(--fv-ink)}
-.fv-setup button:disabled{opacity:.45;cursor:default}
+.fv-setup button.fv-quiet:hover:not(:disabled){background:var(--fv-raised);color:var(--fv-ink)}
+/* Unavailable buttons share one gray look, primary included, and do not react to the pointer. */
+.fv-setup button:disabled{background:transparent;border-color:var(--fv-border);color:var(--fv-disabled);cursor:default}
+.fv-setup button.fv-quiet:disabled{border-color:transparent}
 .fv-setup a{color:var(--fv-accent);text-underline-offset:3px}
 .fv-setup .fv-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px}
 .fv-setup .fv-actions.fv-end{justify-content:flex-end}
