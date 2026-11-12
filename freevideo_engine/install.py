@@ -77,7 +77,19 @@ def prepare_diffusers(root, dependencies):
     spec = dependencies['diffusers']
     target = root / dependencies['vdn']['diffusers_subdirectory']
     built = False
-    if not io_path(target).exists():
+    state = None
+    if io_path(target).exists():
+        try:
+            state = network.repository_state(target, 'git', None, 'HEAD^{tree}')
+        except (subprocess.CalledProcessError, OSError) as error:
+            # Git that cannot start is a problem of this machine, not of the folder.
+            if not isinstance(error, subprocess.CalledProcessError) and io_path(target / '.git' / 'HEAD').exists():
+                raise
+            # A folder Git cannot read (its .git removed by a cleaner or a sync
+            # tool, objects lost) can never pass the check below, so every retry
+            # would fail the same way. Keep it beside the new one and build again.
+            network.relocate(target, root / ('engine-diffusers-unreadable-' + str(time.time_ns())))
+    if state is None:
         # Where the folder is too deep for Git to work in, build in a short real one.
         scratch = network.git_scratch_folder() if network.git_folder_too_deep(root / 'engine-diffusers-0') else None
         checkout = scratch / 'repo' if scratch else root / ('engine-diffusers-' + str(time.time_ns()))
@@ -105,7 +117,7 @@ def prepare_diffusers(root, dependencies):
             if scratch and scratch.exists():
                 network.remove_tree(scratch)
     if not built:
-        tree, dirty = network.repository_state(target, 'git', None, 'HEAD^{tree}')
+        tree, dirty = state
         if tree != spec['patched_tree'] or dirty:
             raise RuntimeError('Existing Diffusers differs from the clean tested tree; use another VDN dependency directory.')
     return target
