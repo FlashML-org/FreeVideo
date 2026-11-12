@@ -20,7 +20,7 @@ html.fv-toolbar-dragging,html.fv-toolbar-dragging *{cursor:grabbing!important;us
 .fv-view-row{position:relative}.fv-view-grip{position:absolute;left:-14px;top:50%;translate:0 -50%;width:8px;height:12px;opacity:0;pointer-events:none;color:var(--fv-muted);transition:opacity .2s,color .2s;background:radial-gradient(circle,currentColor 1.1px,transparent 1.5px) 0 0/4px 4px}
 .fv-view-navigation:hover .fv-view-grip{opacity:.75}.fv-view-navigation.fv-dragging .fv-view-grip{opacity:1;color:var(--fv-ink)}@media(hover:none){.fv-view-grip{opacity:.5}}
 @media(max-width:480px){
- .fv-view-navigation .fv-version-info,.fv-view-navigation .fv-view-row>.fv-wordmark{display:none}
+ .fv-view-navigation .fv-view-actions .fv-version-info,.fv-view-navigation .fv-view-row>.fv-wordmark{display:none}
  .fv-view-navigation .fv-view-switch button{font-size:12px;padding:7px 6px}
  .fv-view-navigation .fv-view-switch,.fv-view-navigation .fv-view-settings{flex-shrink:0}
 }
@@ -29,6 +29,20 @@ html.fv-toolbar-dragging,html.fv-toolbar-dragging *{cursor:grabbing!important;us
 .fv-view-switch button,.fv-studio .fv-view-switch button{display:grid;gap:0}
 .fv-view-switch button>span,.fv-view-switch button::after{grid-area:1/1}
 .fv-view-switch button::after{content:attr(data-label);font-weight:var(--fv-semibold);visibility:hidden;pointer-events:none}
+
+/* The entries beside the switch: one group as in the creation panel's header, text only, 14 px, 32 px high, 8 px apart. */
+.fv-view-actions{display:flex;align-items:center;justify-content:center;gap:8px;flex:none}
+.fv-view-navigation .fv-view-actions>button,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:0;height:32px;min-height:32px;padding:0 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--fv-muted);font:inherit;font-size:14px;font-weight:400;line-height:1;white-space:nowrap}
+.fv-view-navigation .fv-view-actions>button:hover,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger:hover,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger[aria-expanded=true]{background:var(--fv-hover)!important;color:var(--fv-ink)!important}
+.fv-view-actions .fv-lan-dot{right:3px;top:3px;border:0;background:var(--fv-success)}.fv-view-actions .fv-version-info{position:relative}
+/* A finger needs 44 px; the whole group grows together so the row stays level. */
+@media(pointer:coarse){.fv-view-navigation .fv-view-actions>button,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger{height:44px;min-height:44px}}
+/* What gives way in a narrow window (view_navigation_fit.js): the phone entry, Feedback, then a second row, then Tutorial. */
+.fv-view-navigation[data-fit~=tight] .fv-view-actions .fv-lan,.fv-view-navigation[data-fit~=lean] .fv-view-actions .fv-feedback-entry:not(.fv-guide-entry),.fv-view-navigation[data-fit~=least] .fv-view-actions .fv-guide-entry{display:none}
+.fv-view-navigation[data-fit~=wrap] .fv-view-row{flex-wrap:wrap;row-gap:4px}.fv-view-navigation[data-fit~=wrap] .fv-view-actions{flex:1 0 100%}
+@media(max-width:680px) and (min-width:481px){.fv-view-navigation .fv-view-switch button{padding:7px 8px}}
+@media(max-width:480px){.fv-view-navigation .fv-view-actions>button,.fv-view-navigation .fv-view-actions .fv-lan .fv-lan-trigger{font-size:12px}.fv-view-navigation{padding-left:12px;padding-right:12px}.fv-view-grip{left:-10px}.fv-view-navigation .fv-update-bar.fv-update-bar{margin-left:-12px;margin-right:-12px}}
+@media(max-width:380px){.fv-view-navigation .fv-view-switch button{padding:7px 4px}}
 
 /* A long export hint must not enlarge the shared header's internal grid row. */
 @media(min-width:681px){.fv-studio .fv-header:has(.fv-view-switch){grid-template-rows:minmax(0,1fr)}}

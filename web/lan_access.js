@@ -55,10 +55,16 @@ export function createLanAccess(t, api) {
     try { seen = localStorage.getItem(seenKey) === '1'; } catch {}
     const windows = /Win/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
     function fail() { error.hidden = false; }
+    // A toolbar with a transform or blur becomes the frame of fixed children; take its offset back out so they sit by the button.
+    function place(node, top, left) {
+        node.style.right = ''; node.style.top = `${top}px`; node.style.left = `${left}px`;
+        const got = node.getBoundingClientRect();
+        if (got.top !== top || got.left !== left) { node.style.top = `${2 * top - got.top}px`; node.style.left = `${2 * left - got.left}px`; }
+    }
     function position() {
         if (panel.hidden) return;
-        const box = trigger.getBoundingClientRect(); panel.style.top = `${box.bottom + 8}px`;
-        panel.style.left = `${Math.max(8, Math.min(box.right - 264, window.innerWidth - 272))}px`;
+        const box = trigger.getBoundingClientRect();
+        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - 264, window.innerWidth - 272)));
     }
     function render() {
         // No launcher installation: the switch cannot work from this page, so say why instead of "Please try again".
@@ -89,7 +95,7 @@ export function createLanAccess(t, api) {
         } catch { if (!disposed) fail(); }
         finally { reading = false; if (!disposed && !panel.hidden) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
     }
-    trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.style.top = `${box.bottom + 8}px`; tip.style.right = `${Math.max(8, window.innerWidth - box.right)}px`; tip.hidden = false; };
+    trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.hidden = false; place(tip, box.bottom + 8, Math.max(8, Math.min(box.right, window.innerWidth - 8) - tip.offsetWidth)); };
     trigger.onpointerleave = trigger.onblur = () => { tip.hidden = true; };
     function close() { tip.hidden = true; panel.hidden = true; trigger.setAttribute('aria-expanded', 'false'); clearTimeout(timer); form.hidden = true; password.value = ''; }
     function toggle() {

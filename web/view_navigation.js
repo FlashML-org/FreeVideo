@@ -6,6 +6,7 @@ import { feedbackButton, guideButton } from './feedback.js';
 import { wordmark } from './wordmark.js';
 import { createUpdateNotice, createVersionInfo } from './updates.js';
 import { makeMovable } from './toolbar_position.js';
+import { fitNavigation } from './view_navigation_fit.js';
 import { openEditorView } from './editor_loader.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -175,9 +176,14 @@ export function installNavigation(openStudio, agent = false, {openWorkflow = nul
         const handle = await openEditorView(node);
         if (created) handle?.notify(t('Created an editing project for you.', '已新建一个剪辑工程'));
         return handle;
-    }, true), () => choose(node => openAutopilot(node), true), () => choose(node => openImage(node), true)), createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings); toolbar.append(row);
+    }, true), () => choose(node => openAutopilot(node), true), () => choose(node => openImage(node), true)));
+    // One group of entries, as in the creation panel's header.
+    const actions = document.createElement('div'); actions.className = 'fv-view-actions';
+    actions.append(createLanAccess(t, api).element, createVersionInfo(cn).element, guideButton(t, 'fv-view-settings'), feedbackButton(t, 'fv-view-settings'), settings);
+    row.append(actions); toolbar.append(row);
     // In the node view the notice is the toolbar's second row, as wide as the toolbar.
     toolbar.append(createUpdateNotice(cn).element); document.body.append(toolbar); refreshNavigation();
+    fitNavigation(toolbar, row, actions).check();
     makeMovable(toolbar);
     // health.js asks for this before it reports the toolbar missing. A
     // workspace removed without closing must not keep the toolbar hidden.
