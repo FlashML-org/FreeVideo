@@ -77,6 +77,9 @@ def generate(request, resident=None):
     decode_read_ahead = None
     decoder_read_ahead_closed = False
     original_error = None
+    # A reused engine runs this request's tiling for the request and goes back to the one it was loaded with.
+    from contextlib import ExitStack
+    retarget = ExitStack()
     metrics = {'success': False, 'phase': 'load', 'geometry': request.get('geometry'),
                'gpu_budget_bytes': request['gpu_budget_bytes'],
                'compiler_threads': os.environ.get('TORCHINDUCTOR_COMPILE_THREADS'),
@@ -326,6 +329,9 @@ def generate(request, resident=None):
             print(json.dumps({'event': 'model_load_phase', 'phase': 'Loading video model', 'stage': 'engine',
                               'epoch': time.time(), 'seconds': time.perf_counter() - started}), flush=True)
             engine, reused = resident.engine(request, factory) if resident is not None else (factory(), False)
+            if reused:
+                from .pass_configuration import configuration
+                retarget.enter_context(configuration(engine, options))
             loaded_seconds = time.perf_counter() - tick
             load_read_end = _Counters.process_counters().get('read_bytes')
             load_read_bytes = (load_read_end - load_read_start) if all(isinstance(v, (int, float)) for v in (load_read_start, load_read_end)) else None
@@ -755,7 +761,7 @@ def generate(request, resident=None):
                 from .two_pass_metrics import sampling_workspace_peak
                 # A preview's first pass is kept apart from the complete request's peak.
                 resident.observe_peak('engine_preview' if request.get('preview') is True else 'engine',
-                    resident.engine_key(request), sampling_workspace_peak(sampled) - foreign_sample_bytes)
+                    resident.engine_peak_key(request), sampling_workspace_peak(sampled) - foreign_sample_bytes)
             resident.observe_peak('decode', key(dict(options=decoder, canvas=canvas)), torch.cuda.max_memory_allocated() - foreign_decode_bytes)
             metrics['resident_models'] = resident.snapshot()
     except BaseException as error:
@@ -793,6 +799,14 @@ def generate(request, resident=None):
         unsafe = classify_failure(original_error or '', metrics)['kind'] == 'cuda_error'
         if unsafe:
             metrics['cleanup_skipped'] = 'Unsafe CUDA evidence; retain first failure and let the isolated process exit.'
+        if unsafe:
+            retarget.pop_all()
+        else:
+            try:
+                retarget.close()
+            except BaseException as error:
+                cleanup_error = error
+                metrics.setdefault('cleanup_errors', []).append(repr(error))
         if engine is not None and not unsafe and (resident is None or not metrics['success']):
             try:
                 engine.close()
