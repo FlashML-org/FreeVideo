@@ -162,7 +162,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     };
     const failure = el('div', 'fv-ed-gen-failure fv-result-links'), failureBar = el('div', 'fv-ed-failure-actions fv-actions');
     const failureReason = el('span', 'fv-ed-failure-reason'); failureReason.setAttribute('role', 'status');
-    const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download diagnostic report', '下载诊断报告')); report.type = 'button';
+    const report = el('button', 'fv-ed-failure-report fv-action fv-action-secondary', t('Download report', '下载报告')); report.type = 'button';
     failureBar.append(failureReason, report); failure.append(failureBar); failure.hidden = true; host.append(failure);
     let failureId = null, downloading = false;
     // Reference pictures for a part that starts fresh: thumbnails and a small "+" before the description.

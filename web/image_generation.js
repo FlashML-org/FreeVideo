@@ -244,7 +244,7 @@ export const QUEUE_LABELS = Object.freeze({
 export const fittedNote = (size, t, unified = false) => t(...memoryWords([`Not enough GPU memory. Made at ${size.width}\u00a0×\u00a0${size.height} instead.`,
     `显存不足，已改为 ${size.width}\u00a0×\u00a0${size.height} 生成。`], unified));
 export const REPORT_LABELS = Object.freeze({
-    download: ['Diagnostic report', '诊断报告'],
+    download: ['Download report', '下载报告'],
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
     preparing: ['Preparing…', '正在整理…'],
     unavailable: ['Report unavailable · fetch again', '报告暂不可用 · 重新获取'],
@@ -253,8 +253,8 @@ export const REPORT_LABELS = Object.freeze({
 
 // The report download and its "send as an issue" card; the request carries only the opaque report ID.
 export function imageReportBar(card, report_id, t, {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), quiet = false} = {}) {
-    // `quiet` is the picture page's own: the video page's wording and weight, not a bordered button.
-    const download = quiet ? ['Download report', '下载报告'] : REPORT_LABELS.download;
+    // `quiet` is the picture page's own: the video page's weight, not a bordered button. Every surface says "Download report".
+    const download = REPORT_LABELS.download;
     const doc = card.ownerDocument || document;
     const fetchReport = async () => {
         const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});

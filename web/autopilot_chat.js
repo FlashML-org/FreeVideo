@@ -1139,7 +1139,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     const reason = el('p'), actions = el('div', 'fv-chat-actions fv-actions'), links = el('div', 'fv-result-links');
                     let current = job;
                     const diagnostic = createDiagnosticReportControl(t, {api, tip: true, version: productVersion,
-                        label: () => t('Download diagnostic report', '下载诊断报告'),
+                        label: () => t('Download report', '下载报告'),
                         fallback: () => new Blob([JSON.stringify(createErrorReport({error: current.error, exception_type: current.error?.code,
                             details: current.error?.request_id}, {stage: 'execution'}), null, 2)], {type: 'application/json'})});
                     // The shared failure style: one reason line, the fold row, then the secondary buttons.
