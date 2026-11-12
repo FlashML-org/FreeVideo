@@ -1,7 +1,6 @@
 // What's new in 0.5: the editor's own track view drawn with the editor's own classes and played once.
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
 import {PAGES, LINES} from './whatsnew_pages.js';
-import {segmented} from './editor_adjust.js';
 import {PEAKS} from './whatsnew_peaks.js';
 
 const KEY = 'freevideo.whatsnew-seen';
@@ -9,6 +8,17 @@ const SERIES = '0.5';
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const svg = (tag, attrs = {}) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
 const ICON = {video: 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4', audio: 'M2 8h4l4-4v12l-4-4H2z M13 6c4 2 4 6 0 8 M13 9c1 1 1 1 0 2'};
+// The editor's segmented control, drawn here so the page does not load the editor's code.
+const segmented = options => {
+    const element = el('div', null, 'fv-pass-mode fv-ed-adjust-segmented'); element.setAttribute('role', 'group');
+    const buttons = options.map(option => { const b = el('button', option.label, 'fv-ed-adjust-button'); b.type = 'button'; return b; });
+    let current;
+    Object.defineProperties(element, {
+        value: {get: () => current, set: value => { current = value; buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(options[i].value === value))); }},
+        disabled: {get: () => buttons.every(b => b.disabled), set: value => buttons.forEach(b => { b.disabled = !!value; })},
+    });
+    element.append(...buttons); element.value = undefined; return element;
+};
 const icon = kind => { const s = svg('svg', {viewBox: '0 0 20 20', 'aria-hidden': 'true'}); s.append(svg('path', {d: ICON[kind]})); return s; };
 
 // A waveform in the editor's 200x40 box from real peaks, drawn as the editor draws them.
