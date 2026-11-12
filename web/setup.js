@@ -20,6 +20,10 @@ const cn = languageOverride === 'zh' || (languageOverride !== 'en'
 const t = (en, zh) => cn ? zh : en;
 const INSTALLED_HINT = {en: 'Already installed. To reinstall, click Detect & review first.', zh: '已装好。要重装，请先点“检测并预览”。'};
 const gib = n => Number.isFinite(n) ? (n / 2 ** 30).toFixed(1) + " GiB" : "—";
+// Plan sizes pick their unit, so a few-MB repair does not read as "0.0 GiB".
+// The cut-offs sit where rounding would print 1024.0 MiB or 1024 KiB, so those carry to the next unit.
+const bytesText = n => !(n > 0 && n < 1023.95 * 2 ** 20) ? gib(n)
+    : n >= 1023.5 * 2 ** 10 ? (n / 2 ** 20).toFixed(1) + " MiB" : Math.max(1, Math.round(n / 2 ** 10)) + " KiB";
 const SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".';
 const BUSY_LOCK = /using this installation\/GPU lock/;
 const BUSY_TEXT = {en: 'FreeVideo is busy with another task. Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
@@ -465,11 +469,11 @@ export async function openSetup(options) {
         const gpu = value.inventory?.selected_gpu || {}, local = value.local_models || {};
         const facts = [
             [t("GPU", "显卡"), gpu.name || "—"],
-            [t("Model download", "需下载模型"), gib(value.model_download_bytes)],
-            [t("Models already present", "安装目录内已有模型"), gib(value.existing_model_bytes_size_matched || 0)],
-            [t("Local models reused", "复用本地模型"), gib(local.reused_bytes || 0)],
-            [t("Hardlinked / copied", "硬链接／复制"), `${gib(local.linked_bytes || 0)} / ${gib(local.copy_bytes || 0)}`],
-            [t("Additional disk estimate", "额外磁盘预估"), gib(value.disks?.reduce((sum, d) => sum + d.needed_bytes, 0))],
+            [t("Model download", "需下载模型"), bytesText(value.model_download_bytes)],
+            [t("Models already present", "安装目录内已有模型"), bytesText(value.existing_model_bytes_size_matched || 0)],
+            [t("Local models reused", "复用本地模型"), bytesText(local.reused_bytes || 0)],
+            [t("Hardlinked / copied", "硬链接／复制"), `${bytesText(local.linked_bytes || 0)} / ${bytesText(local.copy_bytes || 0)}`],
+            [t("Additional disk estimate", "额外磁盘预估"), bytesText(value.disks?.reduce((sum, d) => sum + d.needed_bytes, 0))],
         ];
         if (value.prepared_model) facts.push([t("Model", "模型"), `${value.prepared_model.repo} · ${value.prepared_model.scale_granularity === "int8_convrot"
             ? t("slim ConvRot int8, no local conversion", "精简 ConvRot int8，无需本地转换")
