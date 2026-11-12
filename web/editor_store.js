@@ -428,7 +428,8 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             for (const row of value.items || []) if (row.video && row.id && !sources.has(`work:${row.id}`)) {
                 fallback[`work:${row.id}`] = {...row.geometry, _fallback: true, video: mediaURL(api, row.video), audio: mediaURL(api, row.video),
                     has_video: true, has_audio: row.has_audio !== false, path: row.video, missing: false,
-                    thumbnail: api.apiURL?.('/freevideo/library/thumbnail?' + new URLSearchParams({id: row.id})) || '/freevideo/library/thumbnail?' + new URLSearchParams({id: row.id})};
+                    // Stored like server-sent sources: a plain route that readers prefix once.
+                    thumbnail: '/freevideo/library/thumbnail?' + new URLSearchParams({id: row.id})};
             }
             if (Object.keys(fallback).length) cache(fallback);
             return value;
