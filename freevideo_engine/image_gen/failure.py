@@ -209,6 +209,9 @@ class StageTimes:
         return max(0., self.clock() - self.started)
 
 
+_GPU_READING = ('total_bytes', 'used_bytes', 'budget_bytes', 'owned_credit_bytes', 'native_credit_bytes')
+
+
 class Context:
     def __init__(self, action, value):
         self.redactor = Redactor()
@@ -219,6 +222,8 @@ class Context:
         self.plan = None
         self.pack = None
         self.start_memory = None
+        # The card as the admission check read it (memory_budget): numbers only.
+        self.gpu_reading = {}
         # ComfyUI's own models this request unloaded before its worker started (comfy_residency.release_native).
         self.native_release = None
         self.update_request(value)
@@ -326,6 +331,12 @@ class Context:
         service = dict(video_busy=bool(video_busy), worker_restarts=worker_restarts)
         if self.start_memory:
             service['memory_at_request_start'] = clean_sample(self.start_memory)
+        gpu = {key: self.gpu_reading[key] for key in _GPU_READING if type(self.gpu_reading.get(key)) is int
+               and self.gpu_reading[key] >= 0}
+        if type(self.gpu_reading.get('owned_unreported')) is bool and gpu:
+            gpu['owned_unreported'] = self.gpu_reading['owned_unreported']
+        if gpu:
+            service['gpu_at_request_start'] = gpu
         released = self.native_release
         if isinstance(released, dict):
             service['comfy_models_released'] = {key: released[key] for key in

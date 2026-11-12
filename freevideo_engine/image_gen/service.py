@@ -142,6 +142,8 @@ class Service:
         self.context = None
         self.last_machine = {}
         self.worker_restarts = 0
+        # The last memory_budget reading of each calling thread, for the report.
+        self.budget_reading = threading.local()
         self.worker_started = False
         self.queued = None
         self.habit_root = None
@@ -635,7 +637,7 @@ class Service:
                                    comfy_python=machine.get('comfy_python'), model_paths=machine.get('model_paths'))
             context.update_request(value)
             # H3 Image plans its own residency in the worker; the Qwen plan below does not describe it.
-            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting)
+            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting, reading=context.gpu_reading)
             # Live free memory while another job owns the GPU is advisory. Keep
             # the original request for dispatch, when the owner has released it.
             if not waiting and context.plan is not None and not context.plan['feasible']:
@@ -747,6 +749,7 @@ class Service:
         from ..comfy_residency import native_reclaimable
         # ComfyUI's own idle models in this process: work() unloads them before the worker starts.
         native = native_reclaimable(comfy_server())
+        seen = {}
 
         def read():
             gpu = Gpu(machine.get('gpu_uuid'))
@@ -757,6 +760,7 @@ class Service:
                 used, total = memory
                 if not total or not 0 <= used <= total:
                     return None
+                seen.update(total_bytes=total, used_bytes=used, native_credit_bytes=native)
                 # work() releases idle video/compile models; the image worker
                 # reuses its own allocator. Never credit an unrelated process.
                 owned = set()
@@ -768,19 +772,29 @@ class Service:
                               or any(rows.get(pid) is None for pid in owned if pid in rows)):
                     # An unreported owned pool must not cause a false refusal.
                     # The worker still checks live capacity before inference.
+                    seen.update(owned_unreported=True, budget_bytes=total)
                     return total
                 credit = sum(size for pid, size in rows.items() if pid in owned)
-                return min(total, total - used + credit + native)
+                budget = min(total, total - used + credit + native)
+                seen.update(owned_credit_bytes=credit, budget_bytes=budget)
+                return budget
             finally:
                 gpu.close()
 
         try:
-            return open_bounded(read, .5)
+            budget = open_bounded(read, .5)
         except (OSError, RuntimeError, AttributeError, ValueError):
             return None
+        # What the plan was made from, for the report: a refusal at 0 s otherwise says
+        # only that the budget was small, not how much of the card was in use.
+        self.budget_reading.value = dict(seen) if budget is not None else None
+        return budget
 
-    def preflight(self, machine, value, *, fit=True):
+    def preflight(self, machine, value, *, fit=True, reading=None):
+        self.budget_reading.value = None
         budget = self.memory_budget(machine)
+        if reading is not None:
+            reading.update(self.budget_reading.value or {})
         if budget is None:
             return
         from PIL import Image
