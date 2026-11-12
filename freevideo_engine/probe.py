@@ -100,7 +100,8 @@ if __name__ == '__main__':
         main()
     except Exception as error:
         traceback.print_exc()
-        print(json.dumps({'backend': sys.argv[1], 'status': 'error', 'error': str(error),
+        from .app_control import describe
+        print(json.dumps({'backend': sys.argv[1], 'status': 'error', 'error': describe(error),
                           'torch_flash_compiled': torch.backends.cuda.is_flash_attention_available(),
                           'torch': str(torch.__version__), 'cuda': torch.version.cuda,
                           'system': platform.system()}), flush=True)

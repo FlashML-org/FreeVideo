@@ -599,7 +599,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     action='原因在详情里；使用已有的 ComfyUI 时，可以用原来的启动器检查。' if zh else
                            'Open details for the exit code and plugin errors. For an existing ComfyUI, also check its original launcher.',
                     kind='comfy-startup')
-    if 'Failed step: kernels (' in summary:
+    # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
+    # code the engine adds to the message makes it recognisable in any system language.
+    if 'Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary):
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
         if zh:

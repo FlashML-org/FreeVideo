@@ -47,6 +47,8 @@ def add_vdn(root=None):
         raise RuntimeError('Patched Diffusers dependency is missing. Run freevideo setup --install-packages.')
     if str(diffusers) not in sys.path:
         sys.path.insert(0, str(diffusers))
+    from .app_control import tolerate_blocked_scipy
+    tolerate_blocked_scipy()
     from .fa4_guard import activate
     activate()
     return root

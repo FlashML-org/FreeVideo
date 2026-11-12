@@ -16,7 +16,6 @@
 
 from typing import Dict, Optional, List
 import numpy as np
-from scipy.signal import get_window
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,6 +31,7 @@ from freevideo_engine.dubbing.cosyvoice3.transformer.convolution import CausalCo
 from freevideo_engine.dubbing.cosyvoice3.transformer.activation import Snake
 from freevideo_engine.dubbing.cosyvoice3.utils.common import get_padding
 from freevideo_engine.dubbing.cosyvoice3.utils.common import init_weights
+from freevideo_engine.app_control import scipy_module
 
 
 """hifigan based generator implementation.
@@ -471,7 +471,7 @@ class HiFTGenerator(nn.Module):
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
         self.reflection_pad = nn.ReflectionPad1d((1, 0))
-        self.stft_window = torch.from_numpy(get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
+        self.stft_window = torch.from_numpy(scipy_module("scipy.signal").get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
         self.f0_predictor = f0_predictor
 
     def remove_weight_norm(self):
@@ -665,7 +665,7 @@ class CausalHiFTGenerator(HiFTGenerator):
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
         self.reflection_pad = nn.ReflectionPad1d((1, 0))
-        self.stft_window = torch.from_numpy(get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
+        self.stft_window = torch.from_numpy(scipy_module("scipy.signal").get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
         self.conv_pre_look_right = conv_pre_look_right
         self.f0_predictor = f0_predictor
 
