@@ -205,13 +205,19 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     # The parent chooses a fresh path under ComfyUI input.
                     # Exclusive creation never replaces an existing user file.
                     plan = runner.stats().get('plan')
-                    info = None
-                    if isinstance(plan, dict) and type(plan.get('seed')) is int:
-                        from PIL.PngImagePlugin import PngInfo
-                        info = PngInfo()
-                        info.add_text('seed', str(plan['seed']))
+                    seed = plan.get('seed') if isinstance(plan, dict) and type(plan.get('seed')) is int else None
                     with Path(value['path']).open('xb') as target:
-                        image.save(target, format='PNG', **(dict(pnginfo=info) if info else {}))
+                        if Path(value['path']).suffix.lower() == '.jpg':
+                            # Quality 95 without chroma subsampling is visually lossless at about a quarter of the PNG size.
+                            image.convert('RGB').save(target, format='JPEG', quality=95, subsampling=0,
+                                                      **(dict(comment=('seed=%d' % seed).encode()) if seed is not None else {}))
+                        else:
+                            info = None
+                            if seed is not None:
+                                from PIL.PngImagePlugin import PngInfo
+                                info = PngInfo()
+                                info.add_text('seed', str(seed))
+                            image.save(target, format='PNG', **(dict(pnginfo=info) if info else {}))
                     if back_check is not None:
                         plan = dict(plan or {}, back_check=back_check)
                 result = dict(phase='result', path=value['path'], seconds=time.monotonic() - started, plan=plan)

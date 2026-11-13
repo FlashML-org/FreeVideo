@@ -32,8 +32,9 @@ H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
 REPORT_LIMIT = 16
-HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.png')
+HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)')
 LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
+PAGE_UPLOAD = re.compile(r'freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
 HISTORY_LIMIT = 500
 # The 高清 size is offered from this much card memory; smaller cards keep one size.
 HIGH_SIZE_MIN_TOTAL = 6 * 1024 ** 3
@@ -137,6 +138,7 @@ class Service:
         self.state = {}
         self.preview = None  # {'serial', 'jpeg'}: the running job's newest step picture
         self._busy = False
+        self.uploads = OrderedDict()
         self.closed = False
         self.yielding = False
         self.reports = OrderedDict()
@@ -312,7 +314,7 @@ class Service:
             return str(output / (uuid.uuid4().hex + '.png'))
         stamp = time.strftime('image-%Y%m%d-%H%M%S')
         for number in range(1, 100):
-            path = output / ('%s-%02d.png' % (stamp, number))
+            path = output / ('%s-%02d.jpg' % (stamp, number))
             if not path.exists():
                 return str(path)
         raise ValueError('invalid_media')
@@ -572,6 +574,16 @@ class Service:
         return result
 
     def start(self, action, value):
+        try:
+            return self.admit(action, value)
+        except BaseException:
+            # A request turned away at the door leaves no job to clean up after it.
+            images = value.get('images') if isinstance(value, dict) else None
+            if isinstance(images, list):
+                self.remove_uploads([*images[:REPORT_LIMIT], value.get('mask')])
+            raise
+
+    def admit(self, action, value):
         if action not in ('generate', 'compose'):
             raise ValueError('invalid_request')
         context = Context(action, value)
@@ -595,6 +607,9 @@ class Service:
                 # Only the picture page asks for this; the Agent's own choice leaves the page's menu alone.
                 image_model.remember(machine['model_root'], raw.get('model'))
             key = secrets.token_urlsafe(24)
+            self.uploads[key] = [name for name in [*(raw.get('images') or []), raw.get('mask')] if isinstance(name, str)]
+            while len(self.uploads) > REPORT_LIMIT:
+                self.uploads.popitem(last=False)
             if waiting:
                 self.queued = dict(key=key, action=action, value=raw, context=context,
                                    state=dict(phase='queued', queued_behind='video' if video else 'image'),
@@ -953,13 +968,34 @@ class Service:
                         row.update(forecast.view())
                     if row.get('phase') in ('progress', 'cancelling') and getattr(self.context, 'report_id', None):
                         row['report_id'] = self.context.report_id
+                    if row.get('phase') in ('complete', 'failed', 'cancelled'):
+                        self.drop_uploads(self.key)
                     return row
                 if self.queued is not None and matches(self.queued['key']):
                     return deepcopy(self.queued['state'])
                 for candidate, state in self.finished.items():
                     if matches(candidate):
+                        self.drop_uploads(candidate)
                         return deepcopy(state)
             raise ValueError('unknown_job')
+
+    def drop_uploads(self, key):
+        """Remove the reference pictures and mask the page uploaded for a finished job; nothing else is touched."""
+        self.remove_uploads(self.uploads.pop(key, []))
+
+    def remove_uploads(self, names):
+        try:
+            directory = Path(self.input_directory()).resolve()
+        except (OSError, ValueError):
+            return
+        for name in names:
+            if isinstance(name, str) and PAGE_UPLOAD.fullmatch(name):
+                path = directory / name
+                if path.is_file() and not path.is_symlink():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
 
     def cancel(self, key):
         with self.mutex:
@@ -1324,7 +1360,7 @@ class Service:
                         raise RuntimeError('worker_exit')
                     from PIL import Image
                     with Image.open(path) as image:
-                        if image.format != 'PNG' or image.size != (value['width'], value['height']):
+                        if image.format != ('JPEG' if path.suffix == '.jpg' else 'PNG') or image.size != (value['width'], value['height']):
                             raise RuntimeError('worker_exit')
                         image.verify()
                     seconds = row.get('seconds')
