@@ -105,6 +105,18 @@ class KeptModels:
         self.items[role] = (key, value, stack)
         return True
 
+    def give_back_device(self):
+        """Hand the card back before a stage that was not planned beside the kept models (the reference encoder):
+        the kept DiT stack keeps its host copy with no block on the card, and the kept decoder is let go."""
+        dit = self.items.get('dit')
+        if dit is not None:
+            dit[2].set_resident(0)
+        vae = self.items.pop('vae', None)
+        if vae is not None:
+            self.close_entry(vae)
+        if dit is not None or vae is not None:
+            torch.cuda.empty_cache()
+
     def close(self):
         for entry in list(self.items.values()):
             self.close_entry(entry)
@@ -186,10 +198,10 @@ def reference_sequence_rows(copies):
     return rows
 
 
-# What the streamed-only floor must leave free for the request to be tried at all. Under an 8 GiB cap 16 photos
-# (floor 7.99 GiB) ran out in the first step with 0.84 GiB held in pieces, while 4 large references (floor 6.72)
-# finished; half the planner's smallest margin separates the two.
-REFUSE_ALLOWANCE = 0.75 * 2**30
+# What the streamed-only floor must leave free, beyond this process's CUDA context, for the request to be tried at
+# all. Under an 8 GiB cap 16 photos (floor 7.99 GiB) ran out in the first step with 0.84 GiB held in pieces; with the
+# context taken off the cap (7.25 GiB usable) 10 photos (floor 6.93 GiB, 0.32 GiB to spare) finished.
+REFUSE_ALLOWANCE = 0.25 * 2**30
 
 
 class ReferencesTooLarge(MemoryError):
@@ -197,9 +209,15 @@ class ReferencesTooLarge(MemoryError):
 
 
 def card_budget(vram_gib):
-    """Bytes of the card this request may use: the caller's limit, else the whole card."""
+    """Bytes of the card this request may use: the caller's limit less this process's CUDA context (which the
+    allocator limit does not count), else the whole card."""
     total = torch.cuda.get_device_properties(0).total_memory
-    return int(min(vram_gib * 2**30, total)) if vram_gib else total
+    return int(min(vram_gib * 2**30, total)) - PICTURE_CONTEXT if vram_gib else total
+
+
+def usable_bytes(vram_gib):
+    """What the allocator can really have: the capped budget, or the whole card less this process's CUDA context."""
+    return card_budget(vram_gib) if vram_gib else card_budget(None) - PICTURE_CONTEXT
 
 
 def denoise_floor_bytes(copies, width, height):
@@ -271,9 +289,9 @@ def _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gi
         return torch.load(out, map_location='cpu', weights_only=False)
 
 
-def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, stats=None):
+def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, stats=None, before_load=None):
     """Posterior moments ([1, 48, h, w] float32 on the CPU) of each reference's VAE copy, read from or kept in the
-    input cache the video references use; the encoder loads only when one is missing."""
+    input cache the video references use; the encoder loads only when one is missing, after ``before_load()``."""
     import hashlib
     import numpy as np
     from .h3_vae import H3ImageEncoder, PIXEL_MEAN, PIXEL_STD
@@ -298,6 +316,8 @@ def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, 
                 moments = _cached_latent(store, key, work)
             if moments is None:
                 if encoder is None:
+                    if before_load is not None:
+                        before_load()
                     encoder = H3ImageEncoder.load(str(vae_path), device)
                 tensor = torch.from_numpy(np.ascontiguousarray(pixels)).to(device).permute(2, 0, 1)[None].float()
                 mean = torch.tensor(PIXEL_MEAN, device=device).view(1, 3, 1, 1)
@@ -348,7 +368,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     check()
     report('encode', 0, 1)
     copies = reference_copies(references)
-    if copies and denoise_floor_bytes(copies, width, height) + REFUSE_ALLOWANCE > card_budget(vram_gib):
+    if copies and denoise_floor_bytes(copies, width, height) + REFUSE_ALLOWANCE > usable_bytes(vram_gib):
         # Refused before the text encoder starts: otherwise the request spends a minute or more there and runs out
         # in the first step. Filed under the reference stage, where the page asks for fewer references.
         if enter is not None:
@@ -383,10 +403,12 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
         tick = time.perf_counter()
         if vram_gib:
             total = torch.cuda.get_device_properties(0).total_memory
-            torch.cuda.set_per_process_memory_fraction(min(1.0, vram_gib * 2**30 / total))
+            torch.cuda.set_per_process_memory_fraction(min(1.0, card_budget(vram_gib) / total))
         torch.cuda.reset_peak_memory_stats()
+        # The encoder's peak (about 3 GiB) was never planned beside the blocks and decoder kept from the last picture.
         moments = reference_moments(copies, vae_path, torch.device('cuda'), cache=reference_cache,
-                                    cache_root=reference_cache_root, stats=stats)
+                                    cache_root=reference_cache_root, stats=stats,
+                                    before_load=kept.give_back_device if kept is not None else None)
         free_host_memory()
         stats.update(reference_encode_s=round(time.perf_counter() - tick, 2),
                      reference_encode_peak_gib=round(torch.cuda.max_memory_allocated() / 2**30, 2),
@@ -403,9 +425,6 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     device = torch.device('cuda')
     total = torch.cuda.get_device_properties(0).total_memory
     budget = card_budget(vram_gib)
-    if vram_gib:
-        # A capped card's limit includes this process's own CUDA context, which the allocator limit does not count.
-        budget -= PICTURE_CONTEXT
     if shared_card:
         # The resident video worker still holds its text encoder on the card after encoding: plan against what
         # the card really has free plus what this process already holds, not against its whole size.
