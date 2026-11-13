@@ -427,6 +427,7 @@ def register():
         # Operations an agent runs only after the user approves them; the page changes the policy.
         confirmations = Confirmations(port.output_root / 'FreeVideo' / '.agent' / 'confirm.json', sessions)
         jobs.productions.gate = confirmations.gate
+        jobs.productions.note = lambda sid, event: sessions.append(sid, event, by='builtin')
         jobs.session_open = sessions.require_open
     except Exception as error:
         # Optional agent state must never prevent the studio or other routes from loading.

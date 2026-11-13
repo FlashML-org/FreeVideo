@@ -185,6 +185,11 @@ class Productions:
         # transcribe(path) -> heard text; a machine without a speech model gets a note instead of a comparison.
         self.transcribe = take_qa.recognise
         self._inspecting = set()
+        # note(session, event) writes what the built-in director did into the film's conversation.
+        self.note = None
+        # The built-in director of each film runs on its own thread: {id: (thread, revision it stopped at or None)}.
+        self._directors = {}
+        self._closed = threading.Event()
         self.load()
         jobs.parent_allowed = self.allows
 
@@ -876,6 +881,76 @@ class Productions:
         with self.changed:
             for identity in list(self.records):
                 self._run(identity)
+                self._direct(identity)
+
+    def close(self):
+        """Stop the built-in directors; a question already queued is cancelled by its own wait."""
+        self._closed.set()
+
+    def _directing(self, identity):
+        """Whether the built-in director should be choosing for this film now."""
+        record = self.records.get(identity)
+        if record is None or self._closed.is_set():
+            return False
+        state = record['state']
+        return (state['director'] == 'builtin' and not state.get('paused') and not state['cancelled']
+                and state['status'] in ('shooting', 'needs_choice', 'ready'))
+
+    def _direct(self, identity):
+        """Keep one built-in director running for a film that chose it, through pauses and restarts.
+
+        The director keeps no state of its own: it reads the film each time, so a new thread picks up where the
+        last one left off. One that gave up is started again only after the film changes.
+        """
+        if not self._directing(identity) or self.records[identity].get('stalled'):
+            return
+        thread, gave_up = self._directors.get(identity, (None, None))
+        if thread is not None and thread.is_alive():
+            return
+        if gave_up is not None and gave_up == self.records[identity]['state']['revision']:
+            return
+        thread = threading.Thread(target=self._director, args=(identity,), daemon=True, name='director-' + identity)
+        self._directors[identity] = (thread, None)
+        thread.start()
+
+    def _noted(self, identity, step):
+        """One choice, reshoot or join of the built-in director as a finished step of the film's conversation."""
+        session = (self.records.get(identity) or {}).get('session')
+        if self.note is None or not session:
+            return
+        refs = dict(drama=identity, **({'shot': step['shot']} if step.get('shot') else {}))
+        if step['action'] == 'choose':
+            chosen = next((s.get('chosen') for s in self.records[identity]['state']['shots'] if s['id'] == step['shot']), None)
+            if type(chosen) is int:
+                refs['take'] = chosen
+        try:
+            self.note(session, dict(type='step', tool='freevideo_drama_' + step['action'], summary=step['reason'],
+                                    state='done', refs=refs))
+        except Exception:  # noqa: BLE001 - a conversation that is gone or full never stops the film
+            logging.getLogger(__name__).warning('A step of the built-in director was not written to the conversation')
+
+    def _director(self, identity):
+        from . import builtin_director
+        stop = lambda: not self._directing(identity)
+        ask = builtin_director.JobAsk(_JobTools(self.jobs, 'production:' + identity, stop, self._closed), stop=stop)
+        gave_up = None
+        try:
+            for step in builtin_director.run(_JobDirectorAdapter(self), identity, ask=ask, stop=stop):
+                if step['action'] == 'error':
+                    gave_up = step['reason']
+                else:
+                    self._noted(identity, step)
+        except Exception as error:  # noqa: BLE001 - a director that fails leaves the film to the user
+            gave_up = type(error).__name__
+        if gave_up is not None:
+            logging.getLogger(__name__).warning('The built-in director stopped (%s); it starts again when the film changes',
+                                                gave_up)
+        with self.changed:
+            record = self.records.get(identity)
+            if gave_up is not None and record is not None:
+                self._directors[identity] = (None, record['state']['revision'])
+            else:
+                self._directors.pop(identity, None)
 
     def _bump(self, draft):
         draft['state']['revision'] += 1
@@ -1306,6 +1381,27 @@ def _on_frames(start, end, fps=24):
     return dict(start=a, end=b) if b > a else dict(start=start, end=end)
 
 
+class _JobTools:
+    """The submit, wait and cancel the built-in director's questions use, on the job queue in this process."""
+    def __init__(self, jobs, client, stop, closed):
+        self.jobs, self.client, self.stop, self.closed = jobs, client, stop, closed
+
+    def submit(self, request):
+        return self.jobs.view(self.jobs.submit(request, client=self.client)[0])
+
+    def wait(self, identity, timeout=None):
+        deadline = time.monotonic() + max(0., timeout or 0.)
+        while True:
+            row = self.jobs.get(identity)
+            left = deadline - time.monotonic()
+            # A paused or cancelled film gives up its question at once, not after the next long wait.
+            if row['status'] in DONE or left <= 0 or self.stop() or self.closed.wait(min(.25, left)):
+                return self.jobs.view(row)
+
+    def cancel(self, identity):
+        return self.jobs.view(self.jobs.cancel(identity))
+
+
 class DirectorAdapter:
     """Synchronous in-process operations for builtin_director.run.
 
@@ -1322,3 +1418,29 @@ class DirectorAdapter:
         if name in ('plan', 'start', 'sheet', 'segments', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
             return getattr(self.productions, name)
         raise AttributeError(name)
+
+
+class _JobDirectorAdapter(DirectorAdapter):
+    """The director's operations when its questions go to the local job queue.
+
+    A question names its pictures instead of carrying them: each contact sheet is kept under the chat images
+    by the digest of its bytes, so the same sheet is stored once.
+    """
+    def sheet(self, identity, shot, *, frames=None):
+        from . import attachments
+        result = self.productions.sheet(identity, shot, frames=frames)
+        def stored(data, suffix):
+            name = hashlib.sha256(data).hexdigest() + suffix
+            target = attachments.path(self.productions.jobs.port.input_root, name)
+            if not target.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_name('.sheet-' + uuid.uuid4().hex + '.tmp')
+                try:
+                    temporary.write_bytes(data)
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            return dict(file=name)
+        takes = [dict(take=t['take'], image=stored(t['image'], '.jpg')) for t in result['takes']]
+        previous = stored(result['previous'], '.png') if result['previous'] is not None else None
+        return dict(takes=takes, previous=previous)
