@@ -897,15 +897,10 @@ def list_imports(root, unreadable=None):
 
 
 def _import_users(root, identity):
-    """How many saved edits put this import on a timeline, counting the clips an applied change replaced."""
-    source = dict(kind='import', id=identity)
-    users = 0
+    """How many saved edits use this import: on a timeline, in a clip's earlier versions, or in a clip an applied change replaced."""
+    key = source_key(dict(kind='import', id=identity))
     # An edit that cannot be read might use the clip: fail closed, as the other reference checks do.
-    for _, _, record, _ in _projects(root, strict=True):
-        tracks = [*record['tracks'], *(track for tx in record.get('replacements', []) for track in [*tx['originals'], *tx['clips']])]
-        if any(clip.get('source') == source for track in tracks for clip in track['clips']):
-            users += 1
-    return users
+    return sum(1 for _, _, record, _ in _projects(root, strict=True) if key in references(record))
 
 
 def delete_import(root, identity, confirm=False):
