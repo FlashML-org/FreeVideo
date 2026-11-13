@@ -265,6 +265,13 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     if result is not None:
                         send(**result)
             wait, crowding = idle_seconds, None
+            if result is not None and result.get('phase') == 'result' and runner is not None and hasattr(runner, 'idle'):
+                # Prepare the next picture until a request, a closed pipe or a cancel arrives.
+                try:
+                    with redirect_stdout(sys.stderr):
+                        runner.idle(lambda: not inbox.rows.empty() or inbox.closed.is_set() or inbox.cancel.is_set())
+                except Exception as error:
+                    print('image worker prepare failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
             if result is not None and result.get('phase') == 'result' and runner is not None:
                 wait = keep.wait_seconds(value.get('keep_seconds'), runner, idle_seconds)
                 if wait > idle_seconds:

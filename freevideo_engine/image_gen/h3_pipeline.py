@@ -8,6 +8,7 @@ against the card's budget. Requests below the 4 MP floor are generated at 4 MP
 with the same proportions and are not scaled back.
 """
 import argparse
+import os
 import sys
 import tempfile
 import time
@@ -35,6 +36,112 @@ def free_host_memory():
     gc.collect()
     torch.cuda.empty_cache()
     empty_host_cache(torch)
+
+
+class KeptModels:
+    """The DiT stack and the VAE between requests of one worker.
+
+    Keeping them saves loading the 21 GB of weights and the pinned planes again, so the next request starts
+    sampling after its encoding. A model is kept only while the host can still hold it without squeezing the
+    shared encoder and the video model: the cgroup (or the machine) must keep ``HOST_MARGIN`` free after the
+    weights, and a card below ``MIN_KEEP_VRAM`` gives its resident blocks back to the shared GPU (the host copy
+    stays). Anything that does not fit is closed, which is what every request did before.
+    """
+    HOST_MARGIN = 10 * 2**30
+    MIN_KEEP_VRAM = 12 * 2**30
+    budget = None
+
+    def __init__(self):
+        self.items = {}
+
+    def take(self, role, key):
+        entry = self.items.pop(role, None)
+        if entry is None:
+            return None
+        if entry[0] != key:
+            self.close_entry(entry)
+            return None
+        return entry[1]
+
+    @staticmethod
+    def close_entry(entry):
+        stack = entry[2]
+        if stack is not None:
+            stack.close()
+
+    def host_room(self):
+        from .image_stream import cgroup_pin_cap
+        cap = cgroup_pin_cap(reserve=0)
+        if cap is not None:
+            return cap
+        try:
+            import psutil
+            return psutil.virtual_memory().available
+        except ImportError:
+            return 0
+
+    def keep(self, role, key, value, stack):
+        """Hold ``value`` for the next request; False when it does not fit (the caller closes it)."""
+        held = stack.pinned_bytes if stack is not None else 0
+        total = torch.cuda.get_device_properties(0).total_memory
+        # A card that is small, or has only a small part free to this request, keeps nothing on the device.
+        small = min(total, self.budget or total) < self.MIN_KEEP_VRAM
+        if role == 'vae' and small:
+            return False
+        if role == 'dit' and self.host_room() + held < held + self.HOST_MARGIN:
+            return False
+        if role == 'dit':
+            if small:
+                stack.set_resident(0)
+                # The embedders and tables are about 1 GiB on the card; the next encode needs that room.
+                model = value[0]
+                for name, child in model.named_children():
+                    if name != 'blocks':
+                        child.to('cpu')
+                model.adaln_t_table = model.adaln_t_table.to('cpu')
+        old = self.items.pop(role, None)
+        if old is not None:
+            self.close_entry(old)
+        self.items[role] = (key, value, stack)
+        return True
+
+    def close(self):
+        for entry in list(self.items.values()):
+            self.close_entry(entry)
+        self.items.clear()
+
+
+# What a resident encode needs free on the card when the request starts: the encoder's own minimum, the CUDA context
+# the resident worker keeps there, and what the picture process needs beside them.
+ENCODER_MIN_FREE = 5 * 2**30
+RESIDENT_CONTEXT = int(0.8 * 2**30)
+PICTURE_CONTEXT = int(0.75 * 2**30)
+PICTURE_SHARE = int(2.2 * 2**30)
+RESIDENT_ENCODE_MIN_FREE = ENCODER_MIN_FREE + RESIDENT_CONTEXT + PICTURE_SHARE
+
+
+def resident_encode_decision(free_now):
+    """(use the resident encoder?, reason) from the free memory the driver reports."""
+    if free_now is None:
+        return True, dict(reason='free memory unreadable; resident kept')
+    parts = dict(free_gib=round(free_now / 2**30, 2), need_gib=round(RESIDENT_ENCODE_MIN_FREE / 2**30, 2),
+                 encoder_gib=round(ENCODER_MIN_FREE / 2**30, 2), context_gib=round(RESIDENT_CONTEXT / 2**30, 2),
+                 picture_gib=round(PICTURE_SHARE / 2**30, 2))
+    if free_now < RESIDENT_ENCODE_MIN_FREE:
+        return False, dict(parts, reason='free memory below the resident encoder, its context and the picture share')
+    return True, dict(parts, reason='free memory covers the resident encoder, its context and the picture share')
+
+
+def _driver_free_bytes():
+    """Free memory of the first card from the driver's tool; reading it with CUDA would put this process's context on the card
+    before the encoder asks for its 5 GiB. None when it cannot be read."""
+    import subprocess
+    try:
+        out = subprocess.run(['nvidia-smi', '--query-gpu=memory.free', '--format=csv,noheader,nounits'],
+                             capture_output=True, text=True, timeout=10, check=True).stdout
+        return int(float(out.split()[0]) * 2**20)
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
 
 
 class Cancelled(Exception):
@@ -103,8 +210,49 @@ def denoise_floor_bytes(copies, width, height):
                        sequence_rows=reference_sequence_rows(copies))['denoise']
 
 
-def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=()):
+
+
+def _tensor_bytes(value):
+    """Bytes of the tensors held by a module, or by nested tuples, lists and dicts of them (a decoder object)."""
+    if isinstance(value, torch.Tensor):
+        return value.numel() * value.element_size() if value.is_cuda else 0
+    if hasattr(value, 'parameters'):
+        return sum(_tensor_bytes(t) for t in value.parameters())
+    if isinstance(value, dict):
+        value = value.values()
+    elif hasattr(value, '__dict__') and not isinstance(value, (list, tuple)):
+        value = vars(value).values()
+    if isinstance(value, (list, tuple)) or hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+        return sum(_tensor_bytes(v) for v in value)
+    return 0
+
+
+def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=(),
+            resident_endpoint=None):
     """Run the shared text encoder in its own process and return the saved conditioning."""
+    import os
+    import sys
+    from ..resident_process import ENV
+    # With the video worker alive the encoder is taken from (and left in) its ModelBank; a worker that is gone
+    # makes ``child`` fall back to the short-lived process by itself.
+    previous = os.environ.get(ENV)
+    if resident_endpoint:
+        os.environ[ENV] = resident_endpoint
+    try:
+        return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images)
+    except BaseException as error:
+        # The caller's classifier keeps only a code; the text of the failure goes to the worker's log.
+        print('H3 encode failed: %s: %s' % (type(error).__name__, str(error)[-2000:]), file=sys.stderr, flush=True)
+        raise
+    finally:
+        if resident_endpoint:
+            if previous is None:
+                os.environ.pop(ENV, None)
+            else:
+                os.environ[ENV] = previous
+
+
+def _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=()):
     from .. import encode as encode_command
     import sys
     with tempfile.TemporaryDirectory(prefix='freevideo-h3img-') as directory:
@@ -119,7 +267,7 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
             prompt_file=prompt_file, out=out, encoder=encoder,
             comfy_root=Path(comfy_root) if comfy_root else None, model_paths=Path(model_paths) if model_paths else None,
             comfy_python=comfy_python or sys.executable, vram_gib=vram_gib, ram_gib=ram_gib, attention='auto',
-            gpu_reserve_gib=None, ram_reserve_gib=None, h3_image_references=pictures))
+            gpu_reserve_gib=None, ram_reserve_gib=None, release_gpu=True, h3_image_references=pictures))
         return torch.load(out, map_location='cpu', weights_only=False)
 
 
@@ -173,7 +321,7 @@ def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, 
 def generate(prompt, width, height, seed, references=None, progress_cb=None, cancel=None, *, dit_path, vae_path,
              encoder='qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', comfy_root=None, comfy_python=None,
              model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True,
-             preview=None, enter=None, reference_cache=True, reference_cache_root=None):
+             preview=None, enter=None, reference_cache=True, reference_cache_root=None, resident_endpoint=None, kept=None):
     """Return a PIL image for the prompt.
 
     ``progress_cb(stage, done, total)`` is called with stage in encode, denoise, decode;
@@ -184,6 +332,8 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     ``preview`` is the sampler's ``preview_callback`` (see ``step_preview``); it never changes the picture.
     ``enter(stage)`` names the stage a failure belongs to without moving the progress: the DiT loads after the
     text, so a load error would otherwise be filed under the text stage.
+    ``resident_endpoint`` is the video worker whose resident encoder does the text encoding. ``kept`` (a
+    ``KeptModels``) holds the DiT stack and the decoder between requests.
     """
     references = list(references or [])
     if len(references) > MAX_REFERENCES:
@@ -204,6 +354,16 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
         if enter is not None:
             enter('encode')
         raise ReferencesTooLarge('the references need more memory than this card has, even with every block streamed')
+    shared_card = bool(resident_endpoint)
+    if resident_endpoint:
+        # The resident encoder worker keeps its own CUDA context (about 0.8 GiB) on the card for good and encoding needs
+        # 5 GiB: a card with less free than that plus the picture process's share encodes in a short process, as before.
+        free_now = _driver_free_bytes()
+        use_resident, why = resident_encode_decision(free_now)
+        stats['encode_resident_decision'] = why
+        if not use_resident:
+            stats['encode_resident'] = False
+            resident_endpoint = None
     tick = time.perf_counter()
     from . import prompt_cache
     cond = prompt_cache.encode(
@@ -212,7 +372,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
                                       model_paths=model_paths),
         compute=lambda: _encode(prompt, encoder=encoder, comfy_root=comfy_root, model_paths=model_paths,
                                 comfy_python=comfy_python, vram_gib=vram_gib, ram_gib=ram_gib,
-                                vision_images=[vision for _, vision in copies]))
+                                vision_images=[vision for _, vision in copies], resident_endpoint=resident_endpoint))
     stats['encode_s'] = round(time.perf_counter() - tick, 2)
     check()
     moments = []
@@ -237,24 +397,61 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
 
     from .h3_vae import H3ImageDecoder, to_unit
     from .image_policy import ImageShape, plan_image
-    from .image_stream import StreamedStack
+    from .image_stream import StreamedStack, checkpoint_layer_source
     from PIL import Image
     torch.set_grad_enabled(False)
     device = torch.device('cuda')
     total = torch.cuda.get_device_properties(0).total_memory
     budget = card_budget(vram_gib)
     if vram_gib:
+        # A capped card's limit includes this process's own CUDA context, which the allocator limit does not count.
+        budget -= PICTURE_CONTEXT
+    if shared_card:
+        # The resident video worker still holds its text encoder on the card after encoding: plan against what
+        # the card really has free plus what this process already holds, not against its whole size.
+        free, _ = torch.cuda.mem_get_info()
+        reserved = torch.cuda.memory_reserved()
+        budget = min(budget, int(free + reserved))
+        # A decoder kept from the previous picture is not part of the next denoise plan.
+        vae_held = 0
+        if kept is not None and 'vae' in kept.items:
+            vae_held = _tensor_bytes(kept.items['vae'][1])
+            budget -= vae_held
+        # budget = free at plan time + this process's cached memory (reserved) - the kept decoder
+        stats['budget_parts_gib'] = dict(free=round(free / 2**30, 2), reserved=round(reserved / 2**30, 2),
+                                         kept_vae=round(vae_held / 2**30, 2),
+                                         allocated=round(torch.cuda.memory_allocated() / 2**30, 2))
+        stats['budget_gib'] = round(budget / 2**30, 2)
+        if kept is not None:
+            kept.budget = budget
+    if vram_gib:
         torch.cuda.set_per_process_memory_fraction(min(1.0, budget / total))
     canvas_h, canvas_w = h3_dit.canvas_size(height, width)
     if enter is not None:
         enter('load')
     tick = time.perf_counter()
-    model = load_h3_dit(str(dit_path), 'cpu', mapped=mapped)
-    for name, child in model.named_children():
-        if name != 'blocks':
-            child.to(device)
-    model.adaln_t_table = model.adaln_t_table.to(device)
-    stack = StreamedStack(model.blocks, name='h3', device=device)
+    held = kept.take('dit', str(dit_path)) if kept is not None else None
+    if held is not None:
+        model, stack = held
+        stats['dit_kept'] = True
+        # A small card gave the non-block parts back to the host after the last picture.
+        for name, child in model.named_children():
+            if name != 'blocks':
+                child.to(device)
+        model.adaln_t_table = model.adaln_t_table.to(device)
+    else:
+        model = load_h3_dit(str(dit_path), 'cpu', mapped=mapped)
+        for name, child in model.named_children():
+            if name != 'blocks':
+                child.to(device)
+        model.adaln_t_table = model.adaln_t_table.to(device)
+        source = checkpoint_layer_source(str(dit_path), list(model.blocks)) if mapped else None
+        # Layers the host cannot keep locked are read from the file ahead of their
+        # use through the staging buffer, one device slot (see LayerOffloader).
+        stack = (StreamedStack(model.blocks, name='h3', device=device, weight_source=source,
+                               prefetch=os.environ.get('FREEVIDEO_H3_DEVICE_PREFETCH') == '1',
+                               host_prefetch=True) if source is not None
+                 else StreamedStack(model.blocks, name='h3', device=device))
     shape = ImageShape.measure(list(model.blocks), None)
     shape = ImageShape(**{**shape.__dict__, 'steps': 6})
     plan = plan_image(gpu_budget_bytes=budget, width=canvas_w, height=canvas_h, shape=shape,
@@ -266,7 +463,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     generator = torch.Generator('cpu' if cpu_noise else device).manual_seed(seed)
     # The released order: each reference's posterior sample, then the image's noise, then each reference's noise.
     from .h3_vae import reference_latents
-    held = [reference_latents(m.to(device), generator, 'cpu' if cpu_noise else None) for m in moments]
+    ref_latents = [reference_latents(m.to(device), generator, 'cpu' if cpu_noise else None) for m in moments]
 
     def step(i, n):
         check()
@@ -276,23 +473,41 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     try:
         latents = h3_dit.sample(model, cond['prompt_embeds'], cond['text_token_tags'], canvas_h // 16, canvas_w // 16,
                                 generator, noise_device='cpu' if cpu_noise else None, step_callback=step,
-                                preview_callback=preview, references=held)
+                                preview_callback=preview, references=ref_latents)
         torch.cuda.synchronize()
         stats['sample_s'] = round(time.perf_counter() - tick, 2)
         stats['denoise_peak_gib'] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
     finally:
-        stack.close()
+        if kept is not None and resident is None and plan.dit_kept_layers is not None and stack.offloader.at_boundary:
+            # The decode stage was planned with this many blocks on the card.
+            stack.set_resident(plan.dit_kept_layers)
+        if (kept is not None and stack.offloader.at_boundary
+                and kept.keep('dit', str(dit_path), (model, stack), stack)):
+            stats['dit_kept_after'] = True
+        else:
+            stack.close()
         del model, stack
-        free_host_memory()
+        # Nothing is cleared while the weights stay: ModelBank-style room checks (KeptModels.keep) decided that.
+        if kept is None or 'dit' not in kept.items:
+            free_host_memory()
     report('denoise', 6, 6)
     check()
     report('decode', 0, 1)
     torch.cuda.reset_peak_memory_stats()
-    decoder = H3ImageDecoder.load(str(vae_path), device)
+    decoder = kept.take('vae', str(vae_path)) if kept is not None else None
+    stats['vae_kept'] = decoder is not None
+    if decoder is None:
+        decoder = H3ImageDecoder.load(str(vae_path), device)
     pixels = to_unit(decoder.decode(latents.to(device)[None], normalized=True))
     image = Image.fromarray((pixels[0].clamp(0, 1) * 255).round().byte().permute(1, 2, 0).cpu().numpy())
     stats['decode_peak_gib'] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
-    del decoder
-    free_host_memory()
+    if kept is None or not kept.keep('vae', str(vae_path), decoder, None):
+        del decoder
+        free_host_memory()
     report('decode', 1, 1)
+    if shared_card:
+        # The next picture's text encoding runs in another process on this card: give back the allocator's cache.
+        torch.cuda.empty_cache()
+        stats['held_after_gib'] = dict(allocated=round(torch.cuda.memory_allocated() / 2**30, 2),
+                                       reserved=round(torch.cuda.memory_reserved() / 2**30, 2))
     return image

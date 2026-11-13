@@ -29,11 +29,41 @@ def cgroup_pin_cap(reserve=IMAGE_WORKING_RESERVE):
     return None if room is None else max(0, room - reserve)
 
 
+def checkpoint_layer_source(path, layers, prefix='blocks.'):
+    """A direct-read source of the checkpoint for the streamed layers, or None.
+
+    A layer that does not stay pinned is read from the file by page faults
+    when its weights are views of the mapped checkpoint: one stream at about
+    a third of the drive's sequential rate, which was the whole cost of a
+    16 GB machine's step. The video engine's reader takes the bytes with
+    large direct reads, ahead of the layer that is computing. The module
+    names its int8 weights ``weight_int8`` where the file says ``weight``;
+    a name the file does not hold under either spelling leaves the layers
+    on the mapped views.
+    """
+    from ..streamed_weights import SafetensorLayers
+    try:
+        source = SafetensorLayers([path], [f'{prefix}{index}.' for index in range(len(layers))], direct_read=True)
+    except (OSError, ValueError, KeyError):
+        return None
+    for index, layer in enumerate(layers):
+        for name, _ in list(layer.named_parameters()) + list(layer.named_buffers()):
+            key = f'{prefix}{index}.{name}'
+            if key in source.keys:
+                continue
+            stored = key.replace('weight_int8', 'weight')
+            if stored not in source.keys:
+                return None
+            source.keys[key] = source.keys[stored]
+            source.byte_ranges[key] = source.byte_ranges[stored]
+    return source
+
+
 class StreamedStack:
     """``layers`` hold frozen CPU weights; they are moved to the card on use."""
 
     def __init__(self, layers, *, name, device='cuda', pin=True, max_pin_bytes=None, prefetch=True, host_prefetch=None,
-                 progress=None):
+                 progress=None, weight_source=None):
         self.name = name
         self.layers = list(layers)
         if not self.layers:
@@ -50,7 +80,8 @@ class StreamedStack:
         if cap is not None:
             max_pin_bytes = cap if max_pin_bytes is None else min(max_pin_bytes, cap)
         self.pinned_bytes = pin_layer_weights(self.layers, max_bytes=max_pin_bytes, **pin_options) if pin else 0
-        self.offloader = LayerOffloader(self.layers, device=device, prefetch=prefetch, host_prefetch=host_prefetch)
+        self.offloader = LayerOffloader(self.layers, device=device, prefetch=prefetch, host_prefetch=host_prefetch,
+                                      weight_source=weight_source)
         self.layer_bytes = max(sum(count * parameter.element_size()
                                    for parameter, _, _, _, count, _ in entries)
                                for entries in self.offloader.layout)

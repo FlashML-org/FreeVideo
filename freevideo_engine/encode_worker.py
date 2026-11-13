@@ -167,8 +167,14 @@ def start_layer_window(trace, clip, path):
 def stop_layer_window(trace):
     """Stop the layer window, once, and keep what it did in the metrics."""
     window = getattr(trace, 'layer_window', None)
-    if window is not None and 'encoder_window' not in trace.data:
+    if window is None:
+        return
+    if 'encoder_window' not in trace.data:
         trace.data['encoder_window'] = window.close()
+    # The window's table of layers would keep every encoder layer (and its weights on the card) alive
+    # for as long as the request's trace lives, after the encoder itself has left.
+    window.modules = {}
+    trace.layer_window = None
 
 
 def start_model_read_ahead(trace, request):
@@ -592,6 +598,30 @@ def _encode(args, request, resident, trace):
         value['early_reference'] = early_reference
     torch.cuda.synchronize()
     prompt_encode_seconds = time.perf_counter() - encode_started
+    if request.get('release_gpu') and resident is not None:
+        # The caller (a picture request) runs a different model next and needs the card: the encoder leaves
+        # the GPU, staying resident in host memory when that fits, else it is dropped.
+        import comfy.model_management as _memory
+        from .resident_models import GiB as _GiB
+        from .resident_models import gpu_bytes as _gpu_bytes
+        # The weights copy back to host memory beside the picture model's own host weights (about 21 GiB).
+        if resident.ram_fits(_gpu_bytes(clip) + 21 * _GiB + 8 * _GiB):
+            _memory.unload_all_models()
+            _memory.soft_empty_cache()
+            print(json.dumps({'event': 'encoder_left_gpu', 'kept_in_ram': True,
+                              'gpu_allocated_gib': round(torch.cuda.memory_allocated() / _GiB, 2),
+                              'gpu_reserved_gib': round(torch.cuda.memory_reserved() / _GiB, 2)}), flush=True)
+        else:
+            resident.drop('encoder', 'Picture request needs the card and host memory cannot hold the encoder')
+            # The local reference would keep the weights on the card.
+            clip = None
+            import gc as _gc
+            _memory.unload_all_models()
+            _gc.collect()
+            _memory.soft_empty_cache()
+            print(json.dumps({'event': 'encoder_left_gpu', 'kept_in_ram': False,
+                              'gpu_allocated_gib': round(torch.cuda.memory_allocated() / _GiB, 2),
+                              'gpu_reserved_gib': round(torch.cuda.memory_reserved() / _GiB, 2)}), flush=True)
     # Keyframe and reference-media encoding read the drive themselves.
     stop_model_read_ahead(trace)
     keyframe_metrics = {}

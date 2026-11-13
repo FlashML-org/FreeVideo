@@ -61,6 +61,7 @@ class H3Runner:
         self.files = files(self.model_root)
         self.last_plan = None
         self.last_stats = None
+        self.kept = None
         if progress is not None:
             progress('load', 1.)
 
@@ -92,17 +93,29 @@ class H3Runner:
 
         stats = {}
         self.last_stats = dict(h3=stats)
+        if self.kept is None:
+            self.kept = h3_pipeline.KeptModels()
         try:
             return h3_pipeline.generate(
                 prompt, width, height, seed, reference_images or None, report,
                 (lambda: bool(cancel and cancel())), dit_path=self.files['dit'], vae_path=self.files['vae'],
                 encoder=setup.get('encoder'), comfy_root=setup.get('comfy_root'), comfy_python=setup.get('comfy_python'),
                 model_paths=setup.get('model_paths'), vram_gib=setup.get('vram_gib'), ram_gib=setup.get('ram_gib'),
-                stats=stats, preview=_previewer(preview), enter=stage)
+                stats=stats, preview=_previewer(preview), enter=stage,
+                resident_endpoint=setup.get('resident_endpoint'), kept=self.kept)
         except h3_pipeline.Cancelled:
             raise InterruptedError('cancelled') from None
         finally:
             self.last_plan = dict(seed=seed, **{key: stats[key] for key in ('canvas', 'resident', 'planned_peak_gib', 'host_mode') if key in stats})
+
+    def idle(self, should_stop):
+        """Prepare the next request after a picture: refill the card with the blocks the plan keeps, then the
+        read-ahead (``h3_pipeline.warm``, when present). Stops at once when ``should_stop()`` is true."""
+        if self.kept is None or should_stop():
+            return
+        warm = getattr(__import__(__package__ + '.h3_pipeline', fromlist=['x']), 'warm', None)
+        if warm is not None:
+            warm(self.files['dit'], kept=self.kept, should_stop=should_stop)
 
     def at_boundary(self):
         return True
@@ -111,4 +124,7 @@ class H3Runner:
         return dict(plan=self.last_plan, **(self.last_stats or {}))
 
     def close(self):
+        if self.kept is not None:
+            self.kept.close()
+            self.kept = None
         self.last_plan = self.last_stats = None
