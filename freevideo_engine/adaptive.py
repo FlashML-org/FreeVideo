@@ -424,17 +424,40 @@ COMPUTE_RECOVERY_KEYS = ('head_chunk', 'ff_chunk', 'projection_chunk', 'window_b
 COMPUTE_DEFAULTS = dict(window_batch=1, head_parallelism=1)
 
 
-def compute_recovery(engine):
+# One activation of the whole sequence is rows x 5376 channels x 2 bytes (bf16).
+# A refused allocation of at least the video rows' worth does not shrink with
+# the head group; the group only sizes the per-head workspaces.
+SEQUENCE_ROW_BYTES = 5376 * 2
+HEAD_GROUP_KEYS = ('head_chunk', 'head_parallelism')
+
+
+def sequence_sized_failure(failure, canvas):
+    """The refused allocation is at least one whole-sequence activation."""
+    rows = (canvas or {}).get('video_tokens')
+    if type(rows) is not int or rows <= 0:
+        return False
+    exceptions = failure.get('exception')
+    for item in exceptions if isinstance(exceptions, list) else []:
+        size = item.get('requested_allocation_bytes') if isinstance(item, dict) else None
+        if type(size) is int and size >= rows * SEQUENCE_ROW_BYTES:
+            return True
+    return False
+
+
+def compute_recovery(engine, fixed_heads=False):
     """The next smaller compute partition for the bounded inference path, or None.
 
     Integers only shrink and flags only switch on, so recovery never widens a
-    partition that already failed.
+    partition that already failed. ``fixed_heads`` leaves the head group alone
+    and offers only the remaining partitions and flags.
     """
     if engine.get('inference_kernels') is not True or type(engine.get('head_chunk')) is not int or engine['head_chunk'] <= 0:
         return None
     for rung in COMPUTE_RECOVERY:
         updates = {}
         for name, target in rung.items():
+            if fixed_heads and name in HEAD_GROUP_KEYS:
+                continue
             current = engine.get(name, COMPUTE_DEFAULTS.get(name))
             if target == 'half':
                 # Once: a group of 2 or fewer heads goes on to the bounded rung.
@@ -539,6 +562,7 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
             options[name] = new
     host_pins = failure['kind'] == 'gpu_oom' and nonlocal_exhausted(failure)
     compute = None
+    heads_fixed = False
     if failure['kind'] == 'gpu_oom':
         if phase == 'sample' and engine.get('step_cache') == 'fbcache' and not host_pins:
             # Its two packed residuals are the newest GPU allocation in the
@@ -602,7 +626,12 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                         and engine.get('window_batch', 1) == 1):
                     change('engine', 'residual_offload', True)
                 if not changes and phase == 'sample':
-                    compute = compute_recovery(engine)
+                    # A whole-sequence buffer that already failed with a group of two or
+                    # fewer heads does not shrink with the group: the retry would only
+                    # repeat the completed steps and fail in the same place.
+                    heads_fixed = (type(engine.get('head_chunk')) is int and engine['head_chunk'] <= 2
+                                   and sequence_sized_failure(failure, canvas))
+                    compute = compute_recovery(engine, fixed_heads=heads_fixed)
                     for name, new in (compute or {}).items():
                         change('engine', name, new)
                 # Offloading more GPU weights must not turn the next attempt
@@ -663,6 +692,9 @@ def next_placement(profile, failure, phase, canvas=None, *, previous_ram_retries
                            changes={}, numerical_class='placement-only', measurement=failure,
                            ram_recovery=ram_recovery)
     if not changes:
+        if heads_fixed:
+            return None, {'reason': 'The refused allocation is a whole-sequence buffer that a smaller head group '
+                                    'does not shrink, and no other placement or partition is left.', 'changes': {}}
         return None, {'reason': 'No further placement or compute-partition recovery is available.', 'changes': {}}
     if 'policy' in value:
         value['policy'].update(engine=dict(engine), decoder=dict(decoder))
