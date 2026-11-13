@@ -940,12 +940,12 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const otherUsage = createOtherUsageNotice(bar, t, fetchApi);
         const grow = () => {
             input.style.height = '0px';
-            const open = prompt.trim() && document.activeElement === input;
+            const open = prompt.trim() && input.ownerDocument.activeElement === input;
             input.style.height = (open ? Math.min(80, Math.max(32, input.scrollHeight + 2)) : 32) + 'px';
             if (!open) input.scrollTop = 0;
             const folded = !open && !!prompt.trim();
             box.dataset.folded = String(folded);
-            if (folded) { fold.textContent = input.value.replace(/\s*\n\s*/g, ' '); fold.style.font = getComputedStyle(input).font; }
+            if (folded) { fold.textContent = input.value.replace(/\s*\n\s*/g, ' '); fold.style.font = input.ownerDocument.defaultView?.getComputedStyle?.(input).font || ""; }
         };
         input.addEventListener('focus', () => grow());
         input.addEventListener('blur', () => grow());
