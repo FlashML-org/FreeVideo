@@ -136,6 +136,10 @@ def exit_reading(code, *, requested_stop=False, system=None):
             kind, suspected = 'system_' + _SYSTEM_STATUS[unsigned], True
         elif unsigned == 0xC000013A:
             kind, suspected = 'interrupted', False
+        elif on_windows and unsigned == 3:
+            # The C runtime's abort(): a native library ended the process (PyTorch does this when the driver
+            # reports an error where it cannot raise one). Python's crash handler may have left a stack.
+            kind, suspected = 'abort', False
         elif unsigned & 0xF0000000 in _CRASH_PREFIXES:
             kind, suspected = 'native_crash', False
         else:
@@ -186,8 +190,28 @@ def read_crash_stack(path):
     return [frame for frame in frames if _FRAME_OUT.match(frame)]
 
 
+# What a worker's last words said about a failure, as fixed words: the text itself can hold a prompt or a folder.
+STDERR_KINDS = tuple((name, re.compile(pattern, re.I)) for name, pattern in (
+    ('cuda_out_of_memory', r'cuda error: out of memory|cudaerrormemoryallocation|cublas_status_alloc_failed|cudnn_status_alloc_failed'),
+    ('allocator_out_of_memory', r'cuda out of memory|outofmemoryerror'),
+    ('cuda_launch_timeout', r'launch timed out|launch timeout|cudaerrorlaunchtimeout'),
+    ('cuda_illegal_address', r'illegal memory access|cudaerrorillegaladdress'),
+    ('cuda_launch_failure', r'unspecified launch failure|device-side assert'),
+    ('cuda_device_lost', r'device is lost|device lost|gpu is lost|device has been removed'),
+    ('cuda_unknown_error', r'cuda error: unknown error|cudaerrorunknown'),
+    ('pinned_memory', r'cudahostalloc|cudahostregister|pinned memory|pin_memory'),
+    ('memory_error', r'\bMemoryError\b'),
+    ('commit_limit', r'paging file is too small|not enough memory resources|os error 1455')))
+_STDERR_WORDS = frozenset(name for name, _ in STDERR_KINDS)
+
+
+def stderr_kinds(text):
+    """The fixed words that name what ``text`` (a worker's last lines) complained about."""
+    return [name for name, pattern in STDERR_KINDS if pattern.search(text or '')]
+
+
 _SAMPLE_KEYS = _FIELDS + ('process_working_set_bytes', 'process_private_commit_bytes')
-_CLASSES = frozenset({'clean', 'stopped_by_us', 'terminated_externally', 'interrupted', 'native_crash',
+_CLASSES = frozenset({'clean', 'stopped_by_us', 'terminated_externally', 'interrupted', 'native_crash', 'abort',
                       'error_exit', 'killed_by_signal', 'signal', 'unknown'}
                      | {'system_' + name for name in _SYSTEM_STATUS.values()})
 
@@ -211,6 +235,11 @@ def clean_reading(value):
     memory = clean_sample(value.get('memory'))
     if memory:
         result['memory'] = memory
+    kinds = value.get('stderr_kinds')
+    if isinstance(kinds, list):
+        words = [word for word in kinds[:16] if word in _STDERR_WORDS]
+        if words:
+            result['stderr_kinds'] = words
     stack = value.get('native_stack')
     if isinstance(stack, list):
         frames = [row for row in stack[:MAX_FRAMES] if isinstance(row, str) and _FRAME_OUT.match(row)]

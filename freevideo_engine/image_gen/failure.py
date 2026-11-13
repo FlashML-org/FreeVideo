@@ -209,6 +209,9 @@ class StageTimes:
         return max(0., self.clock() - self.started)
 
 
+_H3_PLAN_INTS = ('resident_layers', 'kept_layers', 'vae_tile_size', 'planned_peak_bytes', 'budget_bytes', 'card_total_bytes',
+                 'card_free_bytes', 'sequence_rows', 'pinned_layers', 'pinned_bytes')
+_H3_PLAN_FLAGS = ('vae_tiling', 'feasible', 'shared_card', 'capped')
 _GPU_READING = ('total_bytes', 'used_bytes', 'budget_bytes', 'owned_credit_bytes', 'native_credit_bytes')
 
 
@@ -224,6 +227,10 @@ class Context:
         self.start_memory = None
         # The card as the admission check read it (memory_budget): numbers only.
         self.gpu_reading = {}
+        # H3 Image: the placement the worker planned with, and the last progress the service heard (numbers and
+        # fixed words), kept for a report when the worker ends without answering.
+        self.h3_plan = {}
+        self.progress = None
         # ComfyUI's own models this request unloaded before its worker started (comfy_residency.release_native).
         self.native_release = None
         self.update_request(value)
@@ -232,6 +239,23 @@ class Context:
         """Memory readings when the request begins; the worker's own are lost if it is ended."""
         from ..exit_diagnostics import memory_sample
         self.start_memory = memory_sample()
+
+    def note_plan(self, value):
+        if not isinstance(value, dict):
+            return
+        facts = {key: value[key] for key in _H3_PLAN_INTS if type(value.get(key)) is int and value[key] >= 0}
+        facts.update({key: value[key] for key in _H3_PLAN_FLAGS if type(value.get(key)) is bool})
+        if value.get('host_mode') in ('pinned', 'pageable', 'insufficient'):
+            facts['host_mode'] = value['host_mode']
+        canvas = value.get('canvas')
+        if (isinstance(canvas, list) and len(canvas) == 2 and all(type(item) is int and 0 < item < 2**20 for item in canvas)):
+            facts['canvas'] = list(canvas)
+        if facts:
+            self.h3_plan = facts
+
+    def note_progress(self, stage, fraction):
+        if stage in STAGES and _number(fraction):
+            self.progress = dict(stage=stage, fraction=round(float(fraction), 3))
 
     def update_request(self, value):
         if not isinstance(value, dict):
@@ -337,6 +361,10 @@ class Context:
             gpu['owned_unreported'] = self.gpu_reading['owned_unreported']
         if gpu:
             service['gpu_at_request_start'] = gpu
+        if self.h3_plan:
+            service['h3_plan'] = dict(self.h3_plan)
+        if self.progress:
+            service['progress_at_exit'] = dict(self.progress)
         released = self.native_release
         if isinstance(released, dict):
             service['comfy_models_released'] = {key: released[key] for key in

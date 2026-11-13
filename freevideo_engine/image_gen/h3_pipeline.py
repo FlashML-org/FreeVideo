@@ -208,6 +208,29 @@ class ReferencesTooLarge(MemoryError):
     """The references cannot fit on this card even with every transformer block streamed."""
 
 
+def plan_facts(plan, stack, *, budget, total, shared_card, capped, canvas, sequence_rows):
+    """Numbers and fixed words of the placement this request was planned with, for the worker's ``plan`` row.
+
+    The row reaches the service before the first step, so a report keeps it when the worker ends without
+    answering (a native abort leaves nothing else).
+    """
+    facts = dict(canvas=[int(canvas[0]), int(canvas[1])], resident_layers=int(plan.dit_resident_layers),
+                 kept_layers=None if plan.dit_kept_layers is None else int(plan.dit_kept_layers),
+                 vae_tiling=bool(plan.vae_tiling), vae_tile_size=int(plan.vae_tile_size), host_mode=plan.host_mode,
+                 feasible=bool(plan.feasible), planned_peak_bytes=int(plan.peak_allocated_bytes),
+                 budget_bytes=int(budget), card_total_bytes=int(total), shared_card=bool(shared_card),
+                 capped=bool(capped), sequence_rows=int(sequence_rows))
+    try:
+        facts['card_free_bytes'] = int(torch.cuda.mem_get_info()[0])
+    except Exception:
+        pass
+    try:
+        facts.update(pinned_layers=int(stack.pinned_layers), pinned_bytes=int(stack.pinned_bytes))
+    except Exception:
+        pass
+    return facts
+
+
 def card_budget(vram_gib):
     """Bytes of the card this request may use: the caller's limit less this process's CUDA context (which the
     allocator limit does not count), else the whole card."""
@@ -341,7 +364,8 @@ def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, 
 def generate(prompt, width, height, seed, references=None, progress_cb=None, cancel=None, *, dit_path, vae_path,
              encoder='qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', comfy_root=None, comfy_python=None,
              model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True,
-             preview=None, enter=None, reference_cache=True, reference_cache_root=None, resident_endpoint=None, kept=None):
+             preview=None, enter=None, reference_cache=True, reference_cache_root=None, resident_endpoint=None, kept=None,
+             note=None):
     """Return a PIL image for the prompt.
 
     ``progress_cb(stage, done, total)`` is called with stage in encode, denoise, decode;
@@ -353,7 +377,8 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     ``enter(stage)`` names the stage a failure belongs to without moving the progress: the DiT loads after the
     text, so a load error would otherwise be filed under the text stage.
     ``resident_endpoint`` is the video worker whose resident encoder does the text encoding. ``kept`` (a
-    ``KeptModels``) holds the DiT stack and the decoder between requests.
+    ``KeptModels``) holds the DiT stack and the decoder between requests. ``note(facts)`` receives the planned
+    placement once, before the first step (see ``plan_facts``); it never changes the picture.
     """
     references = list(references or [])
     if len(references) > MAX_REFERENCES:
@@ -479,6 +504,12 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     stats.update(load_s=round(time.perf_counter() - tick, 2), canvas=[canvas_h, canvas_w],
                  resident=plan.dit_resident_layers if resident is None else resident,
                  planned_peak_gib=round(plan.peak_allocated_bytes / 2**30, 2), host_mode=plan.host_mode)
+    if note is not None:
+        try:
+            note(plan_facts(plan, stack, budget=budget, total=total, shared_card=shared_card, capped=bool(vram_gib),
+                            canvas=(canvas_h, canvas_w), sequence_rows=reference_sequence_rows(copies)))
+        except Exception:
+            pass
     generator = torch.Generator('cpu' if cpu_noise else device).manual_seed(seed)
     # The released order: each reference's posterior sample, then the image's noise, then each reference's noise.
     from .h3_vae import reference_latents

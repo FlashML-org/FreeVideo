@@ -181,6 +181,9 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         if len(data) <= PREVIEW_LIMIT:
                             send(phase='preview', step=step, total=total, width=width, height=height, jpeg=data)
 
+                    def note(facts):
+                        send(phase='plan', plan=facts)
+
                     def generate(seed):
                         return runner.generate(
                             value['prompt'], width=value['width'], height=value['height'],
@@ -189,7 +192,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                             progress=progress, cancel=inbox.cancel.is_set,
                             **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}),
                             # Which stage a failure belongs to, without a progress row the page would show.
-                            **(dict(preview=preview, stage=context.timing.enter) if model == 'minimax-h3-image' else {}))
+                            **(dict(preview=preview, stage=context.timing.enter, note=note) if model == 'minimax-h3-image' else {}))
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
                         from .back_view import generate_back, load_detector
