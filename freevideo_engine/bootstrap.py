@@ -1211,7 +1211,7 @@ def setup_task(label):
     """Describe the work independently of internal command IDs and log paths."""
     routes = {'official': 'official source', 'nju': 'Nanjing University mirror',
               'tuna': 'Tsinghua mirror', 'ghfast': 'GitHub mirror',
-              'user-python': 'your Python mirror', 'user': 'your configured source'}
+              'npmmirror': 'npm mirror', 'user-python': 'your Python mirror', 'user': 'your configured source'}
     # Python route retries append the route after the source.
     label = re.sub(r'-(?:direct|proxy)$', '', label)
     source = next((name for name in routes if label.endswith('-' + name)), None)
@@ -1890,6 +1890,12 @@ class Installer:
                 lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
                 self.env, notice=notice)
 
+    def python_sources(self, names):
+        """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
+        if self.network.get('mode') == 'official':
+            return names
+        return [*[n for n in names if n != 'ghfast'], *network.PYTHON_MIRRORS, *[n for n in names if n == 'ghfast']]
+
     def python_install(self, uv):
         from .system import bootstrap_root
         prepared = bootstrap_root(self.root) / 'python'
@@ -1920,13 +1926,16 @@ class Installer:
         def attempt(source, route, retry_mode):
             env = network.download_environment(
                 network.route_environment(self.network, 'github', source, self.env, route), retry_mode)
-            env['UV_PYTHON_INSTALL_MIRROR'] = custom if source == 'user-python' else network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download'
+            env['UV_PYTHON_INSTALL_MIRROR'] = (custom if source == 'user-python' else network.PYTHON_MIRRORS[source]
+                                               if source in network.PYTHON_MIRRORS else
+                                               network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')
             return self.command('python-' + source + '-' + route,
                                 [uv, 'python', 'install', *isolation, self.versions['python']], env=env)
         try:
             with self.download_notice('download-patient-python') as notice:
                 return network.download_command(self.network, 'github', attempt, self.env, category='python',
-                                                extra_sources=['user-python'] if custom else [], notice=notice)
+                                                extra_sources=['user-python'] if custom else [], notice=notice,
+                                                reorder=self.python_sources)
         except network.PackageSourcesError as error:
             failure = RuntimeError('Python download failed on every route; see retained logs'
                                    + network.sources_text(error.attempts))
