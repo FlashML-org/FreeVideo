@@ -73,7 +73,7 @@ def _compiled(play, shot):
 
 # What a screenplay shot and a line may say; anything else would be ignored without a word.
 SHOT_FIELDS = ('id', 'seconds', 'action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music', 'takes', 'seed',
-               'continue', 'first', 'references', 'cast', 'lines', 'cuts', 'continuity')
+               'continue', 'first', 'references', 'cast', 'lines', 'cuts', 'continuity', 'scene', 'blocking')
 LINE_FIELDS = ('who', 'line', 'how', 'language')
 
 

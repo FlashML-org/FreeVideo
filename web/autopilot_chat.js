@@ -1268,16 +1268,19 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             playing();
         }};
     }
+    // The outline of a film about to be shot, one line a beat; past eight the rest fold under one line.
+    const BEATS_SHOWN = 8;
     function confirmCard() {
         const item = el('li', 'fv-chat-confirm');
         let shownState = null;
         let whitebox = null;
+        let allBeats = false;
         return {element: item, update(entry) {
             if (entry.whitebox) { whitebox ||= whiteboxCard(item); whitebox.update(entry); return; }
             const session = state.session, key = cardKey(session, entry.id);
             const value = answers.get(key) || state.confirms[entry.id] || entry.state || 'asked';
             const disabled = confirming.has(key) || !inSelectedChat() || state.agent.connected !== true, error = confirmErrors.get(key) || '';
-            const signature = JSON.stringify([value, disabled, error]);
+            const signature = JSON.stringify([value, disabled, error, allBeats]);
             if (signature === shownState) return;
             shownState = signature; item.dataset.state = value === 'asked' ? 'asked' : 'answered';
             if (value !== 'asked') { item.replaceChildren(el('span', null, value === 'approved' ? t('Started', '已开始') : t('Not now', '先不拍'))); return; }
@@ -1300,7 +1303,18 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const estimate = el('p', 'fv-chat-meta', entry.estimate_seconds > 0 ? about(entry.estimate_seconds, t) : ''); estimate.hidden = !estimate.textContent;
             // What is about to be made, written as on the job card; a question that carries no size or length shows only the time.
             const shape = el('p', 'fv-chat-meta', jobMeta(entry, t)); shape.hidden = !shape.textContent;
-            item.replaceChildren(question, shape, estimate, buttons);
+            const beats = Array.isArray(entry.beats) ? entry.beats : [];
+            const outline = el('ol', 'fv-chat-beats');
+            const folded = beats.length > BEATS_SHOWN && !allBeats;
+            for (const beat of folded ? beats.slice(0, BEATS_SHOWN - 1) : beats) outline.append(el('li', null, beat));
+            if (folded) {
+                const rest = beats.length - BEATS_SHOWN + 1;
+                const more = el('li', 'fv-chat-beats-more');
+                more.append(press('fv-chat-link', t(`${rest} more`, `另外 ${rest} 拍`), () => { allBeats = true; shownState = null; render(); }));
+                outline.append(more);
+            }
+            outline.hidden = !beats.length;
+            item.replaceChildren(question, shape, estimate, outline, buttons);
             if (error) {
                 const notice = el('p', 'fv-chat-error', error); notice.setAttribute('role', 'alert');
                 item.append(notice, issueButton(t, () => ({where: CHAT_ISSUE, message: error})));

@@ -65,6 +65,7 @@ CARD = re.compile(r'c[0-9a-f]{12}')  # characters.<key>.card names a cast librar
 FACE_ORDER = ('face', 'front', 'three_quarter')  # the one picture standing for a person, then any other label, in card order
 MAX_VOICES = 3      # voice clips per shot, the model limit
 MAX_REFERENCES = 32
+MAX_BEATS = 24      # beats of a screenplay outline
 
 
 def check(play, single_seconds=BLOCK_SECONDS):
@@ -117,6 +118,30 @@ def check(play, single_seconds=BLOCK_SECONDS):
         else:
             for key, text in play['continuity'].items():
                 validate(specs._text, text, '/continuity/' + str(key).replace('~', '~0').replace('/', '~1'), 20000, empty=True)
+    if 'outline' in play:
+        # The story the user confirms before shooting: beats in order, each what happens and why.
+        outline = play['outline']
+        beats = outline.get('beats') if isinstance(outline, dict) else None
+        if not isinstance(beats, list) or not 1 <= len(beats) <= MAX_BEATS or set(outline) - {'beats'}:
+            problem('/outline', 'must be {"beats": [{"what", "why"}]} with 1 to %d beats' % MAX_BEATS)
+        else:
+            for j, beat in enumerate(beats):
+                path = '/outline/beats/%d' % j
+                if not isinstance(beat, dict) or set(beat) - {'what', 'why'} or not isinstance(beat.get('what'), str):
+                    problem(path, 'must be {"what": what happens, "why": what causes it}')
+                    continue
+                validate(specs._text, beat['what'], path + '/what', 500)
+                if 'why' in beat:
+                    validate(specs._text, beat['why'], path + '/why', 500, empty=True)
+    scenes = play.get('blocking', {})
+    if not isinstance(scenes, dict):
+        problem('/blocking', 'must be an object of text by scene name')
+        scenes = {}
+    for key, text in scenes.items():
+        path = '/blocking/' + str(key).replace('~', '~0').replace('/', '~1')
+        if not isinstance(key, str) or not specs.SLUG.fullmatch(key):
+            problem(path, 'scene names must be short names')
+        validate(specs._text, text, path, 20000, empty=True)
     if 'captions' in play:
         validate(specs._bool, play['captions'], '/captions')
     if 'quality' in play and (not isinstance(play['quality'], str) or play['quality'] not in specs.QUALITY):
@@ -150,7 +175,9 @@ def check(play, single_seconds=BLOCK_SECONDS):
             problem(path + '/continue', '/shots/0 cannot continue a previous shot')
         if 'continue' in shot:
             validate(specs._bool, shot['continue'], path + '/continue')
-        for field in ('action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music'):
+        if 'scene' in shot and (not isinstance(shot['scene'], str) or shot['scene'] not in scenes):
+            problem(path + '/scene', 'must name a scene of blocking')
+        for field in ('action', 'idea', 'prompt', 'camera', 'framing', 'sound', 'music', 'blocking'):
             if field in shot:
                 validate(specs._text, shot[field], path + '/' + field, 20000, empty=True)
         if 'continuity' in shot:
@@ -351,6 +378,12 @@ def prompt(play, shot):
             rows.append(table['set'].strip().rstrip('.') + '.')
         return ['Continuity - ' + ' '.join(rows)] if rows else []
 
+    def blocking():
+        """Who stands where in this shot's scene; a shot's own blocking replaces its scene's for this shot only."""
+        scenes = play.get('blocking') if isinstance(play.get('blocking'), dict) else {}
+        text = shot.get('blocking') if isinstance(shot.get('blocking'), str) and shot['blocking'].strip() else scenes.get(shot.get('scene'))
+        return ['Blocking - ' + text.strip().rstrip('.') + '.'] if isinstance(text, str) and text.strip() else []
+
     cuts = shot.get('cuts')
     if cuts:
         # Numbered cuts inside one generation: [Shot 1] has no time, the others say when they start.
@@ -362,7 +395,7 @@ def prompt(play, shot):
                 row += [lead + '.' if lead else '']
                 if shot.get('continue'):
                     row.append('Continuing from the opening frame, the scene keeps its exact layout, lighting and characters.')
-                row += looks() + continuity()
+                row += looks() + continuity() + blocking()
             elif cut.get('framing'):
                 row.append(cut['framing'].strip().rstrip('.') + '.')
             if number == 1 and cut.get('framing'):
@@ -380,7 +413,7 @@ def prompt(play, shot):
         parts = ['[Shot 1] ' + (lead + '.' if lead else '')]
         if shot.get('continue'):
             parts.append('Continuing from the opening frame, the scene keeps its exact layout, lighting and characters.')
-        parts += looks() + continuity()
+        parts += looks() + continuity() + blocking()
         parts.append(named(play, people, shot.get('action', '')))
         if shot.get('camera'):
             parts.append(shot['camera'])

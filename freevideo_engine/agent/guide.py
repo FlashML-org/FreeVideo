@@ -197,6 +197,9 @@ GUIDE = {
         'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate with "prompt": {"from_job": "<enhance id>"} rather than retyping the text. '
         'A film is cut into shots: see the rule "Cut by default" before making one long continued video.',
         'Use drama plan → start → get → sheet → choose/reshoot → finish; inspect todo after every change.',
+        'Write the story the user agreed on into the screenplay as outline {beats: [{what, why}]}; the start confirmation shows the beats to the user. '
+        'Write where people stand once a scene in blocking {scene: who is left, right or centre, sitting or standing, facing whom, where the camera is} '
+        'and give each shot its scene; a shot that changes it writes its own blocking. Blocking and continuity go into every shot prompt.',
         'Each finished output also gives project_id: the film opened as an editing project, one part per shot with its action as the note. '
         'Finish the sound or change the cut on that project (projects get, then finish_sound); the MP4 in library_id stays as it was. '
         'project_id is null where editing is not available.',

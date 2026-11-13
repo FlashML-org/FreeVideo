@@ -45,6 +45,12 @@ def _quoted(title):
     return '"%s"' % title if title else 'the film'
 
 
+def _beats(play):
+    """The outline the user confirms before shooting: what happens in each beat, one line each; none without an outline."""
+    outline = play.get('outline') if isinstance(play.get('outline'), dict) else {}
+    return [' '.join(beat['what'].split()) for beat in outline.get('beats') or []] or None
+
+
 def _detail(value):
     """Domain details carry identifiers only; anything else is not repeated."""
     if value is None or type(value) in (bool, int):
@@ -174,7 +180,7 @@ class Productions:
         self.changed = threading.Condition(jobs.lock)
         self._waiters = {}
         self._waiter_lock = threading.Lock()
-        # gate(action, *, by, estimate_seconds, refs, question) raises when the user must approve first.
+        # gate(action, *, by, estimate_seconds, refs, question, shape, beats) raises when the user must approve first.
         self.gate = None
         # transcribe(path) -> heard text; a machine without a speech model gets a note instead of a comparison.
         self.transcribe = take_qa.recognise
@@ -666,6 +672,7 @@ class Productions:
                 self.gate('start', by=by, estimate_seconds=self._progress(record)['estimate_seconds'],
                           shape=self._shape(state),
                           refs={},  # the film gets its ID only when the approved call repeats
+                          beats=_beats(state['screenplay']),
                           question='Start shooting %s (%d shots)?' % (_quoted(state['title']), len(state['shots'])))
             result = self._view(record)
             if ref:

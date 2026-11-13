@@ -102,6 +102,9 @@
 .fv-studio .fv-chat-stop:disabled{opacity:1;border-color:transparent;background:none;color:var(--fv-muted)}.fv-studio .fv-chat-stop:disabled::before{display:none}
 .fv-chat-confirm{box-sizing:border-box;justify-self:start;width:100%;max-width:440px;display:grid;gap:12px;padding:14px 14px 12px;border:1px solid var(--fv-border);border-radius:14px;background:var(--fv-card)}
 .fv-chat-confirm>p:first-child{font-size:14.5px;line-height:1.55;overflow-wrap:anywhere}.fv-chat-confirm>.fv-chat-meta{margin-top:-6px}
+.fv-chat-beats{margin:0;padding:0 0 0 1.7em;display:grid;gap:4px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}.fv-chat-beats>li::marker{color:var(--fv-muted);font-variant-numeric:tabular-nums}
+.fv-chat-beats>.fv-chat-beats-more{list-style:none}
+.fv-studio .fv-chat-beats .fv-chat-link{min-height:0;padding:0;border:0;background:none;color:var(--fv-accent);font-size:13px;cursor:pointer}.fv-studio .fv-chat-beats .fv-chat-link:hover{text-decoration:underline}
 .fv-chat-confirm[data-state=answered]{width:auto;padding:0;border:0;background:none;color:var(--fv-muted);font-size:13.5px}
 /* Whitebox confirmations retain their preview when answered. */
 .fv-chat-whitebox-card{color:var(--fv-ink)}

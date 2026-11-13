@@ -9,6 +9,7 @@ First version. Each part gives the few rules that matter most and one example. E
 - Dialogue is short and carries the conflict: a person asks, refuses, lies or gives in. No line explains what the picture already shows.
 - Amount of speech (estimate, to be measured): about 2 spoken words per second in English and about 4 characters per second in Chinese, counting pauses. A 20 second generation holds about 30 words, three to five lines. More than that gets rushed or cut off.
 - The last beat of a generation ends on a look, a door or a held line, so the next shot has something to start from.
+- With the drama tools, the page goes into the screenplay as `outline`: `{"beats": [{"what": ..., "why": ...}]}`, one beat each, at most 24. The user sees the beats again when asked to start shooting.
 
 Example, a 20 second piece in one generation: a girl wants the last seat on the night bus. Cut 1: she runs, the doors are closing. Cut 2: a man in the seat sees her and pulls his bag onto it. Cut 3: she says "Please." Cut 4: he says nothing, then moves the bag. Cut 5: she sits; the bus pulls away. Two spoken lines in all, about four words.
 
@@ -17,6 +18,7 @@ Example, a 20 second piece in one generation: a girl wants the last seat on the 
 - Write a plan for every beat: who sits or stands where, who faces whom, where the camera is. Left and right are the camera's left and right.
 - Two people who talk keep the same sides in every cut; the camera stays on one side of the line between them.
 - Name the camera for each cut: wide, over the shoulder, close-up, and whether it moves.
+- With the drama tools, write each scene's plan once in the screenplay's `blocking` (`{"kitchen": "Mia stands at the sink, ..."}`) and give every shot in that scene `"scene": "kitchen"`; the tool writes the plan into each of those prompts. A shot where people have moved writes its own `blocking`, which replaces the scene's for that shot only.
 
 Example: Beat 2, the kitchen. Mia stands at the sink, left of frame, back to the window. Dad sits at the table, right of frame, facing her. Camera behind Dad's shoulder, locked off. Cut to a close-up of Mia from his side, still on the left.
 
