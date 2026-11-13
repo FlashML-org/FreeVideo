@@ -692,6 +692,7 @@ class Jobs:
             self._receipts.retry()
 
     def close(self):
+        self.productions.close()
         if self._receipts is not None:
             self._receipts.close()
 

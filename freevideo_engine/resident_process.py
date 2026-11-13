@@ -207,7 +207,7 @@ class RemoteProcess:
     """Popen-shaped active request; pid is the measured GPU worker, not an RPC shim."""
     def __init__(self, endpoint, command, environment, descriptor, log, *, required_capabilities=(), operation='run'):
         import psutil
-        if operation not in ('run', 'release'):
+        if operation not in ('run', 'release', 'trim'):
             raise ValueError('Invalid resident operation')
         self.connection, hello = connect(endpoint)
         self.pid, self.created = hello['pid'], hello['created']
@@ -331,8 +331,11 @@ class RemoteProcess:
         self.connection.close()
 
 
-def release_idle_cache(environment, descriptor):
+def release_idle_cache(environment, descriptor, keep=()):
     """Release only our authenticated idle process, under the runtime lease.
+
+    With ``keep`` (model roles such as ``'encoder'``) the process stays and gives back every other
+    cached model, so a picture request can take the card's memory without losing the text encoder.
 
     Used once when cached models prevent admitting the next stage. Exiting the
     process releases encoder mappings, CUDA allocations and WDDM commit together.
@@ -340,6 +343,21 @@ def release_idle_cache(environment, descriptor):
     """
     endpoint = environment[ENV]
     log = Path(endpoint).with_name('release-%d.log' % time.time_ns())
+    if keep:
+        keep = sorted(set(keep))
+        worker = RemoteProcess(endpoint, ['trim-idle-cache', '--keep', *keep], environment,
+            descriptor, log, required_capabilities=('idle-cache-trim',), operation='trim')
+        try:
+            code = worker.wait(timeout=30.)
+            if code:
+                raise RuntimeError('Idle cache trim failed with exit %s' % code)
+            return dict(released=False, kept=keep, pid=worker.pid)
+        except BaseException:
+            if not worker.settled:
+                worker.stop_request(grace=1.)
+            raise
+        finally:
+            worker.connection.close()
     worker = RemoteProcess(endpoint, ['release-idle-cache'], environment, descriptor, log,
         required_capabilities=('idle-cache-release',), operation='release')
     try:
@@ -711,7 +729,7 @@ def worker_memory(pid):
 OWNER = SessionOwner()
 
 
-def serve(endpoint, runner, snapshot):
+def serve(endpoint, runner, snapshot, trim=None):
     """Shared transport with a CPU-injectable runner for lifecycle tests."""
     from multiprocessing.connection import Listener
     import psutil
@@ -731,12 +749,12 @@ def serve(endpoint, runner, snapshot):
                 with listener.accept() as connection:
                     state = snapshot()
                     send(connection, dict(hello, allocator_config=state.get('allocator_config'),
-                                          capabilities=list(state.get('capabilities', []))+['idle-cache-release']))
+                                          capabilities=list(state.get('capabilities', []))+['idle-cache-release']+(['idle-cache-trim'] if trim else [])))
                     request = receive(connection, 10.)
                     if request.get('command') == 'status':
                         send(connection, dict(snapshot(), idle=True))
                         continue
-                    if request.get('command') not in ('run', 'release'):
+                    if request.get('command') not in ('run', 'release', 'trim'):
                         raise ValueError('Unknown resident worker command')
                     save(ready_path, dict(hello, idle=False))
                     descriptor = None
@@ -764,7 +782,7 @@ def serve(endpoint, runner, snapshot):
                             send(connection, {'status': 'accepted'})
                             accepted = True
                             watcher.start()
-                            code = runner(request) if request['command'] == 'run' else 0
+                            code = runner(request) if request['command'] == 'run' else trim(request) if request['command'] == 'trim' else 0
                     except BaseException as error:
                         if not accepted:
                             failure = dict(status='rejected', phase=phase,

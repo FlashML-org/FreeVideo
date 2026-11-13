@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .. import comfy_editor
 from .jobs import JobError
+from ..app_control import scipy_module
 
 FOLDER = 'freevideo-sound'
 RATE = 48000
@@ -382,7 +383,7 @@ def score_like(samples, rate):
     some effects with the music; shots, explosions and crowds are broadband, so they fail the tonal test, and short
     stings fail the sounding one."""
     import numpy as np
-    from scipy.ndimage import median_filter
+    median_filter = scipy_module('scipy.ndimage').median_filter
     mono = np.asarray(samples, np.float64).mean(axis=0)
     rms = float(np.sqrt(np.mean(mono ** 2))) if mono.size else 0.
     half = rate // 2

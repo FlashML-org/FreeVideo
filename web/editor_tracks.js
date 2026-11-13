@@ -1,4 +1,5 @@
 import {editorIcon} from './editor_icons.js';
+import {pageRepair, repairButton} from './repair_hint.js';
 import {displayTracks, isText, isTextTrack, textDropLocked} from './editor_text_model.js';
 // Pointer gestures translate coordinates into model calls; the model owns edits.
 // These exports deliberately have no DOM dependencies, so input arithmetic can
@@ -675,11 +676,13 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const retry = create('button', '', t('Retry', '重试')); retry.type = 'button';
         retry.onclick = () => { popover.hidden = true;
             Promise.resolve().then(() => actions.retry?.(item.clip.id)).catch(error => actions.editError?.(error, 'generate')); };
-        popover.replaceChildren(reason, report, retry); popover.hidden = false;
+        // A reason whose hint names the page settings also offers to open them.
+        const repair = pageRepair(reason.textContent) ? repairButton(t, {before: () => { popover.hidden = true; }}) : null;
+        popover.replaceChildren(...[reason, report, repair, retry].filter(Boolean)); popover.hidden = false;
         const bounds = element.getBoundingClientRect(), clipBounds = item.element.getBoundingClientRect();
-        // The card is as wide as the clip it belongs to (never narrower than before, so its two buttons stay on one row) and sits against the clip's lower edge;
+        // The card is as wide as the clip it belongs to (never narrower than before, so its buttons stay on one row) and sits against the clip's lower edge;
         // where that would cover the track below, it opens upward from the clip's top when there is room.
-        const width = Math.min(Math.max(clipBounds.width, 280), bounds.width - 16);
+        const width = Math.min(Math.max(clipBounds.width, repair ? 360 : 280), bounds.width - 16);
         popover.style.width = `${width}px`;
         popover.style.left = `${clamp(clipBounds.left - bounds.left, 8, Math.max(8, bounds.width - width - 8))}px`;
         const height = popover.getBoundingClientRect().height, below = clipBounds.bottom - bounds.top + 4, above = clipBounds.top - bounds.top - 4 - height;

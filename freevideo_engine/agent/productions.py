@@ -45,6 +45,12 @@ def _quoted(title):
     return '"%s"' % title if title else 'the film'
 
 
+def _beats(play):
+    """The outline the user confirms before shooting: what happens in each beat, one line each; none without an outline."""
+    outline = play.get('outline') if isinstance(play.get('outline'), dict) else {}
+    return [' '.join(beat['what'].split()) for beat in outline.get('beats') or []] or None
+
+
 def _detail(value):
     """Domain details carry identifiers only; anything else is not repeated."""
     if value is None or type(value) in (bool, int):
@@ -174,11 +180,16 @@ class Productions:
         self.changed = threading.Condition(jobs.lock)
         self._waiters = {}
         self._waiter_lock = threading.Lock()
-        # gate(action, *, by, estimate_seconds, refs, question) raises when the user must approve first.
+        # gate(action, *, by, estimate_seconds, refs, question, shape, beats) raises when the user must approve first.
         self.gate = None
         # transcribe(path) -> heard text; a machine without a speech model gets a note instead of a comparison.
         self.transcribe = take_qa.recognise
         self._inspecting = set()
+        # note(session, event) writes what the built-in director did into the film's conversation.
+        self.note = None
+        # The built-in director of each film runs on its own thread: {id: (thread, revision it stopped at or None)}.
+        self._directors = {}
+        self._closed = threading.Event()
         self.load()
         jobs.parent_allowed = self.allows
 
@@ -207,6 +218,11 @@ class Productions:
                         raise ValueError('Invalid child receipt')
                 if not isinstance(record.get('submitting', []), list):
                     raise ValueError('Invalid submission marker')
+                # Films finished before projects were made keep only their MP4: an update opens no old film.
+                if 'projects' not in record and state['outputs']:
+                    record['projects'] = {o['job']: dict(id=None, done=True) for o in state['outputs']}
+                if not isinstance(record.get('projects', {}), dict):
+                    raise ValueError('Invalid project links')
                 production.view(state)
                 try:
                     checked = production.plan(request, fields=False, single_seconds=math.inf)  # saved: the limit held when it was accepted
@@ -661,6 +677,7 @@ class Productions:
                 self.gate('start', by=by, estimate_seconds=self._progress(record)['estimate_seconds'],
                           shape=self._shape(state),
                           refs={},  # the film gets its ID only when the approved call repeats
+                          beats=_beats(state['screenplay']),
                           question='Start shooting %s (%d shots)?' % (_quoted(state['title']), len(state['shots'])))
             result = self._view(record)
             if ref:
@@ -705,6 +722,9 @@ class Productions:
             ref = record['state']['current_join']
             join = next(j for j in record['state']['joins'] if j['ref'] == ref)
             value['join'].update(ref=ref, task=tasks.get(ref), error=contextual(join['error'], True))
+        projects = record.get('projects') or {}
+        for output in value['outputs']:
+            output['project_id'] = (projects.get(output['job']) or {}).get('id')
         value['stalled'] = errors.with_reason(deepcopy(record.get('stalled')))
         value['progress'] = self._progress(record)
         value['over_budget'] = self._elapsed_budget(value['progress'])
@@ -722,6 +742,12 @@ class Productions:
                     break
                 self.changed.wait(remaining)
             return self._reply(identity, since, compact)
+
+    def size(self, identity):
+        """The width and height of a film: its first shot's canvas, or None for each when that cannot be told."""
+        with self.changed:
+            shape = self._shape(self._record(identity)['state'])
+        return shape.get('width'), shape.get('height')
 
     def _reply(self, identity, since, compact):
         record = self._record(identity)
@@ -861,6 +887,83 @@ class Productions:
         with self.changed:
             for identity in list(self.records):
                 self._run(identity)
+                self._direct(identity)
+
+    def close(self, wait=2.0):
+        """Stop the built-in directors; a question already queued is cancelled by its own wait.
+
+        Each director is given a short while to finish the step it is on, so nothing writes after the close.
+        """
+        self._closed.set()
+        deadline = time.monotonic() + wait
+        for thread, _ in list(self._directors.values()):
+            if thread is not None and thread is not threading.current_thread():
+                thread.join(max(0.0, deadline - time.monotonic()))
+
+    def _directing(self, identity):
+        """Whether the built-in director should be choosing for this film now."""
+        record = self.records.get(identity)
+        if record is None or self._closed.is_set():
+            return False
+        state = record['state']
+        return (state['director'] == 'builtin' and not state.get('paused') and not state['cancelled']
+                and state['status'] in ('shooting', 'needs_choice', 'ready'))
+
+    def _direct(self, identity):
+        """Keep one built-in director running for a film that chose it, through pauses and restarts.
+
+        The director keeps no state of its own: it reads the film each time, so a new thread picks up where the
+        last one left off. One that gave up is started again only after the film changes.
+        """
+        if not self._directing(identity) or self.records[identity].get('stalled'):
+            return
+        thread, gave_up = self._directors.get(identity, (None, None))
+        if thread is not None and thread.is_alive():
+            return
+        if gave_up is not None and gave_up == self.records[identity]['state']['revision']:
+            return
+        thread = threading.Thread(target=self._director, args=(identity,), daemon=True, name='director-' + identity)
+        self._directors[identity] = (thread, None)
+        thread.start()
+
+    def _noted(self, identity, step):
+        """One choice, reshoot or join of the built-in director as a finished step of the film's conversation."""
+        session = (self.records.get(identity) or {}).get('session')
+        if self.note is None or not session:
+            return
+        refs = dict(drama=identity, **({'shot': step['shot']} if step.get('shot') else {}))
+        if step['action'] == 'choose':
+            chosen = next((s.get('chosen') for s in self.records[identity]['state']['shots'] if s['id'] == step['shot']), None)
+            if type(chosen) is int:
+                refs['take'] = chosen
+        try:
+            self.note(session, dict(type='step', tool='freevideo_drama_' + step['action'], summary=step['reason'],
+                                    state='done', refs=refs))
+        except Exception:  # noqa: BLE001 - a conversation that is gone or full never stops the film
+            logging.getLogger(__name__).warning('A step of the built-in director was not written to the conversation')
+
+    def _director(self, identity):
+        from . import builtin_director
+        stop = lambda: not self._directing(identity)
+        ask = builtin_director.JobAsk(_JobTools(self.jobs, 'production:' + identity, stop, self._closed), stop=stop)
+        gave_up = None
+        try:
+            for step in builtin_director.run(_JobDirectorAdapter(self), identity, ask=ask, stop=stop):
+                if step['action'] == 'error':
+                    gave_up = step['reason']
+                else:
+                    self._noted(identity, step)
+        except Exception as error:  # noqa: BLE001 - a director that fails leaves the film to the user
+            gave_up = type(error).__name__
+        if gave_up is not None:
+            logging.getLogger(__name__).warning('The built-in director stopped (%s); it starts again when the film changes',
+                                                gave_up)
+        with self.changed:
+            record = self.records.get(identity)
+            if gave_up is not None and record is not None:
+                self._directors[identity] = (None, record['state']['revision'])
+            else:
+                self._directors.pop(identity, None)
 
     def _bump(self, draft):
         draft['state']['revision'] += 1
@@ -937,7 +1040,87 @@ class Productions:
             self._bump(draft)  # Wake since/wait readers when the elapsed reminder appears or clears.
         if draft != record:
             self._save(draft)
+        self._projects(identity)
         self._inspect_takes(identity)
+
+    def _projects(self, identity):
+        """Open every finished film as an editing project too, cut at its shots; the MP4 stays as it was.
+
+        One try per film: a computer whose editor cannot run (or any other failure) keeps only the MP4."""
+        record = self._record(identity)
+        for output in record['state']['outputs']:
+            join = output['job']
+            if (record.get('projects') or {}).get(join, {}).get('done') or not output.get('library_id'):
+                continue
+            try:
+                project = self._project(record, output)
+                saved = dict(id=project['id'], done=True)
+            except Exception as error:  # noqa: BLE001 - the film is finished either way
+                logging.getLogger(__name__).warning('A finished film was not opened as a project (%s)',
+                                                    getattr(error, 'code', type(error).__name__))
+                saved = dict(id=None, done=True)
+            draft = deepcopy(self._record(identity))
+            draft.setdefault('projects', {})[join] = saved
+            self._bump(draft)
+            self._save(draft)
+            record = self._record(identity)
+
+    def _project(self, record, output):
+        """Create (or find again by its key) the project of one output and cut it where each shot begins."""
+        from .. import comfy_editor
+        projects, state, join = self.jobs.projects, record['state'], output['job']
+        source = 'work:' + output['library_id']
+        info = comfy_editor.sources(projects.root, [source])[source]
+        if info['missing'] or not info['frames']:
+            raise JobError('source_missing', 'The finished film is not available.')
+        name = (state.get('title') or '').strip() or state['id']
+        project = projects.create(dict(project=dict(name=name, width=info['width'], height=info['height'])),
+                                  ref='film:' + join)['project']
+        def picture():
+            return sorted((c for c in project['tracks'][0]['clips']), key=lambda c: c['start'])
+        def edit(operations):
+            return projects.operations(project['id'], dict(revision=project['revision'], operations=operations))['project']
+        if not picture():
+            project = edit([dict(op='insert', source=source, at=0)])
+        shots = self._shot_frames(record, join, info['frames'])
+        if len(picture()) == 1 and len(shots) > 1:
+            clip = picture()[0]
+            # From the last cut back: the left part keeps its id, so each cut still names the same clip.
+            cuts = [f for f, _ in shots[1:] if clip['start'] < f < clip['start'] + clip['frames']]
+            if cuts:
+                project = edit([dict(op='split', clip_ids=[clip['id']], frame=f) for f in reversed(cuts)])
+        notes = [dict(op='note', clip_ids=[c['id']], text=text)
+                 for c, (_, text) in zip(picture(), shots) if text and not c.get('note')]
+        if notes and len(picture()) == len(shots):
+            project = edit(notes)
+        return project
+
+    def _shot_frames(self, record, join, frames):
+        """[(first frame, note)] of each shot in the joined film, from the assembly's own clip list.
+
+        A crossfade is cut in its middle. Without that list the film is one part with no note."""
+        state = record['state']
+        saved = next((j for j in state['joins'] if j['ref'] == join), None)
+        result = (self._children(record).get(join) or {}).get('result') or {}
+        clips = result.get('clips') if isinstance(result, dict) else None
+        if saved is None or not isinstance(clips, list):
+            return [(0, '')]
+        counts = [len((saved.get('pieces') or {}).get(shot['id']) or ()) or 1 for shot in state['shots']]
+        if sum(counts) != len(clips) or len(counts) != len(saved['takes']):
+            return [(0, '')]
+        starts = [round(float(clip.get('output_start') or 0) * 24) for clip in clips]
+        rows, index = [], 0
+        for shot, count in zip(state['screenplay']['shots'], counts):
+            first = starts[index]
+            if index:  # where the previous clip still shows: half of that overlap goes to each side
+                first += max(0, starts[index - 1] + int(clips[index - 1].get('frames') or 0) - first) // 2
+            if not 0 <= first < frames:
+                return [(0, '')]
+            # The screenplay as last reshot; a note is one line of at most 120 characters.
+            text = ' '.join(str(shot.get('action') or shot.get('idea') or '').split())
+            rows.append((first, text[:120]))
+            index += count
+        return rows
 
     def _inspect_takes(self, identity):
         """Start the picture and sound check of each finished take that has none; it runs off the lock.
@@ -1211,6 +1394,27 @@ def _on_frames(start, end, fps=24):
     return dict(start=a, end=b) if b > a else dict(start=start, end=end)
 
 
+class _JobTools:
+    """The submit, wait and cancel the built-in director's questions use, on the job queue in this process."""
+    def __init__(self, jobs, client, stop, closed):
+        self.jobs, self.client, self.stop, self.closed = jobs, client, stop, closed
+
+    def submit(self, request):
+        return self.jobs.view(self.jobs.submit(request, client=self.client)[0])
+
+    def wait(self, identity, timeout=None):
+        deadline = time.monotonic() + max(0., timeout or 0.)
+        while True:
+            row = self.jobs.get(identity)
+            left = deadline - time.monotonic()
+            # A paused or cancelled film gives up its question at once, not after the next long wait.
+            if row['status'] in DONE or left <= 0 or self.stop() or self.closed.wait(min(.25, left)):
+                return self.jobs.view(row)
+
+    def cancel(self, identity):
+        return self.jobs.view(self.jobs.cancel(identity))
+
+
 class DirectorAdapter:
     """Synchronous in-process operations for builtin_director.run.
 
@@ -1227,3 +1431,29 @@ class DirectorAdapter:
         if name in ('plan', 'start', 'sheet', 'segments', 'choose', 'reshoot', 'finish', 'cancel', 'pause', 'resume'):
             return getattr(self.productions, name)
         raise AttributeError(name)
+
+
+class _JobDirectorAdapter(DirectorAdapter):
+    """The director's operations when its questions go to the local job queue.
+
+    A question names its pictures instead of carrying them: each contact sheet is kept under the chat images
+    by the digest of its bytes, so the same sheet is stored once.
+    """
+    def sheet(self, identity, shot, *, frames=None):
+        from . import attachments
+        result = self.productions.sheet(identity, shot, frames=frames)
+        def stored(data, suffix):
+            name = hashlib.sha256(data).hexdigest() + suffix
+            target = attachments.path(self.productions.jobs.port.input_root, name)
+            if not target.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_name('.sheet-' + uuid.uuid4().hex + '.tmp')
+                try:
+                    temporary.write_bytes(data)
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            return dict(file=name)
+        takes = [dict(take=t['take'], image=stored(t['image'], '.jpg')) for t in result['takes']]
+        previous = stored(result['previous'], '.png') if result['previous'] is not None else None
+        return dict(takes=takes, previous=previous)

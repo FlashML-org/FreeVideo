@@ -74,6 +74,14 @@ function Get-FreeVideoFailureReason {
     return $reason
 }
 
+function Test-FreeVideoAccessDenied {
+    param([string]$Detail)
+    # Keep aligned with network._access_denied: a mirror that refuses access (HTTP 401/403)
+    # neither cancels the slow retry of a source that timed out nor is retried itself.
+    $Detail = $Detail -replace 'https?://\S+', ''
+    return ($Detail -match '\b(401|403)\b')
+}
+
 function Test-FreeVideoSlowDownloadFailure {
     param([string]$Detail)
     # Keep the patient-round gate aligned with network.slow_download_failure.

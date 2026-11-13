@@ -218,6 +218,14 @@ fv_bootstrap_network() {
     return 1
 }
 
+# Match network._access_denied: a mirror that refuses access (HTTP 401/403) neither
+# cancels the slow retry of a source that timed out nor is retried itself.
+fv_access_denied() {
+    local detail="${1,,}"
+    while [[ "$detail" =~ https?://[^[:space:]]+ ]]; do detail=${detail//"${BASH_REMATCH[0]}"/}; done
+    [[ "$detail" =~ (^|[^[:alnum:]_])(401|403)($|[^[:alnum:]_]) ]]
+}
+
 fv_download_uv() {
     local url route attempt=0 archive="$FREEVIDEO_BOOTSTRAP_ROOT/uv-$FV_UV_VERSION.tar.gz" part
     local -a sources=("$FV_UV_URL")
@@ -270,7 +278,8 @@ fv_install_python() (
     fv_note "Files and log: $FREEVIDEO_BOOTSTRAP_ROOT"
     fv_download_uv || exit 1
     local uv="$FREEVIDEO_BOOTSTRAP_ROOT/tools/uv-x86_64-unknown-linux-gnu/uv" source route attempt=0
-    local retry_mode timeout retries attempt_log attempt_dir attempt_detail python_exit tee_exit all_network_failures=1
+    local retry_sources retry_mode timeout retries attempt_log attempt_dir attempt_detail python_exit tee_exit other_failures=0 failed_source
+    local -A fv_denied=() fv_slow=()
     local -a pipe_status
     # The capture only classifies failures: without a writable place for it the
     # install still runs, it just never starts the slow-network round.
@@ -282,6 +291,9 @@ fv_install_python() (
     if [[ "$fv_network" != official ]]; then
         if [[ -n "${UV_PYTHON_INSTALL_MIRROR:-}" ]]; then sources=("$UV_PYTHON_INSTALL_MIRROR" "${sources[@]}"); fi
         if [[ -n "${FREEVIDEO_GITHUB_MIRROR:-}" ]]; then sources+=("${FREEVIDEO_GITHUB_MIRROR%/}/astral-sh/python-build-standalone/releases/download"); fi
+        # The public npmmirror copy of the release files (the same SHA-256 uv pins);
+        # the GitHub mirror below refuses these files, so it is tried last.
+        sources+=(https://registry.npmmirror.com/-/binary/python-build-standalone)
         sources+=(https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download)
     fi
     export UV_PYTHON_INSTALL_DIR="$FREEVIDEO_BOOTSTRAP_ROOT/python" UV_CACHE_DIR="$FREEVIDEO_BOOTSTRAP_ROOT/cache"
@@ -289,11 +301,15 @@ fv_install_python() (
     for retry_mode in fast patient; do
       timeout=20 retries=1
       if [[ "$retry_mode" == patient ]]; then
-        (( all_network_failures )) || break
+        (( other_failures )) && break
+        retry_sources=0
+        for failed_source in "${!fv_slow[@]}"; do [[ -n "${fv_denied[$failed_source]:-}" ]] || retry_sources=1; done
+        (( retry_sources )) || break
         timeout=120 retries=5
         fv_note 'The network is slow. Downloading again; this may take a while.'
       fi
       for source in "${sources[@]}"; do
+        [[ "$retry_mode" != patient || -z "${fv_denied[$source]:-}" ]] || continue
         for route in "${fv_routes[@]}"; do
           ((attempt+=1))
           fv_note "Installing private Python, attempt $attempt ($route connection)…"
@@ -326,9 +342,13 @@ fv_install_python() (
           fi
           if (( python_exit == 0 )); then
               fv_python_ok "$UV_PYTHON_INSTALL_DIR/cpython-$FV_PYTHON_VERSION-linux-x86_64-gnu/bin/python3.12" && exit 0
-              all_network_failures=0
-          elif ! fv_slow_download_failure "$attempt_detail"; then
-              all_network_failures=0
+              other_failures=1
+          elif fv_access_denied "$attempt_detail"; then
+              fv_denied[$source]=1
+          elif fv_slow_download_failure "$attempt_detail"; then
+              fv_slow[$source]=1
+          else
+              other_failures=1
           fi
           fv_note 'Python preparation failed; retrying the next source. Existing files retained.'
         done

@@ -45,7 +45,7 @@ import {SHOWCASE_SCENE} from './entry_showcase.js';
 import {createEditorFailures} from './editor_failure.js';
 import {fitEditorHeader} from './editor_header_fit.js';
 import {optionalText, clonePrompt, allowEmptyPrompt} from './optional_inputs.js';
-import {outputNotWritable} from './error_panel.js';
+import {outputNotWritable, modelTableDamaged} from './error_panel.js';
 import {repairAction} from './repair_hint.js';
 import {expandCast} from './cast_mention.js';
 import {problem as timedProblem, timedText} from './timed_prompt.js';
@@ -104,6 +104,8 @@ export function editorErrorText(value, t = en => en) {
         return t('The output folder cannot be written to, so the video was not saved. Check that the folder can be written to, then retry.', '输出目录不可写，视频没能保存。请检查这个文件夹的写入权限后重试。');
     if (/manifest\.json/i.test(whole) && /No such file|not found|Errno 2\b|FileNotFoundError/i.test(whole))
         return t('The model is not fully installed. ', '模型没有装全。') + t(...repairAction());
+    if (modelTableDamaged(whole))
+        return t('Some of the model files are missing or damaged. ', '部分模型文件缺失或已损坏。') + t(...repairAction());
     if (['model_missing', 'missing_model', 'model_not_found'].includes(code) || /(?:model|checkpoint|模型).*(?:not found|missing|不存在|缺失)/i.test(raw))
         return t(`Loading the model failed: ${raw || code}`, `加载模型时出错：${raw || code}`);
     if (['timeout', 'timed_out', 'generation_timeout'].includes(code) || /timed?\s*out|timeout|超时/i.test(raw))
@@ -373,7 +375,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (PARTS_LIMIT_CODES.includes(code)) {
             const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
             const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
-            out(text); return {ok: false, reason: code, say: text};
+            // A refused Generate keeps its reason on the bar's own line until the choice or the parts change.
+            if (step === 'generate' && genbar && out === notify) genbar.say(text, false, null, true); else out(text);
+            return {ok: false, reason: code, say: text};
         }
         if (['busy', 'locked', 'text', 'audio_full', 'overlap', 'range', 'no_audio'].includes(code)) {
             if (['locked', 'audio_full', 'overlap', 'range'].includes(code)) tracks?.flashBlocked?.(value.displayFrame);
@@ -1470,7 +1474,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const step = value => {
                     const install = value?.install;
                     if (install?.state !== 'running') { resolve(install?.state === 'done' || install?.reason || false); return false; }
-                    report(install.total > 0 ? install.done / install.total : 0); return true;
+                    report(install.total > 0 ? install.done / install.total : 0, install.phase); return true;
                 };
                 store.installEars().then(value => { if (step(value)) store.watchEarsPack(step, reject); }, reject);
             }),

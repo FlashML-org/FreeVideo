@@ -96,11 +96,18 @@ try {
             $env:UV_NO_CONFIG = '1'
             $installed = $false
             $pythonRoutes = @($routes | ForEach-Object { "$_/astral-sh/python-build-standalone/releases/download" })
+            if (-not $officialOnly) {
+                # The GitHub mirror refuses the Python runtime files: the public npmmirror copy
+                # (same SHA-256 that uv pins) is tried before it. Keep in sync with network.py.
+                $pythonRoutes = @($pythonRoutes[0]) + @('https://registry.npmmirror.com/-/binary/python-build-standalone') + @($pythonRoutes | Select-Object -Skip 1)
+            }
             if (-not $officialOnly -and $freevideoSavedEnvironment['UV_PYTHON_INSTALL_MIRROR']) {
                 $pythonRoutes = @($freevideoSavedEnvironment['UV_PYTHON_INSTALL_MIRROR']) + $pythonRoutes
             }
             $attempt = 0
-            $allNetworkFailures = $true
+            $otherFailures = $false
+            $slowRoutes = @{}
+            $deniedRoutes = @{}
             # Keep these defaults and the notice in sync with network.py (CPU tests).
             $pythonRetryProfiles = @(
                 @{Mode='fast'; UV_HTTP_TIMEOUT='20'; UV_HTTP_RETRIES='1'},
@@ -109,7 +116,9 @@ try {
             foreach ($profile in $pythonRetryProfiles) {
               if ($installed) { break }
               if ($profile.Mode -eq 'patient') {
-                if (-not $allNetworkFailures) { break }
+                if ($otherFailures) { break }
+                $retryRoutes = @($slowRoutes.Keys | Where-Object { -not $deniedRoutes.ContainsKey($_) })
+                if ($retryRoutes.Count -eq 0) { break }
                 Write-Host 'The network is slow. Downloading again; this may take a while.'
                 $patientDownloadNotice = $true
                 if ($env:FREEVIDEO_UI_EVENTS -eq '1') {
@@ -122,6 +131,7 @@ try {
                 [Environment]::SetEnvironmentVariable($name, $value, 'Process')
               }
               foreach ($route in $pythonRoutes) {
+                if ($profile.Mode -eq 'patient' -and $deniedRoutes.ContainsKey($route)) { continue }
                 foreach ($proxyRoute in $proxyRoutes) {
                   if ($installed) { break }
                   $attempt++
@@ -135,7 +145,9 @@ try {
                       -LogPath $bootstrapLog -Label $pythonLabel `
                       -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$pythonOutput)
                   if ($pythonExit -eq 0) { $installed = $true; break }
-                  if (-not (Test-FreeVideoSlowDownloadFailure $pythonOutput)) { $allNetworkFailures = $false }
+                  if (Test-FreeVideoAccessDenied $pythonOutput) { $deniedRoutes[$route] = $true }
+                  elseif (Test-FreeVideoSlowDownloadFailure $pythonOutput) { $slowRoutes[$route] = $true }
+                  else { $otherFailures = $true }
                   Write-Host "Python install source $attempt returned exit code $pythonExit. Details retained in $bootstrapLog"
                   $pythonReason = Get-FreeVideoFailureReason $pythonOutput
                   if ($pythonReason) { Write-Host "uv reported: $pythonReason" }

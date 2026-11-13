@@ -56,6 +56,13 @@ _DENOISE_BASE, _DENOISE_PER_MP = 1.06 * GiB, 0.554 * GiB
 # 4.72 GiB at 16.8 MP where the line gives 10.4), 0.147 GiB per megapixel; each
 # resident block adds its own size. Continued from the line's value at 4.2 MP.
 _DENOISE_FIT_MP, _DENOISE_LARGE_PER_MP = 4.2, 0.147 * GiB
+# Rows beside the image's own (H3 Image references: latent patches and vision tokens). A short sequence pays what
+# the large-canvas line does per 32x32 patch; past the transformer's row slice (h3_dit.ROW_SLICE) the row-wise work
+# runs in slices and only attention and the residual stream grow with the sequence. Streamed-only peaks, int8 H3
+# Image at 4 MP, RTX PRO 6000 under a card cap: 3.75 GiB at 5.8k reference rows, 7.46 at 43.6k, 7.64 at 46.2k,
+# 11.35 at 103k; both lines sit about 0.5 GiB above every one of them, as the image's own line does.
+_SEQUENCE_ROW = _DENOISE_LARGE_PER_MP * 32 * 32 / 1e6
+_SLICED_BASE, _SLICED_ROW = 1.77 * GiB, 0.065 * GiB / 1000
 _DECODE_BASE, _DECODE_PER_MP = 2.10 * GiB, 0.15 * GiB
 # Decoding the whole image at once instead of in tiles. A single frame keeps no
 # causal cache: the whole-image decoder workspace is 3.49 GiB per megapixel
@@ -125,10 +132,12 @@ class ImagePlan:
 
 
 def stage_peaks(shape, dit_resident, te_resident, *, width, height, reference_pixels=0, vae_tiling=True,
-                vae_tile_size=SMALL_VAE_TILE, dit_kept=None):
+                vae_tile_size=SMALL_VAE_TILE, dit_kept=None, sequence_rows=0):
     """Largest allocation of each stage for a given residency (bytes).
 
     ``dit_kept`` blocks stay on the card outside denoising (default: all of them).
+    ``sequence_rows`` are rows the transformer runs beside the image's own (H3 Image references: their latent
+    patches and vision tokens); what they cost the denoising stage is described at ``_SEQUENCE_ROW``.
     """
     mp = width * height / 1e6
     ref_mp = reference_pixels / 1e6
@@ -137,6 +146,7 @@ def stage_peaks(shape, dit_resident, te_resident, *, width, height, reference_pi
     encode = _ENCODE_BASE + resident
     denoise = (_DENOISE_BASE + _DENOISE_PER_MP * min(mp, _DENOISE_FIT_MP)
                + _DENOISE_LARGE_PER_MP * max(0.0, mp - _DENOISE_FIT_MP)
+               + min(_SEQUENCE_ROW * sequence_rows, _SLICED_BASE + _SLICED_ROW * sequence_rows)
                + resident + (dit_resident - kept) * shape.dit_block_bytes)
     decode = _DECODE_BASE + _DECODE_PER_MP * mp + resident
     if not vae_tiling:
@@ -154,7 +164,7 @@ def stage_peaks(shape, dit_resident, te_resident, *, width, height, reference_pi
 
 
 def plan_image(*, gpu_budget_bytes, host_available_bytes=None, width=1024, height=1024,
-               reference_pixels=0, shape=None, link_bytes_per_second=None):
+               reference_pixels=0, shape=None, link_bytes_per_second=None, sequence_rows=0):
     """Choose the decoding and the residency for one request.
 
     The decoding comes first: whole-image decoding is several times faster than
@@ -171,7 +181,7 @@ def plan_image(*, gpu_budget_bytes, host_available_bytes=None, width=1024, heigh
     margin = int(max(MIN_MARGIN, MARGIN_FRACTION * gpu_budget_bytes))
     limit = int(gpu_budget_bytes) - margin
     reasons = []
-    kwargs = dict(width=width, height=height, reference_pixels=reference_pixels)
+    kwargs = dict(width=width, height=height, reference_pixels=reference_pixels, sequence_rows=sequence_rows)
 
     def peaks(kd, kt, tiling, tile_size, kept=None):
         return stage_peaks(shape, kd, kt, vae_tiling=tiling, vae_tile_size=tile_size, dit_kept=kept, **kwargs)

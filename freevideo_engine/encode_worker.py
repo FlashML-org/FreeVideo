@@ -167,8 +167,14 @@ def start_layer_window(trace, clip, path):
 def stop_layer_window(trace):
     """Stop the layer window, once, and keep what it did in the metrics."""
     window = getattr(trace, 'layer_window', None)
-    if window is not None and 'encoder_window' not in trace.data:
+    if window is None:
+        return
+    if 'encoder_window' not in trace.data:
         trace.data['encoder_window'] = window.close()
+    # The window's table of layers would keep every encoder layer (and its weights on the card) alive
+    # for as long as the request's trace lives, after the encoder itself has left.
+    window.modules = {}
+    trace.layer_window = None
 
 
 def start_model_read_ahead(trace, request):
@@ -196,6 +202,36 @@ def stop_model_read_ahead(trace):
     reader = getattr(trace, 'model_read_ahead', None)
     if reader is not None and 'model_read_ahead' not in trace.data:
         trace.data['model_read_ahead'] = reader.close()
+
+
+def h3_image_presentation(clip, prompt, paths):
+    """Tokens of an H3 Image edit: per reference ``Picture N: `` and its vision block, then the prompt.
+
+    The released H3 Image pipeline labels its references without the angle brackets the
+    video model's presentation uses (the prompt still refers to them as ``<Picture N>``);
+    the vision block, its tags and the prompt are the same. The images arrive already
+    sized for the vision tower (short edge 1024, sides multiples of 32).
+    """
+    import numpy as np
+    import torch
+    from PIL import Image
+    from comfy.text_encoders.minimax import VISION_START, VISION_END
+    tokenizer = clip.tokenizer
+    entries = []
+
+    def add_text(text):
+        batches = tokenizer.qwen3vl_32b.tokenize_with_weights(text, return_word_ids=False, disable_weights=True)
+        if len(batches) != 1:
+            raise ValueError('MiniMax H3 text segment exceeds the supported prompt length.')
+        entries.extend(batches[0])
+
+    for index, path in enumerate(paths):
+        with Image.open(path) as image:
+            pixels = torch.from_numpy(np.array(image.convert('RGB'))).float().div_(255)[None]
+        add_text('Picture %d: ' % (index + 1))
+        entries.extend([(VISION_START, 1.0), (tokenizer._vision_entry(pixels), 1.0), (VISION_END, 1.0)])
+    add_text(prompt)
+    return {'qwen3vl_32b': [entries]}
 
 
 def encode(args, request, resident=None, diagnostics=None):
@@ -392,7 +428,10 @@ def _encode(args, request, resident, trace):
         import numpy as np
         vision_kwargs['images'] = [torch.from_numpy(np.array(image)).float().div_(255)[None] for image in images]
     print(json.dumps({'event': 'encoder_tokenize_start'}), flush=True)
-    tokens = clip.tokenize(prompt, **vision_kwargs)
+    if request.get('h3_image_references'):
+        tokens = h3_image_presentation(clip, prompt, request['h3_image_references'])
+    else:
+        tokens = clip.tokenize(prompt, **vision_kwargs)
     from .encoder_memory import token_counts
     loading['token_summary'] = token_counts(tokens)
     tokenize_seconds = time.perf_counter() - encode_started
@@ -552,13 +591,37 @@ def _encode(args, request, resident, trace):
             reader.close()
     del timed_load, native_load, attempt
     del tokens
-    task = 'fl2va' if images is not None else task
+    task = 'fl2va' if images is not None else 'ref2va' if request.get('h3_image_references') else task
     value = to_cache(encoded, prompt, task=task)
     value['task'] = task
     if early_reference is not None:
         value['early_reference'] = early_reference
     torch.cuda.synchronize()
     prompt_encode_seconds = time.perf_counter() - encode_started
+    if request.get('release_gpu') and resident is not None:
+        # The caller (a picture request) runs a different model next and needs the card: the encoder leaves
+        # the GPU, staying resident in host memory when that fits, else it is dropped.
+        import comfy.model_management as _memory
+        from .resident_models import GiB as _GiB
+        from .resident_models import gpu_bytes as _gpu_bytes
+        # The weights copy back to host memory beside the picture model's own host weights (about 21 GiB).
+        if resident.ram_fits(_gpu_bytes(clip) + 21 * _GiB + 8 * _GiB):
+            _memory.unload_all_models()
+            _memory.soft_empty_cache()
+            print(json.dumps({'event': 'encoder_left_gpu', 'kept_in_ram': True,
+                              'gpu_allocated_gib': round(torch.cuda.memory_allocated() / _GiB, 2),
+                              'gpu_reserved_gib': round(torch.cuda.memory_reserved() / _GiB, 2)}), flush=True)
+        else:
+            resident.drop('encoder', 'Picture request needs the card and host memory cannot hold the encoder')
+            # The local reference would keep the weights on the card.
+            clip = None
+            import gc as _gc
+            _memory.unload_all_models()
+            _gc.collect()
+            _memory.soft_empty_cache()
+            print(json.dumps({'event': 'encoder_left_gpu', 'kept_in_ram': False,
+                              'gpu_allocated_gib': round(torch.cuda.memory_allocated() / _GiB, 2),
+                              'gpu_reserved_gib': round(torch.cuda.memory_reserved() / _GiB, 2)}), flush=True)
     # Keyframe and reference-media encoding read the drive themselves.
     stop_model_read_ahead(trace)
     keyframe_metrics = {}

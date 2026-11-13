@@ -193,7 +193,20 @@ def main():
                 log.flush()
                 os._exit(75)
             return 1
-    serve(args.endpoint, run, snapshot)
+    def trim(message):
+        """Give back every cached model except the roles named after --keep; the process and what it keeps stay."""
+        command = message['argv']
+        keep = set(command[command.index('--keep')+1:]) if '--keep' in command else set()
+        if bank is not None:
+            for role in list(bank.entries):
+                if role not in keep:
+                    bank.drop(role, 'Another model needs the card')
+            gc.collect()
+            torch = sys.modules.get('torch')
+            if torch is not None and torch.cuda.is_initialized():
+                torch.cuda.empty_cache()
+        return 0
+    serve(args.endpoint, run, snapshot, trim)
 
 
 if __name__ == '__main__':

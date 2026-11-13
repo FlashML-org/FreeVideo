@@ -73,9 +73,10 @@ class TooLarge(ValueError):
 
 
 class DeleteRefused(ValueError):
-    def __init__(self, reason):
+    def __init__(self, reason, users=None):
         super().__init__(reason)
         self.reason = reason
+        self.users = users
 
 
 def _whole(value, low=0, high=2**53 - 1):
@@ -895,6 +896,35 @@ def list_imports(root, unreadable=None):
     return [row for _, _, row in sorted(rows, key=lambda item: item[:2], reverse=True)]
 
 
+def _import_users(root, identity):
+    """How many saved edits use this import: on a timeline, in a clip's earlier versions, or in a clip an applied change replaced."""
+    key = source_key(dict(kind='import', id=identity))
+    # An edit that cannot be read might use the clip: fail closed, as the other reference checks do.
+    return sum(1 for _, _, record, _ in _projects(root, strict=True) if key in references(record))
+
+
+def delete_import(root, identity, confirm=False):
+    """Remove the copy FreeVideo made of an imported file, never the file it was copied from.
+    An import that is still being prepared, or that an edit uses (unless confirmed), stays."""
+    with _STATE:
+        path = _import_path(root, identity)
+        folder = path.parent
+        if not folder.exists():
+            return
+        try:
+            value = _read_import(root, identity)
+        except (OSError, ValueError):
+            value = None  # A damaged record can still be removed.
+        if value is not None and value['state'] == 'preparing':
+            raise DeleteRefused('import_in_use')
+        users = _import_users(root, identity)
+        if users and confirm is not True:
+            raise DeleteRefused('import_referenced', users)
+        # _import_path rejects links in the owned path; rmtree does not follow links inside it.
+        shutil.rmtree(folder)
+        _FAILED_IMPORTS.pop((str(Path(root).resolve()), identity), None)
+
+
 def _display_name(value):
     if not isinstance(value, str) or not value or re.search(r'%(?![0-9a-fA-F]{2})', value):
         raise ValueError('Invalid import filename')
@@ -1333,7 +1363,7 @@ def register():
                 try:
                     return await handler(request)
                 except DeleteRefused as error:
-                    return web.json_response(dict(error='Cannot delete this edit', reason=error.reason), status=409, headers=_HEADERS)
+                    return web.json_response(dict(error='Cannot delete this edit', reason=error.reason, **({'users': error.users} if error.users else {})), status=409, headers=_HEADERS)
                 except Conflict as error:
                     return web.json_response(dict(revision=error.revision, **({'id': error.identity} if error.identity else {})), status=409, headers=_HEADERS)
                 except TooLarge:
@@ -1438,6 +1468,12 @@ def register():
         value = await receive(request, root())
         manager.submit(value['id'])
         return web.json_response({'import': value}, headers=_HEADERS)
+
+    @endpoint('post', '/freevideo/editor/import/delete')
+    async def remove_import(request):
+        body = await _body(request)
+        await asyncio.to_thread(delete_import, root(), body.get('id'), body.get('confirm') is True)
+        return web.json_response(dict(deleted=True), headers=_HEADERS)
 
     @endpoint('get', '/freevideo/editor/imports')
     async def imports(request):

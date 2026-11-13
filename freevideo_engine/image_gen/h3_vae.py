@@ -268,6 +268,130 @@ class H3ImageDecoder:
         return output
 
 
+class H3ImageEncoder:
+    """The H3 Image VAE encoder, for reference images.
+
+    The released encoder is a causal 3D CNN run on one frame. Every causal convolution
+    pads two zero frames in front, so on a single frame only the last temporal tap of
+    each kernel meets data, and the temporal strides leave one frame: the encoder is
+    exactly a 2D CNN with those taps. The reference pipeline keeps it in float32 and
+    encodes in 256 px tiles overlapping by at least 64 px, blending the moments linearly
+    in latent space; so does this one. Its weights are the encoder half of the same
+    Comfy file the decoder reads (identical to the video VAE's encoder).
+    """
+
+    def __init__(self, tensors, device, dtype=torch.float32):
+        self.device = torch.device(device)
+        self.dtype = dtype
+
+        def conv(key):
+            weight = tensors[key + '.weight']
+            weight = weight[:, :, -1] if weight.ndim == 5 else weight
+            return weight.to(self.device, dtype).contiguous(), tensors[key + '.bias'].to(self.device, dtype)
+
+        def norm(key):
+            return tensors[key + '.weight'].to(self.device, dtype), tensors[key + '.bias'].to(self.device, dtype)
+
+        levels = 1 + max(int(key.split('.')[2]) for key in tensors if key.startswith('encoder.down.'))
+        self.conv_in = conv('encoder.conv_in')
+        self.levels = []
+        for level in range(levels):
+            blocks, index = [], 0
+            while f'encoder.down.{level}.block.{index}.conv1.weight' in tensors:
+                prefix = f'encoder.down.{level}.block.{index}.'
+                blocks.append(dict(norm1=norm(prefix + 'norm1'), conv1=conv(prefix + 'conv1'),
+                                   norm2=norm(prefix + 'norm2'), conv2=conv(prefix + 'conv2'),
+                                   shortcut=conv(prefix + 'nin_shortcut')
+                                   if prefix + 'nin_shortcut.weight' in tensors else None))
+                index += 1
+            key = f'encoder.down.{level}.downsample.conv'
+            # Every level that downsamples halves both sides (the released 2, 2, 2, 2, 1, 1).
+            self.levels.append((blocks, conv(key) if key + '.weight' in tensors else None))
+        self.norm_out = norm('encoder.norm_out')
+        self.conv_out = conv('encoder.conv_out')
+        self.quant = conv('quant_conv')
+
+    @classmethod
+    def load(cls, path, device='cuda', dtype=torch.float32):
+        """Read the encoder and quantisation tensors of the Comfy fp16 VAE file."""
+        from safetensors import safe_open
+        tensors = {}
+        with safe_open(str(path), framework='pt', device='cpu') as handle:
+            for key in handle.keys():
+                if key.startswith('encoder.') or key.startswith('quant_conv.'):
+                    tensors[key] = handle.get_tensor(key)
+        return cls(tensors, device, dtype)
+
+    @staticmethod
+    def _conv(x, weight_bias, stride=1, pad=1):
+        if pad:
+            x = F.pad(x, (pad,) * 4, mode='reflect')
+        return F.conv2d(x, *weight_bias, stride=stride)
+
+    @staticmethod
+    def _norm(x, weight_bias):
+        return F.silu(F.group_norm(x, 32, *weight_bias, eps=1e-6))
+
+    def encode_tiles(self, pixels):
+        """(n, 3, H, W) normalised pixels, H and W multiples of 16 -> (n, 48, H/16, W/16) moments."""
+        x = self._conv(pixels.to(self.device, self.dtype), self.conv_in)
+        for blocks, down in self.levels:
+            for block in blocks:
+                h = self._conv(self._norm(x, block['norm1']), block['conv1'])
+                h = self._conv(self._norm(h, block['norm2']), block['conv2'])
+                x = (self._conv(x, block['shortcut'], pad=0) if block['shortcut'] is not None else x) + h
+            if down is not None:
+                x = self._conv(F.pad(x, (0, 1, 0, 1), mode='reflect'), down, stride=2, pad=0)
+        x = self._conv(self._norm(x, self.norm_out), self.conv_out)
+        return self._conv(x, self.quant, pad=0)
+
+    @torch.inference_mode()
+    def moments(self, pixels, tile=TILE, overlap=OVERLAP, max_batch=4):
+        """(1, 3, H, W) ImageNet-normalised pixels -> (1, 48, H/16, W/16) float32 posterior moments.
+
+        Convolutions run in full float32: with TF32 the 2D form drifts up to 0.7 from the exact moments (the
+        released 3D form, about 0.1); without it both agree to 5e-4. The setting is restored afterwards."""
+        height, width = pixels.shape[-2:]
+        if height % SPATIAL_RATIO or width % SPATIAL_RATIO:
+            raise ValueError('reference pixels must be cropped to multiples of 16')
+        previous = torch.backends.cudnn.allow_tf32
+        torch.backends.cudnn.allow_tf32 = False
+        try:
+            return self._moments(pixels, tile, overlap, max_batch)
+        finally:
+            torch.backends.cudnn.allow_tf32 = previous
+
+    def _moments(self, pixels, tile, overlap, max_batch):
+        height, width = pixels.shape[-2:]
+        yi, yl, yo = split_tiles(height, tile, overlap)
+        xi, xl, xo = split_tiles(width, tile, overlap)
+        y_overlaps = [o // SPATIAL_RATIO for o in yo]
+        x_overlaps = [o // SPATIAL_RATIO for o in xo]
+        pieces, above = [], None
+        for i, (y, h) in enumerate(zip(yi, yl)):
+            tiles = [pixels[..., y:y + h, x:x + w] for x, w in zip(xi, xl)]
+            row = []
+            for start in range(0, len(tiles), max_batch):
+                row.extend(self.encode_tiles(torch.cat(tiles[start:start + max_batch])).float().split(1))
+            below = y_overlaps[i] if i < len(y_overlaps) else 0
+            pieces.append(stitch_row(row, above, y_overlaps[i - 1] if i else 0, below, x_overlaps))
+            above = row
+        return torch.cat(pieces, dim=-2)
+
+
+def reference_latents(moments, generator, noise_device=None):
+    """Posterior sample of a reference as the released recipe takes it: drawn from the request's generator,
+    rounded to float16, cropped to whole 2x2 patches and normalised. (1, 48, h, w) -> (24, h', w')."""
+    mean, logvar = moments.float().chunk(2, dim=1)
+    std = torch.exp(0.5 * logvar.clamp(-30.0, 20.0))
+    noise = torch.randn(mean.shape, generator=generator, device=noise_device or mean.device, dtype=torch.float32)
+    latents = (mean + std * noise.to(mean.device)).to(torch.float16).float()
+    latents = latents[..., :latents.shape[-2] // 2 * 2, :latents.shape[-1] // 2 * 2]
+    shift = torch.tensor(LATENTS_MEAN, device=latents.device).view(1, -1, 1, 1)
+    scale = torch.tensor(LATENTS_STD, device=latents.device).view(1, -1, 1, 1)
+    return ((latents - shift) / scale)[0]
+
+
 def to_unit(pixels):
     """Model output to [0, 1] pixels: undo the ImageNet normalisation and clamp."""
     mean = torch.tensor(PIXEL_MEAN, device=pixels.device).view(1, 3, 1, 1)

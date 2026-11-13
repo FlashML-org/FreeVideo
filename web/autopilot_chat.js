@@ -44,6 +44,12 @@ export const STAGE_TEXT = Object.freeze({
     checking: ['Checking the results', '正在检查结果'], assembling: ['Joining the shots', '正在拼接镜头'],
 });
 const WORKING = ['running', 'queued', 'waiting', 'cancelling'], VIDEOS = ['generate', 'assemble'];
+// Beside the dots while the agent names no stage: the sentence is still on its way, or the agent has it and the seconds count.
+export function waitingText(s, t) {
+    const m = Math.floor(s / 60), r = s % 60;
+    return s < 60 ? t(`Waiting for a reply · ${s} s`, `正在等待回复 · ${s} 秒`)
+        : t(`Waiting for a reply · ${m} min${r ? ` ${r} s` : ''}`, `正在等待回复 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+}
 // What a job with no picture of its own is doing, in the reader's language.
 const QUIET = {vlm: ['Checking', '检查中'], enhance: ['Enhancing prompt', '增强提示词']};
 // Other jobs without a card keep their line while they run, and a finished one still marks the tab.
@@ -1262,16 +1268,19 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             playing();
         }};
     }
+    // The outline of a film about to be shot, one line a beat; past eight the rest fold under one line.
+    const BEATS_SHOWN = 8;
     function confirmCard() {
         const item = el('li', 'fv-chat-confirm');
         let shownState = null;
         let whitebox = null;
+        let allBeats = false;
         return {element: item, update(entry) {
             if (entry.whitebox) { whitebox ||= whiteboxCard(item); whitebox.update(entry); return; }
             const session = state.session, key = cardKey(session, entry.id);
             const value = answers.get(key) || state.confirms[entry.id] || entry.state || 'asked';
             const disabled = confirming.has(key) || !inSelectedChat() || state.agent.connected !== true, error = confirmErrors.get(key) || '';
-            const signature = JSON.stringify([value, disabled, error]);
+            const signature = JSON.stringify([value, disabled, error, allBeats]);
             if (signature === shownState) return;
             shownState = signature; item.dataset.state = value === 'asked' ? 'asked' : 'answered';
             if (value !== 'asked') { item.replaceChildren(el('span', null, value === 'approved' ? t('Started', '已开始') : t('Not now', '先不拍'))); return; }
@@ -1294,7 +1303,18 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const estimate = el('p', 'fv-chat-meta', entry.estimate_seconds > 0 ? about(entry.estimate_seconds, t) : ''); estimate.hidden = !estimate.textContent;
             // What is about to be made, written as on the job card; a question that carries no size or length shows only the time.
             const shape = el('p', 'fv-chat-meta', jobMeta(entry, t)); shape.hidden = !shape.textContent;
-            item.replaceChildren(question, shape, estimate, buttons);
+            const beats = Array.isArray(entry.beats) ? entry.beats : [];
+            const outline = el('ol', 'fv-chat-beats');
+            const folded = beats.length > BEATS_SHOWN && !allBeats;
+            for (const beat of folded ? beats.slice(0, BEATS_SHOWN - 1) : beats) outline.append(el('li', null, beat));
+            if (folded) {
+                const rest = beats.length - BEATS_SHOWN + 1;
+                const more = el('li', 'fv-chat-beats-more');
+                more.append(press('fv-chat-link', t(`${rest} more`, `另外 ${rest} 拍`), () => { allBeats = true; shownState = null; render(); }));
+                outline.append(more);
+            }
+            outline.hidden = !beats.length;
+            item.replaceChildren(question, shape, estimate, outline, buttons);
             if (error) {
                 const notice = el('p', 'fv-chat-error', error); notice.setAttribute('role', 'alert');
                 item.append(notice, issueButton(t, () => ({where: CHAT_ISSUE, message: error})));
@@ -1319,13 +1339,24 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const item = el('li', 'fv-chat-thinking'), mark = el('span', 'fv-chat-dots'); mark.append(el('i'), el('i'), el('i'));
         const activity = el('span', 'fv-chat-activity');
         item.setAttribute('role', 'status'); item.setAttribute('aria-label', t('Thinking', '正在思考')); item.append(mark, activity);
-        return {element: item, update(text) { activity.textContent = text || ''; activity.hidden = !text; }};
+        let timer = null;
+        const show = text => { activity.textContent = text || ''; activity.hidden = !text; };
+        // A waiting line counts on its own; it stops once the dots leave the page or say something else.
+        const count = since => {
+            show(waitingText(Math.max(0, Math.floor((Date.now() - since) / 1000)), t));
+            timer = item.isConnected || timer === null ? setTimeout(() => count(since), 500) : null;
+        };
+        return {element: item, update(text, {since = null} = {}) {
+            clearTimeout(timer); timer = null;
+            if (text == null && since != null) count(since); else show(text);
+        }};
     }
     const MAKE = {hello, examples, dots, user: () => message('user'), agent: () => message('agent'), job: jobCard, confirm: confirmCard};
 
     // A rewritten sentence takes the place of the one it rewrites. What was said, asked and left unfinished for the old
     // words folds away; finished videos and pictures stay where they were. The session itself keeps every entry.
     let rewriting = null;
+    let waitingFor = null;
     function rewritten(entries) {
         const list = [...entries];
         if (rewriting && list.some(entry => entry.id === rewriting.id)) rewriting = null;
@@ -1368,7 +1399,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         pending = pending.filter(entry => entry.sending || entry.session !== state.session || !ids.has(entry.id));
         const localPending = pending.filter(entry => entry.session === state.session && !ids.has(entry.id));
         const said = entries.some(entry => entry.type !== 'message' || entry.role === 'user') || localPending.length > 0;
-        const finished = entries.filter(entry => entry.type === 'job' && state.jobs[entry.job]?.status === 'succeeded' && (state.jobs[entry.job].work || (state.jobs[entry.job].kind === 'image' && state.jobs[entry.job].thumbnail))).at(-1);
+        // The newest result, a finished video or a finished film, is the one whose Open leads.
+        const film = entry => entry.type === 'production' && !state.failures[entry.entity] && state.finished?.[entry.entity]?.work;
+        const finished = entries.filter(entry => film(entry) || (entry.type === 'job' && state.jobs[entry.job]?.status === 'succeeded' && (state.jobs[entry.job].work || (state.jobs[entry.job].kind === 'image' && state.jobs[entry.job].thumbnail)))).at(-1);
         const wanted = [];
         if (!entries.length && !localPending.length) wanted.push(['hello', 'hello', null]);
         let lastUser = null;
@@ -1388,8 +1421,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 const failure = state.failures[entry.entity];
                 if (failure) wanted.push([`e:${entry.seq}`, 'job', failure]);
             } else if (entry.type === 'production' || entry.type === 'cast') {
-                const failure = state.failures[entry.entity];
-                if (failure) wanted.push([`s:${entry.seq}`, 'job', failure]);
+                // A finished film is the same card as any finished video: open it, or edit it with its shots already cut.
+                const card = state.failures[entry.entity] || (entry.type === 'production' && state.finished?.[entry.entity]);
+                if (card) wanted.push([`s:${entry.seq}`, 'job', card, {latest: entry === finished}]);
             } else wanted.push([`s:${entry.seq}`, 'confirm', entry]);
         }
         for (const entry of localPending) wanted.push([`m:${entry.id}`, 'user', {...entry, taken: false}]);
@@ -1399,7 +1433,12 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const thinking = tail?.type !== 'job' && tail?.type !== 'confirm' && (localPending.some(entry => !entry.error) || !tail?.error && tail?.role === 'user') && state.agent.connected === true
             && (state.agent.listening !== false || tail.taken === true) && (localPending.length > 0 || !state.abandoned);
         stopMode = thinking && localPending.length === 0;
-        if (thinking) wanted.push(['dots', 'dots', Object.hasOwn(STAGE_TEXT, state.stage) ? t(...STAGE_TEXT[state.stage]) : null]);
+        // With no stage named: Sending… until the agent has taken the sentence, then the seconds since it took it.
+        const sending = localPending.some(entry => !entry.error) || tail?.role === 'user' && tail.taken === false;
+        const waitKey = thinking && !sending ? `${state.session}:${tail?.id ?? tail?.seq}` : null;
+        if (waitKey !== waitingFor?.key) waitingFor = waitKey ? {key: waitKey, since: Date.now()} : null;
+        if (thinking) wanted.push(['dots', 'dots', Object.hasOwn(STAGE_TEXT, state.stage) ? t(...STAGE_TEXT[state.stage])
+            : sending ? t('Sending…', '正在发送…') : null, {since: waitingFor?.since ?? null}]);
 
         const stick = follow || pinned;
         const before = log.children.length, keep = new Set(wanted.map(([key]) => key));

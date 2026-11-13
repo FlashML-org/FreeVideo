@@ -273,6 +273,57 @@ def copy_progress(source, target, progress):
             progress(done, total)
 
 
+def is_cut_short(path, reader, size):
+    """The file at `path` stops early: shorter than `size`, every byte the start of `reader`.
+
+    That is what an interrupted write leaves. A file that differs in any other way
+    is someone's own and is never treated as cut short.
+    """
+    try:
+        have = io_path(path).stat().st_size
+        if have >= size:
+            return False
+        with io_path(path).open('rb') as stored:
+            while True:
+                chunk = stored.read(4 * 2**20)
+                if not chunk:
+                    return True
+                if reader.read(len(chunk)) != chunk:
+                    return False
+    except OSError:
+        return False
+
+
+def cut_short_of(target, source, have, size):
+    """True when `target` (of `have` bytes) is an unfinished copy of the verified `source`."""
+    if have >= size:
+        return False
+    try:
+        if os.path.samefile(target, source):
+            return False
+        with io_path(source).open('rb') as reader:
+            return is_cut_short(target, reader, size)
+    except OSError:
+        return False
+
+
+def complete_cut_short(source, target, progress=None):
+    """Give a cut-short copy its full content: a new file beside it, then renamed over it."""
+    source, target = io_path(source), io_path(target)
+    partial = target.with_name(target.name + '.repairing')
+    partial.unlink(missing_ok=True)
+    try:
+        try:
+            os.link(source, partial)
+        except OSError:
+            copy_progress(source, partial, progress or (lambda *_: None))
+        os.replace(partial, target)
+    except BaseException:
+        # A refused rename or an interrupted copy must not leave gigabytes beside the model.
+        partial.unlink(missing_ok=True)
+        raise
+
+
 def import_archive(path, destination, progress=lambda **kw: None, cancelled=lambda: False):
     """Extract once, checking CRC-32, size and inventory SHA-256 while streaming.
 
@@ -296,17 +347,20 @@ def _import_archive(path, destination, progress, cancelled):
     total = sum(r['bytes'] for r in value['files'])
     found = listing(root) if root.is_dir() else {}
     present = {row['path']: found[row['path']] for row in value['files'] if row['path'] in found}
-    missing = sum(r['bytes'] for r in value['files'] if r['path'] not in present)
+    missing = sum(r['bytes'] for r in value['files'] if r['path'] not in present or present[r['path']][0] != r['bytes'])
     parent = root
     while not parent.exists():
         parent = parent.parent
     if disk_space.free_bytes(parent) < missing + 64 * 2**20:
         raise ValueError('磁盘空间不足，导入此包还需约 %.1f GiB。' % (missing / 2**30))
     known, verified = stamps(root), {}
+    with zipfile.ZipFile(path) as archive:
+        cut = {row['path'] for row in value['files'] if row['path'] in present and present[row['path']][0] < row['bytes']
+               and is_cut_short(root / row['path'], archive.open(PREFIX + row['path']), row['bytes'])}
     for row in value['files']:
         current = present.get(row['path'])
-        if current is None:
-            continue
+        if current is None or row['path'] in cut:
+            continue  # Absent, or cut short by an interrupted write: extracted again below.
         if current[0] != row['bytes'] or not unchanged(root / row['path'], row, known, current,
                 progress=file_progress(progress, 'verify', row['bytes'])):
             raise ValueError('已有导入文件已改变，未覆盖：' + plain(root / row['path']))
@@ -468,7 +522,9 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
         if row['path'] in here:
             if not os.path.samefile(target, src) and hash_file(target,
                     progress=file_progress(progress, 'verify', row['bytes'])) != row['sha256']:
-                raise ValueError('离线安装已有不同模型，未覆盖：' + plain(target))
+                if not cut_short_of(target, src, here[row['path']][0], row['bytes']):
+                    raise ValueError('离线安装已有不同模型，未覆盖：' + plain(target))
+                complete_cut_short(src, target, file_progress(progress, 'copy_bytes', row['bytes']))
         else:
             place(src, target)
         included.append(row)
@@ -480,13 +536,19 @@ def assemble(runtime, models, source, progress=lambda **kw: None):
         if not package.is_file():
             continue
         for row in json.loads(package.read_text(encoding='utf-8')).get('files', []):
-            if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX) or row['path'] in here:
+            if row['path'] in listed or not row['path'].startswith(OPTIONAL_PREFIX):
+                continue
+            if row['path'] in here and here[row['path']][0] >= row['bytes']:
                 continue
             current = walks[root].get(row['path'])
             if not current or not unchanged(io_path(root) / row['path'], row, known[root], current,
                     progress=file_progress(progress, 'verify', row['bytes'])):
                 continue  # The engine fetches a table it cannot find when a request needs it.
-            place(io_path(root) / row['path'], runtime / row['path'])
+            if row['path'] in here:
+                if cut_short_of(runtime / row['path'], io_path(root) / row['path'], here[row['path']][0], row['bytes']):
+                    complete_cut_short(io_path(root) / row['path'], runtime / row['path'])
+            else:
+                place(io_path(root) / row['path'], runtime / row['path'])
             listed.add(row['path'])
     progress(done=done, total=total, detail='检查配套包', activity='')
     # Only placed rows are recorded: a skipped Sampling caches table is fetched when needed.

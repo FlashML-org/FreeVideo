@@ -14,9 +14,9 @@
 .fv-studio .fv-header{height:76px;display:grid;grid-template-columns:1fr auto;align-items:center;padding:0 28px;border-bottom:1px solid var(--fv-border);gap:12px}
 .fv-brand{display:flex;min-width:0;align-items:center;gap:10px;font-size:var(--fv-strong);letter-spacing:-.5px;font-weight:var(--fv-semibold)}
 .fv-studio .fv-title{text-align:center}.fv-studio .fv-title strong{font-size:var(--fv-body);font-weight:var(--fv-medium)}.fv-studio .fv-header-actions{display:flex;justify-content:flex-end;align-items:center;gap:5px}
-.fv-studio:not(.fv-editor)[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
+.fv-studio:not(.fv-editor,.fv-autopilot,.fv-share)[open]{display:flex;flex-direction:column}.fv-studio .fv-header{flex:none}
 .fv-studio .fv-body{display:grid;grid-template-columns:420px minmax(0,1fr);flex:1 1 auto;min-height:0}
-@media(max-width:680px){.fv-studio:not(.fv-editor)[open]{display:block}}
+@media(max-width:680px){.fv-studio:not(.fv-editor,.fv-autopilot,.fv-share)[open]{display:block}}
 .fv-studio .fv-controls{min-height:0;overflow:auto;padding:25px 26px 0;border-right:1px solid var(--fv-border);scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-studio .fv-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-weight:var(--fv-semibold);color:var(--fv-ink);font-size:var(--fv-body)}
 .fv-studio .fv-muted{color:var(--fv-muted);font-size:var(--fv-micro);font-weight:var(--fv-regular)}
@@ -140,14 +140,16 @@
 .fv-studio .fv-queue-actions{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;margin-top:8px}
 .fv-studio .fv-queue-actions button,.fv-studio .fv-queue-details>summary{padding:4px 8px;min-height:28px;font-size:var(--fv-micro);color:var(--fv-muted)}
 .fv-studio .fv-queue-actions{position:relative}.fv-studio .fv-queue-details{position:static}.fv-studio .fv-queue-details>summary{cursor:pointer;list-style:none}
-.fv-studio .fv-queue-list{left:0;right:auto;bottom:calc(100% + var(--fv-h-lg) + 24px);width:360px;max-height:260px;overflow:auto;scrollbar-width:thin}
-.fv-studio .fv-queue-item{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--fv-micro);padding:4px 6px;border-radius:var(--fv-r-sm);transition:background .3s ease;white-space:nowrap}
-.fv-studio .fv-queue-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.fv-studio .fv-queue-text span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fv-studio .fv-queue-list{left:0;right:auto;bottom:calc(100% + var(--fv-h-lg) + 24px);width:360px;max-width:100%;max-height:260px;overflow:auto;scrollbar-width:thin}
+.fv-studio .fv-queue-item{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--fv-micro);padding:4px 6px;border-radius:var(--fv-r-sm);transition:background .3s ease;white-space:nowrap;flex-wrap:wrap;row-gap:4px}
+/* The size line is never cut: it sets the text column's narrowest width; the prompt line takes what is left. */
+.fv-studio .fv-queue-text{flex:1 1 0;display:flex;flex-direction:column;gap:1px}
+.fv-studio .fv-queue-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;contain:inline-size}
+.fv-studio .fv-queue-buttons{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}
 .fv-studio .fv-queue-summary{color:var(--fv-ink)}.fv-studio .fv-queue-meta{color:var(--fv-muted)}
 .fv-studio .fv-queue-item.fv-queue-moved{background:var(--fv-selected)}
 .fv-studio .fv-queue-chip{flex:none;color:var(--fv-accent)}
-.fv-studio .fv-queue-item button{flex:none}
+.fv-studio .fv-queue-buttons button{flex:none}
 /* A running row's progress: the main bar's accent on the divider colour; no number (the total shows once, above). */
 .fv-studio .fv-queue-bar{position:relative;width:100%;height:4px;margin-top:4px;border-radius:999px;background:var(--fv-border);overflow:hidden}
 .fv-studio .fv-queue-fill{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-ramp));transition:width .6s var(--fv-ease-out)}
@@ -266,9 +268,12 @@
 
 .fv-lora-problem{grid-column:var(--lora-lead,2)/span 3;grid-row:4;display:flex;flex-direction:column;align-items:flex-start;gap:6px;font-size:var(--fv-micro)}.fv-lora-problem p{margin:0;color:var(--fv-danger)}.fv-lora-problem.fv-lora-partial{color:var(--fv-muted)}.fv-lora-problem[hidden]{display:none}.fv-lora-why summary{cursor:pointer;color:var(--fv-muted)}.fv-lora-why pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-all;color:var(--fv-muted);font:inherit;font-family:ui-monospace,monospace}.fv-lora-row[data-unusable=true] select{color:var(--fv-muted)}
 .fv-lora-row[data-unusable=true]{cursor:default}.fv-lora-row[data-unusable=true] :is(input[type=number],input[type=checkbox]){opacity:.45}.fv-lora-row[data-unusable=true] select{opacity:1}.fv-lora-row[data-unusable=true] :is(.fv-lora-trigger,.fv-lora-range){display:none}
-/* The queued count follows the part number; when the line is too narrow it wraps out of sight. */
-.fv-studio .fv-chain-position:has(.fv-chain-queued){display:flex;flex-wrap:wrap;column-gap:0;line-height:1.4;max-height:1.4em;overflow:hidden}
-.fv-studio .fv-chain-position .fv-chain-queued{white-space:pre}
+/* The queued count follows the part number; a line too narrow for both moves the count, whole, to a second line.
+   The dot sits just left of the count over a hidden copy that keeps its room, so at the start of a line it falls outside the clip. */
+.fv-studio .fv-chain-position:has(.fv-chain-queued){display:flex;flex-wrap:wrap;column-gap:0;line-height:1.4;overflow:hidden}
+.fv-studio .fv-chain-position:has(.fv-chain-queued)>span:first-child::after{content:' \B7  ';white-space:pre;visibility:hidden}
+.fv-studio .fv-chain-position .fv-chain-queued{white-space:pre;position:relative}
+.fv-studio .fv-chain-position .fv-chain-sep{position:absolute;right:100%;white-space:pre}
 .fv-studio .fv-replace-person{margin-top:0;margin-bottom:12px}
 .fv-studio .fv-replace-person.fv-swap-blocked{cursor:not-allowed}
 .fv-studio .fv-swap-on>.fv-panel{display:none}

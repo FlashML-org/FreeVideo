@@ -44,6 +44,10 @@ SOURCES = {
     'cuda': {'official': 'https://developer.download.nvidia.com/compute/cuda/redist',
              'nvidia-cn': 'https://developer.download.nvidia.cn/compute/cuda/redist'},
 }
+# Public mirror of the python-build-standalone release files, used only for the
+# Python runtime download (uv's UV_PYTHON_INSTALL_MIRROR layout). Every file uv
+# fetches from it is still checked against the SHA-256 uv pins for that release.
+PYTHON_MIRRORS = {'npmmirror': 'https://registry.npmmirror.com/-/binary/python-build-standalone'}
 PROXY_KEYS = proxy.PROXY_KEYS
 SAMPLE_BYTES = 256 * 1024
 SPEED_SAMPLE_BYTES = 32 * 2**20
@@ -673,7 +677,7 @@ def source_host(family, name, env=None):
     try:
         return _host(source_url(family, name, env))
     except (KeyError, ValueError):
-        return ''
+        return _host(PYTHON_MIRRORS[name]) if family == 'github' and name in PYTHON_MIRRORS else ''
 
 
 def exit_code(error):
@@ -784,6 +788,10 @@ def slow_download_failure(detail):
                          'permission denied', 'no space left on device', 'disk full')))
 
 
+def _access_denied(detail):
+    return bool(re.search(r'\b(?:401|403)\b', re.sub(r'https?://\S+', '', detail.lower())))
+
+
 def package_environment(network, family, name, environ=None, *, route=None, retry_mode='fast'):
     env = route_environment(network, family, name, environ, route)
     env = download_environment(env, retry_mode)
@@ -796,7 +804,7 @@ def package_environment(network, family, name, environ=None, *, route=None, retr
     return env
 
 
-def download_command(network, family, run, env=None, *, category=None, extra_sources=(), notice=None):
+def download_command(network, family, run, env=None, *, category=None, extra_sources=(), notice=None, reorder=None):
     """Run a source/route callback with the same bounded policy for uv and pip.
 
     Callbacks receive (source, route, retry_mode); each builds its child env from
@@ -807,7 +815,14 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
     attempts = []
     for retry_mode, timeout, retries in DOWNLOAD_RETRY_PROFILES:
         if retry_mode == 'patient':
-            if not attempts or not all(slow_download_failure(row['detail']) for row in attempts):
+            # A mirror that refuses access (HTTP 401/403) says nothing about a
+            # source that merely timed out: it is left out of the slow retry
+            # and must not cancel it. Any other non-network failure still ends
+            # the download here.
+            denied = {row['source'] for row in attempts if _access_denied(row['detail'])}
+            if (not attempts or all(row['source'] in denied for row in attempts)
+                    or not all(slow_download_failure(row['detail']) or _access_denied(row['detail'])
+                               for row in attempts)):
                 break
             event(network, category=category, action='download-round-result', retry_mode='fast',
                   result='failed', attempts=len(attempts))
@@ -823,7 +838,9 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
             event(network, category=category, action='download-round-start', retry_mode=retry_mode)
         # Re-read health and allowed routes after the fast pass. Equal failures
         # retain the existing probe order; no new connectivity probes are made.
-        for name in [*extra_sources, *ordered(network, family)]:
+        for name in [*extra_sources, *(reorder(ordered(network, family)) if reorder else ordered(network, family))]:
+            if retry_mode == 'patient' and name in denied:
+                continue
             for route in route_order(network, family, name, env):
                 if operation == 'package' or retry_mode == 'patient':
                     event(network, category=category, source=name, route=route,

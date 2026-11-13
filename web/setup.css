@@ -43,12 +43,16 @@
 .fv-setup details.fv-adv>summary{padding-bottom:10px}
 .fv-setup details.fv-adv>details{margin:0;padding:0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent}
 .fv-setup details.fv-adv>details>summary{padding:12px 0;font-weight:var(--fv-medium)}
+/* A state that does not fit beside the title, and any failure, takes its own line below it; the chevron stays on the title's line. */
+.fv-setup details.fv-adv>details>summary{position:relative;flex-wrap:wrap;row-gap:2px;padding-right:23px}
+.fv-setup details.fv-adv>details>summary::after{position:absolute;right:0;top:calc(12px + .5lh - 3.75px)}
+.fv-setup details.fv-adv>details>summary>span.fv-failure{flex-basis:100%}
 .fv-setup details.fv-adv .fv-unit{display:flex;align-items:center;gap:8px;margin-top:6px}
 .fv-setup details.fv-adv .fv-unit>input.fv-number{width:96px;margin:0}
 .fv-setup details.fv-adv .fv-unit>span{white-space:nowrap}
 .fv-setup details.fv-adv>details[open]>summary{margin-bottom:0}
 .fv-setup details.fv-adv>details[open]{padding-bottom:12px}
-.fv-setup details.fv-adv summary>span{margin-left:auto;font-weight:var(--fv-regular,400);transition:opacity .4s}
+.fv-setup details.fv-adv summary>span{font-weight:var(--fv-regular,400);transition:opacity .4s}
 .fv-setup details.fv-adv summary>span.fv-fade{opacity:0}
 .fv-setup details.fv-adv>button.fv-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin:0;padding:12px 0;min-height:0;border:0;border-top:1px solid var(--fv-border);border-radius:0;background:transparent;color:inherit;font:inherit;font-size:var(--fv-body);font-weight:var(--fv-medium);text-align:left;cursor:pointer}
 .fv-setup details.fv-adv>button.fv-row[hidden]{display:none}
@@ -72,18 +76,22 @@
 .fv-setup input.fv-minutes:not([type=checkbox]):not([type=range]){display:inline-block;width:96px;margin:0 6px}
 .fv-setup textarea{resize:vertical;line-height:1.6}
 .fv-setup label.fv-check{display:flex;align-items:flex-start;gap:9px;color:var(--fv-ink)}
+.fv-setup label.fv-check > span{text-wrap:pretty}
+.fv-setup label.fv-check .fv-check-phrase{white-space:nowrap}
 .fv-setup input[type=checkbox]{margin:3px 0 0}
 .fv-setup input[type=range]{display:block;width:100%;margin:8px 0 4px;accent-color:var(--fv-accent)}
 
 /* Buttons. */
 .fv-setup button{background:var(--fv-raised);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);min-height:var(--fv-h);padding:7px 14px;color:var(--fv-ink);cursor:pointer;font:inherit;font-weight:var(--fv-medium);transition:background .2s,border-color .2s}
-.fv-setup button:hover{background:var(--fv-hover)}
+.fv-setup button:hover:not(:disabled){background:var(--fv-hover)}
 .fv-setup button:active:not(:disabled){filter:brightness(.9);transition-duration:.06s}
 .fv-setup button.fv-primary{background:var(--fv-accent);color:var(--fv-bg);border-color:var(--fv-accent);font-weight:var(--fv-semibold)}
-.fv-setup button.fv-primary:hover{background:var(--fv-accent-hover)}
+.fv-setup button.fv-primary:hover:not(:disabled){background:var(--fv-accent-hover)}
 .fv-setup button.fv-quiet{background:transparent;border-color:transparent;color:var(--fv-muted)}
-.fv-setup button.fv-quiet:hover{background:var(--fv-raised);color:var(--fv-ink)}
-.fv-setup button:disabled{opacity:.45;cursor:default}
+.fv-setup button.fv-quiet:hover:not(:disabled){background:var(--fv-raised);color:var(--fv-ink)}
+/* Unavailable buttons share one gray look, primary included, and do not react to the pointer. */
+.fv-setup button:disabled{background:transparent;border-color:var(--fv-border);color:var(--fv-disabled);cursor:default}
+.fv-setup button.fv-quiet:disabled{border-color:transparent}
 .fv-setup a{color:var(--fv-accent);text-underline-offset:3px}
 .fv-setup .fv-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px}
 .fv-setup .fv-actions.fv-end{justify-content:flex-end}
@@ -99,6 +107,7 @@
 .fv-setup .fv-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 18px;margin:4px 0 12px;font-size:var(--fv-body)}
 .fv-setup .fv-facts dt{color:var(--fv-muted)}
 .fv-setup .fv-facts dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fv-setup .fv-facts .fv-fact-part{display:inline-block;max-width:100%;white-space:pre-wrap}
 .fv-setup table.fv-speed{width:100%;margin-top:12px;border-collapse:collapse;font-size:var(--fv-body);font-variant-numeric:tabular-nums}
 .fv-setup table.fv-speed th{font-weight:var(--fv-medium);font-size:var(--fv-micro);color:var(--fv-muted);text-align:left;padding:0 8px 6px 0;border-bottom:1px solid var(--fv-border)}
 .fv-setup table.fv-speed td{padding:7px 8px 7px 0;border-bottom:1px solid var(--fv-border)}

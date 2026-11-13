@@ -4,6 +4,7 @@
 .fv-range-longest{color:var(--fv-muted);white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums}
 .fv-range-arrow{width:6px;height:6px;flex:none;margin-right:3px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);transition:transform .2s}
 .fv-range-entry[aria-expanded=true] .fv-range-arrow{transform:rotate(225deg)}
+.fv-range-entry:disabled .fv-range-arrow{visibility:hidden}
 .fv-range-chart{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr);padding-top:8px;margin-bottom:14px;scroll-margin-bottom:100px;font-variant-numeric:tabular-nums;user-select:none}
 .fv-range-y{position:relative}
 .fv-range-y>span{position:absolute;right:8px;transform:translateY(-50%);color:var(--fv-muted);font-size:11px;white-space:nowrap;line-height:1}

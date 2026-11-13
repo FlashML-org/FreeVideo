@@ -316,6 +316,9 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
         shortcut = root / 'launcher/desktop-shortcut.json'
         if shortcut.is_file() and not is_link(shortcut):
             add_path('installation/desktop-shortcut.json', shortcut)
+        shortcut_failure = root / 'launcher/desktop-shortcut-failure.json'
+        if shortcut_failure.is_file() and not is_link(shortcut_failure):
+            add_path('installation/desktop-shortcut-failure.json', shortcut_failure)
         for label, directory in [('setup', setup), ('run', selected), ('optimization', optimized)]:
             if directory:
                 for path in report_files(directory):

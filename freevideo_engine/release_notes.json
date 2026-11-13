@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.5.2",
+  "product_version": "0.5.3",
   "en": {
-    "summary": "The editor shows its preview and timeline again, and Mac installs no longer stop at the GPU check. Images show each step while they generate, have a Seed field and clearer failure cards, and narrow windows fit better.",
+    "summary": "Short films are finished for you: the built-in director picks and joins the takes, the film arrives in Autopilot as a card, and an editing project with one part per shot is ready. H3 Image takes up to 16 reference pictures, and consecutive images start sooner. Imported clips can be removed from the editor, and waits, failures, setup and narrow windows read more clearly.",
     "changes": [
-      "Editor: the edit page keeps its layout again, so the preview and the timeline are no longer pushed off the screen by the media library.",
-      "Mac install: an installation or repair no longer stops at the GPU check step when every check has passed.",
-      "Install and update: a first installation offers H3 Video or H3 Image, and an image-only installation adds the video model later. Graphics package downloads keep trying through a slow connection, a model download that cannot resume starts again, an update restores a missing tool, and setup waits briefly for another running installation and names it.",
-      "Images view: the picture is shown after each step while it generates, and progress follows time with one percentage and the remaining time. A Seed field under Advanced keeps a number, or draws a new seed for each picture when empty.",
-      "Picture failures: the reason and Retry sit inside the card, Autopilot cards open technical details as video cards do, and memory reasons use formal wording. The report button reads \"Download report\" on the image page, in Autopilot and in the editor.",
-      "Edit page: the quality setting sits beside Generate and shows the number of steps. Music on the second sound track starts from its own description box.",
-      "Output: an Output setting can write a separate 10-bit copy of each generated video; the regular file and the page preview are unchanged.",
-      "Narrow windows: the node view top bar steps entries aside and then wraps, the view switch sits in the same place in every view, and Escape in the phone panel closes only the panel. At 400 px the image model name and ratio menu show whole, image editor tools wrap, the result menu opens upward when needed, and editor track names show in full.",
-      "Autopilot: Enter, Ctrl+Enter and paste work in the chat and image pages, the message hint fits one line on phones, the header keeps a readable job title, and long titles stay inside the job card.",
-      "Progress: long quiet stages of a video run show real counts, such as frames, layers or files, after the stage text.",
-      "Generation: the text encoder loads faster from slow drives when memory is short, and a loaded engine is reused when only the tiling changes. A library character's voice comes into the shot with its pictures, and prompt enhancement reads the picture or video of a connected load node.",
-      "Tutorial and messages: the tutorial adds chapters on making pictures, middle frames and saving a frame. A refusal caused by Reserved VRAM names that setting, the connection card names the localhost address to open, and a long-video join failure says whether the seam record is missing or unreadable."
+      "Short films: a screenplay can carry its outline and the blocking of each scene, and the blocking goes into every shot of that scene. With the built-in director, takes are chosen and joined automatically once they are shot, and the work continues after a pause, a resume or a restart. The finished film appears in the Autopilot conversation as a card that plays, opens or goes straight to editing, and it also opens as an editing project with one part per shot.",
+      "Reference pictures: H3 Image accepts up to 16 reference pictures and Qwen-Image 2.1 accepts four. A note appears when too many pictures are added at once, pictures that cannot fit are refused before the run starts, and Generate points to the pictures to remove when the selected model's limit is exceeded.",
+      "Image speed: consecutive images keep the models loaded when the graphics card and memory allow, and the same prompt is not encoded again, so the second image onward starts sooner. Results are saved as high-quality JPEG, and temporary uploads are removed after each run.",
+      "Editor: the Imported tab has a remove button on every clip, including ones that could not be opened. Only FreeVideo's copy is deleted, never the original file, and a clip that an edit uses, even in an earlier version, asks for a second confirmation. Work thumbnails in the media library display correctly, and the Edit button on finished-video cards is visible again.",
+      "Waits: prompt rewriting counts from the press, the size range shows Estimating while it is worked out, and starting a generation or opening the page from the launcher shows elapsed seconds after 3 s. Automatic subtitles show Unpacking, Autopilot shows Sending and the seconds spent waiting for a reply, and preparing reference media shows which file is in progress.",
+      "Failures and settings: a missing or damaged model file is explained on the failure card, and cards that suggest a repair have an Open settings button that goes to Detect & review. Offline installations are told to import the offline package again. A damaged reserved memory setting no longer blocks the settings panel or generation, and a refused save is explained under Save. The launcher report form names the real failure.",
+      "Install and repair: Check and repair list and download again any model file that is missing or damaged, and importing an offline package again completes files left short by an interrupted copy. An installation with a missing model folder no longer stops at the GPU check, and an engine source folder that cannot be read is built again instead of failing every retry. The setup plan shows small sizes in MB or KB, and unavailable buttons share one gray look.",
+      "Windows and downloads: when Windows application control blocks a component file, the GPU check and generation continue, and the block is recognised in any system language. Cards of 16 GB and more keep copying the next layer while the current one computes when commit headroom is limited. The runtime download keeps retrying the official source when a mirror refuses access, with one more public source added.",
+      "Narrow windows: the Autopilot conversation scrolls on its own with the header and input in view, and an unsent message shows its reason on its own line. The studio shows the queued count and each run's size and length in full, download size and speed stay together, export choices and the reserved memory title stay on one line, and setup lines wrap between phrases. The Connect an agent card keeps its arrow with its words, and a failed lookup shows only Retry and Report a problem.",
+      "Nodes view: switching to it no longer leaves a node under the view bar, and the voice reference, dialogue tail and empty prompt switches show Chinese names in the Chinese interface. The media panel says once, not three times, when some saved items cannot be read.",
+      "Generation: a queue read that receives a web page instead of data is retried like a lost connection, so repeating generation keeps going. A second-pass memory failure that a smaller retry cannot help is reported sooner.",
+      "Tutorial: new chapters on beat snapping, run status, generating with reference pictures, the outline and staging of a short film, and the editing project a finished film leaves."
     ]
   },
   "zh": {
-    "summary": "编辑页重新显示预览和时间线，Mac 安装不再停在 GPU 检查一步；图片生成时逐步显示画面，新增种子输入，失败卡片更清楚，窄窗口排版更合适。",
+    "summary": "短剧可以一路做完：内置导演自动选片并接成影片，成片以卡片出现在 AI 全自动对话中，同时建好按镜头分段的剪辑工程。H3 Image 支持最多 16 张参考图，连续出图起步更快。剪辑器可以删除已导入素材，等待、失败、安装和窄窗口的显示更清楚。",
     "changes": [
-      "编辑页：版面恢复正常，预览和时间线不再被素材库挤出屏幕。",
-      "Mac 安装：安装或修复时，各项检查都已通过却仍停在 GPU 检查一步的问题已修复。",
-      "安装和更新：首次安装可选 H3 Video 或 H3 Image，只装图像模型的以后可再加视频模型。GPU 组件下载在网络慢时持续重试，无法续传的模型下载重新开始，更新补回缺失的工具，另一个安装进行中时稍等并说明是哪一个。",
-      "图像视图：生成时每一步都显示当前画面，进度按时间推进，只显示一个百分比和剩余时间。“高级”里新增“种子”，填数字固定种子，留空则每张图重新取种子。",
-      "图片失败：原因和“重试”放在卡片内，AI 全自动中的卡片和视频卡片一样可展开技术详情，内存不足的原因改为书面措辞。图像页、AI 全自动和编辑页的报告按钮统一为“下载报告”。",
-      "编辑页：画质设置放在“生成”旁边，并显示步数。第二条声音轨上的音乐从自己的描述框开始填写。",
-      "输出：可在设置中另外写一份 10 位视频，原有文件和页面预览不变。",
-      "窄窗口：节点视图顶栏的入口先依次让位再折行，各视图的切换位置一致，手机面板里按 Esc 只关闭面板。400 宽下图像模型名称和比例菜单完整显示，图像编辑工具折行，结果菜单放不下时向上展开，剪辑轨道名称完整显示。",
-      "AI 全自动：对话页和图像页的 Enter、Ctrl+Enter 和粘贴恢复正常，手机上的输入提示一行放下，顶栏保留可读的任务名，长标题不再超出任务卡片。",
-      "进度：视频生成中较长的无变化阶段，在阶段文字后显示真实计数，例如帧数、层数或文件数。",
-      "生成：内存紧张时，文本编码器从慢速硬盘加载更快；只有分块变化时复用已加载的引擎。素材库角色的声音随其图片一起带入镜头，提示词增强会读取所连加载节点中的图片或视频。",
-      "教程和提示：教程新增生成图片、中间帧和保存帧三章。只因“预留显存”导致的拒绝会指出该设置，连接卡片会给出应打开的 localhost 地址，长视频拼接失败时说明接缝记录是缺失还是无法读取。"
+      "短剧：剧本可以写大纲和每场站位，站位自动写进该场每个镜头。选用内置导演时，拍完后自动选片并接成影片，暂停、继续和重启后都会接着做。成片以卡片出现在 AI 全自动对话中，可以播放、打开或直接进入剪辑，同时建好按镜头分段的剪辑工程。",
+      "参考图：H3 Image 最多可用 16 张参考图，Qwen-Image 2.1 可用 4 张。一次加入过多时显示提示，放不下的参考图在开始前拒绝；超出所选模型上限时，点“生成”会定位到需要移除的图。",
+      "出图速度：显存和内存允许时，连续生成图片保持模型常驻，同一提示词不再重复编码，第二张起开始得更快。结果保存为高质量 JPEG，每次生成后清理临时上传。",
+      "剪辑器：“已导入”页的每个素材（包括打不开的）都有删除按钮，只删除软件复制的副本，不删原文件；被剪辑使用的素材（包括只在早先版本中使用的）需再确认一次。素材库中的作品缩略图正常显示，已完成视频卡片上的“剪辑”按钮重新显示。",
+      "等待：提示词改写从点下就计秒，可生成范围计算时显示“正在估算…”，开始生成和从启动器打开页面超过 3 秒时显示已用秒数。自动字幕解压时显示“正在解压”，AI 全自动显示“正在发送…”和等待回复的秒数，准备参考素材时显示正在处理第几个文件。",
+      "失败和设置：缺失或损坏的模型文件在失败卡片上说明原因；建议修复的卡片新增“打开设置”，直接定位到“检测并预览”。离线安装改为提示重新导入离线包。预留显存设置文件损坏时，设置面板和生成照常进行；保存被拒时在“保存”下说明原因。启动器的报告表单写出真实的失败原因。",
+      "安装和修复：检测和修复会列出并重新下载缺失或损坏的模型文件，重新导入离线包会补全复制中断留下的不完整文件。缺少模型文件夹时，安装不再停在 GPU 检查一步；引擎源码目录无法读取时改为重新构建，不再每次重试都失败。安装计划中较小的文件以 MB 或 KB 显示，不可用的按钮统一为灰色。",
+      "Windows 和下载：Windows 应用控制拦截某个组件文件时，GPU 检查和生成照常继续，在任何系统语言下都能识别该拦截。提交余量受限时，16 GB 及以上显卡在计算当前层的同时仍会拷贝下一层。运行环境下载在镜像拒绝访问时继续重试官方线路，并新增一个公开备用线路。",
+      "窄窗口：AI 全自动的对话单独滚动，顶栏和输入框始终可见，没发出的消息原因单独显示一行。创作面板完整显示排队数量以及每条的尺寸和时长，下载进度的大小和速度不再拆开，导出选项和预留显存标题保持一行，安装页文字按词组换行。连接 Agent 卡片的箭头不再和文字分开，获取地址失败时只显示重试和提交问题。",
+      "节点视图：切换过来时节点不再被顶部的视图切换栏遮住，“声音参考”“隐藏对白尾段”“允许空描述”三个开关显示中文名称。素材区有资料读取失败时只提示一次，不再重复三次。",
+      "生成：队列读取得到网页而不是数据时按断线重试，重复生成不再被停掉。第二遍显存不足且缩小重试也无济于事时，更早报告失败。",
+      "教程：新增对齐音乐节拍、运行状态、用参考图生成图片、短剧的大纲和站位、短剧成片的剪辑工程五章。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.5.2",
+      "en": {
+        "summary": "The editor shows its preview and timeline again, and Mac installs no longer stop at the GPU check. Images show each step while they generate, have a Seed field and clearer failure cards, and narrow windows fit better.",
+        "changes": [
+          "Editor: the edit page keeps its layout again, so the preview and the timeline are no longer pushed off the screen by the media library.",
+          "Mac install: an installation or repair no longer stops at the GPU check step when every check has passed.",
+          "Install and update: a first installation offers H3 Video or H3 Image, and an image-only installation adds the video model later. Graphics package downloads keep trying through a slow connection, a model download that cannot resume starts again, an update restores a missing tool, and setup waits briefly for another running installation and names it.",
+          "Images view: the picture is shown after each step while it generates, and progress follows time with one percentage and the remaining time. A Seed field under Advanced keeps a number, or draws a new seed for each picture when empty.",
+          "Picture failures: the reason and Retry sit inside the card, Autopilot cards open technical details as video cards do, and memory reasons use formal wording. The report button reads \"Download report\" on the image page, in Autopilot and in the editor.",
+          "Edit page: the quality setting sits beside Generate and shows the number of steps. Music on the second sound track starts from its own description box.",
+          "Output: an Output setting can write a separate 10-bit copy of each generated video; the regular file and the page preview are unchanged.",
+          "Narrow windows: the node view top bar steps entries aside and then wraps, the view switch sits in the same place in every view, and Escape in the phone panel closes only the panel. At 400 px the image model name and ratio menu show whole, image editor tools wrap, the result menu opens upward when needed, and editor track names show in full.",
+          "Autopilot: Enter, Ctrl+Enter and paste work in the chat and image pages, the message hint fits one line on phones, the header keeps a readable job title, and long titles stay inside the job card.",
+          "Progress: long quiet stages of a video run show real counts, such as frames, layers or files, after the stage text.",
+          "Generation: the text encoder loads faster from slow drives when memory is short, and a loaded engine is reused when only the tiling changes. A library character's voice comes into the shot with its pictures, and prompt enhancement reads the picture or video of a connected load node.",
+          "Tutorial and messages: the tutorial adds chapters on making pictures, middle frames and saving a frame. A refusal caused by Reserved VRAM names that setting, the connection card names the localhost address to open, and a long-video join failure says whether the seam record is missing or unreadable."
+        ]
+      },
+      "zh": {
+        "summary": "编辑页重新显示预览和时间线，Mac 安装不再停在 GPU 检查一步；图片生成时逐步显示画面，新增种子输入，失败卡片更清楚，窄窗口排版更合适。",
+        "changes": [
+          "编辑页：版面恢复正常，预览和时间线不再被素材库挤出屏幕。",
+          "Mac 安装：安装或修复时，各项检查都已通过却仍停在 GPU 检查一步的问题已修复。",
+          "安装和更新：首次安装可选 H3 Video 或 H3 Image，只装图像模型的以后可再加视频模型。GPU 组件下载在网络慢时持续重试，无法续传的模型下载重新开始，更新补回缺失的工具，另一个安装进行中时稍等并说明是哪一个。",
+          "图像视图：生成时每一步都显示当前画面，进度按时间推进，只显示一个百分比和剩余时间。“高级”里新增“种子”，填数字固定种子，留空则每张图重新取种子。",
+          "图片失败：原因和“重试”放在卡片内，AI 全自动中的卡片和视频卡片一样可展开技术详情，内存不足的原因改为书面措辞。图像页、AI 全自动和编辑页的报告按钮统一为“下载报告”。",
+          "编辑页：画质设置放在“生成”旁边，并显示步数。第二条声音轨上的音乐从自己的描述框开始填写。",
+          "输出：可在设置中另外写一份 10 位视频，原有文件和页面预览不变。",
+          "窄窗口：节点视图顶栏的入口先依次让位再折行，各视图的切换位置一致，手机面板里按 Esc 只关闭面板。400 宽下图像模型名称和比例菜单完整显示，图像编辑工具折行，结果菜单放不下时向上展开，剪辑轨道名称完整显示。",
+          "AI 全自动：对话页和图像页的 Enter、Ctrl+Enter 和粘贴恢复正常，手机上的输入提示一行放下，顶栏保留可读的任务名，长标题不再超出任务卡片。",
+          "进度：视频生成中较长的无变化阶段，在阶段文字后显示真实计数，例如帧数、层数或文件数。",
+          "生成：内存紧张时，文本编码器从慢速硬盘加载更快；只有分块变化时复用已加载的引擎。素材库角色的声音随其图片一起带入镜头，提示词增强会读取所连加载节点中的图片或视频。",
+          "教程和提示：教程新增生成图片、中间帧和保存帧三章。只因“预留显存”导致的拒绝会指出该设置，连接卡片会给出应打开的 localhost 地址，长视频拼接失败时说明接缝记录是缺失还是无法读取。"
+        ]
+      }
+    },
     {
       "product_version": "0.5.1",
       "en": {

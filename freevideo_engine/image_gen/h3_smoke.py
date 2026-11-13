@@ -15,7 +15,7 @@ import torch
 
 from . import h3_dit
 from .h3_weights import load_h3_dit
-from .image_stream import StreamedStack
+from .image_stream import StreamedStack, checkpoint_layer_source
 
 
 def main(argv=None):
@@ -33,6 +33,7 @@ def main(argv=None):
     parser.add_argument('--resident', type=int, default=0)
     parser.add_argument('--no-mapped', action='store_true', help='read the checkpoint into private memory instead of mapping it')
     parser.add_argument('--host-prefetch', choices=('auto', 'off'), default='auto')
+    parser.add_argument('--direct', choices=('on', 'off'), default='on', help='read layers the host cannot pin from the file by direct reads')
     args = parser.parse_args(argv)
     torch.set_grad_enabled(False)
     device = torch.device('cuda')
@@ -46,8 +47,9 @@ def main(argv=None):
         if name != 'blocks':
             child.to(device)
     model.adaln_t_table = model.adaln_t_table.to(device)
-    stack = StreamedStack(model.blocks, name='h3', device=device,
-                          host_prefetch=False if args.host_prefetch == 'off' else None)
+    source = None if args.no_mapped or args.direct == 'off' else checkpoint_layer_source(args.dit, list(model.blocks))
+    stack = StreamedStack(model.blocks, weight_source=source, prefetch=source is None, name='h3', device=device,
+                          host_prefetch=True if source is not None else (False if args.host_prefetch == 'off' else None))
     plan = None
     if args.resident < 0:
         from .image_policy import ImageShape, plan_image
@@ -82,7 +84,7 @@ def main(argv=None):
     memory = {key: status.get(key, '').strip() for key in ('VmHWM', 'VmSwap')}
     print(json.dumps(dict(memory=memory, stack=offload)), flush=True)
     print(json.dumps(dict(load_s=round(loaded - started, 1), prepare_s=round(prepared - loaded, 1),
-                          sample_s=round(done - prepared, 1), step_s=round((done - prepared) / 6, 2), resident=args.resident, mapped=not args.no_mapped,
+                          sample_s=round(done - prepared, 1), device_read_gib=round(int(dict(l.split(': ') for l in open('/proc/self/io'))['read_bytes']) / 2**30, 1), step_s=round((done - prepared) / 6, 2), resident=args.resident, mapped=not args.no_mapped,
                           planned_peak_gib=None if plan is None else round(plan.peak_allocated_bytes / 2**30, 2), canvas=[height, width],
                           denoise_peak_gib=round(denoise_peak / 2**30, 2), decode_peak_gib=round(torch.cuda.max_memory_allocated() / 2**30, 2),
                           reserved_gib=round(torch.cuda.max_memory_reserved() / 2**30, 2),

@@ -412,18 +412,14 @@ export function addReference(list, item, limit) {
 }
 export const removeReference = (list, file) => list.filter(r => r.file !== file);
 // Media lives in folders the image worker does not read, so each extra picture is copied beside the
-// first reference once and its copy is used again for later requests.
-export async function uploadExtraReferences(client, references, render, copies, alive = () => true) {
+// first reference for every request; the service removes the copies when the job ends.
+export async function uploadExtraReferences(client, references, render, alive = () => true) {
     const names = [];
     for (const item of references) {
-        if (!copies.has(item.file)) {
-            const blob = await render(item.file);
-            if (!alive()) throw failure('cancelled');
-            const name = await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'}));
-            if (!alive()) throw failure('cancelled');
-            copies.set(item.file, name);
-        }
-        names.push(copies.get(item.file));
+        const blob = await render(item.file);
+        if (!alive()) throw failure('cancelled');
+        names.push(await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})));
+        if (!alive()) throw failure('cancelled');
     }
     return names;
 }
@@ -627,7 +623,6 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     library = [], resolve = file => file, icon = () => '', onRatioChange, onPlace, productVersion, fetchApi, resumeKey = null}) {
     let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', past = [];
     let promptRequired = false, attentionTimer = null;
-    const copies = new Map();
     // A reference is sent no larger than the largest picture the service makes.
     async function referencePNG(file) {
         const image = await renderer.image(file);
@@ -643,7 +638,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         prepare: async (request, alive) => {
             const context = generationContext(getDoc(), getSelection(), request.mode);
             const images = request.mode === 'edit' ? [await uploadGenerationReference(renderer, client, context, alive),
-                ...await uploadExtraReferences(client, request.references || [], referencePNG, copies, alive)] : [];
+                ...await uploadExtraReferences(client, request.references || [], referencePNG, alive)] : [];
             // Only the selected part of the edited picture (the first) is changed.
             const mask = images.length ? await uploadGenerationMask(renderer, client, context, alive) : null;
             return {context: mask ? {...context, region: true} : context, images, mask};

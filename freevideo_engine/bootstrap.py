@@ -619,17 +619,25 @@ def plan(args, *, local_progress=None, stage=None):
     model_dir = Path(args.models or saved.get('model_root') or root / 'models' / 'vdn').expanduser().resolve()
     encoder_dir = Path(args.encoder_models or saved.get('encoder_model_root') or prior.get('encoder_dir') or root / 'models' / 'encoder').expanduser().resolve()
     reuse_cache = args.cache.expanduser().resolve() if args.cache else None
+    own_model = False
     if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
         revision = json.loads((PACKAGE / 'dependencies.json').read_text(encoding='utf-8'))['models']['vdn_revision']
+        from . import prepared_model
+        own = prepared_model.select(root=root, **cache_format) if getattr(args, 'model_source', 'prepared') == 'prepared' else None
         for name in ('machine.json', 'prepared-cache.json'):
             cache_record = root / name
             if cache_record.is_file():
                 record = json.loads(cache_record.read_text(encoding='utf-8'))
                 candidate = record.get('cache')
                 if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
+                    if own and Path(candidate).resolve() == Path(own['cache']).resolve():
+                        # The installation's own downloaded model: plan it like a fresh
+                        # download, so a missing or damaged file is listed and fetched again.
+                        own_model = True
+                        break
                     reuse_cache = Path(candidate)
                     break
-    if reuse_cache is None and not getattr(args, 'rebuild_cache', False):
+    if reuse_cache is None and not own_model and not getattr(args, 'rebuild_cache', False):
         from .install_tuning import discover_prepared
         reuse_cache = discover_prepared(getattr(args, 'reuse_models', None), **cache_format)
     from . import prepared_model
@@ -1203,7 +1211,7 @@ def setup_task(label):
     """Describe the work independently of internal command IDs and log paths."""
     routes = {'official': 'official source', 'nju': 'Nanjing University mirror',
               'tuna': 'Tsinghua mirror', 'ghfast': 'GitHub mirror',
-              'user-python': 'your Python mirror', 'user': 'your configured source'}
+              'npmmirror': 'npm mirror', 'user-python': 'your Python mirror', 'user': 'your configured source'}
     # Python route retries append the route after the source.
     label = re.sub(r'-(?:direct|proxy)$', '', label)
     source = next((name for name in routes if label.endswith('-' + name)), None)
@@ -1882,6 +1890,12 @@ class Installer:
                 lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
                 self.env, notice=notice)
 
+    def python_sources(self, names):
+        """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
+        if self.network.get('mode') == 'official':
+            return names
+        return [*[n for n in names if n != 'ghfast'], *network.PYTHON_MIRRORS, *[n for n in names if n == 'ghfast']]
+
     def python_install(self, uv):
         from .system import bootstrap_root
         prepared = bootstrap_root(self.root) / 'python'
@@ -1912,13 +1926,16 @@ class Installer:
         def attempt(source, route, retry_mode):
             env = network.download_environment(
                 network.route_environment(self.network, 'github', source, self.env, route), retry_mode)
-            env['UV_PYTHON_INSTALL_MIRROR'] = custom if source == 'user-python' else network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download'
+            env['UV_PYTHON_INSTALL_MIRROR'] = (custom if source == 'user-python' else network.PYTHON_MIRRORS[source]
+                                               if source in network.PYTHON_MIRRORS else
+                                               network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')
             return self.command('python-' + source + '-' + route,
                                 [uv, 'python', 'install', *isolation, self.versions['python']], env=env)
         try:
             with self.download_notice('download-patient-python') as notice:
                 return network.download_command(self.network, 'github', attempt, self.env, category='python',
-                                                extra_sources=['user-python'] if custom else [], notice=notice)
+                                                extra_sources=['user-python'] if custom else [], notice=notice,
+                                                reorder=self.python_sources)
         except network.PackageSourcesError as error:
             failure = RuntimeError('Python download failed on every route; see retained logs'
                                    + network.sources_text(error.attempts))
@@ -2261,7 +2278,7 @@ class Installer:
     def device_configuration(self):
         return {'gpu_uuid': self.plan['inventory']['selected_gpu']['uuid']}
 
-    def check_kernels(self, python, kernel_report):
+    def check_kernels(self, python, kernel_report, *, paths=True):
         # Kernel probes execute real CUDA work and take roughly a minute on a
         # consumer GPU.  A completed receipt is reusable only when every
         # input that can change the result still matches: GPU identity,
@@ -2273,11 +2290,18 @@ class Installer:
         receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
                    if isinstance(hardware_data, dict) else None)
         if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths',
-                                          *(['--without-video-models'] if self.plan.get('only') == 'image' else []), '--out', kernel_report])
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe',
+                                          *(['--require-paths'] if paths else []),
+                                          *(['--without-video-models'] if paths and self.plan.get('only') == 'image' else []), '--out', kernel_report])
         else:
             save(kernel_report, receipt)
             self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')
+            if paths:
+                # The receipt may come from the precheck, which does not look at the model folders.  Check only the
+                # folders now (no probe, so the receipt stays as it is); a missing one fails this step as a fresh run would.
+                self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--require-paths',
+                                              *(['--without-video-models'] if self.plan.get('only') == 'image' else []),
+                                              '--out', Path(kernel_report).with_name('kernel-paths.json')])
 
     def record_kernel_validation(self, results, kernel_report):
         sage_manifest = results['sage']
@@ -2299,7 +2323,7 @@ class Installer:
             # the receipt is reused by the check after installation.
             self.ui.phase('Verify installation on your GPU', 0, 8)
             report = self.run_dir / 'kernel-capabilities.before.json'
-            self.check_kernels(self.pythons['engine'], report)
+            self.check_kernels(self.pythons['engine'], report, paths=False)  # the model folders are installed after this check
             require_int8_kernels(self.plan, report)
             self.mark_unfinished()
         self.ui.phase('Prepare download tools', 0, 8)

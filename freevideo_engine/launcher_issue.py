@@ -57,7 +57,10 @@ def environment_line(version=None, hardware=None):
 
 def issue_url(error, version=None, title=None, zh=False, environment=''):
     lines = _lines(error)
-    first = (lines[-1] if lines and lines[0].startswith('Traceback') else (lines[0] if lines else '')).strip()
+    # A successful download-tool check can open the text (its Sysnative "not found" is normal); the cause is not that line.
+    from .failure_details import _without_ready_curl_diagnostics
+    causes = _lines(_without_ready_curl_diagnostics(str(error))) or lines
+    first = (causes[-1] if causes and causes[0].startswith('Traceback') else (causes[0] if causes else '')).strip()
     place = '启动器' if zh else 'Launcher'
     problem = ('FreeVideo 启动器显示了一个错误。\n' if zh else 'The FreeVideo launcher showed an error.\n') + first[:300]
     report = '\n'.join(lines)

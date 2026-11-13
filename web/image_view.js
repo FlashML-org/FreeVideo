@@ -29,8 +29,8 @@ for (const name of ['./editor_adjust.css', './image_view.css']) {
 }
 
 export const IMAGE_MODELS = Object.freeze([
-    {id: 'minimax-h3-image', name: 'MiniMax H3 Image', short: 'H3 Image', references: 0},
-    {id: 'qwen-image-2.1-turbo', name: 'Qwen-Image 2.1', short: 'Qwen-Image 2.1', references: 3},
+    {id: 'minimax-h3-image', name: 'MiniMax H3 Image', short: 'H3 Image'},
+    {id: 'qwen-image-2.1-turbo', name: 'Qwen-Image 2.1', short: 'Qwen-Image 2.1'},
 ]);
 export const RATIOS = Object.freeze(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3']);
 const MODEL_KEY = 'freevideo.imageModel';
@@ -50,17 +50,19 @@ export function imageSize(ratio, tier = 'standard', same = null, model = '') {
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0} = {}) {
+// references: how many pictures each model row reports it takes, as the engine does.
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0, references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4}} = {}) {
     const items = []; let count = 0; const jobs = new Map(), state = {...ready}; const loading = new Map();
-    const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id),
+    const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
         bytes_total: 12.5e9, bytes_done: loading.has(m.id) ? Math.min(12.5e9, (Date.now() - loading.get(m.id)) * 5e6) : 0}));
     return {
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > 12.5e9 / 5e6) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, models: models()}; },
         packInstall: async id => { loading.set(id, Date.now()); return {installed: true, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, models: models()}; },
-        async generate({prompt, width, height, seed}) {
+        async generate({prompt, width, height, seed, model, images = []}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed}); return {job};
+            if (images.length > (references[model] ?? 0)) return {error: 'too_many_images'};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
@@ -223,17 +225,22 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     const say = text => { note.textContent = text || ''; };
     const label = number => t(`Image ${number}`, `图 ${number}`);
-    const over = () => Math.max(0, references.length - model.references);
+    // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
+    const cap = m => { const n = Number(info?.models?.find(r => r.id === m.id)?.max_images); return Number.isInteger(n) && n > 0 ? n : 0; };
+    const most = () => Math.max(0, ...IMAGE_MODELS.map(cap));
+    const over = () => Math.max(0, references.length - cap(model));
     function addFiles(files, card) {
-        if (model.references === 0) return;
-        const room = Math.max(0, 16 - references.length); let skipped = 0;
+        if (cap(model) === 0) return;
+        const room = Math.max(0, most() - references.length); let skipped = 0;
         for (const file of files) {
             if (!file.type.startsWith('image/')) continue;
-            if (references.length >= 16) { skipped++; continue; }
+            if (references.length >= most()) { skipped++; continue; }
             const record = {file, url: URL.createObjectURL(file), card}; references.push(record);
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
         }
-        notice.textContent = skipped ? t(`At most 16, ${skipped} more were not added.`, `最多 16 张，多出的 ${skipped} 张没有加入。`) : '';
+        // The note stays until the strip changes again.
+        notice.dataset.keep = String(skipped > 0);
+        notice.textContent = skipped ? t(`At most ${most()}, ${skipped} more were not added.`, `最多 ${most()} 张，多出的 ${skipped} 张没有加入。`) : '';
         void room; render();
     }
     async function useAsReference(file, first) {
@@ -241,7 +248,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         try {
             const blob = await (await fetch(pictureURL(file))).blob(), name = file.slice(file.lastIndexOf('/') + 1);
             const record = {file: new File([blob], name, {type: blob.type || 'image/png'}), url: URL.createObjectURL(blob)};
-            if (references.length >= 16) { URL.revokeObjectURL(record.url); return; }
+            if (references.length >= most()) { URL.revokeObjectURL(record.url); return; }
             first ? references.unshift(record) : references.push(record);
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
             render(); prompt.focus();
@@ -260,18 +267,18 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     function drawReferences() {
         strip.replaceChildren(...references.map((r, at) => {
             const cell = el('span', 'fv-image-reference'), use = el('button', 'fv-image-reference-use'), x = el('button', 'fv-image-reference-remove', '×');
-            cell.dataset.over = String(at >= model.references);
+            cell.dataset.over = String(at >= cap(model));
             use.type = x.type = 'button'; use.title = t(`Refer to ${label(at + 1)} in the prompt`, `在描述里引用${label(at + 1)}`); use.setAttribute('aria-label', use.title);
             x.title = t('Remove', '移除'); x.setAttribute('aria-label', x.title);
             const i = el('img'); i.src = r.url; i.alt = ''; use.append(i, el('b', '', label(at + 1)));
             use.onclick = () => insertTag(at + 1);
-            x.onclick = () => { URL.revokeObjectURL(r.url); references.splice(references.indexOf(r), 1); render(); };
+            x.onclick = () => { notice.dataset.keep = 'false'; URL.revokeObjectURL(r.url); references.splice(references.indexOf(r), 1); render(); };
             cell.append(use, x); return cell;
         }));
-        if (model.references > 0 && references.length < 16) {
+        if (cap(model) > 0 && references.length < most()) {
             const add = el('button', 'fv-image-add', '+'); add.type = 'button'; add.setAttribute('aria-label', t('Add a reference picture', '添加参考图')); add.onclick = () => { if (menu?.box.isConnected) { menu.close(); return; } menu = openReferenceMenu({api, viewURL: pictureURL, anchor: () => dialog.querySelector('.fv-image-add') || add, host: dialog, onComputer: () => pick.click(),
-                onPick: (file, id) => { addFiles([file], id); }, state: () => ({used: new Set(references.map(r => r.card)), full: references.length >= 16})}); };
-            if (references.length < model.references || over() === 0) strip.append(add);
+                onPick: (file, id) => { addFiles([file], id); }, state: () => ({used: new Set(references.map(r => r.card)), full: references.length >= most()})}); };
+            if (references.length < cap(model) || over() === 0) strip.append(add);
         }
     }
     pick.onchange = () => { addFiles([...pick.files]); pick.value = ''; };
@@ -304,13 +311,14 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         const tooMany = over() > 0, busy = !!running, canUse = !missing();
         prompt.placeholder = references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面');
         prompt.setAttribute('aria-label', prompt.placeholder);
-        notice.textContent = tooMany ? (model.references === 0 ? t(`${model.name} does not take reference pictures. Remove ${over()}.`, `${model.name} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.name} takes at most ${model.references}. Remove ${over()}.`, `${model.name} 最多 ${model.references} 张，请移除 ${over()} 张。`)) : notice.dataset.keep === 'true' ? notice.textContent : '';
+        if (tooMany) notice.dataset.keep = 'false';
+        notice.textContent = tooMany ? (cap(model) === 0 ? t(`${model.name} does not take reference pictures. Remove ${over()}.`, `${model.name} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.name} takes at most ${cap(model)}. Remove ${over()}.`, `${model.name} 最多 ${cap(model)} 张，请移除 ${over()} 张。`)) : notice.dataset.keep === 'true' ? notice.textContent : '';
         go.className = 'fv-image-go ' + (failure ? 'fv-image-go-quiet' : 'fv-primary');
         go.disabled = false;
         if (busy) go.textContent = t('Stop', '停止');
         else if (loading()) go.textContent = t('Pause', '暂停');
         else if (missing()) go.textContent = t('Download model', '下载模型');
-        else { go.textContent = t('Generate', '生成'); go.disabled = tooMany; }
+        else { go.textContent = t('Generate', '生成'); go.disabled = false; }
         go.removeAttribute('title'); seedInput.disabled = busy;
         drawStage();
     }
@@ -336,7 +344,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 if (mine) doneReport.append(imageReportBar(doneReport, mine, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
             }
             picture.src = pictureURL(shownFile); save.href = pictureURL(shownFile); save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
-            editThis.disabled = asReference.disabled = references.length >= 16 || model.references === 0;
+            editThis.disabled = asReference.disabled = references.length >= most() || cap(model) === 0;
             infoText.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
         }
     }
@@ -370,7 +378,13 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             await new Promise(r => setTimeout(r, 1500)); try { info = await client.info(); } catch { /* asked again */ } render();
         }
     }
+    // Over the model's limit, Generate stays solid: a click flashes the note and moves to the first greyed picture's remove.
+    function blockOver() {
+        notice.classList.remove('fv-image-notice-flash'); void notice.offsetWidth; notice.classList.add('fv-image-notice-flash');
+        strip.querySelector('.fv-image-reference[data-over=true] .fv-image-reference-remove')?.focus();
+    }
     async function generate() {
+        if (over()) { blockOver(); return; }
         if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
         const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
         say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
@@ -379,7 +393,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         clearStep();
         let reportId = null, stepSerial = 0;
         try {
-            const names = []; for (const r of references.slice(0, model.references)) names.push(await client.upload(r.file));
+            const names = []; for (const r of references.slice(0, cap(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
             const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})});

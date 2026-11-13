@@ -318,7 +318,8 @@ def main(argv=None):
                 path = path.replace('{id}', args.id)
             result = client.get(path, **value) if method == 'GET' else client.post(path, value)
         elif args.command == 'upload':
-            result = client.upload(args.path)
+            result = client.upload(args.path, stage=lambda name: print(
+                'Uploading…' if name == 'sending' else 'Checking the file…', file=sys.stderr, flush=True))
         elif args.command == 'imports':
             result = (client.import_media(args.path, **({'ref': args.ref} if hasattr(args, 'ref') else {}))
                       if args.operation == 'add' else client.get('/imports'))

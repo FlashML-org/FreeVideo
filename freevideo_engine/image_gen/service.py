@@ -26,13 +26,15 @@ from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, Fa
 BODY_LIMIT = 64 * 1024
 CANCEL_GRACE = 5.
 MAX_IMAGES = 4
+# Reference pictures H3 Image takes, each one labelled "Picture N" in upload order.
 H3_MAX_IMAGES = 16
 H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
 REPORT_LIMIT = 16
-HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.png')
+HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)')
 LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
+PAGE_UPLOAD = re.compile(r'freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
 HISTORY_LIMIT = 500
 # The 高清 size is offered from this much card memory; smaller cards keep one size.
 HIGH_SIZE_MIN_TOTAL = 6 * 1024 ** 3
@@ -136,6 +138,7 @@ class Service:
         self.state = {}
         self.preview = None  # {'serial', 'jpeg'}: the running job's newest step picture
         self._busy = False
+        self.uploads = OrderedDict()
         self.closed = False
         self.yielding = False
         self.reports = OrderedDict()
@@ -311,7 +314,7 @@ class Service:
             return str(output / (uuid.uuid4().hex + '.png'))
         stamp = time.strftime('image-%Y%m%d-%H%M%S')
         for number in range(1, 100):
-            path = output / ('%s-%02d.png' % (stamp, number))
+            path = output / ('%s-%02d.jpg' % (stamp, number))
             if not path.exists():
                 return str(path)
         raise ValueError('invalid_media')
@@ -571,6 +574,16 @@ class Service:
         return result
 
     def start(self, action, value):
+        try:
+            return self.admit(action, value)
+        except BaseException:
+            # A request turned away at the door leaves no job to clean up after it.
+            images = value.get('images') if isinstance(value, dict) else None
+            if isinstance(images, list):
+                self.remove_uploads([*images[:REPORT_LIMIT], value.get('mask')])
+            raise
+
+    def admit(self, action, value):
         if action not in ('generate', 'compose'):
             raise ValueError('invalid_request')
         context = Context(action, value)
@@ -594,6 +607,9 @@ class Service:
                 # Only the picture page asks for this; the Agent's own choice leaves the page's menu alone.
                 image_model.remember(machine['model_root'], raw.get('model'))
             key = secrets.token_urlsafe(24)
+            self.uploads[key] = [name for name in [*(raw.get('images') or []), raw.get('mask')] if isinstance(name, str)]
+            while len(self.uploads) > REPORT_LIMIT:
+                self.uploads.popitem(last=False)
             if waiting:
                 self.queued = dict(key=key, action=action, value=raw, context=context,
                                    state=dict(phase='queued', queued_behind='video' if video else 'image'),
@@ -634,7 +650,8 @@ class Service:
             if h3:
                 # What the worker needs to run the video text encoder for this prompt and to plan against the card.
                 value['h3'] = dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),
-                                   comfy_python=machine.get('comfy_python'), model_paths=machine.get('model_paths'))
+                                   comfy_python=machine.get('comfy_python'), model_paths=machine.get('model_paths'),
+                                   resident_endpoint=self.resident_endpoint())
             context.update_request(value)
             # H3 Image plans its own residency in the worker; the Qwen plan below does not describe it.
             context.plan = None if h3 else self.preflight(machine, value, fit=not waiting, reading=context.gpu_reading)
@@ -952,13 +969,34 @@ class Service:
                         row.update(forecast.view())
                     if row.get('phase') in ('progress', 'cancelling') and getattr(self.context, 'report_id', None):
                         row['report_id'] = self.context.report_id
+                    if row.get('phase') in ('complete', 'failed', 'cancelled'):
+                        self.drop_uploads(self.key)
                     return row
                 if self.queued is not None and matches(self.queued['key']):
                     return deepcopy(self.queued['state'])
                 for candidate, state in self.finished.items():
                     if matches(candidate):
+                        self.drop_uploads(candidate)
                         return deepcopy(state)
             raise ValueError('unknown_job')
+
+    def drop_uploads(self, key):
+        """Remove the reference pictures and mask the page uploaded for a finished job; nothing else is touched."""
+        self.remove_uploads(self.uploads.pop(key, []))
+
+    def remove_uploads(self, names):
+        try:
+            directory = Path(self.input_directory()).resolve()
+        except (OSError, ValueError):
+            return
+        for name in names:
+            if isinstance(name, str) and PAGE_UPLOAD.fullmatch(name):
+                path = directory / name
+                if path.is_file() and not path.is_symlink():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
 
     def cancel(self, key):
         with self.mutex:
@@ -1012,6 +1050,14 @@ class Service:
         if queue_thread is not None and queue_thread is not threading.current_thread():
             queue_thread.join()
 
+    def resident_endpoint(self):
+        """The video worker's endpoint when it is alive, so the image worker's text encoding can reuse its resident encoder."""
+        from .. import resident_process
+        owner = resident_process.OWNER
+        if owner.process is not None and owner.process.poll() is None and owner.endpoint:
+            return str(owner.endpoint)
+        return None
+
     def environment(self, root):
         from ..comfy_bridge import source_root
         from ..comfy_environment import isolated_environment
@@ -1021,6 +1067,21 @@ class Service:
                      'FREEVIDEO_PROMPT_PRESTART_WORKER'):
             env.pop(name, None)
         return env
+
+    @staticmethod
+    def h3_resident(machine):
+        """Whether H3 Image is installed on a card whose encoder the resident worker can hold."""
+        from ..comfy_bridge import source_root
+        return (sys.platform != 'darwin' and machine.get('device_backend', 'cuda') == 'cuda'
+                and image_pack.ready(machine['model_root'], group=H3_GROUP)
+                and (Path(source_root())/'freevideo_engine'/'resident_worker.py').is_file())
+
+    @staticmethod
+    def start_resident(root, machine, env):
+        """Start (or reuse) the resident worker for the picture session; it encodes text and needs no video weights."""
+        from ..comfy_bridge import source_root
+        from .. import resident_process
+        return resident_process.OWNER.start(root, source_root(), machine['comfy_python'], env)
 
     def spawn(self, root, machine, env, descriptor):
         from .. import processes
@@ -1048,6 +1109,7 @@ class Service:
         from .. import processes, resident_process
         self.habit_root = root
         session = None
+        started_resident = False
         failure = 'worker_exit'
         failure_error = None
         try:
@@ -1076,14 +1138,33 @@ class Service:
                         return
                     env = self.environment(root)
                     owner = resident_process.OWNER
+                    # H3 Image encodes in the resident worker, which then keeps the text encoder between pictures.
+                    keep_encoder = self.h3_resident(machine)
                     if owner.process is not None and owner.process.poll() is None and owner.endpoint:
                         env[resident_process.ENV] = str(owner.endpoint)
+                        held = resident_process.status(env) if keep_encoder else None
+                        # While the card holds only the encoder nothing is given back, so a picture finds it ready.
+                        # Video models in the worker compete with the picture for the card, so those go.
+                        foreign = not isinstance(held, dict) or any(
+                            row.get('role') != 'encoder' for row in held.get('models') or [])
                         try:
-                            resident_process.release_idle_cache(env, descriptor)
-                            resident_process.OWNER.record(action='released', reason='image_model')
+                            if not keep_encoder or foreign:
+                                try:
+                                    resident_process.release_idle_cache(env, descriptor, keep=('encoder',) if keep_encoder else ())
+                                except resident_process.SessionRestarted:
+                                    raise
+                                except RuntimeError:
+                                    if not keep_encoder:
+                                        raise
+                                    # A worker from before partial release: give everything back as before.
+                                    resident_process.release_idle_cache(env, descriptor)
+                                resident_process.OWNER.record(action='trimmed' if keep_encoder else 'released', reason='image_model')
                         except resident_process.SessionRestarted:
                             pass
                         env.pop(resident_process.ENV, None)
+                    if keep_encoder:
+                        env[resident_process.ENV] = self.start_resident(root, machine, env)
+                        started_resident = True
                     if self.session_stop.is_set():
                         return
                     if self.video_busy():
@@ -1147,6 +1228,9 @@ class Service:
                         processes.stop(session.process, grace=5)
                         session.process.wait()
                         session.close()
+                    if started_resident and not resident_process.OWNER.active:
+                        # The picture session started this worker only to hold the encoder between pictures.
+                        resident_process.OWNER.release('image_session_end')
         except BlockingIOError as error:
             failure = 'busy_video'
             failure_error = error
@@ -1263,6 +1347,9 @@ class Service:
         value['keep_seconds'] = keep.keep_seconds(habit)
         context.report_id = uuid.uuid4().hex
         self.start_forecast(context, value, habit)
+        if isinstance(value.get('h3'), dict):
+            # The picture session may have started the resident worker after this request was prepared.
+            value['h3']['resident_endpoint'] = self.resident_endpoint()
         loading = True
         limit = H3_INFERENCE_TIMEOUT if value.get('model') == image_model.H3 else INFERENCE_TIMEOUT
         try:
@@ -1323,7 +1410,7 @@ class Service:
                         raise RuntimeError('worker_exit')
                     from PIL import Image
                     with Image.open(path) as image:
-                        if image.format != 'PNG' or image.size != (value['width'], value['height']):
+                        if image.format != ('JPEG' if path.suffix == '.jpg' else 'PNG') or image.size != (value['width'], value['height']):
                             raise RuntimeError('worker_exit')
                         image.verify()
                     seconds = row.get('seconds')

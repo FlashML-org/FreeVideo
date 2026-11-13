@@ -3,6 +3,11 @@
 .fv-generation-heading{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:13px}
 .fv-generation-heading[hidden]{display:none!important}
 .fv-generation-label{display:block;margin-top:10px;font-size:13px;color:var(--fv-ink,#edf2f9);text-wrap:balance}
+/* A stage sentence with its numbers: each number stays whole; when the line does not fit, the numbers go to the
+   next line together and the separator at the break is not shown (it stays in the text). */
+.fv-generation-label-part,.fv-generation-label-sep{white-space:nowrap}
+.fv-generation-label-sep[data-cut]{font-size:0}
+.fv-generation-label-rest[data-cut]{display:inline-block;width:100%}
 .fv-generation-count{font-size:clamp(26px,3vw,40px);font-weight:var(--fv-medium);line-height:1.2;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--fv-ink,#edf2f9)}
 .fv-generation-track{position:relative;height:4px;background:var(--fv-raised,#212a37);border-radius:999px;overflow:hidden}
 .fv-generation-fill{position:relative;height:100%;border-radius:inherit;overflow:hidden;background:linear-gradient(90deg,var(--fv-accent,#6db8fa),var(--fv-accent-ramp,#82dcd3));transition:width .6s var(--fv-ease-out,cubic-bezier(.22,1,.36,1));will-change:width}

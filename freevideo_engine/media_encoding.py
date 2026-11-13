@@ -167,6 +167,14 @@ def prepare(media, canvas, directory):
     keyframe_rows = ([('first', media['first'])] if media.get('first') else []) + [
         ('mid:%d' % row['frame'], row) for row in media.get('middle', [])] + (
         [('last', media['last'])] if media.get('last') else [])
+    # Decoding and normalizing a long reference video takes a while before any
+    # encoding starts; say which file is being prepared.
+    from .work_progress import WorkProgress
+    files = len(keyframe_rows) + len(media.get('references', []))
+    work = WorkProgress('encoding', 'media_prepare', files, 'files', interval=0) if files else None
+    prepared = 0
+    if work:
+        work.update(0)
     for anchor, info in keyframe_rows:
         c_hash = info.get('sha256')
         if not c_hash and info.get('path'):
@@ -181,6 +189,8 @@ def prepare(media, canvas, directory):
         result.append({'kind': 'image', 'anchor': anchor, 'pixels': str(target), 'frames': 1,
                        'content_hash': c_hash, 'source_path': info['path'],
                        'width': canvas['width'], 'height': canvas['height'], 'crop_mode': 'fit'})
+        prepared += 1
+        work.update(prepared)
     for index, row in enumerate(media.get('references', [])):
         kind, path = row['kind'], row['path']
         if kind == 'video' and row.get('voice_only'):
@@ -194,6 +204,8 @@ def prepare(media, canvas, directory):
             result.append(dict(kind='audio', use='original', original_audio=info,
                                audio=model_audio(info, canvas, target)))
             ref_items.append({'type': 'audio'})
+            prepared += 1
+            work.update(prepared)
             continue
         c_hash = row.get('sha256')
         if not c_hash and path:
@@ -281,6 +293,8 @@ def prepare(media, canvas, directory):
                                   seconds=round(length, 2) if length and length > used else None)
             print(json.dumps(dict(event='reference_trimmed', **ref['trimmed'])), flush=True)
         result.append(ref)
+        prepared += 1
+        work.update(prepared)
     (directory / 'normalization.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     rows, seconds = reference_load(result)
     if rows:

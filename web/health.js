@@ -479,6 +479,33 @@ function extensionProblem(problem) {
 }
 
 const distinct = problems => problems.filter((problem, index) => problems.findIndex(other => other.text === problem.text) === index);
+// Opening from the launcher: once the page has taken 3 s, it says it is opening and counts the seconds,
+// in the look of the workspace's own opening screen, until FreeVideo is in front or a problem is shown.
+export const openingText = (s, words = t) => {
+    const m = Math.floor(s / 60), r = s % 60;
+    return s < 60 ? words(`Opening FreeVideo · ${s} s`, `正在打开 FreeVideo · ${s} 秒`)
+        : words(`Opening FreeVideo · ${m} min${r ? ` ${r} s` : ''}`, `正在打开 FreeVideo · ${m} 分${r ? ` ${r} 秒` : ''}`);
+};
+function beginOpening() {
+    let cover = null, timer = null;
+    const tick = () => {
+        const s = Math.floor(performance.now() / 1000);
+        // The workspace's own opening screen already says so; never two at once.
+        const own = document.querySelector('dialog.fv-workspace-opening[open]');
+        if (s >= 3 && !own && !cover) {
+            cover = document.createElement('div'); cover.className = 'fv-page-opening';
+            cover.setAttribute('role', 'status'); cover.setAttribute('aria-live', 'polite');
+            Object.assign(cover.style, {position: 'fixed', inset: '0', zIndex: '2147482000', display: 'grid', placeItems: 'center',
+                boxSizing: 'border-box', padding: '24px', background: '#10151e', color: '#e6edf6', font: '16px/1.6 system-ui,sans-serif'});
+            document.body.append(cover);
+        }
+        if (cover) { cover.hidden = !!own; cover.textContent = openingText(s); }
+        timer = setTimeout(tick, 500);
+    };
+    tick();
+    return {finish() { clearTimeout(timer); cover?.remove(); cover = null; }};
+}
+let opening = null;
 let card = null, lastProblems = [];
 function details(problems) {
     const cache = problems.flatMap(p => p.cache || []);
@@ -544,6 +571,7 @@ function addQuoteFaces() {
 }
 
 function show(problems) {
+    opening?.finish(); opening = null;
     lastProblems = problems;
     addQuoteFaces();
     card?.remove();
@@ -659,6 +687,7 @@ document.addEventListener('visibilitychange', async () => {
 async function check() {
     [extensionUI, errorUI] = await Promise.all([import('./browser_extension.js').catch(() => null),
         import('./error_panel.js').catch(() => null)]);
+    if (launchVisit && !opening) opening = beginOpening();
     send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
@@ -671,6 +700,8 @@ async function check() {
     // the workflow is open and in front.
     await waitFor(() => window.FreeVideoUI?.ready, 10000);
     const launched = launchVisit ? await waitFor(() => reports.find(r => r.type === 'launch'), 30000) : null;
+    // FreeVideo is in front: the page itself now says what it is doing.
+    if (window.FreeVideoUI?.ready) { opening?.finish(); opening = null; }
     // Opening the workspace waits for an animation frame.
     await sleep(1500);
     const problems = [];
@@ -682,6 +713,7 @@ async function check() {
     // extensions: it starts them one after another, and a slow one ahead of
     // FreeVideo's delays it. Give it the rest of the minute before naming it.
     if (!window.FreeVideoUI?.ready && !problems.length) await waitFor(() => window.FreeVideoUI?.ready, 50000);
+    opening?.finish(); opening = null;
     const notStarted = {text: t('FreeVideo’s scripts loaded, but ComfyUI did not start them.', 'FreeVideo 的脚本已下载，但 ComfyUI 没有启动它们。'), advice: 'reload'};
     if (!window.FreeVideoUI?.ready && !problems.length) {
         problems.push(notStarted);
@@ -741,5 +773,6 @@ async function check() {
 if (!window.__freevideoHealthStarted) {
     window.__freevideoHealthStarted = true;
     install();
-    check().catch(error => consoleError.call(console, '[FreeVideo] Page check failed:', error));
+    // Whatever happens in the check, the opening cover never outlives it.
+    check().catch(error => consoleError.call(console, '[FreeVideo] Page check failed:', error)).finally(() => { opening?.finish(); opening = null; });
 }

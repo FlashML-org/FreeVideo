@@ -1134,7 +1134,8 @@ def progress_message(event):
         if (group not in WORK_LABELS or type(done) is not int or type(total) is not int
                 or not 0 <= done <= total or total < 1 or unit not in WORK_UNITS):
             return None
-        return dict(label=WORK_LABELS[group], timing_phase=group, phase=group, stage=stage,
+        label = 'Preparing reference media' if stage == 'media_prepare' else WORK_LABELS[group]
+        return dict(label=label, timing_phase=group, phase=group, stage=stage,
                     done=done, total=total, unit=unit, elapsed_seconds=event.get('elapsed_seconds'))
     if name == 'media_encode_phase':
         return {'label': str(event.get('phase', 'Encoding input media')), 'timing_phase': 'encoding'}

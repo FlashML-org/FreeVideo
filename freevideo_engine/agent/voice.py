@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from .jobs import JobError
+from ..app_control import scipy_module
 from .stems import FOLDER as STEMS_FOLDER, _busy, run_stems
 
 FOLDER = 'freevideo-voice'
@@ -299,7 +300,7 @@ def _read(path, first, last):
 def _resample(samples, rate):
     if rate == RATE:
         return np.asarray(samples, dtype=np.float32)
-    from scipy.signal import resample_poly
+    resample_poly = scipy_module('scipy.signal').resample_poly
     divisor = gcd(RATE, int(rate))
     return resample_poly(np.asarray(samples, dtype=np.float32), RATE // divisor, int(rate) // divisor).astype(np.float32)
 

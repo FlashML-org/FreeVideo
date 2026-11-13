@@ -6,6 +6,8 @@ import math
 
 import numpy as np
 
+from .app_control import scipy_module
+
 ABSOLUTE_GATE = -70.
 RELATIVE_GATE = -10.
 BLOCK_SECONDS, STEP_SECONDS = .4, .1  # 400 ms blocks with 75 % overlap
@@ -40,7 +42,7 @@ def _planar(samples):
 
 def _block_powers(samples, rate, seconds, step=STEP_SECONDS):
     """Mean square of the K-weighted signal, summed over channels, for each window of `seconds` every `step`."""
-    from scipy.signal import lfilter
+    lfilter = scipy_module('scipy.signal').lfilter
     weighted = _planar(samples)
     for b, a in _k_filters(rate):
         weighted = lfilter(b, a, weighted, axis=1)
@@ -74,7 +76,7 @@ def short_term(samples, rate, step=STEP_SECONDS):
 
 def true_peak(samples, rate):
     """Highest absolute sample after 4x oversampling, in dBTP (-inf for silence)."""
-    from scipy.signal import resample_poly
+    resample_poly = scipy_module('scipy.signal').resample_poly
     samples = _planar(samples)
     if not samples.size:
         return -math.inf
@@ -104,7 +106,7 @@ class Limiter:
 
     def _measure(self, final):
         """Extend `required` (the gain each pending sample needs on its own) as far as the filter context allows."""
-        from scipy.signal import resample_poly
+        resample_poly = scipy_module('scipy.signal').resample_poly
         start, size, edge = self.required.size, self.pending.shape[1], self.CONTEXT
         end = size if final else size - edge
         if end <= start:
@@ -143,7 +145,7 @@ class Limiter:
         return out
 
     def _emit(self, count):
-        from scipy.ndimage import minimum_filter1d
+        minimum_filter1d = scipy_module('scipy.ndimage').minimum_filter1d
         channels = self.pending.shape[0]
         if count <= 0:
             return np.zeros((channels, 0))

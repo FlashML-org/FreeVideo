@@ -86,8 +86,26 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an agent and say "Draw a picture of …". The agent makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
         },
         limits: {
-            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', 'H3 Image 不支持参考图。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
-            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'H3 Image does not take reference pictures.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
+            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'For reference pictures, see "Make a picture from reference pictures".', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+        },
+    },
+    {
+        id: 'image-references',
+        title: {zh: '用参考图生成图片', en: 'Make a picture from reference pictures'},
+        summary: {zh: '在图像视图中加入参考图，在描述里用“图 1”“图 2”写明每张图的用途。', en: 'Add reference pictures in the Images view and say what each one is for as "Image 1", "Image 2" in the description.'},
+        media: {
+            type: 'image',
+            src: {zh: 'image-references-1.webp', en: 'image-references-2.webp'},
+            alt: {zh: '图像视图：描述框和其下方的参考图（图 1、图 2 和“+”）已用红框标出。', en: 'The Images view, with the description and the reference pictures below it (Image 1, Image 2 and "+") outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“图像视图”，点描述框下方的“+”，选“从电脑选择…”或作品中的一张图片；也可以把图片拖到左侧，或粘贴到描述框中。', '参考图按加入的顺序编号为“图 1”“图 2”……在描述中写明每张图的用途，例如“图 1 的人物手里托着图 2 的怀表”。点参考图的缩略图，会在光标处插入它的编号。', '比例默认为“与图 1 相同”，也可以改选其他比例；然后点“生成”。', '在结果下方点“改这张”，它会成为图 1，接着描述要改的地方；点“用作参考图”，它会加到参考图的最后。', '把鼠标移到缩略图上，点右上角的“×”，可移除这张参考图。'],
+            en: ['Choose "Images" at the top, then "+" below the description, and pick "From this computer…" or a picture from your works. You can also drag pictures onto the left side or paste them into the description.', 'Reference pictures are numbered in the order they were added: "Image 1", "Image 2" and so on. Say in the description what each one is for, for example "the person in Image 1 holds the pocket watch from Image 2". Choosing a thumbnail inserts its number at the cursor.', 'The shape is "Same as Image 1" unless you choose another. Then choose "Generate".', 'Below the result, choose "Edit this" to make it Image 1 and describe what to change, or "Use as reference" to add it after the other reference pictures.', 'To remove a reference picture, point to its thumbnail and choose "×" at its top right.'],
+        },
+        limits: {
+            zh: ['描述中没有写编号时，所有参考图按顺序一起使用。', 'H3 Image 最多使用 16 张参考图；换用其他图像模型后超出其上限时，会提示需要移除几张。'],
+            en: ['When the description names no picture, all reference pictures are used in order.', 'H3 Image uses up to 16 reference pictures. After switching to another picture model, a note says how many to remove if there are more than it takes.'],
         },
     },
     {
@@ -533,6 +551,25 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'beat-snap',
+        view: 'editor',
+        title: {zh: '对齐音乐节拍', en: 'Cut to the beat'},
+        summary: {zh: '“声音 2”轨上有音乐时，拖动片段会吸附到音乐的拍点。', en: 'With music on the "Audio 2" track, clips you drag snap to its beats.'},
+        media: {
+            type: 'image',
+            src: {zh: 'beat-snap-1.webp', en: 'beat-snap-2.webp'},
+            alt: {zh: '剪辑视图：正在拖动的画面片段和工具栏的“吸附”按钮已用红框标出，“声音 2”轨上显示灰色拍点线。', en: 'The Edit view, with the clip being dragged and the "Snapping" button outlined in red, and grey beat lines on the "Audio 2" track.'},
+        },
+        steps: {
+            zh: ['点“＋ 声音轨”添加“声音 2”，把音乐放到这条轨上：从“已导入”拖入，或按“加配乐”一章生成。', '确认工具栏的“吸附”按钮（磁铁图标）已打开，也可按 S 键切换。', '拖动画面片段或片段的边缘，“声音 2”轨上会出现灰色的拍点线。', '片段的开头或结尾靠近拍点时会对齐到该拍点，松开鼠标后片段停在这里。'],
+            en: ['Choose "+ Audio track" to add "Audio 2", then put music on it: drag it in from "Imported", or make it as in the "Add music" chapter.', 'Make sure the "Snapping" button (magnet icon) in the toolbar is on. The S key turns it on and off.', 'Drag a picture clip or the edge of a clip. Grey beat lines appear on the "Audio 2" track.', 'When the start or end of the clip comes near a beat, it lines up with that beat. Release the mouse to leave it there.'],
+        },
+        limits: {
+            zh: ['只有“声音 2”轨上的音乐有拍点；节奏不明显的音乐没有拍点线。', '拍点线过密时不显示，放大时间线后出现；附近有片段边缘、播放头等其他吸附点时，优先对齐它们。', '拖动时按住 Alt 可临时反转吸附。'],
+            en: ['Only music on the "Audio 2" track has beats. Music without a clear pulse shows no beat lines.', 'Beat lines are hidden while they are too close together; zoom in on the timeline to see them. Other snap points nearby, such as clip edges or the playhead, take priority over beats.', 'Hold Alt while dragging to reverse snapping for that drag.'],
+        },
+    },
+    {
         id: 'voice-recording',
         view: 'editor',
         goto: ['record-entry'],
@@ -631,6 +668,43 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'drama-outline',
+        title: {zh: '短剧的大纲和站位', en: 'The outline and staging of a short drama'},
+        summary: {zh: '开拍前，确认卡片上列出 Agent 写好的大纲；需要修改时先不拍，在对话中说明要改什么。', en: 'Before shooting, the confirmation card lists the outline the agent wrote. To change it, choose not to start yet and say what to change in the chat.'},
+        media: {
+            type: 'image',
+            src: {zh: 'drama-outline-1.webp', en: 'drama-outline-2.webp'},
+            alt: {zh: 'AI 全自动：开拍确认卡片上的大纲和“开始”“先不”按钮已用红框标出。', en: 'Autopilot, with the outline on the confirmation card and the "Start" and "Not now" buttons outlined in red.'},
+        },
+        steps: {
+            zh: ['在“AI 全自动”中连接 Agent，说明想拍的短剧，例如“做一条 1 分钟的竖屏短剧：守塔人收到妹妹的求救信”。', 'Agent 先写一页大纲，每拍一行；再按场写好站位，即每个人在画面中的位置、坐或站、朝向和机位，并用在这一场的每个镜头中。', '开拍前，对话中出现确认卡片：上方是尺寸、时长和预计用时，下方按顺序列出大纲的各拍。超过 8 拍时只显示前 7 拍，点“另外 N 拍”可展开。', '满意时点“开始”；需要修改时点“先不”，再在对话中说明要改哪一拍，Agent 改好后会再次询问。'],
+            en: ['Connect an agent in Autopilot and describe the short drama, for example "Make a 1-minute vertical short drama: a lighthouse keeper gets a letter from her sister asking for help".', 'The agent first writes a one-page outline, one line per beat. It then sets the staging of each scene, that is where each person is in the picture, sitting or standing, which way they face and where the camera is, and uses it in every shot of that scene.', 'Before shooting, a confirmation card appears in the chat: the size, length and estimated time at the top, and the beats of the outline in order below. With more than 8 beats only the first 7 are shown; choose "N more" to see the rest.', 'Choose "Start" if it is right. To change it, choose "Not now" and say in the chat which beat to change. The agent asks again once it is revised.'],
+        },
+        limits: {
+            zh: ['在“设置”的“AI Agent”中取消“Agent 开拍整部片前先询问”后，不再出现确认卡片，Agent 直接开拍。', 'Agent 没有写大纲时，卡片上只有尺寸、时长和预计用时。'],
+            en: ['With "Ask before an agent starts a film" turned off under "AI Agent" in Settings, no card appears and the agent starts at once.', 'When the agent wrote no outline, the card shows only the size, length and estimated time.'],
+        },
+    },
+    {
+        id: 'film-project',
+        view: 'editor',
+        title: {zh: '短剧成片的剪辑工程', en: 'The edit of a finished short drama'},
+        summary: {zh: '短剧拍完后，除了成片视频，还会建好一个按镜头分段的剪辑工程，可以接着修改。', en: 'When a short drama is finished, an edit cut into its shots is made along with the film, ready for further changes.'},
+        media: {
+            type: 'image',
+            src: {zh: 'film-project-1.webp', en: 'film-project-2.webp'},
+            alt: {zh: '剪辑视图：项目名和按镜头分段的画面轨已用红框标出。', en: 'The Edit view, with the edit name and the picture track cut into shots outlined in red.'},
+        },
+        steps: {
+            zh: ['AI 全自动拍完一部短剧后，成片保存到作品库，同时建好一个以片名命名的剪辑工程。', '点顶部的“剪辑视图”，点项目名，在菜单中选这部片的名字。', '画面轨在每个镜头的起点切开；每一段左上角是镜头编号，底部是该镜头的说明。', '可以像其他剪辑一样裁剪、调整顺序、加配乐或字幕，再点右上角的“导⁠出”；作品库中的成片不会改变。'],
+            en: ['When Autopilot finishes a short drama, the film is saved to Creations and an edit named after the film is made with it.', 'Choose "Edit" at the top, choose the edit name, and pick the film\'s name in the menu.', 'The picture track is cut where each shot starts. Each part shows the shot number at its top left and the shot\'s note along its bottom.', 'Trim, reorder, add music or subtitles as in any other edit, then choose "Export" at the top right. The film in Creations does not change.'],
+        },
+        limits: {
+            zh: ['只有收尾时拼接成功的短剧才有剪辑工程。', '在此版本之前拍完的短剧没有剪辑工程。'],
+            en: ['Only a short drama whose shots were joined successfully gets an edit.', 'Short dramas finished before this version have no edit.'],
+        },
+    },
+    {
         id: 'library-reuse',
         goto: ['library-reuse', 'works-entry'],
         title: {zh: '复用设置', en: 'Reuse settings'},
@@ -666,6 +740,24 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出过程中取消不会留下不完整的文件。'],
             en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'Cancelling an export leaves no unfinished file.'],
+        },
+    },
+    {
+        id: 'system-status',
+        title: {zh: '运行状态', en: 'System status'},
+        summary: {zh: '在顶栏查看显存、温度和硬盘空间，必要时立即停止生成。', en: 'Watch VRAM, temperature and disk space from the top bar, and stop a generation at once when needed.'},
+        media: {
+            type: 'image',
+            src: {zh: 'system-status-1.webp', en: 'system-status-2.webp'},
+            alt: {zh: '顶栏的运行状态和展开的面板：运行状态和“立即停止”按钮已用红框标出。', en: 'The system status in the top bar with its panel open; the status and the "Stop now" button are outlined in red.'},
+        },
+        steps: {
+            zh: ['点顶部的“设置”，在“运行状态”下勾选“在顶栏显示运行状态”。', '顶栏出现运行状态，显示显存占用和显卡温度；顶栏放不下时只显示图标。', '点运行状态打开面板，查看显卡名称、显存、使用率、温度和硬盘剩余空间，数值每 2 秒更新一次。', '要马上停下正在进行的生成时，点“立即停止”，再在 4 秒内点“确认停止”；队列随之暂停，点“继续队列”恢复。'],
+            en: ['Choose "Settings" at the top, and under "System status" turn on "Show system status in the top bar".', 'The status appears in the top bar, with the VRAM in use and the graphics card temperature. When the top bar is short of room, only its icon is shown.', 'Choose the status to open its panel: the graphics card name, VRAM, utilization, temperature and free disk space, updated every 2 seconds.', 'To stop the running generation at once, choose "Stop now", then "Confirm stop" within 4 seconds. The queue is paused; choose "Resume queue" to continue.'],
+        },
+        limits: {
+            zh: ['显存达到 95% 或温度达到 85 °C 时，数值以红色显示。', '“立即停止”只在有生成正在进行时可用。', '窗口很窄时，顶栏不显示运行状态。'],
+            en: ['VRAM at 95% or more, or a temperature of 85 °C or more, is shown in red.', '"Stop now" is available only while a generation is running.', 'In a very narrow window, the top bar does not show the status.'],
         },
     },
     {
