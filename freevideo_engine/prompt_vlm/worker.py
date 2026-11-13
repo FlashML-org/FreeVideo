@@ -218,6 +218,9 @@ MAPPED_RAM = 11 * 2**30
 # GPU space beside the weights and the KV cache: prefill activations, a
 # widened int8 weight, the per-layer merge while loading and allocator slack.
 WORKING_VRAM = 3 * 2**28
+# A request without pictures never runs the vision tower; when keeping it on the GPU would leave
+# less than this beside the working space, it stays in host memory (about 0.8 GiB of RAM).
+TEXT_ONLY_SPARE_VRAM = 2**28
 OUTPUT_TOKENS = 1800
 
 
@@ -264,7 +267,7 @@ def placement(weights, int8_saving, kv, allocator_budget):
     return 'bf16' if weights <= room else 'int8' if weights - int8_saving <= room else None
 
 
-def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
+def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only, spare=TEXT_ONLY_SPARE_VRAM):
     """The GPU placement for `free` allocator bytes, or None when none fits.
 
     Best first: bf16 or int8 resident, then int8 with the later layers streamed
@@ -283,7 +286,8 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
                     vision_bytes=vision if on_host else 0, keep=None, host_bytes=0)
         precision = placement(size, saving, kv, free)
         if precision:
-            return dict(plan, precision=precision)
+            held = size if precision == 'bf16' else size - saving
+            return dict(plan, precision=precision, spare=free - kv - WORKING_VRAM - held)
         streamed = int8.resident_layers(size, stored, free - kv - WORKING_VRAM)
         if streamed:
             return dict(plan, precision='int8', keep=streamed[0], host_bytes=streamed[1])
@@ -294,7 +298,8 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
         # Host memory for the vision tower only when that buys a better tier.
         rank = lambda plan: (plan['precision'] == 'bf16', plan['keep'] is None, plan['keep'] or 0)
         whole, apart = fit(None, False), fit(None, True)
-        if whole and (not apart or rank(whole) >= rank(apart)):
+        # On a tie the tower stays on the GPU only while it leaves room to spare.
+        if whole and (not apart or rank(whole) > rank(apart) or rank(whole) == rank(apart) and whole.get('spare', spare) >= spare):
             return whole
         options = ((None, True), (answer_tokens, True))
     else:
@@ -345,6 +350,10 @@ def load_model(folder, torch, stats, checkpoint):
         tokens = reserved_tokens(stats)
         plan = gpu_plan(weights, shapes, free, tokens, stats.get('answer_tokens', OUTPUT_TOKENS),
                         not stats.get('image_count'))
+        if plan and plan['vision_on_host'] and not stats.get('image_count') and \
+                stats.get('available_memory_at_start_bytes', 2**62) < RESIDENT_RAM + plan['host_bytes'] + plan['vision_bytes']:
+            # Host memory for the tower is short: keep it on the GPU as before rather than fail on RAM.
+            plan = gpu_plan(weights, shapes, free, tokens, stats.get('answer_tokens', OUTPUT_TOKENS), True, 0) or plan
         positions = plan['positions'] if plan else kv_positions(tokens)
         stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget,
                      gpu_kv_reserve_bytes=plan['kv'] if plan else kv_bytes(shapes, tokens))
