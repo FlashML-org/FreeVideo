@@ -29,6 +29,8 @@ IMAGE_PACK_FAILURES = {
     'write_failed': ('The image model files are in use or cannot be written or deleted.', '图像模型文件被占用，或无法写入／删除。'),
     'invalid_catalog': ('The image model package version is incompatible; update FreeVideo and try again.', '图像模型包版本不匹配，请更新 FreeVideo 后重试。'),
     'busy': ('Another task is using the image model package; try again when it finishes.', '图像模型包被其他任务占用，完成后再试。'),
+    'busy_engine': ('FreeVideo is busy with a task or keeping the image model ready, so the image model cannot be repaired or removed now. Wait for it to finish, or close FreeVideo, then try again.', 'FreeVideo 正在执行任务或保持图像模型就绪，暂时无法修复或删除图像模型。请等待其结束，或关闭 FreeVideo 后再试。'),
+    'busy_setup': ('FreeVideo is being installed, updated or cleaned up; try again when it finishes.', 'FreeVideo 正在安装、更新或清理，完成后再试。'),
     'busy_video': ('A video is using the graphics card; try again when it finishes.', '视频正在使用显卡，完成后再试。'),
     'needs_repair': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'changed': ('The image model files changed during the check; they were kept, so check again.', '图像模型文件在检查期间发生变化，已保留，请重新检查。'),
@@ -37,12 +39,44 @@ IMAGE_PACK_FAILURES = {
 }
 
 
+def _busy_chain(error):
+    """The exceptions of one failure, innermost last, without looping."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+
+
+def image_pack_busy_lock(error):
+    """Name, wait and holders of the lease a pack action was refused, else {}."""
+    from .locking import busy_lock_details
+    for item in _busy_chain(error):
+        if getattr(item, 'busy_lock_path', None) is not None:
+            return busy_lock_details(item)
+    return {}
+
+
+def _busy_reason(error):
+    """Say what held the lease: an engine task (a generation, an idle image session, a background compile), a setup or cleanup, or another pack action."""
+    for item in _busy_chain(error):
+        path = getattr(item, 'busy_lock_path', None)
+        if path is not None:
+            if getattr(item, 'pack_lock_held', False):
+                return 'busy'
+            return {'engine.lock': 'busy_engine', 'setup.lock': 'busy_setup',
+                    'host-setup.lock': 'busy_setup'}.get(Path(path).name, 'busy')
+    return 'busy'
+
+
 def image_pack_error_code(error):
     """Keep specific pack reasons and OS causes through wrapper exceptions."""
     seen = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
         reason = getattr(error, 'reason', None)
+        if reason == 'busy':
+            return _busy_reason(error)
         if reason in IMAGE_PACK_FAILURES and reason != 'failed':
             return reason
         if isinstance(error, OSError):
@@ -52,7 +86,7 @@ def image_pack_error_code(error):
                     or getattr(error, 'winerror', None) in (5, 32, 33)):
                 return 'write_failed'
             if isinstance(error, BlockingIOError):
-                return 'busy'
+                return _busy_reason(error)
             if isinstance(error, (ConnectionError, TimeoutError)):
                 return 'offline'
         error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)

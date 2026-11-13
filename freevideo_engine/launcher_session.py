@@ -113,6 +113,7 @@ class Session:
     old_versions_retired = None
     archives_busy = False
     action_notice = ''
+    image_engine_probe, image_engine_clicked = None, False
     # The report form opened last: (key, when). The same report is not opened again within REPORT_COOLDOWN.
     report_opened = ('', 0.)
     pending_update = None
@@ -841,6 +842,19 @@ class Session:
             vram = None
         return 'h3-image:' + image_pack.default_tier(vram)
 
+    def _image_engine_state(self, engine, fresh=False):
+        """'running' (a task holds the engine lease) | 'stopped' | 'unknown' for the lease Repair and Remove need; read again after two seconds."""
+        from .image_gen import image_pack
+        now = time.monotonic()
+        probe = self.image_engine_probe
+        if not fresh and probe and probe[0] == engine and now - probe[1] < 2:
+            return probe[2]
+        state = image_pack.engine_state(engine)
+        self.image_engine_probe = (engine, now, state)
+        if state != 'running':
+            self.image_engine_clicked = False
+        return state
+
     def image_pack_action(self, action):
         from .image_gen import image_pack
         # "h3:install" acts on MiniMax H3 Image, a plain action on the image model that was there before.
@@ -856,6 +870,10 @@ class Session:
                 or self.updater and self.updater.busy):
             return
         root, engine = self._image_location()
+        # Repair and Remove need the engine lease, which a task (or the idle image session) holds; say why instead of failing a second later.
+        if action in ('repair', 'remove') and self._image_engine_state(engine, fresh=True) == 'running':
+            self.image_engine_clicked = True
+            return
         # Both packs share one lease and one disk: one download at a time.
         if any(item and item.busy for item in (self.image_installer, self.h3_installer)):
             return
@@ -910,7 +928,8 @@ class Session:
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
                         title=self.t(*title), detail=self.t('Not installed', '未安装'),
-                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None)
+                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None,
+                        engine_state='unknown', engine_note='', engine_clicked=False)
         root, engine = self._image_location()
         try:
             value = image_pack.status(root, group=group)
@@ -947,10 +966,17 @@ class Session:
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
                    or self.closing or self.engine_updating or self.update_intent or self.upgrade.active or self.model_switch
                    or self.updater and self.updater.busy)
+        # Only a card that offers Repair or Remove asks whether FreeVideo is running.
+        offers = not busy and (removable > 0 or repairable and value.get('downloaded_bytes', 0) > 0)
+        engine_state = self._image_engine_state(engine) if offers else 'unknown'
+        running = engine_state == 'running'
         return dict(value, visible=bool(self.installation_engine()), title=self.t(*title),
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
-                    repairable=repairable, failure=failure, report_id=active.get('report_id'))
+                    repairable=repairable, failure=failure, report_id=active.get('report_id'),
+                    engine_state=engine_state,
+                    engine_note=image_pack_failure('busy_engine', zh=self.language.startswith('zh'))['detail'] if running else '',
+                    engine_clicked=running and self.image_engine_clicked)
 
     def image_pack_report(self):
         if self.image_installer:
