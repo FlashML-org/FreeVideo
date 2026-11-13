@@ -2269,7 +2269,7 @@ class Installer:
     def device_configuration(self):
         return {'gpu_uuid': self.plan['inventory']['selected_gpu']['uuid']}
 
-    def check_kernels(self, python, kernel_report):
+    def check_kernels(self, python, kernel_report, *, paths=True):
         # Kernel probes execute real CUDA work and take roughly a minute on a
         # consumer GPU.  A completed receipt is reusable only when every
         # input that can change the result still matches: GPU identity,
@@ -2281,11 +2281,18 @@ class Installer:
         receipt = (reusable_kernel_receipt(cached_kernel, hardware_data)
                    if isinstance(hardware_data, dict) else None)
         if receipt is None:
-            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe', '--require-paths',
-                                          *(['--without-video-models'] if self.plan.get('only') == 'image' else []), '--out', kernel_report])
+            self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--probe',
+                                          *(['--require-paths'] if paths else []),
+                                          *(['--without-video-models'] if paths and self.plan.get('only') == 'image' else []), '--out', kernel_report])
         else:
             save(kernel_report, receipt)
             self.ui.event('setup_cache', key='kernels', detail='Reused matching GPU kernel checks')
+            if paths:
+                # The receipt may come from the precheck, which does not look at the model folders.  Check only the
+                # folders now (no probe, so the receipt stays as it is); a missing one fails this step as a fresh run would.
+                self.command('kernels', [python, '-m', 'freevideo_engine', 'doctor', '--require-paths',
+                                              *(['--without-video-models'] if self.plan.get('only') == 'image' else []),
+                                              '--out', Path(kernel_report).with_name('kernel-paths.json')])
 
     def record_kernel_validation(self, results, kernel_report):
         sage_manifest = results['sage']
@@ -2307,7 +2314,7 @@ class Installer:
             # the receipt is reused by the check after installation.
             self.ui.phase('Verify installation on your GPU', 0, 8)
             report = self.run_dir / 'kernel-capabilities.before.json'
-            self.check_kernels(self.pythons['engine'], report)
+            self.check_kernels(self.pythons['engine'], report, paths=False)  # the model folders are installed after this check
             require_int8_kernels(self.plan, report)
             self.mark_unfinished()
         self.ui.phase('Prepare download tools', 0, 8)
