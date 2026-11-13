@@ -8,14 +8,14 @@ export async function sendError(response) {
     try { return (await (response.clone?.() || response).json())?.error || null; }
     catch { return null; }
 }
-export const emptyChat = () => ({session: undefined, items: new Map(), jobs: {}, failures: {}, confirms: {}, last: 0, read: 0, agent: {}, current: null, active: 0, abandoned: false, stage: null});
+export const emptyChat = () => ({session: undefined, items: new Map(), jobs: {}, failures: {}, finished: {}, confirms: {}, last: 0, read: 0, agent: {}, current: null, active: 0, abandoned: false, stage: null});
 // One answer from the server folded into what the page already has: entries add up by their number, jobs are
 // replaced by id (a card keeps its last state after the server stops listing its job), and so are the answers to its questions.
 export function chatMerge(state, data) {
     const items = new Map(state.items);
     for (const item of data.items || []) if (['message', 'job', 'confirm', 'production', 'cast'].includes(item.type) && Number.isFinite(item.seq)) items.set(item.seq, item);
     const read = Math.max(state.read, Number(data.read_seq) || 0, ...(data.items || []).filter(item => item.read === true).map(item => item.seq));
-    return {session: data.session ?? null, items, jobs: {...state.jobs, ...(data.jobs || {})}, failures: data.failures || {}, confirms: {...state.confirms, ...(data.confirms || {})}, read,
+    return {session: data.session ?? null, items, jobs: {...state.jobs, ...(data.jobs || {})}, failures: data.failures || {}, finished: data.finished || {}, confirms: {...state.confirms, ...(data.confirms || {})}, read,
         last: Math.max(state.last, Number(data.last_seq) || 0, ...items.keys()), agent: data.agent || {},
         current: data.current || null, active: Number(data.active) || 0,
         abandoned: data.abandoned === true, stage: typeof data.stage === 'string' ? data.stage : null};

@@ -743,6 +743,12 @@ class Productions:
                 self.changed.wait(remaining)
             return self._reply(identity, since, compact)
 
+    def size(self, identity):
+        """The width and height of a film: its first shot's canvas, or None for each when that cannot be told."""
+        with self.changed:
+            shape = self._shape(self._record(identity)['state'])
+        return shape.get('width'), shape.get('height')
+
     def _reply(self, identity, since, compact):
         record = self._record(identity)
         changed = record['state']['revision'] != since
@@ -883,9 +889,16 @@ class Productions:
                 self._run(identity)
                 self._direct(identity)
 
-    def close(self):
-        """Stop the built-in directors; a question already queued is cancelled by its own wait."""
+    def close(self, wait=2.0):
+        """Stop the built-in directors; a question already queued is cancelled by its own wait.
+
+        Each director is given a short while to finish the step it is on, so nothing writes after the close.
+        """
         self._closed.set()
+        deadline = time.monotonic() + wait
+        for thread, _ in list(self._directors.values()):
+            if thread is not None and thread is not threading.current_thread():
+                thread.join(max(0.0, deadline - time.monotonic()))
 
     def _directing(self, identity):
         """Whether the built-in director should be choosing for this film now."""

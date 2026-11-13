@@ -1399,7 +1399,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         pending = pending.filter(entry => entry.sending || entry.session !== state.session || !ids.has(entry.id));
         const localPending = pending.filter(entry => entry.session === state.session && !ids.has(entry.id));
         const said = entries.some(entry => entry.type !== 'message' || entry.role === 'user') || localPending.length > 0;
-        const finished = entries.filter(entry => entry.type === 'job' && state.jobs[entry.job]?.status === 'succeeded' && (state.jobs[entry.job].work || (state.jobs[entry.job].kind === 'image' && state.jobs[entry.job].thumbnail))).at(-1);
+        // The newest result, a finished video or a finished film, is the one whose Open leads.
+        const film = entry => entry.type === 'production' && !state.failures[entry.entity] && state.finished?.[entry.entity]?.work;
+        const finished = entries.filter(entry => film(entry) || (entry.type === 'job' && state.jobs[entry.job]?.status === 'succeeded' && (state.jobs[entry.job].work || (state.jobs[entry.job].kind === 'image' && state.jobs[entry.job].thumbnail)))).at(-1);
         const wanted = [];
         if (!entries.length && !localPending.length) wanted.push(['hello', 'hello', null]);
         let lastUser = null;
@@ -1419,8 +1421,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 const failure = state.failures[entry.entity];
                 if (failure) wanted.push([`e:${entry.seq}`, 'job', failure]);
             } else if (entry.type === 'production' || entry.type === 'cast') {
-                const failure = state.failures[entry.entity];
-                if (failure) wanted.push([`s:${entry.seq}`, 'job', failure]);
+                // A finished film is the same card as any finished video: open it, or edit it with its shots already cut.
+                const card = state.failures[entry.entity] || (entry.type === 'production' && state.finished?.[entry.entity]);
+                if (card) wanted.push([`s:${entry.seq}`, 'job', card, {latest: entry === finished}]);
             } else wanted.push([`s:${entry.seq}`, 'confirm', entry]);
         }
         for (const entry of localPending) wanted.push([`m:${entry.id}`, 'user', {...entry, taken: false}]);

@@ -1049,7 +1049,7 @@ def register():
             store = work_sessions()
             sid = chat_session(store, wanted)
             rows = jobs.rows()
-            value = dict(agent=agent_state(), session=sid, here=chat_session(store), last_seq=0, read_seq=0, items=[], jobs={}, failures={}, confirms={}, current=None,
+            value = dict(agent=agent_state(), session=sid, here=chat_session(store), last_seq=0, read_seq=0, items=[], jobs={}, failures={}, finished={}, confirms={}, current=None,
                          active=sum(1 for r in rows if r['status'] in ACTIVE))
             if sid is None:
                 return value
@@ -1096,6 +1096,19 @@ def register():
                                  or (task_view.get('result') or {}).get('report_id'))
                     value['failures'][identity] = dict(id=identity, kind=kind, status='failed',
                         label=entity.get('title') or entity.get('name'), error=errors.with_reason(error), report_id=report_id)
+                elif kind == 'production':
+                    # A finished film is shown like any finished video: play it, open it, or edit it (its shots already cut).
+                    film = next((o for o in reversed(entity.get('outputs') or []) if o.get('library_id')), None)
+                    if film:
+                        from urllib.parse import quote
+                        work, seconds = film['library_id'], film.get('seconds')
+                        # The film's line reads like any finished video's: its size, then its length.
+                        size = jobs.productions.size(identity)
+                        value['finished'][identity] = dict(id=identity, kind=kind, status='succeeded', label=entity.get('title') or None,
+                            work=work, play='/freevideo/agent/chat/video?id=' + quote(work, safe=''),
+                            thumbnail='/freevideo/library/thumbnail?id=' + quote(work, safe=''),
+                            seconds=round(seconds) if isinstance(seconds, (int, float)) and seconds > 0 else None,
+                            width=size[0], height=size[1])
             value['abandoned'] = store.abandoned(sid)
             value['stage'] = store.stage(sid)
             value['current'] = current['id'] if current else None
