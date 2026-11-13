@@ -920,7 +920,8 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         refs.setAttribute('aria-label', t('Reference images', '参考图'));
         const box = el('div', null, 'fv-ie-gen-box');
         const input = el('textarea', null, 'fv-ie-gen-prompt'); input.rows = 1; input.maxLength = 2000; input.value = prompt;
-        box.append(input);
+        const fold = el('div', null, 'fv-ie-gen-fold'); fold.setAttribute('aria-hidden', 'true');
+        box.append(input, fold);
         loras ||= createImageLoras({t, fetchApi, el, onChange: () => mounted && update(), getPrompt: () => prompt,
             setPrompt: value => { prompt = value; if (mounted) { mounted.input.value = value; mounted.grow(); } }});
         field.append(refs, box, historyMenu(), loras.element);
@@ -939,9 +940,15 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const otherUsage = createOtherUsageNotice(bar, t, fetchApi);
         const grow = () => {
             input.style.height = '0px';
-            input.style.height = (prompt.trim() ? Math.min(80, Math.max(32, input.scrollHeight + 2)) : 32) + 'px';
-            box.style.height = input.style.height;
+            const open = prompt.trim() && document.activeElement === input;
+            input.style.height = (open ? Math.min(80, Math.max(32, input.scrollHeight + 2)) : 32) + 'px';
+            if (!open) input.scrollTop = 0;
+            const folded = !open && !!prompt.trim();
+            box.dataset.folded = String(folded);
+            if (folded) { fold.textContent = input.value.replace(/\s*\n\s*/g, ' '); fold.style.font = getComputedStyle(input).font; }
         };
+        input.addEventListener('focus', () => grow());
+        input.addEventListener('blur', () => grow());
         input.oninput = () => {
             prompt = input.value;
             if (prompt.trim()) promptRequired = false;
