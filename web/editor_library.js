@@ -24,6 +24,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     let listRead = Promise.resolve(), refreshTask = null, retryTimer = null, finishRetry = null, refreshAgain = false;
     const expectedOutputs = new Set();
     const uploading = new Map(), recentImports = new Map(), pendingAdds = new Map();
+    const removal = new Map(); // import id → {users, busy, failed}: the clips whose deletion is being asked about
+    let focusAfter = null; // {cancel: id} | {card: key} | {next: key}: where focus goes once the list is drawn again
     const preparing = () => t('Preparing this clip. It goes on the timeline when ready.', '素材准备好后会自动放到时间线上。');
     const cannotOpen = () => t('This file cannot be opened. Supported formats: ', '这个文件打不开。支持的格式：') + FORMATS;
     // Why an import did not work, and where to report it: only a file that could not be read lists the formats and asks for a report.
@@ -107,8 +109,58 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         plus.ondblclick = event => { event.preventDefault(); event.stopPropagation(); };
         plus.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') insert(event); };
         container.append(button, plus);
+        if (kind === 'import' && (row.state === 'ready' || row.state === 'failed')) {
+            const remove = el('button', 'fv-ed-source-remove'); remove.type = 'button'; remove.append(editorIcon('trash'));
+            remove.title = t('Delete', '删除'); remove.setAttribute('aria-label', `${remove.title}: ${label}`);
+            remove.onclick = event => {
+                event.preventDefault(); event.stopPropagation();
+                if (!removal.has(row.id)) { removal.set(row.id, {users: 0, busy: false, failed: false}); focusAfter = {cancel: row.id}; render(); }
+            };
+            container.append(remove);
+            const asking = removal.get(row.id);
+            if (asking) { container.dataset.asking = 'true'; container.append(removeStrip(row, asking)); }
+        }
         if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '打不开'), kind: row.detail || null})));
         return container;
+    }
+    // Asked inside the card, so a list that redraws keeps the question. Only FreeVideo's copy goes; the original file stays where it is.
+    function removeStrip(row, asking) {
+        const strip = el('div', 'fv-ed-source-confirm'); strip.setAttribute('role', 'group'); strip.dataset.id = row.id;
+        strip.setAttribute('aria-label', t('Delete this clip', '删除这个素材'));
+        const users = asking.users, hint = el('small', asking.failed && !asking.busy ? 'fv-ed-source-confirm-problem' : null,
+            asking.busy ? t('Deleting…', '正在删除…') : asking.failed ? t('Could not delete', '删除失败，请重试')
+            : users ? t(`Used in ${users} ${users === 1 ? 'edit' : 'edits'}`, `已用于 ${users} 个剪辑`) : t('Original file kept', '原文件保留'));
+        const buttons = el('div', 'fv-ed-source-confirm-actions');
+        const no = el('button', 'fv-ed-source-confirm-no', t('Cancel', '取消')), yes = el('button', 'fv-ed-source-confirm-yes', t('Delete', '删除'));
+        for (const control of [no, yes]) { control.type = 'button'; control.disabled = asking.busy; }
+        const cancel = () => { removal.delete(row.id); focusAfter = {card: `import:${row.id}`}; render(); };
+        yes.onclick = event => { event.stopPropagation(); removeImport(row); };
+        no.onclick = event => { event.stopPropagation(); cancel(); };
+        // The editor hands a key to the control's own handler, as for the tabs above; Escape closes only the question.
+        strip.onkeydown = event => { if (event.key === 'Escape' && !asking.busy) { event.preventDefault(); event.stopPropagation(); cancel(); } };
+        buttons.append(no, yes);
+        strip.append(el('strong', null, t('Delete this clip?', '删除这个素材？')), hint, buttons);
+        return strip;
+    }
+    async function removeImport(row) {
+        const asking = removal.get(row.id);
+        if (!asking || asking.busy || disposed) return;
+        asking.busy = true; asking.failed = false; render();
+        try {
+            await store.removeImport(row.id, {confirm: asking.users > 0});
+            // Focus moves to the next clip, or to Import when it was the last.
+            const keys = [...grid.querySelectorAll('.fv-ed-source')].map(card => card.dataset.key), at = keys.indexOf(`import:${row.id}`);
+            focusAfter = {next: keys[at + 1] || null};
+            removal.delete(row.id); recentImports.delete(row.id); pendingAdds.delete(`import:${row.id}`);
+            imported = imported.filter(item => item.id !== row.id);
+        } catch (error) {
+            asking.busy = false;
+            if (error?.reason === 'import_referenced') asking.users = Math.max(1, Number(error.response?.users) || 1);
+            else if (error?.reason === 'import_in_use') {
+                removal.delete(row.id); focusAfter = {card: `import:${row.id}`};
+                actions.notify?.(t('This clip is still being prepared. Try again in a moment.', '素材还在处理，请稍后再试。'));
+            } else asking.failed = true;
+        } finally { render(); }
     }
     function updateUsed() {
         const keys = new Set((state?.record.tracks || []).flatMap(track => track.clips)
@@ -123,6 +175,12 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         works.setAttribute('aria-selected', String(tab === 'work')); imports.setAttribute('aria-selected', String(tab === 'import'));
         works.setAttribute('aria-pressed', String(tab === 'work')); imports.setAttribute('aria-pressed', String(tab === 'import'));
         search.hidden = tab !== 'work';
+        // A redraw (the imports are read again every few seconds) keeps the focus on the same control.
+        const held = document.activeElement, strip = held && grid.contains?.(held) ? held.closest?.('.fv-ed-source-confirm') : null;
+        const control = ['fv-ed-source-remove', 'fv-ed-source-add'].find(name => held?.className === name);
+        const owner = control ? held.closest?.('.fv-ed-source-card')?.querySelector('.fv-ed-source')?.dataset.key : null;
+        const keep = !held || !grid.contains?.(held) ? null : strip ? {button: held.className, id: strip.dataset.id}
+            : owner ? {control, card: owner} : held.dataset?.key ? {card: held.dataset.key} : held.className === 'fv-ed-import' ? {add: true} : null;
         grid.replaceChildren();
         if (tab === 'import') {
             const add = el('button', 'fv-ed-import', t('Import', '导入')); add.type = 'button'; add.onclick = () => file.click(); grid.append(add);
@@ -139,6 +197,16 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         }
         const unread = tab === 'import' ? importUnread : 0;
         unreadable.textContent = unread ? t(`${unread} imported ${unread === 1 ? 'file' : 'files'} could not be read`, `另有 ${unread} 个导入的文件无法读取`) : '';
+        if (!focusAfter && keep) focusAfter = keep.button ? {again: keep} : keep.control ? {control: keep} : keep.card ? {card: keep.card} : {next: null};
+        if (focusAfter) {
+            const target = focusAfter; focusAfter = null;
+            const card = key => [...grid.querySelectorAll('.fv-ed-source')].find(node => node.dataset.key === key);
+            const node = target.control ? card(target.control.card)?.parentNode?.querySelector('.' + target.control.control)
+                : target.again ? [...grid.querySelectorAll('.fv-ed-source-confirm')].find(box => box.dataset.id === target.again.id)?.querySelector('.' + target.again.button)
+                : target.cancel ? [...grid.querySelectorAll('.fv-ed-source-confirm')].find(strip => strip.dataset.id === target.cancel)?.querySelector('.fv-ed-source-confirm-no')
+                : target.card ? card(target.card) : (target.next && card(target.next)) || grid.querySelector('.fv-ed-import');
+            node?.focus?.();
+        }
         if (scroll > 0) {
             const replacement = anchor && [...grid.querySelectorAll('.fv-ed-source')].find(node => node.dataset.key === anchor.dataset.key);
             host.scrollTop = replacement ? scroll + replacement.getBoundingClientRect().top - anchorTop : scroll;

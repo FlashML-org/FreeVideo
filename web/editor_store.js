@@ -435,6 +435,12 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             return value;
         },
         async imports() { return counted(await json('/freevideo/editor/imports', undefined, {items: []})); },
+        // Removes FreeVideo's copy of an imported file. The server asks first when an edit uses it (reason import_referenced, with its count in response.users).
+        async removeImport(id, {confirm = false} = {}) {
+            const response = await request('/freevideo/editor/import/delete', post({id, confirm}));
+            if (!response.ok) throw await saveFailure(response);
+            sources.delete(`import:${id}`);
+        },
         watchImports(fn) { return watch(() => store.imports(), items => { fn(items); return true; }); },
         upload(file, progress = () => {}) {
             if (disposed) return Promise.reject(new Error('editor_closed'));
