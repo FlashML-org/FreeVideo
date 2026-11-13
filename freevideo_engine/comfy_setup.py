@@ -183,7 +183,7 @@ class Setup:
                     libraries=discover_libraries(self.folder_paths), extra_libraries=extra_model_directories(), token=self.token,
                     environment='Managed FreeVideo environment; ComfyUI packages are kept',
                     restart_required=False, downloads=self.downloads(download_root or root),
-                    resources=self.resource_settings(),
+                    resources=self.resource_settings(), resources_damaged=self.resources_damaged(),
                     sampling_cache_bytes=total_bytes())
 
 
@@ -216,6 +216,10 @@ class Setup:
         if field not in value:
             raise ValueError('Specify automatic (null) or ' + label + ' in GiB')
         return write(root, value[field], backend=backend)
+
+    def resources_damaged(self):
+        from .resource_settings import damaged
+        return damaged(installation_root(self.source))
 
     def preview_style(self, value=None):
         from .preview_style import read, write

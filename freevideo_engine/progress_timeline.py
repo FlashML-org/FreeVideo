@@ -93,6 +93,7 @@ STAGES = frozenset((
     'latent_validation',
     'layers',
     'media_encode_audio',
+    'media_prepare',
     'media_vae',
     'offload_release',
     'other',

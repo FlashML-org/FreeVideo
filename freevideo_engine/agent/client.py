@@ -279,9 +279,11 @@ class Client:
         path = '/freevideo/agent/v1/library/%s/%s' % (identity, 'thumbnail' if thumbnail else 'file')
         return self.download({'url': path}, target)
 
-    def upload(self, path):
-        """Read on the client computer and upload content; never send a local path."""
-        return self._upload(path, '/media')
+    def upload(self, path, *, stage=None):
+        """Read on the client computer and upload content; never send a local path.
+        ``stage('sending')`` and ``stage('checking')`` say when the content goes out
+        and when the server is decoding it, which can take long for a large video."""
+        return self._upload(path, '/media', stage=stage)
 
     def import_media(self, path, *, ref=None):
         """Import a client file into the editor. Poll /imports until its state is ready."""
@@ -290,9 +292,10 @@ class Client:
             schema.validate(schema.obj({'ref': schema.REF}), dict(ref=ref))
         return self._upload(path, '/imports', ref=ref)
 
-    def _upload(self, path, endpoint, *, ref=None):
+    def _upload(self, path, endpoint, *, ref=None, stage=None):
         from .schema import MAX_UPLOAD_BYTES, MAX_JSON_UPLOAD_BYTES
         source = local_file(path)
+        stage = stage or (lambda name: None)
         try:
             size = source.stat().st_size
             if size > MAX_UPLOAD_BYTES:
@@ -300,7 +303,10 @@ class Client:
                     dict(next='Reduce the file to at most %d bytes.' % MAX_UPLOAD_BYTES, details=[dict(limit_bytes=MAX_UPLOAD_BYTES)]))
             if size * 4 // 3 + 4096 <= MAX_JSON_UPLOAD_BYTES:
                 if endpoint == '/media':
-                    return self.upload_bytes(source.name, source.read_bytes())
+                    data = source.read_bytes()
+                    # A small body goes out at once; the wait is the server's check.
+                    stage('checking')
+                    return self.upload_bytes(source.name, data)
                 return self.post(endpoint, dict(name=source.name, data_base64=base64.b64encode(source.read_bytes()).decode(),
                     **({'ref': ref} if ref is not None else {})), timeout=600)
             import secrets
@@ -315,10 +321,12 @@ class Client:
                        if ref is not None else '') + '\r\n--%s--\r\n' % boundary).encode('ascii')
             with source.open('rb') as stream:
                 def chunks():
+                    stage('sending')
                     yield prefix
                     while data := stream.read(1024 * 1024):
                         yield data
                     yield ending
+                    stage('checking')
                 return self.request('POST', '/freevideo/agent/v1' + endpoint, encoded=chunks(),
                     content_type='multipart/form-data; boundary=' + boundary,
                     content_length=len(prefix) + size + len(ending), timeout=600)

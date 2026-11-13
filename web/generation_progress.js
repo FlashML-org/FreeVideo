@@ -150,7 +150,7 @@ const DOWNLOADS = {
 };
 // Stages whose engine counts are real completed work inside one long step.
 const COUNTED_STAGES = new Set(['video', 'media', 'weight_pin', 'weight_read',
-  'encoder_device_load', 'encoder_compute', 'encoder_compute_reference', 'media_encode_audio']);
+  'encoder_device_load', 'encoder_compute', 'encoder_compute_reference', 'media_encode_audio', 'media_prepare']);
 const COUNT_UNITS = {frames: ['frames', '帧'], layers: ['layers', '层'], files: ['files', '个文件'], chunks: ['parts', '段']};
 const size = (bytes, unit) => (bytes / (unit === 'GiB' ? 2**30 : 2**20)).toFixed(1);
 // Asked for two passes with a first pass other than 8 steps: the engine ran one pass.

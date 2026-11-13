@@ -34,6 +34,8 @@ const isBusy = value => BUSY_LOCK.test(value) || value.startsWith(BUSY_TEXT.en) 
 const repairStep = text => text.includes('In the FreeVideo launcher, open Settings and click Repair.')
     ? t('In the FreeVideo launcher, open Settings and click Repair.', '请在 FreeVideo 启动器的设置里点“修复”。')
     : t('Click Detect & review, then Install / repair.', '请先点“检测并预览”，再点“安装／修复”。');
+// The reserve's lower limit, said the same way whether the panel or the service stopped the value.
+const atLeast = least => t(`Enter at least ${least} GiB, or choose Automatic optimization.`, `请输入不小于 ${least} GiB 的数值，或勾选“自动优化”。`);
 const WAIT_REFUSAL = /^Wait for (the installation check|the installation|a placement test|a setup task) to finish; its progress is in this panel\.$/;
 const SETUP_ERRORS = [
     // Another task holds the installation lock; any "Lock file open:" lines name the holders.
@@ -56,6 +58,11 @@ const SETUP_ERRORS = [
         }],
     [/^Inspect this installation again before installing$/, () => t('Click Detect & review again, then Install / repair.', '请重新点“检测并预览”，再点“安装／修复”。')],
     [/^Review the plan and accept its model\/toolkit licenses first$/, () => t('Tick the agreement above to enable Install / repair.', '勾选上方的同意选项后，可点击“安装／修复”。')],
+    // Saving the reserve: the panel's own limits normally stop these first.
+    [/^(Reserved VRAM|Reserved unified RAM) must be automatic or a finite number of at least ([\d.]+) GiB$/,
+        text => atLeast(text.match(/at least ([\d.]+) GiB$/)[1])],
+    [/^Could not save resource settings: /,
+        () => t('The setting could not be saved. Check that the installation folder can be written to.', '设置未能保存，请检查安装目录是否可以写入。')],
     [/^FreeVideo setup is missing\./, text => t('This folder has no finished FreeVideo installation. ', '该文件夹中没有已安装的 FreeVideo。') + repairStep(text)],
     [/^FreeVideo setup is incomplete in /, text => t('The installation in this folder is not finished. ', '该文件夹中的安装尚未完成。') + repairStep(text)
         + t(' Existing files are reused.', '已有文件会继续使用。')],
@@ -168,11 +175,19 @@ export async function openSetup(options) {
     const reserveUnit = node('span'); reserveUnit.className = 'fv-unit'; reserveUnit.append(reserve, node('span', 'GiB')); reserveLabel.append(reserveUnit);
     const saveReserve = node('button', t('Save', '保存')), reserveStatus = node('span'); reserveStatus.className = 'fv-muted fv-saved';
     const reserveHelp = note(t('Extra VRAM to keep free. Applies from the next generation.', '额外保留的空闲显存，下次生成起生效。'));
-    resources.append(autoLabel, reserveLabel, reserveHelp, saveReserve);
+    // A damaged saved file was set aside by the engine; this stays until a new value is saved.
+    const reserveDamaged = note(t('The saved setting was damaged, so Automatic optimization is in use. The original file was renamed and kept.',
+        '保存的设置已损坏，现按“自动优化”运行，原文件已改名保留。'));
+    reserveDamaged.hidden = true;
+    // A failed save is explained right under the Save button, the full width of the row.
+    const reserveFailure = node('p'); reserveFailure.className = 'fv-failure'; reserveFailure.hidden = true;
+    reserveFailure.setAttribute('aria-live', 'polite');
+    resources.append(reserveDamaged, autoLabel, reserveLabel, reserveHelp, saveReserve, reserveFailure);
     reserveSummary.append(reserveStatus);
     advanced.append(resources);
     let savedTimer;
-    const clearReserveStatus = () => { clearTimeout(savedTimer); reserveStatus.textContent = ''; reserveStatus.className = 'fv-muted fv-saved'; };
+    const clearReserveStatus = () => { clearTimeout(savedTimer); reserveStatus.textContent = ''; reserveStatus.className = 'fv-muted fv-saved';
+        reserveFailure.replaceChildren(); reserveFailure.hidden = true; };
     reserveStatus.setAttribute('aria-live', 'polite');
     reserve.oninput = clearReserveStatus;
     reserveAuto.onchange = () => { reserve.disabled = reserveAuto.checked; clearReserveStatus(); };
@@ -381,8 +396,16 @@ export async function openSetup(options) {
     saveReserve.onclick = async () => {
         clearReserveStatus();
         if (!reserveAuto.checked && !reserve.value) {
-            reserveStatus.className = 'fv-failure';
-            reserveStatus.textContent = t('Enter a value.', '请输入数值。');
+            reserveFailure.hidden = false;
+            reserveFailure.textContent = t('Enter a value.', '请输入数值。');
+            reserveFailure.scrollIntoView({block: 'nearest'});
+            reserve.focus();
+            return;
+        }
+        if (!reserveAuto.checked && reserve.validity.rangeUnderflow) {
+            reserveFailure.hidden = false;
+            reserveFailure.textContent = atLeast(reserve.min);
+            reserveFailure.scrollIntoView({block: 'nearest'});
             reserve.focus();
             return;
         }
@@ -390,10 +413,11 @@ export async function openSetup(options) {
         saveReserve.disabled = true;
         try {
             showResources(await request('resources', {[reserveField]: reserveAuto.checked ? null : Number(reserve.value)}));
+            reserveDamaged.hidden = true;
             reserveStatus.textContent = t('Saved · applies to the next request', '已保存 · 下次生成生效');
             // The state sits at the row's end and fades after two seconds.
             savedTimer = setTimeout(() => { reserveStatus.classList.add('fv-fade'); savedTimer = setTimeout(clearReserveStatus, 400); }, 2000);
-        } catch (error) { reserveStatus.className = 'fv-failure'; fault(reserveStatus, error.message); }
+        } catch (error) { reserveFailure.hidden = false; fault(reserveFailure, error.message); reserveFailure.scrollIntoView({block: 'nearest'}); }
         finally { saveReserve.disabled = false; }
     };
     function showDownloads(value) {
@@ -591,6 +615,7 @@ export async function openSetup(options) {
         extra.value = (info.discovery.extra_libraries || []).join("\n");
         showDownloads(info.discovery.downloads);
         showResources(info.discovery.resources);
+        if (info.discovery.resources_damaged) { reserveDamaged.hidden = false; resources.open = true; }
         samplingText.textContent = t('Prepare all quality levels', '提前下载全部质量档位')
             + (info.discovery.sampling_cache_bytes ? ' · ' + gib(info.discovery.sampling_cache_bytes) : '');
         // New installations prepare every quality level; a ready one adds them only when chosen.
