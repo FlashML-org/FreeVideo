@@ -283,7 +283,7 @@ PLACE_RULES = (
      ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
      ("It is formatted as exFAT, where FreeVideo's Python environment does not work. "
       'Choose a folder on an APFS or Mac OS Extended disk.',
-      '它不能安装 FreeVideo。'
+      '它是 exFAT 格式，FreeVideo 的运行环境无法在上面工作。'
       '请选择其他硬盘上的文件夹。')),
     (r'The installation folder is on a disk that does not support file links', 'disk-format',
      ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
@@ -291,6 +291,22 @@ PLACE_RULES = (
       "Choose a folder on the Mac's built-in disk.",
       '它不能安装 FreeVideo。'
       '请选择 Mac 内置硬盘上的文件夹。')),
+    (r'The installation folder is on a disk formatted as FAT32', 'disk-format',
+     ('This disk cannot hold the models', '这块硬盘放不下模型'),
+     ('It is formatted as FAT32, which stores files up to 4 GB; the prompt model alone is 15.7 GB. '
+      'Choose a folder on another disk.',
+      '它不能存放 4 GB 以上的文件。'
+      '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk formatted as exFAT', 'disk-format',
+     ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
+     ("It is formatted as exFAT, where FreeVideo's Python environment does not work. "
+      'Choose a folder on another disk.',
+      '它是 exFAT 格式，FreeVideo 的运行环境无法在上面工作。'
+      '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk that does not allow programs to run', 'disk-format',
+     ('FreeVideo cannot run from this disk', '这块硬盘上无法运行 FreeVideo'),
+     ('It is mounted so that programs cannot run from it. Choose a folder on another disk.',
+      '它挂载时设置为不允许运行程序。请选择其他硬盘上的文件夹。')),
     (r'The installation folder is on a disk that is not connected', 'disk-missing',
      ('The disk is not connected', '这块硬盘没有连接'),
      ('Connect the disk that holds the installation folder, then check again, or choose another folder.',
