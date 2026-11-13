@@ -173,6 +173,51 @@ def check_launcher_payload(source, destination):
                 comfy_source=layout['source_spec'], model_repo=network.model_spec()['vdn_repo'])
 
 
+RENAME_WAIT_SECONDS = 8.0
+
+
+def _held(error):
+    """A Windows refusal to rename a folder whose files were just written.
+
+    Error 5 (access denied) and 32 (in use) are what Windows returns while a virus scanner or the
+    search indexer still has one of the new files open; it usually lets go within seconds."""
+    return windows() and (getattr(error, 'winerror', None) in (5, 32) or isinstance(error, PermissionError))
+
+
+def _publish_stage(stage, target, complete):
+    """Move the finished staging folder to its final name, however Windows treats the rename.
+
+    A held folder is retried for a few seconds. If it stays held, the files are copied into the
+    final folder instead (it is created here, so nothing existing is overwritten) and the result
+    is checked like any other deployment. Other errors, such as a name that already exists, are
+    raised for the caller to handle."""
+    deadline = time.monotonic() + RENAME_WAIT_SECONDS
+    delay = 0.1
+    while True:
+        try:
+            stage.rename(target)
+            return
+        except OSError as error:
+            if not _held(error) or target.exists():
+                raise
+            if time.monotonic() + delay < deadline:
+                time.sleep(delay)
+                delay = min(delay * 2, 1.0)
+                continue
+            held = error
+            break
+    try:
+        # Plain copies, like the staging itself: no file times or attributes to be refused.
+        shutil.copytree(stage, target, copy_function=shutil.copyfile)
+        if not complete(target):
+            raise OSError('The copied launcher source did not verify')
+    except FileExistsError:
+        raise
+    except OSError:
+        shutil.rmtree(target, ignore_errors=True)
+        raise held from None
+
+
 def materialize_source(bundle=None, destination=None):
     """A one-file executable's temporary extraction must never back an editable install."""
     if bundle is None:
@@ -217,7 +262,7 @@ def materialize_source(bundle=None, destination=None):
                 target = parent / (__version__ + '-' + identity + '-' + uuid.uuid4().hex[:8])
                 continue
             try:
-                stage.rename(target)
+                _publish_stage(stage, target, complete)
                 return Path(plain(target))
             except OSError as error:
                 # Another launcher can publish between exists() and rename().
