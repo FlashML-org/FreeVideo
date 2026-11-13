@@ -197,6 +197,9 @@ GUIDE = {
         'job (30 s or more, or beyond the device limit, continues and joins automatically); to polish an idea first, run enhance, then generate with "prompt": {"from_job": "<enhance id>"} rather than retyping the text. '
         'A film is cut into shots: see the rule "Cut by default" before making one long continued video.',
         'Use drama plan → start → get → sheet → choose/reshoot → finish; inspect todo after every change.',
+        'Each finished output also gives project_id: the film opened as an editing project, one part per shot with its action as the note. '
+        'Finish the sound or change the cut on that project (projects get, then finish_sound); the MP4 in library_id stays as it was. '
+        'project_id is null where editing is not available.',
         'A shot whose prompt has numbered cuts and several takes: do not stop at the first take unless every cut of it is good '
         '(scores 7 or more of 10); wait for the other takes, read segments, and choose with pieces '
         '[{take, start, end}] to take the best part of every cut from different takes. Cut only where the takes cut, '

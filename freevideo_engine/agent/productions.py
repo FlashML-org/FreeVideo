@@ -207,6 +207,11 @@ class Productions:
                         raise ValueError('Invalid child receipt')
                 if not isinstance(record.get('submitting', []), list):
                     raise ValueError('Invalid submission marker')
+                # Films finished before projects were made keep only their MP4: an update opens no old film.
+                if 'projects' not in record and state['outputs']:
+                    record['projects'] = {o['job']: dict(id=None, done=True) for o in state['outputs']}
+                if not isinstance(record.get('projects', {}), dict):
+                    raise ValueError('Invalid project links')
                 production.view(state)
                 try:
                     checked = production.plan(request, fields=False, single_seconds=math.inf)  # saved: the limit held when it was accepted
@@ -705,6 +710,9 @@ class Productions:
             ref = record['state']['current_join']
             join = next(j for j in record['state']['joins'] if j['ref'] == ref)
             value['join'].update(ref=ref, task=tasks.get(ref), error=contextual(join['error'], True))
+        projects = record.get('projects') or {}
+        for output in value['outputs']:
+            output['project_id'] = (projects.get(output['job']) or {}).get('id')
         value['stalled'] = errors.with_reason(deepcopy(record.get('stalled')))
         value['progress'] = self._progress(record)
         value['over_budget'] = self._elapsed_budget(value['progress'])
@@ -937,7 +945,87 @@ class Productions:
             self._bump(draft)  # Wake since/wait readers when the elapsed reminder appears or clears.
         if draft != record:
             self._save(draft)
+        self._projects(identity)
         self._inspect_takes(identity)
+
+    def _projects(self, identity):
+        """Open every finished film as an editing project too, cut at its shots; the MP4 stays as it was.
+
+        One try per film: a computer whose editor cannot run (or any other failure) keeps only the MP4."""
+        record = self._record(identity)
+        for output in record['state']['outputs']:
+            join = output['job']
+            if (record.get('projects') or {}).get(join, {}).get('done') or not output.get('library_id'):
+                continue
+            try:
+                project = self._project(record, output)
+                saved = dict(id=project['id'], done=True)
+            except Exception as error:  # noqa: BLE001 - the film is finished either way
+                logging.getLogger(__name__).warning('A finished film was not opened as a project (%s)',
+                                                    getattr(error, 'code', type(error).__name__))
+                saved = dict(id=None, done=True)
+            draft = deepcopy(self._record(identity))
+            draft.setdefault('projects', {})[join] = saved
+            self._bump(draft)
+            self._save(draft)
+            record = self._record(identity)
+
+    def _project(self, record, output):
+        """Create (or find again by its key) the project of one output and cut it where each shot begins."""
+        from .. import comfy_editor
+        projects, state, join = self.jobs.projects, record['state'], output['job']
+        source = 'work:' + output['library_id']
+        info = comfy_editor.sources(projects.root, [source])[source]
+        if info['missing'] or not info['frames']:
+            raise JobError('source_missing', 'The finished film is not available.')
+        name = (state.get('title') or '').strip() or state['id']
+        project = projects.create(dict(project=dict(name=name, width=info['width'], height=info['height'])),
+                                  ref='film:' + join)['project']
+        def picture():
+            return sorted((c for c in project['tracks'][0]['clips']), key=lambda c: c['start'])
+        def edit(operations):
+            return projects.operations(project['id'], dict(revision=project['revision'], operations=operations))['project']
+        if not picture():
+            project = edit([dict(op='insert', source=source, at=0)])
+        shots = self._shot_frames(record, join, info['frames'])
+        if len(picture()) == 1 and len(shots) > 1:
+            clip = picture()[0]
+            # From the last cut back: the left part keeps its id, so each cut still names the same clip.
+            cuts = [f for f, _ in shots[1:] if clip['start'] < f < clip['start'] + clip['frames']]
+            if cuts:
+                project = edit([dict(op='split', clip_ids=[clip['id']], frame=f) for f in reversed(cuts)])
+        notes = [dict(op='note', clip_ids=[c['id']], text=text)
+                 for c, (_, text) in zip(picture(), shots) if text and not c.get('note')]
+        if notes and len(picture()) == len(shots):
+            project = edit(notes)
+        return project
+
+    def _shot_frames(self, record, join, frames):
+        """[(first frame, note)] of each shot in the joined film, from the assembly's own clip list.
+
+        A crossfade is cut in its middle. Without that list the film is one part with no note."""
+        state = record['state']
+        saved = next((j for j in state['joins'] if j['ref'] == join), None)
+        result = (self._children(record).get(join) or {}).get('result') or {}
+        clips = result.get('clips') if isinstance(result, dict) else None
+        if saved is None or not isinstance(clips, list):
+            return [(0, '')]
+        counts = [len((saved.get('pieces') or {}).get(shot['id']) or ()) or 1 for shot in state['shots']]
+        if sum(counts) != len(clips) or len(counts) != len(saved['takes']):
+            return [(0, '')]
+        starts = [round(float(clip.get('output_start') or 0) * 24) for clip in clips]
+        rows, index = [], 0
+        for shot, count in zip(state['screenplay']['shots'], counts):
+            first = starts[index]
+            if index:  # where the previous clip still shows: half of that overlap goes to each side
+                first += max(0, starts[index - 1] + int(clips[index - 1].get('frames') or 0) - first) // 2
+            if not 0 <= first < frames:
+                return [(0, '')]
+            # The screenplay as last reshot; a note is one line of at most 120 characters.
+            text = ' '.join(str(shot.get('action') or shot.get('idea') or '').split())
+            rows.append((first, text[:120]))
+            index += count
+        return rows
 
     def _inspect_takes(self, identity):
         """Start the picture and sound check of each finished take that has none; it runs off the lock.
