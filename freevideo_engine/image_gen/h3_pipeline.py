@@ -8,6 +8,7 @@ against the card's budget. Requests below the 4 MP floor are generated at 4 MP
 with the same proportions and are not scaled back.
 """
 import argparse
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -204,8 +205,14 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
             enter('encode')
         raise ReferencesTooLarge('the references need more memory than this card has, even with every block streamed')
     tick = time.perf_counter()
-    cond = _encode(prompt, encoder=encoder, comfy_root=comfy_root, model_paths=model_paths, comfy_python=comfy_python,
-                   vram_gib=vram_gib, ram_gib=ram_gib, vision_images=[vision for _, vision in copies])
+    from . import prompt_cache
+    cond = prompt_cache.encode(
+        prompt, [vision for _, vision in copies], stats=stats, encoder=encoder,
+        cache=prompt_cache.open_cache(encoder=encoder, comfy_root=comfy_root, comfy_python=comfy_python or sys.executable,
+                                      model_paths=model_paths),
+        compute=lambda: _encode(prompt, encoder=encoder, comfy_root=comfy_root, model_paths=model_paths,
+                                comfy_python=comfy_python, vram_gib=vram_gib, ram_gib=ram_gib,
+                                vision_images=[vision for _, vision in copies]))
     stats['encode_s'] = round(time.perf_counter() - tick, 2)
     check()
     moments = []
