@@ -1,5 +1,6 @@
 import {chainRoute, createPoller} from './chain_support.js';
 import {buildChainRequest} from './length_plan.js?v=20261027-length';
+import {addConnectionFacts} from './browser_extension.js';
 
 export const CHAIN_PROPERTY = 'freevideo_chain';
 const activeStates = new Set(['queued', 'running', 'cancelling']);
@@ -258,6 +259,10 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
                 if (running() && chain.id !== value.id) { waiting.push({id: value.id, metadata}); onState(chain); return value; }
                 epoch++; adopt(value, metadata);
                 return value;
+            } catch (error) {
+                // The request for the parts never reached the engine: the report records whether it answers now.
+                await addConnectionFacts(error, api);
+                throw error;
             } finally { submitting = false; }
         },
         refresh,

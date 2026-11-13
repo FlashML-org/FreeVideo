@@ -1,6 +1,6 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
-import {fetchQueueRead, readEngineJson, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, connectionFacts} from './browser_extension.js';
+import {fetchQueueRead, readEngineJson, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, addConnectionFacts} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
 import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
@@ -285,10 +285,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
                 if (batch) { batch = {done: i + 1, total: count}; publish(); }
             }
         } catch (error) {
-            // A request that never reached the engine: read at once whether the engine answers now, so the
-            // report can tell a stopped engine from a cut request or an address the browser cannot use.
-            if (error && typeof error === 'object' && isNetworkTypeError(error) && !error.connection)
-                try { error.connection = await connectionFacts(api); } catch { /* The report only loses these facts. */ }
+            await addConnectionFacts(error, api);
             fail(error); throw error;
         }
         finally { session.sending = false; submitting = false; batch = null; publish(); await refresh().catch(() => {}); }
