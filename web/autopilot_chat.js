@@ -44,6 +44,12 @@ export const STAGE_TEXT = Object.freeze({
     checking: ['Checking the results', '正在检查结果'], assembling: ['Joining the shots', '正在拼接镜头'],
 });
 const WORKING = ['running', 'queued', 'waiting', 'cancelling'], VIDEOS = ['generate', 'assemble'];
+// Beside the dots while the agent names no stage: the sentence is still on its way, or the agent has it and the seconds count.
+export function waitingText(s, t) {
+    const m = Math.floor(s / 60), r = s % 60;
+    return s < 60 ? t(`Waiting for a reply · ${s} s`, `正在等待回复 · ${s} 秒`)
+        : t(`Waiting for a reply · ${m} min${r ? ` ${r} s` : ''}`, `正在等待回复 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+}
 // What a job with no picture of its own is doing, in the reader's language.
 const QUIET = {vlm: ['Checking', '检查中'], enhance: ['Enhancing prompt', '增强提示词']};
 // Other jobs without a card keep their line while they run, and a finished one still marks the tab.
@@ -1319,13 +1325,24 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const item = el('li', 'fv-chat-thinking'), mark = el('span', 'fv-chat-dots'); mark.append(el('i'), el('i'), el('i'));
         const activity = el('span', 'fv-chat-activity');
         item.setAttribute('role', 'status'); item.setAttribute('aria-label', t('Thinking', '正在思考')); item.append(mark, activity);
-        return {element: item, update(text) { activity.textContent = text || ''; activity.hidden = !text; }};
+        let timer = null;
+        const show = text => { activity.textContent = text || ''; activity.hidden = !text; };
+        // A waiting line counts on its own; it stops once the dots leave the page or say something else.
+        const count = since => {
+            show(waitingText(Math.max(0, Math.floor((Date.now() - since) / 1000)), t));
+            timer = item.isConnected || timer === null ? setTimeout(() => count(since), 500) : null;
+        };
+        return {element: item, update(text, {since = null} = {}) {
+            clearTimeout(timer); timer = null;
+            if (text == null && since != null) count(since); else show(text);
+        }};
     }
     const MAKE = {hello, examples, dots, user: () => message('user'), agent: () => message('agent'), job: jobCard, confirm: confirmCard};
 
     // A rewritten sentence takes the place of the one it rewrites. What was said, asked and left unfinished for the old
     // words folds away; finished videos and pictures stay where they were. The session itself keeps every entry.
     let rewriting = null;
+    let waitingFor = null;
     function rewritten(entries) {
         const list = [...entries];
         if (rewriting && list.some(entry => entry.id === rewriting.id)) rewriting = null;
@@ -1399,7 +1416,12 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const thinking = tail?.type !== 'job' && tail?.type !== 'confirm' && (localPending.some(entry => !entry.error) || !tail?.error && tail?.role === 'user') && state.agent.connected === true
             && (state.agent.listening !== false || tail.taken === true) && (localPending.length > 0 || !state.abandoned);
         stopMode = thinking && localPending.length === 0;
-        if (thinking) wanted.push(['dots', 'dots', Object.hasOwn(STAGE_TEXT, state.stage) ? t(...STAGE_TEXT[state.stage]) : null]);
+        // With no stage named: Sending… until the agent has taken the sentence, then the seconds since it took it.
+        const sending = localPending.some(entry => !entry.error) || tail?.role === 'user' && tail.taken === false;
+        const waitKey = thinking && !sending ? `${state.session}:${tail?.id ?? tail?.seq}` : null;
+        if (waitKey !== waitingFor?.key) waitingFor = waitKey ? {key: waitKey, since: Date.now()} : null;
+        if (thinking) wanted.push(['dots', 'dots', Object.hasOwn(STAGE_TEXT, state.stage) ? t(...STAGE_TEXT[state.stage])
+            : sending ? t('Sending…', '正在发送…') : null, {since: waitingFor?.since ?? null}]);
 
         const stick = follow || pinned;
         const before = log.children.length, keep = new Set(wanted.map(([key]) => key));

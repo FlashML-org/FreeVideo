@@ -67,7 +67,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     // Subtitles from the speech on the timeline. One press starts, the next cancels; the lines replace the subtitle track in one step.
     // `need` is what has to be downloaded before the first use, in bytes; the same press downloads it and goes on.
     const speech={buttons:new Set(),available:false,need:0,busy:false,loading:false,shown:null,job:null,stop:null,run:0};
-    function speechLabel(fraction){speech.shown=fraction;const p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t(`Auto subtitles · Download ${size} MB`,`自动字幕 · 下载 ${size} MB`):t('Auto subtitles','自动字幕')):speech.loading?t(`Cancel · Downloading ${p}%`,`取消 · 下载 ${p}%`):t(`Cancel · ${p}%`,`取消 · ${p}%`);for(const b of speech.buttons){b.textContent=text;b.hidden=!(speech.available||speech.need);}}
+    // Once every byte is in, the download is unpacked; the button says so and keeps the width it had, so it does not jump.
+    function speechLabel(fraction,phase=null){speech.shown=fraction;const unpacking=fraction!=null&&speech.loading&&phase==='unpack',p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t(`Auto subtitles · Download ${size} MB`,`自动字幕 · 下载 ${size} MB`):t('Auto subtitles','自动字幕')):unpacking?t('Cancel · Unpacking','取消 · 正在解压'):speech.loading?t(`Cancel · Downloading ${p}%`,`取消 · 下载 ${p}%`):t(`Cancel · ${p}%`,`取消 · ${p}%`);for(const b of speech.buttons){if(unpacking&&!b.style.minWidth&&b.offsetWidth)b.style.minWidth=`min(${b.offsetWidth}px, 100%)`;else if(!unpacking)b.style.minWidth='';b.textContent=text;b.hidden=!(speech.available||speech.need);}}
     function speechEnd(text,where=null){speech.stop?.();speech.stop=null;speech.job=null;speech.busy=false;speech.loading=false;speechLabel(null);if(text)actions.notify?.(text,where);}
     const speechFailed=()=>t('Could not create subtitles','没能生成字幕'),speechSilent=()=>t('No speech found','没有听到说话声');
     const speechDisk=()=>t('The disk is full. Free some space, then try again.','磁盘空间不足，请清理出空间后重试。');
@@ -91,7 +92,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         try{
             if(speech.need){
                 speech.loading=true;speechLabel(0);
-                const done=await actions.speech.download(fraction=>{if(run===speech.run)speechLabel(fraction);});
+                const done=await actions.speech.download((fraction,phase)=>{if(run===speech.run)speechLabel(fraction,phase);});
                 if(run!==speech.run)return;
                 // `done` is true, or the reason the download stopped.
                 const ability=done===true?await actions.speech.ability():null;

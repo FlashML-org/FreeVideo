@@ -285,10 +285,31 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         catch (error) { if (running === request) { cancelling = false; render(); } throw error; }
     }
     cancel.onclick = () => cancelJob().catch(error => { show(errorText(error), 'error'); });
-    async function poll(action, body) {
+    // The rewrite's waiting line: shown as soon as it is pressed, its seconds counted here every second,
+    // not only when a status reply comes back. `pause` hands the line to the download or memory wait.
+    function waitClock() {
+        let since = performance.now(), phase = 'preparing', timer = null;
+        const paint = () => {
+            if (!phase || disposed || cancelling) return;
+            const [en, zh] = phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
+            const s = Math.floor((performance.now() - since) / 1000), m = Math.floor(s / 60), r = s % 60;
+            show(s < 1 ? t(en + '…', zh + '…') : s < 60 ? t(`${en} · ${s} s`, `${zh} · ${s} 秒`)
+                : t(`${en} · ${m} min${r ? ` ${r} s` : ''}`, `${zh} · ${m} 分${r ? ` ${r} 秒` : ''}`), 'progress');
+        };
+        const clock = {
+            set(next) { const changed = next !== phase; phase = next; if (changed) paint(); },
+            pause() { phase = ''; },
+            restart() { since = performance.now(); phase = 'preparing'; paint(); },
+            stop() { phase = ''; clearTimeout(timer); timer = null; },
+        };
+        // Twice a second so the count never skips a number; stops itself once the page is gone.
+        const tick = () => { paint(); timer = disposed ? null : setTimeout(tick, 500); };
+        tick();
+        return clock;
+    }
+    async function poll(action, body, clock = null) {
         if (disposed || cancelling) throw new Error('cancelled');
         const started = await post(action, body); job = started.job;
-        const since = performance.now(), elapsed = () => Math.floor((performance.now() - since) / 1000);
         let failures = 0;
         if (disposed || cancelling) await post('cancel', {job});
         try {
@@ -321,18 +342,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
                 if (row.phase === 'download') {
+                    clock?.pause();
                     showDownload(row.done || 0, row.total || 0);
                 } else if (row.phase === 'waiting_gpu') {
+                    clock?.pause();
                     // The rewrite starts by itself once enough graphics memory is free.
                     const short = Math.max(0.1, (row.gpu_short_bytes || 0) / 2 ** 30).toFixed(1), names = holderNames(row.gpu_holders);
                     show(names ? t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite. In use: ${names}.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。正在占用：${names}。`)
                         : t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。`), 'progress');
                 } else if (action !== 'install') {
-                    // The ellipsis says "still going" until the seconds start counting.
-                    const [en, zh] = row.phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
-                    const s = elapsed(), m = Math.floor(s / 60), r = s % 60;
-                    show(s < 1 ? t(en + '…', zh + '…') : s < 60 ? t(`${en} · ${s} s`, `${zh} · ${s} 秒`)
-                        : t(`${en} · ${m} min${r ? ` ${r} s` : ''}`, `${zh} · ${m} 分${r ? ` ${r} 秒` : ''}`), 'progress');
+                    clock?.set(row.phase === 'rewriting' ? 'rewriting' : 'preparing');
                 }
                 await new Promise(resolve => setTimeout(resolve, 400));
             }
@@ -404,14 +423,21 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             // The server counts what it receives, which includes the character descriptions the mentions are written out as.
             const text = prepare(original), characters = [...text].length;
             if (characters > PROMPT_LIMIT) throw Object.assign(new Error('invalid_prompt'), {characters, expanded: text !== original});
-            const info = await readModel();
-            if (disposed || cancelling) throw new Error('cancelled');
-            if (!await installModel(info)) {
-                versions.value.enabled = false;
-                versions.select('original'); apply();
-                throw new Error('cancelled');
-            }
-            const result = await poll('rewrite', {text, ...scene});
+            const clock = waitClock();
+            let result;
+            try {
+                const info = await readModel();
+                if (disposed || cancelling) throw new Error('cancelled');
+                // The download offer and its progress own the line; the seconds start again after it.
+                if (!info.ready) { clock.pause(); show(''); }
+                if (!await installModel(info)) {
+                    versions.value.enabled = false;
+                    versions.select('original'); apply();
+                    throw new Error('cancelled');
+                }
+                if (!info.ready) clock.restart();
+                result = await poll('rewrite', {text, ...scene}, clock);
+            } finally { clock.stop(); }
             if (disposed || cancelling) throw new Error('cancelled');
             const restored = restore(result.text);
             if (edits !== versions.value.edits || !versions.accept(key, context(), display(restored), restored)) throw new Error('stale');

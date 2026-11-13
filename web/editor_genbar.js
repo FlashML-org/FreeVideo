@@ -25,6 +25,12 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
     ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
     : t(`about ${Math.ceil(seconds / 60)} minutes`, `约 ${Math.ceil(seconds / 60)} 分钟`);
+// A start of a few seconds reads "Starting…"; a longer one counts in the same form as the other waiting lines.
+export const startingText = (s, t) => {
+    const m = Math.floor(s / 60), r = s % 60;
+    return s < 3 ? t('Starting…', '正在开始…') : s < 60 ? t(`Starting · ${s} s`, `正在开始 · ${s} 秒`)
+        : t(`Starting · ${m} min${r ? ` ${r} s` : ''}`, `正在开始 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+};
 // Provisional copy keys for Iris; decode/save sentences follow Studio's stage vocabulary.
 export const CLIP_FINALIZATION_COPY = {
     prepareDecode: ['Preparing video output', '正在准备输出视频'],
@@ -182,7 +188,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     };
     const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: value => actions.error(value, null, sayAtRefs), notify: sayAtRefs}) : null;
     if (references) { description.before(references.element); host.append(refNotice); }
-    let status = null, serial = 0, disposed = false, pressing = new Set(), previewSelection = null, estimateCache = null, noteTimer = null, queuedAt = null;
+    let status = null, serial = 0, disposed = false, pressing = new Set(), previewSelection = null, estimateCache = null, noteTimer = null, queuedAt = null, heldAt = null, openedAt = null, openTimer = null;
     // Which parts are generating, or how the job ended: a "Queued" line goes once this moves on.
     const progressKey = () => ['done', 'failed', 'cancelled', 'interrupted'].includes(status?.state) ? status.state
         : (status?.blocks || []).filter(block => block.state === 'running').map(block => block.id).join(',');
@@ -198,17 +204,22 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         } finally { downloading = false; report.disabled = false; }
     }
     report.onclick = () => downloadFailure();
-    function say(text, queued = false, where = null) {
+    // A held line is a reason the user acts on (such as a part-length limit): it stays until another
+    // part is chosen or the timeline is edited, instead of fading after a few seconds.
+    const heldKey = () => JSON.stringify([state.selection ?? null, state.step ?? 0]);
+    function say(text, queued = false, where = null, held = false) {
         if (disposed) return;
         queuedAt = text && queued ? progressKey() : null;
+        heldAt = text && held ? heldKey() : null;
         clearTimeout(noteTimer); note.textContent = text || ''; note.hidden = !text;
         if (text && where) note.append(issueButton(t, () => ({where, message: text})));
-        if (text) noteTimer = setTimeout(() => { note.hidden = true; showService(); }, where ? 20000 : 6000);
-        else showService();
+        if (text && !held) noteTimer = setTimeout(() => { note.hidden = true; showService(); }, where ? 20000 : 6000);
+        else if (!text) showService();
     }
     async function render() {
         if (disposed) return;
         if (queuedAt != null && progressKey() !== queuedAt) say('');
+        if (heldAt != null && heldKey() !== heldAt) say('');
         const current = ++serial, selection = previewSelection || state.selection;
         const selectedFailure = !previewSelection && actions.selectedFailure?.();
         if (failureId !== (selectedFailure?.id || null)) {
@@ -236,6 +247,10 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const busy = sending || held || (running || starting) && !other;
         // The selected part is still being sent: it can only be stopped once it has started.
         const opening = (starting || !!actions.selectionSending?.()) && !held;
+        // Nothing has started yet, so there is nothing to cancel; a long start counts its seconds instead.
+        clearTimeout(openTimer);
+        if (!opening) openedAt = null;
+        else { openedAt ??= Date.now(); openTimer = setTimeout(render, 500); }
         const stopped = ['failed', 'cancelled', 'interrupted'].includes(status?.state);
         host.dataset.mode = busy ? 'running' : selected ? 'selected' : 'idle';
         host.dataset.voice = voiced || installing ? 'true' : dub?.phase === 'error' ? 'note' : 'false'; voicePanel?.update(); syncInstall(); installPanel?.update();
@@ -262,7 +277,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             hint.textContent = finding ? t('Finding the lines', '正在识别台词') : dubbing.dubbingText(Math.max(1, dub.index), dub.count, dub.remaining, t);
         } else if (narrated && !busy && narration.picking) { hint.hidden = false; hint.textContent = t('Click a sound clip on the timeline', '在时间线上点一个声音片段'); }
         else if (narrated && !busy && narration.voices().finding) { hint.hidden = false; hint.textContent = t('Finding the lines', '正在识别台词'); }
-        else if (opening) hint.textContent = t('Starting…', '正在开始…');
+        else if (opening) hint.textContent = startingText(Math.floor((Date.now() - openedAt) / 1000), t);
         else if (held || waiting) hint.textContent = waiting && !held ? waitingText(status.waiting, t) : t('Queued', '排队中');
         else if (cancelling) hint.textContent = t('Stopping…', '正在停止…');
         else if (running) {
@@ -424,7 +439,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         }
         // A specific reason is said once; the planning limits are already shown above.
         catch (error) { const result = actions.error(error, 'generate'); reason = result?.say || '';
-            if (result?.say && !['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'timed_text', 'middle_frames'].includes(result.reason)) say(result.say, false, ['Editor generation', '剪辑器生成']);
+            if (result?.say && !['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full', 'timed_text', 'middle_frames'].includes(result.reason)) say(result.say, false, ['Editor generation', '剪辑器生成']);
             else if (!result && !note.textContent) { reason = t('Could not start. Try again.', '没能开始，请重试。'); say(reason, false, ['Editor generation', '剪辑器生成']); } }
         finally { pressing.delete(key); render(); }
         return reason;
@@ -481,7 +496,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; clearTimeout(noteTimer); clearTimeout(openTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

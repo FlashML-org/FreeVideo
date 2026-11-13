@@ -200,6 +200,10 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
     const fold = () => { chart.hidden = !opened; entry.setAttribute('aria-expanded', String(opened)); };
     fold();
     let disposed = false, query = '', grid = null, surface = null, hover = null, controller = null, retry = null, request = 0, drawn = '', pointer = null;
+    // While the engine is still working out the table the entry stays in place, greyed, saying so;
+    // after three minutes of that it is treated like no table at all.
+    let estimating = false, estimatingSince = 0;
+    const ESTIMATE_LIMIT_MS = 3 * 60 * 1000;
     const position = (item, x, y) => { item.style.transform = `translate(${x}px,${y}px)`; };
     const hideHover = () => { hover = null; plot.classList.remove('is-hover'); highlight(); };
     function show(point, x, y) {
@@ -273,10 +277,15 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
     }
     function applyGrid(animate = false) {
         if (grid?.version === 1 && grid.status === 'ready') onGrid?.(grid);
-        surface = capabilitySurface(grid, getState()); element.hidden = !surface;
+        surface = capabilitySurface(grid, getState()); element.hidden = !surface && !estimating;
+        entry.disabled = !surface;
         onEstimate?.();
-        if (!surface) { hideHover(); return; }
-        current(); paint(animate);
+        if (!surface) {
+            hideHover();
+            if (estimating) { chart.hidden = true; entry.setAttribute('aria-expanded', 'false'); longest.textContent = t('Estimating…', '正在估算…'); }
+            return;
+        }
+        fold(); current(); paint(animate);
     }
     async function fetchGrid() {
         if (!query || disposed) return;
@@ -288,19 +297,22 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
             const next = await reply.json();
             if (disposed || signal.aborted || query !== key || request !== id) return;
             if (next.status === 'computing') {
+                if (!estimating) { estimating = true; estimatingSince = Date.now(); }
+                if (Date.now() - estimatingSince > ESTIMATE_LIMIT_MS) estimating = false;
                 grid = null; applyGrid();
-                retry = setTimeout(fetchGrid, clamp(Number(next.retry_after_seconds) || 1, .1, 30) * 1000); return;
+                if (estimating) retry = setTimeout(fetchGrid, clamp(Number(next.retry_after_seconds) || 1, .1, 30) * 1000);
+                return;
             }
-            grid = next; applyGrid(true);
+            estimating = false; grid = next; applyGrid(true);
         } catch {
-            if (!disposed && !signal.aborted && query === key && request === id) { grid = null; applyGrid(); }
+            if (!disposed && !signal.aborted && query === key && request === id) { estimating = false; grid = null; applyGrid(); }
         }
     }
     function update() {
         if (disposed) return;
         const next = capabilityContext(node, getState()) || '';
         if (next !== query) {
-            query = next; controller?.abort(); clearTimeout(retry); grid = null; drawn = ''; applyGrid();
+            query = next; controller?.abort(); clearTimeout(retry); grid = null; drawn = ''; estimating = false; applyGrid();
             if (query) fetchGrid();
         } else applyGrid(true);
     }

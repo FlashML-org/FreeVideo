@@ -304,8 +304,9 @@ class Installer:
             if stop.is_set():
                 raise InterruptedError('cancelled')
 
+        # The phase lets the page say it is unpacking once every byte is in, instead of standing at 100%.
         def progress(value):
-            self._set(done=value.get('done', 0), total=value.get('total', 0))
+            self._set(done=value.get('done', 0), total=value.get('total', 0), phase=value.get('phase'))
         try:
             install(groups, self.root, progress, check)
             self._set(state='done', reason=None)
