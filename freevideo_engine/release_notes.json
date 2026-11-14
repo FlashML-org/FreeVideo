@@ -1,41 +1,76 @@
 {
   "schema": 1,
-  "product_version": "0.5.3",
+  "product_version": "0.5.4",
   "en": {
-    "summary": "Short films are finished for you: the built-in director picks and joins the takes, the film arrives in Autopilot as a card, and an editing project with one part per shot is ready. H3 Image takes up to 16 reference pictures, and consecutive images start sooner. Imported clips can be removed from the editor, and waits, failures, setup and narrow windows read more clearly.",
+    "summary": "Closing the launcher offers Exit or Run in background. Offline installation saves disk space and reuses an existing model folder. An interrupted second pass resumes from its last completed step, the second pass uses less graphics memory, and extending the same video again starts sooner. Picture shape can be chosen on a canvas with pictures, and several installation stops are fixed.",
     "changes": [
-      "Short films: a screenplay can carry its outline and the blocking of each scene, and the blocking goes into every shot of that scene. With the built-in director, takes are chosen and joined automatically once they are shot, and the work continues after a pause, a resume or a restart. The finished film appears in the Autopilot conversation as a card that plays, opens or goes straight to editing, and it also opens as an editing project with one part per shot.",
-      "Reference pictures: H3 Image accepts up to 16 reference pictures and Qwen-Image 2.1 accepts four. A note appears when too many pictures are added at once, pictures that cannot fit are refused before the run starts, and Generate points to the pictures to remove when the selected model's limit is exceeded.",
-      "Image speed: consecutive images keep the models loaded when the graphics card and memory allow, and the same prompt is not encoded again, so the second image onward starts sooner. Results are saved as high-quality JPEG, and temporary uploads are removed after each run.",
-      "Editor: the Imported tab has a remove button on every clip, including ones that could not be opened. Only FreeVideo's copy is deleted, never the original file, and a clip that an edit uses, even in an earlier version, asks for a second confirmation. Work thumbnails in the media library display correctly, and the Edit button on finished-video cards is visible again.",
-      "Waits: prompt rewriting counts from the press, the size range shows Estimating while it is worked out, and starting a generation or opening the page from the launcher shows elapsed seconds after 3 s. Automatic subtitles show Unpacking, Autopilot shows Sending and the seconds spent waiting for a reply, and preparing reference media shows which file is in progress.",
-      "Failures and settings: a missing or damaged model file is explained on the failure card, and cards that suggest a repair have an Open settings button that goes to Detect & review. Offline installations are told to import the offline package again. A damaged reserved memory setting no longer blocks the settings panel or generation, and a refused save is explained under Save. The launcher report form names the real failure.",
-      "Install and repair: Check and repair list and download again any model file that is missing or damaged, and importing an offline package again completes files left short by an interrupted copy. An installation with a missing model folder no longer stops at the GPU check, and an engine source folder that cannot be read is built again instead of failing every retry. The setup plan shows small sizes in MB or KB, and unavailable buttons share one gray look.",
-      "Windows and downloads: when Windows application control blocks a component file, the GPU check and generation continue, and the block is recognised in any system language. Cards of 16 GB and more keep copying the next layer while the current one computes when commit headroom is limited. The runtime download keeps retrying the official source when a mirror refuses access, with one more public source added.",
-      "Narrow windows: the Autopilot conversation scrolls on its own with the header and input in view, and an unsent message shows its reason on its own line. The studio shows the queued count and each run's size and length in full, download size and speed stay together, export choices and the reserved memory title stay on one line, and setup lines wrap between phrases. The Connect an agent card keeps its arrow with its words, and a failed lookup shows only Retry and Report a problem.",
-      "Nodes view: switching to it no longer leaves a node under the view bar, and the voice reference, dialogue tail and empty prompt switches show Chinese names in the Chinese interface. The media panel says once, not three times, when some saved items cannot be read.",
-      "Generation: a queue read that receives a web page instead of data is retried like a lost connection, so repeating generation keeps going. A second-pass memory failure that a smaller retry cannot help is reported sooner.",
-      "Tutorial: new chapters on beat snapping, run status, generating with reference pictures, the outline and staging of a short film, and the editing project a finished film leaves."
+      "Closing the launcher: a choice appears with Exit, which stops generation and quits, and Run in background, which hides the window while generation continues and can be reopened or quit from the tray icon (the menu bar icon on Mac).",
+      "Second pass: after an interruption by a lack of system memory, the retry continues from the last completed step instead of starting again, and the result is identical to an uninterrupted run. At high resolution the second pass uses up to about 2 GB less graphics memory, which leaves 8 GB cards more room. With a long reference video, a refused locked-page copy falls back to ordinary memory instead of failing the second pass at its start.",
+      "Extending videos: memory for the ending clip is estimated from its real size, so a loaded model is no longer released and read from disk again. Extending the same video again does not encode its ending a second time, so the next extension starts sooner.",
+      "Offline installation: importing the runtime package again in place counts model packs that are already installed, without unpacking them again or keeping two copies. An existing model folder can be chosen when installing from the runtime package, and matching models are used directly, which saves a download of about 49 GiB. After a move, model pack status follows the new location, and imported folders have shorter paths, so an installation in an ordinary folder starts from where it is.",
+      "Model files: when a model file differs from the tested version, the failure card names the package to import again, and the original file is kept under a new name while the version from the package replaces it.",
+      "Pictures: choose the shape of a new picture on a canvas that already holds pictures; with another shape the new picture is placed on a new canvas and can be undone in one step. A long description expands only while focused and shows on one line otherwise, so a multi-line description no longer moves the canvas in narrow windows. Prompt rewriting without pictures keeps the unused vision part in main memory when it would leave little graphics memory to spare.",
+      "Launcher and image models: while an image model is in use, Repair and Delete are gray, with the reason and what to do written beside them.",
+      "Linux installation: the chosen drive is checked first, and FAT32, exFAT or a location that does not allow running programs stops the installation with an explanation and a request to choose another drive.",
+      "Windows installation: setup no longer stops at a PowerShell debugger prompt, and the launcher no longer stops at the check step with Access denied when Windows briefly holds a file that was just written; it retries for a few seconds and then copies the folder into place. Installing node dependencies and updating the engine also use short paths.",
+      "Export and dubbing: several calculations no longer depend on a component that Windows application control can block, and the output is unchanged.",
+      "Long videos and reports: when the record of a seam is missing, that part is generated again once; a seam that still has no record at join time is joined directly, so the video can still be saved. Failed long video requests, chat sends and high-resolution image runs leave the diagnostic report the facts needed to find the cause."
     ]
   },
   "zh": {
-    "summary": "短剧可以一路做完：内置导演自动选片并接成影片，成片以卡片出现在 AI 全自动对话中，同时建好按镜头分段的剪辑工程。H3 Image 支持最多 16 张参考图，连续出图起步更快。剪辑器可以删除已导入素材，等待、失败、安装和窄窗口的显示更清楚。",
+    "summary": "关闭启动器时可选“退出”或“后台运行”。离线安装更省空间，并可直接使用已有模型文件夹。第二遍被中断后从已完成的步骤继续，第二遍少占显存，再次续写同一个视频起步更快。已有图片的画布可以选择新图比例，Windows 和 Linux 的若干安装中断问题已修复。",
     "changes": [
-      "短剧：剧本可以写大纲和每场站位，站位自动写进该场每个镜头。选用内置导演时，拍完后自动选片并接成影片，暂停、继续和重启后都会接着做。成片以卡片出现在 AI 全自动对话中，可以播放、打开或直接进入剪辑，同时建好按镜头分段的剪辑工程。",
-      "参考图：H3 Image 最多可用 16 张参考图，Qwen-Image 2.1 可用 4 张。一次加入过多时显示提示，放不下的参考图在开始前拒绝；超出所选模型上限时，点“生成”会定位到需要移除的图。",
-      "出图速度：显存和内存允许时，连续生成图片保持模型常驻，同一提示词不再重复编码，第二张起开始得更快。结果保存为高质量 JPEG，每次生成后清理临时上传。",
-      "剪辑器：“已导入”页的每个素材（包括打不开的）都有删除按钮，只删除软件复制的副本，不删原文件；被剪辑使用的素材（包括只在早先版本中使用的）需再确认一次。素材库中的作品缩略图正常显示，已完成视频卡片上的“剪辑”按钮重新显示。",
-      "等待：提示词改写从点下就计秒，可生成范围计算时显示“正在估算…”，开始生成和从启动器打开页面超过 3 秒时显示已用秒数。自动字幕解压时显示“正在解压”，AI 全自动显示“正在发送…”和等待回复的秒数，准备参考素材时显示正在处理第几个文件。",
-      "失败和设置：缺失或损坏的模型文件在失败卡片上说明原因；建议修复的卡片新增“打开设置”，直接定位到“检测并预览”。离线安装改为提示重新导入离线包。预留显存设置文件损坏时，设置面板和生成照常进行；保存被拒时在“保存”下说明原因。启动器的报告表单写出真实的失败原因。",
-      "安装和修复：检测和修复会列出并重新下载缺失或损坏的模型文件，重新导入离线包会补全复制中断留下的不完整文件。缺少模型文件夹时，安装不再停在 GPU 检查一步；引擎源码目录无法读取时改为重新构建，不再每次重试都失败。安装计划中较小的文件以 MB 或 KB 显示，不可用的按钮统一为灰色。",
-      "Windows 和下载：Windows 应用控制拦截某个组件文件时，GPU 检查和生成照常继续，在任何系统语言下都能识别该拦截。提交余量受限时，16 GB 及以上显卡在计算当前层的同时仍会拷贝下一层。运行环境下载在镜像拒绝访问时继续重试官方线路，并新增一个公开备用线路。",
-      "窄窗口：AI 全自动的对话单独滚动，顶栏和输入框始终可见，没发出的消息原因单独显示一行。创作面板完整显示排队数量以及每条的尺寸和时长，下载进度的大小和速度不再拆开，导出选项和预留显存标题保持一行，安装页文字按词组换行。连接 Agent 卡片的箭头不再和文字分开，获取地址失败时只显示重试和提交问题。",
-      "节点视图：切换过来时节点不再被顶部的视图切换栏遮住，“声音参考”“隐藏对白尾段”“允许空描述”三个开关显示中文名称。素材区有资料读取失败时只提示一次，不再重复三次。",
-      "生成：队列读取得到网页而不是数据时按断线重试，重复生成不再被停掉。第二遍显存不足且缩小重试也无济于事时，更早报告失败。",
-      "教程：新增对齐音乐节拍、运行状态、用参考图生成图片、短剧的大纲和站位、短剧成片的剪辑工程五章。"
+      "关闭启动器：弹出选择，“退出”停止生成并退出，“后台运行”隐藏窗口、生成继续，可从托盘图标（Mac 为菜单栏图标）重新打开或退出。",
+      "第二遍：因系统内存不足中断后，重试从已完成的步骤继续，不再全部重做，结果与不中断时完全一致。高分辨率时第二遍最多少占约 2 GB 显存，8 GB 显卡的余量更大。带长参考视频时，锁页内存被系统拒绝就改用普通内存，不再在第二遍开始时整个失败。",
+      "续写：按结尾片段的实际大小估算内存，已载入的模型不再被放掉、重新读盘。续写同一个视频时不再重复编码它的结尾，再次续写起步更快。",
+      "离线安装：原地重新导入运行环境包时，已装好的模型包直接算数，不再重新解压，也不再占双份空间。用运行环境包安装时也能选已有的模型文件夹，对得上的模型直接使用，免下约 49 GiB。换了安装位置后，模型包状态按新位置显示；导入后的文件夹路径变短，放在普通文件夹里的安装直接从原位置启动。",
+      "模型文件：模型文件与测试过的版本不一致时，出错卡片写明重新导入哪个包；原文件改名保留，再换成包里的版本。",
+      "图片：画布已有图片时可选择新图的比例；选了别的比例，新图放在新画布上，可一次撤销。较长的描述只在输入框获得焦点时展开，否则以一行加省略号显示，窄窗口里输入多行描述时画布不再被顶动。无图的提示词改写在显存余量不大时，把用不到的视觉部分留在内存。",
+      "启动器与图像模型：图像模型正在使用时，“修复”“删除”变灰，旁边写明原因和怎么做。",
+      "Linux 安装：安装前检查所选硬盘，FAT32、exFAT 或不允许运行程序的位置会先停下并说明，请选择其他硬盘。",
+      "Windows 安装：安装不再停在 PowerShell 调试提示符；Windows 短暂占用刚写好的文件时，启动器不再停在检查步骤报“访问被拒绝”，改为重试数秒再复制到位。安装节点依赖、更新引擎时也使用短路径。",
+      "导出和配音：几处计算不再依赖可能被 Windows 应用控制拦截的组件，输出不变。",
+      "长视频与报告：接缝记录缺失时，该段重新生成一次；合并时仍缺少记录的接缝按直接拼接保存，不再因此无法保存。长视频提交、聊天发送和高分辨率图片生成失败时，诊断报告记下判断原因所需的信息。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.5.3",
+      "en": {
+        "summary": "Short films are finished for you: the built-in director picks and joins the takes, the film arrives in Autopilot as a card, and an editing project with one part per shot is ready. H3 Image takes up to 16 reference pictures, and consecutive images start sooner. Imported clips can be removed from the editor, and waits, failures, setup and narrow windows read more clearly.",
+        "changes": [
+          "Short films: a screenplay can carry its outline and the blocking of each scene, and the blocking goes into every shot of that scene. With the built-in director, takes are chosen and joined automatically once they are shot, and the work continues after a pause, a resume or a restart. The finished film appears in the Autopilot conversation as a card that plays, opens or goes straight to editing, and it also opens as an editing project with one part per shot.",
+          "Reference pictures: H3 Image accepts up to 16 reference pictures and Qwen-Image 2.1 accepts four. A note appears when too many pictures are added at once, pictures that cannot fit are refused before the run starts, and Generate points to the pictures to remove when the selected model's limit is exceeded.",
+          "Image speed: consecutive images keep the models loaded when the graphics card and memory allow, and the same prompt is not encoded again, so the second image onward starts sooner. Results are saved as high-quality JPEG, and temporary uploads are removed after each run.",
+          "Editor: the Imported tab has a remove button on every clip, including ones that could not be opened. Only FreeVideo's copy is deleted, never the original file, and a clip that an edit uses, even in an earlier version, asks for a second confirmation. Work thumbnails in the media library display correctly, and the Edit button on finished-video cards is visible again.",
+          "Waits: prompt rewriting counts from the press, the size range shows Estimating while it is worked out, and starting a generation or opening the page from the launcher shows elapsed seconds after 3 s. Automatic subtitles show Unpacking, Autopilot shows Sending and the seconds spent waiting for a reply, and preparing reference media shows which file is in progress.",
+          "Failures and settings: a missing or damaged model file is explained on the failure card, and cards that suggest a repair have an Open settings button that goes to Detect & review. Offline installations are told to import the offline package again. A damaged reserved memory setting no longer blocks the settings panel or generation, and a refused save is explained under Save. The launcher report form names the real failure.",
+          "Install and repair: Check and repair list and download again any model file that is missing or damaged, and importing an offline package again completes files left short by an interrupted copy. An installation with a missing model folder no longer stops at the GPU check, and an engine source folder that cannot be read is built again instead of failing every retry. The setup plan shows small sizes in MB or KB, and unavailable buttons share one gray look.",
+          "Windows and downloads: when Windows application control blocks a component file, the GPU check and generation continue, and the block is recognised in any system language. Cards of 16 GB and more keep copying the next layer while the current one computes when commit headroom is limited. The runtime download keeps retrying the official source when a mirror refuses access, with one more public source added.",
+          "Narrow windows: the Autopilot conversation scrolls on its own with the header and input in view, and an unsent message shows its reason on its own line. The studio shows the queued count and each run's size and length in full, download size and speed stay together, export choices and the reserved memory title stay on one line, and setup lines wrap between phrases. The Connect an agent card keeps its arrow with its words, and a failed lookup shows only Retry and Report a problem.",
+          "Nodes view: switching to it no longer leaves a node under the view bar, and the voice reference, dialogue tail and empty prompt switches show Chinese names in the Chinese interface. The media panel says once, not three times, when some saved items cannot be read.",
+          "Generation: a queue read that receives a web page instead of data is retried like a lost connection, so repeating generation keeps going. A second-pass memory failure that a smaller retry cannot help is reported sooner.",
+          "Tutorial: new chapters on beat snapping, run status, generating with reference pictures, the outline and staging of a short film, and the editing project a finished film leaves."
+        ]
+      },
+      "zh": {
+        "summary": "短剧可以一路做完：内置导演自动选片并接成影片，成片以卡片出现在 AI 全自动对话中，同时建好按镜头分段的剪辑工程。H3 Image 支持最多 16 张参考图，连续出图起步更快。剪辑器可以删除已导入素材，等待、失败、安装和窄窗口的显示更清楚。",
+        "changes": [
+          "短剧：剧本可以写大纲和每场站位，站位自动写进该场每个镜头。选用内置导演时，拍完后自动选片并接成影片，暂停、继续和重启后都会接着做。成片以卡片出现在 AI 全自动对话中，可以播放、打开或直接进入剪辑，同时建好按镜头分段的剪辑工程。",
+          "参考图：H3 Image 最多可用 16 张参考图，Qwen-Image 2.1 可用 4 张。一次加入过多时显示提示，放不下的参考图在开始前拒绝；超出所选模型上限时，点“生成”会定位到需要移除的图。",
+          "出图速度：显存和内存允许时，连续生成图片保持模型常驻，同一提示词不再重复编码，第二张起开始得更快。结果保存为高质量 JPEG，每次生成后清理临时上传。",
+          "剪辑器：“已导入”页的每个素材（包括打不开的）都有删除按钮，只删除软件复制的副本，不删原文件；被剪辑使用的素材（包括只在早先版本中使用的）需再确认一次。素材库中的作品缩略图正常显示，已完成视频卡片上的“剪辑”按钮重新显示。",
+          "等待：提示词改写从点下就计秒，可生成范围计算时显示“正在估算…”，开始生成和从启动器打开页面超过 3 秒时显示已用秒数。自动字幕解压时显示“正在解压”，AI 全自动显示“正在发送…”和等待回复的秒数，准备参考素材时显示正在处理第几个文件。",
+          "失败和设置：缺失或损坏的模型文件在失败卡片上说明原因；建议修复的卡片新增“打开设置”，直接定位到“检测并预览”。离线安装改为提示重新导入离线包。预留显存设置文件损坏时，设置面板和生成照常进行；保存被拒时在“保存”下说明原因。启动器的报告表单写出真实的失败原因。",
+          "安装和修复：检测和修复会列出并重新下载缺失或损坏的模型文件，重新导入离线包会补全复制中断留下的不完整文件。缺少模型文件夹时，安装不再停在 GPU 检查一步；引擎源码目录无法读取时改为重新构建，不再每次重试都失败。安装计划中较小的文件以 MB 或 KB 显示，不可用的按钮统一为灰色。",
+          "Windows 和下载：Windows 应用控制拦截某个组件文件时，GPU 检查和生成照常继续，在任何系统语言下都能识别该拦截。提交余量受限时，16 GB 及以上显卡在计算当前层的同时仍会拷贝下一层。运行环境下载在镜像拒绝访问时继续重试官方线路，并新增一个公开备用线路。",
+          "窄窗口：AI 全自动的对话单独滚动，顶栏和输入框始终可见，没发出的消息原因单独显示一行。创作面板完整显示排队数量以及每条的尺寸和时长，下载进度的大小和速度不再拆开，导出选项和预留显存标题保持一行，安装页文字按词组换行。连接 Agent 卡片的箭头不再和文字分开，获取地址失败时只显示重试和提交问题。",
+          "节点视图：切换过来时节点不再被顶部的视图切换栏遮住，“声音参考”“隐藏对白尾段”“允许空描述”三个开关显示中文名称。素材区有资料读取失败时只提示一次，不再重复三次。",
+          "生成：队列读取得到网页而不是数据时按断线重试，重复生成不再被停掉。第二遍显存不足且缩小重试也无济于事时，更早报告失败。",
+          "教程：新增对齐音乐节拍、运行状态、用参考图生成图片、短剧的大纲和站位、短剧成片的剪辑工程五章。"
+        ]
+      }
+    },
     {
       "product_version": "0.5.2",
       "en": {
@@ -357,43 +392,6 @@
           "剪辑：与后台的通信短暂中断后，删除剪辑不再连续失败。",
           "剪辑导入：中途被截断或损坏的视频，现在会保留可读取的部分，不再整个导入失败。",
           "参考音频：使用参考音频生成在 Mac 上恢复可用；其他系统需要先载入模型时也不再失败。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.31",
-      "en": {
-        "summary": "The Edit view can now record audio against the picture, a sound clip can be separated into dialogue, music and ambience tracks, and timed lines and cuts written in a description are placed at those times in the generated video.",
-        "changes": [
-          "Recording: the Edit view can now record audio against the picture. The recording is placed on a sound track, aligned with the picture.",
-          "Separate tracks: a sound clip can be split into dialogue, music and ambience tracks, each adjusted and exported on its own. Separated music can be replaced from the generation bar with \"Replace music\": new music is made at the original length and lowered where people speak.",
-          "Timed lines and cuts: write lines such as \"0:02 Jay: ...\" or \"0:05 Cut: ...\" in the description, and the generated video places dialogue and shot changes at those times. A time beyond the video length or an empty cut is flagged before generation.",
-          "Preview first: the editor's generation bar can make a preview first. A selected preview part can run its second pass with \"Run second pass\" and is replaced in place at full quality. \"Reuse settings\" also fills in the original seed.",
-          "Ripple delete: deleting a clip in the editor also closes the gap it leaves.",
-          "Recent videos and Creations fold the videos of one task into a group. Click the cover to open it.",
-          "Progress estimate: the estimated total time of a request with a long reference video is no longer far above the real time. Speed and results are unchanged.",
-          "Start-up: the launcher now opens when the bridge folder is redirected. A failed model upgrade keeps its cause in the diagnostic report and points to \"Try again\" or \"Report a problem\". The launch progress names the GPU detection, acceleration test and workflow-node connection steps, a slow full log export shows how many files have been packed, and a failed start in the terminal points to the diagnose command.",
-          "Install: on some Linux systems, setup no longer stops while building GPU acceleration.",
-          "Mac: a fault while encoding a reference video is corrected or reported within seconds instead of at the end of encoding. When a Light or Medium text-to-video generation without references or continuation is interrupted during the first pass, the automatic retry continues from the last completed step instead of starting the pass over.",
-          "Speed: on 6 GB-class cards on Windows, each sampling step of a High generation with references is faster.",
-          "Audio cards: \"Use as is\" now stays clickable when Preview first is on or a video is being continued. Choosing it turns the preview off with a one-line note, and a continuation says why it cannot be used and what to remove."
-        ]
-      },
-      "zh": {
-        "summary": "剪辑视图可以对着画面录音；一段声音可以分成人声、音乐和环境声三条轨道；在描述里按时间写的台词和切镜，生成的视频会按写定的时间安排。",
-        "changes": [
-          "录音：在剪辑视图里对着画面录一段声音，录好后放到声音轨上，与画面对齐。",
-          "分离音轨：把一段声音分成人声、音乐和环境声三条轨道，每条都可单独调整和导出。分离出的音乐可在生成条点“替换配乐”，按原长度重新配乐，并在说话处压低。",
-          "按时间写台词和切镜：在描述里写“0:02 阿杰：……”或“0:05 切：……”，生成的视频会按写定的时间安排台词和镜头切换；时间超出视频长度或“切：”后面没有内容时，生成前给出提示。",
-          "先出预览：剪辑视图生成条可选“先出预览”；选中预览片段可点“继续二采”，在原位置换成完整画质。点“复用设置”时，原来的种子也一并填入。",
-          "波纹删除：在剪辑视图删除片段时，同时合上它留下的空隙。",
-          "最近作品和作品库将同一任务的多条视频折叠成一组，点封面展开。",
-          "进度估计：带较长参考视频的请求，估计的总时间不再远高于实际用时。速度和结果不变。",
-          "启动：启动器在桥接目录被重定向时也能打开。模型升级失败时，诊断报告保留失败原因，并提示可点“重试”或“提交问题”。启动进度会写出检测显卡、测试加速和连接工作流节点这几步；导出完整日志较慢时显示已打包的文件数；在终端里启动失败时，会提示运行诊断命令。",
-          "安装：部分 Linux 系统上，安装不再停在构建 GPU 加速这一步。",
-          "Mac：参考视频编码出错时，几秒内即修正或报告，不再等到编码结束。轻量或标准档、不带参考、不续接的文生视频在第一遍被中断后，自动重试会从最后完成的步骤继续，不再从头开始这一遍。",
-          "速度：Windows 上的 6 GB 级显卡，带参考的精细档生成每一步采样更快。",
-          "音频卡：“先出预览”开启或接着生成时，“原样使用”不再变灰。选择它会关闭预览并用一行说明；接着生成时说明原因和需要移除的内容。"
         ]
       }
     }
