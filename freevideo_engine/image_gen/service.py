@@ -698,6 +698,7 @@ class Service:
             self.requests.put(value)
 
     def discard_queued(self, state):
+        self.drop_uploads(self.queued['key'])
         self.remember(self.queued['key'], state)
         self.queued = None
         self.queue_wake.set()
@@ -984,6 +985,16 @@ class Service:
         """Remove the reference pictures and mask the page uploaded for a finished job; nothing else is touched."""
         self.remove_uploads(self.uploads.pop(key, []))
 
+    def discard_uploads(self, names):
+        """Remove page uploads that never became a job: the page turned the request away or was stopped before
+        it was sent. A name that a job holds stays until that job ends."""
+        if not isinstance(names, list) or len(names) > H3_MAX_IMAGES + 1:
+            raise ValueError('invalid_request')
+        with self.mutex:
+            held = {name for kept in self.uploads.values() for name in kept}
+            self.remove_uploads([name for name in names if name not in held])
+        return dict(discarded=True)
+
     def remove_uploads(self, names):
         try:
             directory = Path(self.input_directory()).resolve()
@@ -1255,6 +1266,8 @@ class Service:
                     self.preview = None
                     self._busy = False
                     self.context = None
+                    # The worker is gone, so nothing reads the job's pictures any more.
+                    self.drop_uploads(self.key)
                 self.queue_wake.set()
 
     def shrink(self, value, row, context):
@@ -1446,6 +1459,9 @@ class Service:
                     self.preview = None
                     self._busy = False
                     self.context = None
+                    # Remove the job's uploads now, not when the page next asks: a page that was stopped,
+                    # closed or reloaded never asks again.
+                    self.drop_uploads(self.key)
                     self.queue_wake.set()
                 return
 
@@ -1544,6 +1560,8 @@ def register():
                                     headers={'Cache-Control': 'no-store', 'X-FreeVideo-Preview-Serial': str(found[0])})
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
+            elif name == 'discard-uploads':
+                result = service.discard_uploads(value.get('images'))
             elif name in ('pack-install', 'pack-cancel'):
                 result = service.pack_action(name.split('-')[1], model=value.get('model'))
             elif name in ('segment-install', 'segment-cancel'):

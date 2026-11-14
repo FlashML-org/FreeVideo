@@ -107,6 +107,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
                 ...(phase === 'cancelled' ? {error: 'cancelled'} : {})};
         },
         cancel: job => post('cancel', {[p.job]: job}),
+        // Pictures this page uploaded for a request that never became a job; the service removes only its own temporary names.
+        discardUploads: images => post('discard-uploads', {images}),
         // The running job's newest step picture (a small JPEG of what the model predicts so far), or null.
         async previewImage(job) {
             if (!token) await info();
@@ -552,8 +554,12 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         // A picture that is edited sends its reference images first; there is no job to report on yet.
         emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
+        // What this request uploads, so that pictures the service never received as a job are removed again.
+        const sent = [];
+        const sender = {upload: async file => { const name = await client.upload(file); sent.push(name); return name; }};
+        let job = null;
         try {
-            const {context, images = [], mask} = await prepare(request, alive);
+            const {context, images = [], mask} = await prepare(request, alive, sender);
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
             const withImages = images.length > 0;
@@ -562,7 +568,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             const row = await client.generate({prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
                 ...(request.loras === undefined ? {} : {loras: request.loras})});
-            const {job} = row;
+            job = row.job || null;
             if (!job) throw failure(row.error, row);
             if (row.fitted) emit({fitted: row.fitted});
             if (!alive()) { await cancelJob(job); return; }
@@ -571,6 +577,9 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             track(current, job, context, withImages);
         } catch (error) {
             if (alive()) emit({running: false, job: null, ...failed(error)});
+        } finally {
+            // Turned away, stopped or failed before the service took the request: a job removes its own pictures when it ends.
+            if (!job && sent.length && client.discardUploads) client.discardUploads(sent).catch(() => {});
         }
     }
     // The page was reloaded while a picture was being made: follow the same job and place its result.
@@ -647,12 +656,12 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     try { if (resumeKey != null && globalThis.sessionStorage) store = imageJobStore(resumeKey); } catch { /* no storage */ }
     const session = createImageGenSession({client, store,
         beforeGenerate: query => mounted?.otherUsage.check(query),
-        prepare: async (request, alive) => {
+        prepare: async (request, alive, sender = client) => {
             const context = generationContext(getDoc(), getSelection(), request.mode, request.canvas);
-            const images = request.mode === 'edit' ? [await uploadGenerationReference(renderer, client, context, alive),
-                ...await uploadExtraReferences(client, request.references || [], referencePNG, alive)] : [];
+            const images = request.mode === 'edit' ? [await uploadGenerationReference(renderer, sender, context, alive),
+                ...await uploadExtraReferences(sender, request.references || [], referencePNG, alive)] : [];
             // Only the selected part of the edited picture (the first) is changed.
-            const mask = images.length ? await uploadGenerationMask(renderer, client, context, alive) : null;
+            const mask = images.length ? await uploadGenerationMask(renderer, sender, context, alive) : null;
             return {context: mask ? {...context, region: true} : context, images, mask};
         },
         apply: async (result, context, alive) => {
