@@ -324,6 +324,14 @@ class Sessions:
                     pass  # A closed client loop no longer needs notification.
             return deepcopy(result)
 
+    def finished_step(self, sid, event: dict, *, by) -> dict:
+        """Write work that is already over as one step: it opens and finishes, like every other step."""
+        if not isinstance(event, dict) or event.get('type') != 'step':
+            raise _invalid('/', 'a step event')
+        started = self.append(sid, {k: v for k, v in event.items() if k not in ('id', 'state')} | dict(state='started'),
+                              by=by)
+        return self.append(sid, dict(type='step', id=started['id'], state=event.get('state', 'done')), by=by)
+
     def _events(self, sid, after, limit):
         rows = []
         expected = 1
