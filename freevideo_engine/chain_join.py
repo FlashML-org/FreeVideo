@@ -760,8 +760,11 @@ def _replace_target(root, replace, identity, sources):
 
 
 def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, leads=None, expected_seams=None,
-                 speaking=None, *, original_audio=None, progress=None):
-    """Join relative block outputs into a saved video, replacing only this chain's earlier join."""
+                 speaking=None, *, original_audio=None, progress=None, allow_unrepaired=False, result=None):
+    """Join relative block outputs into a saved video, replacing only this chain's earlier join.
+
+    A join that repaired fewer seams than `expected_seams` raises, unless `allow_unrepaired`: then the seams
+    are joined the ordinary way and named in the report and in `result` (repaired, expected, notes)."""
     import folder_paths
     root = Path(folder_paths.get_output_directory()).resolve()
     sources = []
@@ -794,7 +797,8 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
         joined = join_files(sources, staged, cancelled, frames, leads=kept, expected=expected_seams, speaking=speaking,
                             progress=progress, **({'original_audio': original_audio} if original_audio is not None else {}))
         # The original selection replaces every block's sound, so there are no seam sounds to repair.
-        if original_audio is None and expected_seams is not None and joined['seams_repaired'] < expected_seams:
+        if (original_audio is None and expected_seams is not None and joined['seams_repaired'] < expected_seams
+                and not allow_unrepaired):
             # A seam sound left unrepaired is never reported as a finished video.
             raise ValueError('Only %d of %d seam sounds could be repaired' % (joined['seams_repaired'], expected_seams)
                              + _seam_reasons(joined.get('seam_notes', [])))
@@ -805,6 +809,12 @@ def join_outputs(outputs, identity, cancelled=None, frames=None, replace=None, l
                                       exact_end=joined['exact_end']))
         if expected_seams is not None:
             report['chain_join']['seams_expected'] = expected_seams
+        if allow_unrepaired and original_audio is None:
+            notes = [note for note in joined.get('seam_notes', []) if note.get('step') != 'not_joined']
+            report['chain_join']['seams_unrepaired'] = [dict(seam=note['seam'], step=str(note['step'])) for note in notes]
+        if result is not None:
+            result.update(repaired=joined['seams_repaired'], expected=expected_seams,
+                          notes=[dict(note) for note in joined.get('seam_notes', [])])
         if joined.get('voice') is not None:
             report['chain_join']['voice'] = joined['voice']
         if original_audio is not None:

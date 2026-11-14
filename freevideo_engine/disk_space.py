@@ -154,11 +154,33 @@ if sys.platform == 'darwin':
         count = _getfsstat(records, ctypes.sizeof(records), 2)  # MNT_NOWAIT
         return list(records[:max(0, count)])
 else:
+    def _linux_mount(path):
+        """(filesystem type, mount options) of the mount holding path, from /proc/self/mountinfo."""
+        best = ('', '', 0)
+        try:
+            real = os.path.realpath(path)
+            with open('/proc/self/mountinfo', encoding='utf-8', errors='replace') as handle:
+                for line in handle:
+                    head, _, tail = line.partition(' - ')
+                    fields, rest = head.split(), tail.split()
+                    if len(fields) < 6 or len(rest) < 1:
+                        continue
+                    mount = fields[4].replace('\\040', ' ')
+                    if (real == mount or real.startswith(mount.rstrip('/') + '/')) and len(mount) >= best[2]:
+                        best = (rest[0], fields[5], len(mount))
+        except (OSError, ValueError):
+            pass
+        return best[0], set(best[1].split(','))
+
     def _volume(path):
         usage = shutil.disk_usage(path)
-        return dict(key='fs:%d' % os.stat(path).st_dev, mount=None, name=None, filesystem=None,
+        filesystem, options = _linux_mount(path) if sys.platform.startswith('linux') else ('', set())
+        # Named as macOS does, so one set of checks serves both.
+        filesystem = {'vfat': 'msdos', 'msdos': 'msdos', 'exfat': 'exfat'}.get(filesystem, filesystem or None)
+        return dict(key='fs:%d' % os.stat(path).st_dev, mount=None, name=None, filesystem=filesystem,
                     total_bytes=usage.total, statfs_free_bytes=usage.free, important_free_bytes=None,
-                    free_bytes=usage.free, read_only=False, local=True, hidden=False)
+                    free_bytes=usage.free, read_only=False, local=True, hidden=False,
+                    noexec='noexec' in options)
 
     def _mounts():
         return []
@@ -221,7 +243,7 @@ def disk_key(path):
 
 
 def install_problem(disk):
-    """Why this disk cannot hold an installation ('disconnected', 'read-only', 'fat32' or 'exfat'), or ''."""
+    """Why this disk cannot hold an installation ('disconnected', 'read-only', 'fat32', 'exfat' or 'noexec'), or ''."""
     if disk.get('disconnected'):
         return 'disconnected'
     if disk['read_only']:
@@ -234,6 +256,9 @@ def install_problem(disk):
     # package metadata break importlib.metadata in the environment.
     if disk['filesystem'] == 'exfat':
         return 'exfat'
+    # The Python environment and the engine run from the installation folder.
+    if disk.get('noexec'):
+        return 'noexec'
     return ''
 
 
@@ -244,25 +269,41 @@ def problem(path):
         return ''
 
 
-def problem_messages(paths):
-    """Plan errors for installation folders on disks that cannot hold one (filesystems are read on macOS)."""
+# What a folder that only holds files (models, encoders) can be missing on Linux: files are read, never run, and
+# Linux exFAT stores large files without the links the Python environment needs.
+DATA_FOLDER_PROBLEMS = ('fat32', 'read-only', 'disconnected')
+
+
+def problem_messages(paths, data_paths=()):
+    """Plan errors for installation folders on disks that cannot hold one (filesystems are read on macOS and Linux).
+
+    `data_paths` only hold model files: on Linux they are checked for the problems a file store can have; on macOS
+    every folder gets the same checks."""
     messages, seen = [], set()
-    if sys.platform != 'darwin':
+    if sys.platform != 'darwin' and not sys.platform.startswith('linux'):
         return messages
-    for path in paths:
+    mac = sys.platform == 'darwin'
+    checked = [(path, True) for path in paths] + [(path, mac) for path in data_paths]
+    for path, whole in checked:
         try:
             disk = volume(path)
         except (OSError, ValueError):
             continue
         issue = install_problem(disk)
-        if not issue or disk['key'] in seen:
+        if not issue or issue not in DATA_FOLDER_PROBLEMS and not whole or disk['key'] in seen:
             continue
         seen.add(disk['key'])
         messages.append({
-            'fat32': 'The installation folder is on a FAT32 disk, which stores files up to 4 GB; the text encoder '
-                     'alone is 15.7 GB. Choose a folder on an APFS or Mac OS Extended disk: %s',
-            'exfat': 'The installation folder is on an exFAT disk, where the Python environment cannot work '
-                     '(macOS adds a hidden "._" copy of every file). Choose a folder on an APFS or Mac OS Extended disk: %s',
+            'fat32': ('The installation folder is on a FAT32 disk, which stores files up to 4 GB; the text encoder '
+                      'alone is 15.7 GB. Choose a folder on an APFS or Mac OS Extended disk: %s'
+                      if mac else 'The installation folder is on a disk formatted as FAT32, which stores files up to '
+                                  '4 GB; the text encoder alone is 15.7 GB. Choose a folder on another disk: %s'),
+            'exfat': ('The installation folder is on an exFAT disk, where the Python environment cannot work '
+                      '(macOS adds a hidden "._" copy of every file). Choose a folder on an APFS or Mac OS Extended disk: %s'
+                      if mac else 'The installation folder is on a disk formatted as exFAT, which does not support '
+                                  'the links the Python environment needs. Choose a folder on another disk: %s'),
+            'noexec': 'The installation folder is on a disk that does not allow programs to run from it. '
+                      'Choose a folder on another disk: %s',
             'read-only': 'The installation folder is on a read-only disk. Choose a folder on another disk: %s',
             'disconnected': 'The installation folder is on a disk that is not connected. '
                             'Connect it, or choose another folder: %s'}[issue] % path)

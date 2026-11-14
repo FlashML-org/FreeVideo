@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 from .. import disk_space, model_repair, network, provision
 from ..locking import runtime_lock
 from ..monitoring import save
-from ..failure_details import Redactor, image_pack_error_code, redacted_launcher_error
+from ..failure_details import Redactor, image_pack_busy_lock, image_pack_error_code, redacted_launcher_error
 
 H3_TIERS = ('int8',)
 H3_GROUPS = ('h3-image-core', 'h3-text-encoder') + tuple('h3-image-dit-' + tier for tier in H3_TIERS)
@@ -501,6 +501,39 @@ def downloading(root=None, engine_root=None) -> bool:
 LEASE_WAIT_SECONDS = 1.0
 
 
+def _lease_held(path):
+    """Whether another holder has this lease right now (taken and released at once)."""
+    try:
+        with runtime_lock(path, inherit=False):
+            return False
+    except BlockingIOError:
+        return True
+    except Exception:
+        return False
+
+
+def engine_state(engine_root):
+    """Whether something holds the installation lease that repair and remove need first.
+
+    'running' when the lease is held, 'stopped' when it is free, 'unknown' when it cannot be told.
+    Holding it is not the same as FreeVideo being open: an open, idle FreeVideo does not hold it. It is held
+    while a video or picture is made, while an idle image session waits for the next picture (45 s, up to
+    10 min after mostly pictures), during an installation or update, while the background compile runs and
+    while the prompt model, dubbing or stems run. It asks the same lease those actions take, without
+    waiting and without creating folders, and lets go at once."""
+    if engine_root is None:
+        return 'unknown'
+    try:
+        if not Path(engine_root).is_dir():
+            return 'unknown'
+        with runtime_lock(Path(engine_root) / 'engine.lock', inherit=False):
+            return 'stopped'
+    except BlockingIOError:
+        return 'running'
+    except Exception:
+        return 'unknown'
+
+
 @contextmanager
 def _lease(root, engine_root=None, destructive=False):
     if root is None and engine_root is None:
@@ -527,9 +560,11 @@ def _lease(root, engine_root=None, destructive=False):
                     stack.enter_context(runtime_lock(engine / 'launcher/host-setup.lock', inherit=False))
             stack.enter_context(runtime_lock(folder / 'pack.lock', inherit=False))
             break
-        except BlockingIOError:
+        except BlockingIOError as error:
             stack.close()
             if time.monotonic() >= deadline:
+                # Another pack task holds the pack lease too; a setup or cleanup holds only the others.
+                error.pack_lock_held = _lease_held(folder / 'pack.lock')
                 raise
             time.sleep(0.05)
     with stack:
@@ -962,6 +997,8 @@ class Installer:
                              for row in entries for s in row['sources']], events=events)
         details = {k: v for k, v in getattr(error, 'details', {}).items()
                    if k in ('needed_bytes', 'free_bytes') and type(v) is int}
+        busy_lock = image_pack_busy_lock(error)
+        busy_lock = dict(busy_lock=busy_lock) if busy_lock else {}
         redactor = Redactor()
         # No source lines in stack frames: a caller may have embedded user
         # data in source. Retain filenames, line numbers, functions and the
@@ -983,7 +1020,7 @@ class Installer:
                       summary=dict(request_seconds=max(0, time.monotonic() - self.started) if self.started else 0),
                       request={}, plan=None, stages=[], stage_at_failure=self.value.get('phase', action),
                       error=dict(code=code, **{'class': type(error).__name__}, message=str(error),
-                                 traceback=''.join(stack), details=details), pack=pack,
+                                 traceback=''.join(stack), details=details, **busy_lock), pack=pack,
                       service=dict(video_busy=code == 'busy_video', worker_restarts=0))
         report = json.loads(redactor.data(json.dumps(report).encode('utf-8'), '.json'))
         report_id = uuid.uuid4().hex

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from .long_paths import io_path, resolved, plain, plain_text, plain_data
+from .package_layout import CONTAINERS, layout_name
 import sys
 import threading
 import time
@@ -15,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from . import __version__
 from . import disk_space
 from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, SETUP_WAITS_FOR_JOB, Controller, layout, local_url, loopback_url,
-                                     managed_frontend, new_layout, queue_busy)
+                                     managed_frontend, new_layout, queue_busy, queue_state)
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
@@ -113,6 +114,7 @@ class Session:
     old_versions_retired = None
     archives_busy = False
     action_notice = ''
+    image_engine_probe, image_engine_clicked = None, False
     # The report form opened last: (key, when). The same report is not opened again within REPORT_COOLDOWN.
     report_opened = ('', 0.)
     pending_update = None
@@ -132,10 +134,12 @@ class Session:
         self.importer = Importer()
         self.imported_batch = None
         self.import_retry = None
+        self.offline_review_page = None
         self.source = Path(source or materialize_source())
         self.controller = controller or Controller(self.source)
         self.upgrade = ModelUpgrade(self.source)
         self.model_switch = None
+        self.package_count = (None, 0)
         self.store = store or Store(launcher_root())
         saved = self.store.read()
         home = Path(os.environ.get('USERPROFILE') or os.environ.get('HOME') or launcher_root().parent)
@@ -346,6 +350,11 @@ class Session:
             raise ValueError('Unknown model to install')
         if self.form[key] == value:
             return
+        if self.importer.state.get('status') == 'review':
+            self.importer.state = dict(status='idle', packages=[])
+            self.importer.pending = None
+            if self.offline_review_page is not None:
+                self.page, self.offline_review_page = self.offline_review_page, None
         self.repair_request = None
         self.form[key] = value
         if (key in ('url', 'lan_access') and self.selected and not self.form['new_comfy']
@@ -369,6 +378,18 @@ class Session:
             # A remembered installation's engine belongs to that installation;
             # another location installs into its own FreeVideo-engine.
             self.form['engine'] = os.environ.get('FREEVIDEO_HOME') or ''
+        if ((key == 'destination' and self.form['new_comfy'])
+                or (key == 'comfy' and not self.form['new_comfy'])):
+            # Package paths belong to the chosen installation. Keep unrelated
+            # user libraries, but stop counting the previous location's packs.
+            from .offline_packages import model_packages_at, package_model_dirs
+            old = {io_path(folder) for root in self.form['offline_models'] for folder in package_model_dirs(root)}
+            if self.form['offline_runtime']:
+                old.add(io_path(self.form['offline_runtime']) / 'models')
+            self.form['model_dirs'] = [root for root in self.form['model_dirs'] if io_path(root) not in old]
+            roots = model_packages_at(value)
+            self.form.update(offline_runtime='', offline_models=roots)
+            self.form['model_dirs'] += [str(Path(root) / 'models') for root in roots]
         self.import_retry = None
         self.cleaner.plan = None
         self.cleaner.state = dict(status='idle', bytes=0, error='')
@@ -502,25 +523,49 @@ class Session:
             self.action_notice = 'import_queued'
             return
         self.repair_request = None
-        destination = (Path(plain(resolved(Path(self.form['destination']).expanduser()))) if self.form['new_comfy']
-                       else self.engine_root().parent)
+        installed = self.offline_installation()
+        if installed is not None and layout_name(installed.parent.parent.name) in map(layout_name, CONTAINERS):
+            # Packages imported again go next to the environment they complete,
+            # never inside the installation.
+            destination = installed.parent.parent.parent
+        else:
+            destination = (Path(plain(resolved(Path(self.form['destination']).expanduser()))) if self.form['new_comfy']
+                           else self.engine_root().parent)
         self.importer.start(paths, destination)
         self.import_retry = ('import', list(paths), destination)
         self.imported_batch = None
         self.error = ''
 
-    def prepare_offline(self):
-        """Models from imported packages, or downloaded into the imported environment.
+    def offline_installation(self):
+        """The assembled offline installation selected now, or None.
 
-        Imported model packages are always used; the download is for an
-        environment imported without any.
+        Once it has run, the setup form names its ComfyUI as an existing one; a
+        package imported for it still goes through offline assembly and review.
         """
+        runtime = self.form['offline_runtime']
+        if not runtime:
+            return None
+        try:
+            runtime = Path(plain(resolved(Path(runtime).expanduser())))
+            if not (io_path(runtime) / 'portable.json').is_file():
+                return None
+            self.engine_root().relative_to(runtime)
+        except (OSError, ValueError):
+            return None
+        return runtime
+
+    def prepare_offline(self):
+        """Reuse installed models, packages and libraries before filling gaps."""
         if self.archives_busy:
             return
+        libraries = dict(model_dirs=list(self.form['model_dirs'])) if self.form['model_dirs'] else {}
         if self.form['model_method'] == 'auto' and not self.form['offline_models']:
-            self.importer.download(self.form['offline_runtime'], self.source, False)
+            self.importer.download(self.form['offline_runtime'], self.source, False, **libraries)
         else:
-            self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source)
+            options = dict(libraries)
+            if self.form['model_method'] == 'auto':
+                options.update(download_missing=True, sampling_caches=False)
+            self.importer.prepare(self.form['offline_runtime'], self.form['offline_models'], self.source, **options)
 
     def installed_machine(self):
         """machine.json of the installation this form points at; empty before one is ready."""
@@ -640,8 +685,23 @@ class Session:
                 self.controller.cancel()
             return
         self.error = ''
+        if name == 'primary' and self.importer.state.get('status') == 'review':
+            if not accepted:
+                return  # The button stays disabled until the plan is accepted.
+            self.importer.confirm()
+            self.imported_batch = None
+            self.started = time.monotonic()
+            return
         if name in ('setup', 'launcher', 'launch', 'update-engine'):
             self.repair_request = None
+        if name in ('setup', 'launcher', 'back') and self.importer.state.get('status') == 'review':
+            self.importer.state = dict(status='idle', packages=[])
+            self.importer.pending = None
+            if self.offline_review_page is not None:
+                self.page, self.offline_review_page = self.offline_review_page, None
+        if name in ('setup', 'launcher', 'back', 'repair'):
+            # Leaving a failed assembly too: the progress page is the installer's again.
+            self.offline_review_page = None
         if name == 'repair':
             # One click instead of Settings › repair switch › Installation › Check:
             # plan a repair of this installation. The review installs it, and
@@ -739,7 +799,7 @@ class Session:
         if name not in ('primary', 'launch'):
             return
         state = self.controller.state.get('status')
-        if (self.page == 'models' and self.form['new_comfy']
+        if (self.page == 'models' and (self.form['new_comfy'] or self.offline_installation() is not None)
                 and self.form['environment_method'] == 'manual' and self.form['offline_runtime']):
             self.import_retry = ('prepare',)
             self.prepare_offline()
@@ -802,9 +862,17 @@ class Session:
         except (OSError, TypeError, ValueError):
             return False
 
+    def offline_page(self):
+        """The progress page shows the offline import: its review, then its assembly."""
+        return self.page == 'progress' and (self.offline_review_page is not None
+                                            or self.importer.state.get('status') == 'review')
+
     def retry_kind(self):
         if self.importer.state.get('status') == 'error' and self.import_retry:
             return self.import_retry[0]
+        if self.offline_page():
+            # What the idle installer last did, such as a failed start, is not this page's failure.
+            return ''
         row = self.controller.state
         if self.page == 'progress' and row.get('status') == 'review' and row.get('errors'):
             return 'check'
@@ -841,6 +909,19 @@ class Session:
             vram = None
         return 'h3-image:' + image_pack.default_tier(vram)
 
+    def _image_engine_state(self, engine, fresh=False):
+        """'running' (a task holds the engine lease) | 'stopped' | 'unknown' for the lease Repair and Remove need; read again after two seconds."""
+        from .image_gen import image_pack
+        now = time.monotonic()
+        probe = self.image_engine_probe
+        if not fresh and probe and probe[0] == engine and now - probe[1] < 2:
+            return probe[2]
+        state = image_pack.engine_state(engine)
+        self.image_engine_probe = (engine, now, state)
+        if state != 'running':
+            self.image_engine_clicked = False
+        return state
+
     def image_pack_action(self, action):
         from .image_gen import image_pack
         # "h3:install" acts on MiniMax H3 Image, a plain action on the image model that was there before.
@@ -856,6 +937,10 @@ class Session:
                 or self.updater and self.updater.busy):
             return
         root, engine = self._image_location()
+        # Repair and Remove need the engine lease, which a task (or the idle image session) holds; say why instead of failing a second later.
+        if action in ('repair', 'remove') and self._image_engine_state(engine, fresh=True) == 'running':
+            self.image_engine_clicked = True
+            return
         # Both packs share one lease and one disk: one download at a time.
         if any(item and item.busy for item in (self.image_installer, self.h3_installer)):
             return
@@ -873,6 +958,18 @@ class Session:
         """Whether the opened ComfyUI is running or holding a job (read from the download thread)."""
         url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
         return queue_busy(url)
+
+    def close_choice(self):
+        """What closing the window asks about the ComfyUI this launcher started.
+
+        '' when there is nothing to keep (none running, or one started elsewhere, which is never stopped),
+        'running' when it is up, 'generating' when it is also making a video. Read when the window is closed,
+        so the queue is asked directly rather than taken from the cached poll; an unreadable queue counts as busy."""
+        owns = getattr(self.controller, 'owns_server', None)
+        if not callable(owns) or owns() is not True:
+            return ''
+        url = (self.controller.selection or self.selected or {}).get('url') or self.form['url']
+        return 'running' if queue_state(url, timeout=1) == 'idle' else 'generating'
 
     def image_disk_fits(self, total):
         """Whether the disk the image model downloads to has room for it, by the margin that
@@ -910,7 +1007,8 @@ class Session:
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
                         title=self.t(*title), detail=self.t('Not installed', '未安装'),
-                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None)
+                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None,
+                        engine_state='unknown', engine_note='', engine_clicked=False)
         root, engine = self._image_location()
         try:
             value = image_pack.status(root, group=group)
@@ -947,10 +1045,17 @@ class Session:
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
                    or self.closing or self.engine_updating or self.update_intent or self.upgrade.active or self.model_switch
                    or self.updater and self.updater.busy)
+        # Only a card that offers Repair or Remove asks whether FreeVideo is running.
+        offers = not busy and (removable > 0 or repairable and value.get('downloaded_bytes', 0) > 0)
+        engine_state = self._image_engine_state(engine) if offers else 'unknown'
+        running = engine_state == 'running'
         return dict(value, visible=bool(self.installation_engine()), title=self.t(*title),
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
-                    repairable=repairable, failure=failure, report_id=active.get('report_id'))
+                    repairable=repairable, failure=failure, report_id=active.get('report_id'),
+                    engine_state=engine_state,
+                    engine_note=image_pack_failure('busy_engine', zh=self.language.startswith('zh'))['detail'] if running else '',
+                    engine_clicked=running and self.image_engine_clicked)
 
     def image_pack_report(self):
         if self.image_installer:
@@ -1260,14 +1365,16 @@ class Session:
         return redacted_launcher_error(plain_text(raw.decode('utf-8-sig', errors='replace')),
                                        [(self.token, '<REDACTED>')] if self.token else [])
 
-    def _raw_error(self):
+    def _raw_error(self, *, installer=True):
         row = self.controller.state
-        errors = [self.error, self.browser_error, self.page_error, row.get('error', ''), *row.get('errors', [])]
+        errors = [self.error, self.browser_error, self.page_error]
         shortcut = row.get('shortcut') or {}
-        if shortcut.get('status') == 'failed':
-            errors.append(shortcut.get('error_zh' if self.language.startswith('zh') else 'error') or shortcut.get('error', ''))
+        if installer:
+            errors += [row.get('error', ''), *row.get('errors', [])]
+            if shortcut.get('status') == 'failed':
+                errors.append(shortcut.get('error_zh' if self.language.startswith('zh') else 'error') or shortcut.get('error', ''))
         message = plain_text('\n'.join(str(e) for e in errors if e))
-        if row.get('error') and row.get('denied'):
+        if installer and row.get('error') and row.get('denied'):
             from .denied_access import text
             from .failure_details import launcher_failure
             # Windows words many refusals alike and often names no file; where it happened travels with the message.
@@ -1925,7 +2032,9 @@ class Session:
                     roots = self.form['offline_models']
                     if package['root'] not in roots:
                         self.form['offline_models'] = roots + [package['root']]
-                        self.add_folder(str(Path(package['root']) / 'models'))
+                    from .offline_packages import package_model_dirs
+                    for folder in package_model_dirs(package['root']):
+                        self.add_folder(folder)
             if imported.get('packages'):
                 self.edit('model_method', 'manual')
                 self.persist()
@@ -1936,8 +2045,15 @@ class Session:
             if imported['status'] == 'error':
                 self.import_retry = retry
                 self.error = imported['error']
+            elif imported['status'] == 'review':
+                if self.offline_review_page is None:
+                    self.offline_review_page = self.page
+                self.page = 'progress'
             elif imported['status'] == 'prepared':
+                self.offline_review_page = None
                 self.activate_offline(imported['ready_root'])
+            elif imported['status'] == 'complete' and self.offline_review_page is not None:
+                self.page, self.offline_review_page = self.offline_review_page, None
 
         self.start_image_model_after_install()
         row = self.controller.state
@@ -2339,8 +2455,25 @@ class Session:
         self.report_opened = (key, time.monotonic())
         return True
 
+    def offline_model_count(self):
+        """Usable model packages, counted again only when something that changes the count did.
+
+        Counting checks every file an installed runtime lists, hundreds of them, and the
+        snapshot is read several times a second: counting on each read kept the window
+        busy, so controls timed out.
+        """
+        batch, cleanup = self.importer.state, self.cleaner.state
+        key = (self.form['offline_runtime'], tuple(self.form['offline_models']),
+               self.importer.busy, batch.get('status'), batch.get('ready_root'), len(batch.get('packages', ())),
+               self.cleaner.busy, cleanup.get('status'), cleanup.get('bytes'),
+               bool(self.upgrade.active), bool(self.model_switch))
+        if self.package_count[0] != key:
+            from .offline_packages import model_package_count
+            self.package_count = (key, model_package_count(self.form['offline_runtime'], self.form['offline_models']))
+        return self.package_count[1]
+
     def snapshot(self):
-        from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error, display_launcher_error
+        from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error, display_launcher_error, model_mismatch_package
         from .launcher_copy import display, progress_view, source_name
         zh = self.language.startswith('zh')
         row = self.controller.state
@@ -2353,6 +2486,10 @@ class Session:
         port_from = int(row['moved_from']) if row.get('status') == 'open' and 'moved_from' in row else 0
         port_to = (urlsplit(row.get('selection', {}).get('url') or row['url']).port or 80) if port_from else 0
         progress = progress_view(task.get('progress') or {}, zh)
+        offline_review = self.importer.state.get('status') == 'review'
+        offline_progress = self.page == 'progress' and self.offline_review_page is not None
+        if offline_progress:
+            progress = progress_view(self.importer.state, zh)
         overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
         if self.importer.busy:
             # The sidebar's Working card follows the offline import, not the idle installer.
@@ -2360,7 +2497,7 @@ class Session:
             if state.get('status') == 'downloading':
                 label = self.t('Downloading models', '下载模型')
             elif state.get('status') == 'preparing':
-                label = self.t('Checking packages', '检查配套包')
+                label = self.t('Checking offline packages', '检查离线包')
             else:
                 label = self.t('Importing offline packages', '导入离线包')
                 if (state.get('count') or 0) > 1:
@@ -2369,7 +2506,8 @@ class Session:
                     label += ' · ' + display(state['detail'], zh)
             overall = dict(label=label, done=state.get('done'), total=state.get('total'))
         shortcut = row.get('shortcut') or {}
-        raw_error = self._raw_error()
+        # The offline import reports through self.error; what the idle installer last reported stays off its page.
+        raw_error = self._raw_error(installer=not self.offline_page())
         error = redacted_launcher_error(raw_error,
                                         [(self.token, '<REDACTED>')] if self.token else [])
         by_id = {r['id']: r for r in self.model_groups}
@@ -2379,19 +2517,34 @@ class Session:
                   'pending': ('Download needed', '需要下载'), 'replace': ('Needs replacing', '需要替换'),
                   'queued': ('Waiting to download', '等待下载'), 'downloading': ('Downloading', '正在下载'),
                   'verifying': ('Downloaded; verifying', '已下载，正在校验'),
-                  'paused': ('Paused', '已暂停')}
+                  'paused': ('Paused', '已暂停'),
+                  'offline-replace': ('Will be replaced with the version from the offline package', '换成离线包里的版本'),
+                  'installed': ('Installed; no change needed', '已安装，无需改动')}
         review = row.get('status') == 'review'
         # The model files are checked once the environment is installed; until their step
         # reports, say that instead of a bare "waiting".
         before_models = (row.get('action') == 'install' and row.get('status') == 'running'
                          and not (row.get('task', {}).get('model_groups') or row.get('model_groups')))
+        # Offline review names its groups from the review itself: the group whose file is
+        # replaced, and in an installed offline copy the groups that stay as they are.
+        replaced = set()
+        if offline_review:
+            from .offline_packages import pack_title
+            zh_names = {chinese: key for key, (_, chinese) in NAMES.items()}
+            replaced = {zh_names.get(pack_title(str(entry.get('path', '')), zh=True).split('（', 1)[0])
+                        for entry in self.importer.state.get('replace_models', [])}
+        kept = offline_review and self.offline_installation() is not None
         for name in FAMILIES:
             if name == 'image' and name not in by_id:
                 continue  # Optional weights have their own receipt; video ready cannot make them ready.
             if name == 'sampling' and name not in by_id and not self.form['sampling_caches']:
                 continue
+            if offline_review and name == 'sampling' and name not in replaced:
+                continue
             item = dict(by_id.get(name, {}))
             state = 'ready' if ready and name != 'image' else item.get('state', 'waiting')
+            if offline_review and (name in replaced or kept):
+                state = 'offline-replace' if name in replaced else 'installed'
             if state == 'pending':
                 # Part of the group is ready; the rest (often small config files) waits for a download slot.
                 state = 'queued'
@@ -2410,7 +2563,7 @@ class Session:
                 shown = ('Checked after setup', '安装环境后检查')
             else:
                 shown = states.get(state, states['waiting'])
-            models.append(dict(id=name, title=self.t(*NAMES[name]), state=state,
+            models.append(dict(id=name, title=self.t(*NAMES[name]), state=state, links=not offline_review,
                 detail=self.t(*shown), done=done, total=total,
                 found=item.get('existing_bytes', 0), download=item.get('download_bytes', 0),
                 rate='%.1f MiB/s' % (item['bytes_per_second']/2**20) if item.get('bytes_per_second') else ''))
@@ -2476,7 +2629,8 @@ class Session:
         source = preferences['source']
         plan = row.get('plan', {})
         from .model_repair import review_lines
-        replace_models = review_lines(plan.get('replace_models', []), zh=zh)
+        replace_models = review_lines(self.importer.state.get('replace_models', []) if offline_review else
+                                     plan.get('replace_models', []), zh=zh, offline=offline_review)
         estimate = []
         if plan.get('disk_mode') == 'extreme':
             estimate.append(self.t('Space saver (automatic)', '极限省空间（自动启用）'))
@@ -2505,7 +2659,8 @@ class Session:
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
         failure = launcher_failure(error, zh=self.language.startswith('zh'), can_repair=self.can_repair(),
-                                   repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable())
+                                   repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable(),
+                                   model_package=model_mismatch_package(raw_error, zh))
         if failure.get('kind') == 'gpu-driver-missing':
             from .display_adapters import adapters, line, only_other_vendors
             zh = self.language.startswith('zh')
@@ -2574,7 +2729,8 @@ class Session:
             model_choice=self.model_choice(), image_only=self.image_only_choice(),
             image_installed=self.installed_machine().get('video_model') is False,
             video_missing=self.page == 'launcher' and self.video_missing(), can_add_video=self.can_repair(),
-            page=self.page, status=row.get('status', 'idle'), busy=busy, working=working,
+            page=self.page, status=('review' if offline_review else self.importer.state['status'] if offline_progress
+                                    else row.get('status', 'idle')), busy=busy, working=working,
             action_notice=self.t(*ACTION_COPY[self.action_notice]) if self.action_notice else '',
             setup_pending=bool(self.pending_action) or self.setup_job_wait, setup_job_wait=self.setup_job_wait,
             setup_wait_text=self.t(*ACTION_COPY['setup_job' if self.setup_job_wait else 'setup_queued']),
@@ -2584,7 +2740,7 @@ class Session:
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=len(self.form['offline_models']), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
+                models=self.offline_model_count(), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
                                            and not self.form['offline_runtime'], zh)),
             video_model_guide=video_instructions(zh),
             adaln_dialog=self.adaln_dialog_view(error, update),
@@ -2624,7 +2780,8 @@ class Session:
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
             update=update, engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),
-            review_id=row.get('plan', {}).get('plan_id', ''),
+            review_id=json.dumps(self.importer.state.get('replace_models', []), sort_keys=True) if offline_review else
+                      row.get('plan', {}).get('plan_id', ''),
             consent=self.t('I accept the installation plan and model / toolkit licenses.', '我同意安装计划及模型／工具包许可证。'),
             licenses=self.licenses(row), portable=False, needs_consent=bool(getattr(self.controller, 'fixed_environment', False) is True
                 and not (io_path(self.controller.root) / 'engine/portable-consent.json').exists()),

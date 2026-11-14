@@ -406,9 +406,12 @@ def generate(request, resident=None):
                                    latent_save_seconds=time.perf_counter() - tick, sampling_checkpoint_complete=True)
                     # The final latents supersede this attempt's retained first pass.
                     (artifacts / 'refine-input.pt').unlink(missing_ok=True)
+                    (artifacts / 'refine-progress.pt').unlink(missing_ok=True)
                 sample_finalize_phase('offload_release')
             try:
                 sampling_plan = request.get('sampling_plan', {})
+                resumed_progress = None
+                refine_identity = None
                 if sampling_plan.get('enabled'):
                     from .two_pass import upscale_workspace, crop_latents
                     from .two_pass_metrics import combine
@@ -431,6 +434,14 @@ def generate(request, resident=None):
                         latents, audio = latents.to('cuda'), audio.to('cuda')
                         metrics.update(reused, sampling_passes=[first], latent_upscale=lifted,
                                        first_pass_load_seconds=time.perf_counter() - tick)
+                        if request['resume_refine'].get('progress') and sampling_plan.get('refine_schedule'):
+                            # The failed attempt had finished some refinement steps: continue after them.
+                            from .decode_resume import load_refine_progress
+                            _, channels, frames_, rows_h, rows_w = latents.shape
+                            resumed_progress = load_refine_progress(request, torch, request['resume_refine'],
+                                (frames_ * (rows_h // 2) * (rows_w // 2), channels * 4))
+                            if resumed_progress is None:
+                                metrics['refine_resume'] = dict(steps_reused=0, reason='progress_not_usable')
                         print(json.dumps(dict(event='first_pass_reused', source_attempt=reused['first_pass_source_attempt'],
                                               completed_steps=sampling_plan['base_steps'],
                                               total=sampling_plan['total_steps'])), flush=True)
@@ -577,7 +588,7 @@ def generate(request, resident=None):
                                 # retry starts there. A failed save only loses that.
                                 try:
                                     from .decode_resume import refine_provenance, save_refine_input
-                                    provenance = refine_provenance(request)
+                                    provenance = refine_identity = refine_provenance(request)
                                     save_refine_input({'video': latents.cpu(), 'audio': audio.cpu(), 'seed': request['seed'],
                                                        'geometry': canvas, 'refine_provenance': provenance,
                                                        **({'continuation_first': first_tail} if first_tail is not None else {})}, artifacts, torch)
@@ -593,7 +604,13 @@ def generate(request, resident=None):
                     else:
                         metrics['sample_stage'] = 'refine'
                         save(request['metrics'], metrics)
+                        carried = resumed_progress[2] if resumed_progress is not None else []
                         def refined(receipt):
+                            if carried:
+                                # Steps finished before the interruption belong to the failed attempt; the
+                                # pass still reports all of its steps and their seconds.
+                                receipt = dict(receipt, step_seconds=carried + list(receipt['step_seconds']),
+                                               sample_seconds=receipt['sample_seconds'] + sum(carried))
                             result = combine(first, receipt, lifted, sampling_plan)
                             if request.get('resume_first_pass'):
                                 # This request sampled only the refinement; the
@@ -626,8 +643,31 @@ def generate(request, resident=None):
                                 metrics['refinement_head_planning'] = dict(planned_head_chunk=4, head_chunk=2,
                                     allocator_limit_bytes=limit, head4_need_bytes=head_need)
                                 save(request['metrics'], metrics)
+                        refine_options = {}
+                        if sampling_plan.get('refine_schedule'):
+                            if resumed_progress is not None:
+                                refine_options['refine_resume'] = dict(step=resumed_progress[0], rows=resumed_progress[1])
+                                metrics['refine_resume'] = dict(steps_reused=resumed_progress[0], source='progress',
+                                    scope='Seconds of the reused steps belong to the failed attempt that ran them.')
+                                print(json.dumps(dict(event='refine_resumed', completed_steps=sampling_plan['base_steps'] + resumed_progress[0],
+                                                      total=sampling_plan['total_steps'])), flush=True)
+                            if artifacts:
+                                def refine_checkpoint(done, rows, seconds):
+                                    # A failed save only loses this retry's shortcut, never the request.
+                                    nonlocal refine_identity
+                                    try:
+                                        from .decode_resume import refine_provenance, save_refine_progress
+                                        if refine_identity is None:
+                                            refine_identity = refine_provenance(request)
+                                        save_refine_progress({'video': rows, 'step': done, 'step_seconds': carried + list(seconds),
+                                                              'seed': restart_seed, 'geometry': canvas,
+                                                              'refine_provenance': refine_identity}, artifacts, torch)
+                                    except (OSError, RuntimeError, ValueError) as error:
+                                        metrics['refine_progress_error'] = str(error)
+                                refine_options['refine_checkpoint'] = refine_checkpoint
                         latents, audio, second = engine.sample(request['conditioning'], restart_seed,
                             **({'continuation': final_context} if final_context is not None else {}),
+                            **refine_options,
                             **sampling_plan['second'], initial_latents=(latents, audio), refine_steps=sampling_plan['refine_steps'],
                             refine_schedule=sampling_plan.get('refine_schedule'),
                             compute_options=second_compute,
@@ -742,13 +782,15 @@ def generate(request, resident=None):
                         raise
                     metrics['first_sound_kept'] = dict(saved=False, error=type(error).__name__)
             try:
-                from .continuation_store import save as save_continuation
+                from .continuation_store import save_with_retry as save_continuation
                 metrics['continuation_store'] = dict(save_continuation(request['output'], continuation_data), saved=True)
                 if continuation is not None and 'audio_lead_in' in continuation_data:
                     from .continuation import LEAD_IN_SAMPLES
                     metrics['continuation']['audio_lead_in_samples'] = LEAD_IN_SAMPLES
             except Exception as error:
                 tail_failure(error)
+                if getattr(error, 'freevideo_retried', False) and isinstance(metrics.get('continuation_store'), dict):
+                    metrics['continuation_store']['retried'] = True
         elif continuable:
             metrics.setdefault('continuation_store', dict(saved=False, reason='checkpoint_missing'))
         if resume and artifacts:

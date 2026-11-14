@@ -1223,7 +1223,7 @@ def _run(args):
                 paths = [destination] + [destination.with_suffix('.engine.' + ext)
                          for ext in ('json','log','memory.json','gpu.json','gpu.csv')]
                 paths.append(destination.with_suffix('.sampling-memory.json'))
-                paths += [artifacts/name for name in ('latents.pt','refine-input.pt','rgb.npy','audio.npy','audio.wav','video.json')]
+                paths += [artifacts/name for name in ('latents.pt','refine-input.pt','refine-progress.pt','rgb.npy','audio.npy','audio.wav','video.json')]
                 for path in paths:
                     if path.exists():
                         path.rename(retained / path.name)
@@ -1263,6 +1263,16 @@ def _run(args):
                             resume_refine = dict(input=str(source), metrics=str(sample_metrics),
                                                  request=str(retained / 'video.json'))
                     except (OSError, ValueError, TypeError):
+                        pass
+                # Refinement steps a failed attempt finished are kept too; a later
+                # attempt that got further replaces the pointer. The worker verifies
+                # the file against this request and otherwise repeats the pass.
+                if resume_decode is None and resume_refine is not None:
+                    progress = retained / 'refine-progress.pt'
+                    try:
+                        if progress.is_file() and progress.stat().st_size > 0:
+                            resume_refine['progress'] = str(progress)
+                    except OSError:
                         pass
                 return str(retained)
             def retry(index, row, selected, decision):

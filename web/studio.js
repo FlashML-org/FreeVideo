@@ -56,7 +56,7 @@ import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
-import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261019-words';
+import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261113-connection';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow, partsNeedTwoPassText } from './audio_original.js';
 import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';

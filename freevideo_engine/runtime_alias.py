@@ -72,6 +72,7 @@ _LIST_DIRECTORY = 0x1
 _DELETE = 0x10000
 _GENERIC_WRITE = 0x40000000
 _SHARE_READ = 1
+_SHARE_WRITE = 2
 _OPEN_EXISTING = 3
 _OPEN_REPARSE = 0x00200000
 _BACKUP_SEMANTICS = 0x02000000
@@ -308,13 +309,19 @@ class _Backend:
             api.CloseHandle(mutex)
 
     @contextmanager
-    def parent(self, path):
+    def parent(self, path, writers=False):
         api = _win_api()
         # Do not follow FV. Deny writes/deletion while using its children, so
         # FV cannot be renamed or converted to a redirect after the check.
         # Attribute-only access is exempt from share checks. Include directory
         # read access so this handle really excludes other writers/deleters.
-        handle = api.open(self.io(path), _READ_ATTRIBUTES | _LIST_DIRECTORY, share=_SHARE_READ)
+        # A caller that renames its own files into this directory sets
+        # writers: Windows opens the target directory for write to do that, so
+        # a handle that refuses write sharing makes the caller's own rename
+        # fail. Delete sharing stays refused, so the directory itself cannot be
+        # renamed or removed while it is held.
+        share = _SHARE_READ | (_SHARE_WRITE if writers else 0)
+        handle = api.open(self.io(path), _READ_ATTRIBUTES | _LIST_DIRECTORY, share=share)
         try:
             attributes = api.info(handle).attributes
             if not attributes & _DIRECTORY or attributes & _REPARSE:

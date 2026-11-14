@@ -15,6 +15,64 @@ SHORT_SECONDS = 3.
 OVERSAMPLE = 4
 
 
+# The 4x interpolation filter, scipy.signal.firwin(81, 1/4, window=('kaiser', 5.0)) * 4 (SciPy 1.18.1), first half and
+# centre; the second half mirrors it exactly. Kept as numbers so exports do not need SciPy, and checked against SciPy
+# by the tests.
+_HALF = (
+    -1.4319646207876959e-18, -0.001130597579184462, -0.0021031678617178763,
+    -0.0019016679348927714, 3.709041094023897e-18, 0.002926514108961888,
+    0.005018530923471822, 0.004252319066855107, -6.989122304361602e-18,
+    -0.005932051843783716, -0.009790833971198894, -0.008026125461265495,
+    1.1214237028997423e-17, 0.010605090076805452, 0.017115155028976117,
+    0.013753959070631754, -1.6183952382363033e-17, -0.017579165251157446,
+    -0.027983277010958117, -0.02221988556769976, 2.1564830647503023e-17,
+    0.02786691635952088, 0.044051484099836266, 0.034795254750361125,
+    -2.6922559134588193e-17, -0.04342308644211485, -0.06868853498568138,
+    -0.05442549106878252, 3.1772982945983186e-17, 0.06897233879817498,
+    0.11058973007292547, 0.08928334853204617, -3.564465655764782e-17,
+    -0.12013435015454692, -0.20188442282305535, -0.17397774297154053,
+    3.8143133424221195e-17, 0.2965428196043752, 0.6334760868798734,
+    0.8996325710102085, 1.000636565089112,
+)
+OVERSAMPLE_TAPS = np.array(_HALF + _HALF[-2::-1])
+
+
+REACH = (OVERSAMPLE_TAPS.size - 1) // 2 // OVERSAMPLE  # input samples the filter looks ahead and behind
+BLOCK = 4096  # input samples per pass: small enough to stay in the processor cache
+
+
+def _interpolate(samples):
+    channels, size = samples.shape
+    out = np.empty((channels, size * OVERSAMPLE))
+    for phase in range(OVERSAMPLE):
+        total = np.zeros((channels, size))
+        for j in range((OVERSAMPLE_TAPS.size - 1 - phase) // OVERSAMPLE, -1, -1):
+            shift = REACH - j
+            low, high = max(0, -shift), min(size, size - shift)
+            if low < high:
+                total[:, low:high] += OVERSAMPLE_TAPS[phase + OVERSAMPLE * j] * samples[:, low + shift:high + shift]
+        out[:, phase::OVERSAMPLE] = total
+    return out
+
+
+def oversample(samples):
+    """4x interpolation of planar float64 audio, the same values SciPy's `resample_poly(samples, 4, 1, axis=1)` gives.
+
+    Each output is the sum of its filter taps in descending tap order, which is the order SciPy adds them in, so the
+    result matches it bit for bit; only the taps that meet a sample are added (the others would add zero). Blocks
+    carry the neighbouring samples the filter reaches, so the join between two blocks is the same as inside one."""
+    channels, size = samples.shape
+    if size <= BLOCK:
+        return _interpolate(samples)
+    out = np.empty((channels, size * OVERSAMPLE))
+    for start in range(0, size, BLOCK):
+        end = min(size, start + BLOCK)
+        low, high = max(0, start - REACH), min(size, end + REACH)
+        block = _interpolate(samples[:, low:high])
+        out[:, start * OVERSAMPLE:end * OVERSAMPLE] = block[:, (start - low) * OVERSAMPLE:(end - low) * OVERSAMPLE]
+    return out
+
+
 def _k_filters(rate):
     """The two K-weighting stages (high shelf, then high pass) for any sample rate, as (b, a) pairs."""
     # Bilinear form of the BS.1770 prototypes (as in libebur128), which reproduces the 48 kHz table exactly.
@@ -76,11 +134,10 @@ def short_term(samples, rate, step=STEP_SECONDS):
 
 def true_peak(samples, rate):
     """Highest absolute sample after 4x oversampling, in dBTP (-inf for silence)."""
-    resample_poly = scipy_module('scipy.signal').resample_poly
     samples = _planar(samples)
     if not samples.size:
         return -math.inf
-    peak = float(np.max(np.abs(resample_poly(samples, OVERSAMPLE, 1, axis=1))))
+    peak = float(np.max(np.abs(oversample(samples))))
     return 20 * math.log10(peak) if peak > 0 else -math.inf
 
 
@@ -106,13 +163,12 @@ class Limiter:
 
     def _measure(self, final):
         """Extend `required` (the gain each pending sample needs on its own) as far as the filter context allows."""
-        resample_poly = scipy_module('scipy.signal').resample_poly
         start, size, edge = self.required.size, self.pending.shape[1], self.CONTEXT
         end = size if final else size - edge
         if end <= start:
             return
         context = np.concatenate([self.past, self.pending], axis=1)[:, start:end + 2 * edge]
-        up = np.abs(resample_poly(context, OVERSAMPLE, 1, axis=1)).max(axis=0)
+        up = np.abs(oversample(context)).max(axis=0)
         up = np.pad(up, (0, max(0, (end - start + edge) * OVERSAMPLE - up.size)))
         peaks = up[edge * OVERSAMPLE:(end - start + edge) * OVERSAMPLE].reshape(end - start, OVERSAMPLE).max(axis=1)
         peaks = np.maximum(peaks, np.abs(self.pending[:, start:end]).max(axis=0))

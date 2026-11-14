@@ -29,6 +29,8 @@ IMAGE_PACK_FAILURES = {
     'write_failed': ('The image model files are in use or cannot be written or deleted.', '图像模型文件被占用，或无法写入／删除。'),
     'invalid_catalog': ('The image model package version is incompatible; update FreeVideo and try again.', '图像模型包版本不匹配，请更新 FreeVideo 后重试。'),
     'busy': ('Another task is using the image model package; try again when it finishes.', '图像模型包被其他任务占用，完成后再试。'),
+    'busy_engine': ('FreeVideo is busy with a task or keeping the image model ready, so the image model cannot be repaired or removed now. Wait for it to finish, or close FreeVideo, then try again.', 'FreeVideo 正在执行任务或保持图像模型就绪，暂时无法修复或删除图像模型。请等待其结束，或关闭 FreeVideo 后再试。'),
+    'busy_setup': ('FreeVideo is being installed, updated or cleaned up; try again when it finishes.', 'FreeVideo 正在安装、更新或清理，完成后再试。'),
     'busy_video': ('A video is using the graphics card; try again when it finishes.', '视频正在使用显卡，完成后再试。'),
     'needs_repair': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'changed': ('The image model files changed during the check; they were kept, so check again.', '图像模型文件在检查期间发生变化，已保留，请重新检查。'),
@@ -37,12 +39,44 @@ IMAGE_PACK_FAILURES = {
 }
 
 
+def _busy_chain(error):
+    """The exceptions of one failure, innermost last, without looping."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+
+
+def image_pack_busy_lock(error):
+    """Name, wait and holders of the lease a pack action was refused, else {}."""
+    from .locking import busy_lock_details
+    for item in _busy_chain(error):
+        if getattr(item, 'busy_lock_path', None) is not None:
+            return busy_lock_details(item)
+    return {}
+
+
+def _busy_reason(error):
+    """Say what held the lease: an engine task (a generation, an idle image session, a background compile), a setup or cleanup, or another pack action."""
+    for item in _busy_chain(error):
+        path = getattr(item, 'busy_lock_path', None)
+        if path is not None:
+            if getattr(item, 'pack_lock_held', False):
+                return 'busy'
+            return {'engine.lock': 'busy_engine', 'setup.lock': 'busy_setup',
+                    'host-setup.lock': 'busy_setup'}.get(Path(path).name, 'busy')
+    return 'busy'
+
+
 def image_pack_error_code(error):
     """Keep specific pack reasons and OS causes through wrapper exceptions."""
     seen = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
         reason = getattr(error, 'reason', None)
+        if reason == 'busy':
+            return _busy_reason(error)
         if reason in IMAGE_PACK_FAILURES and reason != 'failed':
             return reason
         if isinstance(error, OSError):
@@ -52,7 +86,7 @@ def image_pack_error_code(error):
                     or getattr(error, 'winerror', None) in (5, 32, 33)):
                 return 'write_failed'
             if isinstance(error, BlockingIOError):
-                return 'busy'
+                return _busy_reason(error)
             if isinstance(error, (ConnectionError, TimeoutError)):
                 return 'offline'
         error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
@@ -249,7 +283,7 @@ PLACE_RULES = (
      ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
      ("It is formatted as exFAT, where FreeVideo's Python environment does not work. "
       'Choose a folder on an APFS or Mac OS Extended disk.',
-      '它不能安装 FreeVideo。'
+      '它是 exFAT 格式，FreeVideo 的运行环境无法在上面工作。'
       '请选择其他硬盘上的文件夹。')),
     (r'The installation folder is on a disk that does not support file links', 'disk-format',
      ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
@@ -257,6 +291,22 @@ PLACE_RULES = (
       "Choose a folder on the Mac's built-in disk.",
       '它不能安装 FreeVideo。'
       '请选择 Mac 内置硬盘上的文件夹。')),
+    (r'The installation folder is on a disk formatted as FAT32', 'disk-format',
+     ('This disk cannot hold the models', '这块硬盘放不下模型'),
+     ('It is formatted as FAT32, which stores files up to 4 GB; the prompt model alone is 15.7 GB. '
+      'Choose a folder on another disk.',
+      '它不能存放 4 GB 以上的文件。'
+      '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk formatted as exFAT', 'disk-format',
+     ('This disk cannot hold the FreeVideo environment', '这块硬盘装不了 FreeVideo 的运行环境'),
+     ("It is formatted as exFAT, where FreeVideo's Python environment does not work. "
+      'Choose a folder on another disk.',
+      '它是 exFAT 格式，FreeVideo 的运行环境无法在上面工作。'
+      '请选择其他硬盘上的文件夹。')),
+    (r'The installation folder is on a disk that does not allow programs to run', 'disk-format',
+     ('FreeVideo cannot run from this disk', '这块硬盘上无法运行 FreeVideo'),
+     ('It is mounted so that programs cannot run from it. Choose a folder on another disk.',
+      '它挂载时设置为不允许运行程序。请选择其他硬盘上的文件夹。')),
     (r'The installation folder is on a disk that is not connected', 'disk-missing',
      ('The disk is not connected', '这块硬盘没有连接'),
      ('Connect the disk that holds the installation folder, then check again, or choose another folder.',
@@ -307,7 +357,7 @@ WITHOUT_REPAIR = {
                                   '整合包版不能一键换回。' + _EXTRACT[1])),
         offline=_model_unchanged(MODEL_OFFLINE),
         none=MODEL_FIRST_INSTALL),
-    # Confirmed, then something changed: setup stops (offline installations never get here).
+    # Confirmed, then something changed: setup stops.
     **{kind: dict(busy=_joined(CHANGED_WHY[why], CHANGED_WAYS['busy']),
                   **dict.fromkeys(('bundled', 'offline', 'none'), _joined(CHANGED_WHY[why], CHANGED_WAYS['none'])))
        for kind, why in (('plan-changed-files', 'files'), ('plan-changed', 'other'))},
@@ -394,6 +444,14 @@ def _without_ready_curl_diagnostics(text):
                     continue
         lines.append(line)
     return ''.join(lines)
+
+
+def model_mismatch_package(value, zh=False):
+    """Keep only the package's display name before diagnostic paths are redacted."""
+    from .model_repair import MISMATCH_PATH
+    from .offline_packages import pack_title
+    paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', str(value))
+    return pack_title(paths[-1], zh) if paths else pack_title('models/encoder/', zh)
 
 
 # Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
@@ -494,7 +552,7 @@ def launcher_failure(value, *, zh=False, **options):
 
 
 def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                      unavailable='none'):
+                      unavailable='none', model_package=''):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
@@ -539,15 +597,20 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     detail=detail, action='', kind='older-launcher', manual=True)
     from .model_repair import MISMATCH, MISMATCH_PATH, FAILURE_TITLE, FAILURE, CHANGED_TITLE, CHANGED_REPAIR
     mismatches = re.findall(MISMATCH + r': ([^\r\n]+)', text)
-    if mismatches:
+    bundled_models = re.findall(r'Bundled (?:file failed verification|model file has incorrect size): (models/[^\r\n]+)', summary)
+    if mismatches or bundled_models:
+        from .offline_packages import pack_title
+        paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', text)
+        path = bundled_models[-1] if bundled_models else paths[-1] if paths else 'models/encoder/' + mismatches[-1]
+        file = path.replace('\\', '/').split('/')[-1] if bundled_models else mismatches[-1]
         rows = WITHOUT_REPAIR['model-mismatch']
-        action = (FAILURE[zh].format(file=mismatches[-1], entry='修复' if zh else 'Repair') if can_repair else
-                  rows.get(unavailable, rows['none'])[zh].format(file=mismatches[-1]))
+        action = (FAILURE[zh].format(file=file, entry='修复' if zh else 'Repair') if can_repair else
+                  rows.get(unavailable, rows['none'])[zh].format(
+                      file=file, package=pack_title(path, zh) if bundled_models else model_package or pack_title(path, zh)))
         failure = dict(title=FAILURE_TITLE[zh], detail='', kind='model-mismatch', action=action)
-        if not can_repair and unavailable == 'offline':
-            # The text points at the file below it.
-            paths = re.findall(MISMATCH_PATH + r': ([^\r\n]+)', text)
-            failure['path'] = paths[-1] if paths else mismatches[-1]
+        if not can_repair and unavailable in ('offline', 'bundled'):
+            # The way out is by hand (import again, or extract again): retrying the start does not help.
+            failure['manual'] = True
         return failure
     if disk_name and 'on a disk that is not connected' in summary:
         return dict(title='这块硬盘没有连接' if zh else 'The disk is not connected', kind='disk-missing', detail='',

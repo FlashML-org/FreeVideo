@@ -280,7 +280,7 @@ def display(value, zh=False):
             if value.startswith(prefix):
                 return translated + display(value[len(prefix):])
         # English names for stages whose internal names describe how they run, not what they do.
-        value = {'检查配套包': 'Checking packages', '下载模型': 'Downloading models',
+        value = {'检查离线包': 'Checking offline packages', '检查配套包': 'Checking packages', '下载模型': 'Downloading models',
                 'Prepare Python': 'Prepare environment',
                 'Install Python': 'Install environment',
                 'Download PyTorch + CUDA': 'Download runtime components',

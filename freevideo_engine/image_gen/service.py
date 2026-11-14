@@ -1302,7 +1302,10 @@ class Service:
             # The worker cannot report its memory once it is gone: read this process's view now.
             from ..exit_diagnostics import exit_reading, memory_sample, read_crash_stack
             reading = dict(exit_reading(code, requested_stop=requested_stop), memory=memory_sample())
-            if reading.get('exit_class') == 'native_crash':
+            kinds = getattr(error, 'stderr_kinds', None)
+            if kinds:
+                reading['stderr_kinds'] = kinds
+            if reading.get('exit_class') in ('native_crash', 'abort'):
                 stack = read_crash_stack(getattr(session.process, 'crash_file', None))
                 if stack:
                     reading['native_stack'] = stack
@@ -1325,6 +1328,8 @@ class Service:
         # What the worker wrote can hold a prompt or a user's folder: only a fixed word for
         # the kind of failure leaves this function, never any of the text.
         kind = next((name for name, pattern in FAILURE_KINDS if pattern.search(session.tail)), '')
+        from ..exit_diagnostics import stderr_kinds
+        kinds = stderr_kinds(session.tail)
         session.tail = ''
         message = 'worker_exit (exit code %d%s)' % (code, ', ' + kind if kind else '')
         # A worker that ended with an error before answering never ran the request; one
@@ -1335,6 +1340,7 @@ class Service:
                            and exit_reading(code).get('exit_class') == 'native_crash')
         error = (WorkerEarlyExit if (not heard and code > 0) or crashed_loading else RuntimeError)(message)
         error.exit_code = code
+        error.stderr_kinds = kinds
         return error
 
     def infer(self, session, value):
@@ -1387,12 +1393,15 @@ class Service:
                         if self.state.get('stage') == stage and type(self.state.get('fraction')) in (int, float):
                             fraction = max(fraction, self.state['fraction'])
                         context.timing.enter(stage)
+                        context.note_progress(stage, fraction)
                         if getattr(context, 'forecast', None) is not None:
                             context.forecast.update(stage, float(fraction))
                         self.state.update(phase='cancelling' if self.stop.is_set() else 'progress',
                                           stage=stage, fraction=fraction)
             elif phase == 'preview':
                 self.keep_preview(row)
+            elif phase == 'plan':
+                context.note_plan(row.get('plan'))
             elif phase in ('result', 'error'):
                 if self.stop.is_set() or row.get('code') == 'cancelled':
                     result = dict(phase='cancelled')

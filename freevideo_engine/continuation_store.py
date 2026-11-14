@@ -156,6 +156,31 @@ def save(video_path, data):
     return result
 
 
+def _must_propagate(error):
+    return isinstance(error, MemoryError) or type(error).__name__ in (
+        'OutOfMemoryError', 'CancelledError', 'InterruptProcessingException')
+
+
+def save_with_retry(video_path, data):
+    """`save`, tried once more at once when the first try fails; `retried=True` marks a result that needed it.
+
+    Memory exhaustion and cancellation are never retried. When both tries fail, the last error is raised, marked `freevideo_retried`."""
+    try:
+        return save(video_path, data)
+    except Exception as error:
+        if _must_propagate(error):
+            raise
+        logging.warning('[FreeVideo] Continuation record could not be saved (%s); trying once more.', type(error).__name__)
+    try:
+        return dict(save(video_path, data), retried=True)
+    except Exception as error:
+        try:
+            error.freevideo_retried = True
+        except Exception:
+            pass
+        raise
+
+
 def load_id(identifier, *, directory=None):
     from safetensors import SafetensorError
     try:

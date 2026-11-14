@@ -243,10 +243,99 @@ def freeze(request, canvas, first, directory, base):
                                    snapshot=str((directory / 'continuation-encoded.safetensors').resolve())))
 
 
+CACHE_REVISION = 1  # Raise when encoding changes what the same ending encodes to.
+CACHE_KEEP = 8
+
+
+def _cache_file(tail, manifest, device):
+    """Where this ending, encoded for this canvas, these weights and this device, is kept between runs.
+
+    The key holds everything the encoded record depends on: the picture and sound of the file, both
+    sampled sizes, the weights, the two encoders' files and the device that ran them.
+    """
+    import hashlib
+    import json
+    from .continuation import identity
+    from .continuation_store import root
+    try:
+        base = Path(tail['base'])
+        encoders = sorted((folder.name, item.name, item.stat().st_size)
+                          for folder in (base / 'vae', base / 'audio_vae') if folder.is_dir()
+                          for item in folder.glob('*.safetensors'))
+        key = json.dumps([CACHE_REVISION, tail['source_id'], tail['canvas'], tail['first'], identity(manifest),
+                          encoders, str(device).split(':')[0]], sort_keys=True)
+        return root() / 'encoded' / (hashlib.sha256(key.encode('utf-8')).hexdigest() + '.safetensors')
+    except (OSError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _digest(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _cache_take(cache, path):
+    """Copy a kept record to the run's own snapshot path; False when there is none or it changed on disk."""
+    import os
+    import shutil
+    stamp = cache.with_suffix('.sha256')
+    try:
+        expected = stamp.read_text(encoding='ascii').strip()
+        shutil.copyfile(cache, path)
+        if _digest(path) != expected:
+            raise OSError('kept record changed')
+        os.utime(cache, None)  # Retention follows use.
+        return True
+    except (OSError, ValueError):
+        Path(path).unlink(missing_ok=True)
+        _cache_drop(cache)
+        return False
+
+
+def _cache_drop(cache):
+    for item in (cache, cache.with_suffix('.sha256')):
+        try:
+            item.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _cache_keep(cache, path):
+    """Keep the run's snapshot for the next run; a full or read-only disk only loses the saving."""
+    import os
+    import shutil
+    import uuid
+    temporary = cache.with_name(cache.name + '.' + uuid.uuid4().hex + '.partial')
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, temporary)
+        stamp = cache.with_suffix('.sha256')
+        stamp.unlink(missing_ok=True)  # A record without its digest is never read.
+        os.replace(temporary, cache)
+        stamp.write_text(_digest(cache) + '\n', encoding='ascii')
+        records = []
+        for item in cache.parent.glob('*.safetensors'):
+            try:
+                records.append((item.stat().st_mtime_ns, item))
+            except OSError:
+                continue
+        for _, item in sorted(records, reverse=True)[CACHE_KEEP:]:
+            _cache_drop(item)
+    except OSError:
+        pass
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def complete(request, canvas, manifest, sampling_plan=None, *, resident=None, device='cuda'):
     """The ordinary snapshot request for a frozen ending, and how long encoding it took.
 
     The first attempt of a run encodes and writes the record beside its other files; a retry reads it.
+    A later run for the same file, canvas and weights reads the copy kept in the data folder instead of
+    encoding the ending again; a copy that no longer validates is dropped and encoded afresh.
     """
     import hashlib
     import time
@@ -256,15 +345,34 @@ def complete(request, canvas, manifest, sampling_plan=None, *, resident=None, de
     path = Path(tail['snapshot'])
     if sampling_plan is not None and any(sampling_plan['first'][key] != tail['first'][key] for key in ('width', 'height')):
         raise ValueError(MISSING)
+
+    def snapshot():
+        result = dict({key: value for key, value in request.items() if key != 'tail'}, snapshot=str(path),
+                      snapshot_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), source_id=tail['source_id'])
+        return validate_snapshot(result, canvas, manifest, sampling_plan)
+
     seconds = None
     if not path.is_file():
         started = time.perf_counter()
+        cache = _cache_file(tail, manifest, device)
+        if cache is not None and _cache_take(cache, path):
+            try:
+                value = snapshot()
+            except ValueError:
+                path.unlink(missing_ok=True)
+                _cache_drop(cache)
+            else:
+                path.chmod(0o400)
+                return value, dict(seconds=time.perf_counter() - started, reused=True, cache=True)
+        started = time.perf_counter()
         data = encode(tail, tail['base'], device=device, before_upload=None if resident is None else
-                      lambda model, audio: resident.input_vae_room(model, tail['canvas'], audio=audio))
+                      lambda model, audio: resident.input_vae_room(model, tail['canvas'], audio=audio, tail=True))
         write(path, dict(data, metadata=dict(metadata(identity(manifest), tail['canvas'], tail['first']),
                                              source_id=tail['source_id'])))
         path.chmod(0o400)
         seconds = time.perf_counter() - started
-    result = dict({key: value for key, value in request.items() if key != 'tail'}, snapshot=str(path),
-                  snapshot_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), source_id=tail['source_id'])
-    return validate_snapshot(result, canvas, manifest, sampling_plan), dict(seconds=seconds, reused=seconds is None)
+        value = snapshot()
+        if cache is not None:
+            _cache_keep(cache, path)
+        return value, dict(seconds=seconds, reused=False)
+    return snapshot(), dict(seconds=None, reused=True)

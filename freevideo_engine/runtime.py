@@ -566,7 +566,7 @@ class Engine:
                step_callback=None, sampling_complete_callback=None, initial_latents=None, refine_steps=None, refine_schedule=None,
                allow_smaller_canvas=False, progress_offset=0, progress_total=None,
                pass_cache_budget_bytes=None, gpu_reserve_bytes=0, pass_resident_blocks=None,
-               budget_refresh=None, continuation=None):
+               budget_refresh=None, continuation=None, refine_resume=None, refine_checkpoint=None):
         from src.inference.render import load_prompt, generate_latents
         from .geometry import geometry, sampler_for_canvas
         from . import frame_preview
@@ -587,7 +587,16 @@ class Engine:
             from .refine import generate_latents, validate_tail
             if refine_schedule is None:
                 validate_tail(self.steps, refine_steps)
-        active_steps = refine_steps if refining else self.steps
+        resumed = 0
+        if refine_resume is not None or refine_checkpoint is not None:
+            if not refining or refine_schedule is None:
+                raise ValueError('Only the independent three-step refinement saves or resumes its steps')
+            if refine_resume is not None:
+                resumed = refine_resume['step']
+                if type(resumed) is not int or not 0 < resumed < refine_steps:
+                    raise ValueError('A resumed refinement must continue after a completed, non-final step')
+        active_steps = (refine_steps if refining else self.steps) - resumed
+        progress_offset += resumed
         canvas = geometry(width, height, frames=frames)
         if self.canvas is not None and any(canvas[key] != self.canvas[key] for key in ('width', 'height', 'frames')):
             smaller = (allow_smaller_canvas and not refining and frames == self.canvas['frames']
@@ -604,7 +613,9 @@ class Engine:
         generate_latents = sampler_for_canvas(generate_latents, width, height)
         if refining:
             from functools import partial
-            generate_latents = partial(generate_latents, initial_latents=initial_latents, refine_steps=refine_steps, refine_schedule=refine_schedule)
+            generate_latents = partial(generate_latents, initial_latents=initial_latents, refine_steps=refine_steps, refine_schedule=refine_schedule,
+                                       **({'resume': refine_resume} if refine_resume is not None else {}),
+                                       **({'step_checkpoint': refine_checkpoint} if refine_checkpoint is not None else {}))
         if self.closed:
             raise RuntimeError('Engine is closed')
         from .sampling_progress import SamplingProgress
@@ -620,7 +631,7 @@ class Engine:
             # that sampler and its exact RNG path, but still report the cutoff.
             early_receipt = dict(self.canvas['early_reference'], steps=[dict(step=i,
                 condition='base', condition_start_step=0, reference_video_rows=0, reference_audio_rows=0,
-                text_rows=self.canvas['early_reference']['conditions'][0]['text_tokens']) for i in range(active_steps)])
+                text_rows=self.canvas['early_reference']['conditions'][0]['text_tokens']) for i in range(resumed, resumed + active_steps)])
         if self.task.startswith('ref2va'):
             from .media_conditioning import describe
             value = torch.load(conditioning, map_location='cpu', weights_only=True)
@@ -637,7 +648,7 @@ class Engine:
                     row = info['early_reference']['conditions'][-1]
                     early_receipt['steps'] = [dict(step=i, condition='base', condition_start_step=row['start_step'],
                         reference_video_rows=row['reference_video_tokens'], reference_audio_rows=row['reference_audio_tokens'],
-                        text_rows=row['text_tokens']) for i in range(active_steps)]
+                        text_rows=row['text_tokens']) for i in range(resumed, resumed + active_steps)]
                 else:
                     condition_schedule = [dict(stage) for stage in value['early_reference']['conditions']]
                     sampling_kwargs.update(condition_schedule=condition_schedule, condition_trace=early_receipt['steps'])
@@ -680,7 +691,7 @@ class Engine:
             from .mid_keyframes import install_for
             install_for(conditions)
         if self.cursor is not None:
-            self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else 0)
+            self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else resumed)
         # DecoderReadAhead is CPU/file-cache only, so start it while the last
         # two denoising steps are still running. Starting at the final step
         # left slow SSDs with too little overlap to hide a cold VAE load;
@@ -925,7 +936,7 @@ class Engine:
                 if refining:
                     sampled['refinement'] = dict(base_steps=self.steps, steps=refine_steps,
                         start_index=1 if refine_schedule else self.steps - refine_steps, restart_seed=seed,
-                        schedule=refine_schedule or 'original-tail',
+                        schedule=refine_schedule or 'original-tail', resumed_steps=resumed,
                         audio_policy='first_pass_preserved_with_audio_clock_conditioning')
                 if early_receipt is not None:
                     sampled['early_reference'] = early_receipt

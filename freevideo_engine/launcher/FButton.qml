@@ -9,6 +9,8 @@ Button {
     property bool singleLine: false
     // A disabled button that is the only statement of what is happening: full strength, not a call to act.
     property bool waiting: false
+    // Looks unavailable but stays clickable, so a click can say why (the reason is written beside it).
+    property bool unavailable: false
     // A text link: accent text, no frame.
     property bool link: false
     implicitHeight: Math.max(theme.height, contentItem.implicitHeight + 14)
@@ -20,7 +22,7 @@ Button {
     topPadding: 7; bottomPadding: 7
     font.pixelSize: theme.body; font.weight: primary ? Font.DemiBold : Font.Medium
     hoverEnabled: true
-    opacity: enabled || waiting ? 1 : 0.42
+    opacity: (enabled && !unavailable) || waiting ? 1 : 0.42
     contentItem: Text {
         text: control.text; font: control.font
         color: control.waiting ? theme.text : control.primary ? theme.bg : control.danger ? theme.danger : control.selected ? theme.accent

@@ -22,7 +22,8 @@ def validate_tail(base_steps, refine_steps):
 
 def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, num_steps,
                      seed, device, *, initial_latents, refine_steps, step_seconds=None,
-                     conditions=None, video_shift=12., audio_shift=3., refine_schedule=None, timestep_task=None):
+                     conditions=None, video_shift=12., audio_shift=3., refine_schedule=None, timestep_task=None,
+                     resume=None, step_checkpoint=None):
     from .step_grid import scheduler
     from diffusers.modular_pipelines.minimax_h3.before_denoise import (
         MiniMaxH3PrepareLayoutStep, MiniMaxH3Ref2VAPrepareLayoutStep, patchify_video_latents)
@@ -40,6 +41,12 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             raise ValueError('Independent refinement requires the exact three-step schedule')
     else:
         validate_tail(num_steps, refine_steps)
+        if resume is not None:
+            raise ValueError('Only the independent three-step refinement resumes')
+    if resume is not None:
+        done = resume.get('step') if isinstance(resume, dict) else None
+        if type(done) is not int or not 0 < done < refine_steps:
+            raise ValueError('A resumed refinement must continue after a completed, non-final step')
     if not isinstance(initial_latents, (tuple, list)) or len(initial_latents) != 2:
         raise ValueError('Initial latents must contain normalized video and completed audio')
     video, audio = initial_latents
@@ -97,6 +104,7 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
         video_scheduler.set_timesteps(num_steps, device=device)
         audio_scheduler.set_timesteps(num_steps, device=device)
         start = num_steps - refine_steps
+    first = start
     generator = torch.Generator(device).manual_seed(seed)
     # Match the pinned condition-first RNG order. Reference rows stay fixed
     # throughout the tail, even though the generated rows use a restart seed.
@@ -122,7 +130,19 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
     audio_noise = (None if fixed_audio is not None else
                    torch.randn(audio_clean.shape, generator=generator, device=device, dtype=torch.float32))
     del source_video, video_noise
-    for video_t, audio_t in zip(video_scheduler.timesteps[start:], audio_scheduler.timesteps[start:]):
+    if resume is not None:
+        # Every draw above is taken exactly as in an uninterrupted pass, so the
+        # fixed audio noise is unchanged. Only the generated rows carry state
+        # between steps; put back what the interrupted pass had reached.
+        rows = resume.get('rows')
+        if (not isinstance(rows, torch.Tensor) or rows.dtype != torch.float32
+                or tuple(rows.shape) != tuple(video_rows[condition_rows:].shape)):
+            raise ValueError('Resumed refinement rows do not match this request')
+        video_rows[condition_rows:] = rows.to(device)
+        del rows
+        start += resume['step']
+    for done, (video_t, audio_t) in enumerate(zip(video_scheduler.timesteps[start:], audio_scheduler.timesteps[start:]),
+                                              start - first + 1):
         tick = time.perf_counter()
         audio_rows = (fixed_audio.clone() if fixed_audio is not None else
                       audio_scheduler.scale_noise(audio_clean, audio_t, audio_noise))
@@ -160,6 +180,10 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
             elif torch.device(device).type == 'mps':
                 torch.mps.synchronize()
             step_seconds.append(time.perf_counter() - tick)
+        if step_checkpoint is not None and done < refine_steps:
+            # The final state is the pass's result; it is saved as the latents.
+            step_checkpoint(done, video_rows[condition_rows:].detach().clone().cpu(),
+                            list(step_seconds) if step_seconds is not None else [])
     rows = video_rows[condition_rows:].reshape(-1, latent_frames, frame_h, frame_w, channels, *patch)
     rows = rows.permute(0, 4, 1, 5, 2, 6, 3, 7)
     return rows.reshape(expected_video).contiguous(), source_audio

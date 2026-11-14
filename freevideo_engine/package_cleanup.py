@@ -2,7 +2,7 @@
 
 Two kinds of leftovers duplicate an installed model file:
 
-* an offline package's extraction under ``.freevideo-packages``: every imported
+* an offline package's extraction under ``.fv`` (or the older ``.freevideo-packages``): every imported
   ZIP is unpacked there in full, and the installation then links or copies the
   files it needs;
 * download leftovers: a file's staging folder under ``.freevideo-downloads`` and
@@ -28,12 +28,16 @@ import uuid
 
 from .installation_cleanup import local_path, root_path
 from .long_paths import io_path, resolved, plain
-from .runtime_alias import is_junction, checked_real_path, AliasUnavailable
+from .runtime_alias import is_junction, checked_real_path as _checked_real_path, AliasUnavailable
 from .system import windows
+from .package_layout import (CONTAINERS, PACKAGES as SHORT_PACKAGES, LEGACY_PACKAGES,
+                             LEGACY_INNER, inner_root, package_id, redirected, VERIFIED, layout_name,
+                             check_boundaries)
 
-PACKAGES = '.freevideo-packages'
+# Compatibility names for callers constructing a legacy package path.
+PACKAGES = LEGACY_PACKAGES
 STAGES = '.freevideo-downloads'
-INNER = 'FreeVideo-Windows'
+INNER = LEGACY_INNER
 MODELS_MARKER = 'offline-package.json'
 # A model package's own inventory: read to assemble the installation, never installed itself.
 PACK_INVENTORY = 'models/model-pack.json'
@@ -42,6 +46,15 @@ RUNTIME_MARKER = 'runtime.json'
 RETAINED = re.compile(r'(?P<name>.+?)(?:\.partial)?\.(?:hash-rejected|oversized-response|oversized|resume-unavailable|'
                       r'restart-approved|rejected|switch-retained|local-import)-\d{6,}')
 STAGE = re.compile(r'(?P<sha>[0-9a-f]{16})-[A-Za-z0-9_-]+(?:\.(?:restart-approved|switch-retained|rejected)-\d{6,})?')
+
+
+def checked_real_path(path):
+    # Reject package redirects before callers resolve away that boundary.
+    try:
+        check_boundaries(path)
+    except ValueError as error:
+        raise AliasUnavailable('invalid', error) from error
+    return _checked_real_path(path)
 
 
 def unique_bytes(path):
@@ -152,14 +165,16 @@ def package_roots(engine, comfy_root=None):
     roots = [engine.parent]
     if comfy_root:
         roots += [io_path(comfy_root).absolute(), io_path(comfy_root).absolute().parent]
-    roots += [parent.parent for parent in engine.parents if parent.name == PACKAGES]
+    roots += [parent.parent for parent in engine.parents if layout_name(parent.name) in CONTAINERS]
     found = []
     for root in roots:
-        folder = root / PACKAGES
-        ordinary = Path(plain(folder))
-        if (ordinary not in found and folder.is_dir()
-                and (not windows() or local_path(root, folder))):
-            found.append(ordinary)
+        for name in CONTAINERS:
+            folder = root / name
+            ordinary = Path(plain(folder))
+            if (ordinary not in found and folder.is_dir()
+                    and not redirected(folder)
+                    and (not windows() or local_path(root, folder))):
+                found.append(ordinary)
     return found
 
 
@@ -179,7 +194,8 @@ def discard(path, root, running=None, dry_run=False):
     from .version_cleanup import started_from, plain_tree
     try:
         path, root = checked_real_path(path), checked_real_path(root)
-        if is_junction(path):
+        # Refuse container redirects before resolving erases the package boundary.
+        if (redirected(path) or (layout_name(io_path(root).name) in CONTAINERS and redirected(root))):
             return None
         root, path = root_path(root, path)
     except AliasUnavailable:
@@ -210,46 +226,88 @@ def packages(folder):
         folder = checked_real_path(folder)
     except AliasUnavailable:
         return
-    if is_junction(folder):
+    if layout_name(io_path(folder).name) in CONTAINERS and redirected(folder):
         return
     for pack in sorted(io_path(folder).iterdir()) if io_path(folder).is_dir() else ():
-        if (not pack.is_dir() or '.retired-' in pack.name
+        if (not pack.is_dir() or redirected(pack) or '.retired-' in pack.name
                 or (windows() and not local_path(io_path(folder), pack))):
             continue
-        inner = pack / INNER
-        if windows() and not local_path(pack, inner):
+        inner = inner_root(pack)
+        if redirected(inner) or (windows() and not local_path(pack, inner)):
+            continue
+        # An occupied prefix may be someone else's directory. Only our
+        # manifest/identity receipt establishes ownership of a new extraction.
+        if layout_name(io_path(folder).name) == SHORT_PACKAGES and package_id(inner) is None:
             continue
         if (inner / RUNTIME_MARKER).is_file() or (inner / 'portable.json').is_file():
             yield Path(plain(pack)), 'runtime', None
         else:
             value = load(inner / MODELS_MARKER)
+            if layout_name(io_path(folder).name) == SHORT_PACKAGES and value is None and not own_contents(pack):
+                continue  # A bare identity cannot vouch for somebody else's files.
             yield Path(plain(pack)), 'models', value if isinstance(value, dict) else None
 
 
-def known_package_tree(pack, value):
-    """Retain unrecognized packages and anything added outside their inventory."""
-    from .offline_packages import inventory, VERIFIED
-    if (not isinstance(value, dict) or value.get('schema_version') != 1 or value.get('kind') != 'models'
-            or not isinstance(value.get('files'), list) or not value['files']):
+def own_contents(pack, value=None):
+    """Keep the whole package when any file/directory is outside its inventory."""
+    pack, inner = io_path(pack), inner_root(pack)
+    if any(redirected(path) for path in (pack.parent, pack, inner)):
         return False
+    names = {MODELS_MARKER, VERIFIED, '模型包使用说明.txt'}
+    references = {}
     try:
-        inventory(value['files'])
-        if any(not row['path'].startswith('models/') for row in value['files']):
-            return False
-        files = {INNER + '/' + row['path'] for row in value['files']}
-        files.update(INNER + '/' + name for name in (MODELS_MARKER, VERIFIED, '模型包使用说明.txt'))
-        folders = {parent.as_posix() for name in files for parent in Path(name).parents}
-        pack = io_path(pack)
+        if value is not None:
+            from .offline_packages import inventory
+            if (not isinstance(value, dict) or value.get('schema_version') != 1 or value.get('kind') != 'models'
+                    or not isinstance(value.get('files'), list) or not value['files']):
+                return False
+            inventory(value['files'])
+            if any(not row['path'].startswith('models/') for row in value['files']):
+                return False
+            paths = [row['path'] for row in value['files']]
+        else:
+            receipt = load(inner / VERIFIED)
+            references = receipt.get('installed_files', {})
+            if not isinstance(references, dict):
+                return False
+            from .portable import bundle_name
+            for name, runtime in references.items():
+                bundle_name(name)
+                record = receipt.get(name)
+                if (not name.startswith('models/') or not isinstance(runtime, str)
+                        or not isinstance(record, list) or len(record) not in (2, 3)
+                        or any(type(part) is not int or part < 0 for part in record[:2])
+                        or (len(record) == 3 and not re.fullmatch(r'[0-9a-f]{64}', str(record[2])))):
+                    return False
+            paths = [name for name in receipt if name not in ('package_id', 'installed_files')
+                     and name not in references]
+            for name in paths:
+                record = receipt[name]
+                from .portable import bundle_name
+                bundle_name(name)
+                info = (inner / name).stat()
+                if (not isinstance(record, list) or len(record) not in (2, 3)
+                        or record[:2] != [info.st_size, info.st_mtime_ns]
+                        or (len(record) == 3 and not re.fullmatch(r'[0-9a-f]{64}', str(record[2])))):
+                    return False
+        from .portable import bundle_name
+        for name in paths:
+            bundle_name(name)
+            names.update((name, name + '.importing'))
+        directories = {inner.name}
+        files = {inner.name + '/' + name for name in names}
+        for name in files | {inner.name + '/' + name for name in references}:
+            directories.update(str(parent).replace(os.sep, '/') for parent in Path(name).parents if str(parent) != '.')
         def unreadable(error):
             raise error
-        for directory, children, names in os.walk(pack, followlinks=False, onerror=unreadable):
-            directory = Path(directory)
-            if any((directory / name).relative_to(pack).as_posix() not in folders for name in children):
-                return False
-            if any((directory / name).relative_to(pack).as_posix() not in files for name in names):
-                return False
+        for directory, folders, children in os.walk(pack, followlinks=False, onerror=unreadable):
+            for name in [*folders, *children]:
+                entry = io_path(directory) / name
+                relative = entry.relative_to(pack).as_posix()
+                if redirected(entry) or relative not in (directories if entry.is_dir() else files):
+                    return False
         return True
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return False
 
 
@@ -273,25 +331,30 @@ def prune_packages(engine, comfy_root=None, index=None, running=None, dry_run=Fa
             with runtime_lock(io_path(folder) / 'import.lock', inherit=False):
                 for pack, kind, value in packages(folder):
                     pack = io_path(pack)
+                    inner = inner_root(pack)
                     if kind == 'runtime' or inside(engine, pack):
                         result['kept'].append(dict(kind='offline-package', path=plain(pack), reason='environment package'))
                         continue
                     if any(inside(path, pack) for path in holders):
                         result['kept'].append(dict(kind='offline-package', path=plain(pack), reason='installed files live here'))
                         continue
-                    if not known_package_tree(pack, value):
-                        result['kept'].append(dict(kind='offline-package', path=plain(pack), reason='in use'))
-                        continue
+                    receipt = load(inner / VERIFIED)
+                    references = receipt.get('installed_files', {}) if isinstance(receipt, dict) else {}
+                    references = references if isinstance(references, dict) else {}
                     rows = [row for row in (value or {}).get('files', [])
                             if isinstance(row, dict) and row.get('path') != PACK_INVENTORY
-                            and (pack / INNER / str(row.get('path', ''))).is_file()]
+                            and ((inner / str(row.get('path', ''))).is_file() or row.get('path') in references)]
                     covered = bool(rows) and all(row.get('sha256') in index for row in rows)
                     try:
-                        stale = installed is not None and max((pack / INNER).stat().st_mtime, pack.stat().st_mtime) < installed
+                        stale = installed is not None and max(inner.stat().st_mtime, pack.stat().st_mtime) < installed
                     except OSError:
                         stale = installed is not None
                     if not covered and not stale:
                         result['kept'].append(dict(kind='offline-package', path=plain(pack), reason='imported after this installation'))
+                        continue
+                    # Like retained originals, unlisted user content keeps the entire layer.
+                    if not own_contents(pack, value):
+                        result['kept'].append(dict(kind='offline-package', path=plain(pack), reason='unlisted files'))
                         continue
                     freed = discard(pack, folder, running, dry_run)
                     if freed is None:

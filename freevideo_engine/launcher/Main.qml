@@ -24,6 +24,9 @@ ApplicationWindow {
     property string modelInfo: "video"
     property bool modelInfoOpen: false
     property bool closePending: false
+    // What closing asks about the ComfyUI this launcher started: "running" or "generating"; "" is no question.
+    property string closeChoice: ""
+    property string closePlace: "tray"
     property bool cleanupConfirm: false
     property bool releaseConfirm: false
     property bool accepted: false
@@ -43,7 +46,7 @@ ApplicationWindow {
     readonly property bool needsRuntime: s.page === "comfy" && manualEnvironment && !s.offline.runtime
     // An imported environment can take its models from packages or download them.
     readonly property bool offlineSelected: s.form.model_method === "manual" && !s.image_only
-    readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && (usingRuntime || s.form.model_dirs.length === 0)
+    readonly property bool needsPackages: s.page === "models" && offlineSelected && s.offline.models === 0 && s.form.model_dirs.length === 0
     readonly property int step: s.page === "comfy" ? 0 : s.page === "models" ? 1 : 2
     property string previousPage: ""
     property bool errorDetailsOpen: false
@@ -247,6 +250,7 @@ ApplicationWindow {
     function keepTogether(text) { return String(text).replace("自动继续", "自\u2060动\u2060继\u2060续") }
     function primaryText() {
         if (s.retry_kind) return retryText()
+        if (s.offline.status === "review") return t("Confirm & continue", "确认并继续")
         if (needsRuntime) return t("Choose environment package", "选择运行环境包")
         if (s.page === "comfy") return t("Continue", "继续")
         if (needsPackages) return t("Choose offline packages", "选择离线包")
@@ -288,10 +292,25 @@ ApplicationWindow {
         NumberAnimation { target: page; property: "opacity"; from: 0; to: 1; duration: 220; easing.type: Easing.OutCubic }
         NumberAnimation { target: pageShift; property: "y"; from: 8; to: 0; duration: 260; easing.type: Easing.OutCubic }
     }
+    function askClose() {
+        var choice = backend.closeChoice()
+        if (choice) { closePlace = backend.returnPlace(); closeChoice = choice }
+        else backend.close()
+    }
+    // The tray's Exit: only a video being generated still gets the choice, so it is never stopped unasked.
+    function exitAfterQuestions() {
+        var choice = backend.closeChoice()
+        if (choice === "generating") { closePlace = backend.returnPlace(); closeChoice = choice }
+        else backend.close()
+    }
+    function askExit() {
+        if (s.busy && !s.cleanup.busy) closePending = true
+        else exitAfterQuestions()
+    }
     onClosing: function(event) {
         event.accepted = false
         if (s.busy && !s.cleanup.busy) closePending = true
-        else backend.close()
+        else askClose()
     }
 
     Rectangle {
@@ -559,7 +578,9 @@ ApplicationWindow {
                         FText { text: s.form.new_comfy ? t("Install location", "安装位置") : t("ComfyUI folder", "ComfyUI 目录"); font.weight: Font.DemiBold }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 8
-                            FField { objectName: "installationPath"; Layout.fillWidth: true; value: s.form.new_comfy ? s.form.destination : s.form.comfy; placeholderText: t("Choose a folder", "选择文件夹"); enabled: s.can_manage; onEditingFinished: backend.edit(s.form.new_comfy ? "destination" : "comfy", text) }
+                            FField { objectName: "installationPath"; Layout.fillWidth: true; value: s.form.new_comfy ? s.form.destination : s.form.comfy; placeholderText: t("Choose a folder", "选择文件夹"); enabled: s.can_manage; onEditingFinished: backend.edit(s.form.new_comfy ? "destination" : "comfy", text)
+                                // Keep the recognizable end visible; hovering reveals the whole path.
+                                hoverEnabled: true; ToolTip.text: text; ToolTip.delay: 500; ToolTip.visible: hovered && text.length > 0 }
                             FButton { objectName: "installationBrowse"; text: t("Browse…", "浏览…"); enabled: s.can_manage; implicitHeight: theme.height + 4; onClicked: backend.browse(s.form.new_comfy ? "destination" : "comfy") }
                         }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
@@ -635,7 +656,7 @@ ApplicationWindow {
                         }
                     }
                     FCard {
-                        objectName: "modelLibraries"; visible: !usingRuntime && !s.image_only; Layout.fillWidth: true; padding: 20; spacing: 10
+                        objectName: "modelLibraries"; visible: !s.image_only; Layout.fillWidth: true; padding: 20; spacing: 10
                         RowLayout {
                             Layout.fillWidth: true; spacing: 12
                             ColumnLayout {
@@ -876,7 +897,7 @@ ApplicationWindow {
                                 }
                                 // What this group downloads, as in the plan; nothing for one already here.
                                 FText { objectName: "modelSize-" + modelData.id; visible: modelData.download > 0; text: bytes(modelData.download).replace(" ", "\u00a0"); font.pixelSize: theme.micro; color: theme.muted; font.features: { "tnum": 1 } }
-                                FButton { objectName: "modelFiles-" + modelData.id; text: downloads.copy.title + "  ›"; implicitHeight: theme.heightSm; flat: true; font.pixelSize: theme.micro + 1; visible: s.form.model_method === "manual"; onClicked: { backend.setDownloadScope(modelData.id === "image" ? "image" : "video"); modelInfoOpen = true } }
+                                FButton { objectName: "modelFiles-" + modelData.id; text: downloads.copy.title + "  ›"; implicitHeight: theme.heightSm; flat: true; font.pixelSize: theme.micro + 1; visible: s.form.model_method === "manual" && modelData.links !== false; onClicked: { backend.setDownloadScope(modelData.id === "image" ? "image" : "video"); modelInfoOpen = true } }
                             }
                         }
                     }
@@ -1047,9 +1068,10 @@ ApplicationWindow {
                             FText { objectName: "imagePackSize"; text: gb(s.image_pack.total_bytes); color: theme.muted }
                             FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
                             FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
-                            FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("repair") }
-                            FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("remove") }
+                            FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("repair") }
+                            FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("remove") }
                         }
+                        FText { objectName: "imagePackEngineNote"; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
                         FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")); onClicked: backend.reportProblem(s.image_pack.detail || "", t("Image pack", "图像模型包")) }
                         Flow {
@@ -1731,7 +1753,7 @@ ApplicationWindow {
 
     FPopup {
         id: archivesDialog; objectName: "archivesDialog"
-        visible: s.archives_dialog.remind && !updateDialogWanted && !settingsOpen && !releaseNotesOpen && !modelInfoOpen && !closePending && !s.notice
+        visible: s.archives_dialog.remind && !updateDialogWanted && !settingsOpen && !releaseNotesOpen && !modelInfoOpen && !closePending && closeChoice === "" && !s.notice
         width: Math.min(480, win.width - 40); closePolicy: Popup.NoAutoClose
         onClosed: archivesExpanded = false
         height: Math.min(archivesContents.implicitHeight + padding * 2 + archivesActions.implicitHeight + archivesFootnote.implicitHeight + 28, win.height - 48)
@@ -1939,12 +1961,25 @@ ApplicationWindow {
         onRejected: releaseConfirm = false
     }
     FDialog {
-        visible: closePending
+        objectName: "closePendingDialog"; visible: closePending
         title: t("Pause and close?", "暂停并退出？")
         text: t("The current task will stop. Downloaded files and your setup are retained for next time.", "会停止当前任务，已下载文件和安装进度会保留，下次可以继续。")
         acceptText: t("Pause and close", "暂停并退出"); rejectText: t("Keep working", "继续处理"); destructive: true
-        onAccepted: backend.close()
+        onAccepted: { closePending = false; exitAfterQuestions() }
         onRejected: closePending = false
+    }
+    FDialog {
+        objectName: "closeChoiceDialog"; visible: closeChoice !== ""
+        title: t("Close FreeVideo?", "关闭 FreeVideo？")
+        text: closeChoice === "generating"
+              ? t("A video is being generated. Exit stops ComfyUI and this generation. In the background, the generation continues, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "正在生成视频。退出会停止 ComfyUI 和这次生成；后台运行时生成会继续，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+              : t("Exit stops ComfyUI. In the background, ComfyUI keeps running, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "退出会停止 ComfyUI。后台运行时 ComfyUI 继续运行，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+        acceptText: t("Run in background", "后台运行"); altText: t("Exit", "退出"); rejectText: t("Cancel", "取消"); defaultFocus: true
+        onAccepted: { closeChoice = ""; backend.runInBackground() }
+        onAlternative: { closeChoice = ""; backend.close() }
+        onRejected: closeChoice = ""
     }
     FDialog {
         visible: !!s.notice

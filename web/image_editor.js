@@ -232,7 +232,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     const genClient = imageGenClient || createImageGenClient(api.fetchApi.bind(api));
     const generation = createImageGeneration({client: genClient,
         renderer, t, getDoc: () => doc, getSelection: () => selection, commit: commitInserted, el, button, segmented,
-        library, resolve, icon, onRatioChange: setBlankCanvasRatio, onPlace: (file, label) => addImageLayer(file, label, {keepTool: true}), productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
+        library, resolve, icon, onRatioChange: setBlankCanvasRatio, onNewCanvas: newCanvasDocument, onPlace: (file, label) => addImageLayer(file, label, {keepTool: true}), productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
         resumeKey: `${role}|${source || ''}|${name}`});
 
     // ----- tools ----------------------------------------------------------------
@@ -551,7 +551,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         generation.unmount();
         clearPanel(optionsBar);
         optionsBar.classList.remove('fv-ie-generation');
-        delete optionsBar.dataset.running; delete optionsBar.dataset.message; delete optionsBar.dataset.empty;
+        delete optionsBar.dataset.running; delete optionsBar.dataset.message; delete optionsBar.dataset.empty; delete optionsBar.dataset.shape;
         delete optionsBar.dataset.failed;
         if (tool === 'generate') { generation.mount(optionsBar); return; }
         if (!doc.layers.length) return;
@@ -963,6 +963,12 @@ export async function openImageEditor({source = null, name = source || '', targe
         if (doc.layers.length || (!resumed && generation.state().running)) return;
         const next = blankDocument(blankSizeForRatio(ratio, tier), ratio);
         followSize(doc, next); deselectQuiet(); commit(next);
+    }
+    // The empty canvas of another shape that a new picture on a canvas with pictures is made for.
+    function newCanvasDocument({width, height, ratio}) {
+        const next = blankDocument({width, height}, ratio);
+        followSize(doc, next); deselectQuiet();
+        return next;
     }
     function aspectOf(id, r = rect()) {
         if (id === 'video') return target ? target.width / target.height : null;

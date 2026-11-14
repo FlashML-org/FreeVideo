@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from . import network
+from .environments import uv_build_environment
 from .long_paths import io_path, plain_errors
 
 
@@ -104,7 +105,8 @@ def install(uv, python, pins, cuda, *, root, networking, env, ui, run, constrain
         command = [uv, 'pip', 'install', '--python', python, *reinstall_arguments(fresh), *requirements, *constraints]
         # The large CUDA wheels are now local. Small ordinary dependencies use the
         # measured PyPI mirrors, without accidentally selecting a different torch.
-        network.package_command(networking, 'pypi', lambda attempt_env, _: run(command, attempt_env), env)
+        network.package_command(networking, 'pypi',
+            lambda attempt_env, _: run(command, uv_build_environment(command, root, attempt_env)), env)
 
     install_packages(installed, broken)
     if not broken:

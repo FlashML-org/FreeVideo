@@ -31,7 +31,14 @@ from freevideo_engine.dubbing.cosyvoice3.transformer.convolution import CausalCo
 from freevideo_engine.dubbing.cosyvoice3.transformer.activation import Snake
 from freevideo_engine.dubbing.cosyvoice3.utils.common import get_padding
 from freevideo_engine.dubbing.cosyvoice3.utils.common import init_weights
-from freevideo_engine.app_control import scipy_module
+
+
+def hann_window(size):
+    """The periodic Hann window, the same values as scipy.signal.get_window("hann", size, fftbins=True)."""
+    if size <= 1:
+        return np.ones(size)
+    angle = np.linspace(-np.pi, np.pi, size + 1)
+    return (0.5 * np.cos(0 * angle) + 0.5 * np.cos(angle))[:-1]
 
 
 """hifigan based generator implementation.
@@ -471,7 +478,7 @@ class HiFTGenerator(nn.Module):
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
         self.reflection_pad = nn.ReflectionPad1d((1, 0))
-        self.stft_window = torch.from_numpy(scipy_module("scipy.signal").get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
+        self.stft_window = torch.from_numpy(hann_window(istft_params["n_fft"]).astype(np.float32))
         self.f0_predictor = f0_predictor
 
     def remove_weight_norm(self):
@@ -665,7 +672,7 @@ class CausalHiFTGenerator(HiFTGenerator):
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
         self.reflection_pad = nn.ReflectionPad1d((1, 0))
-        self.stft_window = torch.from_numpy(scipy_module("scipy.signal").get_window("hann", istft_params["n_fft"], fftbins=True).astype(np.float32))
+        self.stft_window = torch.from_numpy(hann_window(istft_params["n_fft"]).astype(np.float32))
         self.conv_pre_look_right = conv_pre_look_right
         self.f0_predictor = f0_predictor
 

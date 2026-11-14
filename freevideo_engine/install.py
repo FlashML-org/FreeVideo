@@ -7,8 +7,9 @@ import subprocess
 import sys
 import time
 from . import execution_paths
+from .environments import uv_build_environment
 from .long_paths import io_path
-from .paths import vdn_root
+from .paths import data_root, vdn_root
 from . import network, subprocess_output
 
 
@@ -38,8 +39,9 @@ def install(root=None, *, packages=False):
                 # A regular copy carries no path; replace any copy from an older tree.
                 target = [str(diffusers), *(['--reinstall-package', 'diffusers'] if env.get('FREEVIDEO_UV')
                                             else ['--force-reinstall'])]
-            result = run([*command, *target, '--no-deps'],
-                         env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            command = [*command, *target, '--no-deps']
+            env = uv_build_environment(command, data_root(), env)
+            result = run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             print(result.stdout, flush=True)
             if result.returncode:
                 raise RuntimeError(result.stdout[-2500:])

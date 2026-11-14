@@ -808,6 +808,8 @@ def plan(args, *, local_progress=None, stage=None):
         disk_mode=disk_plan['mode'])
     if mac_target:
         errors.extend(disk_space.problem_messages([root, model_dir, encoder_dir] + ([frontend['root']] if frontend else [])))
+    elif not windows_target:
+        errors.extend(disk_space.problem_messages([root] + ([frontend['root']] if frontend else []), [model_dir, encoder_dir]))
     if reuse_cache and not cache_compatible(reuse_cache, **cache_format):
         errors.append('--cache must contain a prepared FP8 cache compatible with this GPU scale format.')
     from .download_settings import read as download_preferences
