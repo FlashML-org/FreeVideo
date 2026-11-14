@@ -288,6 +288,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'new-image-shape',
+        title: {zh: '在已有图片的画板上生成新图', en: 'A new picture on a canvas that has pictures'},
+        summary: {zh: '画板上已有图片时，“生成一张”可以沿用当前画板，也可以换一种比例另起一块画板。', en: 'When the canvas already has pictures, "New image" can use the current canvas or start a canvas of another shape.'},
+        media: {
+            type: 'image',
+            src: {zh: 'new-image-shape-1.webp', en: 'new-image-shape-2.webp'},
+            alt: {zh: '编辑图片：“生成一张”和比例列表已用红框标出，比例选为 16:9。', en: 'The image editor, with "New image" and the shape list outlined in red and 16:9 chosen.'},
+        },
+        steps: {
+            zh: ['打开“编辑图片”，点左上角的“AI 生成”，选择“生⁠成⁠一⁠张”。', '旁边的比例列表默认是当前画板的比例；画板不是常用比例时，第一项显示它的尺寸。', '保持当前比例时，新图作为一个新图层加入当前画板。', '选择其他比例时，新图放在该比例的一块新空白画板上。', '写好描述后点“生⁠成”。要回到原来的画板，点一次“撤⁠销”。'],
+            en: ['Open "Edit image", click "Generate with AI" at the top left and choose "New image".', 'The shape list beside it starts at the current canvas shape. When the canvas is not one of the usual shapes, its size is listed first.', 'With the current shape kept, the new picture is added to the canvas as a new layer.', 'With another shape chosen, the new picture is placed on a new blank canvas of that shape.', 'Write the description and click "Generate". To return to the previous canvas, click "Undo" once.'],
+        },
+        limits: {
+            zh: ['“改这张”修改当前图片，不显示比例列表。', '画板为空时，比例列表用来设定空白画板的比例。'],
+            en: ['"Edit this" changes the current picture and does not show the shape list.', 'On an empty canvas, the shape list sets the shape of the blank canvas.'],
+        },
+    },
+    {
         id: 'lora',
         goto: ['lora-add'],
         title: {zh: '使用自己的 LoRA', en: 'Use your own LoRA'},
@@ -696,8 +714,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：项目名和按镜头分段的画面轨已用红框标出。', en: 'The Edit view, with the edit name and the picture track cut into shots outlined in red.'},
         },
         steps: {
-            zh: ['AI 全自动拍完一部短剧后，成片保存到作品库，同时建好一个以片名命名的剪辑工程。', '点顶部的“剪辑视图”，点项目名，在菜单中选这部片的名字。', '画面轨在每个镜头的起点切开；每一段左上角是镜头编号，底部是该镜头的说明。', '可以像其他剪辑一样裁剪、调整顺序、加配乐或字幕，再点右上角的“导⁠出”；作品库中的成片不会改变。'],
-            en: ['When Autopilot finishes a short drama, the film is saved to Creations and an edit named after the film is made with it.', 'Choose "Edit" at the top, choose the edit name, and pick the film\'s name in the menu.', 'The picture track is cut where each shot starts. Each part shows the shot number at its top left and the shot\'s note along its bottom.', 'Trim, reorder, add music or subtitles as in any other edit, then choose "Export" at the top right. The film in Creations does not change.'],
+            zh: ['AI 全自动拍完一部短剧后，成片保存到作品库，同时建好一个以片名命名的剪辑工程。', '在 AI 全自动的对话中，点成片卡片上的“剪⁠辑”打开这个工程；也可以在顶部的“剪辑视图”中点项目名，在菜单中选这部片的名字。', '画面轨在每个镜头的起点切开；每一段左上角是镜头编号，底部是该镜头的说明。', '可以像其他剪辑一样裁剪、调整顺序、加配乐或字幕，再点右上角的“导⁠出”；作品库中的成片不会改变。'],
+            en: ['When Autopilot finishes a short drama, the film is saved to Creations and an edit named after the film is made with it.', 'In the Autopilot conversation, choose "Edit" on the film\'s card to open this edit. Or choose "Edit" at the top, choose the edit name, and pick the film\'s name in the menu.', 'The picture track is cut where each shot starts. Each part shows the shot number at its top left and the shot\'s note along its bottom.', 'Trim, reorder, add music or subtitles as in any other edit, then choose "Export" at the top right. The film in Creations does not change.'],
         },
         limits: {
             zh: ['只有收尾时拼接成功的短剧才有剪辑工程。', '在此版本之前拍完的短剧没有剪辑工程。'],
@@ -761,6 +779,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'launcher-close',
+        title: {zh: '关闭启动器：退出或后台运行', en: 'Closing the launcher: exit or keep running'},
+        summary: {zh: '关闭启动器窗口时，可以选择停止 ComfyUI 退出，或让 ComfyUI 在后台继续运行。', en: 'When the launcher window is closed, choose to stop ComfyUI and exit, or keep ComfyUI running in the background.'},
+        media: {
+            type: 'image',
+            src: {zh: 'launcher-close-1.webp', en: 'launcher-close-2.webp'},
+            alt: {zh: '启动器的“关闭 FreeVideo？”对话框：“退出”和“后台运行”按钮已用红框标出。', en: 'The launcher\'s "Close FreeVideo?" dialog, with the "Exit" and "Run in background" buttons outlined in red.'},
+        },
+        steps: {
+            zh: ['FreeVideo 运行时关闭启动器窗口，会出现“关闭 FreeVideo？”。', '点“后⁠台⁠运⁠行”（默认按钮，按 Enter 也可以），窗口关闭，ComfyUI 和正在生成的视频继续运行。', '点“退⁠出”，ComfyUI 停止；正在生成的视频也会停止。', '后台运行时，点托盘图标（macOS 为菜单栏图标）或在它的菜单中选“打开 FreeVideo”，重新打开窗口。', '在托盘菜单中选“退⁠出”可以完全退出；只有视频正在生成时会再确认一次。'],
+            en: ['Close the launcher window while FreeVideo is running and "Close FreeVideo?" appears.', 'Choose "Run in background" (the default; Enter also works). The window closes, and ComfyUI and any video being generated keep running.', 'Choose "Exit" to stop ComfyUI. A video being generated stops as well.', 'While it runs in the background, click the tray icon (the menu bar icon on macOS) or choose "Open FreeVideo" in its menu to bring the window back.', 'Choose "Exit" in the tray menu to exit completely. It asks again only while a video is being generated.'],
+        },
+        limits: {
+            zh: ['只在 ComfyUI 由启动器启动时询问；由其他方式启动的 ComfyUI 不会被停止。', '启动器正在安装或下载时关闭窗口，会先询问“暂停并退出？”。', '系统没有托盘时，窗口缩到任务栏。'],
+            en: ['It asks only when the launcher started ComfyUI. A ComfyUI started another way is not stopped.', 'Closing the window while the launcher is installing or downloading first asks "Pause and close?".', 'Without a system tray, the window goes to the taskbar.'],
+        },
+    },
+    {
         id: 'troubleshoot',
         title: {zh: '出错了怎么办', en: 'When something goes wrong'},
         summary: {zh: '读取提示、保存诊断报告。', en: 'Read the message and save a diagnostic report.'},
@@ -776,6 +812,24 @@ export const TUTORIAL_CHAPTERS = [
         limits: {
             zh: ['报告中的路径已做脱敏处理。', '全部下载源都失败时，错误卡片会逐个列出下载源和失败原因。'],
             en: ['Paths in the report are anonymized.', 'When every download source fails, the error card lists each source and the reason it failed.'],
+        },
+    },
+    {
+        id: 'offline-reimport',
+        title: {zh: '重新导入离线包修复模型文件', en: 'Repair model files by importing the offline packages again'},
+        summary: {zh: '模型文件不完整或被改动时，在启动器里把同一份离线包再导入一次，只补齐和替换有问题的文件。', en: 'When model files are incomplete or changed, import the same offline packages again in the launcher; only the files with problems are completed or replaced.'},
+        media: {
+            type: 'image',
+            src: {zh: 'offline-reimport-1.webp', en: 'offline-reimport-2.webp'},
+            alt: {zh: '启动器的“确认安装”页：与测试版本不同的文件说明和“确认并继续”按钮已用红框标出。', en: 'The launcher\'s "Ready to install" page, with the note about a file that differs from the tested version and the "Confirm & continue" button outlined in red.'},
+        },
+        steps: {
+            zh: ['在启动器左侧点“安装”，保持原来的安装目录，点“继续”到模型一步。', '选择“离线包安装”，点“选择模型包…”，或把模型 ZIP 拖到“将模型 ZIP 拖到这里，无需解压”处，再点“检查并继续”。', '在“确认安装”页查看“安装内容”：已经装好的模型显示“已安装，无需改动”，与 FreeVideo 测试过的版本不同的文件会列出改名后的名字和大小。', '勾选“我同意安装计划及模型／工具包许可证。”，点“确⁠认⁠并⁠继⁠续”。'],
+            en: ['Choose "Installation" on the left of the launcher, keep the same installation folder, and choose "Continue" to reach the models step.', 'Choose "Offline packages", then "Choose model packages…", or drop the model ZIPs on "Drop model ZIPs here — no extraction needed", and choose "Check & continue".', 'Look over "Installation details" on the "Ready to install" page. Models already in place show "Installed; no change needed", and a file that differs from the version FreeVideo tests is listed with the name it will be kept under and its size.', 'Tick "I accept the installation plan and model / toolkit licenses." and choose "Confirm & continue".'],
+        },
+        limits: {
+            zh: ['已装好的模型直接沿用，不重复占用硬盘空间；下载中断留下的不完整文件会自动补齐。', '内容不同的文件改名保留在原文件夹，确认不再需要后可以自行删除。', '网页里提示模型文件不完整时，同样按本章重新导入。'],
+            en: ['Models already in place are reused and take no extra disk space. Files cut short by an interrupted download are completed.', 'A file with different contents is kept under a new name in its folder; delete it once it is no longer needed.', 'When the page reports incomplete model files, import again as this chapter describes.'],
         },
     },
 ];
