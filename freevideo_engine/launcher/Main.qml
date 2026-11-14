@@ -1058,23 +1058,18 @@ ApplicationWindow {
                         Layout.fillWidth: true; padding: 22; spacing: 10
                         color: s.image_pack.install.state === "failed" ? theme.dangerSubtle : theme.surface
                         border.color: s.image_pack.install.state === "failed" ? theme.dangerLine : theme.border
-                        GridLayout {
-                            objectName: "imagePackHead"
-                            Layout.fillWidth: true; columns: win.narrow ? 1 : 2; columnSpacing: 14; rowSpacing: 12
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 14
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 4
                                 FText { objectName: "imagePackTitle"; text: s.image_pack.title; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                 FText { objectName: "imagePackStatus"; visible: s.image_pack.install.state !== "failed"; text: s.image_pack.detail; color: theme.muted; Layout.fillWidth: true }
                             }
-                            RowLayout {
-                                objectName: "imagePackActions"
-                                spacing: 14
-                                FText { objectName: "imagePackSize"; text: gb(s.image_pack.total_bytes); color: theme.muted }
-                                FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
-                                FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
-                                FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("repair") }
-                                FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("remove") }
-                            }
+                            FText { objectName: "imagePackSize"; text: gb(s.image_pack.total_bytes); color: theme.muted }
+                            FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
+                            FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
+                            FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("repair") }
+                            FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("remove") }
                         }
                         FText { objectName: "imagePackEngineNote"; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
