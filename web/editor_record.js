@@ -84,7 +84,10 @@ export function createEditorRecord({state, player, library, t, error = () => {},
         if (disposed || !bar.hidden) return;
         bar.hidden = false; denied = false; say(''); paint(); probe();
     }
+    // Closing the bar mid-take keeps what was recorded: it lands on the track as a stop would, and one undo takes it back.
     function hide() {
+        if (phase === 'recording') { stop(); return; }
+        if (phase === 'saving') return;
         if (phase !== 'idle') abort();
         session++; bar.hidden = true; release(); paint();
     }
@@ -162,14 +165,14 @@ export function createEditorRecord({state, player, library, t, error = () => {},
         };
         requestAnimationFrame(mark);
     }
-    // R starts and stops while the bar is open; Esc cancels a take in progress, then closes the bar.
+    // R starts and stops while the bar is open; Esc keeps a take in progress (or cancels the countdown), then closes the bar.
     const typing = target => target?.closest?.('input, textarea, [contenteditable=true]');
     // Called by the editor's key router; true when the key was taken.
     function keys(event) {
         if (event.type !== 'keydown' || bar.hidden || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || typing(event.target)) return false;
         const key = event.key.toLowerCase();
         if (key === 'escape') {
-            event.preventDefault(); if (phase !== 'idle') abort(); else hide(); return true;
+            event.preventDefault(); if (phase === 'counting') abort(); else hide(); return true;
         }
         if (key === 'r' && !event.target?.closest?.('select') && !event.repeat) { event.preventDefault(); main.onclick(); return true; }
         return false;
