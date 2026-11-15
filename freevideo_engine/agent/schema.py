@@ -1759,6 +1759,40 @@ SHAPE_MIN_BYTES = 60
 RECIPE_TOOL = 'freevideo_edit_image'
 
 
+def pattern_length(pattern):
+    """(fewest, most) characters of a string the pattern can match whole, or None unless the pattern is
+    anchored at both ends as a whole (no top-level alternative, no multiline flag)."""
+    if not isinstance(pattern, str):
+        return None
+    try:
+        from re import _parser as parser, _constants as constants
+    except ImportError:  # Python before 3.11
+        import sre_parse as parser, sre_constants as constants
+    try:
+        parsed = parser.parse(pattern)
+    except (re.error, OverflowError, RecursionError):
+        return None
+    data = list(parsed)
+    if parsed.state.flags & re.MULTILINE or len(data) < 2 \
+            or data[0] != (constants.AT, constants.AT_BEGINNING) or data[-1] != (constants.AT, constants.AT_END):
+        return None
+    return parsed.getwidth()
+
+
+def drop_implied_lengths(node):
+    """Leave out minLength/maxLength where the anchored pattern beside it already allows no other length."""
+    node = dict(node)
+    for keyword, index, child in list(schema_children(node)):
+        _replace(node, keyword, index, drop_implied_lengths(child))
+    if 'minLength' in node or 'maxLength' in node:
+        width = pattern_length(node.get('pattern'))
+        if width and width[0] >= node.get('minLength', 0):
+            node.pop('minLength', None)
+        if width and width[1] <= node.get('maxLength', math.inf):
+            node.pop('maxLength', None)
+    return node
+
+
 def schema_children(node):
     """(keyword, key or index, subschema) for each child in a schema position."""
     for keyword, value in node.items():
@@ -1786,9 +1820,10 @@ def shape_label(path):
 def mcp_tool_schema(name):
     """The schema an MCP client shows its model. Each client sends every tool schema
     with every request, so a repeated shape is written out once and later named; the
-    edit recipe is spelled out on the edit tool only. Calls still validate against
-    tool_schema(name) here and on the server."""
-    value = tool_schema(name)
+    edit recipe is spelled out on the edit tool only, and a length its pattern already
+    fixes is not repeated. Calls still validate against tool_schema(name) here and on
+    the server."""
+    value = drop_implied_lengths(tool_schema(name))
     if name != RECIPE_TOOL:
         def brief(node):
             if node.get('x-editor-recipe'):

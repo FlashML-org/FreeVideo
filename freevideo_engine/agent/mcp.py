@@ -172,7 +172,7 @@ class Server:
         self.calls = []
 
     def send(self, message):
-        line = json.dumps(message, ensure_ascii=False)
+        line = json.dumps(message, ensure_ascii=False, separators=(',', ':'))
         with self.lock:
             self.out.write(line + '\n')
             self.out.flush()
