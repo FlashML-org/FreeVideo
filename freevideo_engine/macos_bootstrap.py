@@ -139,15 +139,25 @@ def preflight(args, snapshot=None, *, ram_gib=None, vram_gib=None):
     total, available = hardware['ram_total'], hardware['ram_available']
     if any(type(n) is not int or n < 0 for n in (total, available)) or not 0 < total or available > total:
         raise ValueError('Invalid unified-memory observation')
+    if ram_gib is None:
+        ram_gib = getattr(args, 'ram_gib', None)
     if ram_gib is not None and (not math.isfinite(ram_gib) or ram_gib <= 0):
         raise ValueError('RAM limit must be positive and finite')
     reserve = 2 * 2**30
     capacity = min(total, int(ram_gib * 2**30)) if ram_gib is not None else total
     resources = dict(memory_model='unified', ram_system_reserve_bytes=reserve,
         ram_budget_bytes=max(0, min(capacity, available) - reserve))
-    # This is installation supervision, not a video-capacity admission decision.
-    if resources['ram_budget_bytes'] < 2**30:
-        errors.append('Setup needs at least 3 GiB available unified memory, including its 2 GiB system reserve. Close memory-heavy applications and retry.')
+    record = dict(total_bytes=total, available_bytes=available, reserve_bytes=reserve)
+    if ram_gib is not None:
+        record['launcher_limit_bytes'] = int(ram_gib * 2**30)
+    resources['preflight_memory'] = record
+    resources['memory_record'] = record
+    # Explicit user limit must leave room for the system reserve plus the 1 GiB floor.
+    if ram_gib is not None and int(ram_gib * 2**30) < reserve + 2**30:
+        errors.append(
+            'Setup requires at least 3.00 GiB unified memory, including its 2.00 GiB system reserve, '
+            'but --ram-gib is set to %.2f GiB (%.2f GiB total, %.2f GiB available).'
+            % (ram_gib, total / 2**30, available / 2**30))
     return snapshot, resources, errors
 
 

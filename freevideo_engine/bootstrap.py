@@ -93,24 +93,26 @@ def setup_memory_status(row, verbose=False, *, system=None):
 # free when planning minus the 2 GiB reserve, so on a machine with 2 GiB or
 # less free it was 0 and the first sample stopped the install.
 WINDOWS_SETUP_MIN_PROCESS_BUDGET = 2 * GiB
+MACOS_SETUP_MIN_PROCESS_BUDGET = 2 * GiB
 
 
 def setup_memory_pressure(row, budget, system):
-    """Keep Windows planning headroom separate from an exhaustion stop.
+    """Keep Windows and Mac planning headroom separate from an exhaustion stop.
 
     The budget already excludes the OS reserve. Model SDKs additionally
     switch to bounded streaming below 2 GiB; stopping the whole installer at
     that same threshold prevented the low-memory path from continuing.
     Linux uses inference's clean-file-cache headroom, retaining the 1 GiB
     floor and the separate process budget. Raw cgroup charges remain recorded.
-    On Windows the process budget never falls below what setup itself needs;
+    On Windows and Mac the process budget never falls below what setup itself needs;
     a machine with little free RAM is stopped by the commit and system floors
     when it truly runs out, not by a budget that was planned as zero.
     """
     planned_budget = budget
-    raised = system == 'Windows' and budget < WINDOWS_SETUP_MIN_PROCESS_BUDGET
+    minimum = {'Windows': WINDOWS_SETUP_MIN_PROCESS_BUDGET, 'Darwin': MACOS_SETUP_MIN_PROCESS_BUDGET}.get(system)
+    raised = minimum is not None and budget < minimum
     if raised:
-        budget = WINDOWS_SETUP_MIN_PROCESS_BUDGET
+        budget = minimum
     reserve = (2 if system == 'Windows' else 1) * GiB
     # A raised budget keeps the full 256 MiB stop point: 5% of the raised
     # budget would stop a machine with little free RAM later than any other.
@@ -126,29 +128,40 @@ def setup_memory_pressure(row, budget, system):
         reasons.append('system_headroom')
     if used is not None and used > budget:
         reasons.append('process_budget')
-    return dict(reasons=reasons, working_bytes=used, budget_bytes=budget, planned_budget_bytes=planned_budget,
-                guard_metric=row.get('guard_metric', 'process working memory'),
-                available_bytes=available, physical_available_bytes=row.get('system_physical_available_bytes'),
-                commit_available_bytes=commit, emergency_floor_bytes=floor,
-                planning_reserve_bytes=reserve)
+    total = row.get('system_total_bytes') or row.get('total_bytes') or (row.get('macos_memory') or {}).get('total_bytes')
+    result = dict(reasons=reasons, working_bytes=used, budget_bytes=budget, planned_budget_bytes=planned_budget,
+                  guard_metric=row.get('guard_metric', 'process working memory'),
+                  available_bytes=available, physical_available_bytes=row.get('system_physical_available_bytes'),
+                  commit_available_bytes=commit, emergency_floor_bytes=floor,
+                  planning_reserve_bytes=reserve, system=system)
+    if total is not None:
+        result['total_bytes'] = total
+        record = dict(total_bytes=total, available_bytes=available, reserve_bytes=reserve)
+        result['preflight_memory'] = record
+        result['memory_record'] = record
+    return result
 
 
 def setup_memory_failure(pressure):
     reason = pressure['reasons'][0]
+    total = pressure.get('total_bytes')
+    is_mac = pressure.get('system') == 'Darwin' and total is not None
     if reason == 'commit_headroom':
         detail = 'Installation paused: Windows commit headroom is nearly exhausted (%.2f GiB available; %.2f GiB minimum).' % (
             pressure['commit_available_bytes'] / GiB, pressure['emergency_floor_bytes'] / GiB)
     elif reason == 'system_headroom':
-        detail = 'Installation paused: system RAM is nearly exhausted (%.2f GiB available; %.2f GiB minimum).' % (
+        detail = 'Installation paused: system RAM is nearly exhausted (%s%.2f GiB available; %.2f GiB minimum).' % (
+            '%.2f GiB total, ' % (total / GiB) if is_mac else '',
             pressure['available_bytes'] / GiB, pressure['emergency_floor_bytes'] / GiB)
     else:
         # The budget is the memory free at planning minus the reserve, and setup itself
         # peaked near 1 GiB; so the free memory needed is the reserve plus that, rounded up to
         # the next half GiB above it, which leaves some room.
         needed = (pressure.get('planning_reserve_bytes') or 0) + max(pressure['working_bytes'], GiB)
-        detail = ('Installation crossed its RAM budget (%.2f GiB used; %.2f GiB budget; %s). '
+        seen = '; %.2f GiB total, %.2f GiB available' % (total / GiB, pressure['available_bytes'] / GiB) if is_mac else ''
+        detail = ('Installation crossed its RAM budget (%.2f GiB used; %.2f GiB budget; %s%s). '
                   'At least %.1f GiB of RAM must be free when it starts.') % (
-            pressure['working_bytes'] / GiB, pressure['budget_bytes'] / GiB, pressure['guard_metric'],
+            pressure['working_bytes'] / GiB, pressure['budget_bytes'] / GiB, pressure['guard_metric'], seen,
             (needed * 2 // GiB + 1) / 2)
     return detail + ' Downloaded files are retained.'
 
@@ -909,6 +922,9 @@ def plan(args, *, local_progress=None, stage=None):
     if mac_target:
         from .macos_bootstrap import describe_plan
         describe_plan(value)
+        if resources and 'preflight_memory' in resources:
+            value['preflight_memory'] = resources['preflight_memory']
+            value['memory_record'] = resources['memory_record']
     else:
         value['cuda_compatibility'] = compatibility
     value['replace_models_text'] = {language: model_repair.review_lines(value['replace_models'], zh=language == 'zh')
@@ -1358,6 +1374,8 @@ class Installer:
             self.env = launch_view.environment_view(self.env, launch_view.for_engine(self.root))
         self.network = dict(value.get('network', {}), events_path=str(self.run_dir / 'network.jsonl'), quiet=True)
         self.state = {'status': 'running', 'steps': [], 'plan': value}
+        if value.get('preflight_memory'):
+            self.state['preflight_memory'] = value['preflight_memory']
         if self.damaged_before:
             self.state['damaged_before'] = self.damaged_before
         self.state_lock = threading.Lock()
@@ -1430,6 +1448,10 @@ class Installer:
                                         available) if available is not None else system['available_bytes'],
                                     inference_available_bytes=min(system['available_bytes'],
                                         reclaimable) if reclaimable is not None else system['available_bytes'])
+                            elif self.system == 'Darwin':
+                                row.update(effective_available_bytes=system['available_bytes'],
+                                           system_total_bytes=system.get('total_bytes'),
+                                           macos_memory=system)
                         used = memory_sample(row)
                         if used is None:
                             unreadable += 1
@@ -1466,6 +1488,8 @@ class Installer:
                         if pressure['reasons']:
                             self.state['installation_guard'] = pressure
                             self.state['resource_guard'] = setup_memory_failure(pressure)
+                            if pressure.get('preflight_memory'):
+                                self.state['preflight_memory'] = pressure['preflight_memory']
                             self.cancel.set()
                             break
                         if available < pressure['planning_reserve_bytes']:
