@@ -39,6 +39,13 @@ const remember = id => { try { localStorage.setItem(MODEL_KEY, id); } catch { /*
 
 // H3 Image is made for 4 to 16 MP; a smaller picture would still cost a 4 MP canvas, so its tiers start there.
 const H3_AREAS = Object.freeze({standard: 2048, high: 4096});
+// The shape of a picture as a ratio, when it is one of the common ones; otherwise nothing is said.
+const SHAPES = [[1, 1], [16, 9], [9, 16], [4, 3], [3, 4], [3, 2], [2, 3], [21, 9], [9, 21]];
+export function shapeOf(width, height) {
+    if (!(width > 0 && height > 0)) return '';
+    const hit = SHAPES.find(([w, h]) => Math.abs(width / height - w / h) / (w / h) < .02);
+    return hit ? `${hit[0]}:${hit[1]}` : '';
+}
 // A size with the ratio at about the tier's area, in steps of 32.
 export function imageSize(ratio, tier = 'standard', same = null, model = '') {
     const [w, h] = (ratio === 'same' && same ? [same.width, same.height] : ratio.split(':').map(Number));
@@ -62,7 +69,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         async generate({prompt, width, height, seed, model, images = []}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
             if (images.length > (references[model] ?? 0)) return {error: 'too_many_images'};
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed, model}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
         },
         async status(job) {
             const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
@@ -70,7 +77,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
             const step = steps && fraction >= .3 ? Math.min(steps, 1 + Math.floor((fraction - .3) / .7 * steps)) : 0;
             const preview = step ? {step, total: steps, serial: step, width: 256, height: 256} : undefined;
             if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32), preview};
-            const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15)});
+            const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15), model: row.model});
             return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32)};
         },
         async previewImage(job) {
@@ -119,7 +126,12 @@ export function openImageView(node, {studio = null, client = createImageGenClien
 
     // State of the page.
     let info = null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0], ratio = '1:1', tier = 'standard';
-    const promptOf = {};
+    const promptOf = {}, modelOf = {};
+    // The line under the picture is about the picture shown: the model that made it (from its record, or from this session), its size and its shape.
+    const infoLine = () => {
+        const id = rows.find(r => r.file === shownFile)?.model || modelOf[shownFile], width = picture.naturalWidth, height = picture.naturalHeight;
+        return [IMAGE_MODELS.find(m => m.id === id)?.name, width ? `${width}×${height}` : '', width ? shapeOf(width, height) : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+    };
     let ratioChosen = false, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false;
     let menu = null; const references = [], picked = new Set(); let rows = [];
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
@@ -345,10 +357,10 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             }
             picture.src = pictureURL(shownFile); save.href = pictureURL(shownFile); save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
             editThis.disabled = asReference.disabled = references.length >= most() || cap(model) === 0;
-            infoText.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+            infoText.textContent = infoLine();
         }
     }
-    picture.onload = () => { if (!alive) return; const tail = infoText.textContent.split(' · ').filter(Boolean); infoText.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
+    picture.onload = () => { if (alive) infoText.textContent = infoLine(); };
 
     function drawWorks() {
         column.hidden = rows.length === 0 && !running; body.classList.toggle('fv-image-no-works', column.hidden);
@@ -396,7 +408,8 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             const names = []; for (const r of references.slice(0, cap(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
-            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})});
+            const usedModel = model.id;
+            const row = await client.generate({prompt: engineText(), ...sent, model: usedModel, remember: true, images: names, ...(seed === undefined ? {} : {seed})});
             mine.job = row.job; if (!row.job) throw Object.assign(new Error(row.error), {code: row.error, ...row});
             if (mine.cancelled) { void client.cancel(row.job); return; }
             for (;;) {
@@ -416,7 +429,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 if (status.report_id && status.report_id !== reportId) {
                     reportId = status.report_id; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
                 }
-                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); lastReport = status.report_id || reportId ? {file: status.file, id: status.report_id || reportId} : null; break; }
+                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; modelOf[shownFile] = usedModel; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); lastReport = status.report_id || reportId ? {file: status.file, id: status.report_id || reportId} : null; break; }
                 if (status.state === 'error') throw Object.assign(new Error(status.error), {...status, code: status.error});
             }
         } catch (error) {

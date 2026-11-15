@@ -20,6 +20,7 @@ import uuid
 from . import image_model, image_pack, keep, progress_model
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
+from ..monitoring import save
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
 
@@ -33,6 +34,8 @@ H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
 REPORT_LIMIT = 16
 HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)')
+# Which model made each history picture; a picture from before this record has no entry.
+MODELS_FILE = 'image-models.json'
 LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
 PAGE_UPLOAD = re.compile(r'freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
 HISTORY_LIMIT = 500
@@ -343,7 +346,33 @@ class Service:
                 except OSError:
                     pass
         names = sorted(named, reverse=True) + [name for _, name in sorted(older, reverse=True)]
-        return dict(items=[dict(file='freevideo-image/' + name, name=name) for name in names[:HISTORY_LIMIT]])
+        made = self.made_by(output)
+        return dict(items=[dict(file='freevideo-image/' + name, name=name, **(dict(model=made[name]) if name in made else {}))
+                           for name in names[:HISTORY_LIMIT]])
+
+    @staticmethod
+    def made_by(output):
+        """File name -> model id for the pictures that have a record; an unreadable file counts as no record."""
+        try:
+            rows = json.loads((output / MODELS_FILE).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(rows, dict):
+            return {}
+        return {name: model for name, model in rows.items() if isinstance(model, str) and model in image_model.MODELS}
+
+    def note_model(self, path, model):
+        """Record the model that made a picture, and drop the records of pictures that are gone. A failed write only loses the label."""
+        if model not in image_model.MODELS:
+            return
+        try:
+            output = self.output_directory()
+            rows = self.made_by(output)
+            rows[Path(path).name] = model
+            present = {entry.name for entry in output.iterdir()}
+            save(output / MODELS_FILE, {name: value for name, value in rows.items() if name in present})
+        except (OSError, ValueError):
+            pass
 
     def history_path(self, name):
         """The picture a history name stands for; ValueError when it is none of ours, missing when it is already gone."""
@@ -1439,6 +1468,7 @@ class Service:
                     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
                         raise RuntimeError('worker_exit')
                     self.keep_forecast(context)
+                    self.note_model(path, value.get('model') or image_model.QWEN)
                     report_id = getattr(context, 'report_id', None)
                     if report_id:
                         done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,
