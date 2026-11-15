@@ -1,5 +1,6 @@
 """One active image and one waiting job, with a worker leased until idle or video work."""
 import atexit
+from datetime import datetime, timezone
 import asyncio
 from collections import OrderedDict
 from copy import deepcopy
@@ -20,6 +21,7 @@ import uuid
 from . import image_model, image_pack, keep, progress_model
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
+from ..exit_diagnostics import clean_reading
 from ..monitoring import save
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
@@ -912,7 +914,29 @@ class Service:
                 while len(self.reports) > REPORT_LIMIT:
                     self.reports.popitem(last=False)
             result['report_id'] = report_id
+        self.record_failure(result, context, error, video_busy)
         return result
+
+    def record_failure(self, result, context, error, video_busy):
+        """One line per failed image request in logs/image-failures.jsonl (a short history), so the reason can be read after the
+        page is gone. Fixed words and numbers only: no prompt, no picture, no path."""
+        try:
+            exit_code = getattr(error, 'exit_code', None)
+            if type(exit_code) is not int:
+                exit_code = (clean_reading(getattr(error, 'exit_reading', None)) or {}).get('exit_code')
+            row = dict(time=datetime.now(timezone.utc).isoformat(timespec='seconds'), kind=getattr(context, 'kind', None),
+                       error=result.get('error'), stage=result.get('stage'), report_id=result.get('report_id'),
+                       worker_exit_code=exit_code if type(exit_code) is int else None,
+                       video_busy=bool(video_busy), worker_restarts=self.worker_restarts)
+            logs = Path(self.installation()[0]) / 'logs'
+            logs.mkdir(parents=True, exist_ok=True)
+            file = logs / 'image-failures.jsonl'
+            lines = file.read_text(encoding='utf-8').splitlines()[-199:] if file.is_file() else []
+            temporary = logs / 'image-failures.jsonl.tmp'
+            temporary.write_text('\n'.join([*lines, json.dumps(row, ensure_ascii=False)]) + '\n', encoding='utf-8')
+            os.replace(temporary, file)
+        except Exception:
+            pass  # a log that cannot be written must never change the failure the user sees
 
     def report(self, report_id):
         if (not isinstance(report_id, str) or len(report_id) != 32
