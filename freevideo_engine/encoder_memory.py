@@ -11,7 +11,7 @@ GPU_FIELDS = ('free_bytes', 'total_bytes', 'allocated_bytes', 'reserved_bytes',
               'requested_bytes', 'memory_fraction', 'pinned_bytes', 'pinned_limit_bytes',
               'readonly_pin_attempts', 'readonly_pin_successes', 'readonly_pin_failures',
               'readonly_pin_skips', 'readonly_pin_last_error_code', 'readonly_pin_flags',
-              'readonly_pin_capacity_bytes', 'readonly_pin_memory_skips', 'readonly_pin_memory_query_failures',
+              'readonly_pin_capacity_bytes', 'readonly_pin_nonlocal_limit_bytes', 'readonly_pin_memory_skips', 'readonly_pin_memory_query_failures',
               'host_pinned_allocated_bytes', 'host_pinned_active_bytes', 'host_pinned_peak_bytes',
               'local_budget_bytes', 'local_usage_bytes', 'nonlocal_budget_bytes', 'nonlocal_usage_bytes')
 
@@ -75,6 +75,7 @@ def snapshot(torch, clip=None, manager=None, *, windows_memory=False):
                     ('readonly_pin_last_error_code', 'FREEVIDEO_READONLY_PIN_LAST_ERROR_CODE'),
                     ('readonly_pin_flags', 'FREEVIDEO_READONLY_PIN_FLAGS'),
                     ('readonly_pin_capacity_bytes', 'FREEVIDEO_READONLY_PIN_CAPACITY_BYTES'),
+                    ('readonly_pin_nonlocal_limit_bytes', 'FREEVIDEO_READONLY_PIN_NONLOCAL_LIMIT_BYTES'),
                     ('readonly_pin_memory_skips', 'FREEVIDEO_READONLY_PIN_MEMORY_SKIPS'),
                     ('readonly_pin_memory_query_failures', 'FREEVIDEO_READONLY_PIN_MEMORY_QUERY_FAILURES')):
                 value = getattr(manager, source, None)
@@ -228,6 +229,11 @@ def encode_with_recovery(clip, tokens, manager, torch, phase, *, max_attempts=3,
             del retry_error
             previous = failure['kind']
             manager.EXTRA_RESERVED_VRAM = original_reserve + (index + 1) * GiB
+            refresh = getattr(manager, 'freevideo_refresh_pin_limit', None)
+            if callable(refresh):
+                # The failed attempt's pins went back with the unload; leave
+                # more of the Windows non-local budget free for this one.
+                refresh((index + 1) * GiB)
             phase('encoder_retry', gpu=snapshot(torch, clip, manager), encoder_attempts=list(attempts))
     finally:
         manager.EXTRA_RESERVED_VRAM = original_reserve

@@ -234,6 +234,11 @@ def h3_image_presentation(clip, prompt, paths):
     return {'qwen3vl_32b': [entries]}
 
 
+def _reserve(resident):
+    """Non-local budget a pinning encoder leaves free; None without a resident bank (the default reserve)."""
+    return resident.nonlocal_reserve() if resident is not None else None
+
+
 def encode(args, request, resident=None, diagnostics=None):
     from .encoder_diagnostics import EncoderTrace
     trace = diagnostics or EncoderTrace(request, resident=resident is not None)
@@ -414,7 +419,7 @@ def _encode(args, request, resident, trace):
         from .encoder_pinning import readonly_pinning
         import comfy.model_management as memory
         phase('encoder_idle_preload')
-        with readonly_pinning(torch, memory):
+        with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)):
             return preload(clip, request, resident)
     gpu_ready_at_start = encoder_on_gpu(clip)
     loading['resident_encoder_gpu_ready_at_start'] = gpu_ready_at_start
@@ -553,7 +558,8 @@ def _encode(args, request, resident, trace):
         from .encoder_pinning import readonly_pinning
         import comfy.model_management as memory
         from .encoder_progress import layer_progress
-        with readonly_pinning(torch, memory), layer_progress(clip.cond_stage_model):
+        with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)), \
+                layer_progress(clip.cond_stage_model):
             encoded, attempts = encode_with_recovery(clip, tokens, memory, torch, phase, max_attempts=4,
                                                      attempt=attempt)
         loading['encoder_attempts'] = attempts
@@ -566,7 +572,8 @@ def _encode(args, request, resident, trace):
                 tokens = clip.tokenize(prompt, **reference_options(normalized, media_kwargs, step))
                 size = input_size(tokens)
                 current.clear()
-                with readonly_pinning(torch, memory), layer_progress(clip.cond_stage_model, 'encoder_compute_reference'):
+                with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)), \
+                        layer_progress(clip.cond_stage_model, 'encoder_compute_reference'):
                     stage_encoded, stage_attempts = encode_with_recovery(
                         clip, tokens, memory, torch, phase, max_attempts=4, attempt=attempt)
                 stage_task = task_for(stage_media)
