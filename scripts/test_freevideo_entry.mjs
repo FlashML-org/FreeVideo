@@ -6,7 +6,7 @@ import {resolve} from './editor_test_hooks.mjs';
 if (modules.registerHooks) modules.registerHooks({resolve});
 else modules.register('./editor_test_hooks.mjs', import.meta.url);
 import {uploadMedia} from '../web/media_upload.js';
-import {outputDownloadURL} from '../web/output_download.js';
+import {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} from '../web/output_download.js';
 import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
 import {expandCast} from '../web/cast_mention.js';
@@ -64,7 +64,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
             // notice: the could-not-read line the real library returns for the page to place.
             const cast = {element: new Element('cast'), notice: new Element('notice'), options, destroyed: false, destroy() { this.destroyed = true; }};
@@ -142,7 +142,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
             .replace("import { openReferenceMenu } from './image_library.js';", 'const openReferenceMenu = () => {};')
             .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
-            .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
+            .replace("import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';", 'const {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest; const trackPromptDraft = () => {}; const watchPromptHistory = () => {}; const promptHistoryRestoring = () => false;')

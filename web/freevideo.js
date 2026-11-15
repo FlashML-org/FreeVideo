@@ -24,7 +24,7 @@ import { expandCast } from './cast_mention.js';
 import { openReferenceMenu } from './image_library.js';
 import { requestText } from './prompt_sections.js';
 import { timedText } from './timed_prompt.js';
-import { outputDownloadURL } from './output_download.js';
+import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
@@ -710,6 +710,7 @@ function resultPanel(node) {
             const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : reportFileName();
             // Named when clicked, like the creation panel's report: saving it again is not "video.debug (1).json".
             if (file !== value.video) link.onclick = () => { link.download = reportFileName(); };
+            else checkedDownload(api, link, file, {missing: () => anchoredNotice(link, unreadableVideoText(text), {below: true})});
             links.append(link);
         }
         links.append(shareButton(value, text));

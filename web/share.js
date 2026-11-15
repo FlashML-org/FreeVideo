@@ -192,7 +192,7 @@ export async function openShare(record,t){
     document.body.append(dialog);dialog.showModal();dialog.focus();slide();message.textContent=t('Preparing preview…','正在准备预览…');
     try{
         const response=await api.fetchApi('/freevideo/share?'+new URLSearchParams({id}),{signal:abort.signal});
-        if(!response.ok)throw new Error(t('This saved video is unavailable.','这个已保存的视频暂时无法读取。'));
+        if(!response.ok)throw new Error(t('This saved video cannot be read.','无法读取这个已保存的视频。'));
         metadata=await response.json();
         [first,logo]=await Promise.all([image(api.apiURL('/freevideo/share/frame?'+new URLSearchParams({id}))),image(new URL('./assets/freevideo.svg',import.meta.url).href).catch(error=>{console.warn('FreeVideo share logo unavailable; continuing without it.',error);return null;})]);
         if(disposed)return;

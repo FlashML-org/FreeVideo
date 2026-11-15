@@ -1,5 +1,5 @@
 import { api } from '../../scripts/api.js';
-import { outputDownloadURL } from './output_download.js';
+import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';
 import { shareButton } from './share.js';
 import { canExtend, extendText, extendSourceProblem, extendSourceState } from './studio_extend.js';
 import { issueButton } from './issue_button.js';
@@ -225,6 +225,8 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     if (record.video) {
         const download = action('a', t('Download video', '下载视频'), 'download', secondPass ? 'fv-action-secondary' : 'fv-action-primary');
         download.href = outputDownloadURL(api, record.video); download.download = '';
+        // A file that cannot be read is answered by a line floating over the button, so the bar does not move.
+        checkedDownload(api, download, record.video, {missing: () => anchoredNotice(download, unreadableVideoText(t))});
         bar.append(download);
         const copy = action('button', t('Copy path', '复制路径'), 'copy', 'fv-action-secondary fv-action-copy');
         const text = copy.lastElementChild; let timer = 0;
