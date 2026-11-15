@@ -38,13 +38,15 @@ export function exportRange(record, selection) {
     return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end > start ? {start, frames: end - start} : null;
 }
 
-function settings(record, selection, value) {
+// Kept from the last export: size, range and sound format. Sound-only and a lower quality are not: the dialog opens on the
+// full picture at high quality, so Enter never quietly exports a file without the picture or with less of it.
+function settings(record, selection, value, {remembered = false} = {}) {
     value = value && typeof value === 'object' ? value : {};
     return {
         short: exportSizes(record).some(size => size.short === value.short) ? value.short : defaults.short,
-        quality: ['high', 'standard', 'small'].includes(value.quality) ? value.quality : defaults.quality,
+        quality: !remembered && ['high', 'standard', 'small'].includes(value.quality) ? value.quality : defaults.quality,
         range: value.range === 'selected' && exportRange(record, selection) ? 'selected' : 'whole',
-        only: value.only === 'sound' ? 'sound' : null,
+        only: !remembered && value.only === 'sound' ? 'sound' : null,
         sound_format: value.sound_format === 'wav' ? 'wav' : 'm4a',
     };
 }
@@ -87,7 +89,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     if (!parent.isConnected || !parent.open) { active.delete(parent); resolve(null); return result; }
     let saved;
     try { saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY)); } catch { /* Private browsing or old data. */ }
-    const value = settings(state.record, state.selection, saved), returnFocus = document.activeElement;
+    const value = settings(state.record, state.selection, saved, {remembered: true}), returnFocus = document.activeElement;
     const dialog = el('dialog', 'fv-ed-export-dialog');
     dialog.setAttribute('aria-label', t('Export', '导出'));
     const heading = el('h2', '', t('Export', '导出')), rows = el('div', 'fv-ed-export-rows');
