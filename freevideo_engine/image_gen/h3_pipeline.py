@@ -497,7 +497,11 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
                                host_prefetch=True) if source is not None
                  else StreamedStack(model.blocks, name='h3', device=device))
     shape = ImageShape.measure(list(model.blocks), None)
-    shape = ImageShape(**{**shape.__dict__, 'steps': 6})
+    # Blocks the host did not keep read from the checkpoint file when used and hold no bytes between calls, so a
+    # measure of the modules alone gives 0 for them and the plan puts every block on the card. The stack's layout
+    # keeps their real sizes.
+    shape = ImageShape(**{**shape.__dict__, 'steps': 6,
+                          'dit_block_bytes': max(shape.dit_block_bytes, int(getattr(stack, 'layer_bytes', 0) or 0))})
     plan = plan_image(gpu_budget_bytes=budget, width=canvas_w, height=canvas_h, shape=shape,
                       sequence_rows=reference_sequence_rows(copies))
     stack.set_resident(plan.dit_resident_layers if resident is None else resident)
