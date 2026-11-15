@@ -82,8 +82,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
-            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an assistant and say "Draw a picture of …". The assistant makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
+            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；图片下方一行写明生成它的模型、尺寸和比例。点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
+            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. The line below it names the model that made it, with its size and shape. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an assistant and say "Draw a picture of …". The assistant makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
         },
         limits: {
             zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
@@ -603,8 +603,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Choose "Record" in the toolbar.', 'Choose "Start recording" and speak into the microphone.', 'Choose "Stop". The recording is placed on an audio track.', 'Existing dialogue can be changed line by line: select a clip on the dialogue track, edit the words under "Lines" and choose "Redub".'],
         },
         limits: {
-            zh: ['录音需要允许使用麦克风。'],
-            en: ['Recording needs permission to use the microphone.'],
+            zh: ['录音需要允许使用麦克风。', '录音中按 Esc 或点录音条上的“×”，已录的部分保留在轨道上；撤销一次可移除。'],
+            en: ['Recording needs permission to use the microphone.', 'Pressing Esc or choosing "×" on the recording bar during a take keeps what has been recorded on the track. One undo removes it.'],
         },
     },
     {
@@ -756,8 +756,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Choose "Creations" in the preview area to open the library.', 'Pick a video to play it, or choose "Extend" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content, then choose "Export".'],
         },
         limits: {
-            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出过程中取消不会留下不完整的文件。'],
-            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'Cancelling an export leaves no unfinished file.'],
+            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”。', '导出过程中取消不会留下不完整的文件。'],
+            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality.', 'Cancelling an export leaves no unfinished file.'],
         },
     },
     {
