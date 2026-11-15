@@ -281,7 +281,7 @@ def image(*, local=False):
         model=enum(('minimax-h3-image', 'qwen-image-2.1-turbo'), description='The picture model; leave it out to use the installed one, '
             'or the one chosen on the picture page when both are installed.'),
         tier=enum(('standard', 'high'), description='With aspect on H3 Image: standard is about 4 MP, high about 16 MP. Not used by Qwen.'),
-        seed=nullable(number(-2**63, 2**64 - 1, integer=True)),
+        seed=nullable(number(-(2**53 - 1), 2**53 - 1, integer=True)),
         loras=image_loras(),
         images=array({'oneOf': [FILE, obj(dict(file=FILE), ('file',))]}, high=4, description='Pictures to change '
             'or combine: input files, such as result.file of an earlier picture job. The prompt calls them image 1, image 2.'),
@@ -307,7 +307,7 @@ def image(*, local=False):
 
 def image_result():
     return obj(dict(file=FILE, url=string(), width=number(256, 4096, integer=True),
-        height=number(256, 4096, integer=True), seed=number(-2**63, 2**64 - 1, integer=True),
+        height=number(256, 4096, integer=True), seed=number(-(2**53 - 1), 2**53 - 1, integer=True),
         thumbnail=string()), ('file', 'url', 'width', 'height', 'thumbnail'))
 
 
