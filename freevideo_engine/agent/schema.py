@@ -910,8 +910,8 @@ IMAGE_TOOLS = dict(create='freevideo_image_create', get='freevideo_image_read', 
 
 
 WHITEBOX_OPERATIONS = {
-    'submit': ('POST', '/whitebox', 'Send the white-model scene code you wrote (build(THREE), see GET /guide). The user\'s open FreeVideo page renders it to a short video that joins the library.'),
-    'get': ('GET', '/whitebox/{id}', 'Read a white-model scene: waiting, rendering, ready (work = library ID for media.references with early_steps) or failed (error).'),
+    'submit': ('POST', '/whitebox', 'Send the white-model scene code you wrote (build(THREE), see GET /guide). The user\'s open FreeVideo page renders it by itself to a short reference clip in the library; no user action is needed to start the rendering. The clip is not the requested video: it only fixes layout and motion, so the video itself is still to be generated from it (media.references with early_steps) once the scene is ready.'),
+    'get': ('GET', '/whitebox/{id}', 'Read a white-model scene: waiting or rendering (the page is working on it, usually under a minute: read again), ready (work = library ID for media.references with early_steps; generate the requested video from it) or failed (error).'),
 }
 WHITEBOX_TOOLS = dict(submit='freevideo_whitebox_submit', get='freevideo_whitebox_read')
 

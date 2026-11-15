@@ -54,7 +54,7 @@ def tool_list():
         dict(name='freevideo_generate_image', title='Generate a picture', description='Generate a picture from a prompt, on its own or as a first frame, with the installed picture model (MiniMax H3 Image, or Qwen-Image 2.1; the one chosen on the picture page when both are installed; model names one). With aspect, H3 Image makes about 4 MP, or about 16 MP with tier high; a smaller width and height gives the same shape at 4 MP, not scaled back (the result states the real width and height; make it smaller with the picture editing tool). With images, change or combine input pictures; with people, make a first frame with them near the places you say, in the scene from scene_image or the prompt. The result is an input file to use as a first frame, as a reference, or in images again.', annotations=write),
         dict(name='freevideo_submit_batch', title='Submit a storyboard', description='Submit several jobs at once. Each row is a job object with "kind" (generate default, assemble, vlm, enhance, image) and an optional "ref"; later rows use "@ref" wherever a job id is expected (from_job, after, clips, refine_from). FreeVideo runs them in dependency order.', annotations=write),
         dict(name='freevideo_job', title='Job status', description='Status, progress, result or error of a job.', annotations=read),
-        dict(name='freevideo_wait', title='Wait for a job or the user', description="Wait up to 45 seconds for a job (with id) or, without id, at most 50 seconds for what the user says in FreeVideo (inbox). again=true means nothing new yet: call it again. A job wait returns early when the user says something. If the job is still active, call it again with the same ID; do not resubmit.", annotations=read),
+        dict(name='freevideo_wait', title='Wait for a job or the user', description="Wait up to 45 seconds for a job (with id) or, without id, at most 50 seconds for what the user says in FreeVideo (inbox). again=true means nothing new yet: call it again. A job wait returns early when the user says something. If the job is still active, call it again with the same ID; do not resubmit. A job queued behind other work reports queue (jobs ahead, estimated_wait_seconds): keep waiting until it ends, even for many minutes; the final answer comes only when it has succeeded or failed.", annotations=read),
         dict(name='freevideo_jobs', title='List jobs', description='Recent agent jobs, optionally by status (comma-separated), project or kind.', annotations=read),
         dict(name='freevideo_cancel', title='Cancel a job', description='Cancel a waiting, queued or running job.', annotations={'readOnlyHint': False, 'destructiveHint': True, 'openWorldHint': False}),
         dict(name='freevideo_resume', title='Resume generation', description='Resume a failed, interrupted or cancelled generation; only unfinished blocks run. Poll the same job ID.', annotations=write),
@@ -442,6 +442,8 @@ class Server:
                     self.send(dict(jsonrpc='2.0', method='notifications/progress', params=dict(
                         progressToken=token, progress=round(100 * (fraction or 0), 1), total=100, message=message)))
             if view['status'] in DONE or left <= 0 or identity in self.cancelled or view.get('inbox'):
+                if view['status'] not in DONE and not view.get('inbox'):
+                    view = dict(view, again=True)
                 return view
 
     def source(self, value):

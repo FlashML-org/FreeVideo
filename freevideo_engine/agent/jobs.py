@@ -1216,6 +1216,32 @@ class Jobs:
                  for i, e in enumerate(entries) if e.get('job_id')}
         return dict(entries=entries, ahead=ahead)
 
+    def queue_note(self, row):
+        """Where a waiting generation stands behind the work holding the GPU, and what a client does meanwhile."""
+        try:
+            queue = self.queue_view()
+            ahead = queue['ahead'].get(row['id'])
+            if not ahead or not ahead['count']:
+                return {}
+            seconds, known = 0., True
+            for entry in queue['entries'][:ahead['count']]:
+                other = self.jobs.get(entry.get('job_id'))
+                remaining = (self.progress(other) if other else {}).get('remaining_seconds')
+                if remaining is None:
+                    known = False
+                    break
+                seconds += remaining
+        except Exception:
+            return {}
+        value = dict(ahead=ahead['count'])
+        if known:
+            value['estimated_wait_seconds'] = int(seconds)
+        return dict(queue=value, notice='%d job%s ahead on the GPU, which runs one generation at a time%s. This job starts by itself; '
+                    'it is not stuck and does not need a new submit. Keep calling freevideo_wait with this ID until it ends, '
+                    'even if that takes many minutes, and leave the other jobs alone.' % (
+                        ahead['count'], '' if ahead['count'] == 1 else 's',
+                        ', about %d s of work before it' % int(seconds) if known else ''))
+
     # Views ---------------------------------------------------------------------------------------------
     def view(self, row, *, detail=True):
         if row.get('chain_id') and row['status'] in ACTIVE:
@@ -1248,6 +1274,8 @@ class Jobs:
             if row['kind'] == 'image' and not pending and row.get('waiting_for'):
                 # Only once it was really held back; a picture just submitted has not been looked at yet.
                 result['notice'] = IMAGE_WAIT_NOTICES[row['waiting_for'][0]]
+            elif detail and row['kind'] == 'generate' and not pending:
+                result.update(self.queue_note(row))
         if row['status'] in ('queued', 'running', 'cancelling'):
             result['progress'] = progress
             if row.get('chain_id'):

@@ -104,8 +104,14 @@ class Whitebox:
         self._expire(record)
         result = {k: record[k] for k in ('id', 'status', 'summary', 'created_at')}
         result['page_open'] = self.page_open()
+        if record['status'] in ('waiting', 'rendering'):
+            result['notice'] = ('The open FreeVideo page renders the scene by itself; no user action is needed. '
+                                'Read it again until it is ready or failed.')
         if record['status'] == 'ready':
-            result.update(work=record['work'], seconds=record['seconds'], early_steps=EARLY_STEPS, early_ratio=FOLLOW_RATIO)
+            result.update(work=record['work'], seconds=record['seconds'], early_steps=EARLY_STEPS, early_ratio=FOLLOW_RATIO,
+                          notice='This clip is only the motion reference, not the requested video, so the task is not finished. '
+                                 'Generate the video itself with media.references=[{"library": work, "early_steps": early_steps}] '
+                                 'and give the user that job\'s result.')
         if record['status'] == 'failed':
             result['error'] = record['error']
         return result
