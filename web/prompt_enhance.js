@@ -171,7 +171,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const MEMORY_FACTS = ['gpu_total_bytes', 'gpu_free_before_load_bytes', 'gpu_allocator_budget_bytes', 'gpu_free_needed_text_only_bytes', 'gpu_free_needed_with_images_bytes',
         'placement_refused', 'gpu_free_bytes', 'gpu_allocator_ooms', 'idle_release', 'idle_release_seconds',
         'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes',
-        'gpu_peak_allocated_bytes', 'gpu_peak_reserved_bytes', 'image_count', 'input_tokens', 'weights', 'vision_device', 'kv_reserve', 'stage', 'platform'];
+        'gpu_peak_allocated_bytes', 'gpu_peak_reserved_bytes', 'image_count', 'input_tokens', 'weights', 'vision_device', 'kv_reserve', 'stage', 'platform',
+        'gpu_non_allocator_reserve_bytes', 'extra_vram_reserve_bytes'];
     const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
         .map(key => [key, diagnostics[key]]));
     const gib = value => String(Math.round(value / 2 ** 30));

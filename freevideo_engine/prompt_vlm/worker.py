@@ -222,6 +222,11 @@ WORKING_VRAM = 3 * 2**28
 # less than this beside the working space, it stays in host memory (about 0.8 GiB of RAM).
 TEXT_ONLY_SPARE_VRAM = 2**28
 OUTPUT_TOKENS = 1800
+# GPU memory a worker holds outside the allocator's pool (CUDA context, kernel modules, library
+# handles): 660-700 MiB in every measured run, whatever the request. A card whose free memory
+# the plan filled to the last byte had nothing left for it and failed after the allocator
+# reported no out-of-memory.
+NON_ALLOCATOR_VRAM = 3 * 2**28
 
 
 def kv_positions(input_tokens, answer_tokens=None):
@@ -342,18 +347,39 @@ def load_model(folder, torch, stats, checkpoint):
         free, total = torch.cuda.mem_get_info()
         stats.update(gpu_name=torch.cuda.get_device_name(), gpu_free_before_load_bytes=free, gpu_total_bytes=total,
                      gpu_compute_capability=list(torch.cuda.get_device_capability()))
+        reading = free
         admission = gpu_budget.configure(torch, free, reserve_bytes=256 * 2**20)
         free = min(free, admission.get('effective_allocator_limit_bytes') or free)
+        tokens = reserved_tokens(stats)
+        answer = stats.get('answer_tokens', OUTPUT_TOKENS)
+        def place(budget):
+            plan = gpu_plan(weights, shapes, budget, tokens, answer, not stats.get('image_count'))
+            if plan and plan['vision_on_host'] and not stats.get('image_count') and \
+                    stats.get('available_memory_at_start_bytes', 2**62) < RESIDENT_RAM + plan['host_bytes'] + plan['vision_bytes']:
+                # Host memory for the tower is short: keep it on the GPU as before rather than fail on RAM.
+                plan = gpu_plan(weights, shapes, budget, tokens, answer, True, 0) or plan
+            return plan
+        # Plan against what is left after the CUDA context and kernels, which the allocator's
+        # limit does not cover; the Windows limit already leaves the 256 MiB growth reserve.
+        extra = min(max(0, int(stats.get('extra_vram_reserve_bytes') or 0)), 4 * 2**30)
+        margin = NON_ALLOCATOR_VRAM - (256 * 2**20 if admission.get('enforced') else 0) + extra
+        plan = place(free)
+        spare = place(free - margin) if free > margin else None
+        # Only a placement that keeps every layer on the GPU is planned with the margin, and only while
+        # the margin does not push the layers out to host memory (about 1 token/s); cards that already
+        # stream layers keep their plan. After a run that ran out of memory the margin is kept regardless.
+        if spare and (extra or plan and plan['keep'] is None and spare['keep'] is None):
+            plan, free_plan = spare, free - margin
+            stats['gpu_non_allocator_reserve_bytes'] = margin + (256 * 2**20 if admission.get('enforced') else 0)
+            if admission.get('enforced') and margin > 0:
+                gpu_budget.configure(torch, reading, reserve_bytes=NON_ALLOCATOR_VRAM + extra)
+        else:
+            free_plan = free
+            stats['gpu_non_allocator_reserve_bytes'] = 0
+        free = free_plan
         # When the layers do not all fit, keep activation/KV space and the
         # desktop outside the budget for the layers that stay on the GPU.
         weight_budget = min(9 * 2**30, max(0, free - 2 * 2**30))
-        tokens = reserved_tokens(stats)
-        plan = gpu_plan(weights, shapes, free, tokens, stats.get('answer_tokens', OUTPUT_TOKENS),
-                        not stats.get('image_count'))
-        if plan and plan['vision_on_host'] and not stats.get('image_count') and \
-                stats.get('available_memory_at_start_bytes', 2**62) < RESIDENT_RAM + plan['host_bytes'] + plan['vision_bytes']:
-            # Host memory for the tower is short: keep it on the GPU as before rather than fail on RAM.
-            plan = gpu_plan(weights, shapes, free, tokens, stats.get('answer_tokens', OUTPUT_TOKENS), True, 0) or plan
         positions = plan['positions'] if plan else kv_positions(tokens)
         stats.update(gpu_allocator_budget_bytes=free, gpu_weight_budget_bytes=weight_budget,
                      gpu_kv_reserve_bytes=plan['kv'] if plan else kv_bytes(shapes, tokens))
@@ -814,6 +840,11 @@ def main():
             stats['available_memory_at_start_bytes'] = request_memory(stats)
         else:
             value = json.loads(sys.stdin.buffer.read(1024 * 1024))
+        if isinstance(value, dict):
+            # Set by the service for the run that follows one that ran out of graphics memory.
+            extra = value.pop('_extra_vram_reserve_bytes', 0)
+            if type(extra) is int and extra > 0:
+                stats['extra_vram_reserve_bytes'] = extra
         run(Path(sys.argv[1]), value, stats=stats)
     except Cancelled:
         settle()

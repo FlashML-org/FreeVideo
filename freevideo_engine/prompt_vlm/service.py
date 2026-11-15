@@ -17,6 +17,8 @@ from . import assets, rules
 # How long a rewrite that does not fit waits for other programs to free the
 # GPU (the page names them) before it fails; the user can cancel meanwhile.
 GPU_WAIT_SECONDS = 300
+# Graphics memory left unplanned for the one run that follows a run that was placed and still ran out.
+EXTRA_VRAM_RESERVE = 2**30
 
 
 class Worker:
@@ -532,6 +534,7 @@ class Service:
         holding it and, for a rewrite, wait for them to free enough and run again."""
         until = time.monotonic() + GPU_WAIT_SECONDS
         waited = dict(waits=0, seconds=0., freed=0)
+        extra_reserve = 0
         self.release_readings = None
         while True:
             # A claimed idle worker has no inherited lease. Keep the parent's lease
@@ -550,6 +553,19 @@ class Service:
             if self.state.get('phase') != 'failed' or self.state.get('error') != 'out_of_memory':
                 return
             stats = self.state.get('diagnostics') or {}
+            if type(stats.get('gpu_free_before_load_bytes')) is int and not stats.get('placement_refused') and \
+                    type(stats.get('gpu_free_needed_bytes')) is not int and not extra_reserve and not self.stop.is_set():
+                # The model was placed and then ran out of memory (graphics memory outside the
+                # allocator, or a program that grew): run again once with more left over.
+                extra_reserve = EXTRA_VRAM_RESERVE
+                value = dict(value, _extra_vram_reserve_bytes=extra_reserve)
+                waited['oom_reruns'] = waited.get('oom_reruns', 0) + 1
+                self.progress(dict(gpu_wait=dict(waited)))
+                with self.mutex:
+                    for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                        self.state.pop(key, None)
+                    self.state['phase'] = 'loading'
+                continue
             needed, free = stats.get('gpu_free_needed_bytes'), stats.get('gpu_allocator_budget_bytes')
             short = needed - free if type(needed) is int and type(free) is int and needed > free else None
             freed = False
