@@ -766,6 +766,7 @@ class ModelBank:
             gpu_capacity = owned_pool_capacity(torch)
         can_release_host = host_cache_release_supported(torch)
         return dict(reclaimable_gpu_bytes=torch.cuda.memory_reserved(),
+                    allocated_gpu_bytes=torch.cuda.memory_allocated(),
                     reclaimable_ram_bytes=(sum(host.values()) if can_release_host else 0) + parked,
                     reclaimable_commit_bytes=(sum(committed.values()) if can_release_host else 0) + parked,
                     retained_pinned_ram_bytes=sum(host.values()), parked_ram_bytes=parked,

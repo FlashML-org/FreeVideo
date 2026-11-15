@@ -323,8 +323,24 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             # pass. The worker now frees those buffers after encoding; this
             # covers anything else it still holds.
             idle_gpu = state.get('reclaimable_gpu_bytes') if state else None
+            # What the idle worker keeps for the video model itself (the
+            # transformer it will reuse, the audio decoder) is the model
+            # bank's to evict when the next stage needs the room, and a
+            # restart would only reload 21 GB of pinned weights to free it: a
+            # continuation of a preview on an 8 GiB card spent 40 s doing so.
+            # Only memory the bank does not account for, or a text encoder
+            # still on the card, makes the idle worker a reason to restart.
+            models = state.get('models') if state else None
+            allocated = state.get('allocated_gpu_bytes') if state else None
+            if type(allocated) is int and isinstance(models, list):
+                owned = sum(m.get('gpu_bytes', 0) for m in models if type(m.get('gpu_bytes')) is int)
+                encoder = sum(m.get('gpu_bytes', 0) for m in models
+                              if m.get('role') == 'encoder' and type(m.get('gpu_bytes')) is int)
+                bank_only = encoder < 256 * 2**20 and allocated - owned < 256 * 2**20
+            else:
+                bank_only = False
             gpu_starved = (type(idle_gpu) is int and idle_gpu >= 256 * 2**20
-                           and engine.get('resident_blocks', 0) == 0)
+                           and engine.get('resident_blocks', 0) == 0 and not bank_only)
             working_set_short = type(used) is int and used >= 0 and used + 2*2**30 > row['budget_bytes']['ram']
             reclaim = (stage == 'after-encoding' and not attempt and encoder_idle and environment.get(ENV)
                        and (working_set_short or mapped_commit_pressure or retention_starved or gpu_starved))

@@ -1436,7 +1436,15 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
                              and gpu_budget >= need + small_adjustment + GPU_ATTENTION_OUTPUT_BYTES)]
             selected = next(((heads, need + small_adjustment) for heads, need in available
                              if gpu_budget >= need + small_adjustment), None)
-        if (selected is None and not desktop
+        # An int8 budget a little above the four-head reserve admits that group
+        # but cannot also hold its attention outputs, which then go to the host
+        # with staged residuals: a slower placement than the no-weights route
+        # below, although live VRAM already satisfies that route's gate. The
+        # route is taken at every smaller budget, so a card with a little more
+        # free memory must not be handed the slower one.
+        outputs_would_leave_gpu = (int8 and not desktop and selected is not None and selected[0] < 8
+                                   and gpu_budget < selected[1] + GPU_ATTENTION_OUTPUT_BYTES)
+        if ((selected is None or outputs_would_leave_gpu) and not desktop
                 and free_gpu - placement_workspace >= SMALL_NO_WEIGHTS_PEAK + small_adjustment):
             # Hold no weights at all rather than move the residual stream to
             # the host. The card can take the whole activation path; what it
