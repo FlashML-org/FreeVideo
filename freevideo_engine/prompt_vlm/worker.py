@@ -218,9 +218,6 @@ MAPPED_RAM = 11 * 2**30
 # GPU space beside the weights and the KV cache: prefill activations, a
 # widened int8 weight, the per-layer merge while loading and allocator slack.
 WORKING_VRAM = 3 * 2**28
-# A request without pictures never runs the vision tower; when keeping it on the GPU would leave
-# less than this beside the working space, it stays in host memory (about 0.8 GiB of RAM).
-TEXT_ONLY_SPARE_VRAM = 2**28
 OUTPUT_TOKENS = 1800
 # GPU memory a worker holds outside the allocator's pool (CUDA context, kernel modules, library
 # handles): 660-700 MiB in every measured run, whatever the request. A card whose free memory
@@ -272,13 +269,13 @@ def placement(weights, int8_saving, kv, allocator_budget):
     return 'bf16' if weights <= room else 'int8' if weights - int8_saving <= room else None
 
 
-def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only, spare=TEXT_ONLY_SPARE_VRAM):
+def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
     """The GPU placement for `free` allocator bytes, or None when none fits.
 
     Best first: bf16 or int8 resident, then int8 with the later layers streamed
-    from host memory. A text-only request keeps the vision tower in host memory
-    when that gives a better tier, and when nothing else fits reserves the cache
-    for one answer (no correction retry). A request with images runs the vision
+    from host memory. A text-only request does not load the vision tower, so it
+    is planned without it, and when nothing else fits it reserves the cache for
+    one answer (no correction retry). A request with images runs the vision
     tower on the CPU only when nothing fits otherwise, and keeps the retry: a
     rewrite that misses a picture reference fails without it."""
     from . import int8
@@ -291,8 +288,7 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only, spar
                     vision_bytes=vision if on_host else 0, keep=None, host_bytes=0)
         precision = placement(size, saving, kv, free)
         if precision:
-            held = size if precision == 'bf16' else size - saving
-            return dict(plan, precision=precision, spare=free - kv - WORKING_VRAM - held)
+            return dict(plan, precision=precision)
         streamed = int8.resident_layers(size, stored, free - kv - WORKING_VRAM)
         if streamed:
             return dict(plan, precision='int8', keep=streamed[0], host_bytes=streamed[1])
@@ -300,12 +296,7 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only, spar
     if kv_positions(input_tokens, answer_tokens) >= kv_positions(input_tokens):
         answer_tokens = None
     if text_only:
-        # Host memory for the vision tower only when that buys a better tier.
-        rank = lambda plan: (plan['precision'] == 'bf16', plan['keep'] is None, plan['keep'] or 0)
-        whole, apart = fit(None, False), fit(None, True)
-        # On a tie the tower stays on the GPU only while it leaves room to spare.
-        if whole and (not apart or rank(whole) > rank(apart) or rank(whole) == rank(apart) and whole.get('spare', spare) >= spare):
-            return whole
+        # The tower is never read: it takes neither GPU nor host memory.
         options = ((None, True), (answer_tokens, True))
     else:
         options = ((None, False), (None, True))
@@ -342,6 +333,7 @@ def load_model(folder, torch, stats, checkpoint):
     host_bytes = 0
     weight_budget = 0
     vision_bytes = 0
+    skip_vision = False
     if torch.cuda.is_available():
         from .. import gpu_budget
         free, total = torch.cuda.mem_get_info()
@@ -353,12 +345,7 @@ def load_model(folder, torch, stats, checkpoint):
         tokens = reserved_tokens(stats)
         answer = stats.get('answer_tokens', OUTPUT_TOKENS)
         def place(budget):
-            plan = gpu_plan(weights, shapes, budget, tokens, answer, not stats.get('image_count'))
-            if plan and plan['vision_on_host'] and not stats.get('image_count') and \
-                    stats.get('available_memory_at_start_bytes', 2**62) < RESIDENT_RAM + plan['host_bytes'] + plan['vision_bytes']:
-                # Host memory for the tower is short: keep it on the GPU as before rather than fail on RAM.
-                plan = gpu_plan(weights, shapes, budget, tokens, answer, True, 0) or plan
-            return plan
+            return gpu_plan(weights, shapes, budget, tokens, answer, not stats.get('image_count'))
         # Plan against what is left after the CUDA context and kernels, which the allocator's
         # limit does not cover; the Windows limit already leaves the 256 MiB growth reserve.
         extra = min(max(0, int(stats.get('extra_vram_reserve_bytes') or 0)), 4 * 2**30)
@@ -385,8 +372,11 @@ def load_model(folder, torch, stats, checkpoint):
                      gpu_kv_reserve_bytes=plan['kv'] if plan else kv_bytes(shapes, tokens))
         if plan:
             resident, keep, host_bytes = plan['precision'], plan['keep'], plan['host_bytes']
-            vision_bytes = plan['vision_bytes']
-            stats.update(vision_device='cpu' if plan['vision_on_host'] else 'gpu',
+            # A request without pictures never runs the tower, so it is not read at all: no GPU
+            # memory and no host copy. One with pictures that does not fit keeps it in host memory.
+            skip_vision = plan['vision_on_host'] and not stats.get('image_count')
+            vision_bytes = 0 if skip_vision else plan['vision_bytes']
+            stats.update(vision_device='unloaded' if skip_vision else 'cpu' if plan['vision_on_host'] else 'gpu',
                          kv_reserve='one_answer' if positions < kv_positions(tokens) else 'with_retry')
         stats.update(streamed_layers=len(int8.layer_bytes(shapes)) - keep if keep is not None else 0,
                      streamed_host_bytes=host_bytes)
@@ -412,7 +402,8 @@ def load_model(folder, torch, stats, checkpoint):
     loading = time.monotonic()
     if resident:
         from .load import resident as load_resident
-        model = load_resident(folder, torch, 'cuda:%d' % card, resident, keep, vision_on_host=bool(vision_bytes))
+        model = load_resident(folder, torch, 'cuda:%d' % card, resident, keep, vision_on_host=bool(vision_bytes),
+                               skip_vision=skip_vision)
         mapping, device = {'': card}, 'cuda:%d' % card
         stats.update(weights=resident, kv_positions=positions)
     else:

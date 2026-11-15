@@ -36,12 +36,13 @@ def stored(folder):
     return rows
 
 
-def resident(folder, torch, device, precision, keep=None, vision_on_host=False):
+def resident(folder, torch, device, precision, keep=None, vision_on_host=False, skip_vision=False):
     """Returns the model on `device`, with int8 projections if precision == 'int8'.
 
     With `keep`, layers from that index on hold their int8 rows in host memory
     and are streamed to the GPU as they run. With vision_on_host, the vision
-    tower stays in host memory and runs on the CPU."""
+    tower stays in host memory and runs on the CPU. With skip_vision (a request
+    without pictures), the tower is not read at all."""
     from accelerate import init_empty_weights
     from torch import nn
     from transformers import AutoConfig, GenerationConfig, Qwen3VLForConditionalGeneration
@@ -66,6 +67,8 @@ def resident(folder, torch, device, precision, keep=None, vision_on_host=False):
     readers = {}
 
     def load(prefix):
+        if skip_vision and prefix.startswith('model.visual.'):
+            return
         target = 'cpu' if vision_on_host and prefix.startswith('model.visual.') else device
         groups = {}
         for name, shard in shards.items():
@@ -103,11 +106,11 @@ def resident(folder, torch, device, precision, keep=None, vision_on_host=False):
             reader.close()
     if tied:
         model.lm_head.weight = model.model.language_model.embed_tokens.weight
-    if vision_on_host:
+    if vision_on_host or skip_vision:
         visual = model.model.visual
         del model.model.visual
     model = model.to(device)
-    if vision_on_host:
+    if vision_on_host and not skip_vision:
         # Registered last, so the model's first parameter (its device) stays on the GPU.
         model.model.visual = visual
         move = lambda value: value.to('cpu') if torch.is_tensor(value) else value
