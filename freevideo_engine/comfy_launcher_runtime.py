@@ -675,6 +675,29 @@ def install_prestartup(target, engine):
         os.replace(temporary, path)
 
 
+def workflow_template(source):
+    """The bundled workflow from the engine source.
+
+    A saved source that lost the file (security software, a cleaner, an earlier
+    interrupted copy) must not stop the installation: the complete source this
+    launcher runs holds the same file, and the engine source is replaced by it
+    on the next update."""
+    relative = Path('example_workflows') / TEMPLATE
+    try:
+        found = (io_path(source) / relative).read_bytes()
+        # An interrupted copy leaves an empty file, which is as good as none.
+        if found:
+            return found
+    except OSError:
+        pass
+    try:
+        return (io_path(materialize_source()) / relative).read_bytes()
+    except OSError:
+        raise FileNotFoundError(errno.ENOENT, 'The FreeVideo workflow template is missing from the engine source '
+                                'and from this launcher. Run Update or Install / repair in the launcher to restore it',
+                                TEMPLATE) from None
+
+
 def deploy(root, source, engine):
     """Update only our entry point; preserve source edits, libraries and templates."""
     root, source, engine = map(resolved, (root, source, engine))
@@ -711,7 +734,7 @@ def deploy(root, source, engine):
     temporary.write_bytes(code)
     os.replace(temporary, entry)
     install_prestartup(target, engine)
-    template = (source / 'example_workflows' / TEMPLATE).read_bytes()
+    template = workflow_template(source)
     digest = hashlib.sha256(template).hexdigest()[:12]
     saved = []
     for parent in (target / 'example_workflows', root / 'user' / 'default' / 'workflows' / 'FreeVideo'):
