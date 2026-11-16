@@ -1,0 +1,64 @@
+/* The stage look (html[data-fv-look=stage], the default): the picture is the light, and the panels over it are glass.
+   Loaded by stage_light.js (the shell starts it with the look). Off under the calm look, with the finishing layer off
+   (data-fv-polish=off), glass off (data-glass=solid, .lite) and reduced transparency. theme.css sets the stage look's
+   translucent fills.
+
+   1. The light: the work in front, small and stretched behind the view, strongest round the work and fading out
+      towards the window's edges (a mask, not a veil of the ground colour, so whatever the ground carries, such as the
+      look layer's own lights in the corners, still shows there). Create: .fv-look-light (stage_light.js). Images and
+      Edit draw their own (.fv-iv-ambient, .fv-ed-ambient), shown again here with the same falloff.
+   2. Glass on the windows that float over the work: the small windows of the tool row (Frame & size, Length, Quality,
+      Media), the trays, the details sheet, the status panel and the notices. While the look layer (data-fv-lux) is on,
+      it styles these itself. */
+
+/* ── 1. The light ─────────────────────────────────────────────────────────────────────────────────────────────── */
+/* The same falloff for the three views: about 38 % of the picture round the work, 14 % at three quarters of the way
+   out, 6 % at the edges (dark); a little less on the light theme. */
+:root{--fv-light-mask:radial-gradient(120% 90% at 50% 38%,rgb(0 0 0 / .75) 0%,rgb(0 0 0 / .28) 72%,rgb(0 0 0 / .12) 100%);--fv-light-op:.5}
+:root[data-theme=light]{--fv-light-op:.4}
+.fv-look-light{display:none}
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-create>.fv-look-light{
+  display:block;position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict;opacity:var(--fv-light-op);
+  -webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
+.fv-look-light canvas{position:absolute;left:-4%;top:-4%;width:108%;height:108%;opacity:0;filter:saturate(1.2);transition:opacity .6s cubic-bezier(.2,.8,.2,1)}
+.fv-look-light canvas.fv-on{opacity:1}
+/* The image view's and the editor's own light (their modules draw it; the calm material and the finishing layer had
+   hidden it): shown again, with the mask in place of their veils. */
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-ambient{
+  display:block!important;opacity:var(--fv-light-op);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-veil{display:none!important}
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient{
+  display:block!important;opacity:calc(var(--fv-light-op) / .55);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient::after{content:none}
+@media (prefers-reduced-transparency:reduce){
+  html:root .fv-look-light,html:root .fv-iv .fv-iv-ambient,html:root .fv-editor .fv-ed-ambient{display:none!important}
+}
+@media (prefers-reduced-motion:reduce){.fv-look-light canvas{transition:none}}
+
+/* ── 2. Glass on the windows that float over the work (look layer off) ───────────────────────────────────────── */
+/* One frosted ground for every small window and sheet: the raised fill at 86 % (92 % light), blurred and a little
+   saturated, so nothing behind it can be read; their own hairline edge and shadow. */
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-fv-lux]):not([data-glass=solid]):not(.lite) :is(
+    .fvp.fvp-pop,
+    dialog.fv-studio.fv-create .fvs-tray[open],
+    dialog.fv-studio.fv-create .fvs-tray[data-tray=media][open],
+    dialog.fv-studio.fv-create .fvs-info-panel,
+    .fv-tb-pop.fv-tb-act,
+    .fv-notes){
+  --fv-a3:.86;
+  background:rgb(var(--fv-tint) / var(--fv-a3))!important;
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)!important;backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)!important}
+html:root[data-theme=light]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-fv-lux]):not([data-glass=solid]):not(.lite) :is(
+    .fvp.fvp-pop,
+    dialog.fv-studio.fv-create .fvs-tray[open],
+    dialog.fv-studio.fv-create .fvs-tray[data-tray=media][open],
+    dialog.fv-studio.fv-create .fvs-info-panel,
+    .fv-tb-pop.fv-tb-act,
+    .fv-notes){--fv-a3:.92}
+@media (prefers-reduced-transparency:reduce){
+  html:root:not([data-fv-lux]) :is(.fvp.fvp-pop,dialog.fv-studio.fv-create .fvs-tray[open],dialog.fv-studio.fv-create .fvs-info-panel,.fv-tb-pop.fv-tb-act,.fv-notes){
+    -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))!important}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html:root:not([data-fv-lux]) :is(.fvp.fvp-pop,dialog.fv-studio.fv-create .fvs-tray[open],dialog.fv-studio.fv-create .fvs-info-panel,.fv-tb-pop.fv-tb-act,.fv-notes){background:rgb(var(--fv-solid3))!important}
+}

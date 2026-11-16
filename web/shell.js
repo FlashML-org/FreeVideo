@@ -588,6 +588,8 @@ export function installShell({cover: wantCover = false} = {}) {
         polish.href = new URL('./glass/polish.css', import.meta.url).href; document.head.append(polish);
         // The stage light follows the work in front (the look's own module; it installs itself).
         import('./glass/polish.js').catch(error => console.warn('FreeVideo look:', error));
+        // The picture as the light behind the views, and glass on the windows over it (the stage look's own module).
+        import('./glass/stage_light.js').catch(error => console.warn('FreeVideo stage light:', error));
     }
     guardTitle(); watchHead(); quietSplash();
     for (const type of SWITCH_INPUT) globalThis.addEventListener?.(type, pressDuringSwitch, {capture: true, passive: false});

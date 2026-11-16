@@ -125,13 +125,13 @@
   --fv-a1:.78;--fv-a2:.86;--fv-a3:.92;
   --fv-sh1:0 1px 1px rgb(30 40 60 / .06),0 10px 28px -8px rgb(30 40 60 / .16);--fv-sh2:0 1px 2px rgb(30 40 60 / .07),0 22px 50px -12px rgb(30 40 60 / .22);
 }
-/* Nothing else blurs what is behind it. */
-:root:not([data-fv-material=glass]) :is([class*="fv-"],[class*="fv-"] *):not(:is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]),:is(.fv-topbar,.fv-tb-pop,.sgf,.fv-tip,.fv-toasts,.fv-pal,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]) *){
+/* Nothing else blurs what is behind it (calm look; the stage look keeps its glass, below). */
+:root:not([data-fv-material=glass]):not([data-fv-look=stage]) :is([class*="fv-"],[class*="fv-"] *):not(:is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]),:is(.fv-topbar,.fv-tb-pop,.sgf,.fv-tip,.fv-toasts,.fv-pal,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]) *){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 /* No coloured light or blurred picture behind the views; no glow on the primary button. */
 /* Off by default, not removed: a look (html[data-fv-look], e.g. polish.css for "stage") may turn them back on with a
    more specific rule. */
-:root:not([data-fv-material=glass]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none}
+:root:not([data-fv-material=glass]):not([data-fv-look=stage]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none}
 :root:not([data-fv-material=glass]) .fv-studio .fv-preview-column{background:none}
 :root:not([data-fv-material=glass]) :is(.fv-primary,.fv-image-go,[class*="-primary"],.fv-iv-go,.fvs-go){box-shadow:none!important}
 /* The probe that says theme.css (and tokens.css) took effect; independent of colours, so a palette change never
@@ -160,6 +160,11 @@
 :root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]){
   --fv-shell-bg:#f4f3f1;--fv-tint:255 255 255;--fv-solid1:255 255 255;--fv-solid2:255 255 255;--fv-solid3:238 237 234;
 }
+/* The stage look is glass over the work's light (web/glass/stage_light.css draws the light): the panels that sit over
+   it are translucent and blur it, at the floating layers' opacities, so text keeps a ground of 62-86 % (78-92 % light).
+   Calm's other choices stay: one hairline edge, no inner highlight, shadows only on what floats, no glow. */
+:root[data-fv-look=stage]:not([data-fv-material=glass]){--fv-a1:.62;--fv-a2:.74;--fv-a3:.86}
+:root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]){--fv-a1:.78;--fv-a2:.86;--fv-a3:.92}
 :root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
   --fv-bg:#f4f3f1;--fv-canvas:#f4f3f1;--fv-card:#ffffff;--fv-raised:#eeedea;--fv-hover:#e5e4e0;
 }
