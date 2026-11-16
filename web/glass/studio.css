@@ -641,10 +641,10 @@
 .fvs-key-label{display:block;font-size:var(--fv-fs-3);line-height:24px;font-weight:600;white-space:nowrap}
 /* The two lines differ by size and weight only: the time keeps the key's full text colour (contrast on the fill). */
 .fvs-key-eta{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1);line-height:16px;font-weight:400}
-/* The time line keeps its place when it has nothing to say (before the estimate arrives, while adding), so the label
-   never moves; a phone shows the label alone. */
+/* Without a time (no estimate yet, while adding) the key shows its label alone, in the middle of the key; a phone
+   shows the label alone. */
 .fvs-key-eta{min-height:16px}
-.fvs-key-eta[data-empty=true]{visibility:hidden}
+.fvs-key-eta[data-empty=true]{display:none}
 @media(max-width:760px){.fvs-key-eta{display:none!important}}
 @media(min-width:761px){
   /* The picture's bar: Download is its accent text action, the same shape as its neighbours. */
