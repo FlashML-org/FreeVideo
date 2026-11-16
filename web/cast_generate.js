@@ -22,47 +22,64 @@ const failureOf = error => ({error: error?.code || 'generation_failed', report_i
     stage: error?.stage || '', fitted: error?.fitted || null, memory: error?.memory || '', other_usage: error?.other_usage || null});
 const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
-// From a photo: the face close-up comes first, from the photo alone; the front, side and back are then made from the
-// photo (image 1) and that close-up (image 2), so every view keeps the person's face, and the side and back also see the
-// front (image 3) so they wear the same clothes. Every sentence says what to show (no "no …" phrasing). These words stay
-// here until cast-views takes `photo: true` (planned for 0.5.6); then use its answer.
+// From a photo: the face close-up comes first, from the photo alone; the front is then made from the photo (<Picture 1>)
+// and that close-up (<Picture 2>), so every view keeps the person's face, and the side and back also see the front
+// (<Picture 3>) so they wear the same clothes. The engine reads each reference as <Picture N>. Every sentence says what
+// to show (no "no …" phrasing). These words stay here until cast-views takes `photo: true`; then use its answer.
+// The close-up names its model: Qwen-Image 2.1 when it is ready (it keeps a photo's likeness far better), else H3 Image
+// with the Chinese words H3 follows best. The front, side and back use the model the engine would use for any picture.
+export const PHOTO_FACE_MODELS = Object.freeze({qwen: 'qwen-image-2.1-turbo', h3: 'minimax-h3-image'});
 const PHOTO_WHO = 'The person in image 1';
-const BACKDROP = 'on a plain light grey studio backdrop with soft even light';
-const FACE_MATCH = 'the same face shape, eyes, nose, mouth, age, hairline and expression';
+const BACKDROP = 'on a clean light grey background with soft even light';
+const WHO = '<Picture 1> is the original photo of this person and <Picture 2> is a close-up of the same person\'s face.';
+const WHO_AND_FRONT = '<Picture 1> is the original photo of this person, <Picture 2> is a close-up of the same person\'s face and '
+    + '<Picture 3> is the full-body front view of this person.';
+const BODY_SAME = 'The body shape and appearance are the same as the person in <Picture 1>.';
+const PHOTO_END = 'A real photograph of one person, sharp focus.';
 export const PHOTO_PROMPTS = Object.freeze({
-    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
-        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
-        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
-        + `hairstyle, glasses and accessories match image 1. ${BACKDROP[0].toUpperCase() + BACKDROP.slice(1)}. One photograph of one person.`,
-    front: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{CLOTHES_REF} A full-body photograph of this '
-        + 'person standing and facing the camera, the whole body from the top of the head to the feet, the arms relaxed at the '
-        + `sides, ${BACKDROP}. This person's face matches image 2: ${FACE_MATCH}. The appearance and hairstyle match image 1. `
-        + '{CLOTHES} One photograph of one person, sharp focus.',
-    side: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{FRONT_REF} A full-body photograph of this person '
-        + 'in a true side view: the whole body turned 90 degrees to the left, the nose, chest and toes pointing to the left edge of '
-        + 'the picture, one eye visible, the near shoulder in front of the far shoulder, the arms relaxed, the whole body from the top '
-        + `of the head to the feet, ${BACKDROP}. This person's face matches image 2: ${FACE_MATCH}. The appearance and hairstyle `
-        + 'match image 1. {CLOTHES} One photograph of one person, sharp focus.',
-    back: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{FRONT_REF} A full-body photograph of this person '
-        + 'seen from directly behind: the back of the head, the hair, the shoulders, the back, the back of the clothes and the heels '
-        + 'face the camera, the head and the body point the same way, the arms relaxed, the whole body from the top of the head to '
-        + `the feet, ${BACKDROP}. The hair and hairstyle match image 2 and image 1. {CLOTHES} One photograph of one person, sharp focus.`,
+    face: 'Turn <Picture 1> into a close-up front portrait of the same person: the head turned to face the camera straight on, '
+        + 'both eyes and both ears equally visible, the nose in the middle of the face, the eyes looking into the lens; from the '
+        + 'top of the head to the chin with a little of the shoulders. The face shape, eyes, eyebrows, nose, mouth, skin tone, '
+        + 'age, hairstyle, hairline and expression are the same as the person in <Picture 1>. Clean light grey background, soft '
+        + 'even light, sharp facial features and skin texture, a real photograph.',
+    face_h3: '把<Picture 1>改成同一个人的近景正面特写照片：画面从头顶到下巴，再带一点肩膀，人物正对镜头，眼睛平视镜头。'
+        + '脸型、眼睛、眉毛、鼻子、嘴巴、肤色、年龄、发型、发际线、表情和光线都与<Picture 1>中的人一致。'
+        + '背景是干净的浅灰色，五官和皮肤纹理清晰，真实照片。',
+    front: '{WHO} Turn this person into a full-body front photograph: standing and facing the camera, the whole body from the top '
+        + `of the head to the feet, the arms relaxed at the sides, ${BACKDROP}. The face shape, eyes, eyebrows, nose, mouth, skin `
+        + `tone, age, hairstyle and hairline are the same as the face in <Picture 2>. ${BODY_SAME} {CLOTHES} ${PHOTO_END}`,
+    side: '{WHO} Turn this person into a full-body side view: the whole body turned 90 degrees to the left, the nose, chest and '
+        + 'toes pointing to the left edge of the picture, one eye visible, the near shoulder in front of the far shoulder, the arms '
+        + `relaxed, the whole body from the top of the head to the feet, ${BACKDROP}. The face, seen from the side, has the same `
+        + 'shape, eyebrows, nose, lips, skin tone and age as the face in <Picture 2>, and the hairstyle and hairline are the same '
+        + `as in <Picture 2>. ${BODY_SAME} {CLOTHES} ${PHOTO_END}`,
+    back: '{WHO} Turn this person into a full-body view from directly behind: the back of the head, the hair, the shoulders, the '
+        + 'back, the back of the clothes and the heels face the camera, the head and the body point the same way, the arms '
+        + `relaxed, the whole body from the top of the head to the feet, ${BACKDROP}. The hair colour, hairstyle and hairline are `
+        + `the same as in <Picture 2>. The body shape is the same as the person in <Picture 1>. {CLOTHES} ${PHOTO_END}`,
 });
+// The close-up's model from the engine's model list: Qwen-Image 2.1 when ready, else H3 Image when ready, else none named.
+export function photoFaceModel(info) {
+    const ready = id => Array.isArray(info?.models) && info.models.some(row => row?.id === id && row.ready === true);
+    return ready(PHOTO_FACE_MODELS.qwen) ? PHOTO_FACE_MODELS.qwen : ready(PHOTO_FACE_MODELS.h3) ? PHOTO_FACE_MODELS.h3 : '';
+}
 // plan: the engine's view list (for the sizes); outfit: words for the clothes; outfitImage: a clothes picture is given;
-// frontAsThird: the side and back also see the front (image 3) for the clothes.
-export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird = true} = {}) {
+// frontAsThird: the side and back also see the front (<Picture 3>) for the clothes; faceModel: photoFaceModel's answer.
+export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird = true, faceModel = ''} = {}) {
     outfit = String(outfit || '').trim().replace(/[.。]+$/, '');
     const size = name => { const view = plan.find(row => row.view === name) || plan.find(row => row.view === 'front') || {}; return {width: view.width || 832, height: view.height || 1472}; };
-    const frontClothes = outfitImage ? `The clothes, shoes and accessories match image 3${outfit ? `; details: ${outfit}` : ''}.`
-        : outfit ? `The clothes are: ${outfit}.` : 'The clothes, shoes and accessories match image 1.';
-    const laterClothes = frontAsThird ? 'The clothes, shoes and accessories match image 3, the full-body front view.'
-        : outfit ? `The clothes are: ${outfit}.` : 'The clothes, shoes and accessories match image 1.';
+    const asPhoto = 'The clothes, shoes and accessories are the same as in <Picture 1>.';
+    const frontClothes = outfitImage ? `The clothes, shoes and accessories are the ones in <Picture 3>${outfit ? `, with these details: ${outfit}` : ''}.`
+        : outfit ? `The clothes are: ${outfit}.` : asPhoto;
+    const laterClothes = frontAsThird ? 'The clothes, shoes and accessories are the same as in <Picture 3>, the front view.'
+        : outfit ? `The clothes are: ${outfit}.` : asPhoto;
     const later = name => ({view: name, ...size(name), refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
-        prompt: PHOTO_PROMPTS[name].replace('{FRONT_REF}', frontAsThird ? ' Image 3 shows the same person from the front, full length.' : '').replace('{CLOTHES}', laterClothes)});
+        prompt: PHOTO_PROMPTS[name].replace('{WHO}', frontAsThird ? WHO_AND_FRONT : WHO).replace('{CLOTHES}', laterClothes)});
     return [
-        {view: 'face', width: 1024, height: 1280, refs: ['photo'], prompt: PHOTO_PROMPTS.face},
+        {view: 'face', width: 1024, height: 1280, refs: ['photo'], ...(faceModel ? {model: faceModel} : {}),
+            prompt: faceModel === PHOTO_FACE_MODELS.h3 ? PHOTO_PROMPTS.face_h3 : PHOTO_PROMPTS.face},
         {view: 'front', ...size('front'), refs: ['photo', 'face', ...(outfitImage ? ['outfit'] : [])],
-            prompt: PHOTO_PROMPTS.front.replace('{CLOTHES_REF}', outfitImage ? ' Image 3 shows the clothes to wear.' : '').replace('{CLOTHES}', frontClothes)},
+            prompt: PHOTO_PROMPTS.front.replace('{WHO}', WHO + (outfitImage ? ' <Picture 3> shows the clothes to wear.' : '')).replace('{CLOTHES}', frontClothes)},
         later('side'),
         later('back'),
     ];
@@ -92,7 +109,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             : view.photo ? [state.photo, ...dress] : view.from_front ? [front, ...dress] : [];
         await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: images.length});
         if (!alive()) return null;
-        const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed: seeds[index] ?? (scene ? seed + index : seed),
+        const row = await client.generate({...(view.model ? {model: view.model} : {}), prompt: view.prompt, width: view.width, height: view.height, seed: seeds[index] ?? (scene ? seed + index : seed),
             images, ...(view.view === 'back' && images.length === 1 ? {cast_view: 'back'} : {}),
             ...(loras === undefined ? {} : {loras})});
         if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory});
@@ -138,7 +155,14 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             if (!plan) {
                 plan = await client.castViews(description, kind);
                 if (scene) plan = names.map(() => plan[0]);
-                if (state.photo) { const made = photoPlan(plan, outfit, {outfitImage: !!state.outfit, frontAsThird}); plan = names.map(name => made.find(view => view.view === name)).filter(Boolean); }
+                if (state.photo) {
+                    // The close-up's model from the engine's newest list (a model may have finished installing since the page opened).
+                    let faceModel = '';
+                    try { faceModel = photoFaceModel(await client.info?.()); } catch { /* none named: the engine's own choice */ }
+                    if (!alive()) return;
+                    const made = photoPlan(plan, outfit, {outfitImage: !!state.outfit, frontAsThird, faceModel});
+                    plan = names.map(name => made.find(view => view.view === name)).filter(Boolean);
+                }
                 if (!alive()) return;
             }
             for (let index = 0; index < plan.length; index++) {

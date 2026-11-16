@@ -1,7 +1,8 @@
 // "From a photo" page of the new-character dialog: one photo of a real person becomes a character sheet in the order of
-// the final picture, face close-up | front | side | back, keeping the person's face. The photo (image 1) is edited into
-// a clean full-body front; the face, side and back are made from that front. Clothes stay as in the photo, follow a
-// description, or follow a clothes picture (image 2). Save puts the four views and one 1 × 4 sheet of them on the card.
+// the final picture, face close-up | front | side | back, keeping the person's face. The face close-up is made from the
+// photo first (Qwen-Image 2.1 when it is ready); the front, side and back are made from the photo and that close-up, the
+// side and back also from the front. Clothes stay as in the photo, follow a description, or follow a clothes picture.
+// Save puts the four views and one 1 × 4 sheet of them on the card.
 //
 // Privacy: everything stays on this computer. The photo and the clothes picture go to the local image engine only when
 // Generate is pressed. Views made here are hidden from the picture lists while they are drafts and after they belong to
