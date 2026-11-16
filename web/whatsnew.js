@@ -296,15 +296,17 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
         [...dots.children].forEach((dot, i) => dot.classList.toggle('on', i === at));
         dots.setAttribute('aria-label', t(`Page ${at + 1} of ${pages.length}`, `第 ${at + 1} 页，共 ${pages.length} 页`));
         if (page.kind === 'still' && page.poster) {
-            // One finished picture, blurred behind itself to fill the frame, with its prompt typed over the foot.
+            // One finished picture (one per language when the source is a pair), blurred behind itself to fill the frame,
+            // with its prompt, when it has one, typed over the foot.
             const shot = el('div', null, 'fv-whatsnew-shot'), back = el('img', null, 'bg'), fit = el('img', null, 'fit'), typed = el('div', null, 'fv-whatsnew-typed');
             const words = el('span'), caret = el('i'); typed.append(words, caret);
-            back.alt = ''; fit.alt = ''; back.draggable = fit.draggable = false; back.src = fit.src = new URL('./' + page.poster.src, import.meta.url).href;
-            shot.append(back, fit, typed); stageHost.replaceChildren(shot); stageHost.style.visibility = '';
-            const text = page.poster.prompt[cn ? 1 : 0], timers = [];
+            const source = Array.isArray(page.poster.src) ? page.poster.src[cn ? 1 : 0] : page.poster.src;
+            back.alt = ''; fit.alt = ''; back.draggable = fit.draggable = false; back.src = fit.src = new URL('./' + source, import.meta.url).href;
+            const text = page.poster.prompt?.[cn ? 1 : 0] || '', timers = [];
+            shot.append(back, fit, ...text ? [typed] : []); stageHost.replaceChildren(shot); stageHost.style.visibility = '';
             stop = () => timers.forEach(clearTimeout);
             if (reduce) words.textContent = text;
-            else { const step = Math.min(60, 1800 / text.length); for (let i = 1; i <= text.length; i++) timers.push(setTimeout(() => { words.textContent = text.slice(0, i); }, 300 + i * step)); }
+            else if (text) { const step = Math.min(60, 1800 / text.length); for (let i = 1; i <= text.length; i++) timers.push(setTimeout(() => { words.textContent = text.slice(0, i); }, 300 + i * step)); }
             listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', item[cn ? 1 : 0]));
             dialog.insertBefore(listNode, foot); return;
         }

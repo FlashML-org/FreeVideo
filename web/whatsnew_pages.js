@@ -23,6 +23,13 @@ export const LINES = [
 // A page is shown from the version in its `since` on, and `seen` is the record it leaves once seen: [key, value] in local
 // storage. The two 0.5 pages keep the records they had in 0.5, so nobody who saw them sees them again.
 export const PAGES = [
+    // The 0.6.0 page: the creation panel with Media open beside its button, one picture per language.
+    {id: 'interface', kind: 'still', since: '0.6.0', seen: ['freevideo.whatsnew-seen-interface', '1'], title: ['0.6.0: A new interface', '0.6.0 全新界面'],
+        poster: {src: ['assets/whatsnew/interface-en.webp', 'assets/whatsnew/interface-zh.webp']},
+        list: [['Frame, length, quality and media: set in a small window beside the button', '画幅、时长、质量、素材在按钮旁的小窗里调整'],
+            ['Tasks and the queue: viewed and cancelled at the top right', '任务和排队统一在右上角查看和取消'],
+            ['Media: chosen directly from your works', '素材可直接从作品库选择'],
+            ['Images: LoRA, and sketches turned into real scenes', '图像视图可使用 LoRA，草图可画成真实场景']]},
     {id: 'overview', since: '0.5.0', seen: ['freevideo.whatsnew-seen', '0.5'], title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
         ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text description', '替换配乐：根据文字描述重新生成'],
         ['Add music: generated to fit the selected length', '添加配乐：按选中的长度生成'], ['Edit lines: only changed lines are redubbed', '修改台词：只为改过的台词重新配音'],
