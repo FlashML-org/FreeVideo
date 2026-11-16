@@ -31,7 +31,7 @@ export function privacySettings(t, api) {
     const clean = button(t('Clean up', '清理'), {kind: 'fill'}); clean.disabled = true;
     tip(clean, t('Clean up', '清理'), t('Delete the listed files for good', '彻底删除清单上的文件'));
     const unused = row({iconName: 'shield', title: t('Uploads and pictures no longer used', '不再使用的上传和图片'),
-        sub: t('Nothing that a work, card, conversation or open page uses', '作品、人物卡、对话和打开的页面都不再使用'), end: [size, clean]});
+        sub: t('Nothing that a work, character, conversation or open page uses', '作品、角色、对话和打开的页面都不再使用'), end: [size, clean]});
     let tokens = [];
     const review = async () => {
         try {
