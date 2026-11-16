@@ -706,7 +706,8 @@ export function openLibrary(t, options = {}) {
         releasePlayer(); frame.replaceChildren();
         // The picture's own box, so a preview's badge sits on its corner.
         const media = el('div', null, 'fv-library-media');
-        const big = button('', () => openViewer(selected), 'fv-library-enlarge'); big.append(line('expand'));
+        // Where the window has no room for the stage, View large shows the video or picture over the whole screen.
+        const big = button('', () => { if (drawer.matches || narrow.matches) frame.querySelector('video, img')?.requestFullscreen?.()?.catch?.(() => {}); else openViewer(selected); }, 'fv-library-enlarge'); big.append(line('expand'));
         big.setAttribute('aria-label', t('View large', '查看大图')); tip(big, t('View large', '查看大图'), t('Open it over the whole window', '铺满窗口查看'), 'Space');
         if (row.kind === 'image') {
             const picture = el('img'); picture.alt = ''; picture.decoding = 'async'; picture.src = pictureURL(row);
@@ -2218,6 +2219,10 @@ export function openLibrary(t, options = {}) {
     // "View large" and Space: the stage when it shows something else, else full screen.
     function openViewer(key) {
         if (layout !== 'stage') setLayout('stage');
+        // A window too narrow for the stage keeps the grid: the creation opens in the details (the drawer, or the whole
+        // room on a phone), where the video plays; Esc or All creations goes back to the grid with it still selected.
+        // On a phone the details take the room's place, so the keyboard goes with them (to All creations).
+        if (layout !== 'stage') { select(key); if (narrow.matches && dialog.dataset.detail === 'true') all.focus({preventScroll: true}); return; }
         if (viewing === key) goFull(); else select(key, false);
     }
     // Two creations: side by side, or one over the other with a slider moved 1:1 by hand or with the arrow keys.
