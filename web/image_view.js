@@ -575,9 +575,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file) || castHidden.has(file);
     const trash = createTrash({client: deleter, onChange: (answer, list) => {
         if (answer) {
-            if (answer.items) rows = answer.items;
-            const kept = new Set((answer.failed || []).map(f => f.file));
+            // A file the engine no longer has is gone, not kept.
+            const kept = new Set((answer.failed || []).filter(f => f.reason !== 'missing').map(f => f.file));
             const gone = (list || []).filter(f => !kept.has(f));
+            // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
+            if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
             if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
             if (kept.size) say(t(`Could not delete ${kept.size}.`, `有 ${kept.size} 张没能删除。`));
             if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
