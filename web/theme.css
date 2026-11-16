@@ -165,6 +165,9 @@
    Calm's other choices stay: one hairline edge, no inner highlight, shadows only on what floats, no glow. */
 :root[data-fv-look=stage]:not([data-fv-material=glass]){--fv-a1:.62;--fv-a2:.74;--fv-a3:.86}
 :root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]){--fv-a1:.78;--fv-a2:.86;--fv-a3:.92}
+/* Glass off (solid, .lite) or reduced transparency: nothing blurs (shell.css), so the panels are opaque again. */
+:root[data-fv-look=stage]:is([data-glass=solid],.lite):not([data-fv-material=glass]){--fv-a1:1;--fv-a2:1;--fv-a3:1}
+@media (prefers-reduced-transparency:reduce){:root[data-fv-look=stage]:not([data-fv-material=glass]):not(#fv){--fv-a1:1;--fv-a2:1;--fv-a3:1}}
 :root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
   --fv-bg:#f4f3f1;--fv-canvas:#f4f3f1;--fv-card:#ffffff;--fv-raised:#eeedea;--fv-hover:#e5e4e0;
 }
