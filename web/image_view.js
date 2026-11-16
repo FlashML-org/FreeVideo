@@ -156,12 +156,17 @@ const enhancerNode = {id: 'image-view', properties: {}};
 const keepView = value => { viewCache = value; writeStore(VIEW_CACHE, value); };
 
 let current = null;
+// The view kept after it closes (as the editor and the AI view are): {node, dialog, reopen, dispose}.
+let kept = null;
 // Opens above the studio when one is open, as the editing view does, so going back finds it as it was.
 export function openImageView(node, {studio = null, client: given = null, poll = 500} = {}) {
     const client = given || createImageGenClient();
     // Deletes go through the page's keepalive client, so one sent as the page goes away still reaches the engine.
     const deleter = given || worksClient();
     if (current?.open) { viewChanged('image', node); return current; }
+    // Coming back finds the view exactly as it was left, at once; its works are brought up to date in the background.
+    if (kept && kept.node === node && !given && kept.dialog.isConnected) return kept.reopen(studio);
+    kept?.dispose(); kept = null;
     void poll;
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
     const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Images', '图像视图'));
@@ -1409,7 +1414,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (selecting) { selecting = false; picked.clear(); drawWorks(); render(); }
         else closeDialog(dialog);
     });
-    dialog.onclose = () => {
+    // Leaving keeps the view, closed and out of reach (as the editor and the AI view are): its picture, works, prompt,
+    // references and panels stay as they were, and the page's events (a picture finished or deleted elsewhere) keep it
+    // up to date. Only a view opened for another node, or with a client of its own (tests), is taken down.
+    const keepable = !given;
+    let refreshSoon = 0;
+    function dispose() {
         window.removeEventListener('freevideo-job-done', onJobDone); window.removeEventListener('freevideo-open-work', onOpenWork); window.removeEventListener('freevideo-task-stage-open', onStageOpen); fitWatch?.disconnect(); cancelAnimationFrame(fitFrame); sizer.dispose(); mentions.dispose();
         clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
         window.removeEventListener('freevideo-works-removed', onWorksRemoved); window.removeEventListener('freevideo-works-restored', onWorksRestored); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('freevideo-works-added', onWorksAdded);
@@ -1426,9 +1436,46 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         alive = false; place.dispose(); stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
         unwatch?.(); unwatch = null; references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
         // ── end run ──
+        if (kept?.dialog === dialog) kept = null;
+    }
+    function hide() {
+        clearTimeout(refreshSoon); clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
+        more.hidden = true; keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false');
+        // Deleted pictures waiting for their undo window go now, as when the view closed for good.
+        void trash.flush();
+        rememberView(); dialog.inert = true;
+    }
+    dialog.onclose = () => {
+        if (keepable && alive) hide(); else dispose();
         if (current === dialog) current = null;
         next();
     };
+    function reopen(nextStudio) {
+        studio = nextStudio;
+        next = () => studio?.open ? viewChanged('studio', node) : viewChanged('nodes', node);
+        // What the last close left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
+        dialog.getAnimations?.().forEach(animation => animation.cancel());
+        delete dialog.dataset.closing; delete dialog.dataset.fvLeaving; dialog.inert = false;
+        // Keys go to the last open dialog in page order: move it after one opened since.
+        const later = [...document.querySelectorAll('dialog[open]')].some(other => other !== dialog && dialog.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (!dialog.isConnected || later) document.body.append(dialog);
+        current = dialog; if (!dialog.open) dialog.showModal(); viewChanged('image', node);
+        // The view's own tab takes the focus after the first frame (not the first control, which would wear a ring),
+        // as in the editor and the AI view.
+        const focused = document.activeElement;
+        requestAnimationFrame(() => setTimeout(() => { if (dialog.open && document.activeElement === focused) navigation.querySelector('[data-view=image]')?.focus({preventScroll: true}); }));
+        // ── run: tasks owns this block (job store) ──
+        startJobSources();
+        const live = jobs.active({kind: 'image', view: 'image'})[0];
+        if (live && !running) { running = {cancelled: false, id: live.id}; follow(live.id); }
+        // ── end run ──
+        // Nothing is redrawn at the press (the view is as it was, and the page's events kept it current while away):
+        // the works are read again once it is in front, after the switch has finished, and redrawn only from that answer.
+        clearTimeout(refreshSoon);
+        refreshSoon = setTimeout(() => { if (alive && dialog.open) { meta.reload(); fitLeft(); void loadWorks(); } }, 700);
+        return dialog;
+    }
+    if (keepable) kept = {node, dialog, reopen, dispose};
     // ── run: tasks owns this block (job store) ──
     // A picture still being made (started here before, or before a reload) is shown before the first paint, so the page never looks idle.
     startJobSources();

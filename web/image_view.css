@@ -7,6 +7,8 @@
   --fv-accent:var(--fv-accent-ink);--fv-danger:var(--fv-warn);--fv-danger-subtle:var(--fv-warn-soft);
   --iv-well:rgb(0 0 0 / .22);--iv-pic-sh:0 2px 6px rgb(0 0 0 / .35),0 40px 90px -20px rgb(0 0 0 / .7);--iv-hair:rgb(255 255 255 / .08);
   --iv-on-pic:#fff;--iv-pic-chip:rgb(0 0 0 / .5)}
+/* Kept between visits (image_view.js): closed, it takes no room and draws nothing, as the editor and the AI view. */
+dialog.fv-studio.fv-image:not([open]){display:none!important}
 :root[data-theme=light] .fv-image{color-scheme:light;--iv-well:rgb(20 24 32 / .045);--iv-pic-sh:0 2px 6px rgb(30 40 60 / .1),0 30px 60px -30px rgb(30 40 60 / .3);--iv-hair:rgb(0 0 0 / .06)}
 .fv-iv [hidden]{display:none!important}
 /* the studio's own button and field faces stop at this page; its controls draw themselves */
@@ -422,6 +424,8 @@
 .fv-iv .fv-iv-day-n{font-weight:400}
 .fv-iv .fv-iv-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
 .fv-iv .fv-iv-tile{position:relative;aspect-ratio:1;border-radius:var(--fv-rad-ctl,12px);overflow:hidden;background:rgb(var(--fv-tint));transition:transform var(--fv-dur-1,160ms) var(--iv-ease),box-shadow var(--fv-dur-1,160ms)}
+/* Only the tiles in sight are laid out and drawn: a long works list costs nothing when the view comes back. */
+.fv-iv .fv-iv-tile{content-visibility:auto;contain-intrinsic-size:auto 96px}
 .fv-iv .fv-iv-tile:hover{transform:scale(1.03)}
 .fv-iv .fv-iv-tile:active{transform:scale(.98);transition-duration:60ms}
 .fv-iv .fv-iv-tile-open{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:none;cursor:pointer}
