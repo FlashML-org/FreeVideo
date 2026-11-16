@@ -9,6 +9,9 @@
   -webkit-user-select: none; user-select: none; color-scheme: dark; outline: none; scrollbar-width: thin;
 }
 :root[data-theme=light] .fv-cm { color-scheme: light; }
+/* The menu box takes the focus when opened by a pointer; it is not a control and never wears a ring (a view's general
+   focus rule would otherwise draw one round it). Its rows show where the keyboard is. */
+:root .fv-cm:focus-visible { outline: none; }
 .fv-cm[popover]:not(:popover-open) { display: none; }
 /* A row is a <button>; views style their own buttons broadly, so it starts from the browser's defaults and sets
    everything it shows (no view needs a guard rule for it). */

@@ -509,6 +509,8 @@ export function installShell({cover: wantCover = false} = {}) {
         // The picture as the light behind the views, and glass on the windows over it (the stage look's own module).
         import('./glass/stage_light.js').catch(error => console.warn('FreeVideo stage light:', error));
     }
+    // FreeVideo's own right-click menu wherever a part has none of its own (text boxes, links, the empty page).
+    import('./context_fallback.js').catch(error => console.warn('FreeVideo menu:', error));
     guardTitle(); watchHead(); quietSplash();
     for (const type of SWITCH_INPUT) globalThis.addEventListener?.(type, pressDuringSwitch, {capture: true, passive: false});
     // Edge to edge on phones and tablets too: the page may use the area under a notch (the bars pad themselves with

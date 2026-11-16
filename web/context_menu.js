@@ -7,7 +7,7 @@
 // flips at the edges and closes on a click outside, Esc, Tab, scrolling or a change of view.
 // Nothing here runs at import under Node, so the unit tests load it as it is.
 
-import { isolateDialogKeys } from './dialog_keys.js';
+import { isolateDialogKeys, listenDialogKey } from './dialog_keys.js';
 
 const browser = typeof document !== 'undefined';
 const query = browser ? new URLSearchParams(globalThis.location?.search || '') : new URLSearchParams();
@@ -94,6 +94,10 @@ const PATHS = {
     plus: '<path d="M12 5v14M5 12h14"/>',
     undo: '<path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9.5a5 5 0 0 1 0 10H12"/>',
     pulse: '<path d="M3.5 12h4l2.5-6 4 12 2.5-6h4"/>',
+    reload: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
+    paste: '<rect x="5.5" y="5" width="13" height="15.5" rx="2.5"/><path d="M9 5V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V5"/>',
+    'select-all': '<rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="2.6 2.6"/>',
+    external: '<path d="M13.5 4.5h6v6M19.5 4.5 11 13"/><path d="M18 14v3.5A2.5 2.5 0 0 1 15.5 20h-9A2.5 2.5 0 0 1 4 17.5v-9A2.5 2.5 0 0 1 6.5 6H10"/>',
 };
 export const ICONS = Object.freeze(Object.keys(PATHS));
 export function glyph(name, size = 16) {
@@ -291,7 +295,9 @@ export function openContextMenu(at, rawItems, {label = '', returnFocus = null, o
     const blurClose = () => closeAll({focus: false});
     const scrollClose = event => { if (!root.contains(event.target)) closeAll({focus: false}); };
 
-    root.addEventListener('keydown', event => {
+    // Through dialog_keys.js: a view that keeps its keys to itself (a modal view routes them from the window) still
+    // hands the menu its arrows, Enter and Esc.
+    listenDialogKey(root, 'keydown', event => {
         const key = event.key;
         if (key === 'ArrowDown' || key === 'ArrowUp') { event.preventDefault(); const next = stepIndex(items, active < 0 ? (key === 'ArrowDown' ? -1 : 0) : active, key === 'ArrowDown' ? 1 : -1); if (next >= 0) focusRow(next); }
         else if (key === 'Home' || key === 'End') { event.preventDefault(); const next = key === 'Home' ? stepIndex(items, -1, 1) : stepIndex(items, 0, -1); if (next >= 0) focusRow(next); }
