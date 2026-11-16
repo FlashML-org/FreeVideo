@@ -52,10 +52,12 @@ html[data-fv-lux]:root dialog.fv-studio.fv-autopilot .fv-autopilot-body{backgrou
 
 /* ── 2. The light under the views ───────────────────────────────────────────────────────────────────────────── */
 /* Two pseudo-elements of the view's own dialog, drawn first, so every part of the view is above them. Each is one
-   soft radial light on its own layer; only its transform moves. A fine grain keeps the falloff from banding. */
+   soft radial light on its own layer; only its transform moves. A fine grain keeps the falloff from banding.
+   Placed on the window, which the dialog fills, so the lights sit where they did; the parts past the window's edge
+   are no longer something the dialog can scroll to. */
 html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::before,
 html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::after{
-  content:"";position:absolute;z-index:-1;pointer-events:none;border-radius:50%;
+  content:"";position:fixed;z-index:-1;pointer-events:none;border-radius:50%;
   will-change:transform;animation-play-state:var(--lx-in-play,paused);
 }
 
