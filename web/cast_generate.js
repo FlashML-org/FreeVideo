@@ -27,7 +27,8 @@ const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 // (<Picture 3>) so they wear the same clothes. The engine reads each reference as <Picture N>. Every sentence says what
 // to show (no "no …" phrasing). These words stay here until cast-views takes `photo: true`; then use its answer.
 // The close-up names its model: Qwen-Image 2.1 when it is ready (it keeps a photo's likeness far better), else H3 Image
-// with the Chinese words H3 follows best. The front, side and back use the model the engine would use for any picture.
+// with the Chinese words H3 follows best. The front, side and back use the model the engine would use for any picture
+// (Qwen when a request names none); with H3 Image the only one ready, they name it too.
 export const PHOTO_FACE_MODELS = Object.freeze({qwen: 'qwen-image-2.1-turbo', h3: 'minimax-h3-image'});
 const PHOTO_WHO = 'The person in image 1';
 const BACKDROP = 'on a clean light grey background with soft even light';
@@ -73,12 +74,13 @@ export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird 
         : outfit ? `The clothes are: ${outfit}.` : asPhoto;
     const laterClothes = frontAsThird ? 'The clothes, shoes and accessories are the same as in <Picture 3>, the front view.'
         : outfit ? `The clothes are: ${outfit}.` : asPhoto;
-    const later = name => ({view: name, ...size(name), refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
+    const viewModel = faceModel === PHOTO_FACE_MODELS.h3 ? {model: faceModel} : {};
+    const later = name => ({view: name, ...size(name), ...viewModel, refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
         prompt: PHOTO_PROMPTS[name].replace('{WHO}', frontAsThird ? WHO_AND_FRONT : WHO).replace('{CLOTHES}', laterClothes)});
     return [
         {view: 'face', width: 1024, height: 1280, refs: ['photo'], ...(faceModel ? {model: faceModel} : {}),
             prompt: faceModel === PHOTO_FACE_MODELS.h3 ? PHOTO_PROMPTS.face_h3 : PHOTO_PROMPTS.face},
-        {view: 'front', ...size('front'), refs: ['photo', 'face', ...(outfitImage ? ['outfit'] : [])],
+        {view: 'front', ...size('front'), ...viewModel, refs: ['photo', 'face', ...(outfitImage ? ['outfit'] : [])],
             prompt: PHOTO_PROMPTS.front.replace('{WHO}', WHO + (outfitImage ? ' <Picture 3> shows the clothes to wear.' : '')).replace('{CLOTHES}', frontClothes)},
         later('side'),
         later('back'),
