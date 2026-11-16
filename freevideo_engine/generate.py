@@ -239,7 +239,11 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 # The planner keeps the first-block cache only where it fits.
                 planning_canvas['step_cache'] = args.step_cache
             kernels = {}
-            offered = available_backends(hardware, probe_missing=False, evidence=kernels)
+            try:
+                offered = available_backends(hardware, probe_missing=False, evidence=kernels)
+            except RuntimeError as error:
+                from .failure_details import with_kernel_check_lines
+                raise with_kernel_check_lines(error, hardware) from None
             row['attention_backends'] = dict(kernels, offered=sorted(offered))
             options.update(available_backends=offered, canvas=planning_canvas,
                 demonstrated_ram_bytes=demonstrated_local_ram(hardware, args, canvas))

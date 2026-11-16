@@ -195,6 +195,51 @@ def display_launcher_error(value, *, zh=False, replacements=()):
     return text
 
 
+KERNEL_CHECKS_FAILED = 'GPU kernel checks did not find a working linear and attention path.'
+
+
+def kernel_check_lines(rows, limit=6, width=240):
+    """Why each failed GPU kernel check failed, one line each, after the error of a request that cannot start.
+
+    A report that arrives as pasted text holds only the error, not the saved checks, so
+    the last line of each failed check's own error stands in it.
+    """
+    rows = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    if not rows:
+        return ''
+    lines = []
+    if not any(row.get('backend') == 'linear' and row.get('status') == 'complete' for row in rows):
+        lines.append('Required linear kernel did not pass.')
+    if not any(row.get('backend') not in (None, 'linear', 'linear-int8') and row.get('status') == 'complete' for row in rows):
+        lines.append('No attention backend passed.')
+    failed = [row for row in rows if row.get('status') != 'complete']
+    for row in failed[:limit]:
+        text = ''
+        for key in ('error', 'stderr_tail', 'stdout_tail'):
+            value = row.get(key)
+            value = [line.strip() for line in value.splitlines() if line.strip()] if isinstance(value, str) else []
+            if value:
+                text = value[-1]
+                break
+        lines.append('%s: %s' % (row.get('backend', 'unknown'), (text or str(row.get('status', 'unknown')))[:width]))
+    if len(failed) > limit:
+        lines.append('%d more failed checks are in the saved details.' % (len(failed) - limit))
+    return ''.join('\n' + line for line in lines)
+
+
+def with_kernel_check_lines(error, hardware):
+    """The error of failed GPU kernel checks followed by what each failed check reported; any other error as it is."""
+    if not str(error).startswith(KERNEL_CHECKS_FAILED):
+        return error
+    try:
+        from .kernel_capabilities import matching_receipt
+        receipt = matching_receipt(hardware)
+        lines = kernel_check_lines(receipt.get('kernel_probes') if receipt else None)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return error
+    return RuntimeError(str(error) + lines) if lines else error
+
+
 def setup_command_failure(label, log, exit_code, report=None):
     """Keep the complete failed step, with required GPU failures before metadata."""
     log = Path(log)
