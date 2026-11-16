@@ -1,4 +1,5 @@
 import * as model from './editor_model.js';
+import {applyTip, tipCopy} from './editor_tracks_tips.js';
 import {addMarker, hasMarker, moveMarker, removeMarker, selectedRange, shuttleRate, setSnapping,
     snappingEnabled, transportSnapPoints} from './editor_transport_model.js';
 
@@ -33,11 +34,12 @@ registerShortcuts([
     row('zoomOut', '− / Ctrl / Cmd + −', 'Zoom out', '缩小', 'timeline', event => !event.altKey && ['-', 'Subtract'].includes(event.key)),
     row('togglePlay', 'Space', 'Play / pause', '播放 / 暂停', 'play'),
     row('frames', '← / →', 'Previous / next frame', '上一帧 / 下一帧', 'play'),
+    row('tenFrames', 'Shift + ← / →', 'Back / forward 10 frames', '后退 / 前进 10 帧', 'play'),
     row('cuts', '↑ / ↓', 'Previous / next cut', '上一个 / 下一个剪辑点', 'play'),
     row('exitFullscreen', 'Esc', 'Exit full screen', '退出全屏', 'play'),
     row('undo', 'Ctrl / Cmd + Z', 'Undo', '撤销', 'edit'),
-    row('redo', 'Ctrl / Cmd + Shift + Z', 'Redo', '重做', 'edit'),
-    row('split', 'Ctrl / Cmd + B', 'Split', '剪开', 'edit'),
+    row('redo', 'Ctrl / Cmd + Shift + Z / Ctrl / Cmd + Y', 'Redo', '重做', 'edit'),
+    row('split', 'B / Ctrl / Cmd + B', 'Split', '剪开', 'edit'),
     row('delete', 'Delete / Backspace', 'Delete', '删除', 'edit'),
     row('ripple', 'Shift + Delete / Backspace', 'Delete the selected clip and close the gap', '删除选中的片段并合上空隙', 'edit'),
     row('fit', 'Shift + Z', 'Fit all', '看全部', 'timeline', event => !event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === 'z'),
@@ -68,41 +70,73 @@ const icons = {
     'play-range': 'M3 3v14m14-14v14M7 6l6 4-6 4z', fullscreen: 'M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4',
     snapping: 'M4 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3zM4 7h4m4 0h4',
     'save-frame': 'M3 6h3l1.5-2h5L14 6h3v10H3zM10 13.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+    'preview-volume': 'M3 8h3l4-4v12l-4-4H3zM13 7.5a3.5 3.5 0 0 1 0 5M15.5 5a7 7 0 0 1 0 10', 'preview-muted': 'M3 8h3l4-4v12l-4-4H3zM13.5 7.5l4 5M17.5 7.5l-4 5',
     marker: 'm10 3 6 7-6 7-6-7z', shortcuts: 'M2 5h16v10H2zM5 8h1m3 0h1m3 0h1M5 11h1m3 0h5',
+    start: 'M5 4v12M15 4l-7 6 7 6z', end: 'M15 4v12M5 4l7 6-7 6z', 'previous-frame': 'M12.5 4.5 7 10l5.5 5.5', 'next-frame': 'm7.5 4.5 5.5 5.5-5.5 5.5',
 };
 export function createEditorTransport({element, preview, transport, toolbar, editTools, zoomHost, state, player, t, notify, saveFrame = null}) {
     let tracks = null, align = null, layer = null, markerSelection = null, markerStamp = null, drag = null, kHeld = false, disposed = false;
     const clock = player.playback, listeners = [], nodes = [];
     const on = (target, type, callback, options) => { target.addEventListener(type, callback, options); listeners.push(() => target.removeEventListener(type, callback, options)); };
-    function button(id, title, text = '') {
-        const value = el('button', `fv-ed-${id}`); value.type = 'button'; value.title = title; value.setAttribute('aria-label', title);
+    // Every control carries its name, what it does and its key (editor_tracks_tips.js) instead of a bare title.
+    function button(id, tipId, text = '') {
+        const value = el('button', `fv-ed-${id}`); value.type = 'button'; applyTip(value, tipId, t); value.setAttribute('aria-label', tipCopy(tipId, t).name);
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), path = document.createElementNS(svg.namespaceURI, 'path');
         svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('aria-hidden', 'true'); path.setAttribute('d', icons[id]); svg.append(path); value.append(svg);
         if (text) { const label = el('span'); label.textContent = text; value.append(label); }
         nodes.push(value); return value;
     }
-    const marker = button('marker', t('Marker (M)', '标记（M）'));
-    const snapping = button('snapping', t('Snapping (S)', '吸附（S）'));
-    const sheetButton = button('shortcuts', t('Shortcuts', '快捷键'));
+    const marker = button('marker', 'marker');
+    const snapping = button('snapping', 'snapping');
+    const sheetButton = button('shortcuts', 'shortcuts');
     editTools.append(marker); toolbar.insertBefore(snapping, zoomHost); toolbar.append(sheetButton);
-    const tools = el('div', 'fv-ed-transport-tools');
-    const loop = button('loop', t('Loop (Shift + L)', '循环播放（Shift + L）'));
-    const range = button('play-range', t('Play selected range (Shift + Space)', '播放选中范围（Shift + 空格）'));
-    const fullscreen = button('fullscreen', t('Full screen (F)', '全屏（F）'));
+    // Kept clear of the floating task window, like the tracks.
+    const tools = el('div', 'fv-ed-transport-tools sgf-avoid');
+    const loop = button('loop', 'loop');
+    const range = button('play-range', 'playRange');
+    const fullscreen = button('fullscreen', 'fullscreen');
     // Keeps the frame under the playhead as a picture; the button is off on an empty timeline and while the editor saves it.
-    const frame = saveFrame && button('save-frame', t('Save current frame', '保存当前帧'));
+    const frame = saveFrame && button('save-frame', 'saveFrame');
     let savingFrame = false;
     if (frame) on(frame, 'click', async () => {
         if (frame.disabled) return;
         savingFrame = true; frame.disabled = true; frame.setAttribute('aria-busy', 'true');
         try { await saveFrame(); } finally { savingFrame = false; frame.removeAttribute('aria-busy'); refresh(); }
     });
-    tools.append(loop, range, ...(frame ? [frame] : []), fullscreen); transport.append(tools); nodes.push(tools);
+    // Preview volume: a press opens a slim slider above the key; it changes only what is heard here.
+    const sound = button('preview-volume', 'previewVolume'); sound.setAttribute('aria-haspopup', 'true'); sound.setAttribute('aria-expanded', 'false');
+    const soundPop = el('div', 'fv-ed-volume-pop'); soundPop.hidden = true;
+    const soundSlider = el('input', 'fv-ed-volume-slider'); soundSlider.type = 'range'; soundSlider.min = '0'; soundSlider.max = '100'; soundSlider.step = '1';
+    soundSlider.setAttribute('aria-label', tipCopy('previewVolume', t).name); applyTip(soundSlider, 'previewVolumeSlider', t);
+    soundPop.append(soundSlider);
+    const soundBox = el('span', 'fv-ed-volume-box'); soundBox.append(sound, soundPop);
+    let lastLoud = player.previewVolume || 1;
+    function paintSound() {
+        const value = player.previewVolume ?? 1;
+        soundSlider.value = String(Math.round(value * 100)); soundSlider.style.setProperty?.('--fv-ed-volume', `${Math.round(value * 100)}%`);
+        sound.querySelector('path')?.setAttribute('d', icons[value === 0 ? 'preview-muted' : 'preview-volume']);
+        sound.setAttribute('aria-pressed', String(value === 0));
+    }
+    const closeSound = () => { soundPop.hidden = true; sound.setAttribute('aria-expanded', 'false'); };
+    sound.onclick = () => { soundPop.hidden = !soundPop.hidden; sound.setAttribute('aria-expanded', String(!soundPop.hidden)); if (!soundPop.hidden) soundSlider.focus({preventScroll: true}); };
+    // Double-click mutes and unmutes the preview.
+    sound.ondblclick = () => { const value = player.previewVolume ?? 1; if (value) lastLoud = value; player.setPreviewVolume?.(value ? 0 : lastLoud || 1); paintSound(); closeSound(); };
+    soundSlider.oninput = () => { const value = Number(soundSlider.value) / 100; if (value) lastLoud = value; player.setPreviewVolume?.(value); paintSound(); };
+    soundSlider.onkeydown = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeSound(); sound.focus(); } else event.stopPropagation(); };
+    on(document, 'pointerdown', event => { if (!soundPop.hidden && !soundBox.contains(event.target)) closeSound(); }, true);
+    paintSound();
+    tools.append(loop, range, soundBox, ...(frame ? [frame] : []), fullscreen); transport.append(tools); nodes.push(tools);
     const sheet = el('div', 'fv-ed-shortcut-sheet'); sheet.hidden = true; sheet.setAttribute('role', 'region'); sheet.setAttribute('aria-label', t('Shortcuts', '快捷键'));
     element.append(sheet); nodes.push(sheet);
     const fullHost = el('div', 'fv-ed-fullscreen-host'); preview.parentNode.insertBefore(fullHost, preview); fullHost.append(preview, transport); nodes.push(fullHost);
     const playButton = transport.querySelector('.fv-ed-play');
-    playButton.title = t('Play / pause (Space)', '播放 / 暂停（空格）');
+    // Start, a frame back, play, a frame on, end: one group in the middle of the transport, the time to its left.
+    const center = el('div', 'fv-ed-transport-center sgf-avoid'); center.setAttribute('role', 'group'); center.setAttribute('aria-label', t('Playback', '播放'));
+    const toStart = button('start', 'start'), back = button('previous-frame', 'previousFrame'), forward = button('next-frame', 'nextFrame'), toEnd = button('end', 'end');
+    transport.insertBefore(center, playButton); center.append(toStart, back, playButton, forward, toEnd); nodes.push(center);
+    const step = frames => { player.pause(); state.seek(Math.max(0, Math.min(model.duration(state.record), state.playhead + frames))); };
+    toStart.onclick = () => handlers.home(); toEnd.onclick = () => handlers.end();
+    back.onclick = event => step(event.shiftKey ? -10 : -1); forward.onclick = event => step(event.shiftKey ? 10 : 1);
     // Backward playback is silent; the note shows only while the clock runs backward (the player keeps data-rate current).
     const reverseNote = el('span', 'fv-ed-reverse-note'); reverseNote.setAttribute('role', 'status');
     reverseNote.textContent = t('No sound', '无声'); nodes.push(reverseNote);
@@ -112,12 +146,20 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         if (disposed) return;
         loop.setAttribute('aria-pressed', String(clock.loop));
         snapping.setAttribute('aria-pressed', String(snappingEnabled(state)));
-        snapping.title = t('Snapping (S)', '吸附（S）');
-        snapping.setAttribute('aria-label', snapping.title);
         const bounds = selection(); range.disabled = !bounds;
-        range.title = t('Play selected range (Shift + Space)', '播放选中范围（Shift + 空格）');
-        range.setAttribute('aria-label', range.title); range.setAttribute('aria-pressed', String(!!clock.range));
-        if (frame) frame.disabled = savingFrame || !model.exportFrames(state.record);
+        applyTip(range, 'playRange', t, {why: bounds ? '' : t('Select a clip or draw a range first', '先选中片段或画一段范围')});
+        range.setAttribute('aria-pressed', String(!!clock.range));
+        const total = model.duration(state.record);
+        toStart.disabled = back.disabled = !total || state.playhead <= 0; toEnd.disabled = forward.disabled = !total || state.playhead >= total;
+        const empty = t('The timeline is empty', '时间线是空的');
+        applyTip(toStart, 'start', t, {why: toStart.disabled ? (total ? t('Already at the start', '已经在开头') : empty) : ''});
+        applyTip(back, 'previousFrame', t, {why: back.disabled ? (total ? t('Already at the start', '已经在开头') : empty) : ''});
+        applyTip(forward, 'nextFrame', t, {why: forward.disabled ? (total ? t('Already at the end', '已经在结尾') : empty) : ''});
+        applyTip(toEnd, 'end', t, {why: toEnd.disabled ? (total ? t('Already at the end', '已经在结尾') : empty) : ''});
+        if (frame) {
+            frame.disabled = savingFrame || !model.exportFrames(state.record);
+            applyTip(frame, 'saveFrame', t, {why: savingFrame ? t('Saving this frame…', '正在保存这一帧…') : frame.disabled ? t('There is no picture to save yet', '还没有可以保存的画面') : ''});
+        }
         fullscreen.setAttribute('aria-pressed', String(document.fullscreenElement === fullHost));
         transport.dataset.rate = String(player.playing ? clock.rate : 0);
         if (layer && !drag) renderMarkers();
@@ -128,8 +170,8 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         const previous = new Map([...layer.children].map(node => [Number(node.dataset.frame), node])), rows = [];
         for (const value of state.record.markers || []) {
             const mark = previous.get(value.frame) || el('button', 'fv-ed-timeline-marker'); previous.delete(value.frame); mark.type = 'button'; mark.dataset.frame = String(value.frame);
-            mark.style.left = `${value.frame * state.zoom / 24}px`; mark.title = t('Marker (M)', '标记（M）');
-            mark.setAttribute('aria-label', mark.title); mark.setAttribute('aria-pressed', String(markerSelection === value.frame));
+            mark.style.left = `${value.frame * state.zoom / 24}px`; applyTip(mark, 'timelineMarker', t);
+            mark.setAttribute('aria-label', t(`Marker at ${Math.floor(value.frame / 24 / 60)}:${String(Math.floor(value.frame / 24) % 60).padStart(2, '0')}`, `标记 ${Math.floor(value.frame / 24 / 60)}:${String(Math.floor(value.frame / 24) % 60).padStart(2, '0')}`)); mark.setAttribute('aria-pressed', String(markerSelection === value.frame));
             mark.onpointerdown = event => {
                 if (event.button !== 0 || drag) return;
                 event.preventDefault(); event.stopPropagation(); mark.focus({preventScroll: true});
@@ -278,6 +320,7 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         dispose() {
             disposed = true; unsubscribe(); listeners.forEach(remove => remove()); finishMarker(true); layer?.remove();
             if (document.fullscreenElement === fullHost) document.exitFullscreen().catch(() => {});
+            transport.insertBefore(playButton, center);
             element.insertBefore(preview, fullHost); element.insertBefore(transport, fullHost); nodes.forEach(node => node.remove());
         },
     };

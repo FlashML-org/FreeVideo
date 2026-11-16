@@ -2,7 +2,7 @@
 .fv-ed-speed-panel p { margin:0; font-size:12px; line-height:1.5; color:var(--fv-muted); }
 .fv-ed-speed-label, .fv-ed-speed-reverse { display:flex; align-items:center; gap:6px; white-space:nowrap; }
 .fv-ed-speed-panel .fv-ed-speed-label .fv-ed-speed-input { flex:0 0 72px; width:72px; min-width:0; padding:6px 8px; }
-.fv-ed-speed-panel input, .fv-ed-speed-panel button { font:inherit; color:inherit; background:var(--fv-card); border:1px solid var(--fv-border); border-radius:5px; }
+.fv-ed-speed-panel input, .fv-ed-speed-panel button { font:inherit; color:inherit; background:var(--fv-card); border:1px solid var(--fv-border); border-radius:var(--fv-r-xs); }
 .fv-ed-speed-presets { display:flex; gap:3px; }
 .fv-ed-speed-presets button { flex:1; padding:6px 0; font-size:11px; }
 .fv-ed-speed-reverse input { margin-left:auto; accent-color:var(--fv-accent); }
@@ -14,7 +14,12 @@
 .fv-ed-speed-panel .fv-ed-speed-reset { align-self:flex-start; padding:6px 10px; }
 .fv-ed-speed-panel [hidden] { display:none; }
 .fv-ed-speed-badges { position:absolute; top:3px; right:5px; display:flex; gap:3px; z-index:3; pointer-events:none; max-width:calc(100% - 10px); overflow:hidden; }
-.fv-ed-speed-badges > span { flex-shrink:0; padding:1px 4px; border-radius:3px; font-size:10px; line-height:14px; color:var(--fv-ink); background:var(--fv-card); border:1px solid var(--fv-border); }
+.fv-ed-speed-badges > span { flex-shrink:0; padding:1px 4px; border-radius:var(--fv-r-xs); font-size:10px; line-height:14px; color:var(--fv-ink); background:var(--fv-card); border:1px solid var(--fv-border); }
 
 .fv-ed-speed-label .fv-ed-adjust-number{flex:0 0 72px}
 .fv-ed-speed-badges:has(+.fv-ed-picture-badge),.fv-ed-clip:has(.fv-ed-picture-badge) .fv-ed-speed-badges{top:23px}
+/* What was refused or changed, said under the speed; the reverse note shows while backward sound is silent in preview. */
+.fv-ed-speed-panel .fv-ed-speed-note{margin:-4px 0 0;font-size:12px;line-height:16px;color:var(--fv-warn,var(--fv-warning))}
+.fv-ed-speed-panel .fv-ed-speed-reverse-hint{margin:-4px 0 0;color:var(--fv-fg3,var(--fv-muted))}
+.fv-ed-speed-presets button{min-height:32px;border-radius:var(--fv-r-sm)}
+.fv-ed-speed-presets{gap:4px}

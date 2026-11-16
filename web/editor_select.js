@@ -8,6 +8,9 @@ import {unlockedIds} from './editor_audio_model.js';
 import {isTextTrack, textDropLocked} from './editor_text_model.js';
 
 const end = clip => clip.start + clip.frames;
+// Where a moved group lands, to a tenth of a second.
+const tenths = frame => { const value = Math.max(0, Math.floor(frame * 10 / model.FPS)), seconds = Math.floor(value / 10);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}${value % 10 ? `.${value % 10}` : ''}`; };
 const busy = clip => ['queued', 'running'].includes(clip.pending);
 const all = record => record.tracks.flatMap(track => track.clips);
 const selection = ids => ids.length ? {kind: 'clip', ids} : null;
@@ -145,7 +148,8 @@ export function createSelectionActions({state, t = en => en, actions = {}, clipb
         if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || isTyping(event.target) || event.altKey) return false;
         const key = event.key.toLowerCase(), command = (event.ctrlKey || event.metaKey) && !event.shiftKey && ['a', 'c', 'x', 'v', 'd', 'b'].includes(key);
         const deleting = ['delete', 'backspace'].includes(key) && ['clip', 'gap', 'range'].includes(state.selection?.kind);
-        const trimming = !event.ctrlKey && !event.metaKey && !event.shiftKey && ['q', 'w'].includes(key);
+        // B alone splits too, as in other editors (Ctrl/Cmd+B stays); Q and W trim before and after the playhead.
+        const trimming = !event.ctrlKey && !event.metaKey && !event.shiftKey && ['q', 'w', 'b'].includes(key);
         if (!command && !deleting && !trimming) return false;
         event.preventDefault(); event.stopPropagation(); run(deleting && event.shiftKey ? 'ripple' : key); return true;
     }};
@@ -173,7 +177,7 @@ export function prepareMove(record, ids) {
     }};
 }
 
-export function createSelectionGestures({state, element, content, scroll, clips, rows, hitTest, snap, t, actions, renderSelection}) {
+export function createSelectionGestures({state, element, content, scroll, clips, rows, hitTest, snap, t, actions, renderSelection, settle = null}) {
     const commands = createSelectionActions({state, t, actions});
     const make = className => { const node = document.createElement('div'); node.className = className; node.hidden = true; content.append(node); return node; };
     const marquee = make('fv-ed-marquee'), guide = make('fv-ed-group-guide'), outlines = make('fv-ed-marquee-outlines');
@@ -256,11 +260,9 @@ export function createSelectionGestures({state, element, content, scroll, clips,
             const points = [...g.points, ...[desired, desired + clip.frames].map(frame => Math.round(frame / (5 * model.FPS)) * 5 * model.FPS)];
             const aligned = snap(Math.max(0, desired), transportSnapPoints(state, points, event), state.zoom, {offsets: [0, clip.frames]});
             const track = [...rows].find(([, row]) => p.y >= row.top && p.y <= row.top + row.height)?.[0];
+            // Refused moves (a part generating, a locked track, no room) still follow the pointer, outlined red with the reason
+            // for the first two; on release the group glides back.
             const result = g.plan.preview(aligned.frame - clip.start, track); g.result = result;
-            if (result.code === 'busy') {
-                if (!g.warned) { g.warned = true; commands.report(new model.EditError('busy')); }
-                return;
-            }
             guide.hidden = aligned.guide == null || result.delta !== aligned.frame - clip.start;
             guide.style.left = `${pixels(aligned.guide ?? 0)}px`;
             for (const layer of g.layers) layer.node.style.transform = `translateX(${pixels(result.delta)}px)`;
@@ -268,11 +270,10 @@ export function createSelectionGestures({state, element, content, scroll, clips,
                 clips.get(member.id).element.classList.toggle('fv-ed-cannot-drop', !!result.code);
             if (g.blocked !== !!result.code) element.dataset.selectBlocked = String(!!result.code);
             g.blocked = !!result.code;
-            label.hidden = !!result.code;
-            label.textContent = result.code ? ''
-                : t(`${Math.round((g.plan.start + result.delta) / model.FPS)} – ${Math.round((g.plan.end + result.delta) / model.FPS)} seconds`, `${Math.round((g.plan.start + result.delta) / model.FPS)} – ${Math.round((g.plan.end + result.delta) / model.FPS)} 秒`);
+            const reason = {busy: t('Generating; move it when it is done', '正在生成，完成后再移动'), locked: t('This track is locked', '这条轨道已锁定')}[result.code] || '';
+            label.textContent = result.code ? reason : `${tenths(g.plan.start + result.delta)} – ${tenths(g.plan.end + result.delta)}`;
             label.style.left = `${Math.max(8, Math.min(bounds.width - 220, event.clientX - bounds.left + 14))}px`;
-            label.style.top = `${Math.max(26, Math.min(bounds.height - 32, event.clientY - bounds.top + 14))}px`; label.hidden = !!result.code;
+            label.style.top = `${Math.max(26, Math.min(bounds.height - 32, event.clientY - bounds.top + 14))}px`; label.hidden = !label.textContent;
         }
     }
     function tick() {
@@ -290,7 +291,10 @@ export function createSelectionGestures({state, element, content, scroll, clips,
         if (event) consume(event);
         if (!cancel && event) update(event);
         const g = gesture; gesture = null; lastEvent = null; cancelAnimationFrame(raf); raf = null;
+        // A refused or cancelled group move glides back from where it was let go.
+        const back = g.type === 'move' && g.moved && g.result && (cancel || g.result.code) ? pixels(g.result.delta) : 0;
         for (const layer of g.layers || []) { layer.children.forEach(node => layer.row.append(node)); layer.node.remove(); }
+        if (back && settle) for (const member of g.plan.members) settle(clips.get(member.id)?.element, back, 0);
         for (const item of clips.values()) if (item.element.className.includes('fv-ed-cannot-drop')) item.element.classList.remove('fv-ed-cannot-drop');
         marquee.hidden = guide.hidden = label.hidden = outlines.hidden = true; outlines.replaceChildren(); delete element.dataset.selectGesture; delete element.dataset.selectBlocked;
         if (element.hasPointerCapture(g.pointer)) element.releasePointerCapture(g.pointer);
@@ -298,7 +302,7 @@ export function createSelectionGestures({state, element, content, scroll, clips,
             if (cancel) state.select(g.previous);
             else if (g.type === 'box') { const ids = g.selected || (adding(g) ? selectedIds(g.record, g.previous) : []); state.select(selection(ids), {history: true}); anchor = ids.at(-1) ?? null; }
             else if (g.type === 'move' && !g.moved) choose(g.id);
-            else if (g.type === 'move' && g.result?.code === 'locked') commands.report(new model.EditError('locked'));
+            else if (g.type === 'move' && ['locked', 'busy'].includes(g.result?.code)) commands.report(new model.EditError(g.result.code));
             else if (g.type === 'move' && g.result && !g.result.code) state.apply(t('Move', '移动'), record => actionsModel.moveParts(record, g.plan.ids, {frames: g.result.delta, track: null}));
         } catch (error) { commands.report(error); }
         finally { paint(selectedIds(state.record, state.selection)); renderSelection(); actions.gestureEnd?.(); }

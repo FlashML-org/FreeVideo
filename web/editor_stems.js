@@ -3,6 +3,7 @@ import {registerMenuItem} from './editor_menu.js';
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {sourceKey} from './editor_store.js';
 import {showSoundBubble, markSoundBubbleSeen, isBubbleRemover} from './sound_bubble.js';
+import {tip} from './editor_tips.js';
 
 const ROOT = '/freevideo/agent/v1';
 const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
@@ -68,6 +69,9 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
         if (!found) { hideBubble(); return; }
         const {clip, track} = found;
         button.disabled = !!running || !!clip.pending || track.locked || children(state.record, clip.id).length > 0;
+        tip(button, {name: t('Separate tracks', '分离音轨'), use: t('Split voice, music and ambience onto their own tracks', '把人声、音乐和环境声拆到各自的轨道'),
+            why: !button.disabled ? '' : running ? t('A separation is already running', '已有一段正在分离') : clip.pending ? t('This part is still generating', '这一段还在生成')
+                : track.locked ? t('This track is locked; unlock it first', '这条轨道已锁定，先解锁') : t('Already separated; undo to separate again', '已经分离过了，撤销后可重新分离')});
         if (!button.disabled) {
             // A bubble that is already up returns nothing to remove; keep the remover that owns it.
             const remove = showSoundBubble(button, {cn: t('', 'zh') === 'zh'});
@@ -90,7 +94,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
             path.setAttribute('stroke-width', '1.4'); path.setAttribute('stroke-linecap', 'round'); svg.append(path);
             const text = document.createElement('span'); text.className = 'fv-ed-stems-label'; text.textContent = t('Separate tracks', '分离音轨');
             button = document.createElement('button'); button.type = 'button'; button.className = 'fv-action fv-ed-stems-button'; button.hidden = true;
-            button.setAttribute('aria-label', t('Separate tracks', '分离音轨')); button.title = t('Separate tracks', '分离音轨'); button.dataset.tourId = 'audio-track-button';
+            button.setAttribute('aria-label', t('Separate tracks', '分离音轨')); button.dataset.tourId = 'audio-track-button';
             button.append(svg, text);
             button.onclick = () => { const found = target(); if (found && !button.disabled) void separate(found.clip.id); };
             holder = document.createElement('div'); holder.className = 'fv-ed-tool-group fv-ed-stems-group'; holder.hidden = true; holder.append(button);

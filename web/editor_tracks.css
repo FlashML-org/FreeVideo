@@ -25,16 +25,16 @@
 .fv-ed-tick{position:absolute;bottom:0;height:5px;border-left:1px solid var(--fv-border);pointer-events:none}
 .fv-ed-tick-major{height:8px}
 .fv-ed-tick-major span{position:absolute;left:4px;bottom:6px;white-space:nowrap;font-size:11px;color:var(--fv-muted);font-variant-numeric:tabular-nums}
-.fv-ed-track-row{position:absolute;left:0;right:0;background:var(--fv-card);border-radius:8px}
+.fv-ed-track-row{position:absolute;left:0;right:0;background:var(--fv-card);border-radius:var(--fv-r-sm)}
 .fv-ed-track-row::before{content:"";position:absolute;inset:0;border:1px solid var(--fv-border);border-radius:inherit;pointer-events:none}
 .fv-ed-track-empty{position:sticky;left:0;max-width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:0 16px;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--fv-muted);pointer-events:none;opacity:1;transition:opacity 150ms ease}
 .fv-ed-track-empty.fv-ed-hint-obscured{opacity:0}
 @media(prefers-reduced-motion:reduce){.fv-ed-track-empty{transition:none}}
-.fv-ed-clip{position:absolute;top:0;height:100%;display:block;padding:0;margin:0;min-width:0;overflow:hidden;border:0;border-radius:8px;background:var(--fv-card);cursor:grab;touch-action:none;isolation:isolate;--fv-ed-progress:0}
+.fv-ed-clip{position:absolute;top:0;height:100%;display:block;padding:0;margin:0;min-width:0;overflow:hidden;border:0;border-radius:var(--fv-r-sm);background:var(--fv-card);cursor:grab;touch-action:none;isolation:isolate;--fv-ed-progress:0}
 .fv-ed-clip.fv-ed-joined-left{border-top-left-radius:0;border-bottom-left-radius:0}
 .fv-ed-clip.fv-ed-joined-left[data-state=planned],.fv-ed-clip.fv-ed-joined-left[data-state=failed]{border-left-width:0}
 .fv-ed-clip.fv-ed-joined-right{border-top-right-radius:0;border-bottom-right-radius:0;border-right:1px solid var(--fv-border)}
-.fv-ed-seam-mark{position:absolute;left:4px;bottom:4px;z-index:2;width:18px;height:18px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:color-mix(in srgb,var(--fv-bg) 78%,transparent);color:var(--fv-ink);pointer-events:none}
+.fv-ed-seam-mark{position:absolute;left:4px;bottom:4px;z-index:2;width:18px;height:18px;display:flex;align-items:center;justify-content:center;border-radius:var(--fv-r-sm);background:color-mix(in srgb,var(--fv-bg) 78%,transparent);color:var(--fv-ink);pointer-events:none}
 .fv-ed-seam-mark svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .fv-ed-clip-media,.fv-ed-progress-fill,.fv-ed-block-progress{position:absolute;inset:0;pointer-events:none}
 .fv-ed-clip-media{background-repeat:repeat-x;background-position:left center;background-size:auto 100%}
@@ -52,18 +52,18 @@
 .fv-ed-clip-status svg{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
 .fv-ed-clip-failure-reason{overflow:hidden;text-overflow:ellipsis}
 .fv-ed-clip[data-busy=true]{cursor:default}
-.fv-ed-trim-handle{position:absolute;top:50%;width:4px;height:20px;border-radius:2px;transform:translateY(-50%);background:var(--fv-accent);cursor:ew-resize;z-index:2;opacity:0;pointer-events:auto}
+.fv-ed-trim-handle{position:absolute;top:50%;width:4px;height:20px;border-radius:var(--fv-r-xs);transform:translateY(-50%);background:var(--fv-accent);cursor:ew-resize;z-index:2;opacity:0;pointer-events:auto}
 .fv-ed-trim-start{left:-2px}
 .fv-ed-trim-end{right:-2px}
 .fv-ed-clip[data-busy=true] .fv-ed-trim-handle{display:none}
 .fv-ed-clip.fv-ed-dragging,.fv-ed-selection.fv-ed-dragging{opacity:.85;z-index:4;cursor:grabbing}
 .fv-ed-track-overlays{position:absolute;inset:0;pointer-events:none;z-index:5}
-.fv-ed-selection{position:absolute;border:2px solid var(--fv-accent);border-radius:8px}
-.fv-ed-selection.fv-ed-range,.fv-ed-selection.fv-ed-planned-selection,.fv-ed-gesture-preview{position:absolute;border:1.5px dashed var(--fv-accent);border-radius:8px;background:color-mix(in srgb,var(--fv-accent) 8%,transparent)}
+.fv-ed-selection{position:absolute;border:2px solid var(--fv-accent);border-radius:var(--fv-r-sm)}
+.fv-ed-selection.fv-ed-range,.fv-ed-selection.fv-ed-planned-selection,.fv-ed-gesture-preview{position:absolute;border:1.5px dashed var(--fv-accent);border-radius:var(--fv-r-sm);background:color-mix(in srgb,var(--fv-accent) 8%,transparent)}
 .fv-ed-selection.fv-ed-gap{border:1.5px dashed var(--fv-accent);background:color-mix(in srgb,var(--fv-accent) 8%,transparent)}
 .fv-ed-range-border{position:absolute;top:0;bottom:0;border-left:1px dashed var(--fv-accent);cursor:ew-resize;pointer-events:auto}
 .fv-ed-range-border:before{content:"";position:absolute;top:0;bottom:0;left:-6px;width:12px}
-.fv-ed-boundary-handle{position:absolute;left:-2px;top:50%;transform:translateY(-50%);width:4px;height:14px;border-radius:2px;background:var(--fv-accent);opacity:0}
+.fv-ed-boundary-handle{position:absolute;left:-2px;top:50%;transform:translateY(-50%);width:4px;height:14px;border-radius:var(--fv-r-xs);background:var(--fv-accent);opacity:0}
 .fv-ed-range-border:hover .fv-ed-boundary-handle,.fv-ed-range-border[data-limited=true] .fv-ed-boundary-handle{opacity:1}
 .fv-ed-range-border[data-limited=true]{border-color:var(--fv-warning)}
 .fv-ed-range-border[data-limited=true] .fv-ed-boundary-handle{background:var(--fv-warning)}
@@ -73,16 +73,16 @@
 .fv-ed-insertion-line{width:2px;background:var(--fv-ink)}
 .fv-ed-insertion-line:before{content:"";position:absolute;top:-3px;left:-3px;width:8px;height:6px;background:inherit;clip-path:polygon(0 0,100% 0,50% 100%)}
 .fv-ed-playhead{position:absolute;top:18px;width:1px;background:var(--fv-ink);z-index:6;pointer-events:none}
-.fv-ed-playhead-handle{position:absolute;left:-4px;top:0;width:9px;height:8px;padding:0;border:0;border-radius:2px;background:var(--fv-ink);cursor:ew-resize;pointer-events:auto;touch-action:none}
+.fv-ed-playhead-handle{position:absolute;left:-4px;top:0;width:9px;height:8px;padding:0;border:0;border-radius:var(--fv-r-xs);background:var(--fv-ink);cursor:ew-resize;pointer-events:auto;touch-action:none}
 .fv-ed-track-zoom{position:absolute;right:12px;bottom:8px;display:flex;align-items:center;gap:4px;height:28px}
-.fv-ed-track-zoom button{display:grid;place-items:center;height:28px;min-width:24px;padding:0 3px;border:0;border-radius:6px;background:transparent;color:var(--fv-muted);cursor:pointer}
+.fv-ed-track-zoom button{display:grid;place-items:center;height:28px;min-width:24px;padding:0 3px;border:0;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);cursor:pointer}
 .fv-ed-track-zoom button:hover{background:var(--fv-card);color:var(--fv-ink)}
 .fv-ed-zoom-slider{width:64px;height:24px;margin:0;accent-color:var(--fv-accent);cursor:pointer}
 .fv-ed-track-zoom .fv-ed-fit{padding:0 7px;white-space:nowrap;font-size:12px;margin-left:4px}
-.fv-ed-drag-label,.fv-ed-duration-hint{position:absolute;z-index:9;padding:4px 7px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:6px;font-size:12px;white-space:pre;line-height:1.5;pointer-events:none}
-.fv-ed-clip-popover{position:absolute;z-index:10;width:280px;max-width:calc(100% - 16px);padding:10px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-card)}
+.fv-ed-drag-label,.fv-ed-duration-hint{position:absolute;z-index:9;padding:4px 7px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font-size:12px;white-space:pre;line-height:1.5;pointer-events:none}
+.fv-ed-clip-popover{position:absolute;z-index:10;width:280px;max-width:calc(100% - 16px);padding:10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card)}
 .fv-ed-clip-popover p{margin:0 0 8px;font-size:13px;overflow-wrap:anywhere}
-.fv-ed-clip-popover button{min-height:32px;padding:4px 10px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);cursor:pointer}
+.fv-ed-clip-popover button{min-height:32px;padding:4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);cursor:pointer}
 .fv-ed-clip-popover button+button{margin-left:6px}
 .fv-ed-clip-popover{max-height:calc(100% - 16px);overflow:auto}
 .fv-ed-track-view [hidden]{display:none!important}
@@ -121,3 +121,171 @@
 @media(max-width:520px){.fv-editor .fv-ed-toolbar .fv-ed-second-pass{width:32px;padding:0}.fv-ed-second-pass-label{display:none}}
 .fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:-8px}.fv-editor .fv-ed-toolbar .fv-ed-stems-group:before{display:none}.fv-ed-stems-group[hidden]{display:none}
 @media(max-width:480px){.fv-editor .fv-ed-toolbar .fv-ed-stems-group{margin-left:0}}
+
+/* ── Glass version: the timeline stays solid and sharp (design-jia-glass, work-ed). Rows are a faint tint on the timeline
+   surface, clips are crisp rounded tiles, the playhead is the accent line with a tab that is easy to take, floating bits
+   (drag label, failure card) are glass with a solid fallback. Tokens come from theme.css / glass/editor.css. ── */
+.fv-studio.fv-editor .fv-ed-track-view{--fv-ed-row-bg:var(--fv-ed-row,rgb(255 255 255 / .045));--fv-ed-tl:var(--fv-ed-timeline,#15181e);
+  --fv-ed-ink-or:#7cc4a0;--fv-ed-ink-mu:#96a6f0;--fv-ed-ink-rc:#e2ba7c;--fv-ed-ink-st:#a8a8b2;font-size:var(--fv-fs-2,13px)}
+:root[data-theme=light] .fv-studio.fv-editor .fv-ed-track-view{--fv-ed-ink-or:#2f8a5e;--fv-ed-ink-mu:#4a5cc8;--fv-ed-ink-rc:#a8711c;--fv-ed-ink-st:#6b6f7a}
+.fv-studio.fv-editor .fv-ed-track-heads{border-right-color:var(--fv-line)}
+.fv-studio.fv-editor .fv-ed-track-head{color:var(--fv-fg2);font-size:var(--fv-fs-1,12px);font-weight:500;justify-content:flex-start;padding:0 8px 0 12px;gap:8px}
+.fv-studio.fv-editor .fv-ed-track-head>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-studio.fv-editor .fv-ed-track-head>svg{width:16px;height:16px;color:var(--fv-fg3)}
+.fv-studio.fv-editor .fv-ed-add-audio{color:var(--fv-fg3);font-size:var(--fv-fs-1,12px);border-radius:var(--fv-r-sm);margin:0 4px;width:calc(100% - 8px);transition:background-color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
+.fv-studio.fv-editor .fv-ed-add-audio:hover:not(:disabled){background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-studio.fv-editor .fv-ed-add-audio:active:not(:disabled){background:var(--fv-ctl-hover)}
+/* Ruler: hairline ticks, numbers in the caption size, tabular. */
+.fv-studio.fv-editor .fv-ed-ruler{border-bottom-color:var(--fv-line)}
+.fv-studio.fv-editor .fv-ed-tick{border-left-color:var(--fv-line2)}
+.fv-studio.fv-editor .fv-ed-tick-major{height:9px}
+.fv-studio.fv-editor .fv-ed-tick-major span{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);bottom:8px;left:4px;font-variant-numeric:tabular-nums}
+/* Rows: a faint lane on the timeline surface; no box outline. */
+.fv-studio.fv-editor .fv-ed-track-row{background:var(--fv-ed-row-bg);border-radius:var(--fv-r-sm)}
+.fv-studio.fv-editor .fv-ed-track-row::before{border:0}
+.fv-studio.fv-editor .fv-ed-track-empty{color:var(--fv-fg3);font-size:var(--fv-fs-1,12px)}
+/* Clips: crisp tiles with a hairline inner edge, picture tiles keep their thumbnails, sound tiles carry their track's ink. */
+.fv-studio.fv-editor .fv-ed-clip{border-radius:var(--fv-r-sm);background:var(--fv-ctl-hover);box-shadow:inset 0 0 0 1px var(--fv-line);transition:filter 80ms linear,box-shadow 80ms linear}
+.fv-studio.fv-editor .fv-ed-clip.fv-ed-joined-left{border-top-left-radius:0;border-bottom-left-radius:0}
+.fv-studio.fv-editor .fv-ed-clip.fv-ed-joined-right{border-top-right-radius:0;border-bottom-right-radius:0;border-right:0;box-shadow:inset 0 0 0 1px var(--fv-line),inset -1px 0 0 var(--fv-line2)}
+.fv-studio.fv-editor .fv-ed-clip[data-track^=a]{--fv-ed-ink:var(--fv-ed-ink-or);background:color-mix(in srgb,var(--fv-ed-ink) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--fv-ed-ink) 34%,transparent)}
+.fv-studio.fv-editor .fv-ed-clip[data-track=a2]{--fv-ed-ink:var(--fv-ed-ink-mu)}
+.fv-studio.fv-editor .fv-ed-clip[data-track=a3]{--fv-ed-ink:var(--fv-ed-ink-rc)}
+.fv-studio.fv-editor .fv-ed-clip:is([data-track=a4],[data-track=a5],[data-track=a6]){--fv-ed-ink:var(--fv-ed-ink-st)}
+.fv-studio.fv-editor .fv-ed-clip[data-track^=a] .fv-ed-waveform{stroke:var(--fv-ed-ink);opacity:.9}
+.fv-studio.fv-editor .fv-ed-clip[data-state=planned]{border:1px dashed color-mix(in srgb,var(--fv-fg) 30%,transparent);background:color-mix(in srgb,var(--fv-fg) 4%,transparent);box-shadow:none}
+.fv-studio.fv-editor .fv-ed-clip[data-state=failed]{border:1px solid color-mix(in srgb,var(--fv-warn) 55%,transparent);background:var(--fv-warn-soft);box-shadow:none}
+.fv-studio.fv-editor .fv-ed-clip-status{color:var(--fv-warn);font-size:var(--fv-fs-1,12px)}
+.fv-studio.fv-editor .fv-ed-planned-label{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+.fv-studio.fv-editor .fv-ed-seam-mark{background:rgb(10 12 16 / .72);color:#f3f5f8}
+/* Hover lifts a clip a little; selection is the accent ring. */
+.fv-studio.fv-editor .fv-ed-clip:not([data-busy=true]):hover{filter:brightness(1.08)}
+:root[data-theme=light] .fv-studio.fv-editor .fv-ed-clip:not([data-busy=true]):hover{filter:brightness(.97)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-clip[aria-selected=true]{outline:2px solid var(--fv-accent);outline-offset:-2px}
+/* Trim handles: a short bar drawn inside the edge, with a wider invisible grip around it. */
+.fv-studio.fv-editor .fv-ed-trim-handle{width:6px;height:22px;border-radius:var(--fv-r-xs);background:var(--fv-fg);box-shadow:0 0 0 1px rgb(0 0 0 / .25)}
+.fv-studio.fv-editor .fv-ed-trim-start{left:2px}
+.fv-studio.fv-editor .fv-ed-trim-end{right:2px}
+.fv-studio.fv-editor .fv-ed-trim-handle::before{content:"";position:absolute;inset:-12px -5px}
+.fv-studio.fv-editor .fv-ed-clip:not([data-busy=true]):hover .fv-ed-trim-handle{opacity:1;background:var(--fv-fg)}
+.fv-studio.fv-editor .fv-ed-clip[aria-selected=true] .fv-ed-trim-handle,.fv-studio.fv-editor .fv-ed-selection .fv-ed-trim-handle{opacity:1;background:var(--fv-accent)}
+.fv-studio.fv-editor .fv-ed-clip[aria-selected=true][data-state=planned] .fv-ed-trim-handle,.fv-studio.fv-editor .fv-ed-clip[aria-selected=true][data-state=failed] .fv-ed-trim-handle{opacity:0}
+/* Selection, ranges, gaps, guides. */
+.fv-studio.fv-editor .fv-ed-selection{border-color:var(--fv-accent);border-radius:var(--fv-r-sm)}
+.fv-studio.fv-editor :is(.fv-ed-selection.fv-ed-range,.fv-ed-selection.fv-ed-planned-selection,.fv-ed-gesture-preview,.fv-ed-selection.fv-ed-gap){border:1.5px dashed var(--fv-accent);background:var(--fv-accent-soft);border-radius:var(--fv-r-sm)}
+.fv-studio.fv-editor .fv-ed-snap-line{width:1px;background:var(--fv-accent);box-shadow:0 0 0 .5px var(--fv-accent-line)}
+.fv-studio.fv-editor .fv-ed-snap-line::before{content:"";position:absolute;top:-8px;left:-4px;width:9px;height:9px;background:var(--fv-accent);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.fv-studio.fv-editor .fv-ed-insertion-line{background:var(--fv-fg)}
+/* Playhead: the accent line; its tab sits on the ruler and is easy to take (28 px grip around a 12 × 16 tab). */
+.fv-studio.fv-editor .fv-ed-playhead{width:1.5px;margin-left:-.75px;background:var(--fv-accent)}
+.fv-studio.fv-editor .fv-ed-playhead-handle{left:calc(-14px + var(--fv-ed-handle-shift,0px));top:-16px;width:28px;height:28px;border-radius:var(--fv-r-sm);background:transparent;box-shadow:none}
+.fv-studio.fv-editor .fv-ed-playhead-handle::after{content:"";position:absolute;left:calc(7.5px - var(--fv-ed-handle-shift,0px));top:6px;width:13px;height:16px;border-radius:var(--fv-r-xs) var(--fv-r-xs) var(--fv-r-sm) var(--fv-r-sm);background:var(--fv-accent);box-shadow:0 1px 3px rgb(0 0 0 / .35);transition:transform 80ms var(--fv-ease-out,ease-out);transform-origin:50% 0}
+.fv-studio.fv-editor .fv-ed-playhead-handle:hover::after{transform:scale(1.08)}
+.fv-studio.fv-editor .fv-ed-track-view[data-scrub=true] .fv-ed-playhead-handle::after{transform:scale(1.15)}
+@media(max-width:520px){.fv-studio.fv-editor .fv-ed-playhead-handle{left:calc(-14px + var(--fv-ed-handle-shift,0px))}}
+/* Floating bits over the timeline: glass (g3), solid where glass is off. */
+.fv-studio.fv-editor :is(.fv-ed-drag-label,.fv-ed-group-label){padding:4px 8px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-sm);color:var(--fv-fg);font-size:var(--fv-fs-1,12px);font-variant-numeric:tabular-nums;
+  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-studio.fv-editor .fv-ed-clip-popover{padding:12px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-rad-ctl,12px);color:var(--fv-fg);
+  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-studio.fv-editor .fv-ed-clip-popover p{color:var(--fv-warn);font-size:var(--fv-fs-2,13px);line-height:20px}
+.fv-studio.fv-editor .fv-ed-clip-popover button{min-height:32px;padding:0 12px;border:0;border-radius:var(--fv-r-md);background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-studio.fv-editor .fv-ed-clip-popover button:hover{background:var(--fv-ctl-hover)}
+.fv-studio.fv-editor .fv-ed-clip-popover button+button{margin-left:8px}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor :is(.fv-ed-drag-label,.fv-ed-group-label,.fv-ed-clip-popover){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor :is(.fv-ed-drag-label,.fv-ed-group-label,.fv-ed-clip-popover){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.fv-studio.fv-editor :is(.fv-ed-drag-label,.fv-ed-group-label,.fv-ed-clip-popover){background:rgb(var(--fv-solid3))}}
+/* Zoom bar (in the tool row): icon keys and a slim slider. */
+.fv-studio.fv-editor .fv-ed-track-zoom button{border-radius:var(--fv-r-md);color:var(--fv-fg2)}
+.fv-studio.fv-editor .fv-ed-track-zoom button:not(:disabled):hover{background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-studio.fv-editor .fv-ed-zoom-slider{accent-color:var(--fv-accent)}
+/* A press shows at once; a refused drag says why in red; the scrub time is the accent. */
+.fv-studio.fv-editor .fv-ed-clip[data-pressed=true]{filter:brightness(1.16)}
+:root[data-theme=light] .fv-studio.fv-editor .fv-ed-clip[data-pressed=true]{filter:brightness(.92)}
+.fv-studio.fv-editor .fv-ed-drag-label[data-refused=true]{color:var(--fv-warn);border-color:color-mix(in srgb,var(--fv-warn) 40%,transparent)}
+.fv-studio.fv-editor .fv-ed-drag-label[data-time=true]{color:var(--fv-accent-ink,var(--fv-accent));font-weight:600}
+.fv-studio.fv-editor .fv-ed-track-view[data-scrub=true] .fv-ed-playhead{box-shadow:0 0 0 .5px var(--fv-accent-line)}
+/* A generated part lands: its media fades in and settles from slightly larger, ease-out, no overshoot; the ring fades. */
+@keyframes fv-ed-land{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:none}}
+@keyframes fv-ed-land-ring{from{box-shadow:inset 0 0 0 2px var(--fv-accent)}to{box-shadow:inset 0 0 0 1px var(--fv-line)}}
+.fv-studio.fv-editor .fv-ed-clip.fv-ed-landed .fv-ed-clip-media{animation:fv-ed-land var(--fv-dur-3,260ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1)) both}
+.fv-studio.fv-editor .fv-ed-clip.fv-ed-landed{animation:fv-ed-land-ring 360ms var(--fv-ease-out,ease-out) both}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-editor .fv-ed-clip.fv-ed-landed,.fv-studio.fv-editor .fv-ed-clip.fv-ed-landed .fv-ed-clip-media{animation:none}}
+
+/* Track head switches are 28 px targets (they were 22 × 28); the narrow-width Audio 2 key shows its sign alone. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-track-switch,.fv-studio.fv-editor .fv-ed-track-view .fv-ed-text-track-controls button{width:28px;min-width:28px;height:28px;border-radius:var(--fv-r-sm)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-track-switch:hover{background:var(--fv-ctl-bg)}
+/* The heads have their final width from the first frame, before the switches are drawn (they no longer widen on arrival). */
+@media(min-width:521px){.fv-studio.fv-editor .fv-ed-track-view,.fv-studio.fv-editor .fv-ed-track-view[data-track-switches=true]{--fv-ed-head-width:184px}}
+@media(max-width:480px){
+  .fv-studio.fv-editor .fv-ed-add-audio{padding:0;font-size:0;margin:0 auto;display:grid;place-items:center}
+  .fv-studio.fv-editor .fv-ed-add-audio::before{content:attr(data-sign);display:grid;place-items:center;width:28px;height:28px;font-size:16px;line-height:1;border:1px solid var(--fv-line2);border-radius:var(--fv-r-sm);color:var(--fv-fg2)}
+  .fv-studio.fv-editor .fv-ed-track-head>span:first-of-type{font-size:var(--fv-fs-1,12px)}
+}
+/* The timeline region takes focus on every press (for its keys); that focus never draws a ring round the whole area
+   (a11y.css rings keyboard focus with !important, so this needs the same weight and more specificity). */
+.fv-studio.fv-editor .fv-ed-tracks .fv-ed-track-view.sgf-avoid[data-pointer-focus=true]:is(:focus,:focus-visible){outline:none!important}
+.fv-ed-track-view[data-cursor=crosshair] .fv-ed-track-content,.fv-ed-track-view[data-cursor=crosshair] .fv-ed-track-content *{cursor:crosshair}
+/* The timeline's own surface (glass/editor.css keeps only the outer .fv-ed-tracks surface): heads, the sticky ruler
+   and the area under the rows share the solid timeline tone. */
+.fv-studio.fv-editor :is(.fv-ed-track-view,.fv-ed-track-heads,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-ruler,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after){background:var(--fv-ed-timeline,var(--fv-bg))}
+/* Time zero sits 8 px in from the heads, so the playhead tab (and a clip's start handle) at the very start is whole,
+   not cut by the edge of the scrolling area under the heads. Every position is measured from this content box. */
+.fv-studio.fv-editor .fv-ed-track-content{margin-left:8px}
+/* Crossfade junction (drawn by editor_audio.js inside the timeline): a 28 × 28 target at the top of the join, the diamond
+   drawn inside it. It sits in the upper part of the row so the lower part of the same join still takes a trim. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-junction{top:-6px;width:28px;height:28px;transform:translateX(-50%);border:0;border-radius:var(--fv-r-sm);background:transparent!important;box-shadow:none!important}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-junction::after{content:"";position:absolute;left:9px;top:9px;width:10px;height:10px;box-sizing:border-box;transform:rotate(45deg);
+  background:var(--fv-ed-timeline,var(--fv-card));border:1px solid var(--fv-accent);border-radius:var(--fv-r-xs)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-junction[data-active=true]::after{background:var(--fv-accent)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-junction[aria-pressed=true]::after{box-shadow:0 0 0 2px var(--fv-ed-timeline,var(--fv-card)),0 0 0 3px var(--fv-accent)}
+
+/* Track heads in fixed columns (visual alignment review C4/C5): icon 16 px | name (fills, ellipsis) | three 28 px switch
+   columns — mute, solo, lock — at the same x on every row; a row without solo leaves that cell empty. The Audio 2 key
+   sits in the same columns as a head: its sign in the icon column, its words in the name column. */
+@media(min-width:521px){
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{display:grid;grid-template-columns:16px minmax(0,1fr) 84px;align-items:center;column-gap:8px;padding:0 4px 0 12px;justify-content:stretch}
+  /* The icon column shows each track's icon (editor_audio.css hid them when the heads had no columns). */
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>svg{grid-column:1;display:block;width:16px;height:16px;color:var(--fv-fg3)}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>span:first-of-type{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>:is(.fv-ed-audio-track-controls,.fv-ed-text-track-controls){grid-column:3;display:grid;grid-template-columns:repeat(3,28px);gap:0;margin:0;justify-self:end}
+  .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button)[data-flag=muted],
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-text-track-controls button[data-flag=hidden]{grid-column:1}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-track-switch[data-flag=solo]{grid-column:2}
+  .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button)[data-flag=locked]{grid-column:3}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio{display:flex;gap:0;align-items:center;justify-content:flex-start;
+    left:0;width:100%;margin:0;padding:0 4px 0 12px;border-radius:0;text-align:left;font-size:0;color:var(--fv-fg3)}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::before{content:attr(data-sign);display:grid;place-items:center;flex:none;width:16px;height:16px;margin-right:8px;font-size:14px;line-height:1}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::after{content:attr(data-label);min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio:hover:not(:disabled){background:var(--fv-ctl-bg);color:var(--fv-fg)}
+}
+/* A selected clip is outlined on its own row (each clip carries the ring); the box that spanned a picture and its
+   sound across two rows and the gap between them is not drawn (C6). Ranges, gaps and planned parts keep their box. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection:not(.fv-ed-range):not(.fv-ed-gap):not(.fv-ed-planned-selection){border-color:transparent}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection:not(.fv-ed-range):not(.fv-ed-gap):not(.fv-ed-planned-selection)::after{display:none}
+/* Where the heads are too narrow for the Audio 2 key's words, it shows its sign alone (its hover help gives the full
+   name), as on phones. */
+@media(min-width:521px){
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads{container-type:inline-size}
+  @container (max-width:150px){
+    .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::after{display:none}
+  }
+}
+/* The Audio 2 key lives in the head column's top corner, beside the ruler: always in view whatever the timeline's height
+   (at the foot of the rows it fell below the edge on shorter windows), never scrolled away. */
+@media(min-width:521px){
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio{top:0!important;height:28px;translate:none!important;z-index:3;background:var(--fv-ed-timeline,var(--fv-bg))}
+}
+/* Until the timeline module has drawn, the page's placeholder heads take the final head width, so nothing moves when
+   the rows arrive (heads with switches 184 px, phone width 64 px). */
+.fv-studio.fv-editor .fv-ed-tracks-skeleton>b{width:184px}
+@media(max-width:520px){.fv-studio.fv-editor .fv-ed-tracks-skeleton>b{width:64px}}
+
+/* Remove Audio 2 is not a standing key (CEO-EYES): it takes the place of the Audio 2 head's icon, only while Audio 2 or
+   something on it is selected, or the pointer is over that head or the key. Otherwise it is not there. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{top:var(--fv-ed-remove-top,0px)!important;left:6px;right:auto;width:28px;height:28px;padding:0;margin:0;justify-content:center;border-radius:8px;background:var(--fv-ed-timeline,var(--fv-bg))}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::after{display:none}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::before{margin:0}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]:not([data-shown=true]):not(:hover){visibility:hidden}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:has(>.fv-ed-track-head[data-track=a2]:hover)>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
+@media(max-width:520px){.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{left:calc(100% - 32px)}}

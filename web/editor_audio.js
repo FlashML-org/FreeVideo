@@ -7,6 +7,7 @@ import {listenDialogKey} from './dialog_keys.js';
 import {registerMenuItem} from './editor_menu.js';
 import {clickSelection} from './editor_select.js';
 import {noteAtPointer, startPointerNotes, seconds as secondsText} from './editor_audio_notes.js';
+import {tip} from './editor_tips.js';
 import {sourceKey, mediaURL} from './editor_store.js';
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 let styled = false;
@@ -181,7 +182,8 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         message.hidden = !!context || count === 1;
         const locked = selected.some(clip => sound.trackOf(state.record, clip.id).locked);
         const reason = disabledReason(ctx, {needs: 'audio'}) || (locked ? t('This track is locked', '这条轨道已锁定') : '');
-        for (const field of [volume, fadeIn, fadeOut]) { field.disabled = !!reason; field.title = ''; field.input.title = ''; }
+        for (const field of [volume, fadeIn, fadeOut]) { field.disabled = !!reason; field.title = ''; field.input.title = ''; field.input.setAttribute('data-fv-tip-why', reason); if (!reason) field.input.removeAttribute('data-fv-tip-why'); }
+        if (reason) duck.input?.setAttribute('data-fv-tip-why', reason); else duck.input?.removeAttribute('data-fv-tip-why');
         const music = clips.filter(sound.duckable);
         duck.hidden = !music.length || music.length !== clips.length; duck.disabled = !!reason;
         if (!duck.hidden) { duck.value = music.every(clip => !!clip.duck); duck.input.indeterminate = music.some(clip => !!clip.duck) && !duck.value; }
@@ -203,11 +205,14 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         detach.textContent = video?.detached_from ? t('Reattach audio', '放回原声') : t('Detach audio', '分离原声');
         const detachReason = disabledReason(ctx, {needs: 'video', single: true}) || (locked ? t('This track is locked', '这条轨道已锁定') : '');
         detach.disabled = !!detachReason || !video?.source || !(video.link || rules.canRestoreOriginal(state.record, video.id));
-        detach.title = detach.textContent;
+        tip(detach, {name: detach.textContent, use: video?.detached_from ? t('Put the original sound back under the picture', '把原声放回画面下面') : t('Move the picture\'s sound to its own track', '把画面自带的声音拆到单独的轨道'),
+            why: !detach.disabled ? '' : detachReason || (!video?.source ? t('Select a finished picture clip', '先选中一段已生成的画面') : t('This clip has no sound of its own', '这一段没有自带的声音'))});
         detach.onclick = () => { if (video) video.detached_from ? actions.restoreAudio(video.id) : actions.detachAudio(video.id); };
         const target = count === 1 && clips.length === 1 && rules.canReplaceAudio(state.record, clips[0].id) ? clips[0] : null;
         replace.hidden = !target && mode.id === null; replace.disabled = !target || locked;
-        replace.setAttribute('aria-pressed', String(!!target && mode.id === target.id)); replace.title = replace.textContent;
+        replace.setAttribute('aria-pressed', String(!!target && mode.id === target.id));
+        tip(replace, {name: replace.textContent, use: t('Then pick a sound in the library or drop one here', '然后在素材库里选一段声音，或拖到这里'),
+            why: !replace.disabled ? '' : locked ? t('This track is locked; unlock it first', '这条轨道已锁定，先解锁') : t('Select one sound clip', '先选中一段声音')});
         replace.onclick = () => { if (target) mode.id === target.id ? mode.cancel() : mode.start(target.id); };
     }
     function apply(label, change) { try { state.apply(label, change); } catch (value) { error(value); return {ok: false, reason: value.code || 'audio'}; } finally { player?.clearVolumePreview(); render(); } }
@@ -223,7 +228,8 @@ export function attachAudioTracks(element, {state, t = en => en, actions = {}}) 
     const notice = el('div', 'fv-ed-audio-notice'); notice.hidden = true; notice.setAttribute('role', 'status'); element.append(notice);
     let noticeTimer = null;
     const lockedText = t('This track is locked', '这条轨道已锁定');
-    function notify() { return {ok: false, reason: 'locked'}; }
+    // A press on a locked track answers at the pointer (E11: the sentence existed and was never shown).
+    function notify() { noteAtPointer(t('This track is locked. Unlock it with the lock on its head.', '这条轨道已锁定，点轨道头上的锁解锁。'), element); return {ok: false, reason: 'locked'}; }
     function render() {
         element.dataset.trackSwitches = 'true';
         for (const track of state.record.tracks) {
@@ -265,7 +271,9 @@ export function attachAudioTracks(element, {state, t = en => en, actions = {}}) 
             track.clips.forEach((right, index) => {
                 const left = track.clips[index - 1]; if (!left?.source || !right.source || left.start + left.frames !== right.start) return;
                 const diamond = junctions.get(right.id) || el('button', 'fv-ed-audio-junction'); junctions.delete(right.id); diamond.type = 'button'; diamond.dataset.right = right.id; diamond.dataset.active = String(!!right.crossfade);
-                diamond.setAttribute('aria-label', t('Crossfade', '交叉淡化')); diamond.title = t('Crossfade', '交叉淡化'); diamond.disabled = !!track.locked || [left, right].some(clip => ['queued', 'running'].includes(clip.pending));
+                diamond.setAttribute('aria-label', t('Crossfade', '交叉淡化')); diamond.disabled = !!track.locked || [left, right].some(clip => ['queued', 'running'].includes(clip.pending));
+                tip(diamond, {name: t('Crossfade', '交叉淡化'), use: right.crossfade ? t('Select it to change its length', '选中后可以改长度') : t('Blend the two sounds; adds half a second', '让两段声音平滑过渡，先加 0.5 秒'),
+                    why: !diamond.disabled ? '' : track.locked ? t('This track is locked', '这条轨道已锁定') : t('A part here is generating', '这里有一段正在生成')});
                 diamond.style.left = `${right.start * state.zoom / 24}px`; diamond.setAttribute('aria-pressed', String(value.junction === right.id));
                 const activate = () => {
                     if (!right.crossfade) {

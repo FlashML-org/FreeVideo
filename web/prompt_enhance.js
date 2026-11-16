@@ -95,19 +95,26 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const bar = el('div', null, 'fv-enhance-bar'), label = el('label', null, 'fv-enhance-toggle');
     const toggle = el('input'); toggle.type = 'checkbox'; toggle.setAttribute('role', 'switch'); toggle.disabled = input.disabled;
     toggle.setAttribute('aria-label', t('Prompt enhancement', '提示词增强'));
-    label.append(toggle, el('span', t('FreeToken enhancement', 'FreeToken 提示词增强')));
-    label.title = t('Based on FreeToken. Rewrite locally with reference images, following MiniMax H3 guidelines.', '基于 FreeToken，结合参考图，在本机按 MiniMax H3 规则改写。');
+    label.append(toggle, el('span', t('Prompt enhancement', '提示词增强')));
+    // Product words on screen: what it does, not what it is built on.
+    label.dataset.fvTipName = t('Prompt enhancement', '提示词增强');
+    label.dataset.fvTipUse = t('Rewrite the prompt in more detail first, on this computer', '生成前在本机把描述改写得更具体');
+    label.title = t('Rewrites the prompt in more detail before generating, on this computer, using your reference pictures.', '生成前在本机结合参考图，把描述改写得更具体。');
     const enhancementHint = label.title;
     const tabs = el('div', null, 'fv-enhance-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('Prompt version', '提示词版本'));
     const buttons = {};
     for (const [name, text] of [['original', t('Original', '原文')], ['rewritten', t('Enhanced', '改写')]]) {
         const b = el('button', text); b.type = 'button'; buttons[name] = b; tabs.append(b);
+        b.dataset.fvTipName = text;
+        b.dataset.fvTipUse = name === 'original' ? t('Show the prompt as written', '显示原始描述') : t('Show the rewritten prompt', '显示改写后的描述');
         b.onclick = () => { if (running) cancelJob().catch(() => {}); versions.select(name); apply(); };
     }
     const redo = el('button', t('Rewrite', '改写'), 'fv-quiet'); redo.type = 'button';
     redo.classList.add('fv-enhance-redo');
+    redo.dataset.fvTipName = t('Rewrite', '改写'); redo.dataset.fvTipUse = t('Rewrite the prompt again', '重新改写一次描述');
     redo.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6M20 4v7h-7"/></svg>';
     const cancel = el('button', t('Cancel', '取消'), 'fv-quiet'); cancel.type = 'button';
+    cancel.dataset.fvTipName = t('Cancel', '取消'); cancel.dataset.fvTipUse = t('Stop rewriting; keep the prompt as written', '停止改写，保留原来的描述');
     const status = el('div', null, 'fv-enhance-status'); status.setAttribute('role', 'status');
     const statusText = el('span', null, 'fv-enhance-status-text');
     const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');

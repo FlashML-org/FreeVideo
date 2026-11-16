@@ -1,10 +1,12 @@
 import {issueButton} from './issue_button.js';
+import {tip} from './autopilot_tips.js';
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
-// The one place a page says whether an agent is connected: its name while it is, never a client id.
+// The one place a page says whether an assistant is connected. Program names (and the ids some programs report)
+// are not product words, so the label says only whether one is there; `name` stays for reports.
 export function connectionLabel(agent, t) {
-    if (agent?.connected !== true) return {color: 'gray', text: t('Not connected', '未连接')};
-    return {color: 'green', text: String(agent.name || '').trim() || t('Connected', '已连接')};
+    if (agent?.connected !== true) return {color: 'gray', text: t('Not connected', '未连接'), name: null};
+    return {color: 'green', text: t('Assistant connected', '助手已连接'), name: String(agent.name || '').trim() || null};
 }
 
 export function connectionSentence(address, t) {
@@ -51,12 +53,21 @@ export function refusalHint(code, t, kind = addressKind(globalThis.location?.hos
     if (code === 'origin_forbidden') return t('Open FreeVideo on this computer with a localhost address, then retry.', '请在本机使用 localhost 地址打开 FreeVideo，然后重试。');
     if (code === 'local_only') return kind && kind !== 'localhost' && address
         ? t(`On the computer that runs FreeVideo, open ${address}, then retry.`, `请在运行 FreeVideo 的电脑上打开 ${address}，然后重试。`)
-        : t('Agents can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接 Agent。');
-    if (code === 'not_ready') return t('The agent connection service is not ready. Restart FreeVideo, then retry.', 'Agent 连接服务尚未就绪，请重启 FreeVideo 后重试。');
+        : t('An assistant can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接助手。');
+    if (code === 'not_ready') return t('The assistant connection service is not ready. Restart FreeVideo, then retry.', '助手连接服务尚未就绪，请重启 FreeVideo 后重试。');
     return '';
 }
 
 export async function agentInterfaceEnabled(api) { return await agentInterfaceState(api) === 'on'; }
+
+// Shows the card's way back (a quiet "Back to chats") while `action` is set; hides it with null.
+export function connectCardBack(card, t, action = null) {
+    const back = card?.element?.querySelector('.fv-agent-connect-back');
+    if (!back) return;
+    back.hidden = !action; back.onclick = action;
+    back.textContent = t('Back to chats', '返回对话');
+    tip(back, 'backToChats', t);
+}
 
 const ICONS = {plug: ['M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5', 1.8], copy: ['M11 9h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM5 15V5a2 2 0 0 1 2-2h8', 2],
     retry: ['M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', 2]};
@@ -77,9 +88,8 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./agent_connect.css', import.meta.url).href; document.head.append(css);
     const body = el('section', 'fv-agent-connect-body');
     const mark = el('span', 'fv-agent-connect-icon'); mark.append(icon('plug'));
-    const title = el('h2', null, t('Connect an agent', '连接 Agent'));
+    const title = el('h2', null, t('Connect an assistant', '连接助手'));
     const intro = el('p', 'fv-agent-connect-intro', t('Once connected, describe the video you want. It generates and edits it for you.', '连上后，说想做什么视频，它来生成和剪辑。'));
-    const subtitle = el('p', 'fv-muted', t('Claude Code, Codex, FreeToken and others', 'Claude Code、Codex、FreeToken 等'));
     const actions = el('div', 'fv-agent-connect-actions');
     const button = el('button', 'fv-primary'); button.type = 'button'; button.disabled = true;
     // The button's picture follows what it does: copy, or retry once the lookup has failed.
@@ -88,11 +98,13 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     let issue = null;
     const arrow = el('span', 'fv-agent-connect-arrow', '→'); arrow.setAttribute('aria-hidden', 'true');
     // The arrow and its words wrap as one piece.
-    const next = el('span', 'fv-agent-connect-next'); next.append(arrow, el('span', 'fv-agent-connect-hint', t('Paste to your agent', '粘贴给 Agent')));
+    const next = el('span', 'fv-agent-connect-next'); next.append(arrow, el('span', 'fv-agent-connect-hint', t('Paste it to your assistant', '粘贴给助手')));
     actions.append(button, next);
     const sentence = el('p', 'fv-agent-sentence'); sentence.hidden = true;
     const status = el('p', 'fv-agent-connect-status', t('Getting the connection address…', '正在获取连接地址…')); status.setAttribute('role', 'status');
-    body.append(mark, title, intro, subtitle, actions, sentence, status);
+    // The way back to the chats when the card was opened from a disconnected chat (see connectCardBack).
+    const back = el('button', 'fv-agent-connect-back fv-quiet'); back.type = 'button'; back.hidden = true;
+    body.append(mark, title, intro, actions, sentence, status, back);
 
     let feedback = false, text = '', failures = 0, refusal = null, noAnswer = null;
     let timer, feedbackTimer, controller, generation = 0;
@@ -103,11 +115,12 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
         const picture = pictures[!text && failures >= 3 ? 'retry' : 'copy'];
         if (button.firstChild !== picture) button.firstChild.replaceWith(picture);
         if (!text && failures >= 3) {
-            if (!issue) { issue = issueButton(t, () => ({where: ['Agent connection', 'Agent 连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
+            if (!issue) { issue = issueButton(t, () => ({where: ['Assistant connection', '助手连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
         next.hidden = !!issue;
         button.disabled = !text && failures < 3;
         button.title = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : '';
+        tip(button, !text && failures >= 3 ? 'retryAddress' : 'copyConnect', t, {why: button.disabled ? t('Getting the connection address…', '正在获取连接地址…') : ''});
         status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) || noAnswerHint(noAnswer, t) : '';
     };
     render();

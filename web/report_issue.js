@@ -1,6 +1,7 @@
 // Send the redacted diagnostic report as a GitHub issue: the report menu's
 // entry, and a tip above that menu after a finished video, shown until the
 // user closes it once.
+import { skin } from './glass/library.js';
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const TIP_KEY = 'freevideo.report-tip';
 
@@ -166,7 +167,28 @@ export function hideReportTip(bar) {
 }
 
 export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide = null, animate = true} = {}) {
+    skin();
     bar.parentElement.querySelector(':scope > .fv-report-tip:not(.fv-report-tip-leaving)')?.remove();
+    // Under a result in a view, the invitation is no card at all: its one sentence lives in the Report button's hover
+    // line, so nothing pops over the prompt box, the console or another view. Failure cards and chat keep the card.
+    const underResult = Boolean(anchor.closest('dialog.fv-studio')) && !bar.closest('.fv-failure, .fv-chat-job, .fv-cg-note');
+    if (mode === 'invite' && underResult) {
+        anchor.dataset.fvTipName = t('Download report', '下载报告');
+        anchor.dataset.fvTipUse = t('Save the report; sharing it gets this computer optimized', '保存诊断报告，提交可获专门优化');
+        return null;
+    }
+    // A report saved from a result says so in the shared notice under the top bar (it takes no room and its button is
+    // always reachable); the page under the result has too little height for a card between it and the console.
+    if (mode === 'downloaded' && underResult && bar.closest('.fv-result-links')) {
+        onHide?.();
+        import('./notifications.js').then(({toast}) => toast(t('Diagnostic report downloaded', '诊断报告已下载'), {tone: 'ok', action: {
+            label: t('Go to feedback page', '前往反馈页面提交'), use: t('Open the feedback page to attach the report', '打开反馈页面，附上报告提交'),
+            run: async () => {
+                try { await submit(); }
+                catch (error) { toast(error?.gone ? t(...REPORT_GONE) : t('The report is unavailable. Try again.', '报告暂不可用，请重试。'), {tone: 'warn'}); }
+            }}})).catch(() => {});
+        return null;
+    }
     const tip = el('div', 'fv-report-tip'); tip.setAttribute('role', 'region');
     tip.setAttribute('aria-label', t('Send the diagnostic report', '提交诊断报告'));
     const card = el('div', 'fv-report-tip-card');
@@ -202,7 +224,7 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
                 `请将 ${savedName} 拖入「诊断报告」，再点击 Submit new issue。`)
             : t('Please drag the downloaded report into "Diagnostic report", then select Submit new issue.',
                 '请将下载的诊断报告拖入「诊断报告」，再点击 Submit new issue。');
-        const link = el('a', null, t("Page didn't open? Go to GitHub", '页面没有打开？点此前往 GitHub'));
+        const link = el('a', null, t("Page didn't open? Open the feedback page", '页面没有打开？点此前往反馈页面'));
         link.href = address; link.target = '_blank'; link.rel = 'noopener';
         note.replaceChildren(link);
         const done = el('button', 'fv-action fv-action-secondary', t('Done', '完成')); done.type = 'button';
@@ -223,9 +245,9 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
     note.append(glyph('lock', 'fv-report-tip-lock'), t('Hardware, settings and timings only. No prompts, images or videos.',
         '仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。'));
     const send = el('button', 'fv-action fv-action-primary'); send.type = 'button';
-    const sendText = el('span', null, t('Submit on GitHub', '前往 GitHub 提交'));
+    const sendText = el('span', null, t('Submit feedback', '前往反馈页面提交'));
     send.append(sendText, glyph('external'));
-    send.title = t('Opens the GitHub issue form', '打开 GitHub 上的 issue 页面');
+    send.title = t('Opens the feedback page', '打开反馈页面');
     send.onclick = async () => {
         if (send.disabled) return;
         send.disabled = true; sendText.textContent = t('Preparing…', '正在整理…');

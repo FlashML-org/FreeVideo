@@ -7,6 +7,7 @@ import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
 import { isolateDialogKeys, routeDialogKey } from './dialog_keys.js';
 import { productVersion } from './updates.js';
+import { skin } from './glass/library.js';
 
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const DRAFT_KEY = 'freevideo.feedback-draft';
@@ -116,6 +117,7 @@ let current = null;
 export function openFeedback(t, { open = openPage, version = productVersion,
     fetchApi = p => api.fetchApi(p) } = {}) {
     if (current?.open) { current.querySelector('textarea')?.focus(); return current; }
+    skin();
     const dialog = el('dialog', 'fv-setup fv-setup-small fv-feedback'); current = dialog;
     dialog.setAttribute('aria-label', t('Feedback', '反馈'));
     dialog.style.pointerEvents = 'auto';
@@ -129,8 +131,8 @@ export function openFeedback(t, { open = openPage, version = productVersion,
     field.value = readDraft();
 
     const check = label => {
-        const row = el('label', 'fv-check'), box = el('input'); box.type = 'checkbox';
-        row.append(box, el('span', null, label)); return { row, box };
+        const row = el('label', 'fv-check'), box = el('input'); box.type = 'checkbox'; box.setAttribute('role', 'switch');
+        row.append(el('span', null, label), box); return { row, box };
     };
     const shotCheck = check(t('Attach a screenshot of this page', '附上这一页的截图'));
     const diagCheck = check(t('Include diagnostic info (no prompts or images)', '附上诊断信息（不含提示词和画面）'));
@@ -140,7 +142,9 @@ export function openFeedback(t, { open = openPage, version = productVersion,
     const remove = el('button', 'fv-quiet', '×'); remove.type = 'button'; remove.setAttribute('aria-label', t('Remove', '移除'));
     preview.append(thumb, remove);
 
-    const send = el('button', 'fv-primary', t('Submit on GitHub', '在 GitHub 提交')); send.type = 'button';
+    const send = el('button', 'fv-primary', t('Submit feedback', '提交反馈')); send.type = 'button';
+    send.dataset.fvTipName = send.textContent; send.dataset.fvTipUse = t('Open the feedback page with your text filled in', '打开反馈页面，文字已填好');
+    close.dataset.fvTipName = t('Close', '关闭'); close.dataset.fvTipUse = t('Close; your text is kept as a draft', '关闭，文字会保留为草稿'); close.dataset.fvTipKey = 'Esc';
     const status = el('p', 'fv-feedback-status'); status.setAttribute('role', 'status');
     const actions = el('div', 'fv-feedback-actions'); actions.append(status, send);
     dialog.append(head, field, shotCheck.row, preview, diagCheck.row, actions);
@@ -190,16 +194,16 @@ export function openFeedback(t, { open = openPage, version = productVersion,
         const done = await copied;
         status.textContent = reached && truncated
             ? (hadPicture || !done
-                ? t('GitHub is open, but the text was too long and was cut short there. Your full text stays here.', '已打开 GitHub，但文字过长，那边被截短了，完整文字仍留在这里。')
-                : t('GitHub is open, but the text was too long and was cut short there. The full text is copied; paste it in.', '已打开 GitHub，但文字过长，那边被截短了，完整文字已复制，请粘贴补全。'))
+                ? t('The feedback page is open, but the text was too long and was cut short there. Your full text stays here.', '已打开反馈页面，但文字过长，那边被截短了，完整文字仍留在这里。')
+                : t('The feedback page is open, but the text was too long and was cut short there. The full text is copied; paste it in.', '已打开反馈页面，但文字过长，那边被截短了，完整文字已复制，请粘贴补全。'))
             : !reached
-            ? (done ? t("Couldn't open GitHub. The link is copied; paste it into your browser.", '没能打开 GitHub，链接已复制，请粘贴到浏览器。')
-                : t("Couldn't open GitHub. Please try again later.", '没能打开 GitHub，请稍后再试。'))
+            ? (done ? t("Couldn't open the feedback page. The link is copied; paste it into your browser.", '没能打开反馈页面，链接已复制，请粘贴到浏览器。')
+                : t("Couldn't open the feedback page. Please try again later.", '没能打开反馈页面，请稍后再试。'))
             : hadPicture && done
-                ? t('GitHub is open and the screenshot is copied. Paste it in, then submit.', '已打开 GitHub，截图已复制，粘贴后提交。')
+                ? t('The feedback page is open and the screenshot is copied. Paste it in, then submit.', '已打开反馈页面，截图已复制，粘贴后提交。')
                 : hadPicture
-                ? t("GitHub is open with your text filled in, but the screenshot couldn't be copied. Submit it there without it.", '已打开 GitHub，文字已填好，但截图没能复制，可不带截图提交。')
-                : t('GitHub is open with your text filled in. Submit it there.', '已打开 GitHub，文字已填好，确认后提交。');
+                ? t("The feedback page is open with your text filled in, but the screenshot couldn't be copied. Submit it there without it.", '已打开反馈页面，文字已填好，但截图没能复制，可不带截图提交。')
+                : t('The feedback page is open with your text filled in. Submit it there.', '已打开反馈页面，文字已填好，确认后提交。');
     };
 
     const stopKeys = isolateDialogKeys(dialog, event => routeDialogKey(event, dialog));
@@ -219,7 +223,8 @@ export function openFeedback(t, { open = openPage, version = productVersion,
 export function feedbackButton(t, className = 'fv-quiet') {
     const label = t('Feedback', '反馈');
     const button = el('button', `${className} fv-feedback-entry`); button.type = 'button';
-    button.setAttribute('aria-label', label); button.title = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Tell us what went wrong or could be better', '告诉我们问题或建议');
     button.append(el('span', 'fv-feedback-label', label));
     button.onclick = () => openFeedback(t);
     return button;
@@ -229,7 +234,8 @@ export function feedbackButton(t, className = 'fv-quiet') {
 export function guideButton(t, className = 'fv-quiet') {
     const label = t('Tutorial', '教程');
     const button = el('button', `${className} fv-feedback-entry fv-guide-entry`); button.type = 'button';
-    button.setAttribute('aria-label', label); button.title = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Step-by-step guides with examples', '带示例的分步教程');
     button.append(el('span', 'fv-feedback-label', label));
     button.onclick = () => import('./tutorial_book.js').then(({openTutorialBook}) => openTutorialBook({chapter: 'quick-start'})).catch(() => {});
     return button;

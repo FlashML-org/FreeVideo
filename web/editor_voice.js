@@ -5,6 +5,7 @@ import * as voice from './editor_voice_model.js';
 import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
 import {issueButton, style as issueButtonStyle} from './issue_button.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
+import {tip} from './editor_tips.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
@@ -160,7 +161,7 @@ export function createVoicePanel(host, controller, {t}) {
         let entry = rows.get(line.id); if (entry) return entry;
         const wrap = el('div', 'fv-ed-voice-line'), main = el('div', 'fv-ed-voice-main'), time = el('button', 'fv-ed-voice-time', voice.clockText(line.start)),
             text = el('textarea', 'fv-ed-voice-text'), mark = el('span', 'fv-ed-voice-mark'), extra = el('div', 'fv-ed-voice-extra');
-        time.type = 'button'; time.setAttribute('aria-label', t('Play this line', '播放这一句'));
+        time.type = 'button'; time.setAttribute('aria-label', t('Play this line', '播放这一句')); tip(time, {name: t('Play this line', '播放这一句'), use: t('Hear the line where it is in the edit', '在剪辑里试听这一句')});
         text.rows = 1; text.value = line.text; text.setAttribute('aria-label', t('Line', '台词'));
         time.onclick = () => controller.playLine(line); text.oninput = () => { grow(text); controller.edit(line.id, text.value); };
         text.onkeydown = event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) event.preventDefault(); };

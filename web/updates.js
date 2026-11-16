@@ -1,6 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
+import './glass/library.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
@@ -122,7 +123,12 @@ export function createUpdateNotice(cn) {
     const details = document.createElement('button'); details.type = 'button';
     details.textContent = t("What's new", '更新内容');
     let closeNotes = () => {};
-    details.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
+    // The notes are in Settings › Version & updates; the sheet is the fallback when Settings cannot open.
+    details.onclick = async () => {
+        closeNotes();
+        try { const {openSetup} = await import('./setup.js'); await openSetup({section: 'about'}); }
+        catch { closeNotes = showReleaseNotes(cn); }
+    };
     const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'fv-update-apply';
     apply.textContent = t('Update now', '立即更新');
     apply.title = t('FreeVideo restarts once; running videos finish first.', 'FreeVideo 会重启一次，正在生成的视频会先完成。');
@@ -197,60 +203,80 @@ export function createUpdateNotice(cn) {
     return {element, dispose: () => { listeners.delete(render); closeNotes(); }};
 }
 
+// The notes, newest first: the available update (with every version it skips), then the current version. Returns
+// whether this version has a "What's new" tour. Used by the release-notes sheet and by Settings › Version & updates.
+function fillNotes(body, cn) {
+    const t = (en, zh) => cn ? zh : en;
+    body.replaceChildren();
+    for (const [label, release, kind] of [[t('Available update', '可用更新'), value?.available, 'new'],
+        [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null), 'now']]) {
+        if (!release) continue;
+        const section = document.createElement('section'), heading = document.createElement('h3');
+        section.dataset.kind = kind;
+        heading.textContent = label + ' · ' + displayVersion(release); section.append(heading);
+        const build = document.createElement('p'); build.className = 'fv-release-build fv-copyable';
+        build.textContent = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
+        section.append(build);
+        // Settings hides the build line; the version heading carries it on hover.
+        heading.dataset.fvTipName = displayVersion(release); heading.dataset.fvTipUse = build.textContent;
+        const notes = localizedNotes(release, cn), summary = document.createElement('p');
+        summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。'); section.append(summary);
+        const list = document.createElement('ul');
+        for (const item of notes?.changes || []) {
+            const row = document.createElement('li'); row.textContent = item; list.append(row);
+        }
+        section.append(list);
+        if (release === value?.available) {
+            for (const row of earlierNotes(release, value?.current_release?.product_version)) {
+                const earlier = localizedNotes(row, cn);
+                const name = document.createElement('h4'); name.textContent = 'v' + row.product_version;
+                const text = document.createElement('p'); text.textContent = earlier?.summary || '';
+                const items = document.createElement('ul');
+                for (const item of earlier?.changes || []) {
+                    const entry = document.createElement('li'); entry.textContent = item; items.append(entry);
+                }
+                section.append(name, text, items);
+            }
+        }
+        body.append(section);
+    }
+    if (!body.childElementCount) {
+        const message = t('Version information is not available yet.', '暂时无法获取版本信息。');
+        const empty = document.createElement('p'); empty.className = 'fv-release-empty'; empty.textContent = message;
+        body.append(empty, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
+        if (!started) void checkUpdates();
+    }
+    return /^0\.5\./.test(productVersion() || '');
+}
+export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
+    body.classList.add('fv-release-body');
+    const render = () => { onNews(fillNotes(body, cn)); };
+    listeners.add(render); render(); body.scrollTop = 0;
+    return {dispose: () => listeners.delete(render)};
+}
+
 function showReleaseNotes(cn) {
     const t = (en, zh) => cn ? zh : en;
     const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes';
     const title = document.createElement('h2'); title.textContent = t('Version & release notes', '版本与更新说明');
     dialog.setAttribute('aria-label', title.textContent);
     const body = document.createElement('div'); body.className = 'fv-release-body';
-    const close = document.createElement('button'); close.type = 'button'; close.autofocus = true;
+    const close = document.createElement('button'); close.type = 'button'; close.autofocus = true; close.className = 'fv-primary';
     close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
+    close.dataset.fvTipName = close.textContent; close.dataset.fvTipUse = t('Close the release notes', '关闭版本说明'); close.dataset.fvTipKey = 'Esc';
     const news = document.createElement('button'); news.type = 'button'; news.textContent = t("What's new", '新功能');
+    news.dataset.fvTipName = news.textContent; news.dataset.fvTipUse = t('Play the tour of this version', '播放这一版的新功能介绍');
     news.onclick = () => { dialog.close(); import('./whatsnew.js').then(({showWhatsNew}) => showWhatsNew(cn)); };
-    dialog.append(title, body, news, close);
-    const render = () => {
-        news.hidden = !/^0\.5\./.test(productVersion() || '');
-        body.replaceChildren();
-        for (const [label, release] of [[t('Available update', '可用更新'), value?.available],
-            [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null)]]) {
-            if (!release) continue;
-            const section = document.createElement('section'), heading = document.createElement('h3');
-            heading.textContent = label + ' · ' + displayVersion(release); section.append(heading);
-            const build = document.createElement('p'); build.className = 'fv-release-build';
-            build.textContent = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
-            section.append(build);
-            const notes = localizedNotes(release, cn), summary = document.createElement('p');
-            summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。'); section.append(summary);
-            const list = document.createElement('ul');
-            for (const item of notes?.changes || []) {
-                const row = document.createElement('li'); row.textContent = item; list.append(row);
-            }
-            section.append(list);
-            if (release === value?.available) {
-                for (const row of earlierNotes(release, value?.current_release?.product_version)) {
-                    const earlier = localizedNotes(row, cn);
-                    const name = document.createElement('h4'); name.textContent = 'v' + row.product_version;
-                    const text = document.createElement('p'); text.textContent = earlier?.summary || '';
-                    const items = document.createElement('ul');
-                    for (const item of earlier?.changes || []) {
-                        const entry = document.createElement('li'); entry.textContent = item; items.append(entry);
-                    }
-                    section.append(name, text, items);
-                }
-            }
-            body.append(section);
-        }
-        if (!body.childElementCount) {
-            const message = t('Version information is not available yet.', '暂时无法获取版本信息。');
-            body.textContent = message;
-            body.append(issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
-        }
-    };
+    // The title stays at the top and the buttons at the bottom; only the notes scroll, and they open at the newest.
+    const head = document.createElement('header'); head.className = 'fv-release-head'; head.append(title);
+    const foot = document.createElement('footer'); foot.className = 'fv-release-foot'; foot.append(news, close);
+    dialog.append(head, body, foot);
+    const render = () => { news.hidden = !fillNotes(body, cn); };
     const dispose = () => { listeners.delete(render); dialog.remove(); };
     dialog.addEventListener('close', dispose, {once: true});
     // Keep Escape local to this sheet; the creative workspace stays open.
     dialog.addEventListener('keydown', event => event.stopPropagation());
-    listeners.add(render); render(); document.body.append(dialog); dialog.showModal();
+    listeners.add(render); render(); document.body.append(dialog); dialog.showModal(); body.scrollTop = 0;
     return () => { if (dialog.open) dialog.close(); dispose(); };
 }
 
@@ -258,7 +284,13 @@ export function createVersionInfo(cn) {
     const element = document.createElement('button'); element.type = 'button'; element.className = 'fv-version-info';
     element.title = cn ? '版本与更新说明' : 'Version & release notes'; element.setAttribute('aria-label', element.title);
     let closeNotes = () => {};
-    element.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
+    // Version & updates is a page of Settings (one place for the version, the update and the notes); the sheet is the
+    // fallback when Settings cannot open.
+    element.onclick = async () => {
+        closeNotes();
+        try { const {openSetup} = await import('./setup.js'); await openSetup({section: 'about'}); }
+        catch { closeNotes = showReleaseNotes(cn); }
+    };
     const render = () => {
         element.textContent = cn ? '版本' : 'Version';
         if (value?.available) { const dot = document.createElement('i'); dot.className = 'fv-version-dot'; dot.setAttribute('aria-hidden', 'true'); element.append(dot); }

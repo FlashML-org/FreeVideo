@@ -22,23 +22,78 @@ const failureOf = error => ({error: error?.code || 'generation_failed', report_i
     stage: error?.stage || '', fitted: error?.fitted || null, memory: error?.memory || '', other_usage: error?.other_usage || null});
 const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
+// From a photo: the face close-up comes first, from the photo alone; the front, side and back are then made from the
+// photo (image 1) and that close-up (image 2), so every view keeps the person's face, and the side and back also see the
+// front (image 3) so they wear the same clothes. Every sentence says what to show (no "no …" phrasing). These words stay
+// here until cast-views takes `photo: true` (planned for 0.5.6); then use its answer.
+const PHOTO_WHO = 'The person in image 1';
+const BACKDROP = 'on a plain light grey studio backdrop with soft even light';
+const FACE_MATCH = 'the same face shape, eyes, nose, mouth, age, hairline and expression';
+export const PHOTO_PROMPTS = Object.freeze({
+    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
+        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
+        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
+        + `hairstyle, glasses and accessories match image 1. ${BACKDROP[0].toUpperCase() + BACKDROP.slice(1)}. One photograph of one person.`,
+    front: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{CLOTHES_REF} A full-body photograph of this '
+        + 'person standing and facing the camera, the whole body from the top of the head to the feet, the arms relaxed at the '
+        + `sides, ${BACKDROP}. This person's face matches image 2: ${FACE_MATCH}. The appearance and hairstyle match image 1. `
+        + '{CLOTHES} One photograph of one person, sharp focus.',
+    side: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{FRONT_REF} A full-body photograph of this person '
+        + 'in a true side view: the whole body turned 90 degrees to the left, the nose, chest and toes pointing to the left edge of '
+        + 'the picture, one eye visible, the near shoulder in front of the far shoulder, the arms relaxed, the whole body from the top '
+        + `of the head to the feet, ${BACKDROP}. This person's face matches image 2: ${FACE_MATCH}. The appearance and hairstyle `
+        + 'match image 1. {CLOTHES} One photograph of one person, sharp focus.',
+    back: 'Image 1 shows the person; image 2 is a close-up of the same person\'s face.{FRONT_REF} A full-body photograph of this person '
+        + 'seen from directly behind: the back of the head, the hair, the shoulders, the back, the back of the clothes and the heels '
+        + 'face the camera, the head and the body point the same way, the arms relaxed, the whole body from the top of the head to '
+        + `the feet, ${BACKDROP}. The hair and hairstyle match image 2 and image 1. {CLOTHES} One photograph of one person, sharp focus.`,
+});
+// plan: the engine's view list (for the sizes); outfit: words for the clothes; outfitImage: a clothes picture is given;
+// frontAsThird: the side and back also see the front (image 3) for the clothes.
+export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird = true} = {}) {
+    outfit = String(outfit || '').trim().replace(/[.。]+$/, '');
+    const size = name => { const view = plan.find(row => row.view === name) || plan.find(row => row.view === 'front') || {}; return {width: view.width || 832, height: view.height || 1472}; };
+    const frontClothes = outfitImage ? `The clothes, shoes and accessories match image 3${outfit ? `; details: ${outfit}` : ''}.`
+        : outfit ? `The clothes are: ${outfit}.` : 'The clothes, shoes and accessories match image 1.';
+    const laterClothes = frontAsThird ? 'The clothes, shoes and accessories match image 3, the full-body front view.'
+        : outfit ? `The clothes are: ${outfit}.` : 'The clothes, shoes and accessories match image 1.';
+    const later = name => ({view: name, ...size(name), refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
+        prompt: PHOTO_PROMPTS[name].replace('{FRONT_REF}', frontAsThird ? ' Image 3 shows the same person from the front, full length.' : '').replace('{CLOTHES}', laterClothes)});
+    return [
+        {view: 'face', width: 1024, height: 1280, refs: ['photo'], prompt: PHOTO_PROMPTS.face},
+        {view: 'front', ...size('front'), refs: ['photo', 'face', ...(outfitImage ? ['outfit'] : [])],
+            prompt: PHOTO_PROMPTS.front.replace('{CLOTHES_REF}', outfitImage ? ' Image 3 shows the clothes to wear.' : '').replace('{CLOTHES}', frontClothes)},
+        later('side'),
+        later('back'),
+    ];
+}
+
 // The five pictures of one description. No DOM: the page below draws its state.
-export function createCastGenerator({client, kind = 'character', onChange = () => {}, beforeGenerate = async () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
-    const scene = kind === 'setting' || kind === 'prop', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
+export function createCastGenerator({client, kind = 'character', views = null, frontAsThird = true, onChange = () => {}, beforeGenerate = async () => {}, onDiscard = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
+    const scene = kind === 'setting' || kind === 'prop', names = views || (scene ? SCENE_CANDIDATES : CAST_VIEWS);
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
-    let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: ''};
-    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras;
+    let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: '', photo: '', outfit: ''};
+    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras, outfit = '';
+    const seeds = [];
+    // Pictures standing in for a view as a reference (an edited face or front, uploaded by the page).
+    const overrides = {};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const setPicture = (index, patch) => emit({pictures: state.pictures.map((row, i) => i === index ? {...row, ...patch} : row)});
     const cancelJob = id => Promise.resolve().then(() => client.cancel(id)).catch(() => {});
     const done = () => state.pictures.every(row => row.file);
 
     async function runOne(index, alive) {
-        const view = plan[index], front = state.pictures[0].file;
-        await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: view.from_front ? 1 : 0});
+        const view = plan[index], front = state.pictures[0].original ? state.photo : state.pictures[0].file;
+        const dress = view.outfit && state.outfit ? [state.outfit] : [];
+        // From a photo: each view names the pictures it sees (the photo, the face close-up, the front, the clothes).
+        const picked = name => { const at = names.indexOf(name), row = at >= 0 ? state.pictures[at] : null; return row?.original ? state.photo : row?.file || ''; };
+        const roles = {photo: () => state.photo, face: () => overrides.face || picked('face'), front: () => overrides.front || picked('front'), outfit: () => state.outfit};
+        const images = view.refs ? view.refs.map(role => roles[role]?.() || '').filter(Boolean)
+            : view.photo ? [state.photo, ...dress] : view.from_front ? [front, ...dress] : [];
+        await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: images.length});
         if (!alive()) return null;
-        const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed: scene ? seed + index : seed,
-            images: view.from_front ? [front] : [], ...(view.view === 'back' ? {cast_view: 'back'} : {}),
+        const row = await client.generate({prompt: view.prompt, width: view.width, height: view.height, seed: seeds[index] ?? (scene ? seed + index : seed),
+            images, ...(view.view === 'back' && images.length === 1 ? {cast_view: 'back'} : {}),
             ...(loras === undefined ? {} : {loras})});
         if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory});
         if (!alive()) { await cancelJob(row.job); return null; }
@@ -62,21 +117,28 @@ export function createCastGenerator({client, kind = 'character', onChange = () =
         }
     }
 
-    async function start(description, {loras: selectedLoras} = {}) {
+    async function start(description, {loras: selectedLoras, photo = '', outfit: wear = '', outfitImage = ''} = {}) {
         description = String(description || '').trim();
+        if (photo && !description) description = PHOTO_WHO;
         if (state.running || disposed || !description) return;
+        if (photo && (photo !== state.photo || wear !== outfit || outfitImage !== state.outfit)) { plan = null; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: fresh(), description: ''}); }
         // After a failure the same description goes on from the picture that failed.
         const resume = !!state.error && description === state.description && plan && !done()
             && JSON.stringify(selectedLoras) === JSON.stringify(loras);
         const current = ++epoch;
         const alive = () => current === epoch && !disposed;
-        if (!resume) { seed = randomSeed(); plan = null; loras = structuredClone(selectedLoras); }
+        if (!resume) {
+            seed = randomSeed(); plan = null; seeds.length = 0; loras = structuredClone(selectedLoras);
+            // Generating all again replaces every picture: the ones made before are let go (deleted by the caller).
+            for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file);
+        }
         emit({running: true, error: '', report_id: null, waiting: '', description,
             ...(resume ? {} : {pictures: fresh(), current: 0})});
         try {
             if (!plan) {
                 plan = await client.castViews(description, kind);
                 if (scene) plan = names.map(() => plan[0]);
+                if (state.photo) { const made = photoPlan(plan, outfit, {outfitImage: !!state.outfit, frontAsThird}); plan = names.map(name => made.find(view => view.view === name)).filter(Boolean); }
                 if (!alive()) return;
             }
             for (let index = 0; index < plan.length; index++) {
@@ -111,7 +173,36 @@ export function createCastGenerator({client, kind = 'character', onChange = () =
         plan = null;
         emit({pictures: fresh(), error: '', report_id: null, current: -1});
     }
-    return {start, stop, reset, state: () => state, done,
+    // One view again with a new seed; the other views stay. The replaced picture is discarded when the new one is in.
+    async function redo(index) {
+        if (state.running || disposed || !plan || !state.pictures[index]) return;
+        const current = ++epoch, alive = () => current === epoch && !disposed;
+        const before = state.pictures[index];
+        seeds[index] = randomSeed();
+        setPicture(index, {file: '', fraction: 0, original: false});
+        emit({running: true, current: index, error: '', report_id: null, waiting: ''});
+        try {
+            const file = await runOne(index, alive);
+            if (file === null || !alive()) return;
+            job = null; setPicture(index, {file, fraction: 1});
+            if (before.file && !before.original) onDiscard(before.file);
+            emit({running: false, current: -1, waiting: ''});
+        } catch (error) {
+            if (!alive()) return;
+            const id = job; job = null; if (id) void cancelJob(id);
+            setPicture(index, before);
+            emit({running: false, current: -1, waiting: '', ...failureOf(error)});
+        }
+    }
+    // The photo itself as the front (it was uploaded for the reference); the generated front is discarded.
+    function useOriginal(file) {
+        if (state.running || disposed) return;
+        const before = state.pictures[0];
+        setPicture(0, {file, fraction: 1, original: true});
+        if (before.file && !before.original) onDiscard(before.file);
+    }
+    return {start, stop, reset, redo, useOriginal, state: () => state, done,
+        setOverride(role, name) { if (name) overrides[role] = name; else delete overrides[role]; },
         dispose() { disposed = true; return stop(); }};
 }
 

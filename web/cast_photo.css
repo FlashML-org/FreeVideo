@@ -1,0 +1,87 @@
+/* "From a photo": the photo and the clothes choice on the left; the four views on the right in the order of the sheet
+   (face, front, side, back), one row, the face cell 1.4 times as wide. Generate / Stop / Save live in the dialog's own
+   button row. Uses cast_generate.css for the cells' progress. */
+.fv-cp{position:relative}
+.fv-cp .fv-cg-body{grid-template-columns:minmax(0,1fr) minmax(0,2.2fr);align-items:stretch}
+.fv-cp .fv-cg-side{gap:var(--fv-sp-8,8px)}
+.fv-cp .fv-cg-side>.fv-cg-foot:not(:has(>.fv-cg-note:not([hidden]),>.fv-cp-rest:not([hidden]))){display:none}
+.fv-cp .fv-cp-rest{justify-self:start;height:32px;min-height:32px;background:var(--fv-ctl-bg,#ffffff0f);color:var(--fv-fg,#e8ecf3)}
+
+/* Picture slots (the photo grows to fill the column; the clothes picture is a smaller one) */
+.fv-cp .fv-cp-slot{position:relative;display:flex;flex-direction:column;min-height:0}
+.fv-cp .fv-cp-photo{flex:1;min-height:120px}
+.fv-cp .fv-cp-outfit-slot{flex:none;height:112px}
+.fv-cp .fv-cp-slot[hidden]{display:none}
+.fv-cp .fv-cp-drop{position:relative;display:grid;place-items:center;box-sizing:border-box;width:100%;flex:1;min-height:0;padding:0;overflow:hidden;
+  border:1px dashed var(--fv-line2,#ffffff24);border-radius:var(--fv-r-md);background:var(--fv-ctl-bg,#ffffff0a);color:var(--fv-fg2,#c9d0db);font:inherit;cursor:pointer;
+  transition:border-color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),background-color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
+.fv-cp .fv-cp-drop:hover:not(:disabled),.fv-cp .fv-cp-slot[data-over=true] .fv-cp-drop{border-color:var(--fv-accent-line,#6db8fa);background:var(--fv-ctl-hover,#ffffff12)}
+.fv-cp .fv-cp-slot[data-filled=true] .fv-cp-drop{border-style:solid;background:rgb(var(--fv-solid2,22 24 30))}
+.fv-cp .fv-cp-drop:disabled{cursor:default}
+.fv-cp .fv-cp-drop:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+.fv-cp .fv-cp-drop img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.fv-cp .fv-cp-hint{display:flex;flex-direction:column;align-items:center;gap:var(--fv-sp-4,4px);padding:0 var(--fv-sp-12,12px);text-align:center;font-size:var(--fv-fs-1,12px);line-height:1.6;color:var(--fv-fg3,#9aa3b2)}
+.fv-cp .fv-cp-hint strong{font-size:var(--fv-fs-2,13px);font-weight:600;color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-slot[data-filled=true] .fv-cp-hint{display:none}
+.fv-cp .fv-cp-slot-tools{position:absolute;left:var(--fv-sp-8,8px);right:var(--fv-sp-8,8px);bottom:var(--fv-sp-8,8px);display:flex;align-items:center;justify-content:flex-end;gap:var(--fv-sp-4,4px);pointer-events:none}
+.fv-cp .fv-cp-slot-tools>*{pointer-events:auto}
+.fv-cp .fv-cp-edited{margin-right:auto;padding:0 var(--fv-sp-8,8px);border-radius:var(--fv-r-xs);background:rgb(0 0 0 / .55);color:#fff;font-size:var(--fv-fs-1,12px);line-height:24px}
+.fv-cp .fv-cp-edited[hidden]{display:none}
+.fv-cp .fv-cp-slot:not(:hover,:focus-within) .fv-cp-slot-tools .fv-cp-tool{opacity:0}
+
+/* Clothes: three choices */
+.fv-cp .fv-cp-wear{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-2,2px);padding:var(--fv-sp-2,2px);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg,#ffffff0a)}
+.fv-cp .fv-cp-wear button{height:32px;min-height:32px;padding:0 var(--fv-sp-4,4px);border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-fg2,#c9d0db);font:inherit;font-size:var(--fv-fs-1,12px);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-cp .fv-cp-wear button[aria-checked=true]{background:rgb(var(--fv-tint,40 46 58) / .9);color:var(--fv-fg,#e8ecf3);font-weight:600}
+.fv-cp .fv-cp-wear button:disabled{cursor:default}
+.fv-cp .fv-cp-outfit{min-height:56px;flex:none}
+
+/* The views: one row, equal height, the face 1.4 times as wide; each filled (cover) */
+.fv-cp .fv-cg-views{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:var(--fv-sp-8,8px);align-content:start}
+.fv-cp .fv-cg-view{aspect-ratio:9/16;width:auto;padding:0;font:inherit;color:inherit;cursor:default}
+.fv-cp .fv-cg-view[data-view=face]{aspect-ratio:auto}
+.fv-cp .fv-cg-view[data-state=done]{cursor:zoom-in}
+.fv-cp .fv-cg-view img{object-fit:cover;object-position:50% 20%;background:none}
+.fv-cp .fv-cg-view[data-original=true]{border-color:var(--fv-accent-line,#6db8fa)}
+.fv-cp .fv-cg-view:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+.fv-cp .fv-cp-label{position:absolute;left:var(--fv-sp-8,8px);top:var(--fv-sp-8,8px);z-index:1;max-width:calc(100% - 16px);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:0 var(--fv-sp-4,4px);border-radius:var(--fv-r-xs);background:rgb(0 0 0 / .45);color:#fff;font-size:var(--fv-fs-1,12px);line-height:20px}
+
+/* Buttons on pictures, and the large view */
+.fv-cp .fv-cp-tool{height:28px;min-height:28px;padding:0 var(--fv-sp-8,8px);border:0;border-radius:var(--fv-r-sm);background:rgb(0 0 0 / .6);color:#fff;font:inherit;font-size:var(--fv-fs-1,12px);cursor:pointer;
+  transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
+.fv-cp .fv-cp-tool:hover:not(:disabled){background:rgb(0 0 0 / .78)}
+.fv-cp .fv-cp-tool:disabled{opacity:.5;cursor:default}
+.fv-cp .fv-cp-tool[hidden]{display:none}
+.fv-cp .fv-cp-large{position:absolute;inset:0;z-index:3;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-8,8px);border-radius:var(--fv-r-md);background:rgb(var(--fv-solid2,22 24 30))}
+.fv-cp .fv-cp-large[hidden]{display:none}
+.fv-cp .fv-cp-large img{width:100%;height:100%;min-height:0;object-fit:contain}
+.fv-cp .fv-cp-large-bar{display:flex;justify-content:flex-end;gap:var(--fv-sp-8,8px)}
+.fv-cp .fv-cp-large-bar .fv-cp-tool{height:32px;min-height:32px;background:var(--fv-ctl-bg,#ffffff0f);color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-large-bar .fv-cp-tool:hover:not(:disabled){background:var(--fv-ctl-hover,#ffffff1a)}
+
+/* The main action, placed in the dialog's button row by the host */
+.fv-cp-action{height:32px;min-height:32px;padding:0 var(--fv-sp-16,16px);border:1px solid var(--fv-line2,#ffffff24);border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-fg,#e8ecf3);font:inherit;cursor:pointer}
+.fv-cp-action:hover{background:var(--fv-ctl-hover,#ffffff12)}
+.fv-cp-action[data-primary=true]{border-color:transparent;background:var(--fv-accent-fill,#1a7fe5);color:#fff;font-weight:600}
+.fv-cp-action[aria-disabled=true]{opacity:.5;cursor:default}
+.fv-cp-action:is([hidden],[data-missing=true]){display:none}
+
+@media(hover:none){.fv-cp .fv-cp-slot .fv-cp-slot-tools .fv-cp-tool{opacity:1}}
+@media(prefers-reduced-motion:reduce){.fv-cp .fv-cp-drop,.fv-cp .fv-cp-tool{transition:none}}
+@container (max-width:520px){
+  .fv-cp .fv-cg-body{grid-template-columns:minmax(0,1fr)}
+  .fv-cp .fv-cp-photo{flex:none;height:220px}
+  .fv-cp .fv-cg-views{display:grid;overflow:visible;padding-bottom:0}
+  .fv-cp .fv-cg-view{width:auto}
+}
+
+/* A finished view: click opens the image editor; on hover, Draw again (and Use the photo on the face), and Restore after an edit. */
+.fv-cp .fv-cg-view[data-state=done]{cursor:pointer}
+.fv-cp .fv-cp-cell-tools{position:absolute;left:var(--fv-sp-8,8px);right:var(--fv-sp-8,8px);bottom:var(--fv-sp-8,8px);z-index:2;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--fv-sp-4,4px);opacity:0;
+  transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
+.fv-cp .fv-cg-view:is(:hover,:focus-within) .fv-cp-cell-tools,.fv-cp .fv-cg-view:not([data-state=done]) .fv-cp-cell-tools{opacity:1}
+.fv-cp .fv-cg-view>.fv-cp-edited{position:absolute;right:var(--fv-sp-8,8px);top:var(--fv-sp-8,8px);z-index:1;margin:0}
+.fv-cp .fv-cg-view>.fv-cp-edited[hidden]{display:none}
+@media(hover:none){.fv-cp .fv-cp-cell-tools{opacity:1}}
+@media(prefers-reduced-motion:reduce){.fv-cp .fv-cp-cell-tools{transition:none}}

@@ -1,5 +1,5 @@
 // Pictures attached to a chat message: limits, checks, upload and thumbnail address.
-import {agentUpload} from './agent_session.js';
+import {agentPost, agentUpload} from './agent_session.js';
 
 export const ATTACH = {
     count: 4, bytes: 10 * 1024 * 1024, types: ['image/png', 'image/jpeg', 'image/webp'],
@@ -30,19 +30,50 @@ export const attachmentURL = (api, name) => {
     return api.apiURL?.(path) || path;
 };
 
+const EXTENSION = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp'};
+export function randomName(file) {
+    const bytes = globalThis.crypto?.getRandomValues?.(new Uint8Array(8)) || Array.from({length: 8}, () => Math.floor(Math.random() * 256));
+    return 'picture-' + [...bytes].map(b => b.toString(16).padStart(2, '0')).join('') + (EXTENSION[file?.type] || '.png');
+}
+// The stored pictures a chat's entries name (for releasing them with the chat).
+export const picturesOf = items => [...new Set((items || []).flatMap(item => (item?.attachments || []).map(picture => picture?.name)).filter(Boolean))];
+// Releases each picture; an engine without the route answers the first with 404 and the rest are not asked (the
+// engine's own cleanup, if any, keeps its old behaviour).
+export async function releasePictures(api, names) {
+    for (const name of names) {
+        try {
+            const response = await agentPost(api, '/freevideo/agent/chat/attachment/release', {name});
+            if (response.status === 404 || response.status === 405) return;
+        } catch { return; }
+    }
+}
+
 // Resolves to the attachment object; rejects with {problem} naming a key of ATTACH.
 export async function uploadPicture(api, file, signal) {
     let response;
-    try { response = await agentUpload(api, '/freevideo/agent/chat/attach?' + new URLSearchParams({name: file.name || 'picture'}), file, signal); }
+    // Uploaded under a random name: the picture's own file name never leaves the page.
+    try { response = await agentUpload(api, '/freevideo/agent/chat/attach?' + new URLSearchParams({name: randomName(file)}), file, signal); }
     catch (error) { if (signal?.aborted) throw {problem: null}; throw {problem: 'failed'}; }
     if (response.status === 201 || response.ok) {
         const value = await response.json().catch(() => null);
-        if (value?.name) return value;
+        // The page keeps the stored name and size only; the picture's own file name stays with the engine.
+        if (value?.name) { const {original_name, ...kept} = value; return kept; }
         throw {problem: 'failed'};
     }
     const code = (await response.json().catch(() => null))?.error?.code;
     throw {problem: code === 'too_large' ? 'tooLarge' : code === 'invalid_media' ? 'unreadable' : 'failed', code};
 }
+
+// Tells the engine a staged picture is no longer wanted, so it can free the stored file. An engine without the route
+// (404) or a failed request is not a problem for the page: the picture is gone from the message either way.
+export async function releasePicture(api, name) {
+    if (!name) return false;
+    try { const response = await agentPost(api, '/freevideo/agent/chat/attachment/release', {name}); return response.ok && (await response.json().catch(() => ({}))).released === true; }
+    catch { return false; }
+}
+// A send refused because a picture it names is no longer stored (another draft released the same picture).
+export const pictureGone = error => error?.code === 'invalid_media'
+    || error?.code === 'invalid_request' && (error.details || []).some(detail => /^\/attachments\//.test(detail?.path || ''));
 
 // A thumbnail that turns into a grey cell with the picture glyph when the picture cannot be shown.
 export function thumbnail(src) {

@@ -33,6 +33,23 @@ export function replacesTake(record, start, frames) {
     return !!record.tracks.find(row => row.id === 'a3')?.clips.some(clip => clip.start < start + frames && start < clip.start + clip.frames);
 }
 
+// The takes a view has made or replaced, by their imported files' ids. A take is a file made only for this edit: once no
+// part of the edit uses it (replaced by a newer take, or undone) and the edit's history is gone, it is deleted.
+export function takeLedger() {
+    const takes = new Set();
+    const ids = clips => clips.map(clip => clip.source?.kind === 'import' ? clip.source.id : null).filter(Boolean);
+    const all = record => record.tracks.flatMap(track => track.clips);
+    return {
+        // Before a take lands on the sub-track: the older takes it covers there.
+        covering(record, start, frames) { for (const id of ids(record.tracks.find(row => row.id === 'a3')?.clips.filter(clip => clip.start < start + frames && start < clip.start + clip.frames) || [])) takes.add(id); },
+        // After it landed: the clips that were not there before (`before`, a set of clip ids) are the new take.
+        landed(record, before) { for (const id of ids(all(record).filter(clip => !before.has(clip.id)))) takes.add(id); },
+        // The takes no part of `record` uses.
+        unused(record) { const used = new Set(ids(all(record))); return [...takes].filter(id => !used.has(id)); },
+        forget(list) { for (const id of list) takes.delete(id); },
+    };
+}
+
 export const secondsOf = frames => frames / FPS;
 
 // A take's name in the library: 录音 / Recording and the time it began.

@@ -1,0 +1,565 @@
+/* Autopilot in the glass material. Loaded after autopilot_chat.css (and agent_connect.css), so it only overrides.
+   Layout: two side panels of equal width float as glass beside the middle column, so the conversation sits on the
+   window's centre line; the cards in the conversation are solid; the box to type in is its own floating bar.
+   Glass only on layers that float (panels, the box, menus, notices), never behind a picture or a video.
+   Every colour below comes from the local --ap-* names, which point at the shell's tokens (theme.css); re-point
+   them here when the shared token sheet changes. */
+
+/* ── tokens ─────────────────────────────────────────────────────────────────────────────────────────────── */
+.fv-autopilot{
+  --ap-bg:var(--fv-shell-bg,#06080c);
+  --ap-fg:var(--fv-fg,#f3f5f8);--ap-fg2:var(--fv-fg2,#c3c9d3);--ap-fg3:var(--fv-fg3,#a3abb8);
+  --ap-line:var(--fv-line,rgb(255 255 255 / .08));--ap-line2:var(--fv-line2,rgb(255 255 255 / .14));
+  --ap-ctl:var(--fv-ctl-bg,rgb(255 255 255 / .06));--ap-ctl-h:var(--fv-ctl-hover,rgb(255 255 255 / .11));
+  --ap-accent:var(--fv-accent-ink,#66b6ff);--ap-fill:var(--fv-accent-fill,#0d6dcc);--ap-fill-h:var(--fv-accent-fill-hover,#0f78de);--ap-on-fill:var(--fv-on-fill,#fff);
+  --ap-soft:var(--fv-accent-soft,rgb(27 148 252 / .16));--ap-warn:var(--fv-warn,#ff8f80);--ap-warn-soft:var(--fv-warn-soft,rgb(255 110 100 / .14));
+  --ap-ok:var(--fv-ok,#4cd59a);--ap-ok-soft:var(--fv-ok-soft,rgb(76 213 154 / .14));
+  --ap-tint:var(--fv-tint,20 23 30);--ap-a1:var(--fv-a1,.54);--ap-a2:var(--fv-a2,.66);--ap-a3:var(--fv-a3,.8);
+  --ap-edge:var(--fv-edge,rgb(255 255 255 / .075));--ap-edge-hi:var(--fv-edge-hi,rgb(255 255 255 / .14));
+  --ap-sh1:var(--fv-sh1,0 1px 1px rgb(0 0 0 / .25),0 10px 30px -6px rgb(0 0 0 / .45));
+  --ap-sh2:var(--fv-sh2,0 1px 2px rgb(0 0 0 / .3),0 22px 54px -10px rgb(0 0 0 / .55));
+  --ap-sh3:var(--fv-sh3,0 2px 6px rgb(0 0 0 / .32),0 32px 80px -12px rgb(0 0 0 / .62));
+  --ap-solid1:var(--fv-solid1,24 27 34);--ap-solid2:var(--fv-solid2,29 32 40);--ap-solid3:var(--fv-solid3,35 39 48);
+  --ap-card:17 20 26;--ap-me:rgb(13 109 204 / .22);
+  --ap-wash:radial-gradient(70% 60% at 18% 0%,rgb(27 148 252 / .1),transparent 70%),radial-gradient(60% 60% at 100% 100%,rgb(120 90 220 / .07),transparent 70%);
+  --ap-out:var(--fv-ease-out,cubic-bezier(.2,.8,.2,1));--ap-t1:var(--fv-dur-1,160ms);--ap-t2:var(--fv-dur-2,200ms);
+  --ap-rail:var(--fv-panel-w,320px);--ap-col:var(--ap-rail);--ap-gap:12px;--ap-max:720px;
+  /* The older tokens the conversation's sheet uses, pointed at the same palette. */
+  --fv-ink:var(--ap-fg);--fv-muted:var(--ap-fg3);--fv-disabled:var(--ap-fg3);
+  --fv-border:var(--ap-line2);--fv-card:rgb(var(--ap-card));--fv-raised:var(--ap-ctl);--fv-hover:var(--ap-ctl-h);
+  --fv-accent:var(--ap-accent);--fv-accent-hover:var(--ap-accent);--fv-accent-dim:color-mix(in srgb,var(--ap-accent) 45%,transparent);
+  --fv-selected:var(--ap-soft);--fv-danger:var(--ap-warn);--fv-danger-subtle:var(--ap-warn-soft);
+}
+:root[data-theme=light] .fv-autopilot{
+  --ap-ok:var(--fv-ok,#086b3f);--ap-ok-soft:var(--fv-ok-soft,rgb(8 107 63 / .1));--ap-fill-h:var(--fv-accent-fill-hover,#0b62b8);
+  --ap-card:255 255 255;--ap-me:rgb(13 109 204 / .1);
+  --ap-wash:radial-gradient(70% 60% at 18% 0%,rgb(27 148 252 / .09),transparent 70%),radial-gradient(60% 60% at 100% 100%,rgb(150 110 230 / .07),transparent 70%);
+  color-scheme:light;
+}
+
+/* A kept Autopilot view is closed, not removed: a closed dialog never shows, whatever display its own rules give it
+   (the node view has no dialog of its own to cover it). */
+dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
+
+/* ── the view: no grey ring, one ground with a quiet wash; words are not selected by a stray drag ─────────── */
+.fv-studio.fv-autopilot{color:var(--ap-fg);-webkit-user-select:none;user-select:none}
+.fv-autopilot :is(textarea,input,.fv-copyable,.fv-chat-me>p,.fv-chat-ai>p,.fv-failure-cause,.fv-agent-sentence,.fv-chat-detail-prompt,.fv-chat-job[data-mode=failed]>p){-webkit-user-select:text;user-select:text}
+.fv-autopilot .fv-autopilot-body{position:relative;background:var(--ap-wash),var(--ap-bg)}
+.fv-autopilot .fv-autopilot-line{top:0;bottom:auto;z-index:3}
+.fv-autopilot .fv-autopilot-body[data-view=connect]{padding:var(--fv-sp-16,16px)}
+
+/* ── three columns: equal side columns, so the middle one is on the window's centre line ───────────────────── */
+.fv-autopilot .fv-chat[data-left]{height:100%;grid-template-columns:var(--ap-col) minmax(0,1fr) var(--ap-col);
+  transition:grid-template-columns var(--ap-t2) var(--ap-out)}
+.fv-autopilot .fv-chat[data-left=closed][data-right=closed]{--ap-col:72px}
+/* Panel widths by window: 320 from 1440, 280 from 1280; strips from 900 (a panel floats out at full width); drawers
+   below 900 (three columns there would leave the conversation under 300 px). */
+@media(max-width:1439px){.fv-autopilot{--ap-rail:280px}}
+
+/* ── the two panels (glass g1) ─────────────────────────────────────────────────────────────────────────── */
+.fv-autopilot :is(.fv-chat-rail,.fv-chat-side){position:relative;z-index:2;min-width:0;min-height:0;display:flex;flex-direction:column;
+  margin:var(--ap-gap);border-radius:var(--fv-rad-dock,20px);overflow:hidden;
+  background:rgb(var(--ap-tint) / var(--ap-a1));box-shadow:inset 0 0 0 1px var(--ap-edge),inset 0 1px 0 var(--ap-edge-hi),var(--ap-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%)}
+.fv-autopilot .fv-chat-rail{grid-column:1;grid-row:1}.fv-autopilot .fv-chat-main{grid-column:2;grid-row:1}.fv-autopilot .fv-chat-side{grid-column:3;grid-row:1}
+.fv-autopilot .fv-chat-panel-head{flex:none;display:flex;align-items:center;gap:var(--fv-sp-8,8px);height:48px;padding:0 var(--fv-sp-8,8px) 0 var(--fv-sp-16,16px)}
+.fv-autopilot .fv-chat-panel-head h2{flex:1;min-width:0;margin:0;font-size:var(--fv-fs-2,13px);font-weight:600;line-height:20px;color:var(--ap-fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-autopilot .fv-chat-count{min-width:20px;height:20px;padding:0 var(--fv-sp-4,4px);border-radius:var(--fv-r-xs);background:var(--ap-ctl);font-size:var(--fv-fs-1,12px);line-height:20px;text-align:center;color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-studio.fv-autopilot :is(.fv-chat-panel-toggle,.fv-chat-tasks-toggle,.fv-chat .fv-chat-chats){position:relative;flex:none;width:32px;height:32px;min-height:0;padding:0;border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg3)}
+.fv-studio.fv-autopilot :is(.fv-chat-panel-toggle,.fv-chat-tasks-toggle,.fv-chat .fv-chat-chats):hover{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-autopilot :is(.fv-chat-panel-toggle,.fv-chat-tasks-toggle,.fv-chat-chats) svg{width:18px;height:18px}
+.fv-autopilot .fv-chat-tasks-toggle .fv-chat-running,.fv-autopilot .fv-chat-chats .fv-chat-running{position:absolute;top:4px;right:4px}
+/* A folded panel keeps a slim strip with its toggle; what was in it fades out, the middle column does not move. */
+/* A folded panel is a 56 px strip that still lists its items: chat covers with the making dot, task pictures or
+   rings. Wide windows fold on request; from 900 to 1279 px both panels are strips unless one floats out. */
+@media(min-width:1280px){
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail,.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side{width:56px;align-self:stretch}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail{justify-self:start}.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side{justify-self:end}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail>:not(.fv-chat-panel-head,.fv-chat-conversations,.fv-chat-rail-foot),.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side>:not(.fv-chat-panel-head,.fv-chat-tasks){display:none}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-panel-head>:not(.fv-chat-panel-toggle),.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-panel-head>:not(.fv-chat-panel-toggle){display:none}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-panel-head,.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-panel-head{justify-content:center;padding:0}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversations>:not(.fv-chat-conversation-list){display:none}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversation-list{padding:0 var(--fv-sp-4,4px)}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail :is(.fv-chat-conversation-words,.fv-chat-more){display:none}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversation-row[data-group-start=true]{margin-top:0}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversation-row[data-group-start=true]::before{display:none}
+  .fv-studio.fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversations .fv-chat-conversation{justify-content:center;min-height:var(--fv-ctl-l,40px);padding:var(--fv-sp-4,4px) 0}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-cover{width:40px;height:24px;margin:0}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-conversation .fv-chat-running{display:block;position:absolute;top:var(--fv-sp-4,4px);right:var(--fv-sp-4,4px);box-shadow:0 0 0 2px rgb(var(--ap-solid1))}
+  .fv-studio.fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-autopilot-lamp{justify-content:center;padding:0}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-autopilot-lamp>span{display:none}
+  .fv-autopilot .fv-chat[data-left=closed] .fv-chat-rail .fv-chat-rail-foot{justify-content:center;padding:var(--fv-sp-8,8px) var(--fv-sp-4,4px)}
+  .fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-tasks{padding:0 var(--fv-sp-4,4px)}
+  .fv-studio.fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-task{grid-template-columns:40px;justify-content:center;min-height:40px;padding:var(--fv-sp-4,4px) 0}
+  .fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-task-body{display:none}
+  .fv-autopilot .fv-chat[data-right=closed] .fv-chat-side .fv-chat-task-thumb{width:40px}
+}
+@media(min-width:900px) and (max-width:1279px){
+  .fv-autopilot .fv-chat[data-left]{--ap-col:72px}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail,.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side{width:56px;align-self:stretch}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail{justify-self:start}.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side{justify-self:end}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail>:not(.fv-chat-panel-head,.fv-chat-conversations,.fv-chat-rail-foot),.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side>:not(.fv-chat-panel-head,.fv-chat-tasks){display:none}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-panel-head>:not(.fv-chat-panel-toggle),.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-panel-head>:not(.fv-chat-panel-toggle){display:none}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-panel-head,.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-panel-head{justify-content:center;padding:0}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversations>:not(.fv-chat-conversation-list){display:none}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversation-list{padding:0 var(--fv-sp-4,4px)}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail :is(.fv-chat-conversation-words,.fv-chat-more){display:none}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversation-row[data-group-start=true]{margin-top:0}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversation-row[data-group-start=true]::before{display:none}
+  .fv-studio.fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversations .fv-chat-conversation{justify-content:center;min-height:var(--fv-ctl-l,40px);padding:var(--fv-sp-4,4px) 0}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-cover{width:40px;height:24px;margin:0}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-conversation .fv-chat-running{display:block;position:absolute;top:var(--fv-sp-4,4px);right:var(--fv-sp-4,4px);box-shadow:0 0 0 2px rgb(var(--ap-solid1))}
+  .fv-studio.fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-autopilot-lamp{justify-content:center;padding:0}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-autopilot-lamp>span{display:none}
+  .fv-autopilot .fv-chat:not([data-chats-open=true]) .fv-chat-rail .fv-chat-rail-foot{justify-content:center;padding:var(--fv-sp-8,8px) var(--fv-sp-4,4px)}
+  .fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-tasks{padding:0 var(--fv-sp-4,4px)}
+  .fv-studio.fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-task{grid-template-columns:40px;justify-content:center;min-height:40px;padding:var(--fv-sp-4,4px) 0}
+  .fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-task-body{display:none}
+  .fv-autopilot .fv-chat:not([data-tasks-open=true]) .fv-chat-side .fv-chat-task-thumb{width:40px}
+  /* The panel opened from its strip floats over the conversation at full width; the middle column does not move. */
+  .fv-autopilot .fv-chat[data-chats-open=true] .fv-chat-rail,.fv-autopilot .fv-chat[data-tasks-open=true] .fv-chat-side{position:absolute;top:0;bottom:0;z-index:6;width:var(--fv-panel-w,280px);
+    background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px var(--ap-edge),inset 0 1px 0 var(--ap-edge-hi),var(--ap-sh3)}
+  .fv-autopilot .fv-chat[data-chats-open=true] .fv-chat-rail{left:0}.fv-autopilot .fv-chat[data-tasks-open=true] .fv-chat-side{right:0}
+}
+@media(min-width:900px) and (max-width:1279px) and (prefers-reduced-motion:no-preference){
+  .fv-autopilot .fv-chat[data-chats-open=true] .fv-chat-rail{animation:ap-float-l var(--ap-t2) var(--ap-out)}.fv-autopilot .fv-chat[data-tasks-open=true] .fv-chat-side{animation:ap-float-r var(--ap-t2) var(--ap-out)}
+}
+@keyframes ap-float-l{from{opacity:0;transform:translateX(-8px)}}@keyframes ap-float-r{from{opacity:0;transform:translateX(8px)}}
+}
+@media(prefers-reduced-motion:no-preference){.fv-autopilot :is(.fv-chat-rail,.fv-chat-side)>*{animation:ap-in var(--ap-t2) var(--ap-out)}}
+@keyframes ap-in{from{opacity:0}}
+
+/* Search fields in both panels. */
+.fv-autopilot .fv-chat-search{flex:none;display:flex;align-items:center;gap:var(--fv-sp-8,8px);height:32px;margin:0 var(--fv-sp-8,8px) var(--fv-sp-8,8px);padding:0 var(--fv-sp-12,12px);border-radius:var(--fv-rad-sm,8px);background:var(--ap-ctl);color:var(--ap-fg3);cursor:text}
+.fv-autopilot .fv-chat-search:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line,var(--ap-accent))}
+.fv-autopilot .fv-chat-search svg{flex:none;width:14px;height:14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.fv-studio.fv-autopilot .fv-chat-search input{flex:1;min-width:0;height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--ap-fg);font-size:var(--fv-fs-2,13px);outline:none}
+.fv-autopilot .fv-chat-search input::placeholder{color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-search input::-webkit-search-cancel-button{filter:grayscale(1);opacity:.6}
+.fv-autopilot .fv-chat-search[hidden]{display:none}
+.fv-autopilot .fv-chat-key{flex:none;min-width:20px;height:20px;padding:0 var(--fv-sp-4,4px);border-radius:var(--fv-rad-xs,4px);box-shadow:inset 0 0 0 1px var(--ap-line2);font:inherit;font-size:var(--fv-fs-1,12px);line-height:20px;text-align:center;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-search:focus-within .fv-chat-key{display:none}
+/* Segmented choices: the task filters and the history tabs. */
+.fv-autopilot .fv-chat-seg{display:flex;gap:var(--fv-sp-4,4px);padding:var(--fv-sp-4,4px);border-radius:var(--fv-rad-ctl,12px);background:var(--ap-ctl)}
+.fv-studio.fv-autopilot .fv-chat-seg>button{flex:1;min-width:0;height:var(--fv-ctl,32px);min-height:0;padding:0 var(--fv-sp-8,8px);gap:var(--fv-sp-4,4px);border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--ap-fg2);font-size:var(--fv-fs-1,12px);font-weight:500;white-space:nowrap}
+.fv-studio.fv-autopilot .fv-chat-seg>button:hover{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-chat-seg>button:is([aria-pressed=true],[aria-selected=true]){background:rgb(var(--ap-solid3));color:var(--ap-fg);box-shadow:0 1px 2px rgb(0 0 0 / .18)}
+.fv-autopilot .fv-chat-seg small{font-size:var(--fv-fs-1,12px);color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-filters{flex:none;margin:0 var(--fv-sp-8,8px) var(--fv-sp-8,8px)}
+.fv-autopilot .fv-chat-side{container:fv-ap-side / inline-size}
+@container fv-ap-side (width < 264px){
+  .fv-autopilot .fv-chat-filters small{display:none}.fv-studio.fv-autopilot .fv-chat-filters>button{padding:0 var(--fv-sp-4,4px)}
+  /* A narrow panel: the running summary drops its ring and puts the percentage under the name; rows keep a smaller picture. */
+  .fv-studio.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go{grid-template-columns:minmax(0,1fr) auto;column-gap:var(--fv-sp-8,8px)}
+  .fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>i,.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>span:not(.fv-autopilot-now-name){display:none}
+  .fv-autopilot .fv-chat-side-running .fv-autopilot-now-name{grid-column:1/3}
+  .fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>b{grid-column:2;grid-row:2;font-size:var(--fv-fs-1,12px);line-height:16px}
+  .fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>em{grid-column:1;grid-row:2}
+  .fv-studio.fv-autopilot .fv-chat-task{grid-template-columns:40px minmax(0,1fr);gap:var(--fv-sp-8,8px)}
+  .fv-autopilot .fv-chat-task-thumb{width:40px}
+  .fv-autopilot .fv-chat-detail-preview[data-shape=tall]{height:160px}
+}
+.fv-autopilot .fv-chat-filters[hidden]{display:none}
+
+/* ── the left panel: chats ─────────────────────────────────────────────────────────────────────────────── */
+.fv-autopilot .fv-chat-rail .fv-chat-conversations{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--fv-sp-4,4px);padding:0 0 var(--fv-sp-8,8px);border:0;background:transparent;--fv-chats-pad:12px;--fv-chats-radius:var(--fv-r-sm)}
+.fv-autopilot .fv-chat-rail .fv-chat-conversation-list{flex:1;padding:0 var(--fv-sp-8,8px);gap:var(--fv-sp-4,4px);scrollbar-width:thin}
+.fv-studio.fv-autopilot .fv-chat-panel-head .fv-chat-new{flex:none;width:32px;height:32px;min-height:0;padding:0;border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg3);font-size:0;gap:0}
+.fv-studio.fv-autopilot .fv-chat-panel-head .fv-chat-new:hover:not(:disabled){background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-autopilot .fv-chat-new svg{width:18px;height:18px}
+.fv-studio.fv-autopilot .fv-chat-conversations .fv-chat-conversation{min-height:var(--fv-row-2,48px);padding:var(--fv-sp-4,4px) var(--fv-sp-8,8px);color:var(--ap-fg2);gap:var(--fv-sp-12,12px)}
+.fv-studio.fv-autopilot .fv-chat-conversations .fv-chat-conversation[aria-current]{background:var(--ap-ctl-h);border-color:transparent;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]){background:var(--ap-ctl)}
+.fv-autopilot .fv-chat-conversation-row[hidden]{display:none}
+.fv-autopilot .fv-chat-conversation-words{flex:1;min-width:0;display:grid;gap:0}
+.fv-autopilot .fv-chat-conversation-line{display:flex;align-items:center;height:20px;gap:var(--fv-sp-8,8px);min-width:0}
+.fv-autopilot .fv-chat-conversation-line>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-2,13px);font-weight:500;line-height:20px}
+.fv-autopilot .fv-chat-conversation-when{flex:none;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-conversation-when{visibility:hidden}
+.fv-autopilot .fv-chat-conversation-meta{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-conversation-meta::before{content:"";display:inline-block;width:6px;height:6px;margin:0 var(--fv-sp-8,8px) 0 0;border-radius:var(--fv-r-pill);vertical-align:middle;background:var(--ap-fg3)}
+.fv-autopilot .fv-chat-conversation-meta[data-state=running]{color:var(--ap-accent)}.fv-autopilot .fv-chat-conversation-meta[data-state=running]::before{background:var(--ap-accent)}
+.fv-autopilot .fv-chat-conversation-meta[data-state=done]::before{background:var(--ap-ok)}
+.fv-autopilot .fv-chat-conversation-meta[data-state=failed]{color:var(--ap-warn)}.fv-autopilot .fv-chat-conversation-meta[data-state=failed]::before{background:var(--ap-warn)}
+.fv-autopilot .fv-chat-conversation .fv-chat-running{display:none}
+.fv-autopilot .fv-chat-conversation-row[data-group-start=true]{margin-top:var(--fv-sp-24,24px)}
+.fv-autopilot .fv-chat-conversation-row[data-group-start=true]:first-child{margin-top:var(--fv-sp-20,20px)}
+.fv-autopilot .fv-chat-conversation-row[data-group-start=true]::before{content:attr(data-group-label);position:absolute;left:var(--fv-sp-8,8px);bottom:100%;padding-bottom:var(--fv-sp-4,4px);font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-cover{border-radius:var(--fv-rad-xs,4px);box-shadow:0 0 0 1px var(--ap-edge)}
+.fv-autopilot .fv-chat-rail-empty{flex:none;margin:var(--fv-sp-4,4px) var(--fv-sp-16,16px) var(--fv-sp-12,12px);font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-rail>.fv-chat-rail-empty{flex:1}
+.fv-autopilot .fv-chat-rail-empty[hidden]{display:none}
+.fv-autopilot .fv-chat-rail-notices{position:absolute;left:var(--fv-sp-8,8px);right:var(--fv-sp-8,8px);bottom:var(--fv-sp-64,64px);z-index:4;display:grid;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-12,12px);border-radius:var(--fv-rad-pop,16px);
+  background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ap-warn) 30%,transparent),var(--ap-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-autopilot .fv-chat-rail-notices:not(:has(>:not([hidden]))){display:none}
+.fv-autopilot .fv-chat-rail-notices :is(.fv-chat-new-error,.fv-chat-delete-error){padding:0;font-size:var(--fv-fs-2,13px)}
+@media(prefers-reduced-motion:no-preference){.fv-autopilot .fv-chat-rail-notices{animation:ap-rise var(--ap-t1) var(--ap-out)}}
+:is(:root[data-glass=solid],:root.lite) .fv-autopilot .fv-chat-rail-notices{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--ap-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-autopilot .fv-chat-rail-notices{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--ap-solid3))!important}}
+.fv-autopilot .fv-chat-rail-foot{flex:none;display:flex;align-items:center;min-height:52px;padding:var(--fv-sp-8,8px);box-shadow:inset 0 1px 0 var(--ap-line)}
+.fv-autopilot .fv-chat-rail-foot:empty{display:none}
+.fv-autopilot .fv-chat-menu{border:0;border-radius:var(--fv-rad-pop,16px);background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-chat-menu .fv-chat-menu-item{border-radius:var(--fv-rad-sm,8px);font-size:var(--fv-fs-2,13px)}
+
+/* The connection: one row with its dot; a press shows how to connect again when no assistant is there. */
+.fv-studio.fv-autopilot .fv-autopilot-lamp{flex:1;min-width:0;justify-content:flex-start;gap:var(--fv-sp-12,12px);height:var(--fv-ctl-l,40px);padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-ctl,12px);background:transparent;color:var(--ap-fg2);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-autopilot-lamp:not(:disabled):hover{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-autopilot-lamp:disabled{opacity:1;cursor:default}
+.fv-studio.fv-autopilot .fv-autopilot-lamp[data-color=green]{border:0;background:transparent;color:var(--ap-fg2)}
+.fv-autopilot .fv-autopilot-lamp>i{flex:none;width:8px;height:8px;background:var(--ap-fg3)}
+.fv-autopilot .fv-autopilot-lamp[data-color=green]>i{background:var(--ap-accent);box-shadow:0 0 0 3px var(--ap-soft)}
+.fv-autopilot .fv-autopilot-lamp>span{overflow:hidden;text-overflow:ellipsis}
+
+/* ── the right panel: tasks and the details of the one picked ───────────────────────────────────────────── */
+.fv-autopilot .fv-chat-side-running{flex:none;padding:0 var(--fv-sp-8,8px) var(--fv-sp-8,8px)}
+.fv-autopilot .fv-chat-side-running:not(:has(.fv-autopilot-now:not([hidden]))){display:none}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now{width:100%;border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--ap-soft);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go{flex:1;min-width:0;display:grid;grid-template-columns:16px minmax(0,1fr) auto;grid-template-rows:20px 16px;align-content:center;justify-content:stretch;
+  column-gap:var(--fv-sp-12,12px);height:52px;padding:0 var(--fv-sp-4,4px) 0 var(--fv-sp-12,12px);border-radius:var(--fv-rad-ctl,12px);color:var(--ap-fg);text-align:left}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>i{grid-row:1/3;align-self:center}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-name{grid-column:2;grid-row:1;max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;line-height:20px}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>b{grid-column:3;grid-row:1;line-height:20px}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>span:not(.fv-autopilot-now-name){grid-column:3;grid-row:2;font-size:var(--fv-fs-1,12px);line-height:16px;text-align:right}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>em{grid-column:2;grid-row:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>:empty:not(i){display:none}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>b{color:var(--ap-accent);font-weight:600}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go>i{background:conic-gradient(var(--ap-accent) calc(var(--p,0)*1%),var(--ap-line2) 0)}
+.fv-studio.fv-autopilot .fv-chat-side-running .fv-autopilot-now-stop{width:32px;height:32px;margin-right:var(--fv-sp-4,4px);border-radius:var(--fv-r-xs)}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-stop::after{background-color:var(--ap-ctl)}
+.fv-autopilot .fv-chat-tasks{flex:1 1 auto;min-height:96px;margin:0;padding:0 var(--fv-sp-8,8px) var(--fv-sp-8,8px);list-style:none;overflow:auto;display:grid;align-content:start;gap:var(--fv-sp-4,4px);scrollbar-width:thin}
+.fv-autopilot .fv-chat-tasks>li[hidden]{display:none}
+.fv-autopilot .fv-chat-tasks:empty{display:none}
+.fv-studio.fv-autopilot .fv-chat-task{width:100%;min-height:56px;display:grid;grid-template-columns:52px minmax(0,1fr);align-items:start;justify-content:stretch;gap:var(--fv-sp-12,12px);padding:var(--fv-sp-8,8px);border:0;border-radius:var(--fv-rad-ctl,12px);background:transparent;color:var(--ap-fg2);font-weight:400;text-align:left}
+.fv-studio.fv-autopilot .fv-chat-task:hover{background:var(--ap-ctl)}
+.fv-studio.fv-autopilot .fv-chat-task[aria-current=true]{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-autopilot .fv-chat-task-thumb{position:relative;width:52px;aspect-ratio:16/9;border-radius:var(--fv-rad-xs,4px);overflow:hidden;background:var(--ap-ctl);display:grid;place-items:center;box-shadow:0 0 0 1px var(--ap-edge)}
+.fv-autopilot .fv-chat-task-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fv-autopilot .fv-chat-task-body{min-width:0;display:grid;gap:var(--fv-sp-4,4px)}
+.fv-autopilot .fv-chat-task-top{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0}
+.fv-autopilot .fv-chat-task-top b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-2,13px);font-weight:500;line-height:20px;color:var(--ap-fg)}
+.fv-autopilot :is(.fv-chat-task-prompt,.fv-chat-task-meta){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px}
+.fv-autopilot .fv-chat-task-prompt{color:var(--ap-fg2)}
+.fv-autopilot .fv-chat-task-meta{display:flex;align-items:center;gap:var(--fv-sp-8,8px);margin-top:var(--fv-sp-4,4px);color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-task-meta>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fv-autopilot .fv-chat-task-top>.fv-chat-chip{flex:none}
+/* What a search found: the matched words lit, in both panels. */
+.fv-autopilot mark.fv-chat-hit{padding:0 1px;border-radius:var(--fv-rad-xs,4px);background:color-mix(in srgb,var(--ap-accent) 26%,transparent);color:inherit}
+.fv-studio.fv-autopilot .fv-chat-search input:focus-visible{outline:none}
+.fv-autopilot .fv-chat-conversation-meta[data-state=found]{color:var(--ap-fg2)}.fv-autopilot .fv-chat-conversation-meta[data-state=found]::before{display:none}
+.fv-autopilot .fv-chat-tasks-empty{flex:none;display:grid;justify-items:center;gap:var(--fv-sp-4,4px);margin:var(--fv-sp-24,24px) var(--fv-sp-16,16px);text-align:center}
+.fv-autopilot .fv-chat-tasks-empty b{font-size:var(--fv-fs-2,13px);font-weight:600;line-height:20px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-tasks-empty p{margin:0;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-empty-mark{display:grid;place-items:center;width:40px;height:40px;margin-bottom:var(--fv-sp-4,4px);border-radius:var(--fv-rad-ctl,12px);background:var(--ap-ctl);color:var(--ap-fg2)}
+.fv-autopilot .fv-chat-empty-mark[hidden]{display:none}
+.fv-autopilot .fv-chat-empty-mark svg{width:20px;height:20px}
+.fv-autopilot .fv-chat-tasks-empty[hidden]{display:none}
+/* A ring that fills with the task; dashed while it waits its turn. */
+.fv-autopilot .fv-chat-ring{width:18px;height:18px;border-radius:var(--fv-r-pill);background:conic-gradient(var(--ap-accent) calc(var(--p,0)*1%),var(--ap-line2) 0);
+  -webkit-mask:radial-gradient(circle,transparent 6px,#000 6.5px);mask:radial-gradient(circle,transparent 6px,#000 6.5px)}
+.fv-autopilot .fv-chat-ring:is([data-state=queued],[data-state=stopping]){background:none;box-shadow:inset 0 0 0 2px var(--ap-line2);-webkit-mask:none;mask:none}
+.fv-autopilot .fv-chat-ring[data-state=failed]{background:var(--ap-warn)}
+.fv-autopilot .fv-chat-ring[data-state=stopped]{background:var(--ap-fg3)}
+.fv-autopilot .fv-chat-ring[data-state=done]{background:var(--ap-ok)}
+
+.fv-autopilot .fv-chat-detail{flex:0 1 auto;min-height:0;max-height:58%;overflow:auto;display:flex;flex-direction:column;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-12,12px) var(--fv-sp-16,16px) var(--fv-sp-16,16px);box-shadow:inset 0 1px 0 var(--ap-line);scrollbar-width:thin}
+.fv-autopilot .fv-chat-detail[hidden]{display:none}
+.fv-autopilot .fv-chat-detail>*{flex:none}
+.fv-autopilot .fv-chat-detail-preview[data-shape=tall]{align-self:center}
+.fv-studio.fv-autopilot .fv-chat-detail-label{display:flex;align-items:center;justify-content:flex-start;gap:var(--fv-sp-8,8px);width:calc(100% + var(--fv-sp-16,16px));min-height:32px;margin:calc(-1 * var(--fv-sp-4,4px)) calc(-1 * var(--fv-sp-8,8px)) 0;padding:0 var(--fv-sp-8,8px);border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg);font-size:var(--fv-fs-2,13px);font-weight:600}
+.fv-studio.fv-autopilot .fv-chat-detail-label:hover{background:var(--ap-ctl)}
+.fv-autopilot .fv-chat-detail-label small{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;font-size:var(--fv-fs-1,12px);font-weight:400;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-detail-label svg{flex:none;width:16px;height:16px;color:var(--ap-fg3);transition:transform var(--ap-t1) var(--ap-out)}
+.fv-autopilot .fv-chat-detail[data-folded=true] .fv-chat-detail-label svg{transform:rotate(-90deg)}
+.fv-autopilot .fv-chat-detail[data-folded=true]{padding-bottom:var(--fv-sp-8,8px)}
+.fv-autopilot .fv-chat-detail-preview[data-shape=tall]{width:auto;height:160px;justify-self:center}
+.fv-autopilot .fv-chat-detail-preview{position:relative;width:100%;max-height:160px;aspect-ratio:16/9;border-radius:var(--fv-rad-ctl,12px);overflow:hidden;background:#05070a;display:grid;place-items:center;box-shadow:0 0 0 1px var(--ap-edge)}
+.fv-autopilot .fv-chat-detail-preview img{width:100%;height:100%;object-fit:contain;display:block}
+.fv-autopilot .fv-chat-detail-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--fv-r-pill);color:#c3c9d3;background:conic-gradient(var(--ap-accent) calc(var(--p,0)*1%),rgb(255 255 255 / .12) 0)}
+.fv-autopilot .fv-chat-detail-mark svg{width:36px;height:36px;padding:var(--fv-sp-8,8px);border-radius:var(--fv-r-pill);background:#05070a;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.fv-autopilot .fv-chat-detail-preview:not([data-state=running]) .fv-chat-detail-mark{background:none}
+.fv-autopilot .fv-chat-detail-preview[data-state=failed] .fv-chat-detail-mark{color:var(--ap-warn)}
+.fv-autopilot .fv-chat-detail-head{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0;margin-top:var(--fv-sp-4,4px)}
+.fv-autopilot .fv-chat-detail-head h3{flex:1;min-width:0;margin:0;font-size:var(--fv-fs-3,16px);font-weight:600;line-height:24px;color:var(--ap-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-autopilot .fv-chat-detail-prompt{margin:0;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-detail-prompt[hidden]{display:none}
+.fv-autopilot .fv-chat-facts{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:var(--fv-sp-4,4px) var(--fv-sp-16,16px);margin:0;font-size:var(--fv-fs-1,12px);line-height:16px}
+.fv-autopilot .fv-chat-facts dt{color:var(--ap-fg3)}.fv-autopilot .fv-chat-facts dd{margin:0;color:var(--ap-fg2);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-detail-actions{display:flex;flex-wrap:wrap;gap:var(--fv-sp-8,8px);margin-top:var(--fv-sp-4,4px)}
+.fv-studio.fv-autopilot .fv-chat-detail-actions>button{min-height:32px;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--ap-ctl);color:var(--ap-fg);font-size:var(--fv-fs-2,13px);font-weight:500}
+.fv-studio.fv-autopilot .fv-chat-detail-actions>button:hover{background:var(--ap-ctl-h)}
+.fv-studio.fv-autopilot .fv-chat-detail-actions>.fv-quiet{background:transparent;color:var(--ap-fg2)}
+.fv-studio.fv-autopilot .fv-chat-detail-actions>.fv-chat-stop::before{content:"";width:8px;height:8px;border-radius:var(--fv-r-xs);background:var(--ap-warn)}
+
+/* State chips: one look for the panel, the details and the cards. */
+.fv-autopilot .fv-chat-chip{flex:none;display:inline-flex;align-items:center;height:20px;padding:0 var(--fv-sp-8,8px);border-radius:var(--fv-r-xs);background:var(--ap-ctl);color:var(--ap-fg3);font-size:var(--fv-fs-1,12px);font-weight:500;line-height:20px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-chip:empty{display:none}
+.fv-autopilot .fv-chat-chip[data-state=running]{background:var(--ap-soft);color:var(--ap-accent)}
+.fv-autopilot .fv-chat-chip[data-state=done]{background:var(--ap-ok-soft);color:var(--ap-ok)}
+.fv-autopilot .fv-chat-chip[data-state=failed]{background:var(--ap-warn-soft);color:var(--ap-warn)}
+
+/* ── the middle column: the conversation, and the floating box under it ─────────────────────────────────── */
+.fv-autopilot .fv-chat-main{grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:0 var(--fv-sp-24,24px) var(--fv-sp-16,16px)}
+.fv-autopilot .fv-chat-head{grid-row:1;display:flex;align-items:center;justify-self:center;width:100%;max-width:var(--ap-max);min-height:56px;padding-top:var(--fv-sp-12,12px)}
+.fv-autopilot .fv-chat-head[data-empty=true]{visibility:hidden}
+.fv-autopilot .fv-chat-head>.fv-chat-tools,.fv-autopilot .fv-chat-head-end{display:none}
+.fv-autopilot .fv-chat-head-words{min-width:0;display:grid}
+.fv-autopilot .fv-chat-head-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-3,16px);font-weight:600;line-height:24px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-head-sub{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-head-sub:empty{display:none}
+.fv-autopilot .fv-chat-scroll{grid-row:2;margin:0 calc(-1 * var(--fv-sp-24,24px));padding:var(--fv-sp-16,16px) var(--fv-sp-24,24px) var(--fv-sp-64,64px);scrollbar-width:thin;scrollbar-color:var(--ap-line2) transparent;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 16px,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 16px,#000 calc(100% - 24px),transparent 100%)}
+.fv-autopilot .fv-chat-log{max-width:var(--ap-max);gap:var(--fv-sp-24,24px)}
+.fv-autopilot .fv-chat-dock{grid-row:3;position:relative;z-index:2;justify-self:center;width:100%;max-width:var(--ap-max)}
+/* Notices, the next download and the scene list float just above the box; they never push the conversation. */
+.fv-autopilot .fv-chat-above{position:absolute;left:0;right:0;bottom:calc(100% + var(--fv-sp-48,48px));display:grid;justify-items:start;gap:var(--fv-sp-8,8px);pointer-events:none}
+.fv-autopilot .fv-chat-above>*{pointer-events:auto;max-width:100%}
+.fv-autopilot .fv-chat-above>[hidden]{display:none}
+/* The slot floats over the conversation's reserved foot (the list keeps that much room at its end, so the newest entry
+   always shows whole above it): a card scrolled to the bottom edge stays visible through an empty slot, never cut by it. */
+.fv-autopilot .fv-chat-slot{position:absolute;left:0;right:0;bottom:calc(100% + var(--fv-sp-8,8px));height:32px;margin:0;display:flex;align-items:center;min-width:0;pointer-events:none}
+.fv-autopilot .fv-chat-slot>*{pointer-events:auto}
+.fv-autopilot .fv-chat-slot>[hidden],.fv-autopilot .fv-chat-notice-row:not(:has(>:not([hidden]))){display:none}
+/* One line at a time: a notice first; the next-download line shows only when no notice does. */
+.fv-autopilot .fv-chat-slot:has(.fv-chat-notice:not([hidden]))>.fv-request-assets{display:none}
+.fv-autopilot .fv-chat-notice-row{flex:0 1 auto;width:auto;max-width:100%;height:32px;min-width:0;flex-wrap:nowrap;gap:var(--fv-sp-8,8px);padding:0 var(--fv-sp-4,4px) 0 var(--fv-sp-16,16px);border-radius:var(--fv-r-sm);
+  background:rgb(var(--ap-tint) / var(--ap-a2));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%)}
+.fv-autopilot .fv-chat-notice{flex:0 1 auto;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-notice-row>.fv-issue-button{flex:none;margin:0}
+.fv-autopilot .fv-chat-notice-row:not(:has(>.fv-issue-button:not([hidden]),>.fv-chat-notice-action:not([hidden]))){padding-right:var(--fv-sp-16,16px)}
+.fv-autopilot .fv-chat-slot>.fv-request-assets{min-width:0;max-width:100%;margin:0;padding:0 var(--fv-sp-16,16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:32px;color:var(--ap-fg3)}
+.fv-studio.fv-autopilot .fv-chat-above .fv-chat-down{position:static;justify-self:center;width:auto;height:32px;min-height:0;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-sm);color:var(--ap-fg);
+  background:rgb(var(--ap-tint) / var(--ap-a2));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%)}
+.fv-autopilot .fv-chat-scene-menu{width:auto;min-width:240px;max-width:min(100%,360px);margin:0;padding:var(--fv-sp-4,4px);border:0;border-radius:var(--fv-rad-pop,16px);
+  background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+@media(prefers-reduced-motion:no-preference){.fv-autopilot :is(.fv-chat-above,.fv-chat-slot)>:not([hidden]){animation:ap-rise var(--ap-t1) var(--ap-out)}}
+@keyframes ap-rise{from{opacity:0;transform:translateY(4px)}}
+
+/* The box: words on top, tools on one row below, Send at its end. Glass g1, its own layer. */
+.fv-studio.fv-autopilot .fv-chat-input{width:100%;max-width:none;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-4,4px);align-items:stretch;
+  padding:var(--fv-sp-12,12px) var(--fv-sp-12,12px) var(--fv-sp-8,8px) var(--fv-sp-16,16px);border:0;border-radius:var(--fv-rad-dock,20px);
+  background:rgb(var(--ap-tint) / var(--ap-a1));box-shadow:inset 0 0 0 1px var(--ap-edge),inset 0 1px 0 var(--ap-edge-hi),var(--ap-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%)}
+.fv-studio.fv-autopilot .fv-chat-input:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line,var(--ap-accent)),inset 0 1px 0 var(--ap-edge-hi),var(--ap-sh2)}
+.fv-studio.fv-autopilot .fv-chat-input textarea{height:44px;min-height:44px;padding:var(--fv-sp-4,4px) 0;font-size:var(--fv-fs-3,16px);line-height:24px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-input textarea::placeholder{color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-compose-tools{display:flex;align-items:center;gap:var(--fv-sp-4,4px);margin-left:calc(-1 * var(--fv-sp-8,8px))}
+.fv-autopilot .fv-chat-grow{flex:1}
+.fv-studio.fv-autopilot :is(.fv-chat-whitebox,.fv-chat-scenes,.fv-chat-attach){height:32px;min-height:0;padding:0 var(--fv-sp-8,8px);gap:var(--fv-sp-8,8px);border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg2);font-size:var(--fv-fs-2,13px);font-weight:400}
+.fv-studio.fv-autopilot .fv-chat-attach{width:32px;padding:0}
+.fv-studio.fv-autopilot .fv-chat-history-button{height:32px;min-height:0;padding:0 var(--fv-sp-8,8px);gap:var(--fv-sp-8,8px);border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg2);font-size:var(--fv-fs-2,13px);font-weight:400;white-space:nowrap}
+.fv-studio.fv-autopilot .fv-chat-history-button:hover,.fv-studio.fv-autopilot .fv-chat-history-button[aria-expanded=true]{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-autopilot .fv-chat-history-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.fv-autopilot .fv-chat-history{width:min(400px,100%);display:grid;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-8,8px);border-radius:var(--fv-rad-pop,16px);
+  background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-autopilot .fv-chat-history-list{display:grid;gap:var(--fv-sp-4,4px);max-height:280px;overflow:auto;scrollbar-width:thin}
+.fv-studio.fv-autopilot .fv-chat-history-row{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;justify-content:stretch;gap:var(--fv-sp-12,12px);min-height:var(--fv-ctl-l,40px);padding:var(--fv-sp-8,8px);border:0;border-radius:var(--fv-rad-sm,8px);background:transparent;color:var(--ap-fg);font-size:var(--fv-fs-2,13px);font-weight:400;text-align:left}
+.fv-studio.fv-autopilot .fv-chat-history-row:hover,.fv-studio.fv-autopilot .fv-chat-history-row:focus-visible{background:var(--ap-ctl-h)}
+.fv-autopilot .fv-chat-history-row svg{width:16px;height:16px;margin-top:var(--fv-sp-4,4px);color:var(--ap-fg3);fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.fv-autopilot .fv-chat-history-words{min-width:0;display:grid;gap:var(--fv-sp-4,4px)}
+.fv-autopilot .fv-chat-history-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:20px}
+.fv-autopilot .fv-chat-history-words small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-history-foot,.fv-autopilot .fv-chat-history-empty{margin:0;padding:0 var(--fv-sp-8,8px);font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-history-empty{padding:var(--fv-sp-12,12px) var(--fv-sp-8,8px)}
+.fv-studio.fv-autopilot :is(.fv-chat-whitebox,.fv-chat-scenes,.fv-chat-attach):hover:not(:disabled){background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-chat-whitebox[aria-pressed=true]{background:var(--ap-soft);color:var(--ap-accent)}
+.fv-autopilot :is(.fv-chat-whitebox,.fv-chat-scenes,.fv-chat-attach) svg{width:16px;height:16px}
+.fv-studio.fv-autopilot .fv-chat-send{width:var(--fv-ctl-l,40px);height:var(--fv-ctl-l,40px);border-radius:var(--fv-r-sm);background:var(--ap-fill);color:var(--ap-on-fill);box-shadow:inset 0 1px 0 rgb(255 255 255 / .22),0 6px 16px -6px rgb(15 116 214 / .6)}
+.fv-studio.fv-autopilot .fv-chat-send:hover:not(:disabled){background:var(--ap-fill-h)}
+.fv-studio.fv-autopilot .fv-chat-send:disabled{background:var(--ap-ctl);color:var(--ap-fg3);box-shadow:none}
+.fv-studio.fv-autopilot .fv-chat-send:active:not(:disabled){transform:scale(.97);transition-duration:60ms}
+
+/* ── the conversation's entries: messages are plain words, cards are solid ──────────────────────────────── */
+.fv-autopilot .fv-chat-log p{font-size:var(--fv-fs-2,13px)}
+.fv-autopilot .fv-chat-ai>p{max-width:none;font-size:var(--fv-fs-3,16px);line-height:26px;color:var(--ap-fg2)}
+.fv-autopilot .fv-chat-me>p{padding:var(--fv-sp-8,8px) var(--fv-sp-16,16px);border-radius:var(--fv-r-lg) var(--fv-r-lg) var(--fv-r-xs) var(--fv-r-lg);background:var(--ap-me);color:var(--ap-fg);font-size:var(--fv-fs-3,16px);line-height:24px}
+.fv-autopilot .fv-chat-log:has(>.fv-chat-hello){min-height:100%;align-content:center;justify-items:center;text-align:center}
+.fv-autopilot .fv-chat-hello{padding-top:0;display:grid;justify-items:center}
+.fv-autopilot .fv-chat-hello-mark{display:grid;place-items:center;width:48px;height:48px;margin-bottom:var(--fv-sp-16,16px);border-radius:var(--fv-rad-ctl,12px);background:var(--ap-soft);color:var(--ap-accent);box-shadow:inset 0 0 0 1px var(--fv-accent-line,rgb(102 182 255 / .5))}
+.fv-autopilot .fv-chat-hello-mark svg{width:22px;height:22px}
+.fv-autopilot .fv-chat-examples button svg{flex:none;width:16px;height:16px;color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-log:has(>.fv-chat-hello) .fv-chat-examples{width:min(480px,100%)}
+.fv-autopilot .fv-chat-log:has(>.fv-chat-hello) .fv-chat-examples>div{justify-items:stretch}
+.fv-autopilot .fv-chat-hello>p{font-size:var(--fv-fs-4,20px);line-height:32px;font-weight:600;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-hello>p+p{color:var(--ap-fg2);font-weight:400}
+.fv-autopilot .fv-chat-examples>.fv-chat-meta{font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-chat-examples button{min-height:var(--fv-ctl-l,40px);padding:var(--fv-sp-8,8px) var(--fv-sp-16,16px);border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--ap-ctl);box-shadow:inset 0 0 0 1px var(--ap-line);color:var(--ap-fg2);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-chat-examples button:hover:not(:disabled){background:var(--ap-ctl-h);color:var(--ap-fg);border-color:transparent}
+.fv-autopilot .fv-chat-meta{font-size:var(--fv-fs-1,12px);color:var(--ap-fg3)}
+/* Cards take the column's full width, so the column of cards is centred; a picture or video leads at the left. */
+.fv-autopilot .fv-chat-job:not([data-mode=quiet]):not([data-mode=stopped]):not([data-mode=failed]),.fv-autopilot .fv-chat-confirm:not([data-state=answered]){max-width:none;width:100%;justify-self:stretch;
+  padding:var(--fv-sp-12,12px);gap:var(--fv-sp-16,16px);border:0;border-radius:var(--fv-rad-dock,20px);background:rgb(var(--ap-card));box-shadow:inset 0 0 0 1px var(--ap-line)}
+.fv-autopilot .fv-chat-job{position:relative;cursor:default;transition:box-shadow var(--ap-t2) var(--ap-out)}
+.fv-autopilot .fv-chat-job[data-selected=true]:not([data-mode=quiet]){box-shadow:inset 0 0 0 1px var(--fv-accent-line,var(--ap-accent))}
+.fv-autopilot .fv-chat-job[data-flash=true]{box-shadow:inset 0 0 0 2px var(--ap-accent)}
+.fv-autopilot .fv-chat-preview{width:200px;border-radius:var(--fv-rad-sm,8px);border-color:var(--ap-line2);background:var(--ap-ctl)}
+.fv-autopilot .fv-chat-preview[data-shape=wide]{width:240px}
+.fv-autopilot .fv-chat-preview[data-shape=tall]{width:124px}
+.fv-autopilot .fv-chat-preview:has(>:is(img,video)){background:#05070a}
+.fv-autopilot .fv-chat-info{gap:var(--fv-sp-8,8px);padding:0}
+.fv-autopilot .fv-chat-card-head{display:grid;gap:var(--fv-sp-4,4px);min-width:0}
+.fv-autopilot .fv-chat-title-row{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0}
+.fv-autopilot .fv-chat-title-row h3{flex:1;min-width:0;font-size:var(--fv-fs-3,16px);line-height:24px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-prompt{font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-prompt[hidden]{display:none}
+.fv-autopilot .fv-chat-facts-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--fv-sp-8,8px);min-width:0;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-facts-row .fv-chat-meta{margin:0}
+.fv-autopilot .fv-chat-facts-row .fv-chat-meta:not([hidden])+.fv-chat-when::before{content:"·";margin-right:var(--fv-sp-8,8px)}
+.fv-autopilot .fv-chat-when[hidden]{display:none}
+.fv-autopilot .fv-chat-line,.fv-autopilot .fv-chat-left{font-size:var(--fv-fs-1,12px);color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-parts>i{background:var(--ap-line2)}
+.fv-studio.fv-autopilot .fv-chat-log :is(.fv-chat-actions,.fv-chat-job)>button{min-height:32px;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-sm,8px);background:var(--ap-ctl);color:var(--ap-fg);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-chat-log :is(.fv-chat-actions,.fv-chat-job)>button:hover:not(:disabled){background:var(--ap-ctl-h)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-actions>button.fv-primary{background:var(--ap-fill);color:var(--ap-on-fill)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-actions>button.fv-primary:hover:not(:disabled){background:var(--ap-fill-h)}
+.fv-autopilot .fv-chat-length{font-size:var(--fv-fs-1,12px)}
+/* A failure is a card of its own: what did not finish and when, the reason, the details fold, then what to do. */
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head),.fv-autopilot .fv-chat-job[data-kind=image][data-mode=failed]{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-8,8px);width:100%;max-width:none;justify-self:stretch;
+  padding:var(--fv-sp-16,16px);border-radius:var(--fv-rad-dock,20px);background:rgb(var(--ap-card));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ap-warn) 32%,transparent);color:var(--ap-fg)}
+.fv-autopilot .fv-chat-job[data-mode=stopped]:has(>.fv-chat-fail-head){box-shadow:inset 0 0 0 1px var(--ap-line)}
+.fv-autopilot .fv-chat-fail-head{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0}
+.fv-autopilot .fv-chat-fail-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-3,16px);font-weight:600;line-height:24px}
+.fv-autopilot .fv-chat-fail-head .fv-chat-when{margin-left:auto;font-size:var(--fv-fs-1,12px);color:var(--ap-fg3);font-variant-numeric:tabular-nums}
+.fv-autopilot .fv-chat-fail-mark{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:var(--fv-r-sm);background:var(--ap-warn-soft);color:var(--ap-warn)}
+.fv-autopilot .fv-chat-job[data-mode=stopped] .fv-chat-fail-mark{background:var(--ap-ctl);color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-fail-mark svg{width:16px;height:16px}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head)>p{margin:0;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head) .fv-chat-actions{margin-top:var(--fv-sp-4,4px)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action){min-height:32px;border:0;border-radius:var(--fv-rad-sm,8px);background:var(--ap-ctl);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action):hover:not(:disabled){background:var(--ap-ctl-h)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-result-links .fv-chat-actions>.fv-chat-retry,.fv-result-links .fv-actions>.fv-chat-retry){background:var(--ap-fill);color:var(--ap-on-fill)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-result-links .fv-chat-actions>.fv-chat-retry,.fv-result-links .fv-actions>.fv-chat-retry):hover:not(:disabled){background:var(--ap-fill-h)}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold{max-width:none}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold>.fv-failure-cause{font-size:var(--fv-fs-1,12px);line-height:16px}
+.fv-autopilot .fv-chat-confirm>p:first-child{font-size:var(--fv-fs-3,16px);line-height:24px}
+.fv-autopilot .fv-chat-beats{font-size:var(--fv-fs-2,13px)}
+.fv-autopilot .fv-chat-confirm[data-state=answered],.fv-autopilot .fv-chat-job:is([data-mode=quiet],[data-mode=stopped]):not(:has(>.fv-chat-fail-head)){font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-edit-row .fv-chat-edit{font-size:var(--fv-fs-1,12px)}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-edit-box{background:var(--ap-me);font-size:var(--fv-fs-3,16px);line-height:24px}
+
+/* ── the connect card (no assistant yet): one floating card in the middle ───────────────────────────────── */
+.fv-autopilot .fv-agent-connect-body{border:0;border-radius:var(--fv-rad-console,24px);padding:var(--fv-sp-32,32px);gap:var(--fv-sp-16,16px);
+  background:rgb(var(--ap-tint) / var(--ap-a2));box-shadow:inset 0 0 0 1px var(--ap-edge),inset 0 1px 0 var(--ap-edge-hi),var(--ap-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%)}
+.fv-autopilot .fv-agent-connect-body>h2{font-size:var(--fv-fs-4,20px);font-weight:600;color:var(--ap-fg)}
+.fv-autopilot .fv-agent-connect-body>.fv-agent-connect-intro{margin-top:calc(-1 * var(--fv-sp-8,8px));font-size:var(--fv-fs-2,13px);color:var(--ap-fg2)}
+.fv-autopilot .fv-agent-connect-body>.fv-muted{margin-top:calc(-1 * var(--fv-sp-12,12px));font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
+.fv-autopilot .fv-agent-connect-icon{background:var(--ap-soft);color:var(--ap-accent);border-radius:var(--fv-rad-ctl,12px)}
+.fv-studio.fv-autopilot .fv-agent-connect-actions button{min-height:var(--fv-ctl-l,40px);padding:0 var(--fv-sp-20,20px);border:0;border-radius:var(--fv-r-sm);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-agent-connect-actions button.fv-primary{background:var(--ap-fill);color:var(--ap-on-fill);box-shadow:inset 0 1px 0 rgb(255 255 255 / .22),0 6px 16px -6px rgb(15 116 214 / .6)}
+.fv-autopilot .fv-agent-connect-hint{font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
+.fv-autopilot .fv-agent-connect-status{font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
+
+/* ── narrow windows: the panels become drawers; the middle column's top row holds their two toggles ─────── */
+@media(max-width:899px){
+  .fv-autopilot .fv-chat[data-left]{grid-template-columns:minmax(0,1fr)}
+  .fv-autopilot .fv-chat-main{grid-column:1}
+  .fv-autopilot .fv-chat-head,.fv-autopilot .fv-chat-head[data-empty=true]{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:var(--fv-sp-8,8px);min-height:52px;padding-top:var(--fv-sp-8,8px);visibility:visible}
+  .fv-autopilot .fv-chat-head-words{grid-column:2;justify-items:center}
+  .fv-autopilot .fv-chat-head-sub{display:none}
+  .fv-studio.fv-autopilot .fv-chat-history-button{width:32px;padding:0}
+  .fv-autopilot .fv-chat-history-button>span{display:none}
+  .fv-autopilot .fv-chat-head>.fv-chat-tools{display:flex;justify-self:start;padding:0;margin:0}
+  .fv-autopilot .fv-chat-head>.fv-chat-tools[hidden]{display:flex;visibility:hidden}
+  .fv-autopilot .fv-chat-head-title{max-width:56vw;font-size:var(--fv-fs-2,13px)}
+  .fv-autopilot .fv-chat-head-end{grid-column:3;justify-self:end;display:flex;align-items:center;gap:var(--fv-sp-4,4px);min-width:0}
+  .fv-studio.fv-autopilot .fv-chat-head-end>.fv-autopilot-lamp{flex:0 1 auto;width:auto;min-width:32px;height:32px;padding:0 var(--fv-sp-12,12px);gap:var(--fv-sp-8,8px)}
+  .fv-studio.fv-autopilot .fv-chat-head-end>.fv-autopilot-lamp[data-color=green]{width:32px;padding:0;justify-content:center}
+  .fv-studio.fv-autopilot .fv-chat-head-end>.fv-autopilot-lamp[data-color=green]>span{display:none}
+  .fv-autopilot .fv-chat-scroll{padding-top:var(--fv-sp-8,8px)}
+  .fv-autopilot :is(.fv-chat-rail,.fv-chat-side){position:absolute;top:0;bottom:0;z-index:5;width:min(320px,calc(100% - 48px));margin:var(--fv-sp-8,8px);
+    background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh3);
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity var(--ap-t2) var(--ap-out),transform var(--ap-t2) var(--ap-out),visibility 0s linear var(--ap-t2)}
+  .fv-autopilot .fv-chat-rail{left:0;transform:translateX(-8px)}.fv-autopilot .fv-chat-side{right:0;transform:translateX(8px)}
+  .fv-autopilot .fv-chat[data-chats-open=true] .fv-chat-rail,.fv-autopilot .fv-chat[data-tasks-open=true] .fv-chat-side{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s}
+  .fv-autopilot .fv-chat-rail .fv-chat-conversations{display:flex;position:static;inset:auto;width:auto;box-shadow:none}
+  .fv-autopilot .fv-chat-rail .fv-chat-conversations[hidden]{display:none}
+  .fv-autopilot .fv-chat-side-running .fv-autopilot-now-name{display:block}
+}
+@media(max-width:560px){
+  .fv-autopilot .fv-chat-main{padding:0 var(--fv-sp-12,12px) var(--fv-sp-12,12px)}
+  .fv-autopilot .fv-chat-scroll{margin:0 calc(-1 * var(--fv-sp-12,12px));padding-left:var(--fv-sp-12,12px);padding-right:var(--fv-sp-12,12px)}
+  .fv-autopilot .fv-chat-job:not([data-mode=quiet]):not([data-mode=stopped]):not([data-mode=failed]):has(>.fv-chat-preview:not([data-shape=tall])){grid-template-columns:minmax(0,1fr)}
+  .fv-autopilot .fv-chat-preview,.fv-autopilot .fv-chat-preview[data-shape=wide]{width:100%}
+  .fv-autopilot .fv-chat-preview[data-shape=tall]{width:96px}
+  .fv-studio.fv-autopilot .fv-chat-input{padding:var(--fv-sp-8,8px) var(--fv-sp-8,8px) var(--fv-sp-4,4px) var(--fv-sp-12,12px);border-radius:var(--fv-rad-dock,20px)}
+  .fv-studio.fv-autopilot .fv-chat-input textarea{font-size:var(--fv-fs-3,16px)}
+  .fv-autopilot .fv-chat-ai>p,.fv-autopilot .fv-chat-me>p{font-size:var(--fv-fs-2,13px);line-height:20px}
+}
+
+/* ── solid fallback: no backdrop support, reduced transparency, .lite or glass switched off ──────────────── */
+:is(:root[data-glass=solid],:root.lite) .fv-autopilot :is(.fv-chat-rail,.fv-chat-side,.fv-chat-input){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--ap-solid1))}
+:is(:root[data-glass=solid],:root.lite) .fv-autopilot :is(.fv-chat-notice-row,.fv-chat-above .fv-chat-down,.fv-agent-connect-body){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--ap-solid2))}
+:is(:root[data-glass=solid],:root.lite) .fv-autopilot :is(.fv-chat-menu,.fv-chat-scene-menu){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--ap-solid3))}
+:root.lite .fv-autopilot{--ap-sh1:0 1px 2px rgb(0 0 0 / .2);--ap-sh2:0 2px 8px rgb(0 0 0 / .22);--ap-sh3:0 4px 16px rgb(0 0 0 / .26)}
+:root[data-theme=light].lite .fv-autopilot{--ap-sh1:0 1px 2px rgb(30 40 60 / .08);--ap-sh2:0 2px 8px rgb(30 40 60 / .1);--ap-sh3:0 4px 16px rgb(30 40 60 / .14)}
+@media(prefers-reduced-transparency:reduce){
+  .fv-autopilot :is(.fv-chat-rail,.fv-chat-side,.fv-chat-input){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--ap-solid1))!important}
+  .fv-autopilot :is(.fv-chat-notice-row,.fv-chat-above .fv-chat-down,.fv-agent-connect-body){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--ap-solid2))!important}
+  .fv-autopilot :is(.fv-chat-menu,.fv-chat-scene-menu){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--ap-solid3))!important}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .fv-autopilot :is(.fv-chat-rail,.fv-chat-side,.fv-chat-input){background:rgb(var(--ap-solid1))}
+  .fv-autopilot :is(.fv-chat-notice-row,.fv-chat-above .fv-chat-down,.fv-agent-connect-body){background:rgb(var(--ap-solid2))}
+  .fv-autopilot :is(.fv-chat-menu,.fv-chat-scene-menu){background:rgb(var(--ap-solid3))}
+}
+@media(prefers-reduced-motion:reduce){
+  .fv-autopilot .fv-chat[data-left],.fv-autopilot :is(.fv-chat-rail,.fv-chat-side),.fv-autopilot .fv-chat-job{transition:none!important}
+  .fv-autopilot :is(.fv-chat-rail,.fv-chat-side)>*,.fv-autopilot .fv-chat-above>*{animation:none!important}
+}
+
+/* ── touch: every control the finger uses has at least a 44 px target; the look stays the same ─────────────── */
+@media(pointer:coarse){
+  .fv-studio.fv-autopilot :is(.fv-chat-panel-toggle,.fv-chat-tasks-toggle,.fv-chat-chats,.fv-chat-new,.fv-chat-attach,.fv-chat-whitebox,.fv-chat-scenes,.fv-chat-history-button,.fv-chat-send,.fv-chat-more,.fv-autopilot-now-stop){position:relative}
+  .fv-studio.fv-autopilot :is(.fv-chat-panel-toggle,.fv-chat-tasks-toggle,.fv-chat-chats,.fv-chat-new,.fv-chat-attach,.fv-chat-whitebox,.fv-chat-scenes,.fv-chat-history-button,.fv-chat-more,.fv-autopilot-now-stop)::after{content:"";position:absolute;inset:calc(-1 * var(--fv-sp-8,8px))}
+  .fv-studio.fv-autopilot .fv-chat-send{width:44px;height:44px}
+  .fv-studio.fv-autopilot :is(.fv-chat-task,.fv-chat .fv-chat-conversation,.fv-chat-history-row){min-height:var(--fv-touch,44px)}
+}
+
+/* ── the picture viewer opened from a card: a dialog on the shell's ground, glass head, the picture bare ──── */
+.fv-studio.fv-chat-image-viewer[open]{gap:var(--fv-sp-12,12px);padding:var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-console,24px);color:var(--fv-fg,#f3f5f8);
+  background:rgb(var(--fv-solid3,35 39 48));box-shadow:inset 0 0 0 1px var(--fv-edge,rgb(255 255 255 / .075)),var(--fv-sh3,0 32px 80px -12px rgb(0 0 0 / .62))}
+.fv-studio.fv-chat-image-viewer::backdrop{background:var(--fv-scrim,rgb(0 0 0 / .52))}
+.fv-studio.fv-chat-image-viewer :is(.fv-close,.fv-chat-save){border-radius:var(--fv-rad-sm,8px);color:var(--fv-fg2,#c3c9d3);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-chat-image-viewer :is(.fv-close,.fv-chat-save):hover{background:var(--fv-ctl-hover,rgb(255 255 255 / .11));color:var(--fv-fg,#f3f5f8)}
+.fv-studio.fv-chat-image-viewer .fv-close{font-size:var(--fv-fs-4,20px)}
+.fv-chat-image-stage{border-radius:var(--fv-rad-pic,12px);background:#05070a}
+.fv-studio.fv-autopilot .fv-agent-connect-back{justify-self:start;min-height:32px;margin-top:calc(-1 * var(--fv-sp-8,8px));padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-ctl,12px);color:var(--ap-fg2);font-size:var(--fv-fs-2,13px)}
+.fv-studio.fv-autopilot .fv-agent-connect-back:hover{background:var(--ap-ctl-h);color:var(--ap-fg)}
+.fv-studio.fv-autopilot .fv-chat-notice-action{flex:none;height:var(--fv-ctl-s,28px);min-height:0;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-xs);background:var(--ap-ctl);color:var(--ap-accent);font-size:var(--fv-fs-2,13px);font-weight:500}
+.fv-studio.fv-autopilot .fv-chat-notice-action:hover{background:var(--ap-ctl-h)}
+
+/* A list or the inspector with more beyond an edge fades at that edge: a cut row reads as "scroll for more". */
+.fv-autopilot :is(.fv-chat-tasks,.fv-chat-detail)[data-more=below]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
+.fv-autopilot :is(.fv-chat-tasks,.fv-chat-detail)[data-more=above]{-webkit-mask-image:linear-gradient(to top,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to top,#000 calc(100% - 24px),transparent)}
+.fv-autopilot :is(.fv-chat-tasks,.fv-chat-detail)[data-more=both]{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 24px,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 24px,#000 calc(100% - 24px),transparent)}
+/* A task's time line wraps to a second line rather than cutting a word (English runs longer). */
+.fv-autopilot .fv-chat-task-meta{white-space:normal}
+.fv-autopilot .fv-chat-task-meta>span{overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-me[data-taken=false]>p{opacity:.85}
+/* Prompts in the task rows take two lines before they fold (the inspector has the whole prompt); the running
+   summary's name takes two lines too, so 1440 shows them whole in both languages. */
+.fv-autopilot .fv-chat-task-prompt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
+.fv-studio.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go{height:auto;min-height:52px;padding-top:var(--fv-sp-8,8px);padding-bottom:var(--fv-sp-8,8px);grid-template-rows:auto 16px}
+.fv-autopilot .fv-chat-side-running .fv-autopilot-now-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-task-top{align-items:flex-start}
+.fv-autopilot .fv-chat-task-top b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
+.fv-autopilot .fv-chat-task-top>.fv-chat-chip{margin-top:0}
+
+/* The strip keeps the connection at its foot even with no chats listed. */
+.fv-autopilot .fv-chat-rail-foot{margin-top:auto}
+/* Phones: every control is a finger-sized target (44 px); the look is unchanged where the control is drawn smaller. */
+@media(max-width:719px){
+  :root .fv-studio.fv-autopilot.fv-autopilot :is(button,[role=button]):not(.fv-chat-play){min-height:var(--fv-touch,44px)}
+  :root .fv-studio.fv-autopilot.fv-autopilot :is(button,[role=button]):not(.fv-chat-play){min-width:var(--fv-touch,44px)}
+  :root .fv-studio.fv-autopilot.fv-autopilot .fv-chat-send{height:var(--fv-touch,44px)}
+}
+.fv-studio.fv-autopilot .fv-chat-log .fv-chat-edit-row .fv-chat-edit{min-height:var(--fv-ctl,32px);padding:0 var(--fv-sp-8,8px)}
+.fv-autopilot .fv-chat-edit-row{min-height:var(--fv-ctl,32px)}
+/* The play mark on a picture is an icon button: a rounded square on the radius ladder, not a circle. */
+.fv-autopilot .fv-chat-play::before{border-radius:var(--fv-r-md)}

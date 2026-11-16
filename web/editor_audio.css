@@ -5,7 +5,7 @@
 .fv-ed-track-head>svg{display:none}
 .fv-ed-track-head>span:not(.fv-ed-audio-track-controls){white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fv-ed-audio-track-controls{display:flex;gap:1px;flex:none}
-.fv-ed-track-view .fv-ed-audio-track-switch{display:grid;place-items:center;padding:2px;width:22px;height:28px;border:0;border-radius:4px;background:transparent;opacity:.5;cursor:pointer}
+.fv-ed-track-view .fv-ed-audio-track-switch{display:grid;place-items:center;padding:2px;width:22px;height:28px;border:0;border-radius:var(--fv-r-xs);background:transparent;opacity:.5;cursor:pointer}
 @media (max-width:480px){.fv-ed-track-view .fv-ed-audio-track-switch{width:24px}}
 .fv-ed-audio-track-switch:hover,.fv-ed-audio-track-switch[aria-pressed=true]{opacity:1!important}
 .fv-ed-audio-track-switch[aria-pressed=true]{color:var(--fv-accent)!important}
@@ -13,19 +13,19 @@
 .fv-ed-track-row[data-locked=true],.fv-ed-track-row[data-locked=true] *{cursor:not-allowed!important}
 .fv-ed-audio-fades{position:absolute;inset:3px 0;width:100%;height:calc(100% - 6px);fill:none;stroke:var(--fv-ink);stroke-width:1.5;pointer-events:none;z-index:2}
 .fv-ed-audio-fades path{vector-effect:non-scaling-stroke}
-.fv-ed-track-view .fv-ed-audio-junction{position:absolute;top:50%;box-sizing:border-box;width:10px;height:10px;min-width:0;min-height:0;transform:translate(-50%,-50%) rotate(45deg);padding:0;background:var(--fv-card);border:1px solid var(--fv-accent);border-radius:1px;z-index:7;opacity:0;cursor:pointer}
+.fv-ed-track-view .fv-ed-audio-junction{position:absolute;top:50%;box-sizing:border-box;width:10px;height:10px;min-width:0;min-height:0;transform:translate(-50%,-50%) rotate(45deg);padding:0;background:var(--fv-card);border:1px solid var(--fv-accent);border-radius:var(--fv-r-xs);z-index:7;opacity:0;cursor:pointer}
 .fv-ed-audio-junction:hover,.fv-ed-audio-junction:focus-visible,.fv-ed-audio-junction[data-active=true]{opacity:1!important}
 .fv-ed-track-view .fv-ed-audio-junction:disabled{opacity:0!important;pointer-events:none}
 .fv-ed-audio-junction[data-active=true]{background:var(--fv-accent)!important}
 .fv-ed-audio-junction[aria-pressed=true]{box-shadow:0 0 0 2px var(--fv-card),0 0 0 3px var(--fv-accent)}
-.fv-ed-audio-notice{position:absolute;z-index:12;padding:5px 8px;border:1px solid var(--fv-border);border-radius:6px;background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none}
+.fv-ed-audio-notice{position:absolute;z-index:12;padding:5px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none}
 .fv-ed-adjust:has([data-adjust-tab=audio][aria-selected=true])>.fv-ed-tabs{position:sticky;top:0;z-index:1}
 .fv-ed-track-row[data-locked=true]::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--fv-ink) 22%,transparent) 0 1.5px,transparent 1.5px 7px)}
 .fv-ed-adjust-slider[data-mixed=true] input[type=range]::-webkit-slider-thumb{opacity:0}
 .fv-ed-adjust-slider[data-mixed=true] input[type=range]::-moz-range-thumb{opacity:0}
 .fv-ed-adjust-number input::placeholder{color:var(--fv-muted);opacity:1}
 .fv-ed-audio-note{margin:0;color:var(--fv-muted);font-size:12px}
-.fv-ed-audio-pointer-note{position:fixed;z-index:60;max-width:240px;padding:5px 8px;border:1px solid var(--fv-border);border-radius:6px;background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.fv-ed-audio-pointer-note{position:fixed;z-index:60;max-width:240px;padding:5px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .fv-ed-audio-pointer-note[hidden]{display:none}
 .fv-ed-clip[data-replacing=true]{outline:2px dashed var(--fv-accent);outline-offset:-2px}
 .fv-ed-library[data-picking=true] .fv-ed-source:hover{outline:2px solid var(--fv-accent)}

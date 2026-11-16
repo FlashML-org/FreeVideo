@@ -1,5 +1,6 @@
 import {retryAgentPost} from './agent_session.js';
 import {issueButton} from './issue_button.js';
+import {tip} from './autopilot_tips.js';
 // What agents connected to this FreeVideo are doing. Their requests share the
 // studio's queue, so people can see them, follow progress and stop them.
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./agent_activity.css', import.meta.url).href; document.head.append(css);
@@ -28,7 +29,7 @@ const NAMES = {generate: ['Video', '视频'], assemble: ['Sequence', '成片'], 
 const REASONS = {
     out_of_memory: ['Out of memory', '显存或内存不足'],
     insufficient_memory: ['Not enough memory for this video', '可用显存或内存不足，无法生成这段视频'],
-    interrupted: ['ComfyUI restarted during this job', 'ComfyUI 中途重启'],
+    interrupted: ['FreeVideo restarted during this task', 'FreeVideo 中途重启了'],
     lost: ['Ended without a result', '没有返回结果'],
     dependency_failed: ['An earlier step did not succeed', '前序任务未成功'],
 };
@@ -114,11 +115,11 @@ function row(job, t, api, refresh, open, cancellationErrors) {
     const details = el('p', 'fv-agent-meta', meta.join(' · '));
     if (reason && job.error?.message) details.title = job.error.message;
     foot.append(details);
-    const issue = issueButton(t, () => ({where: ['Agent activity', 'Agent 任务'], message: details.textContent}));
+    const issue = issueButton(t, () => ({where: ['Assistant tasks', '助手任务'], message: details.textContent}));
     issue.hidden = !cancellationErrors.has(job.id); foot.append(issue);
     if (['waiting', 'queued', 'running'].includes(job.status)) {
         const stop = el('button', 'fv-agent-stop', t('Stop', '停止')); stop.type = 'button';
-        stop.setAttribute('aria-label', t('Stop ', '停止 ') + title(job, t));
+        stop.setAttribute('aria-label', t('Stop ', '停止 ') + title(job, t)); tip(stop, 'stop', t);
         stop.onclick = async () => {
             stop.disabled = true; stop.textContent = t('Stopping', '正在停止');
             try {
@@ -137,7 +138,7 @@ function row(job, t, api, refresh, open, cancellationErrors) {
     if (job.work) {
         // The result is a work: show that one in Creations. (The file itself needs the Agent's token.)
         const show = el('button', 'fv-agent-open', t('Open', '打开')); show.type = 'button';
-        show.setAttribute('aria-label', t('Open in Creations: ', '在作品中打开：') + title(job, t));
+        show.setAttribute('aria-label', t('Open in Creations: ', '在作品中打开：') + title(job, t)); tip(show, 'open', t);
         show.onclick = () => open(job);
         foot.append(show);
     }
@@ -180,14 +181,14 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
     const dot = el('span', 'fv-agent-dot'), label = el('span', 'fv-agent-label');
     element.append(dot, label);
     const panel = el('section', 'fv-agent-panel'); panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.tabIndex = -1;
-    panel.setAttribute('aria-label', t('Agent jobs', 'Agent 任务'));
+    panel.setAttribute('aria-label', t('Assistant tasks', '助手的任务'));
     host.append(panel);
     let data = {active: 0, jobs: []}, timer = null, disposed = false, failures = 0;
     const cancellationErrors = new Map();
 
     function renderPanel() {
         const header = el('header');
-        header.append(el('h2', null, t('Agent jobs', 'Agent 任务')));
+        header.append(el('h2', null, t('Assistant tasks', '助手的任务')));
         const list = el('ol');
         const key = refill(panel, list, rows(data.jobs, t, api, poll, job => { setOpen(false); open(job); }, cancellationErrors));
         const unreadable = Number.isSafeInteger(data.unreadable) && data.unreadable > 0 ? data.unreadable : 0;
@@ -208,7 +209,7 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
         if (!jobs.length) { setOpen(false); return; }
         const running = jobs.find(j => j.status === 'running'), active = data.active || 0;
         element.dataset.state = running ? 'running' : active ? 'waiting' : jobs.some(j => j.status === 'failed') ? 'failed' : 'done';
-        // Narrow headers keep only "Agent" and the percentage, so the wordmark keeps its room.
+        // Narrow headers keep only the first word and the percentage, so the wordmark keeps its room.
         let state, percent = '', more = '';
         if (running) {
             const fraction = Number(running.progress?.fraction);
@@ -217,9 +218,9 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
             if (active > 1) more = ` · +${active - 1}`;
         } else if (active) state = t(`${active} waiting`, `${active} 个等待中`);
         else state = t('Done', '已完成');
-        label.replaceChildren('Agent', el('span', 'fv-agent-state-text', ' · ' + state), percent, el('span', 'fv-agent-more', more));
+        label.replaceChildren(t('Assistant', '助手'), el('span', 'fv-agent-state-text', ' · ' + state), percent, el('span', 'fv-agent-more', more));
         element.setAttribute('aria-label', label.textContent);
-        element.title = t('Jobs from AI agents', '来自 AI Agent 的任务');
+        element.title = t('Tasks the AI assistant started', 'AI 助手发起的任务'); tip(element, 'activity', t);
         if (!panel.hidden) renderPanel();
     }
     function setOpen(open) {

@@ -1,6 +1,7 @@
 import {agentGet, agentPost, agentSend} from './agent_session.js';
 import {agentInterfaceEnabled} from './agent_connect.js';
 import {issueButton} from './issue_button.js';
+import { skin } from './glass/library.js';
 const CAST_ISSUE = ['Character library', '角色库'];
 
 // The optional generator owns its UI and job lifecycle; keep its contract here.
@@ -9,6 +10,16 @@ async function mountGenerator(options) {
         const {mountCastGenerate, castGenerateSupported} = await import('./cast_generate.js');
         if (typeof mountCastGenerate !== 'function' || (castGenerateSupported && !castGenerateSupported())) return null;
         return await mountCastGenerate(options);
+    } catch { return null; }
+}
+
+// "From a photo" (characters only): one photo becomes the five views, keeping the person's face.
+async function mountPhoto(options) {
+    try {
+        const {mountCastPhoto} = await import('./cast_photo.js');
+        const {castGenerateSupported} = await import('./cast_generate.js');
+        if (typeof mountCastPhoto !== 'function' || (castGenerateSupported && !castGenerateSupported())) return null;
+        return mountCastPhoto(options);
     } catch { return null; }
 }
 
@@ -77,7 +88,12 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             avatar.classList.toggle('fv-cast-mentioned', mentioned.has(row.id));
             avatar.title = row.name; avatar.setAttribute('aria-label', row.name);
             const image = row.thumbnail?.file ? el('img') : el('span', 'fv-cast-initial', row.name.slice(0, 1));
-            if (row.thumbnail?.file) { image.src = viewURL(row.thumbnail.file); image.alt = ''; image.loading = 'lazy'; }
+            if (row.thumbnail?.file) {
+                // The thumbnail is the face close-up when the card has one, else the front: a face is shown whole and
+                // centred on the face; only a full-length front is zoomed to its head.
+                image.addEventListener('load', () => { image.dataset.shape = image.naturalHeight / Math.max(1, image.naturalWidth) > 1.5 ? 'body' : 'face'; }, {once: true});
+                image.src = viewURL(row.thumbnail.file); image.alt = ''; image.loading = 'lazy';
+            }
             avatar.append(image); avatars.append(avatar);
         }
     }
@@ -105,11 +121,11 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     function openDialog(id = null) {
         if (disposed || !available) return;
         current?.close();
-        let closed = false, loading = !!id, saving = false, revision, active = 'upload';
+        let closed = false, loading = !!id, saving = false, revision, active = 'upload', photoMaker = null, photoState = {busy: false, done: false};
         let moved = false;
         let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
         const slots = Array(SLOTS).fill(null), slotUI = [];
-        const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
+        skin(); const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
         const top = el('div', 'fv-cast-top');
         const title = el('h2', '', id ? word(text('Edit character', '编辑角色'), text('Edit scene', '编辑场景'), text('Edit prop', '编辑道具')) : word(text('New character', '新建角色'), text('New scene', '新建场景'), text('New prop', '新建道具')));
         dialog.setAttribute('aria-label', title.textContent);
@@ -122,18 +138,28 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         tabs.setAttribute('aria-label', text('Images', '图片'));
         const uploadTab = button('', text('Upload images', '上传图片'), () => select('upload'));
         const aiTab = button('', text('Generate with AI', 'AI 生成'), () => select('ai')); aiTab.hidden = tabs.hidden = true;
-        for (const tab of [uploadTab, aiTab]) tab.setAttribute('role', 'tab');
+        const photoTab = button('', text('From a photo', '从照片生成'), () => select('photo')); photoTab.hidden = true;
+        for (const tab of [photoTab, uploadTab, aiTab]) tab.setAttribute('role', 'tab');
         // Tab panels are dialog-local, so multiple material panels can coexist.
         const uploadPane = el('div', 'fv-cast-upload'), views = el('div', 'fv-cast-views');
         const aiPane = el('div', 'fv-cast-generate'); aiPane.hidden = true;
+        const photoPane = el('div', 'fv-cast-generate fv-cast-photo'); photoPane.hidden = true;
         const status = el('div', 'fv-cast-message'); status.setAttribute('role', 'status'); status.hidden = true;
         const actions = el('div', 'fv-cast-actions');
         const remove = button('fv-cast-delete', word(text('Delete character', '删除角色'), text('Delete scene', '删除场景'), text('Delete prop', '删除道具')), () => deleteCard()); remove.hidden = !id;
         const cancel = button('', text('Cancel', '取消'), () => close());
         const save = button('fv-cast-save', text('Save', '保存'), () => saveCard());
         actions.append(remove, cancel, save);
+        // Hover tips (tooltip.js): what each control does; Save's tip names what is still missing (sync).
+        const tipOf = (node, name, use) => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; };
+        tipOf(remove, remove.textContent, word(text('Delete this character from the library', '从角色库删除这个角色'), text('Delete this scene from the library', '从角色库删除这个场景'), text('Delete this prop from the library', '从角色库删除这个道具')));
+        tipOf(cancel, text('Cancel', '取消'), text('Close without saving', '不保存，关闭'));
+        tipOf(save, text('Save', '保存'), text('Keep it in the library to reuse with @', '存进角色库，之后用 @ 引用'));
+        tipOf(uploadTab, text('Upload images', '上传图片'), text('Use pictures from this computer', '用电脑上的图片'));
+        tipOf(aiTab, text('Generate with AI', 'AI 生成'), text('Make the pictures from a description', '按描述生成图片'));
+        tipOf(photoTab, text('From a photo', '从照片生成'), text('Make the five views from one photo of the person', '用一张人物照片生成五个视角'));
         const issue = issueButton(text, () => ({where: CAST_ISSUE, message: status.textContent})); issue.hidden = true;
-        dialog.append(top, name, tabs, uploadPane, aiPane, status, issue, actions); tabs.append(uploadTab, aiTab);
+        dialog.append(top, name, tabs, photoPane, uploadPane, aiPane, status, issue, actions); tabs.append(photoTab, uploadTab, aiTab);
 
         // A refresh notice is plain secondary text; only failures are shown as errors.
         const message = (content, notice = false) => {
@@ -141,22 +167,28 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             status.textContent = content; status.hidden = !content; status.classList.toggle('fv-cast-notice', notice);
             issue.hidden = !content || notice;
         };
-        const aiBusy = () => aiState.busy || !!generator?.isBusy();
+        const aiBusy = () => aiState.busy || !!generator?.isBusy() || photoState.busy || !!photoMaker?.isBusy();
         // What is still missing before Save works ('' when nothing is); the button says so on hover and when pressed.
         let missing = '';
         const missingNow = () => !name.value.trim() ? text('Enter a name first', '先填写名字')
             : aiBusy() ? word(text('Wait for the five pictures to finish', '等待五张图生成完成'), text('Wait for the pictures to finish', '等待图片生成完成'))
             : active === 'upload' || scene ? (frontless ? slots.some(Boolean) : slots[0]) ? '' : frontless ? text('Add an image first', '先添加图片') : text('Add a front image first', '先添加正面图片')
+            : active === 'photo' ? photoState.done ? '' : text('Generate the views from the photo first', '先用照片生成各视角')
             : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'), text('Generate the images first', '先生成道具图片'));
         function sync() {
             const busy = loading || saving;
             name.disabled = busy; remove.disabled = busy;
-            uploadTab.disabled = aiTab.disabled = busy;
+            uploadTab.disabled = aiTab.disabled = photoTab.disabled = busy;
             const before = missing;
             missing = busy ? '' : missingNow();
             save.disabled = busy;
-            if (missing) { save.setAttribute('aria-disabled', 'true'); save.title = missing; }
-            else { save.removeAttribute('aria-disabled'); save.removeAttribute('title'); }
+            // From a photo: the page's Generate / Stop / Generate all again stands in the button row; Save shows once the views are done.
+            if (photoMaker?.action) {
+                const photo = active === 'photo';
+                photoMaker.action.hidden = !photo; save.hidden = photo && !photoState.done;
+            }
+            if (missing) { save.setAttribute('aria-disabled', 'true'); save.title = missing; save.dataset.fvTipWhy = missing; }
+            else { save.removeAttribute('aria-disabled'); save.removeAttribute('title'); delete save.dataset.fvTipWhy; }
             if (before && before !== missing && status.textContent === before) message('');
             for (let index = 0; index < slotUI.length; index++) {
                 slotUI[index].choose.disabled = busy; slotUI[index].remove.disabled = busy;
@@ -181,24 +213,28 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         }
         function select(tab) {
             active = tab;
-            uploadPane.hidden = tab !== 'upload'; aiPane.hidden = tab !== 'ai';
-            for (const [key, node] of [['upload', uploadTab], ['ai', aiTab]]) {
+            uploadPane.hidden = tab !== 'upload'; aiPane.hidden = tab !== 'ai'; photoPane.hidden = tab !== 'photo';
+            for (const [key, node] of [['photo', photoTab], ['upload', uploadTab], ['ai', aiTab]]) {
                 node.setAttribute('aria-selected', String(key === tab)); node.tabIndex = key === tab ? 0 : -1;
             }
             sync();
         }
         tabs.onkeydown = event => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || aiTab.hidden || saving || loading) return;
+            const order = [[photoTab, 'photo'], [uploadTab, 'upload'], [aiTab, 'ai']].filter(([node]) => !node.hidden);
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || order.length < 2 || saving || loading) return;
             event.preventDefault();
-            select(event.key === 'Home' ? 'upload' : event.key === 'End' ? 'ai' : active === 'upload' ? 'ai' : 'upload');
-            (active === 'upload' ? uploadTab : aiTab).focus();
+            const at = order.findIndex(([, key]) => key === active);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? order.length - 1 : (at + (event.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length;
+            select(order[next][1]); order[next][0].focus();
         };
         function release(index) {
             if (slots[index]?.preview) URL.revokeObjectURL(slots[index].preview);
             slots[index] = null;
         }
         function paint(index) {
-            const {choose, remove} = slotUI[index], picture = slots[index];
+            const {choose, remove, slot} = slotUI[index], picture = slots[index];
+            // The sheet of views is wide: its slot takes a whole row so it shows as what it is.
+            slot.dataset.label = picture?.label || '';
             choose.replaceChildren(); let image = null;
             if (picture) {
                 image = el('img'); image.alt = '';
@@ -229,6 +265,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
             const remove = button('fv-cast-remove', '×', () => { release(index); paint(index); });
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
+            choose.dataset.fvTipName = label; choose.dataset.fvTipUse = text('Choose a picture, or drop one here', '选择图片，或把图片拖到这里');
+            remove.dataset.fvTipName = text('Remove image', '移除图片'); remove.dataset.fvTipUse = text('Take this picture out', '拿掉这张图片');
             input.onchange = () => { chooseFiles(index, input.files); input.value = ''; };
             slot.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
             slot.ondrop = event => { event.preventDefault(); event.stopPropagation(); chooseFiles(index, event.dataTransfer.files); };
@@ -281,11 +319,11 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             saving = true; resetDelete(); message(''); slotUI.forEach((_, index) => mark(index)); sync();
             let pictures = [];
             try {
-                pictures = active === 'upload' || scene ? slots.filter(Boolean) : generator.getPictures().map((picture, index) => ({
+                pictures = active === 'upload' || scene ? slots.filter(Boolean) : (await (active === 'photo' ? photoMaker : generator).getPictures()).map((picture, index) => ({
                     ...(typeof picture.file === 'string' ? {media: picture.file} : {file: picture.file}),
                     label: picture.label || (index ? 'other' : 'front'),
                 }));
-                const frontNeeded = !scene && (active === 'ai' || !frontless);
+                const frontNeeded = !scene && (active === 'ai' || active === 'photo' || !frontless);
                 if (!pictures.length || pictures.length > SLOTS || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
                     message(word(text('Choose one front image and up to 5 more angles', '选一张正面图片，再加最多 5 张其他角度的图片'),
                         text('Choose up to 3 images', '最多选 3 张图片'), text('Choose one image', '选一张图片')), true); return;
@@ -302,6 +340,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 const body = {name: name.value.trim(), images};
                 await value(await (id ? agentSend(api, 'PATCH', path(id), {revision, ...body})
                     : agentPost(api, '/freevideo/agent/cast', {kind, ...body})));
+                if (active === 'photo') photoMaker?.markSaved();
                 close(); await saved();
             } catch (error) {
                 const at = /^\/images\/(\d+)\/media$/.exec(error.field || '');
@@ -326,7 +365,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         function close() {
             if (closed) return;
             closed = true; clearTimeout(deleteTimer);
-            generator?.cancel(); generator?.destroy();
+            generator?.cancel(); generator?.destroy(); photoMaker?.cancel(); photoMaker?.destroy();
             for (let index = 0; index < SLOTS; index++) release(index);
             if (dialog.open) dialog.close(); dialog.remove();
             if (current?.element === dialog) current = null;
@@ -347,7 +386,17 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             aiState = state; sync();
         }}).then(instance => {
             if (closed) { instance?.cancel(); instance?.destroy(); return; }
-            generator = instance; aiTab.hidden = tabs.hidden = !instance; sync();
+            generator = instance; aiTab.hidden = !instance; tabs.hidden = !instance && photoTab.hidden; sync();
+        });
+        // A new character opens on "From a photo", the quickest way to a card of a real person.
+        if (!scene) mountPhoto({container: photoPane, api, text, viewURL, uploadOne, onState: state => {
+            if (closed) return;
+            photoState = state; sync();
+        }}).then(instance => {
+            if (closed) { instance?.cancel(); instance?.destroy(); return; }
+            photoMaker = instance; photoTab.hidden = !instance; tabs.hidden = !instance && aiTab.hidden;
+            if (instance?.action) actions.insertBefore(instance.action, save);
+            if (instance && !id && !loading && active === 'upload' && !slots.some(Boolean)) select('photo'); else sync();
         });
     }
 

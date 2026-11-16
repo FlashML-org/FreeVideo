@@ -99,8 +99,8 @@ export function mentionedIds(text, rows) {
 }
 
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Where `@name` of a present character stands in the text; longer names win, an @ right after a Latin word or an address is
-// not a mention (the same rule as the @ list's), but one right after another name or a Chinese character is.
+// Where `@name` of a present character stands in the text; longer names win. An @ after anything starts a mention (the
+// same rule as the @ list's, which opens after any character).
 export function mentionRanges(text, people) {
     const names = [...new Set(people.map(person => person.handle ?? person.name).filter(Boolean))].sort((a, b) => b.length - a.length);
     if (!names.length || !text.includes('@')) return [];
@@ -109,9 +109,6 @@ export function mentionRanges(text, people) {
     const pattern = new RegExp('@(' + names.map(whole).join('|') + ')', 'gu');
     const ranges = [];
     for (const match of text.matchAll(pattern)) {
-        // An @ straight after the end of another mention ("@Ann@Bob") starts a mention too.
-        const joined = ranges.length > 0 && ranges[ranges.length - 1].end === match.index;
-        if (!joined && match.index > 0 && /[\w.%+\-]/.test(text[match.index - 1])) continue;
         ranges.push({start: match.index, end: match.index + 1 + match[1].length, name: match[1]});
     }
     return ranges;

@@ -1,6 +1,7 @@
 // "Duration [n] s" in the generation bar: the length of the parts not generated yet, or of a range drawn on v1.
 // A typed length is applied as dragging the right edge would apply it: whole seconds, the same part rules, one step to undo.
 import * as model from './editor_model.js';
+import {tip} from './editor_tips.js';
 const {FPS, RULES} = model;
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const end = clip => clip.start + clip.frames;
@@ -94,6 +95,7 @@ export function createDurationField({state, t, actions}) {
     // Styled as the timeline's drag label, with its sentences, above the field.
     const hint = el('div', 'fv-ed-duration-hint'); hint.hidden = true; hint.setAttribute('role', 'status');
     element.append(label, hint); element.hidden = true;
+    tip(element, {name: t('Duration', '时长'), use: t('Length of the parts not made yet, in seconds', '还没生成的段有多长（秒）')});
     // `typing`: a number typed and not applied yet, which a redraw of the bar keeps.
     let hintTimer = null, disposed = false, typing = false;
     const shown = () => { const target = durationTarget(state.record, state.selection); return target ? String(Math.round(target.frames / FPS)) : ''; };

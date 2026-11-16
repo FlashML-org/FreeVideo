@@ -2,6 +2,7 @@
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
 import {PAGES, LINES} from './whatsnew_pages.js';
 import {PEAKS} from './whatsnew_peaks.js';
+import './glass/library.js';
 
 const KEY = 'freevideo.whatsnew-seen';
 const SERIES = '0.5';
@@ -270,23 +271,49 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
         const id = 'fv-whatsnew-' + sheet;
         if (!document.getElementById(id)) document.head.append(Object.assign(document.createElement('link'), {id, rel: 'stylesheet', href: new URL('./' + sheet, import.meta.url).href}));
     }
-    const dialog = el('dialog', null, 'fv-whatsnew'); dialog.setAttribute('aria-label', t("What's new", '新功能'));
-    const title = el('h2'), stageHost = el('div', null, 'fv-whatsnew-host'), foot = el('div', null, 'fv-whatsnew-foot');
+    const dialog = el('dialog', null, 'fv-whatsnew fv-glass fv-g3'); dialog.setAttribute('aria-label', t("What's new", '新功能'));
+    const head = el('div', null, 'fv-whatsnew-head'), title = el('h2'), stageHost = el('div', null, 'fv-whatsnew-host'), foot = el('div', null, 'fv-whatsnew-foot');
+    const svg = d => `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+    const shut = el('button', null, 'fv-whatsnew-x'); shut.type = 'button'; shut.innerHTML = svg('M4 4l8 8M12 4l-8 8'); shut.setAttribute('aria-label', t('Close', '关闭'));
+    head.append(title, shut);
     const close = el('button', t('Close', '关闭'), 'fv-whatsnew-close'); close.type = 'button';
-    const next = el('button', t('Next page', '下一页'), 'fv-whatsnew-next'), open = el('button', t('Open Images', '打开图像视图'), 'fv-whatsnew-open fv-primary');
+    const next = el('button', t('Next page', '下一页'), 'fv-whatsnew-next'), open = el('button', null, 'fv-whatsnew-open fv-primary');
+    open.innerHTML = svg('M2.5 3.5h11v9h-11zM2.5 10.5l3.5-3 3 2.5 2-1.5 2.5 2M10.5 6.2h.01'); open.append(t('Open Images', '打开图像视图'));
+    for (const [node, name, use, key] of [[shut, t('Close', '关闭'), t("Close; replay it in Version & updates", '关闭介绍，可在“版本与更新”里重看'), 'Esc'], [close, t('Close', '关闭'), t('Close the tour of this version', '关闭新功能介绍'), 'Esc'],
+        [next, t('Next page', '下一页'), t('Show the next page', '看下一页'), ''], [open, t('Open Images', '打开图像视图'), t('Close the tour and go to the image view', '关闭介绍并打开图像视图'), '']]) {
+        node.dataset.fvTipName = name; node.dataset.fvTipUse = use; if (key) node.dataset.fvTipKey = key;
+    }
     next.type = open.type = 'button'; open.hidden = true;
-    // The Images view opens from the generate node; without one the button is not offered.
+    // The page dots: one per page, the current one long.
+    const dots = el('div', null, 'fv-whatsnew-dots'); dots.hidden = pages.length < 2;
+    for (let i = 0; i < pages.length; i++) dots.append(el('i'));
+    // The Images view: the shell's view switch; on a page without it, the generate node opens it.
     let host = null;
     const imageNode = () => (host?.app?.graph?._nodes || []).find(item => item.type === 'FreeVideoGenerate');
-    import('../../scripts/app.js').then(module => { host = module; if (!closed && pages[index].kind === 'still') open.hidden = !imageNode(); }).catch(() => {});
-    dialog.append(title, stageHost, foot);
+    import('../../scripts/app.js').then(module => { host = module; }).catch(() => {});
+    dialog.append(head, stageHost, foot);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let stop = () => {}, closed = false, listNode = null, index = 0;
     // A page is either a still (a prompt, a picture and a list) or the editor demo, which plays once on arrival.
     function show(at) {
         stop(); stop = () => {}; listNode?.remove();
         index = at; const page = pages[at];
-        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.kind !== 'still' || !imageNode();
+        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.kind !== 'still';
+        [...dots.children].forEach((dot, i) => dot.classList.toggle('on', i === at));
+        dots.setAttribute('aria-label', t(`Page ${at + 1} of ${pages.length}`, `第 ${at + 1} 页，共 ${pages.length} 页`));
+        if (page.kind === 'still' && page.poster) {
+            // One finished picture, blurred behind itself to fill the frame, with its prompt typed over the foot.
+            const shot = el('div', null, 'fv-whatsnew-shot'), back = el('img', null, 'bg'), fit = el('img', null, 'fit'), typed = el('div', null, 'fv-whatsnew-typed');
+            const words = el('span'), caret = el('i'); typed.append(words, caret);
+            back.alt = ''; fit.alt = ''; back.draggable = fit.draggable = false; back.src = fit.src = new URL('./' + page.poster.src, import.meta.url).href;
+            shot.append(back, fit, typed); stageHost.replaceChildren(shot); stageHost.style.visibility = '';
+            const text = page.poster.prompt[cn ? 1 : 0], timers = [];
+            stop = () => timers.forEach(clearTimeout);
+            if (reduce) words.textContent = text;
+            else { const step = Math.min(60, 1800 / text.length); for (let i = 1; i <= text.length; i++) timers.push(setTimeout(() => { words.textContent = text.slice(0, i); }, 300 + i * step)); }
+            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', item[cn ? 1 : 0]));
+            dialog.insertBefore(listNode, foot); return;
+        }
         if (page.kind === 'still') {
             const figure = el('div', null, 'fv-whatsnew-still'), prompt = el('div', null, 'fv-whatsnew-prompt'), bar = el('i'), barHost = el('div', null, 'fv-whatsnew-bar'), row = el('div', null, 'fv-whatsnew-pictures');
             const image = el('img'); image.alt = ''; image.draggable = false; row.append(image); barHost.append(bar);
@@ -322,15 +349,14 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
             stageHost.style.visibility = ''; stop = play(stage, page, reduce);
         });
     }
-    foot.append(close, ...pages.length > 1 ? [next] : [], open); show(0);
-    next.onclick = () => { show(index + 1); close.focus(); };
-    close.onclick = () => dialog.close();
+    foot.append(dots, el('span', null, 'fv-whatsnew-grow'), close, ...pages.length > 1 ? [next] : [], open); show(0);
+    next.onclick = () => { show(index + 1); (index === pages.length - 1 && !open.hidden ? open : close).focus(); };
+    close.onclick = shut.onclick = () => dialog.close();
     open.onclick = async () => {
-        try {
-            const node = imageNode();
-            if (!node) return;
-            dialog.close(); (await import('./view_navigation.js')).openImage(node);
-        } catch (error) { console.warn('FreeVideo image view:', error); }
+        dialog.close();
+        try { await (await import('./shell.js')).go('image'); return; } catch { /* No shell view switch: the node opens it. */ }
+        try { const node = imageNode(); if (node) (await import('./view_navigation.js')).openImage(node); }
+        catch (error) { console.warn('FreeVideo image view:', error); }
     };
     dialog.addEventListener('keydown', event => event.stopPropagation());
     dialog.addEventListener('close', () => { closed = true; stop(); remember(pages); dialog.remove(); }, {once: true});

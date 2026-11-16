@@ -1,12 +1,12 @@
 .fv-update-notice{box-sizing:border-box;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--fv-accent);border-radius:var(--fv-r-sm,8px);background:var(--fv-card);box-shadow:inset 3px 0 0 var(--fv-accent);color:var(--fv-ink);font:12px/1.5 var(--fv-font);animation:fv-panel-enter .25s ease}
 .fv-update-notice[hidden]{display:none!important}.fv-update-notice>span{flex:1;min-width:160px;overflow-wrap:anywhere;font-weight:600}
-.fv-update-notice a,.fv-update-notice button,.fv-studio .fv-update-notice a,.fv-studio .fv-update-notice button{min-height:30px;padding:4px 10px;border:0;border-radius:6px;font:inherit;background:transparent;white-space:nowrap;cursor:pointer;text-decoration:none;color:var(--fv-accent)}
+.fv-update-notice a,.fv-update-notice button,.fv-studio .fv-update-notice a,.fv-studio .fv-update-notice button{min-height:30px;padding:4px 10px;border:0;border-radius:var(--fv-r-sm);font:inherit;background:transparent;white-space:nowrap;cursor:pointer;text-decoration:none;color:var(--fv-accent)}
 .fv-update-notice button,.fv-studio .fv-update-notice button{color:var(--fv-muted)}.fv-update-notice a:hover,.fv-update-notice button:hover{background:var(--fv-hover)}
 .fv-update-notice .fv-update-apply,.fv-studio .fv-update-notice .fv-update-apply{background:var(--fv-accent);color:var(--fv-bg,#0b0b0d);font-weight:600}
 .fv-update-notice .fv-update-apply:hover,.fv-studio .fv-update-notice .fv-update-apply:hover{background:var(--fv-accent-hover)}
 .fv-update-notice button[hidden],.fv-update-notice a[hidden]{display:none!important}
 .fv-update-notice button:disabled{opacity:.5;cursor:default}
-.fv-update-working>span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--fv-accent);border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:fv-update-spin .9s linear infinite}
+.fv-update-working>span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--fv-accent);border-right-color:transparent;border-radius:var(--fv-r-pill);vertical-align:-1px;animation:fv-update-spin .9s linear infinite}
 @keyframes fv-update-spin{to{transform:rotate(360deg)}}
 .fv-update-notice :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
 /* The update notice is a full-width bar under the header, the same place in every view. */
@@ -20,11 +20,21 @@
 .fv-view-navigation .fv-update-bar{margin:8px -20px -8px;border-bottom:0;border-top:1px solid var(--fv-border);border-radius:0 0 var(--fv-r-lg) var(--fv-r-lg);cursor:default}
 @media(max-width:680px){.fv-update-bar{padding:10px 14px;flex-wrap:wrap;justify-content:flex-end}.fv-update-bar>span{flex:1 0 100%;white-space:normal}}
 @media(prefers-reduced-motion:reduce){.fv-update-notice{animation:none}.fv-update-working>span::before{animation:none}}
-.fv-version-info{font:inherit;font-size:12px;color:var(--fv-muted);background:transparent;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+.fv-version-info{font:inherit;font-size:12px;color:var(--fv-muted);background:transparent;border:0;border-radius:var(--fv-r-sm);padding:6px 10px;cursor:pointer;white-space:nowrap}
 .fv-version-info:hover{background:var(--fv-hover);color:var(--fv-ink)}
 /* Inside the studio the general button rule is more specific: keep the version a quiet label like Settings. */
 .fv-studio .fv-version-info{background:transparent;border-color:transparent;color:var(--fv-muted);font-size:12px;font-weight:400;padding:6px 10px}
 .fv-studio .fv-version-info:hover{background:var(--fv-hover);border-color:transparent;color:var(--fv-ink)}
-.fv-release-notes{box-sizing:border-box;width:min(580px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:24px;border:1px solid var(--fv-border,#354152);border-radius:16px;background:var(--fv-canvas,#161e29);color:var(--fv-ink,#e7edf7);font:14px/1.7 var(--fv-font,system-ui);overflow:auto;overflow-wrap:anywhere}
+.fv-release-notes{box-sizing:border-box;width:min(580px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:24px;border:1px solid var(--fv-border,#354152);border-radius:var(--fv-r-lg);background:var(--fv-canvas,#161e29);color:var(--fv-ink,#e7edf7);font:14px/1.7 var(--fv-font,system-ui);overflow:auto;overflow-wrap:anywhere}
 .fv-release-notes::backdrop{background:#0009}.fv-release-notes h2{margin:0 0 20px;font-size:20px}.fv-release-notes h3{font-size:16px;margin:0 0 4px}.fv-release-notes h4{font-size:14px;margin:18px 0 0;color:var(--fv-ink,#e7edf7)}.fv-release-notes section+section{border-top:1px solid var(--fv-border,#354152);margin-top:24px;padding-top:20px}.fv-release-notes p{margin:8px 0}.fv-release-notes .fv-release-build{font-size:12px;color:var(--fv-muted,#a5b3c6)}.fv-release-notes ul{padding-left:22px}.fv-release-notes li+li{margin-top:8px}
-.fv-release-notes button{font:inherit;color:inherit;background:var(--fv-hover,#2a3341);border:0;border-radius:8px;padding:6px 18px;cursor:pointer}.fv-release-notes :focus-visible,.fv-version-info:focus-visible{outline:2px solid var(--fv-accent,#8eb8fb);outline-offset:2px}
+.fv-release-notes button{font:inherit;color:inherit;background:var(--fv-hover,#2a3341);border:0;border-radius:var(--fv-r-sm);padding:6px 18px;cursor:pointer}.fv-release-notes :focus-visible,.fv-version-info:focus-visible{outline:2px solid var(--fv-accent,#8eb8fb);outline-offset:2px}
+/* Version & release notes: title fixed at the top, buttons fixed at the bottom, the notes scroll between them. */
+.fv-release-notes[open]{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.fv-release-notes .fv-release-head{flex:none;padding:var(--fv-sp-24,24px) var(--fv-sp-24,24px) var(--fv-sp-12,12px);border-bottom:1px solid var(--fv-line,rgb(255 255 255 / .08))}
+.fv-release-notes .fv-release-head h2{margin:0;font-size:var(--fv-fs-4,20px);font-weight:600}
+.fv-release-notes .fv-release-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:var(--fv-sp-16,16px) var(--fv-sp-24,24px);font-size:var(--fv-fs-2,13px);-webkit-user-select:text;user-select:text}
+.fv-release-notes .fv-release-body h3{font-size:var(--fv-fs-3,16px)}
+.fv-release-notes .fv-release-body h4{font-size:var(--fv-fs-2,13px)}
+.fv-release-notes .fv-release-foot{flex:none;display:flex;justify-content:flex-end;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-16,16px) var(--fv-sp-24,24px);border-top:1px solid var(--fv-line,rgb(255 255 255 / .08))}
+.fv-release-notes .fv-release-foot button{height:var(--fv-ctl,32px);padding:0 var(--fv-sp-16,16px);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg,rgb(255 255 255 / .06));font-size:var(--fv-fs-2,13px)}
+.fv-release-notes .fv-release-foot button.fv-primary{background:var(--fv-accent-fill,#0d6dcc);color:#fff;font-weight:600}

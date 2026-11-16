@@ -34,11 +34,11 @@ export function validMinutes(value) {
 // is on and the policy was read, so a page without it shows nothing half-working.
 export function agentConfirmSettings(t, api) {
     const section = el('details'); section.hidden = true;
-    section.append(el('summary', null, t('AI Agent', 'AI Agent')));
+    section.append(el('summary', null, t('AI assistant', 'AI 助手')));
     const startBox = el('input'); startBox.type = 'checkbox';
-    const startLabel = el('label', 'fv-check'); startLabel.append(startBox, el('span', null, t('Ask before an agent starts a film', 'Agent 开拍整部片前先询问')));
+    const startLabel = el('label', 'fv-check'); startLabel.append(startBox, el('span', null, t('Ask before the assistant starts a film', '助手开拍整部片前先询问')));
     const longBox = el('input'); longBox.type = 'checkbox';
-    const longLabel = el('label', 'fv-check'); longLabel.append(longBox, el('span', null, t('Ask before a long agent reshoot', 'Agent 重拍耗时较长时先询问')));
+    const longLabel = el('label', 'fv-check'); longLabel.append(longBox, el('span', null, t('Ask before a long reshoot by the assistant', '助手重拍耗时较长时先询问')));
     const minutesField = el('input', 'fv-minutes'); minutesField.type = 'number'; minutesField.min = '0'; minutesField.max = String(MAX_MINUTES); minutesField.step = 'any';
     const minutesLabel = el('label', null, t('Long means at least', '达到')); minutesLabel.append(minutesField, el('span', null, t('minutes', '分钟')));
     const status = el('p', 'fv-muted'); status.setAttribute('role', 'status');

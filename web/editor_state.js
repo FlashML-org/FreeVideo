@@ -12,8 +12,8 @@ export function createEditorState(record, {limit = 200} = {}) {
     let current = parse(record), selection = null, rangeDraft = null, playhead = 0, zoom = 12;
     let maxSerial = current.serial;
     const retainSerial = record => { maxSerial = Math.max(maxSerial, record.serial); return record.serial < maxSerial ? parse({...record, serial: maxSerial}) : record; };
-    let undo = [], redo = [], step = 0; const listeners = new Set();
-    const remember = entry => { step++; undo = limit ? [...undo, entry].slice(-limit) : []; redo = []; };
+    let undo = [], redo = [], step = 0, making = () => false; const listeners = new Set();
+    const remember = entry => { step++; undo = limit ? [...undo, {...entry, at: step}].slice(-limit) : []; redo = []; };
     const selected = () => ({selection, rangeDraft});
     const restore = value => { selection = value.selection; rangeDraft = value.rangeDraft; };
     const emit = (type, label) => {
@@ -63,6 +63,8 @@ export function createEditorState(record, {limit = 200} = {}) {
         // Text belongs to the range draft, not to a gesture: typing keeps its native undo.
         get rangeText() { return selection?.kind === 'range' ? rangeDraft?.text ?? null : null; },
         get canUndo() { return undo.length > 0; }, get canRedo() { return redo.length > 0; },
+        // What the next undo and redo would do, for their labels.
+        get undoLabel() { return undo.at(-1)?.label ?? null; }, get redoLabel() { return redo.at(-1)?.label ?? null; },
         apply(label, change, {clearRange = false, checkpoint = false, selectionAfter, rangeText = null} = {}) {
             const next = retainSerial(parse(change(current))); // Validate before touching history or UI state.
             assertLockedUnchanged(current, next);
@@ -70,22 +72,27 @@ export function createEditorState(record, {limit = 200} = {}) {
             const cleared = clearRange && selection?.kind === 'range';
             const selectionChanged = cleared || selectionAfter !== undefined;
             const entry = {record: current, label, ...(selectionChanged ? {before: selected(), after: {selection: normalized(selectionAfter ?? null, next), rangeDraft: selectionAfter?.kind === 'range' && typeof rangeText === 'string' ? {text: rangeText} : null}} : {})};
-            // Generation is a barrier: older full-record snapshots must not remove it.
-            if (checkpoint) { step++; undo = []; redo = []; } else remember(entry);
+            // Generation is one step like any other: one undo takes it back and the edits before it stay reachable.
+            // That undo (and its redo) waits while a part is still being made: see holdGeneration.
+            remember(checkpoint ? {...entry, generation: true} : entry);
             if (selectionChanged) restore(entry.after);
             current = next; emit('record', label); reconcile();
             if (selectionChanged) emit('selection');
             return current;
         },
-        undo() { return travel(undo, redo, 'before'); },
-        redo() { return travel(redo, undo, 'after'); },
+        undo() { return undo.at(-1)?.generation && making() ? current : travel(undo, redo, 'before'); },
+        redo() { return redo.at(-1)?.generation && making() ? current : travel(redo, undo, 'after'); },
+        // Tells whether a part is being made; until it is done, a generation step is neither undone nor redone.
+        holdGeneration(busy) { making = typeof busy === 'function' ? busy : () => false; },
         // Counts the steps taken through the history, so a caller can tell that its own step is still the newest.
         get step() { return step; },
         // Takes the newest step back as if it never happened: nothing is left to redo.
         withdraw(at) { if (at !== step || !undo.length) return false; travel(undo, redo, 'before'); redo.pop(); return true; },
-        settle(change) {
+        settle(change, {after = null} = {}) {
             const attempt = record => { try { return retainSerial(parse(change(record))); } catch (error) { if (error instanceof EditError) return record; throw error; } };
-            const update = entry => entry.record ? {...entry, record: attempt(entry.record)} : entry;
+            // With {after: mark}, the change is about a generation that took step mark: the undo steps up to and
+            // including it keep what came before it, so undoing that generation still brings back the drafts.
+            const update = entry => entry.record && !(after != null && entry.at <= after) ? {...entry, record: attempt(entry.record)} : entry;
             const next = retainSerial(parse(change(current))), nextUndo = undo.map(update), nextRedo = redo.map(update);
             const changed = JSON.stringify(next) !== JSON.stringify(current);
             current = next; undo = nextUndo; redo = nextRedo;

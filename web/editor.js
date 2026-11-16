@@ -12,6 +12,7 @@ import * as model from './editor_model.js';
 import {discardEmptyEdit, hiddenEmptyEdit, deleteEditText} from './editor_lifecycle.js';
 import {createEditorState} from './editor_state.js';
 import {createEditorStore, sourceKey, mediaURL} from './editor_store.js';
+import {createPicturePoster} from './editor_poster.js';
 import {generationSize, continuedSize} from './editor_generation.js';
 import {uploadMedia} from './media_upload.js';
 import {checkOriginal} from './audio_original.js';
@@ -26,7 +27,7 @@ import {openExportDialog} from './editor_export_dialog.js';
 import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
 import {createStemsIntegration} from './editor_stems.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
-import {createEditorGenbar, loadEditorComponents, editorBlockStates, blockMessages} from './editor_genbar.js';
+import {createEditorGenbar, editorBlockStates, blockMessages} from './editor_genbar.js';
 import {createEditorMusic} from './editor_music.js';
 import {createEditorRecord, RECORD_ICON} from './editor_record.js';
 import {createEditorVoice} from './editor_voice.js';
@@ -49,13 +50,22 @@ import {outputNotWritable, modelTableDamaged} from './error_panel.js';
 import {repairAction} from './repair_hint.js';
 import {expandCast} from './cast_mention.js';
 import {problem as timedProblem, timedText} from './timed_prompt.js';
-const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css'].map(name => {
+import {tip, modKey} from './editor_tips.js';
+import {jobs} from './task_store.js';
+import {createStageLight} from './editor_ambient.js';
+import {openingChoice} from './editor_opening.js';
+import {CN} from './topbar_state.js';
+const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
     document.head.append(style); return ready;
 }));
+// The timeline module is fetched with this one, so opening the editor never waits for it (no late rows).
+const tracksModule = import('./editor_tracks.js');
+tracksModule.catch(() => {});
+// Waits for a promise, but no longer than `ms`: what has not settled by then is left to finish on its own.
+const within = (promise, ms) => Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(resolve => setTimeout(resolve, ms))]);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const language = () => new URLSearchParams(location.search).get('freevideo_lang') || navigator.language;
 // A half of a surrogate pair left by a cut or a paste is dropped; the description limit counts characters, not code units.
 export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, pair => pair.length === 2 ? pair : '') : text;
 export const characters = text => Array.from(text).length;
@@ -172,6 +182,19 @@ function basicBlockProgress(clipId, clipElement, t = en => en) {
 }
 let opened, lastDraft = null;
 const editorViews = new Map(), viewPrefix = 'fv-editor-view:', usedPrefix = 'fv-editor-used:';
+// The last saved edit as it was when the view closed, with its media's details: the next opening draws it at once,
+// then the server's copy replaces it (usually the same, so nothing moves). One edit is kept across a reload.
+const recordCache = new Map(), RECORD_KEY = 'fv-editor-record', RECORD_LIMIT = 600000;
+function cachedRecord(id) {
+    if (!id) return null;
+    if (recordCache.has(id)) return recordCache.get(id);
+    try { const value = JSON.parse(localStorage.getItem(RECORD_KEY) || 'null'); if (value?.id === id && value.record?.id === id) return value; } catch {}
+    return null;
+}
+function forgetCachedRecord(id) {
+    recordCache.delete(id);
+    try { if (JSON.parse(localStorage.getItem(RECORD_KEY) || 'null')?.id === id) localStorage.removeItem(RECORD_KEY); } catch {}
+}
 
 // A pending ComfyUI node listens on document, including above sibling dialogs
 // and during native library drags. Suspend the canvas, preserving its placement
@@ -197,6 +220,12 @@ export function suspendCanvasPointer(canvas) {
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
+    // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
+    // work, another node's panel or a new creation panel builds a fresh one instead.
+    if (opened?.kept) {
+        if (from?.work || panel.onProjectLoaded || opened.panel.node !== panel.node || opened.panel.progressElement !== panel.progressElement) opened.dispose();
+        else return opened.reopen();
+    }
     if (opened) {
         const dialog = opened.element;
         const upper = topDialog();
@@ -208,15 +237,27 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         dialog.focus(); return opened;
     }
-    const t = (en, zh) => String(language()).toLowerCase().startsWith('zh') ? zh : en;
+    // The same language as the top bar and the other views, read once when the page opened (the app later drops the
+    // address's query, so reading it again when the editor opened fell back to the browser's language).
+    const t = (en, zh) => CN ? zh : en;
     const returnFocus = document.activeElement;
     const even = value => Math.max(2, Math.floor(value / 2) * 2);
     // A new edit opens with an empty second sound track, where music is made.
     const initial = () => model.addAudioTrack(model.emptyProject({width: even(panel.width || 1344), height: even(panel.height || 768), settings: panel.settings || null,
         name: t('Untitled edit', '未命名剪辑')}));
-    const state = createEditorState(initial());
-    const resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
+    // Reopening the last saved edit (not a work being opened, not a draft of this tab) starts from its cached copy.
+    let fromCache = null;
+    if (!from) try {
+        const lastId = optionalText(localStorage.getItem('fv-editor-last')), draftKey = globalThis.sessionStorage?.getItem('fv-editor-draft');
+        if (lastId && !draftKey?.startsWith('draft:')) fromCache = cachedRecord(lastId);
+    } catch { fromCache = null; }
+    let state;
+    try { state = createEditorState(fromCache ? fromCache.record : initial()); } catch { fromCache = null; state = createEditorState(initial()); }
+    let resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
     const element = el('dialog', 'fv-studio fv-editor'); element.setAttribute('aria-label', t('Edit', '剪辑视图')); element.tabIndex = -1;
+    // Until the edit to open is decided (no copy kept in this browser: the saved list or the work is still being read), the
+    // blank stand-in is not presented as a new edit: no name and no empty-edit hint, only the view's frame.
+    if (!fromCache) element.dataset.opening = 'true';
     const listeners = [];
     const listen = (type, handler) => { element.addEventListener(type, handler); listeners.push(() => element.removeEventListener(type, handler)); };
     // Keep editor mouse events from ComfyUI's document bubble handlers (ghost-node placement).
@@ -232,8 +273,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const brand = el('div', 'fv-brand');
     const headerActions = el('div', 'fv-header-actions');
     const title = button('', () => menu.hidden ? showMenu() : menu.hidden = true, 'fv-ed-name'); title.setAttribute('aria-haspopup', 'menu');
-    const drawer = button(t('Media', '素材'), () => { libraryHost.dataset.open = libraryHost.dataset.open !== 'true'; drawer.setAttribute('aria-expanded', libraryHost.dataset.open); }, 'fv-ed-drawer-toggle');
+    const toggleLibrary = () => { libraryHost.dataset.open = libraryHost.dataset.open !== 'true'; for (const control of [drawer, libraryRail]) control.setAttribute('aria-expanded', libraryHost.dataset.open); };
+    const drawer = button(t('Media', '素材'), toggleLibrary, 'fv-ed-drawer-toggle');
     drawer.setAttribute('aria-expanded', 'false');
+    // Between 681 and 1279 px the library and the inspector fold into two equal rails, one each side, so the picture
+    // stays centred in the window; the library opens over the picture's left side, the inspector over its right.
+    const railGlyph = path => { const glyph = icon(path); glyph.classList.add('fv-ed-rail-glyph'); return glyph; };
+    const libraryRail = button('', toggleLibrary, 'fv-ed-rail-button'); libraryRail.setAttribute('aria-expanded', 'false');
+    libraryRail.append(railGlyph('M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z'), el('span', 'fv-ed-rail-label', t('Media', '素材')));
+    tip(libraryRail, {name: t('Media', '素材'), use: t('Open the library to place clips', '打开素材库，把素材放进时间线')});
+    tip(drawer, {name: t('Media', '素材'), use: t('Open the library to place clips', '打开素材库，把素材放进时间线')});
+    const leftRail = el('nav', 'fv-ed-rail fv-ed-rail-left'), rightRail = el('nav', 'fv-ed-rail fv-ed-rail-right');
+    leftRail.append(libraryRail);
     const exportBox = el('div', 'fv-ed-export-box'), exportHint = el('span', 'fv-ed-export-hint'), exportButton = button(t('Export', '导出'), async () => {
         try {
             if (explainExport()) return;
@@ -243,12 +294,21 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         } catch (value) { error(value, 'export'); }
     }, 'fv-primary fv-ed-export-main');
     const exportCancel = button('', () => store.cancelExport(exportStatus.id).catch(value => error(value, null, undefined, 'cancel-export'))); exportCancel.hidden = true; exportCancel.append(icon('m4 4 8 8M12 4l-8 8')); exportCancel.setAttribute('aria-label', t('Cancel', '取消'));
-    exportBox.append(exportHint, exportButton, exportCancel); brand.append(wordmark(), title);
+    exportBox.append(exportHint, exportButton, exportCancel); brand.append(wordmark());
     const phoneAccess = createLanAccess(t, api);
     listeners.push(phoneAccess.dispose);
-    headerActions.append(exportBox, phoneAccess.element, guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
+    const settingsButton = button(t('Settings', '设置'), openSetup, 'fv-quiet');
+    tip(settingsButton, {name: t('Settings', '设置'), use: t('Folders, downloads, language and more', '文件夹、下载、语言等设置')});
+    // The header is the same in every view: the logo, the five views and the shared entries. The edit's own name,
+    // whether it is saved, and Export sit in the project row over the picture.
+    headerActions.append(phoneAccess.element, guideButton(t), feedbackButton(t), settingsButton);
     top.append(brand, navigation, headerActions);
-    const headerFit = fitEditorHeader(top, brand, title, navigation, headerActions);
+    const projectRow = el('div', 'fv-ed-project-row');
+    const saveState = button('', () => { if (queue.dirty) void retrySave(); }, 'fv-ed-save-state'); saveState.setAttribute('role', 'status');
+    projectRow.append(title, saveState, exportBox);
+    // The header fit only keeps the shared entries readable now; the name has its own row.
+    const headerName = el('button'); headerName.append(el('span'));
+    const headerFit = fitEditorHeader(top, brand, headerName, navigation, headerActions);
     const menu = el('div', 'fv-ed-name-menu'); menu.hidden = true; menu.setAttribute('role', 'menu');
     // Up and Down move through the name box and the items; Home and End go to either end.
     menu.onkeydown = event => {
@@ -260,16 +320,35 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const at = items.indexOf(document.activeElement), step = event.key === 'ArrowDown' ? 1 : -1;
         items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : at < 0 ? 0 : (at + step + items.length) % items.length].focus();
     };
-    const saveWarning = el('span', 'fv-ed-save-warning'); saveWarning.hidden = true; saveWarning.setAttribute('role', 'status'); exportBox.prepend(saveWarning);
-    const notice = el('div', 'fv-ed-notice'); notice.hidden = true; notice.setAttribute('role', 'status');
+    // Changes not saved yet: said under the name, with the way to save them again (switching once more still leaves).
+    const saveWarning = el('div', 'fv-ed-save-warning-card'); saveWarning.hidden = true; saveWarning.setAttribute('role', 'alert');
+    const saveWarningText = el('span', 'fv-ed-save-warning'), saveAgain = button(t('Save again', '重新保存'), () => void retrySave());
+    // A switch never leaves unsaved edits behind by itself: staying keeps trying, and only this button leaves without them.
+    const leaveUnsaved = button(t('Leave without saving', '放弃改动并离开'), () => {
+        const view = leaveTo; leaveTo = null; discardOnSwitch = true;
+        void (view ? handle.switchView(view) : handle.close());
+    }, 'fv-ed-save-leave');
+    saveWarning.append(saveWarningText, saveAgain, leaveUnsaved);
+    tip(saveAgain, {name: t('Save again', '重新保存'), use: t('Try saving the changes now', '现在再试一次保存改动')});
+    tip(leaveUnsaved, {name: t('Leave without saving', '放弃改动并离开'), use: t('Go on; the latest changes are lost', '离开这里，最近的改动会丢失')});
+    const notices = el('div', 'fv-ed-notice-stack');
+    // Where the server cannot generate, the bar's row says so instead of standing empty.
+    const goneLine = el('div', 'fv-ed-genbar-gone', t('Generating is not available here right now. Restart FreeVideo to try again.', '这台电脑现在不能生成。重新启动 FreeVideo 后再试。')); goneLine.hidden = true; goneLine.setAttribute('role', 'status');
     transport.append(drawer);
-    brand.append(menu);
-    element.append(top, libraryHost, preview, transport, genHost, tracksHost, zoomHost, notice);
+    projectRow.append(menu, saveWarning);
+    element.append(top, projectRow, leftRail, rightRail, libraryHost, preview, transport, genHost, goneLine, tracksHost, zoomHost, notices);
     element.append(adjustHost);
+    // The floating task window keeps clear of the timeline, the bar, the inspector and the library.
+    for (const host of [libraryHost, genHost, tracksHost, adjustHost]) host.classList.add('sgf-avoid');
+    // Until the timeline module has drawn, its rows hold their final places.
+    const skeleton = el('div', 'fv-ed-tracks-skeleton'); skeleton.setAttribute('aria-hidden', 'true');
+    for (const [y, h] of [[0, 24], [24, 64], [94, 40], [140, 40]]) { const row = el('i'); row.style.top = `${y}px`; row.style.height = `${h}px`; skeleton.append(row); }
+    { const heads = el('b'); heads.style.top = '0'; heads.style.bottom = '0'; skeleton.append(heads); }
+    tracksHost.append(skeleton);
     tracksHost.inert = genHost.inert = true; title.disabled = true;
     // CSS delays the pending indication; fast opens stay at full opacity.
     tracksHost.classList.add('fv-ed-pending'); genHost.classList.add('fv-ed-pending');
-    let discardOnSwitch = false, initialSelection = null, offerInitial = null, extendEntry = null;
+    let discardOnSwitch = false, leaveTo = null, initialSelection = null, offerInitial = null, extendEntry = null;
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
     let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
@@ -293,7 +372,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return true;
     }
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
-    let noticeTimer = null, stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
+    let stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
     const failures = createEditorFailures({api, state, jobStatuses, reasonText: value => editorErrorText(value, t)});
     let submissionFailure = null;
@@ -345,12 +424,27 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return site + ':' + (String(code || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown');
     }
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
-    function notify(text, where = null, kind = null) {
+    // Notices stack (newest last, at most three) instead of a new one wiping out the one being read; each can be closed.
+    const noticeTimers = new Set();
+    function notify(text, where = null, kind = null, action = null) {
         if (disposed) return;
-        if (!text) { clearTimeout(noticeTimer); notice.hidden = true; return; }
-        notice.textContent = text;
-        if (where) notice.append(issueButton(t, () => ({where, message: text, kind})));
-        notice.hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { notice.hidden = true; }, where ? 20000 : 9000);
+        if (!text) { for (const timer of noticeTimers) clearTimeout(timer); noticeTimers.clear(); notices.replaceChildren(); return; }
+        const last = notices.lastElementChild;
+        if (last?.dataset.text === text) last.remove();
+        const card = el('div', 'fv-ed-notice'); card.setAttribute('role', 'status'); card.dataset.text = text;
+        const words = el('span', 'fv-ed-notice-text', text);
+        // In the project row the line is cut to one row; its hover says it whole.
+        words.setAttribute('data-fv-tip-name', where ? t('Problem', '问题') : t('Notice', '提示')); words.setAttribute('data-fv-tip-use', text);
+        if (where) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
+        const close = button('', () => { clearTimeout(timer); noticeTimers.delete(timer); card.remove(); }, 'fv-ed-notice-close');
+        close.append(icon('m4 4 8 8M12 4l-8 8')); close.setAttribute('aria-label', t('Close', '关闭'));
+        tip(close, {name: t('Close', '关闭'), use: t('Dismiss this notice', '关掉这条提示')});
+        // A notice can carry one action (Undo after a delete), so a slip is one press away from being undone.
+        if (action) { const act = button(action.label, () => { card.remove(); action.run(); }, 'fv-ed-notice-action'); tip(act, {name: action.label, use: action.use || '', key: action.key || ''}); card.append(words, act, close); }
+        else card.append(words, close);
+        notices.append(card);
+        while (notices.children.length > 3) notices.firstElementChild.remove();
+        const timer = setTimeout(() => { noticeTimers.delete(timer); card.remove(); }, where ? 20000 : 9000); noticeTimers.add(timer);
     }
     const EDITOR_ISSUE = ['Editor', '编辑器'], EXPORT_ISSUE = ['Export', '导出'];
     // `step` names what was being done, so a failure there says which step went wrong; `out` is where the line is said (the bar's own line for a reference picture).
@@ -395,6 +489,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (disposed) return;
         // Only a server that said it cannot generate hides the bar; an unanswered check keeps it, greyed.
         generationAsked = true; genHost.hidden = !ready && store.generationGone; element.dataset.generationReady = ready ? 'true' : store.generationGone ? 'false' : 'waiting';
+        goneLine.hidden = !genHost.hidden;
         settleGenbar(); settleService(); if (ready) { offerInitial?.(); extendEntry?.(); void startHeld(); }
         // Parts queued while waiting for the answer never start here; they go back to drafts with the reason.
         else if (store.generationGone && held.length) {
@@ -413,6 +508,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // When every automatic check went unanswered, the bar's line offers to check again; not while a check runs.
     const settleService = () => genbar?.service(store.generationStalled ? {checking: store.generationChecking, retry: () => store.retryGeneration()} : null);
     store.generationReady();
+    // Media details from the cache draw at once and are read again from the server (marked as stand-ins).
+    if (fromCache?.sources && Object.keys(fromCache.sources).length) try { store.cache(Object.fromEntries(Object.entries(fromCache.sources).map(([key, value]) => [key, {...value, _fallback: true}]))); } catch { /* Read again later. */ }
     const queue = store.createSaveQueue({get record() { return state.record; },
         adopt(value) {
             if (pointerEditing) { deferredStamp = value; return; }
@@ -422,9 +519,36 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (held.length) rememberView();
         },
     }, {onStatus: () => {
-        if (!queue.dirty) { discardOnSwitch = false; saveWarning.hidden = true; }
+        if (!queue.dirty) { discardOnSwitch = false; leaveTo = null; saveWarning.hidden = true; }
+        updateSaveState();
     }});
+    // Whether the edit is saved, beside its name only when it needs attention: a failed save (which offers to save
+    // again from there), changes left unsaved, or saving that takes longer than 2 s. A saved edit shows nothing; the
+    // place is kept, so nothing beside it moves.
+    let savingSince = 0, saveShowTimer = null;
+    function updateSaveState() {
+        if (disposed) return;
+        const now = !queue.dirty ? 'saved' : queue.failure || discardOnSwitch ? 'unsaved' : 'saving';
+        savingSince = now === 'saving' ? savingSince || performance.now() : 0;
+        const slow = now === 'saving' && performance.now() - savingSince >= 2000;
+        clearTimeout(saveShowTimer);
+        if (now === 'saving' && !slow) saveShowTimer = setTimeout(updateSaveState, 2020 - (performance.now() - savingSince));
+        saveState.dataset.shown = String(now === 'unsaved' || slow);
+        if (saveState.dataset.state === now) return;
+        saveState.dataset.state = now;
+        saveState.textContent = {saved: t('Saved', '已保存'), saving: t('Saving…', '正在保存…'), unsaved: t('Not saved', '未保存')}[now];
+        tip(saveState, {name: saveState.textContent, use: now === 'unsaved' ? t('Click to save the changes again', '点一下重新保存改动')
+            : t('Changes save by themselves as you edit', '改动会自动保存')});
+    }
+    async function retrySave() {
+        if (disposed) return;
+        saveAgain.disabled = true; saveState.dataset.state = ''; updateSaveState();
+        try { releaseStamp(); await queue.flush(); } finally { if (!disposed) { saveAgain.disabled = false; updateSaveState(); } }
+    }
     const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
+    const stageLight = createStageLight(element, {picture: preview});
+    // Until the first video frame arrives the picture shows the part's thumbnail at its own size, then fades to the video.
+    const poster = createPicturePoster(player.element, {state, sources: store.sources, sourceKey, mediaURL: value => mediaURL(api, value)});
     function selectionClips(selection = state.selection) {
         if (selection?.kind !== 'clip') return [];
         return state.record.tracks[0].clips.filter(clip => selection.ids.includes(clip.id) || selection.ids.includes(clip.link));
@@ -455,6 +579,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Once ready, the server owns waiting parts and their dependencies.
     // Parts, and ranges not yet planned into parts, whose request is being sent.
     const held = [], sending = new Set(), sendingRanges = new Set();
+    // While a part is being made, the history keeps its generation step where it is.
+    const making = () => jobActive() || held.length > 0 || sending.size > 0;
+    state.holdGeneration(making);
     const overlaps = (a, b) => a.start < b.start + b.frames && a.start + a.frames > b.start;
     let startingHeld = false;
     const generating = clip => ['queued', 'running'].includes(clip?.pending);
@@ -532,7 +659,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const range = selectionRange(selection), selectedIds = selectionClips(selection).map(clip => clip.id);
         let ids = [];
         if (job) ids = selectedIds;
-        else state.apply(t('Generate', '生成'), record => {
+        if (!job) state.apply(t('Generate', '生成'), record => {
             const selected = selectedIds.map(id => model.find(record, id)).filter(Boolean), planned = selected.length && selected.every(clip => !clip.source && clip.pending && !generating(clip));
             const next = planned ? model.startAttempt(record, selected.map(clip => clip.id), texts ?? text) : model.planRange(record, {...range, target: 'both', text, maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds});
             ids = next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames && clip.pending && !generating(clip)).map(clip => clip.id);
@@ -663,6 +790,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         } finally { savingFrame = false; }
     }
     function updateTop() {
+        updateSaveState();
         const name = state.record.name || new Date().toLocaleDateString();
         if (title.firstElementChild?.textContent !== name) { title.replaceChildren(el('span', '', name), icon('m4 6 4 4 4-4')); headerFit.check(); }
         title.title = state.record.name;
@@ -673,7 +801,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         else if (exportPreparing) exportButton.textContent = queue.dirty ? t('Saving changes…', '正在保存改动…') : t('Exporting', '正在导出');
         else exportButton.textContent = exportStatus?.state === 'done' && exportMatches() ? t('View', '查看') : t('Export', '导出');
         // Never disabled: a press that cannot export says why next to it.
-        exportButton.disabled = false; exportButton.title = '';
+        exportButton.disabled = false;
+        const viewing = exportStatus?.state === 'done' && exportMatches();
+        tip(exportButton, {name: t('Export', '导出'),
+            use: viewing ? t('Open the exported video in the library', '在作品库里打开导出的视频') : running ? t('Exporting; it goes to the library when done', '正在导出，完成后进入作品库')
+                : !model.exportFrames(state.record) ? t('The timeline is empty; add a clip first', '时间线是空的，先放入素材')
+                : t('Save the whole edit as one video in the library', '把整条剪辑存成一个视频，放进作品库')});
+        tip(exportCancel, {name: t('Cancel export', '取消导出'), use: t('Stop this export; no partial file is kept', '停止导出，不留下不完整的文件')});
     }
     async function snapshot() {
         let value = panel.snapshot ? clonePrompt(await panel.snapshot()) : clonePrompt(await app.graphToPrompt());
@@ -717,9 +851,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             frozen.prompt[id] = {class_type: 'FreeVideoMedia', inputs: {assets: JSON.stringify([row])}}; inputs.media = [id, 0];
         }
     }
-    function pinStoppedJob(record, ids, job) {
-        return model.settle(record, ids.filter(id => model.attemptClip(record, id)?.job === job), 'stopped');
+    // A job's news reaches only the parts that carry that job, so a step from before the part was sent keeps its draft.
+    function pinJob(record, ids, job, pending) {
+        return model.settle(record, ids.filter(id => model.attemptClip(record, id)?.job === job), pending);
     }
+    function pinStoppedJob(record, ids, job) { return pinJob(record, ids, job, 'stopped'); }
     async function deliverChain(job) {
         if (disposed || !job) return false;
         const previous = jobStatuses.get(job.id);
@@ -727,6 +863,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return ['queued', 'running', 'cancelling'].includes(previous.state);
         failures.reconcile(job, previous);
         mostRecentJob = job.id; jobStatuses.set(job.id, job); paintJob(job);
+        // The floating task window brings this run back to the editor, not to the creative panel.
+        try { jobs.claim('chain:' + job.id, 'editor'); } catch { /* The task store is optional. */ }
         if (!startPlayheads.has(job.id)) startPlayheads.set(job.id, state.playhead);
         // Whether the job follows imported sound is read before a result replaces the sound's link target.
         if (!soundJobs.has(job.id) && (job.blocks || []).some(block => { const heard = model.find(state.record, model.attemptClip(state.record, block.id)?.link);
@@ -769,7 +907,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 state.settle(record => model.fail(record, block.id, reason, job.id));
             } else if (['cancelled', 'interrupted'].includes(block.state) || (['cancelled', 'interrupted', 'failed'].includes(job.state) && block.state === 'pending')) {
                 state.settle(record => pinStoppedJob(record, [block.id], job.id));
-            } else if (block.state === 'running' && clip.pending !== 'running') state.settle(record => model.settle(record, [block.id], 'running'));
+            } else if (block.state === 'running' && clip.pending !== 'running') state.settle(record => pinJob(record, [block.id], job.id, 'running'));
         }
         // The status word of a part the engine dropped is read from the job, which arrives after the record is drawn.
         const dropped = job => (job?.blocks || []).filter(block => block.state === 'interrupted').length;
@@ -804,6 +942,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function rememberView() {
         if (!viewReady) return;
         const key = state.record.id || viewKey;
+        if (state.record.id) {
+            const sources = {};
+            // The media's details without their descriptions: a work's prompt is kept once, with the work, not in this browser.
+            for (const source of model.references(state.record).map(sourceKey)) { const value = store.sources.get(source); if (value) { const {text, prompt, ...kept} = value; sources[source] = kept; } }
+            const entry = {id: state.record.id, record: state.record, sources};
+            recordCache.set(entry.id, entry);
+            try { const text = JSON.stringify(entry); if (text.length < RECORD_LIMIT) localStorage.setItem(RECORD_KEY, text); } catch {}
+        }
         const value = {selection: state.selection, text: genbar.getText(), playhead: state.playhead,
             zoom: state.zoom, scrollLeft: tracks ? tracks.getScrollLeft() : editorViews.get(key)?.scrollLeft || 0};
         editorViews.set(key, value);
@@ -822,8 +968,20 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else globalThis.sessionStorage?.removeItem('fv-editor-draft');
         } catch {}
     }
+    // Recorded takes the edit no longer uses, once its history is gone (switching edits, leaving the view for good,
+    // closing the page): their files are deleted. The server keeps a file another saved edit still uses.
+    function releaseTakes({keepalive = false} = {}) {
+        const ids = recording.unusedTakes(state.record);
+        if (!ids.length) return;
+        recording.forgetTakes(ids);
+        for (const id of ids) {
+            const sent = keepalive ? api.fetchApi('/freevideo/editor/import/delete', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, confirm: false}), keepalive: true})
+                : store.removeImport(id);
+            Promise.resolve(sent).catch(() => {});
+        }
+    }
     async function replaceProject(record, key = null) {
-        rememberView(); viewReady = false;
+        releaseTakes(); rememberView(); viewReady = false;
         await store.activateProject(record.id).catch(() => {});
         viewKey = record.id || key || 'draft:' + (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
         let remembered = editorViews.get(viewKey);
@@ -886,8 +1044,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     async function switchProject(id) {
         if (switching || closing || id && id === state.record.id) return; switching = true; element.inert = true; updateTop();
         try {
-            await queue.flush();
-            if (queue.dirty) { return; }
+            await within(queue.flush(), 6000);
+            if (queue.dirty) { notify(saveErrorText(queue.failure, t), EDITOR_ISSUE, failureKind('save', {reason: saveReason(queue.failure)})); return; }
             const record = id ? await store.load(id) : initial();
             if (!disposed && record) {
                 if (emptyEdit()) await discardProject({automatic: true});
@@ -901,7 +1059,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const emptyEdit = () => discardEmptyEdit(state.record, initial(), {busy: jobActive(), hasMedia: store.uploading});
     function forgetProject() {
         const keys = new Set([state.record.id, viewKey].filter(Boolean));
-        for (const key of keys) editorViews.delete(key);
+        for (const key of keys) { editorViews.delete(key); forgetCachedRecord(key); }
         if (keys.has(lastDraft)) lastDraft = null;
         try {
             for (const key of keys) { localStorage.removeItem(viewPrefix + key); localStorage.removeItem(usedPrefix + key); }
@@ -977,6 +1135,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const actions = {
         error, editError: error, notify, sources: store.sources, waveform: key => store.waveform(key), beats: key => store.beats(key), mediaURL: value => mediaURL(api, value),
         projectToken: () => initializing ? null : projectEpoch,
+        // Earlier descriptions for the bar's list: the edit's parts (latest in time first), then the recent works' prompts
+        // this page has read. Both are kept once, with the edit and the work; nothing is stored in the browser for this.
+        descriptions: () => [...state.record.tracks.flatMap(track => track.clips).filter(clip => typeof clip.text === 'string' && clip.text.trim())
+            .sort((a, b) => b.start - a.start).map(clip => clip.text),
+            ...[...store.sources].filter(([key, value]) => key.startsWith('work:') && typeof value?.text === 'string').map(([, value]) => value.text)],
         togglePlay: () => player.toggle(),
         pause: () => player.pause(),
         async previewSource(source) {
@@ -1034,6 +1197,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 return {ok: false, reason: valueError.code};
             }
         },
+        // Stopping a run asks first (the floating window's own question); without that module the press stops at once.
+        async confirmStop(anchor) {
+            try { return await (await import('./task_float.js')).confirmStop(anchor, {kind: 'video'}); } catch { return true; }
+        },
+        undo: () => travel(true),
         reasonText: value => editorErrorText(value, t),
         failureText: id => failures.text(id),
         // A part that was running when the engine went away, as opposed to one the user stopped.
@@ -1233,6 +1401,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     ids = next.tracks[0].clips.filter(clip => clip.start >= range.start && clip.start < range.start + range.frames && clip.pending && !['queued', 'running'].includes(clip.pending)).map(clip => clip.id);
                     return model.prepare(next, ids);
                 }, {checkpoint: true});
+                const mark = state.step; // Replies about this generation leave the undo steps up to it as they were.
                 for (const id of ids) sending.add(id);
                 prepared = state.record;
                 // Only a press on what is still chosen moves the choice; a part started in the background
@@ -1281,7 +1450,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     ? await store.requestFrames(follow, state.record.settings) : null) ?? capability.maxRequestFrames;
                 const tooLong = request.blocks.filter(block => limit != null && block.frames > limit);
                 if (tooLong.length) {
-                    state.settle(record => tooLong.reduce((next, block) => model.fail(next, block.id, 'too_long', null), record));
+                    state.settle(record => tooLong.reduce((next, block) => model.fail(next, block.id, 'too_long', null), record), {after: mark});
                     return;
                 }
                 const values = new Uint32Array(1);
@@ -1299,14 +1468,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                         const restoreSelection = submittedSelection !== priorSelection && state.selection === submittedSelection;
                         // Reverse only this submission's changes. Keep save receipts,
                         // reserved IDs and unrelated edits made while POST was pending.
-                        state.settle(record => restoreGeneration(record, beforeAttempt, prepared));
+                        state.settle(record => restoreGeneration(record, beforeAttempt, prepared), {after: mark});
                         if (restoreSelection) state.select(priorSelection, {text: priorText});
                     }
                     return;
                 }
                 if (!job?.id) throw new Error('chain_missing');
                 if (epoch !== projectEpoch) return;
-                state.settle(record => model.assignJob(record, ids, job.id, {prepared}));
+                state.settle(record => model.assignJob(record, ids, job.id, {prepared}), {after: mark});
                 queue.enqueue(state.record);
                 failures.remember(job, frozen);
                 mostRecentJob = job.id; jobStatuses.set(job.id, job); genbar.update(job); watchJob(job.id);
@@ -1323,7 +1492,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             } finally { sendingRanges.delete(range); for (const id of ids) sending.delete(id); if (disposed && ids.length) queue.enqueue(state.record); generationBusy = false; finishGeneration?.(); generationDone = null; finishGeneration = null; updateTop(); updateTransport(); startHeld(); }
         },
         // A press on Generate always answers: what can be done for the user is done, then said in one line.
-        async press(text, {allowEmpty = false} = {}) {
+        async press(text, {allowEmpty = false, allowDownload = false} = {}) {
             if (disposed || closing || initializing) return {say: t('Opening the edit…', '正在打开…')};
             text = wellFormed(text);
             if (voice.session() && ['ready', 'done'].includes(voice.session().phase)) { await voice.redub(); return {}; }
@@ -1335,6 +1504,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             // An empty stretch of the recording track, or a line planned there: a new line in the voice chosen.
             if (narration.target()) {
                 if (characters(text) > NARRATION_TEXT_LIMIT) return {say: textLongText(t, NARRATION_TEXT_LIMIT), focus: true};
+                // The dubbing model is several GB: the first line asks before downloading it.
+                const bytes = narration.downloadBytes();
+                if (bytes > 0 && !allowDownload) return {confirmDownload: bytes};
                 return narration.press(text);
             }
             let selection = state.selection, said = null;
@@ -1436,7 +1608,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const job = await store.chainAction(id, 'resume'); if (epoch !== projectEpoch || disposed) return;
             for (const block of job?.blocks || []) if (block.state !== 'done') runProgress.delete(`${id}:${block.id}`);
             const ids = state.record.tracks[0].clips.filter(clip => clip.job === id && clip.pending).map(clip => clip.id);
-            state.settle(record => model.settle(record, ids, 'queued')); if (job) { await deliverChain(job); watchJob(id); }
+            state.settle(record => pinJob(record, ids, id, 'queued')); if (job) { await deliverChain(job); watchJob(id); }
         },
         async retry(id) {
             state.select({kind: 'clip', ids: [id]}); const clip = model.find(state.record, id); if (!clip) return;
@@ -1512,7 +1684,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (value.only === 'sound') { if (value.url) window.open(mediaURL(api, value.url), '_blank', 'noopener'); return; }
         const module = await import('./library.js');
         module.openLibrary(t, {selectedWork: value.work, extend: async (record, options) => {
-            if (await handle.close() === false) throw new Error(saveWarning.textContent);
+            if (await handle.close() === false) throw new Error(saveWarningText.textContent);
             await onView('studio');
             return (await import('./studio.js')).openExtendEditor(record, undefined, options);
         }});
@@ -1591,6 +1763,47 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         music.refreshInfo();
     }
     const adjust = adjustPanel = createAdjustPanel(adjustHost, {state, t, actions});
+    {
+        const adjustRail = button('', () => adjust.toggleButton.click(), 'fv-ed-rail-button');
+        adjustRail.append(railGlyph('M3 1v14M8 1v14M13 1v14M1 5h4M6 11h4M11 5h4'), el('span', 'fv-ed-rail-label', t('Adjust', '调整')));
+        tip(adjustRail, {name: t('Adjust', '调整'), use: t('Volume, speed, picture and text of the selection', '调整选中片段的声音、速度、画面和文字')});
+        rightRail.append(adjustRail);
+        const sync = () => adjustRail.setAttribute('aria-expanded', adjust.toggleButton.getAttribute('aria-expanded') || 'false');
+        new MutationObserver(sync).observe(adjust.toggleButton, {attributes: true, attributeFilter: ['aria-expanded']}); sync();
+    }
+    // What the generate bar shows for a while (the music and voice choices, the dubbing lines and model, a failure, its
+    // questions) goes at the head of the inspector from 681 px up, beside the picture instead of over it (補充六). Between
+    // 681 and 1279 px the inspector is a drawer: it opens for those by itself, without taking the keyboard, and folds again
+    // when they are gone, unless the user opened it. On a phone the tray stays a sheet above the bar.
+    {
+        const tray = genbar.tray, wide = window.matchMedia?.('(min-width: 681px)');
+        let openedForTray = false;
+        const place = () => {
+            if (disposed) return;
+            const inspector = !wide || wide.matches;
+            if (inspector && tray.parentNode !== adjustHost) adjustHost.prepend(tray);
+            else if (!inspector && tray.parentNode !== genHost) genHost.append(tray);
+            element.dataset.trayPlace = inspector ? 'inspector' : 'bar';
+            // Notices take the free middle of the project row (a slot of fixed height) from 681 px up; on a phone, the top of the picture.
+            if (inspector && notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
+            else if (!inspector && notices.parentNode !== element) element.append(notices);
+        };
+        const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-gen-anchor') || node.classList.contains('fv-ed-ref-notice');
+        const follow = () => {
+            if (disposed || element.dataset.trayPlace !== 'inspector' || !adjust.narrow) return;
+            const shown = [...tray.children].some(node => !node.hidden && !passive(node));
+            if (shown && !adjust.overlay) { adjust.open({focus: false}); openedForTray = true; }
+            else if (!shown && openedForTray) { openedForTray = false; if (adjust.overlay) adjust.close(); }
+        };
+        place(); wide?.addEventListener?.('change', place);
+        listeners.push(() => wide?.removeEventListener?.('change', place));
+        if (typeof MutationObserver === 'function') {
+            const watcher = new MutationObserver(() => follow());
+            watcher.observe(tray, {childList: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
+            listeners.push(() => watcher.disconnect());
+        }
+        adjust.toggleButton.addEventListener('click', () => { openedForTray = false; });
+    }
     const pictureEdit = pictureSession(state, t);
     const notes = createBlockNotes({state, t, actions}); actions.blockNote = notes.decorate; actions.describedTrack = describedTrack;
     adjust.register('video', createAdjustPicture({state, sources: store.sources, t, player, notes}));
@@ -1601,11 +1814,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         control.classList.add('fv-ed-icon');
         control.setAttribute('aria-label', label); return control;
     };
-    // Undo cannot take back a part while it generates; a press that changes nothing says so.
+    // Generate is one step in the history; while a part is being made it is neither undone nor redone, and a press that changes nothing says so.
     function travel(back) {
-        const before = content(state.record); back ? state.undo() : state.redo();
-        if (content(state.record) === before && jobActive()) notify(back ? t('This part is generating. Undo once it finishes.', '这一段正在生成，完成后再撤销。')
+        const step = state.step, could = back ? state.canUndo : state.canRedo; back ? state.undo() : state.redo();
+        if (state.step !== step) return;
+        if (could) notify(back ? t('This part is generating. Undo once it finishes.', '这一段正在生成，完成后再撤销。')
             : t('This part is generating. Redo once it finishes.', '这一段正在生成，完成后再重做。'));
+        else if (back) notify(t('Nothing to undo.', '没有可以撤销的改动。'));
+        else notify(t('Nothing to redo.', '没有可以重做的改动。'));
     }
     const toolUndo = toolButton(t('Undo', '撤销'), 'M5 4 2 7l3 3M2 7h7a4 4 0 0 1 0 8', () => travel(true), 'fv-ed-undo fv-ed-icon', true);
     const toolRedo = toolButton(t('Redo', '重做'), 'm11 4 3 3-3 3M14 7H7a4 4 0 0 0 0 8', () => travel(false), 'fv-ed-redo fv-ed-icon', true);
@@ -1616,9 +1832,17 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const closeGap = toolButton(t('Remove gaps', '移除空隙'), 'M1 3v10M15 3v10M3 8h4m-2-2 2 2-2 2M13 8H9m2-2-2 2 2 2',
         () => selectionActions.run('gaps'), 'fv-ed-close-gap');
     const previous = toolButton(t('Previous version', '上一版'), 'M3 6V2M3 6h4M3 6a5 5 0 1 1-1 5M8 5v3l2 2', () => {
+        // Each press steps one take further back (and from the first take round to the newest), instead of
+        // swapping between the last two (E28).
         const clip = selectedContent().find(clip => clip.versions.length);
-        if (clip) try { state.apply(t('Previous version', '上一版'), record => model.restoreVersion(record, clip.id, 0)); } catch (value) { error(value, null, undefined, 'restore'); }
+        const target = clip && previousTake(clip);
+        if (target) try { state.apply(t('Previous version', '上一版'), record => model.restoreVersion(record, clip.id, target.index)); } catch (value) { error(value, null, undefined, 'restore'); }
     }, 'fv-ed-previous');
+    function previousTake(clip) {
+        const list = model.takes(clip), at = list.findIndex(item => item.index === -1);
+        if (at < 0) return list.find(item => item.usable) || null;
+        return [...list.slice(0, at)].reverse().find(item => item.usable) || [...list.slice(at + 1)].reverse().find(item => item.usable) || null;
+    }
     // A whole preview part continues to its full-resolution video in place; any other part shows nothing here.
     const secondPassButton = toolButton(t('Run second pass', '继续二采'), 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9',
         () => { void runSecondPass(); }, 'fv-ed-second-pass');
@@ -1630,8 +1854,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         secondPassButton.hidden = !found;
         if (!found) { secondPassFailed = null; return; }
         if (secondPassFailed !== found.clip.id) secondPassFailed = null;
-        const words = secondPassFailed ? t('Second pass did not start · retry', '二采没有开始 · 重试') : t('Run second pass', '继续二采');
-        secondPassLabel.textContent = words; secondPassButton.setAttribute('aria-label', words); secondPassButton.title = words;
+        const words = secondPassFailed ? t('Second pass did not start. Try again', '二采没有开始，请重试') : t('Run second pass', '继续二采');
+        secondPassLabel.textContent = words; secondPassButton.setAttribute('aria-label', words);
+        // Its own hover words (the shared table still names it with an internal word).
+        tip(secondPassButton, {name: words, use: t('Turn this preview part into the full-resolution video, in place', '把这段预览原地做成全分辨率成片'),
+            why: generationBusy ? t('Wait for the current generation to finish', '等当前生成完成') : ''});
         secondPassButton.disabled = generationBusy;
     }
     async function runSecondPass(selection = state.selection) {
@@ -1644,6 +1871,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     actions.runSecondPass = runSecondPass;
     const recordTool = toolButton(t('Record', '录音'), RECORD_ICON, () => {}, 'fv-ed-record-toggle'); recordTool.setAttribute('aria-pressed', 'false'); recordTool.dataset.tourId = 'record-entry';
+    tip(recordTool, {name: t('Record', '录音'), use: t('Record from the microphone at the playhead', '用麦克风从播放头处录一段')});
     historyTools.append(toolUndo, toolRedo); editTools.append(split, remove, closeGap, previous, recordTool);
     const pictureTools = createPictureTools({state, sources: store.sources, t, capabilities: () => capability, error});
     toolbar.append(historyTools, editTools, zoomHost); element.insertBefore(toolbar, tracksHost);
@@ -1653,6 +1881,40 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
     const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass'});
     actions.speech.ability().then(value => { if (!disposed) textTools.speech(value); }).catch(() => {});
+    // The command palette (Ctrl/Cmd+K) offers this view's actions while it is open; a greyed one says why (the control's own reason).
+    {
+        const why = control => () => control.disabled || control.hidden ? (control.getAttribute('data-fv-tip-why') || t('Not available right now', '现在不能用')) : '';
+        const press = selector => () => element.querySelector(selector)?.click();
+        const offCommands = window.FreeVideoCommands?.registerCommands?.('editor', [
+            {id: 'editor.generate', title: ['Generate the chosen part', '生成选中的这一段'], key: 'Mod+Enter', icon: 'spark',
+                why: () => { const go = genHost.querySelector('.fv-ed-generate'); return !go || go.disabled || go.hidden ? (go?.getAttribute('data-fv-tip-why') || t('Drag a range on the timeline first', '先在时间线上拖出一段')) : ''; },
+                run: press('.fv-ed-generate')},
+            {id: 'editor.export', title: ['Export the edit', '导出剪辑'], use: ['Save the whole edit as one video', '把整条剪辑存成一个视频'], run: () => exportButton.click()},
+            {id: 'editor.undo', title: ['Undo', '撤销'], key: 'Mod+Z', group: ['Editing', '编辑'], why: why(toolUndo), run: () => travel(true)},
+            {id: 'editor.redo', title: ['Redo', '重做'], key: 'Mod+Shift+Z', group: ['Editing', '编辑'], why: why(toolRedo), run: () => travel(false)},
+            {id: 'editor.split', title: ['Split at the playhead', '在播放头处剪开'], key: 'B', group: ['Editing', '编辑'], why: why(split), run: () => split.click()},
+            {id: 'editor.delete', title: ['Delete the selection', '删除选中的内容'], key: 'Delete', group: ['Editing', '编辑'], why: why(remove), run: () => remove.click()},
+            {id: 'editor.gaps', title: ['Remove gaps', '移除空隙'], group: ['Editing', '编辑'], why: why(closeGap), run: () => closeGap.click()},
+            {id: 'editor.previous', title: ['Previous version of this part', '这一段换回上一版'], group: ['Editing', '编辑'], why: why(previous), run: () => previous.click()},
+            {id: 'editor.record', title: ['Record from the microphone', '用麦克风录音'], group: ['Sound', '声音'], run: () => recordTool.click()},
+            {id: 'editor.adjust', title: ['Adjust the selection', '调整选中的片段'], use: ['Volume, speed, picture and text', '声音、速度、画面和文字'], run: () => adjust.narrow ? adjust.open() : adjustHost.querySelector('[role=tab][aria-selected=true]')?.focus()},
+            {id: 'editor.import', title: ['Import files', '导入文件'], keywords: ['media', 'library', '素材'], run: press('.fv-ed-library-import')},
+            {id: 'editor.history', title: ['Earlier descriptions', '用过的描述'], keywords: ['prompt', 'history', '提示词', '历史'], why: () => genHost.querySelector('.fv-ed-history-button')?.disabled ? t('Choose a part first', '先选中一段') : '', run: press('.fv-ed-history-button')},
+            {id: 'editor.frame', title: ['Save the current frame as a picture', '把当前帧存成图片'], run: () => void saveFrame()},
+            {id: 'editor.new', title: ['New edit', '新建剪辑'], group: ['Edit', '剪辑'], run: () => void switchProject(null)},
+            {id: 'editor.rename', title: ['Rename or open another edit', '改名或打开其他剪辑'], group: ['Edit', '剪辑'], run: () => void showMenu()},
+        ]);
+        if (typeof offCommands === 'function') listeners.push(offCommands);
+    }
+    // The shortcut sheet and the command palette list the keys this view added.
+    import('./shortcuts.js').then(module => {
+        if (disposed) return;
+        listeners.push(module.registerShortcuts('editor', [
+            {keys: 'Mod+Enter', title: ['Generate (in the description)', '生成（在描述框里）'], group: ['Generate', '生成']},
+            {keys: 'Mod+Y', title: ['Redo', '重做'], group: ['Editing', '编辑']},
+            {keys: 'Shift+← / Shift+→', title: ['Back / forward ten frames', '后退 / 前进 10 帧'], group: ['Playback', '播放']},
+        ]));
+    }).catch(() => {});
     const audio = createAudioIntegration({state, player, t, error, adjust, library: libraryHost, store});
     stems = createStemsIntegration({state, api, queue, store, t, error, notify, toolbar, show: job => genbar?.update(job),
         restore: () => genbar?.update(mostRecentJob ? barJob(jobStatuses.get(mostRecentJob)) : null)});
@@ -1673,10 +1935,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const clip = model.find(state.record, id); return state.playhead > clip.start && state.playhead < clip.start + clip.frames;
         });
     }
-    const modifier = /Mac|iPhone|iPad/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? '⌘' : 'Ctrl';
     function updateSplit() {
-        const ids = splitIds(); split.disabled = !ids.length || ids.some(id => model.pair(state.record, id).some(isBusy));
-        split.title = t('Split', '剪开') + ` ${modifier}+B`;
+        const ids = splitIds(), busy = ids.some(id => model.pair(state.record, id).some(isBusy)); split.disabled = !ids.length || busy;
+        tip(split, {name: t('Split', '剪开'), use: t('Cut the clip in two at the playhead', '在播放头处把片段分成两段'), key: `B / ${modKey}B`,
+            why: !split.disabled ? '' : busy ? t('This part is generating', '这一段正在生成') : t('Put the playhead inside a clip first', '先把播放头放到片段中间')});
     }
     function updateZoom() {
         const zoomBar = zoomHost.querySelector('.fv-ed-track-zoom'), slider = zoomBar?.querySelector('input');
@@ -1684,29 +1946,39 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const controls = zoomBar.querySelectorAll('button');
             controls[0].disabled = state.zoom <= Number(slider.min); controls[1].disabled = state.zoom >= Number(slider.max);
             controls[2].disabled = !model.duration(state.record) && state.selection?.kind !== 'range';
-            controls[0].title = '';
-            controls[1].title = '';
-            controls[2].title = t('Fit all', '看全部');
+            tip(controls[0], {name: t('Zoom out', '缩小'), use: t('Show more of the timeline', '时间线显示得更长'), why: controls[0].disabled ? t('Already at the widest view', '已经缩到最小') : ''});
+            tip(controls[1], {name: t('Zoom in', '放大'), use: t('Show the timeline in more detail', '时间线看得更细'), why: controls[1].disabled ? t('Already at the closest view', '已经放到最大') : ''});
+            tip(controls[2], {name: t('Fit all', '看全部'), use: t('Fit the whole edit in view', '整条剪辑放进当前宽度'), why: controls[2].disabled ? t('The timeline is empty', '时间线是空的') : ''});
+            tip(slider, {name: t('Track zoom', '轨道缩放'), use: t('Drag to show more or less time', '拖动调整时间线的疏密')});
         }
     }
     function updateTransport() {
         const clips = selectedContent(), busy = clips.some(isBusy);
         toolUndo.disabled = !state.canUndo; toolRedo.disabled = !state.canRedo;
-        toolUndo.title = t('Undo', '撤销') + ` ${modifier}+Z`;
-        toolRedo.title = t('Redo', '重做') + ` ${modifier}+Shift+Z`;
+        const named = (verb, label) => label ? verb + t(': ', '：') + label : verb;
+        tip(toolUndo, {name: named(t('Undo', '撤销'), state.undoLabel), use: t('Take back the last edit', '退回上一步改动'), key: `${modKey}Z`,
+            why: toolUndo.disabled ? t('Nothing to undo yet', '还没有可以撤销的改动') : ''});
+        tip(toolRedo, {name: named(t('Redo', '重做'), state.redoLabel), use: t('Bring back the edit just undone', '恢复刚撤销的改动'), key: `${modKey}⇧Z / ${modKey}Y`,
+            why: toolRedo.disabled ? t('Nothing to redo', '没有可以重做的改动') : ''});
         updateSplit();
-        remove.disabled = !deletionStatus(state.record, state.selection).ok;
-        remove.title = t('Delete Delete', '删除 Delete');
+        const deletion = deletionStatus(state.record, state.selection);
+        remove.disabled = !deletion.ok;
+        tip(remove, {name: t('Delete', '删除'), use: t('Remove the selection and leave its gap', '删掉选中的内容，留下空隙'), key: 'Delete',
+            why: remove.disabled ? (deletion.reason === 'busy' ? t('This part is generating', '这一段正在生成') : deletion.reason === 'locked' ? t('This track is locked; unlock it first', '这条轨道已锁定，先解锁') : t('Select a clip first', '先选中一个片段')) : ''});
         const gaps = removableGaps(state.record, state.selection); closeGap.disabled = !gaps.length || !removeGaps(state.record, state.selection).removed;
-        closeGap.title = t('Remove gaps Delete', '移除空隙 Delete');
+        tip(closeGap, {name: t('Remove gaps', '移除空隙'), use: t('Pull the clips together over empty space', '把片段之间的空白收拢'), key: t('Delete on a selected gap', '选中空隙后按 Delete'),
+            why: closeGap.disabled ? t('There is no gap that can close', '没有可以收拢的空隙') : ''});
         const multiple = isMultiple(state.record, clips.map(clip => clip.id));
         previous.disabled = busy || multiple || !clips.some(clip => clip.versions.length);
-        previous.title = t('Previous version', '上一版');
+        const versioned = clips.find(clip => clip.versions.length), list = versioned ? model.takes(versioned) : [];
+        const position = list.findIndex(item => item.index === -1) + 1;
+        tip(previous, {name: t('Previous version', '上一版'), use: list.length > 1 ? t(`Step back to an earlier take (now take ${position} of ${list.length})`, `换到更早生成的一版（现在是第 ${position}/${list.length} 版）`) : t('Swap this part back to its earlier take', '把这一段换回之前生成的版本'),
+            why: !previous.disabled ? '' : busy ? t('This part is generating', '这一段正在生成') : multiple ? t('Select only one part', '只选一段') : t('This part has no earlier take', '这一段没有更早的版本')});
         updateSecondPass();
         updateZoom();
     }
     updateTransport();
-    const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); updateSecondPass(); });
+    const stopSources = store.subscribeSources(() => { player.refresh(); tracks?.refresh?.(); pictureTools.update(); updateTop(); updateSecondPass(); poster.update(); });
     let capabilitySize = `${state.record.width}x${state.record.height}`;
     // The reason, said as soon as the selected continuation follows a video that already has the most parts, once per selection.
     let hintedFor = '';
@@ -1722,7 +1994,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         } catch { return; }
         hintedFor = signature; genbar?.say(partsLimitText('chain_source_full', t));
     }
+    // Deleting asks nothing, so it is undone in one press from the notice it leaves (E17).
+    const deleteLabels = new Set([t('Delete', '删除'), t('Ripple delete', '波纹删除'), t('Cut', '剪切')]);
     const unsubscribe = state.subscribe(event => {
+        poster.update();
+        // An undo replays the label too; only a fresh delete (nothing left to redo) leaves the notice.
+        if (event.type === 'record' && deleteLabels.has(event.label) && !state.canRedo && !initializing) {
+            const step = state.step;
+            notify(event.label === t('Cut', '剪切') ? t('Cut to the clipboard.', '已剪切到剪贴板。') : t('Deleted.', '已删除。'), null, null,
+                {label: t('Undo', '撤销'), key: `${modKey}Z`, use: t('Bring the clip back', '把删掉的内容恢复'), run: () => { if (state.step === step) travel(true); else notify(t('Other edits came after it; use Undo in the tool row.', '之后又有改动，请用工具行的撤销。')); }});
+        }
         if (event.type === 'selection') hintFullSource();
         if (event.type === 'record') {
             const size = `${state.record.width}x${state.record.height}`;
@@ -1778,8 +2059,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!mod && !event.altKey && (key === 'arrowup' || key === 'arrowdown' || (key === 'z' && event.shiftKey))) { tracks?.keyboard(event); return; }
         if (handleSpeedKey(event)) return;
         if (key === ' ') { event.preventDefault(); player.toggle(); }
-        else if (key === 'arrowleft' || key === 'arrowright') { event.preventDefault(); state.seek(Math.max(0, state.playhead + (key === 'arrowright' ? 1 : -1))); }
+        // ⇧←/→ moves ten frames, as Shift on the frame buttons and on the timeline does; ←/→ alone one frame.
+        else if (key === 'arrowleft' || key === 'arrowright') { event.preventDefault(); const stride = event.shiftKey ? 10 : 1; state.seek(Math.max(0, state.playhead + (key === 'arrowright' ? stride : -stride))); }
         else if (mod && key === 'z') { event.preventDefault(); travel(!event.shiftKey); }
+        else if (mod && key === 'y' && !event.shiftKey) { event.preventDefault(); travel(false); }
     }
     listen('keydown', keyboard); listen('keyup', event => event.stopPropagation());
     listen('cancel', event => {
@@ -1789,7 +2072,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
         if (guide?.handleKey(event)) return;
-        if (event.type === 'keyup') { transportControls.keyboard(event); return; }
+        if (event.type === 'keyup') {
+            // The Space that played from a media card does not also press the card.
+            if (event.key === ' ' && inside && event.target.closest?.('.fv-ed-library') && !isTyping(event.target) && !event.target.closest?.('button:not(.fv-ed-source), [role=tab]')) event.preventDefault();
+            transportControls.keyboard(event); return;
+        }
         if (event.type !== 'keydown') return;
         if (event.isComposing || event.keyCode === 229) return;
         if (event.key.toLowerCase() === 'escape') {
@@ -1812,7 +2099,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (target.onkeydown?.(event) === false) event.preventDefault();
                 if (event.defaultPrevented) return;
             }
-            if (inLibrary) return;
+            if (inLibrary) {
+                // A media card keeps the focus after a click or a drag: Space still plays and pauses, and undo and redo still work.
+                const key = event.key.toLowerCase(), mod = event.ctrlKey || event.metaKey;
+                if (isTyping(event.target) || initializing || event.altKey) return;
+                // Space on a media card plays (the card keeps the focus after a click or a drag); other buttons keep their own Space.
+                if (key === ' ' && !mod && !event.shiftKey) { if (event.target.closest?.('button:not(.fv-ed-source), [role=tab]')) return; event.preventDefault(); player.toggle(); }
+                else if (mod && key === 'z') { event.preventDefault(); travel(!event.shiftKey); }
+                else if (mod && key === 'y' && !event.shiftKey) { event.preventDefault(); travel(false); }
+                return;
+            }
             if (!event.target.closest('.fv-ed-adjust,.fv-ed-library') && transportControls.keyboard(event, {ready: !initializing})) return;
             if (event.target.closest('.fv-ed-tracks')) { if (!textTools.keyboard(event)) tracks?.keyboard(event); return; }
         }
@@ -1831,7 +2127,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     listen('pointerdown', event => {
         if (!menu.hidden && !menu.contains(event.target) && event.target !== title) menu.hidden = true;
     });
-    const leaving = () => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); };
+    // A page kept for going back (bfcache) keeps its history, so its takes stay.
+    const leaving = event => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); if (!event?.persisted) releaseTakes({keepalive: true}); };
     window.addEventListener('pagehide', leaving);
     // A workflow without FreeVideo nodes came to the front: the editing view makes way (unsaved edits stay open).
     const collapse = () => { void handle.close(); };
@@ -1839,22 +2136,33 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const handle = {element, state, actions, store, adjust, audio, music, notify,
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
+            leaveTo = view;
             if (await handle.close() !== false) await onView(view);
         },
         async close() {
+            if (handle.kept) return true;
             if (closePromise) return closePromise;
             textTools.flush();
             guide?.suspend();
             closing = true; element.inert = true; player.pause();
             closePromise = (async () => {
-                await handle.ready;
-                if (generationDone) await generationDone;
-                releaseStamp(); await queue.flush();
+                // An edit still being read is kept as it is and goes on loading out of sight.
+                if (!loaded) { hide(); return true; }
+                // A server that does not answer never leaves the view frozen: each wait has a limit, and after it the
+                // unsaved-changes card (or leaving, when the changes are kept on this computer) takes over.
+                await within(handle.ready, 8000);
+                // A Generate still being sent finishes first; say so, so the wait never looks like a frozen view.
+                if (generationDone) { notify(t('Sending the generation first, then switching…', '正在发送生成请求，发送后切换…')); element.dataset.waiting = 'true'; await within(generationDone, 15000); delete element.dataset.waiting; }
+                const slow = setTimeout(() => notify(t('Saving the changes, then switching…', '正在保存改动，保存后切换…')), 600);
+                releaseStamp(); await within(queue.flush(), 6000); clearTimeout(slow);
                 if (queue.dirty && !queue.locallyRetained && !discardOnSwitch) {
-                    discardOnSwitch = true; closing = false; element.inert = false; closePromise = null;
-                    saveWarning.textContent = t('Not saved yet. Switching again will lose recent changes.', '还没保存好，再切换会丢掉最近的改动');
-                    saveWarning.hidden = false; return false;
+                    closing = false; element.inert = false; closePromise = null;
+                    saveWarningText.textContent = t('Changes are not saved yet. Staying here keeps retrying.', '改动尚未保存，留在此页将继续重试。');
+                    saveWarning.hidden = false; updateSaveState(); saveAgain.focus({preventScroll: true}); return false;
                 }
+                // The view is kept (hidden, not rebuilt): coming back shows it as it was. Only leaving without saving and
+                // a saved edit left empty end it (the empty one is removed, as before).
+                if (!discardOnSwitch && !(state.record.id && !queue.dirty && emptyEdit())) { rememberView(); hide(); return true; }
                 if (!queue.dirty && emptyEdit()) {
                     try { await discardProject({automatic: true}); }
                     catch (value) {
@@ -1863,29 +2171,121 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     }
                 }
                 await store.activateProject(null).catch(() => {});
-                rememberView(); disposed = true; music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
-                textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
-                audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
-                listeners.splice(0).forEach(remove => remove());
-                for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
-                unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();
-                progressConnection?.stop(); progressObserver?.disconnect(); runProgress.clear(); failures.clear();
-                stopKeys();
-                resumeCanvasPointer();
-                window.removeEventListener('pagehide', leaving); window.removeEventListener('freevideo-collapse', collapse); clearTimeout(noticeTimer);
-                for (const stop of jobWatchers.values()) stop(); jobWatchers.clear();
-                queue.dispose({discard: discardOnSwitch}); store.dispose(); if (element.open) element.close(); element.replaceChildren(); element.remove(); if (opened === handle) opened = null;
+                teardown();
                 if (returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
             })();
             return closePromise;
         },
+        // Hidden and kept: the dialog closes (its sheet keeps a closed editor out of sight) and turns inert; saving,
+        // progress and the job watchers go on, so coming back needs nothing redrawn.
+        kept: false, panel,
+        reopen() {
+            handle.kept = false;
+            resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
+            // What the last switch left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
+            element.getAnimations?.().forEach(animation => animation.cancel());
+            delete element.dataset.closing; delete element.dataset.fvLeaving;
+            // Keys go to the last open dialog in page order: move it after one opened since (moving resets scrolling, so only then).
+            const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
+            if (!element.isConnected || later) document.body.append(element);
+            element.inert = false;
+            if (!element.open) element.showModal();
+            viewChanged('editor'); stageLight.refresh?.();
+            // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
+            const given = document.activeElement;
+            requestAnimationFrame(() => setTimeout(() => {
+                if (element.open && !handle.kept && document.activeElement === given) navigation.querySelector('[data-view=editor]').focus({preventScroll: true});
+            }));
+            return handle;
+        },
+        dispose() { teardown(); },
     };
+    function hide() {
+        closing = false; closePromise = null; handle.kept = true;
+        player.pause(); lineStop?.();
+        if (element.open) element.close();
+        element.inert = true;
+        resumeCanvasPointer(); resumeCanvasPointer = () => {};
+    }
+    // Any other view in front (the node view has no dialog of its own) keeps a closed editor out of reach.
+    const otherView = event => { if (event.detail?.view !== 'editor' && !element.open) element.inert = true; };
+    window.addEventListener('freevideo-view', otherView); listeners.push(() => window.removeEventListener('freevideo-view', otherView));
+    function teardown() {
+        if (disposed) return;
+        releaseTakes(); rememberView(); disposed = true; handle.kept = false; stageLight.dispose(); poster.dispose(); music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+        textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
+        audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
+        listeners.splice(0).forEach(remove => remove());
+        for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
+        unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();
+        progressConnection?.stop(); progressObserver?.disconnect(); runProgress.clear(); failures.clear();
+        stopKeys();
+        resumeCanvasPointer();
+        window.removeEventListener('pagehide', leaving); window.removeEventListener('freevideo-collapse', collapse); for (const timer of noticeTimers) clearTimeout(timer);
+        for (const stop of jobWatchers.values()) stop(); jobWatchers.clear();
+        queue.dispose({discard: discardOnSwitch}); store.dispose(); if (element.open) element.close(); element.replaceChildren(); element.remove(); if (opened === handle) opened = null;
+    }
     library = createEditorLibrary(libraryHost, {store, t, actions, state});
     opened = handle; document.body.append(element); element.showModal(); viewChanged('editor'); navigation.querySelector('[data-view=editor]').focus();
+    // Every row has its final size from the first frame (fixed rows, placeholders); the shell holds the previous view's
+    // picture until the edit itself is drawn (ready, after the timeline has laid out its rows, 120 ms at most for that).
+    element.dataset.fvReady = 'false';
+    let readyMarked = false;
+    const markReady = async () => {
+        if (readyMarked) return; readyMarked = true;
+        await Promise.all([tracks?.ready ? within(tracks.ready, 120) : null, within(poster.ready, 600)]);
+        if (!disposed) element.dataset.fvReady = 'true';
+    };
     handle.ready = (async () => {
         const progressComponents = given && Object.hasOwn(given, 'generationStandIn') && Object.keys(given).length === 1 ? null : given;
-        const componentsReady = Promise.allSettled([import('./editor_tracks.js'), progressComponents || loadEditorComponents()]);
+        // The optional block-progress module is not part of this build; asking for it only produced a 404 on every open.
+        const componentsReady = progressComponents || Promise.resolve({blocks: null});
         await editorStyles; if (closing || disposed) return;
+        // The timeline draws before the edit is read (its module loads with this one), so the view has every part from
+        // the first frames; the edit then arrives as a project switch does. The optional progress component, when a
+        // build has one, is used by clips drawn after it arrives.
+        const trackResult = (await Promise.allSettled([tracksModule]))[0]; if (closing || disposed) return;
+        // A timeline module that cannot load still lets the edit open (and says so once it has).
+        const tracksFailure = trackResult.status === 'rejected' ? trackResult.reason : null;
+        const module = trackResult.value;
+        let components = {};
+        Promise.resolve(componentsReady).then(value => { if (!disposed) { components = value || {}; blockStates = components.blocks?.blockStates || null; } },
+            reason => error(reason, null, undefined, 'components'));
+        const blockProgress = (id, clipElement) => {
+            if (!components.blocks?.createBlockProgress) return basicBlockProgress(id, clipElement, t);
+            const component = components.blocks.createBlockProgress({t, showPercent: clipElement.dataset.track === 'v1'});
+            let run = null;
+            return {element: component.element, update(value) {
+                if (value.run && value.run !== run) { component.update({state: 'waiting', fraction: 0}); run = value.run; }
+                component.element.dataset.run = run;
+                component.update(value);
+            }, dispose: () => component.destroy()};
+        };
+        if (module) {
+        skeleton.remove();
+        tracks = module.createTracks(tracksHost, {state, sources: store.sources, t, actions, blockProgress});
+        listeners.push(notes.attach(tracks.element));
+        transportControls.attachTracks(tracks, module.snapFrame);
+        if (api.addEventListener && api.removeEventListener) {
+            progressConnection = createProgressConnection(api, receiveProgress); progressConnection.start();
+            const executionError = event => {
+                if (!failures.capture(event.detail)) return;
+                tracks?.refresh?.(); genbar?.update(mostRecentJob ? barJob(jobStatuses.get(mostRecentJob)) : null);
+            };
+            api.addEventListener('execution_error', executionError);
+            listeners.push(() => api.removeEventListener('execution_error', executionError));
+        }
+        if (panel.progressElement && typeof MutationObserver !== 'undefined') {
+            progressObserver = new MutationObserver(() => {
+                for (const job of jobStatuses.values()) paintJob(job);
+                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
+            });
+            progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
+        }
+        const bar = tracks.element.querySelector('.fv-ed-track-zoom');
+        if (bar) { zoomHost.append(bar); updateZoom(); }
+        for (const [id, value] of progress) tracks.setProgress(id, value);
+        }
         let record = null, key = null, lastMissing = false;
         try {
             await store.recoverOutbox(); if (closing || disposed) return;
@@ -1909,24 +2309,31 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             } else {
                 let id; try { id = optionalText(localStorage.getItem('fv-editor-last')); } catch {}
                 let draft; try { draft = globalThis.sessionStorage?.getItem('fv-editor-draft'); } catch { draft = lastDraft; }
-                if (draft?.startsWith('draft:')) key = draft;
-                else if (id) {
+                // A browser that never opened an edit (a fresh profile) opens the latest saved edit with something in it.
+                const rows = !id && !draft?.startsWith('draft:') ? await store.projects().catch(() => []) : null; if (closing || disposed) return;
+                const choice = openingChoice({last: id, draft, rows});
+                if (choice.kind === 'draft') key = draft;
+                else if (choice.kind === 'last') {
                     record = await store.load(id);
                     // The last edit is gone (deleted or moved); say so once instead of opening a blank edit silently.
                     if (record) key = id;
                     else { lastMissing = true; try { localStorage.removeItem('fv-editor-last'); } catch {} }
+                } else if (choice.kind === 'latest') {
+                    record = await store.load(choice.id);
+                    if (record) key = choice.id;
                 }
             }
         } catch (value) { error(value, null, undefined, 'open-load'); }
         if (closing || disposed) return;
         try {
-            await replaceProject(record || state.record, key);
+            // A cached copy never stands in for an edit the server could not give back.
+            await replaceProject(record || (fromCache ? initial() : state.record), key);
             if (from?.work && !state.record.id) queue.enqueue(state.record);
         } catch (value) { error(value, null, undefined, 'open-session'); }
         if (closing || disposed) return;
-        initializing = false; savedContent = content(state.record); player.refresh();
+        initializing = false; savedContent = content(state.record); player.refresh(); delete element.dataset.opening;
         loaded = true; settleGenbar();
-        updateTop(); updateTransport();
+        updateTop(); updateTransport(); void markReady();
         if (lastMissing && !state.record.id) {
             // Point at the name menu only when it lists another edit to open.
             store.projects().catch(() => ({})).then(rows => {
@@ -1936,48 +2343,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪⁠辑⁠名可打开其他剪辑。') : ''));
             });
         }
-        const [trackResult, componentResult] = await componentsReady; if (closing || disposed) return;
-        // Optional progress components may fail without taking the tracks with them.
-        if (componentResult.status === 'rejected') error(componentResult.reason, null, undefined, 'components');
-        if (trackResult.status === 'rejected') throw trackResult.reason;
-        const module = trackResult.value, components = componentResult.status === 'fulfilled' ? componentResult.value : {};
-        blockStates = components.blocks?.blockStates || null;
-        let blockProgress = (id, clipElement) => basicBlockProgress(id, clipElement, t);
-        if (components.blocks?.createBlockProgress) blockProgress = (id, clipElement) => {
-            const component = components.blocks.createBlockProgress({t, showPercent: clipElement.dataset.track === 'v1'});
-            let run = null;
-            return {element: component.element, update(value) {
-                if (value.run && value.run !== run) { component.update({state: 'waiting', fraction: 0}); run = value.run; }
-                component.element.dataset.run = run;
-                component.update(value);
-            }, dispose: () => component.destroy()};
-        };
-        tracks = module.createTracks(tracksHost, {state, sources: store.sources, t, actions, blockProgress});
-        listeners.push(notes.attach(tracks.element));
-        transportControls.attachTracks(tracks, module.snapFrame);
-        if (api.addEventListener && api.removeEventListener) {
-            progressConnection = createProgressConnection(api, receiveProgress); progressConnection.start();
-            const executionError = event => {
-                if (!failures.capture(event.detail)) return;
-                tracks?.refresh?.(); genbar?.update(mostRecentJob ? barJob(jobStatuses.get(mostRecentJob)) : null);
-            };
-            api.addEventListener('execution_error', executionError);
-            listeners.push(() => api.removeEventListener('execution_error', executionError));
-        }
-        if (panel.progressElement && typeof MutationObserver !== 'undefined') {
-            progressObserver = new MutationObserver(() => {
-                for (const job of jobStatuses.values()) paintJob(job);
-                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
-            });
-            progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
-        }
-        const bar = tracks.element.querySelector('.fv-ed-track-zoom');
-        if (bar) {
-            zoomHost.append(bar);
-            for (const control of bar.querySelectorAll('button')) control.title = control.getAttribute('aria-label') || control.textContent;
-        }
-        for (const [id, value] of progress) tracks.setProgress(id, value);
-        tracks.setScrollLeft(editorViews.get(viewKey)?.scrollLeft);
+        if (tracksFailure) throw tracksFailure;
         if (from?.work && from.extend) {
             const id = from.work.id || from.work.video?.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
             const epoch = projectEpoch;
@@ -2010,13 +2376,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // Every exit (including close and partial failure) settles readiness.
         // After a completed start the saved baseline is already set; edits made since must stay unsaved.
         if (initializing) { initializing = false; savedContent = content(state.record); }
+        delete element.dataset.opening;
         title.disabled = false; toolbar.inert = false; loaded = true; settleGenbar();
         tracksHost.inert = !tracks;
         for (const host of [tracksHost, toolbar]) host.classList.remove('fv-ed-pending');
-        if (!closing && !disposed) { player.refresh(); updateTop(); updateTransport(); }
+        if (!closing && !disposed) { player.refresh(); updateTop(); updateTransport(); element.dataset.fvLoaded = 'true'; }
+        void markReady();
     });
     if (typeof MutationObserver !== 'undefined') guide = createFirstRunGuide({dialog: element, api,
-        cn: String(language()).toLowerCase().startsWith('zh'), group: 'editor',
+        cn: CN, group: 'editor',
         onShowcaseTry: async () => { if (await handle.close() !== false) await onView('autopilot', {initialScene: SHOWCASE_SCENE}); },
         isBusy: () => initializing || !tracks || genHost.inert || pointerEditing || jobActive() || ['running', 'queued'].includes(exportStatus?.state),
         targets: {'editor-trim': () => tracks?.guideTarget('trim'), 'editor-empty': () => tracks?.guideTarget('empty')}});

@@ -1,40 +1,40 @@
 /* Connect an agent: one card, one action. The card carries its own layout wherever it is placed. */
-.fv-agent-connect-body{box-sizing:border-box;width:min(440px,100%);display:grid;justify-items:start;gap:16px;padding:28px;border:1px solid var(--fv-accent-dim);border-radius:14px;background:var(--fv-card);box-shadow:0 0 0 1px color-mix(in srgb,var(--fv-accent-dim) 35%,transparent),0 18px 40px -20px color-mix(in srgb,var(--fv-accent) 40%,transparent)}
+.fv-agent-connect-body{box-sizing:border-box;width:min(440px,100%);display:grid;justify-items:start;gap:16px;padding:28px;border:1px solid var(--fv-accent-dim);border-radius:var(--fv-r-lg);background:var(--fv-card);box-shadow:0 0 0 1px color-mix(in srgb,var(--fv-accent-dim) 35%,transparent),0 18px 40px -20px color-mix(in srgb,var(--fv-accent) 40%,transparent)}
 .fv-agent-connect-body[hidden],.fv-agent-connect-body [hidden]{display:none}
 .fv-agent-connect-body>*{margin:0;min-width:0}
-.fv-agent-connect-icon{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;background:var(--fv-selected);color:var(--fv-accent-hover)}
+.fv-agent-connect-icon{width:44px;height:44px;border-radius:var(--fv-r-md);display:grid;place-items:center;background:var(--fv-selected);color:var(--fv-accent-hover)}
 .fv-agent-connect-body svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
-.fv-agent-connect-body>h2{font-size:19px;line-height:1.3;font-weight:700;color:var(--fv-ink)}
-.fv-agent-connect-body>.fv-agent-connect-intro{margin-top:-10px;font-size:13px;line-height:1.5;color:#a5b3c6}
-.fv-agent-connect-body>.fv-muted{margin-top:-10px;font-size:13.5px;color:var(--fv-muted)}
-.fv-agent-connect-actions{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
-.fv-studio .fv-agent-connect-actions button{padding:9px 20px;font-size:14px}.fv-agent-connect-actions button svg{width:16px;height:16px}
+.fv-agent-connect-body>h2{font-size:20px;line-height:1.3;font-weight:700;color:var(--fv-ink)}
+.fv-agent-connect-body>.fv-agent-connect-intro{margin-top:-8px;font-size:13px;line-height:1.5;color:#a5b3c6}
+.fv-agent-connect-body>.fv-muted{margin-top:-8px;font-size:13px;color:var(--fv-muted)}
+.fv-agent-connect-actions{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.fv-studio .fv-agent-connect-actions button{padding:8px 20px;font-size:13px}.fv-agent-connect-actions button svg{width:16px;height:16px}
 .fv-agent-connect-actions button{display:inline-flex;align-items:center;gap:8px}.fv-agent-connect-next{display:inline-flex;align-items:center;gap:12px;white-space:nowrap}.fv-agent-connect-next[hidden]{display:none}
-.fv-agent-connect-arrow{color:var(--fv-disabled)}.fv-agent-connect-hint{color:var(--fv-muted);font-size:13.5px}
-.fv-agent-connect-body .fv-agent-sentence{justify-self:stretch;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);color:var(--fv-ink);font-size:var(--fv-body);overflow-wrap:anywhere;user-select:all}
+.fv-agent-connect-arrow{color:var(--fv-disabled)}.fv-agent-connect-hint{color:var(--fv-muted);font-size:13px}
+.fv-agent-connect-body .fv-agent-sentence{justify-self:stretch;padding:8px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);color:var(--fv-ink);font-size:var(--fv-body);overflow-wrap:anywhere;user-select:all}
 /* The Autopilot page: the card in the very middle, or one conversation column under the top bar. */
 .fv-studio.fv-autopilot{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
 .fv-studio.fv-autopilot .fv-header{position:relative}
 .fv-autopilot .fv-autopilot-body{box-sizing:border-box;min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr)}
 .fv-autopilot .fv-autopilot-body[data-view=connect]{place-items:center;padding:16px;overflow:auto}
-.fv-studio .fv-autopilot-lamp{min-height:0;gap:8px;padding:6px 13px;border:1px solid var(--fv-border);border-radius:99px;background:transparent;color:var(--fv-muted);font-size:13.5px;font-weight:var(--fv-regular);white-space:nowrap;flex:none}
+.fv-studio .fv-autopilot-lamp{min-height:0;gap:8px;padding:8px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-pill);background:transparent;color:var(--fv-muted);font-size:13px;font-weight:var(--fv-regular);white-space:nowrap;flex:none}
 .fv-studio .fv-autopilot-lamp:disabled{opacity:1}.fv-autopilot-lamp[hidden]{display:none}
-.fv-autopilot-lamp>i{width:8px;height:8px;border-radius:50%;background:var(--fv-disabled)}
+.fv-autopilot-lamp>i{width:8px;height:8px;border-radius:var(--fv-r-pill);background:var(--fv-disabled)}
 .fv-studio .fv-autopilot-lamp[data-color=green]{color:var(--fv-ink);border-color:#245a45;background:#0f2019}
 .fv-autopilot-lamp[data-color=green]>i{background:var(--fv-success);box-shadow:0 0 0 3px color-mix(in srgb,var(--fv-success) 20%,transparent)}
-.fv-autopilot-now{display:flex;align-items:center;min-width:0;border:1px solid var(--fv-accent-dim);background:color-mix(in srgb,var(--fv-selected) 55%,var(--fv-bg));border-radius:99px;font-size:13.5px;font-variant-numeric:tabular-nums}
+.fv-autopilot-now{display:flex;align-items:center;min-width:0;border:1px solid var(--fv-accent-dim);background:color-mix(in srgb,var(--fv-selected) 55%,var(--fv-bg));border-radius:var(--fv-r-pill);font-size:13px;font-variant-numeric:tabular-nums}
 .fv-autopilot-now[hidden]{display:none}
-.fv-studio .fv-autopilot-now button{min-height:0;border:0;background:transparent;border-radius:99px}
-.fv-studio .fv-autopilot-now-go{gap:9px;padding:6px 4px 6px 13px;min-width:0;color:var(--fv-ink);font-weight:var(--fv-regular);white-space:nowrap}
-.fv-autopilot-now-go>i{flex:none;width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--fv-accent) calc(var(--p,0)*1%),#24364a 0);-webkit-mask:radial-gradient(circle,transparent 5px,#000 5.5px);mask:radial-gradient(circle,transparent 5px,#000 5.5px)}
+.fv-studio .fv-autopilot-now button{min-height:0;border:0;background:transparent;border-radius:var(--fv-r-sm)}
+.fv-studio .fv-autopilot-now-go{gap:8px;padding:8px 4px 8px 12px;min-width:0;color:var(--fv-ink);font-weight:var(--fv-regular);white-space:nowrap}
+.fv-autopilot-now-go>i{flex:none;width:16px;height:16px;border-radius:var(--fv-r-pill);background:conic-gradient(var(--fv-accent) calc(var(--p,0)*1%),#24364a 0);-webkit-mask:radial-gradient(circle,transparent 5px,#000 5.5px);mask:radial-gradient(circle,transparent 5px,#000 5.5px)}
 .fv-autopilot-now-name{overflow:hidden;text-overflow:ellipsis;max-width:220px}.fv-autopilot-now-go>:empty:not(i){display:none}
 .fv-autopilot-now-go>span:not(.fv-autopilot-now-name),.fv-autopilot-now-go>em{font-style:normal;color:var(--fv-muted)}.fv-autopilot-now-go>b{font-weight:var(--fv-semibold)}
 .fv-studio .fv-autopilot-now-stop{flex:none;width:30px;height:30px;padding:0}
-.fv-autopilot-now-stop::after{content:"";width:18px;height:18px;border-radius:5px;background:#1b2a3a radial-gradient(circle,var(--fv-danger) 0 0) center/7px 7px no-repeat}
+.fv-autopilot-now-stop::after{content:"";width:18px;height:18px;border-radius:var(--fv-r-xs);background:#1b2a3a radial-gradient(circle,var(--fv-danger) 0 0) center/7px 7px no-repeat}
 .fv-studio .fv-autopilot-now-stop:hover::after{background-color:var(--fv-danger-subtle)}
 .fv-studio .fv-autopilot-now-stop[aria-busy=true]{width:auto;padding:0 8px;font-size:12px;color:var(--fv-muted);opacity:1}
 .fv-autopilot-now-stop[aria-busy=true]::after{display:none}
-.fv-autopilot-line{position:absolute;left:0;bottom:-1px;height:2px;border-radius:0 2px 2px 0;background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-hover));transition:width .6s var(--fv-ease),opacity .4s;pointer-events:none}
+.fv-autopilot-line{position:absolute;left:0;bottom:-1px;height:2px;border-radius:0 var(--fv-r-xs) var(--fv-r-xs) 0;background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-hover));transition:width .6s var(--fv-ease),opacity .4s;pointer-events:none}
 .fv-autopilot-line[data-on=false]{opacity:0}
 /* Running jobs share the right column. Fields give way in order while the title would fall below 96px (about six
    characters); a shorter title keeps its full width. Widths below are measured with four-digit minutes. */
@@ -42,7 +42,7 @@
 .fv-autopilot .fv-header>.fv-header-actions{justify-self:stretch;min-width:0;justify-content:flex-end;container:fv-autopilot-actions / inline-size}
 .fv-autopilot .fv-header .fv-header-actions>button{flex:none}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now{flex:0 1 auto;min-width:0}
-.fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:5px;padding-left:8px}
+.fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:4px;padding-left:8px}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go>:not(.fv-autopilot-now-name){flex:none}
 .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-name{flex:0 1 auto;min-width:0;white-space:nowrap}
 .fv-autopilot-now-go>em{overflow:hidden}
@@ -79,5 +79,5 @@
 @media(max-width:1050px){.fv-autopilot-now-name{max-width:120px}}
 /* On two rows the actions keep the flexible column, so the entries above measure their real room. */
 .fv-studio.fv-autopilot .fv-header.fv-header[data-place=wrap]{grid-template-columns:auto minmax(0,1fr)}
-@media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12.5px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:5px 2px 5px 10px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:22px}}
+@media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:4px 4px 4px 8px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:24px}}
 @media(prefers-reduced-motion:reduce){.fv-autopilot-line{transition:none}}

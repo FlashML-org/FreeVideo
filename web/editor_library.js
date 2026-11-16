@@ -2,17 +2,48 @@ import {editorIcon} from './editor_icons.js';
 import {sourceKey} from './editor_store.js';
 import {issueButton} from './issue_button.js';
 import {connectionLostText} from './browser_extension.js';
+import {tip} from './editor_tips.js';
 const LIBRARY_ISSUE = ['Editor media library', '剪辑器素材库'];
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const stamp = frames => { const seconds = Math.floor((frames || 0) / 24); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 const FORMATS = 'MP4, MOV, WebM, MKV, M4V, WAV, MP3, FLAC, OGG, M4A, AAC, Opus';
+// The first page of creations as last seen, by address only (id, file, thumbnail; never a prompt, name or date): the
+// next opening draws those cards at once, with blank captions of the final height, and the server's list fills them.
+// A work deleted anywhere on the page leaves this list at once.
+const LIST_KEY = 'fv-editor-library';
+let listCache = null;
+const bare = row => ({id: row.id, video: row.video, ...(typeof row.thumbnail === 'string' ? {thumbnail: row.thumbnail} : {})});
+function writeList() { try { localStorage.setItem(LIST_KEY, JSON.stringify(listCache.map(bare))); } catch {} }
+function cachedList() {
+    if (listCache) return listCache;
+    try {
+        const value = JSON.parse(localStorage.getItem(LIST_KEY) || 'null');
+        if (Array.isArray(value)) {
+            const rows = value.filter(row => row && typeof row.id === 'string' && typeof row.video === 'string');
+            listCache = rows.map(row => ({...bare(row), cached: true}));
+            // A list written by an earlier version (with prompts) is written again without them.
+            if (rows.some(row => Object.keys(row).some(key => !['id', 'video', 'thumbnail'].includes(key)))) writeList();
+            return listCache;
+        }
+    } catch {}
+    return [];
+}
+function keepList(rows) { listCache = rows.slice(0, 24).map(bare); writeList(); }
+globalThis.addEventListener?.('freevideo-library-deleted', event => {
+    const video = event.detail?.video, rows = video ? cachedList() : [];
+    if (rows.some(row => row.video === video)) { listCache = rows.filter(row => row.video !== video); writeList(); }
+});
 export function createEditorLibrary(host, {store, t, actions, state}) {
     const tabs = el('div', 'fv-ed-tabs fv-pass-mode'); tabs.setAttribute('role', 'tablist');
     const works = el('button', null, t('Creations', '作品')), imports = el('button', null, t('Imported', '已导入'));
     for (const tab of [works, imports]) { tab.type = 'button'; tab.setAttribute('role', 'tab'); tabs.append(tab); }
     const search = el('input', 'fv-ed-search'); search.type = 'search'; search.placeholder = t('Search', '搜索'); search.setAttribute('aria-label', search.placeholder);
+    tip(search, {name: t('Search media', '搜索素材'), use: t('Find by name or description', '按名称和描述查找')});
+    tip(works, {name: t('Creations', '作品'), use: t('Videos made here, ready to place', '在这里生成的视频，可直接放入')});
+    tip(imports, {name: t('Imported', '已导入'), use: t('Files added from this computer', '从电脑加入的文件')});
     const searchTools = el('div', 'fv-ed-library-tools'), importButton = el('button', 'fv-ed-library-import', t('Import', '导入'));
     importButton.type = 'button'; searchTools.append(search, importButton);
+    tip(importButton, {name: t('Import', '导入'), use: t('Add video or sound files from this computer', '从电脑加入视频或声音文件')});
     const grid = el('div', 'fv-ed-library-grid'); grid.setAttribute('role', 'tabpanel');
     const message = el('p', 'fv-ed-library-message'); message.setAttribute('role', 'status');
     const unreadable = el('p', 'fv-ed-unreadable');
@@ -20,7 +51,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     file.accept = '.mp4,.mov,.webm,.mkv,.m4v,.wav,.mp3,.flac,.ogg,.m4a,.aac,.opus';
     importButton.onclick = () => file.click();
     host.append(tabs, searchTools, grid, message, unreadable, file);
-    let tab = 'work', rows = [], imported = [], importUnread = 0, next = null, disposed = false, loading = false;
+    let tab = 'work', rows = cachedList(), imported = [], importUnread = 0, next = null, disposed = false, loading = false, listed = rows.length > 0;
     let listRead = Promise.resolve(), refreshTask = null, retryTimer = null, finishRetry = null, refreshAgain = false;
     const expectedOutputs = new Set();
     const uploading = new Map(), recentImports = new Map(), pendingAdds = new Map();
@@ -73,14 +104,26 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const container = el('div', 'fv-ed-source-card');
         const button = el('button', 'fv-ed-source'); button.type = 'button'; button.dataset.key = `${kind}:${row.id}`;
         const ready = kind === 'work' || row.state === 'ready';
-        const label = row.name || row.text || new Date(row.created_at).toLocaleDateString();
+        // A card is named by what it shows: the prompt's first 24 characters (a creation's prompt comes with its media
+        // details), else the file's name, else its kind and time; the date goes to the line under it.
+        const details = kind === 'work' ? store.sources.get(`work:${row.id}`) : null;
+        const prompt = String(row.text || details?.text || '').replace(/\s+/g, ' ').trim();
+        const created = row.created_at ? new Date(row.created_at) : null;
+        const when = created && !Number.isNaN(created.getTime()) ? created.toLocaleString([], {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '';
+        const kindWord = kind === 'work' || row.kind === 'video' ? t('Video', '视频') : row.kind === 'audio' ? t('Sound', '声音') : t('Clip', '素材');
+        const cut = text => Array.from(text).length > 24 ? Array.from(text).slice(0, 24).join('') + '…' : text;
+        // A card kept from the last visit knows only its picture until the list arrives: blank lines of the final height.
+        const label = row.name || (prompt ? cut(prompt) : row.cached ? '' : [kindWord, when].filter(Boolean).join(' · '));
+        const g = details || row.geometry || {}, framesShown = metadata(row, kind).frames;
+        const size = g.width && g.height ? `${g.width} × ${g.height}` : '';
+        const facts = [when, framesShown ? stamp(framesShown) : '', size].filter(Boolean).join(' · '), line = when;
         button.setAttribute('aria-label', label); button.draggable = ready; button.disabled = false;
         const picture = el('div', 'fv-ed-source-picture');
         const url = kind === 'work' ? (store.sources.get(`work:${row.id}`)?.thumbnail
             || '/freevideo/library/thumbnail?' + new URLSearchParams({id: row.id})) : row.thumbnail;
         if (url) { const image = el('img'); image.src = actions.mediaURL(url); image.alt = ''; image.loading = 'lazy'; image.onerror = () => { image.hidden = true; }; picture.append(image); }
         else if (row.kind === 'audio') picture.append(el('span', 'fv-ed-audio-icon', '♫'));
-        if (ready) picture.append(el('span', 'fv-ed-source-time', stamp(metadata(row, kind).frames)));
+        if (ready) { if (!row.cached || framesShown) picture.append(el('span', 'fv-ed-source-time', stamp(framesShown))); }
         else if (row.state === 'failed') {
             picture.append(el('span', 'fv-ed-source-preparing', row.reason === 'disk_full' ? t('Disk full', '磁盘已满') : t('Cannot open', '打不开')));
         } else {
@@ -90,6 +133,9 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                 : row.started ? t('Processing', '处理中') + percent : t('Queued', '排队中')));
         }
         button.append(picture);
+        const caption = el('span', 'fv-ed-source-caption'), title = el('span', 'fv-ed-source-title', label), sub = el('span', 'fv-ed-source-sub', line);
+        if (row.cached) { title.textContent ||= '\u00a0'; sub.textContent ||= '\u00a0'; }
+        caption.append(title, sub); sub.hidden = !line && !row.cached; button.append(caption);
         const used = el('span', 'fv-ed-source-used'); used.append(editorIcon('check')); used.setAttribute('aria-label', t('Used', '已用')); used.hidden = true; picture.append(used);
         button.ondblclick = () => requestAdd(row, kind);
         button.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); requestAdd(row, kind); } };
@@ -104,6 +150,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         button.onclick = () => { if (ready) Promise.resolve().then(() => actions.previewSource?.({kind, id: row.id})).catch(actions.error); else requestAdd(row, kind); };
         const plus = el('button', 'fv-ed-source-add', '＋'); plus.type = 'button'; plus.disabled = button.disabled; plus.title = button.title;
         plus.setAttribute('aria-label', `${t('Add to the tracks', '加到轨道上')}: ${label}`);
+        tip(plus, {name: t('Add to the timeline', '加入时间线'), use: t('A video goes after the last picture, a sound at the playhead', '视频接在最后，声音放在播放头处'), key: 'Enter'});
+        tip(button, {name: label, use: [prompt && prompt !== label ? prompt : '', facts, ready ? t('Click to preview; drag or double-click to place', '单击预览，拖动或双击放入时间线') : t('Preparing; it is placed when ready', '正在准备，好了会自动放入')].filter(Boolean).join(' · '), key: ready ? 'Enter' : ''});
         const insert = event => { event.preventDefault(); event.stopPropagation(); if (!(event.detail > 1)) requestAdd(row, kind, true); };
         plus.onclick = insert;
         plus.ondblclick = event => { event.preventDefault(); event.stopPropagation(); };
@@ -111,7 +159,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         container.append(button, plus);
         if (kind === 'import' && (row.state === 'ready' || row.state === 'failed')) {
             const remove = el('button', 'fv-ed-source-remove'); remove.type = 'button'; remove.append(editorIcon('trash'));
-            remove.title = t('Delete', '删除'); remove.setAttribute('aria-label', `${remove.title}: ${label}`);
+            remove.setAttribute('aria-label', `${t('Delete', '删除')}: ${label}`);
+            tip(remove, {name: t('Delete', '删除'), use: t('Remove this import from the library (asks first)', '从素材库删除这个文件（会先确认）')});
             remove.onclick = event => {
                 event.preventDefault(); event.stopPropagation();
                 if (!removal.has(row.id)) { removal.set(row.id, {users: 0, busy: false, failed: false}); focusAfter = {cancel: row.id}; render(); }
@@ -167,6 +216,15 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             .filter(clip => clip.source).map(clip => sourceKey(clip.source)));
         for (const button of grid.querySelectorAll('.fv-ed-source')) button.querySelector('.fv-ed-source-used').hidden = !keys.has(button.dataset.key);
     }
+    // What a card shows, for reusing it: everything card() reads except the picture's address (a picture already
+    // decoded is kept), plus the removal question when one is open.
+    const cards = new Map();
+    let importTile = null;
+    function cardSignature(row, kind) {
+        const value = kind === 'work' ? store.sources.get(`work:${row.id}`) : null;
+        return JSON.stringify([kind, row.id, row.name, row.text, row.created_at, row.state, row.reason, row.fraction, row.sending, row.started, row.kind,
+            kind === 'work' ? !!(value?.thumbnail) : row.thumbnail, value?.frames ?? row.geometry?.frames ?? row.frames ?? null, value?.has_video, value?.has_audio, value?.text || '', value?.width, value?.height, removal.get(row.id) || null]);
+    }
     function render() {
         if (disposed) return;
         const scroll = host.scrollTop || 0, top = host.getBoundingClientRect().top;
@@ -181,13 +239,29 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const owner = control ? held.closest?.('.fv-ed-source-card')?.querySelector('.fv-ed-source')?.dataset.key : null;
         const keep = !held || !grid.contains?.(held) ? null : strip ? {button: held.className, id: strip.dataset.id}
             : owner ? {control, card: owner} : held.dataset?.key ? {card: held.dataset.key} : held.className === 'fv-ed-import' ? {add: true} : null;
-        grid.replaceChildren();
-        if (tab === 'import') {
-            const add = el('button', 'fv-ed-import', t('Import', '导入')); add.type = 'button'; add.onclick = () => file.click(); grid.append(add);
-        }
         const term = search.value.trim().toLocaleLowerCase();
         const shown = tab === 'work' ? rows.filter(row => row.video && (!term || [row.name, row.text, row.created_at, row.id].some(value => String(value || '').toLocaleLowerCase().includes(term)))) : [...imported, ...uploading.values()];
-        for (const row of shown) grid.append(card(row, tab));
+        // A redraw (the list and the imports are read again every few seconds) keeps every card whose content is the same,
+        // and a picture already shown stays as it is: only cards that changed are made again, nothing goes blank or fades in.
+        const nodes = [];
+        if (tab === 'import') nodes.push(importTile ||= (() => { const add = el('button', 'fv-ed-import', t('Import', '导入')); add.type = 'button'; add.onclick = () => file.click(); return add; })());
+        const kept = new Set();
+        for (const row of shown) {
+            const key = `${tab}:${row.id}`, signature = cardSignature(row, tab);
+            let held = cards.get(key);
+            if (!held || held.signature !== signature) {
+                const node = card(row, tab), old = held?.node.querySelector('.fv-ed-source-picture > img'), fresh = node.querySelector('.fv-ed-source-picture > img');
+                // The new card takes over the picture already decoded for the same work, instead of loading it again.
+                if (old && fresh && old.complete && old.naturalWidth > 0 && !old.hidden) fresh.replaceWith(old);
+                held = {node, signature}; cards.set(key, held);
+            }
+            kept.add(key); nodes.push(held.node);
+        }
+        for (const key of [...cards.keys()]) if (!kept.has(key)) cards.delete(key);
+        // Until the first list arrives, cards of the final size hold the place, so the library fills without jumping.
+        if (tab === 'work' && !listed && !shown.length) for (let i = 0; i < 6; i++) { const ghost = el('div', 'fv-ed-source-skeleton'); ghost.setAttribute('aria-hidden', 'true'); nodes.push(ghost); }
+        nodes.forEach((node, index) => { if (grid.children[index] !== node) grid.insertBefore(node, grid.children[index] || null); });
+        while (grid.children.length > nodes.length) grid.lastElementChild.remove();
         updateUsed();
         message.textContent = ''; // Empty states stay silent.
         const failed = shown.findLast(row => row.state === 'failed');
@@ -207,6 +281,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                 : target.card ? card(target.card) : (target.next && card(target.next)) || grid.querySelector('.fv-ed-import');
             node?.focus?.();
         }
+        globalThis.requestAnimationFrame?.(() => { if (!disposed) host.dataset.atEnd = String(host.scrollTop + host.clientHeight >= host.scrollHeight - 2); });
         if (scroll > 0) {
             const replacement = anchor && [...grid.querySelectorAll('.fv-ed-source')].find(node => node.dataset.key === anchor.dataset.key);
             host.scrollTop = replacement ? scroll + replacement.getBoundingClientRect().top - anchorTop : scroll;
@@ -229,11 +304,11 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                     rows = append ? [...rows, ...items.filter(row => !rows.some(old => old.id === row.id))] : items;
                     next = value.next;
                 }
-                succeeded = true; render();
+                succeeded = true; if (!append) keepList(rows); render();
                 store.getSources(items.filter(row => row.video).map(row => `work:${row.id}`)).then(render).catch(value => { if (!disposed) actions.error(value); });
                 return value;
             } catch (error) { if (!disposed) actions.error(error); return null; }
-            finally { loading = false; if (succeeded) scheduleMore(); }
+            finally { loading = false; if (!listed) { listed = true; if (!succeeded && !disposed) render(); } if (succeeded) scheduleMore(); }
         });
         listRead = read; return read;
     }
@@ -284,6 +359,9 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         load(true).finally(() => { pagePending = false; });
     }
     host.addEventListener('scroll', scheduleMore, {passive: true});
+    // The last row cut by the pane's foot fades out (24 px) instead of looking cut off; at the very end there is no fade.
+    const markEnd = () => { host.dataset.atEnd = String(host.scrollTop + host.clientHeight >= host.scrollHeight - 2); };
+    host.addEventListener('scroll', markEnd, {passive: true});
     const resize = new ResizeObserver(scheduleMore); resize.observe(host);
     // Files dropped on the tracks go to the drop point once ready, in drop order.
     const placing = [];

@@ -2,6 +2,7 @@ import {chatData, chatPoller, chatDelay, chatReadRequest, emptyChat, chatMerge, 
 import {phoneText, jobGroups, mergePhoneJobs, retryWords, queueWords, remainingWords, mediaPath, saveVideo, applyPhoneChain, phonePartWords, phoneJobKey} from './phone_model.js';
 import {wordmark} from './wordmark.js';
 import {applyPreviewStyle, previewStyle, hintWanted, markHintSeen, onPreviewStyle} from './preview_style.js';
+import { skin } from './glass/library.js';
 
 export function mountPhone(root) {
 const t = phoneText(navigator.language);
@@ -214,7 +215,7 @@ function renderChat() {
 }
 async function cancel(job, confirm) {
     if (confirm) {
-        const dialog = el('dialog', 'fv-phone phone-confirm'); dialog.append(el('p', '', t('Stop this generation?', '停止这个生成？')));
+        skin(); const dialog = el('dialog', 'fv-phone phone-confirm'); dialog.append(el('p', '', t('Stop this generation?', '停止这个生成？')));
         const actions = el('div', 'phone-confirm-actions');
         const yes = button('phone-quiet', t('Stop', '停止'), async () => { yes.disabled = true; if (await cancel(job, false)) dialog.close(); else yes.disabled = false; });
         const no = button('phone-quiet', t('Keep generating', '继续生成'), () => dialog.close()); actions.append(yes, no); dialog.append(actions); document.body.append(dialog); dialog.onclose = () => dialog.remove(); dialog.showModal(); no.focus(); return;

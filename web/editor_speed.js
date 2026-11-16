@@ -56,9 +56,15 @@ export function createSpeedPanel(host, {state, t, onError = () => {}, context}) 
         onChange: speed => apply({speed})});
     const input = speedNumber.input; input.className = 'fv-ed-speed-input';
     const commit = input.onchange;
+    // A speed outside 0.25–4× is set to the nearest limit and said so; text that is not a number is put back with the rule.
     input.onchange = () => {
         const value = Number(input.value);
-        if (input.value !== '' && Number.isFinite(value) && value >= .25 && value <= 4) input.value = String(normalizeSpeed(value));
+        if (input.value === '' || !Number.isFinite(value)) { say(t('Enter a speed from 0.25× to 4×.', '请输入 0.25× 至 4× 的速度。')); commit(); return; }
+        if (value < .25 || value > 4) {
+            const limit = value < .25 ? .25 : 4;
+            input.value = String(limit);
+            say(value < .25 ? t('The slowest is 0.25×; set to 0.25×.', '最慢 0.25×，已设为 0.25×。') : t('The fastest is 4×; set to 4×.', '最快 4×，已设为 4×。'));
+        } else { say(''); input.value = String(normalizeSpeed(value)); }
         commit();
     };
     const speedLabel = row(t('Speed', '速度'), speedNumber, el('span', '', '×')); speedLabel.classList.add('fv-ed-speed-label');
@@ -76,8 +82,15 @@ export function createSpeedPanel(host, {state, t, onError = () => {}, context}) 
     for (const [button, value] of [[follows, 'follow'], [mute, 'mute']]) { button.type = 'button'; button.dataset.speedAudio = value; button.onclick = () => apply({speed_audio: value}); }
     audio.append(audioLabel, follows, mute);
     const reverseHint = el('p', 'fv-ed-speed-reverse-hint', t('Reverse audio can be heard after export.', '倒放的声音在导出后才能听到。'));
+    // One line under the speed for what was just refused or changed (fixed place; it does not move the controls below).
+    const note = el('p', 'fv-ed-speed-note'); note.setAttribute('role', 'status'); note.hidden = true;
+    let noteTimer = null;
+    function say(text) {
+        clearTimeout(noteTimer); note.textContent = text; note.hidden = !text;
+        if (text) noteTimer = setTimeout(() => { note.hidden = true; note.textContent = ''; }, 6000);
+    }
     const reset = el('button', 'fv-ed-speed-reset', t('Reset speed', '恢复原速')); reset.type = 'button'; reset.onclick = () => apply({speed: 1});
-    panel.append(hint, speedLabel, presets, length, reverseLabel, audio, reverseHint, reset); host.append(panel);
+    panel.append(hint, speedLabel, note, presets, length, reverseLabel, audio, reverseHint, reset); host.append(panel);
     let disposed = false;
     function selection() {
         if (state.selection?.kind !== 'clip') return [];
@@ -117,19 +130,25 @@ export function createSpeedPanel(host, {state, t, onError = () => {}, context}) 
         }
         // Back to normal speed only: reverse and the sound mode stay as they are.
         reset.hidden = !clips.some(clip => percent(clip) !== 100); reset.disabled = disabled;
-        reverseHint.hidden = true; reverseHint.textContent = '';
+        // Backward sound is not played in the preview: say it where Reverse is, while it is on and the part has sound that follows.
+        const reversedSound = single && !!primary?.reverse && sounds.some(clip => (clip.speed_audio ?? 'follow') !== 'mute');
+        reverseHint.hidden = !reversedSound;
 
     }
     function apply(options) {
         if (disposed) return;
         const groups = selection();
         try { state.apply(t('Speed', '速度'), record => groups.reduce((next, clips) => setSpeed(next, clips[0].id, options), record)); update(); }
-        catch (error) { return {ok: false, reason: error.code || 'speed'}; }
+        catch (error) {
+            // The reason is said instead of the change silently not happening.
+            say(speedErrorText(error, t) || t('This speed cannot be used here.', '这里不能用这个速度。')); update();
+            return {ok: false, reason: error.code || 'speed'};
+        }
     }
     reverse.onchange = () => apply({reverse: reverse.checked});
     const unsubscribe = context ? () => {} : state.subscribe(event => { if (event.type === 'record' || event.type === 'selection') update(); });
     update();
-    return {element: panel, ready, refresh: update, dispose() { disposed = true; unsubscribe(); speedNumber.dispose(); reverse.onchange = reset.onclick = null; [...buttons, follows, mute].forEach(button => { button.onclick = null; }); panel.remove(); }};
+    return {element: panel, ready, refresh: update, dispose() { disposed = true; clearTimeout(noteTimer); unsubscribe(); speedNumber.dispose(); reverse.onchange = reset.onclick = null; [...buttons, follows, mute].forEach(button => { button.onclick = null; }); panel.remove(); }};
 }
 
 export function createSpeedComponent(options) {

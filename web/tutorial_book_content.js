@@ -33,11 +33,11 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'text-to-video-1.webp', en: 'text-to-video-2.webp'},
-            alt: {zh: '创作面板：描述、画幅与时长区域已用红框标出。', en: 'The creation panel, with the prompt and the Frame & duration fields outlined in red.'},
+            alt: {zh: '创作面板：描述、画幅与尺寸区域已用红框标出。', en: 'The creation panel, with the prompt and the Frame & size fields outlined in red.'},
         },
         steps: {
-            zh: ['在“描述画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与时长”中选择横屏、竖屏或方形，并设置“清晰度”。', '在“时长 · 秒”中填写秒数；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。描述为空时会先提示，点“继⁠续⁠生⁠成”仍可生成。'],
-            en: ['Write the subject, action, place and camera in the prompt, for example "the camera slowly moves closer".', 'Under "Frame & duration", choose landscape, portrait or square and set "Resolution".', 'Enter the seconds under "Duration · seconds". "Available sizes and lengths" shows the longest length and the estimated time for each size.', 'Choose "Generate video". With an empty prompt, a note appears first; choose "Generate anyway" to go ahead.'],
+            zh: ['在“描述画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与尺寸”中选择横屏、竖屏或方形，并设置“清晰度”。', '点底栏的秒数，直接修改时长；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。描述为空时会先提示，点“继⁠续⁠生⁠成”仍可生成。'],
+            en: ['Write the subject, action, place and camera in the prompt, for example "the camera slowly moves closer".', 'Under "Frame & size", choose landscape, portrait or square and set "Resolution".', 'Click the seconds in the bottom bar to change the length. "Available sizes and lengths" shows the longest length and the estimated time for each size.', 'Choose "Generate video". With an empty prompt, a note appears first; choose "Generate anyway" to go ahead.'],
         },
         example: {
             assets: [],
@@ -45,8 +45,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {quality: 'High', width: 960, height: 544, seconds: 5},
         },
         limits: {
-            zh: ['清晰度越高、时长越长，用时和显存占用越多。', '描述中的文字内容不一定能准确显示在画面里。', '开启“FreeToken 提示词增强”后，描述会在本机被改写得更详细。'],
-            en: ['Higher resolution and longer length take more time and memory.', 'Text named in the prompt may not appear exactly in the picture.', 'With "FreeToken enhancement" on, the prompt is rewritten in more detail on this computer.'],
+            zh: ['清晰度越高、时长越长，用时和显存占用越多。', '描述中的文字内容不一定能准确显示在画面里。', '开启“提示词增强”后，描述会在本机被改写得更详细。'],
+            en: ['Higher resolution and longer length take more time and memory.', 'Text named in the prompt may not appear exactly in the picture.', 'With "Prompt enhancement" on, the prompt is rewritten in more detail on this computer.'],
         },
     },
     {
@@ -75,15 +75,15 @@ export const TUTORIAL_CHAPTERS = [
     {
         id: 'image-gen',
         title: {zh: '生成图片', en: 'Make a picture'},
-        summary: {zh: '在图像视图中用一段描述生成图片，也可以在 AI 全自动中请 Agent 出图。', en: 'Make a picture from a description in the Images view, or ask an agent for one in Autopilot.'},
+        summary: {zh: '在图像视图中用一段描述生成图片，也可以在 AI 全自动中请助手出图。', en: 'Make a picture from a description in the Images view, or ask the assistant for one in Autopilot.'},
         media: {
             type: 'image',
             src: {zh: 'image-gen-1.webp', en: 'image-gen-2.webp'},
             alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接 Agent 后说“画一张……”，Agent 只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
-            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an agent and say "Draw a picture of …". The agent makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
+            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '选择比例，再选择清晰度：“标准”约 400 万像素，“高清”约 1600 万像素。显存为 8 GB 的显卡，选“标准”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；点图片下方的“⋯”，可下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
+            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Choose the shape, then the clarity: "Standard" is about 4 megapixels and "High" about 16 megapixels. On a graphics card with 8 GB of memory, choose "Standard".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. Choose "⋯" below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an assistant and say "Draw a picture of …". The assistant makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
         },
         limits: {
             zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
@@ -354,10 +354,10 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'refine-1.webp', en: 'refine-2.webp'},
-            alt: {zh: '创作面板：二次采样选项“先出预览”已用红框标出。', en: 'The creation panel, with the "Preview first" option outlined in red.'},
+            alt: {zh: '创作面板：二采选项“先出预览”已用红框标出。', en: 'The creation panel, with the "Preview first" option outlined in red.'},
         },
         steps: {
-            zh: ['在二次采样中选择“先出预览”，按钮变为“生⁠成⁠预⁠览”。', '点“生⁠成⁠预⁠览”，等待预览完成。', '画面满意时，点结果中的“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
+            zh: ['在二采中选择“先出预览”，按钮变为“生⁠成⁠预⁠览”。', '点“生⁠成⁠预⁠览”，等待预览完成。', '画面满意时，点结果中的“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
             en: ['Under two-pass sampling choose "Preview first". The button changes to "Generate preview".', 'Choose "Generate preview" and wait for it to finish.', 'When the picture is right, choose "Run second pass" in the result.', 'Otherwise change the prompt or the seed and generate a new preview.'],
         },
         example: {
@@ -674,33 +674,33 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'autopilot-1.webp', en: 'autopilot-2.webp'},
-            alt: {zh: 'AI 全自动：连接 Agent 的按钮已用红框标出。', en: 'Autopilot, with the button that connects an agent outlined in red.'},
+            alt: {zh: 'AI 全自动：连接助手 的按钮已用红框标出。', en: 'Autopilot, with the button that connects an assistant outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“AI 全自动”。', '点“连接 Agent”卡片中的按钮复制连接信息，粘贴给所使用的 Agent。', '状态显示“已连接”或所连 Agent 的名字后，在“对 AI 全自动说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，Agent 会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
-            en: ['Choose "Autopilot" at the top.', 'On the "Connect an agent" card, choose the button to copy the connection details and paste them to the agent you use.', 'When it shows "Connected" or the agent\'s name, describe the video under "Ask Autopilot…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The agent generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
+            zh: ['点顶部的“AI 全自动”。', '点“连接助手”卡片中的按钮复制连接信息，粘贴给所使用的助手。', '状态显示“已连接”或所连助手的名字后，在“对 AI 全自动说…”中描述想做的视频，例如“做一条 1 分钟的竖屏短片：咖啡店的一天”。', '点“发送”，助手会生成并剪辑；可随时点“停止”，完成后点“打开”或“剪辑”。', '在对话列表中点对话旁的“更多”，选“重命名”可修改对话名称。'],
+            en: ['Choose "Autopilot" at the top.', 'On the "Connect an assistant" card, choose the button to copy the connection details and paste them to the assistant you use.', 'When it shows "Connected" or the assistant\'s name, describe the video under "Ask Autopilot…", for example "Make a 1-minute vertical short film: a day in a coffee shop".', 'Choose "Send". The assistant generates and edits it. Choose "Stop" at any time, and "Open" or "Edit" when it finishes.', 'In the chat list, choose "More" next to a chat, then "Rename" to change its name.'],
         },
         limits: {
-            zh: ['需要先连接 Agent，未连接时只显示连接说明。', '镜头越多，用时越长。', 'Agent 开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI Agent”中选择。'],
-            en: ['An agent must be connected first. Until then only the connection card is shown.', 'More shots take longer.', 'Whether an agent asks before starting a film or a long reshoot is set under "AI Agent" in Settings.'],
+            zh: ['需要先连接助手，未连接时只显示连接说明。', '镜头越多，用时越长。', '助手开拍整部片前、重拍耗时较长时是否先询问，可在“设置”的“AI 助手”中选择。'],
+            en: ['An assistant must be connected first. Until then only the connection card is shown.', 'More shots take longer.', 'Whether the assistant asks before starting a film or a long reshoot is set under "AI assistant" in Settings.'],
         },
     },
     {
         id: 'drama-outline',
         title: {zh: '短剧的大纲和站位', en: 'The outline and staging of a short drama'},
-        summary: {zh: '开拍前，确认卡片上列出 Agent 写好的大纲；需要修改时先不拍，在对话中说明要改什么。', en: 'Before shooting, the confirmation card lists the outline the agent wrote. To change it, choose not to start yet and say what to change in the chat.'},
+        summary: {zh: '开拍前，确认卡片上列出助手写好的大纲；需要修改时先不拍，在对话中说明要改什么。', en: 'Before shooting, the confirmation card lists the outline the assistant wrote. To change it, choose not to start yet and say what to change in the chat.'},
         media: {
             type: 'image',
             src: {zh: 'drama-outline-1.webp', en: 'drama-outline-2.webp'},
             alt: {zh: 'AI 全自动：开拍确认卡片上的大纲和“开始”“先不”按钮已用红框标出。', en: 'Autopilot, with the outline on the confirmation card and the "Start" and "Not now" buttons outlined in red.'},
         },
         steps: {
-            zh: ['在“AI 全自动”中连接 Agent，说明想拍的短剧，例如“做一条 1 分钟的竖屏短剧：守塔人收到妹妹的求救信”。', 'Agent 先写一页大纲，每拍一行；再按场写好站位，即每个人在画面中的位置、坐或站、朝向和机位，并用在这一场的每个镜头中。', '开拍前，对话中出现确认卡片：上方是尺寸、时长和预计用时，下方按顺序列出大纲的各拍。超过 8 拍时只显示前 7 拍，点“另外 N 拍”可展开。', '满意时点“开始”；需要修改时点“先不”，再在对话中说明要改哪一拍，Agent 改好后会再次询问。'],
-            en: ['Connect an agent in Autopilot and describe the short drama, for example "Make a 1-minute vertical short drama: a lighthouse keeper gets a letter from her sister asking for help".', 'The agent first writes a one-page outline, one line per beat. It then sets the staging of each scene, that is where each person is in the picture, sitting or standing, which way they face and where the camera is, and uses it in every shot of that scene.', 'Before shooting, a confirmation card appears in the chat: the size, length and estimated time at the top, and the beats of the outline in order below. With more than 8 beats only the first 7 are shown; choose "N more" to see the rest.', 'Choose "Start" if it is right. To change it, choose "Not now" and say in the chat which beat to change. The agent asks again once it is revised.'],
+            zh: ['在“AI 全自动”中连接助手，说明想拍的短剧，例如“做一条 1 分钟的竖屏短剧：守塔人收到妹妹的求救信”。', '助手先写一页大纲，每拍一行；再按场写好站位，即每个人在画面中的位置、坐或站、朝向和机位，并用在这一场的每个镜头中。', '开拍前，对话中出现确认卡片：上方是尺寸、时长和预计用时，下方按顺序列出大纲的各拍。超过 8 拍时只显示前 7 拍，点“另外 N 拍”可展开。', '满意时点“开始”；需要修改时点“先不”，再在对话中说明要改哪一拍，助手改好后会再次询问。'],
+            en: ['Connect an assistant in Autopilot and describe the short drama, for example "Make a 1-minute vertical short drama: a lighthouse keeper gets a letter from her sister asking for help".', 'The assistant first writes a one-page outline, one line per beat. It then sets the staging of each scene, that is where each person is in the picture, sitting or standing, which way they face and where the camera is, and uses it in every shot of that scene.', 'Before shooting, a confirmation card appears in the chat: the size, length and estimated time at the top, and the beats of the outline in order below. With more than 8 beats only the first 7 are shown; choose "N more" to see the rest.', 'Choose "Start" if it is right. To change it, choose "Not now" and say in the chat which beat to change. The assistant asks again once it is revised.'],
         },
         limits: {
-            zh: ['在“设置”的“AI Agent”中取消“Agent 开拍整部片前先询问”后，不再出现确认卡片，Agent 直接开拍。', 'Agent 没有写大纲时，卡片上只有尺寸、时长和预计用时。'],
-            en: ['With "Ask before an agent starts a film" turned off under "AI Agent" in Settings, no card appears and the agent starts at once.', 'When the agent wrote no outline, the card shows only the size, length and estimated time.'],
+            zh: ['在“设置”的“AI 助手”中取消“助手开拍整部片前先询问”后，不再出现确认卡片，助手直接开拍。', '助手没有写大纲时，卡片上只有尺寸、时长和预计用时。'],
+            en: ['With "Ask before the assistant starts a film" turned off under "AI assistant" in Settings, no card appears and the assistant starts at once.', 'When the assistant wrote no outline, the card shows only the size, length and estimated time.'],
         },
     },
     {
@@ -806,8 +806,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '错误提示：“导出报告”和“提交问题”按钮已用红框标出。', en: 'An error message, with the "Export report" and "Report a problem" buttons outlined in red.'},
         },
         steps: {
-            zh: ['先阅读错误提示，其中已写明可尝试的操作。', '仍然失败时，点“导出报告”保存诊断信息。', '点“提交问题”，将报告附到 GitHub issue。', '提示需要重启时，重新启动 FreeVideo。'],
-            en: ['Read the error message first. It names what to try.', 'If it still fails, choose "Export report" to save the diagnostic information.', 'Choose "Report a problem" and attach the report to a GitHub issue.', 'When asked to restart, restart FreeVideo.'],
+            zh: ['先阅读错误提示，其中已写明可尝试的操作。', '仍然失败时，点“导出报告”保存诊断信息。', '点“提交问题”，把报告发给我们。', '提示需要重启时，重新启动 FreeVideo。'],
+            en: ['Read the error message first. It names what to try.', 'If it still fails, choose "Export report" to save the diagnostic information.', 'Choose "Report a problem" to send us the report.', 'When asked to restart, restart FreeVideo.'],
         },
         limits: {
             zh: ['报告中的路径已做脱敏处理。', '全部下载源都失败时，错误卡片会逐个列出下载源和失败原因。'],
