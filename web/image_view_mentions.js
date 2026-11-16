@@ -28,28 +28,38 @@ export function mentionsToEngine(text, count) {
     return text.replace(TOKEN, (_, n) => n !== '?' && Number(n) >= 1 && Number(n) <= count ? `<Picture ${n}>` : '').replace(/ {2,}/g, ' ');
 }
 // A picture drawn as a sketch (image editor's sketch mode) is a plan of the picture, not its look: a stick figure is a
-// person, a box or a circle is where a thing goes. The words sent around it say so, all in plain affirmative sentences
-// (the models follow what is said, and a "do not" can bring about the very thing it names) and with no style of their
-// own: the description, then what the sketch's marks stand for (each stick figure one real person, or the character
-// the description names, whole and clothed, in the figure's place and pose; each shape a real object at its place and
-// size), a finished, coloured picture and a complete scene behind. With no description of its own the subject is
-// still what the sketch plans, never the drawing itself (a bare "the scene in the sketch" came back as a stick figure).
+// person, a shape is where a thing goes. The words sent around it say so in plain affirmative sentences (the models
+// follow what is said, and a "do not" can bring about the very thing it names), add no style of their own and name
+// nothing the sketch may not hold (H3 drew boxes and balls that were only named). Measured one picture at a time on
+// the team engine, both models, one person with raised arms and two people face to face:
+// - With no description the subject is real people and real things in a real place; "the scene in the sketch" came
+//   back as a stick figure, the drawing itself.
+// - H3 follows those words with real people every time. A description in front of them (a Chinese one above all)
+//   turned the people into figurines or cartoons, or the English after it into a caption; after them it is followed
+//   (who, where, what they do) and the people stay real. A description that names a look of its own (cartoon,
+//   watercolour, ...) leads instead, with short layout words, and the picture takes its look.
+// - Qwen redraws its input: it keeps the plain paper and the look of simple lines unless the whole frame is said to be
+//   filled and each mark, one by one, to become a real thing as it is in life; it reads the description first.
 // `numbers`: the sketches' places (1-based) in the reference list; `text`: the engine text with <Picture N>.
+const STYLE_WORDS = /卡通|动漫|动画|二次元|漫画|插画|手绘|水彩|油画|国画|水墨|素描|线稿|像素|剪纸|黏土|粘土|三维|渲染|Q版|赛博|风格|画风|cartoon|anime|manga|comic|illustrat|watercolou?r|oil paint|ink wash|pixel art|claymation|\b3d\b|render|chibi|style/i;
 const SKETCH_LEAD = /^\s*(?:按\s*<Picture (\d+)>\s*的构图[，,]?|Following the layout of <Picture (\d+)>,?)\s*/;
+const REAL = 'Real people and real things in a real place';
 export function sketchPrompt(text, numbers, model) {
     if (!numbers?.length) return text;
     const desc = String(text || '').replace(SKETCH_LEAD, '').trim().replace(/[。.]+$/, '');
-    const pics = numbers.map(n => `<Picture ${n}>`).join(' and '), many = numbers.length > 1;
-    const what = desc || `The real people and things that ${pics} ${many ? 'plan' : 'plans'} out, in a real place`;
-    const marks = `${pics} ${many ? 'are layout sketches' : 'is a layout sketch'} drawn with simple lines: ${many ? 'they show' : 'it shows'} where everything goes and how each person stands. `
-        + `Each stick figure in ${pics} is one real person, or the character the description names, with a whole natural body, a face, hair and clothing, in the figure's place and pose. `
-        + `Each box, circle or other shape marks the place and size of an object, which appears as the real object the description names, or one that fits the scene.`;
-    // The user's words come first as the picture's own description (after a colon they were drawn as a caption).
-    // Qwen keeps an input picture's plain paper unless the whole frame is described as filled.
-    if (model === 'qwen-image-2.1-turbo') return `Redraw ${pics} as a finished, fully coloured and detailed image that fills the whole frame with a complete scene. ${what}. ${marks} `
-        + `The style follows the description. Every part of the picture, from edge to edge, shows the scene around and behind the people and objects: its ground, its surroundings and its light.`;
-    return `${what}. ${marks} The finished image is fully coloured and detailed, with these people and objects arranged as in ${pics}. `
-        + `The style follows the description. The background is a complete scene that fits the content.`;
+    const pics = numbers.map(n => `<Picture ${n}>`).join(' and '), many = numbers.length > 1, its = many ? 'their' : 'its';
+    const style = desc ? ' The style follows the description.' : '';
+    if (model === 'qwen-image-2.1-turbo') return `Redraw ${pics} as a finished, fully coloured and detailed image that fills the whole frame with a complete scene. ${desc || REAL}. `
+        + `${pics} ${many ? 'are layout sketches' : 'is a layout sketch'} drawn with simple lines; ${many ? 'they show' : 'it shows'} where everything goes and how each person stands. `
+        + `Each stick figure in ${pics} becomes a real person${desc ? ', or the character the description names' : ''}, with a whole natural body, a face, hair and clothing as in life, in the figure's place and pose. `
+        + `Each shape becomes a real object at its place and size.${style} `
+        + 'Every part of the picture, from edge to edge, shows the scene around and behind the people and objects: its ground, its surroundings and its light.';
+    if (desc && STYLE_WORDS.test(desc)) return `${desc}. A finished, fully coloured and detailed image. The composition, positions and poses match ${pics}. `
+        + 'The style follows the description. The background is a complete scene that fits the content.';
+    const real = `${REAL}. A finished, fully coloured and detailed image. ${pics} ${many ? 'are rough plans' : 'is a rough plan'} of the picture: `
+        + `${its} stick figures are real people, each whole with a natural body, face, hair and clothing, and ${its} shapes are real objects, each in the same place, size and pose. `
+        + 'The background is a complete scene that fits the content.';
+    return desc ? `${real} ${desc}${/[\u3400-\u9fff]$/.test(desc) ? '。' : '.'}` : real;
 }
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
 export const hasMentions = text => new RegExp(TOKEN.source).test(text);
