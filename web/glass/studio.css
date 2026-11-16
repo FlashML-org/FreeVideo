@@ -580,6 +580,33 @@
 /* The progress over the picture is always light on its dark scene, in both themes. */
 .fv-studio.fv-create .fv-stage .fv-generation-progress{--fv-ink:#edf5ff;--fv-muted:#c3d3e3;--fv-fg:#edf5ff;--fv-fg2:#d0deeb;--fv-fg3:#bdd0e2;color:#edf5ff}
 .fv-studio.fv-create .fv-stage .fv-generation-progress :is(.fv-generation-label,.fv-generation-times,.fv-chain-position){color:#d0deeb}
+/* ── Making: the frame while a video is made (studio.js .fvs-making). A soft band of light drifts across it every
+   3.6 s and the made share rises from the bottom as a faint blue tint with a hairline on top; when the video is there
+   the light lifts off it and the video settles in (no bounce). Transform and opacity only; with reduced motion the
+   tint stays and nothing drifts. ── */
+.fv-studio.fv-create .fvs-making{position:absolute;inset:0;z-index:1;display:none;overflow:hidden;border-radius:inherit;pointer-events:none;
+  animation:fvs-making-in .4s cubic-bezier(.2,.8,.2,1) both;transition:opacity .5s cubic-bezier(.2,.8,.2,1)}
+.fv-studio.fv-create .fv-stage:has(.fv-generation-progress:not([hidden])) .fvs-making{display:block}
+.fv-studio.fv-create .fv-stage[data-revealing=true] .fvs-making{opacity:0}
+.fv-studio.fv-create .fvs-making-level{position:absolute;inset:0;transform:translateY(calc(100% - var(--fvs-made,0) * 100%));
+  border-top:1px solid rgb(27 148 252 / .5);background:linear-gradient(to bottom,rgb(27 148 252 / .09),rgb(27 148 252 / .025) 35%,transparent 80%);
+  transition:transform 1.2s cubic-bezier(.2,.8,.2,1)}
+/* A new run starts from the bottom at once (no draining from the last one's level). */
+.fv-studio.fv-create .fvs-making[data-instant=true] .fvs-making-level{transition:none}
+.fv-studio.fv-create .fvs-making-sweep{position:absolute;top:-10%;bottom:-10%;left:-45%;width:45%;
+  background:linear-gradient(90deg,transparent,rgb(255 255 255 / .045) 35%,rgb(255 255 255 / .075) 50%,rgb(255 255 255 / .045) 65%,transparent);
+  animation:fvs-making-sweep 3.6s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes fvs-making-in{from{opacity:0}to{opacity:1}}
+@keyframes fvs-making-sweep{from{transform:translateX(0) skewX(-14deg)}to{transform:translateX(330%) skewX(-14deg)}}
+/* The new video comes in from a hair larger and settles, while the light lifts off it. */
+.fv-studio.fv-create .fv-stage[data-revealing=true] .fv-stage-media>video:first-child{animation:fvs-reveal .55s cubic-bezier(.2,.8,.2,1) both}
+@keyframes fvs-reveal{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){
+  .fv-studio.fv-create .fvs-making{animation:none;transition:none}
+  .fv-studio.fv-create .fvs-making-sweep{display:none}
+  .fv-studio.fv-create .fvs-making-level{transition:none}
+  .fv-studio.fv-create .fv-stage[data-revealing=true] .fv-stage-media>video:first-child{animation:none}
+}
 /* Check boxes in the trays stay square (the trays round their text fields). */
 .fv-studio.fv-create .fvs-tray input[type=checkbox]:not([role=switch]){width:16px;height:16px;min-height:16px;margin:0 var(--fv-sp-8) 0 0;padding:0;border-radius:var(--fv-r-xs);accent-color:var(--fv-accent-fill);vertical-align:middle}
 /* Empty stage: the frame's icon and one line; the bar under it keeps its room but shows nothing that does not apply yet. */

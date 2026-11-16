@@ -125,9 +125,21 @@ function noticeHint() {
     document.addEventListener('pointerdown', anyPress, {capture: true, once: true});
     globalThis.addEventListener?.('freevideo-view', () => { clearTimeout(fade); done(); }, {once: true});
 }
+// A task started, added to the queue or finished: the capsule glows once (a soft blue ring that fades out, no bounce)
+// and its count rises into place. Nothing moves with reduced motion; nothing runs while the bar is idle.
+function bump(capsule) {
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    clearTimeout(capsule.fvBumpTimer);
+    capsule.classList.remove('is-bump'); void capsule.offsetWidth; capsule.classList.add('is-bump');
+    capsule.fvBumpTimer = setTimeout(() => capsule.classList.remove('is-bump'), 1000);
+}
 function renderCapsule(capsule) {
     const before = capsule.isConnected ? capsule.getBoundingClientRect().width : 0;
-    const {t} = capsule.fvCapsule, state = capsuleState(jobs.list(), online, notices);
+    const list = jobs.list(), active = list.filter(row => ACTIVE.has(row.status)).length, finished = list.filter(row => row.status === 'done').length;
+    const seen = capsule.fvCapsule.seen;
+    if (seen && (active > seen.active || finished > seen.finished)) bump(capsule);
+    capsule.fvCapsule.seen = {active, finished};
+    const {t} = capsule.fvCapsule, state = capsuleState(list, online, notices);
     const [word, number] = capsuleWords(t, state);
     const figures = state.kind === 'idle' && showFigures() ? machineFigures(machine) : null;
     capsule.dataset.state = state.kind;
@@ -212,7 +224,8 @@ function statusCapsule(t) {
     const capsule = el('button', 'fv-tb-cap'); capsule.type = 'button'; capsule.dataset.fvStatus = '';
     capsule.setAttribute('aria-haspopup', 'dialog'); capsule.setAttribute('aria-expanded', 'false');
     const dot = el('span', 'fv-tb-dot'), ring = ringSVG(), text = el('span', 'fv-tb-cap-txt'), count = el('span', 'fv-tb-n');
-    capsule.append(dot, ring, text, count);
+    const glow = el('i', 'fv-tb-glow'); glow.setAttribute('aria-hidden', 'true');
+    capsule.append(dot, ring, text, count, glow);
     capsule.fvCapsule = {t, dot, ring, text, count};
     const [name, use] = words(t).status;
     tip(capsule, name, use);

@@ -1534,6 +1534,23 @@ export function openStudio(node, {extendFrom = null} = {}) {
     progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
     cleanup.push(createPreviewScene(stage, progress.element, stageMedia));
+    // While a video is made the frame carries a quiet light (glass/studio.css): a soft band drifting across it and the
+    // made share rising from the bottom as a faint tint. CSS only (transform and opacity): nothing runs when idle.
+    const making = el('div', null, 'fvs-making'); making.setAttribute('aria-hidden', 'true');
+    making.append(el('i', null, 'fvs-making-level'), el('i', null, 'fvs-making-sweep'));
+    stage.append(making);
+    const madeTrack = progress.element.querySelector('.fv-generation-track');
+    const syncMade = () => {
+        const value = Number(madeTrack?.getAttribute('aria-valuenow') ?? 0), made = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) / 100 : 0;
+        // Lower than before is a new run: it starts from the bottom at once.
+        if (made < (Number(making.style.getPropertyValue('--fvs-made')) || 0)) {
+            making.dataset.instant = 'true'; requestAnimationFrame(() => requestAnimationFrame(() => delete making.dataset.instant));
+        }
+        making.style.setProperty('--fvs-made', String(made));
+    };
+    const madeWatch = new MutationObserver(syncMade);
+    if (madeTrack) madeWatch.observe(madeTrack, {attributes: true, attributeFilter: ['aria-valuenow']});
+    syncMade(); cleanup.push(() => { madeWatch.disconnect(); making.remove(); });
     // The report card under the result: 'invite' after a watched video,
     // 'downloaded' once the user saved the report themselves.
     function reportCard(mode, animate = true) {

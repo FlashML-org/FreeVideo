@@ -209,6 +209,15 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.is-warn.has
 .fv-tb-pop .fv-tb-job-first:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 .fv-tb-pop .fv-tb-job-first:focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:-2px}
 @media(hover:none){.fv-tb-pop .fv-tb-job-first{opacity:1}}
+/* A task started, joined the queue or finished (topbar.js bump): one soft blue ring that fades out as it widens a
+   little, and the count rises into place; no bounce, nothing with reduced motion. */
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-glow{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;
+  box-shadow:0 0 0 1px var(--fv-accent-line),0 0 16px 2px var(--fv-accent-soft)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-bump .fv-tb-glow{animation:fv-tb-glow .9s cubic-bezier(.2,.8,.2,1) 1}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-bump .fv-tb-n{animation:fv-tb-rise .32s cubic-bezier(.2,.8,.2,1) 1}
+@keyframes fv-tb-glow{0%{opacity:0;transform:scale(.97)}30%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.07)}}
+@keyframes fv-tb-rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-bump :is(.fv-tb-glow,.fv-tb-n){animation:none}}
 /* This computer: video memory in large figures, then meters with right-aligned values */
 .fv-tb-mem{display:flex;align-items:baseline;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) 0}
 .fv-tb-mem-v{font-size:var(--fv-fs-4);line-height:28px;font-weight:600;color:var(--fv-fg);font-variant-numeric:tabular-nums}
