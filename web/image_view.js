@@ -34,6 +34,7 @@ import { queuePanel } from './image_view_queue.js';
 import { isHeld, worksClient } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { openPictureViewer } from './image_view_viewer.js';
+import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -299,7 +300,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     dice.addEventListener('click', () => { seedInput.value = ''; render(); });
     seedInput.addEventListener('input', () => render());
     const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
-    advGroup.body.append(seedField);
+    // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
+    const loraRow = imageViewLora({host: dialog, fetchApi: (path, options) => api.fetchApi(path, options),
+        modelName: () => IMAGE_MODELS.find(m => m.id === LORA_MODEL)?.name || 'Qwen-Image 2.1', onChange: () => render()});
+    advGroup.body.append(loraRow.element, seedField);
 
     // Prompt history and presets.
     const libGroup = section('library', {title: t('History and presets', '提示词与预设'), iconName: 'history', fixed: true});
@@ -948,6 +952,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (running && !browsing) { draft = false; draftPreview = null; }
         enhancer.element.dataset.off = String(enhancerOff());
         cards.paint(info, model.id, pendingGenerate);
+        loraRow.paint(model.id);
         drawReferences();
         const tooMany = over() > 0, busy = !!running;
         // No words inside the empty box (the group says what it is for); the name stays for screen readers.
@@ -1165,7 +1170,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
             startJobSources();
-            const {id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})},
+            const loras = loraRow.value(model.id);
+            const {id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
                 {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}});
             if (!alive || running !== mine) return;
             mine.id = id;
@@ -1413,7 +1419,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             references: references.map(({url, original, ...rest}) => ({...rest, ...(original ? {original: {file: original.file, width: original.width, height: original.height}} : {})}))};
         references.forEach(r => { if (r.original) URL.revokeObjectURL(r.original.url); });
         // Deleted pictures waiting for their undo window go now: nothing is left half-deleted behind a closed page.
-        void trash.flush(); trash.dispose();
+        void trash.flush(); trash.dispose(); loraRow.dispose();
         // ── run: tasks owns this block (job store) ──
         // Leaving only stops watching: the job runs on, the floating window carries it, and its picture reaches the works.
         rememberView(); document.removeEventListener('keydown', strayKeys); expand.dispose?.();

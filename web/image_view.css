@@ -669,3 +669,33 @@
 .fv-iv .fv-iv-frame[data-state=waiting]{box-shadow:none}
 
 .fv-iv .fv-image-enhance{position:relative}
+
+/* ── LoRA: a button in Advanced whose panel opens beside it (glass/frame_picker.js createPopChip); the image LoRA rows ── */
+.fv-iv .fv-iv-lora{display:block;margin-bottom:var(--fv-sp-8,8px)}
+.fv-iv .fv-iv-lora button.fvp-chip{display:inline-flex;align-items:center;justify-content:flex-start;gap:var(--fv-sp-8,8px);width:100%;min-width:0;height:32px;min-height:32px;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-sm,8px);background:var(--fv-ctl-bg);box-shadow:none;color:var(--fv-fg);font-size:var(--fv-fs-2,13px);font-weight:var(--fv-fw-1,400)}
+.fv-iv .fv-iv-lora button.fvp-chip:is(:hover:not(:disabled),[aria-expanded=true]){background:var(--fv-ctl-hover)}
+.fv-iv .fv-iv-lora button.fvp-chip[data-active=true] .fvp-chip-glyph{color:var(--fv-accent-ink)}
+.fvp.fvp-pop.fvp-pop-plain[data-kind=image-lora]{width:380px}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-panel{position:static;display:grid;gap:var(--fv-sp-12,12px);width:auto;max-height:min(360px,calc(100vh - 160px));overflow:auto;margin:0;padding:0;border:0;background:none;box-shadow:none}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-list{display:grid;gap:var(--fv-sp-12,12px)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-list:empty{display:none}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row{display:grid;grid-template-columns:20px minmax(0,1fr) 68px 32px;align-items:center;gap:var(--fv-sp-8,8px)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row[data-enabled=false]>:not(input[type=checkbox]){opacity:.45}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row :is(select,input[type=number],input[type=text]){box-sizing:border-box;width:100%;min-width:0;height:32px;padding:0 var(--fv-sp-8,8px);border:0;border-radius:var(--fv-r-sm,8px);background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2,13px)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row select{padding-right:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row input[type=number]{font-variant-numeric:tabular-nums;text-align:center}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row :is(select,input):focus-visible{outline:none;box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row>button{width:32px;height:32px;padding:0;border:0;border-radius:var(--fv-r-sm,8px);background:none;color:var(--fv-fg3);font-size:18px;line-height:1;cursor:pointer}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row>button:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-trigger{grid-column:2/span 3}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-trigger::placeholder{color:var(--fv-fg3)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-problem{grid-column:2/span 3;margin:0;font-size:var(--fv-fs-1,12px);color:var(--fv-danger,#e5484d)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-problem[hidden]{display:none}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row[data-unusable=true] .fv-ie-lora-trigger{display:none}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-row[data-unusable=true] input[type=number]{visibility:hidden}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-actions{display:flex}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-actions>button{flex:1;height:32px;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-sm,8px);background:var(--fv-ctl-bg);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2,13px);cursor:pointer}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-actions>button:hover:not(:disabled){background:var(--fv-ctl-hover)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-actions>button:disabled{opacity:.4;cursor:default}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-note{margin:0;font-size:var(--fv-fs-1,12px);line-height:18px;color:var(--fv-fg3)}
+.fvp-pop[data-kind=image-lora] .fv-ie-lora-note:empty{display:none}
