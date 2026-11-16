@@ -1617,7 +1617,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The next generation's empty frame stays whole while a tray floats over the picture's lower part: it is fitted
         // and centred in the part left free, and takes the full stage again when the tray closes (200 ms).
         stage.style.translate = '';
-        const openTray = nextShown && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing])') : null;
+        // (A tray shown as a small window beside its button, glass/tray_pop.js, floats over the stage and takes no room.)
+        const openTray = nextShown && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing]):not([data-fv-pop])') : null;
         if (openTray) {
             const spaceTop = output.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
             const freeHeight = Math.min(fittedHeight, openTray.getBoundingClientRect().top - spaceTop - 16);
@@ -2776,7 +2777,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // covers none of it (the history rail steps aside meanwhile).
     function placeTray() {
         const id = consoleUI?.open(), tray = id && consoleUI.trays.querySelector(`[data-tray="${id}"]`);
-        if (!tray) { body.dataset.traySide = 'false'; return; }
+        // A tray shown as a small window beside its button (glass/tray_pop.js) is placed by that module.
+        if (!tray || tray.hasAttribute('data-fv-pop')) { body.dataset.traySide = 'false'; return; }
         // The picture's full box (not the stage, which an empty next frame shrinks while a tray is open), so the tray
         // never moves under the pointer when the stage changes shape.
         const dock = controls.getBoundingClientRect(), space = previewSpace.getBoundingClientRect(), edge = 16;

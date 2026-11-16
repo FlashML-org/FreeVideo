@@ -1,137 +1,136 @@
-/* The studio's Media tray (media_tray.js marks the parts and places the tiles; the functions stay freevideo.js's media panel).
-   One family with the Frame & size and Advanced trays: the same shell, quiet group titles, filled controls.
-   Every part sits on one grid of twelve columns and reaches the tray's right edge in every state:
-   1. what is added: the two frame slots, then the references, tiles of one size, and the add tile (dashed, like a frame
-      slot) taking whatever is left of the last row; when the tray is short, this part alone scrolls;
-   2. one line for a remark about the whole set and its key;
-   3. recent works, one row of pictures on the tiles' columns;
-   4. characters, scenes and props, a third of the width each.
-   What new pictures become is chosen in the title row, left of the close key. */
-.fv-studio.fv-create .fvs-tray[data-tray=media]{max-height:min(640px,var(--fv-mt-room,calc(100dvh - 280px)))!important}
-/* The same ground, edge, corners, shadow and motion as the small windows of the tool row (frame, size, length, quality):
-   a solid panel with one line and one shadow that rises 4 px into place in 160 ms and sinks back in 120 ms. */
-.fv-studio.fv-create .fvs-tray[data-tray=media][open]{border:1px solid var(--fv-edge);border-radius:var(--fv-r-md);background:rgb(var(--fv-solid3));box-shadow:var(--fv-sh2);-webkit-backdrop-filter:none;backdrop-filter:none;
-  transform-origin:50% 100%;animation:fv-mt-in .16s var(--fv-ease-out,ease-out)}
-.fv-studio.fv-create .fvs-tray[data-tray=media][open][data-closing=true]{animation:fv-mt-out .12s var(--fv-ease-out,ease-out) forwards}
-.fv-studio.fv-create .fvs-tray[data-tray=media]>.fvs-tray-head{background:rgb(var(--fv-solid3));border-radius:var(--fv-r-md) var(--fv-r-md) 0 0}
-@keyframes fv-mt-in{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
-@keyframes fv-mt-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(4px) scale(.98)}}
-@media (prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-tray[data-tray=media][open],.fv-studio.fv-create .fvs-tray[data-tray=media][open][data-closing=true]{animation:none}}
-.fvs-tray .fv-mt{--fv-mt-gap:var(--fv-sp-12);--fv-mt-pic:16/9;display:flex;flex-direction:column;gap:var(--fv-sp-12);min-width:0}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow]{--fv-mt-gap:var(--fv-sp-8);--fv-mt-pic:2/1;gap:var(--fv-sp-8)}
-.fvs-tray .fv-mt>*{margin:0;min-width:0}
-.fvs-tray .fv-mt>[hidden]{display:none!important}
-/* The tiles and the add tile: one grid, its own scroll box when the tray is short. */
-.fvs-tray .fv-mt>.fv-mt-media{order:1;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--fv-mt-gap);align-items:start;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
-.fvs-tray .fv-mt .fv-mt-cards{display:contents}
-/* While the tiles scroll, their lower edge fades, so a cut tile reads as more below. */
-.fvs-tray .fv-mt>.fv-mt-media[data-fv-mt-scroll=true]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
-.fvs-tray .fv-mt>.fv-mt-media[data-fv-mt-scroll=end]{-webkit-mask-image:none;mask-image:none}
+/* The studio's Media window (media_tray.js marks the parts; tray_pop.js/.css place it and give it the window's ground,
+   edge, corners, shadow and motion, as Frame & size, Duration and Quality). Inside, top to bottom: the title row, with
+   what new pictures become at its right; what is added, small squares of one size in a row (first frame, last frame,
+   references), the last square "+ Add"; one line for a remark and its key; one line to choose from the saved works,
+   with AI and Reference audio at its right end; characters, scenes and props; Replace person. "Choose from works" turns
+   the window into the works page: a grid of squares, all, videos or pictures. Nothing folds away. */
 
-/* The drop-down for new pictures, in the title row left of the close key. */
+/* ── The title row: what new pictures become, at its right end ── */
+.fv-studio.fv-create .fvs-tray[data-tray=media]>.fvs-tray-head{min-height:32px}
 .fv-studio.fv-create .fvs-tray>.fvs-tray-head>.fv-mt-role{flex:none;display:flex;align-items:center;gap:var(--fv-sp-8);min-width:0}
 .fv-studio.fv-create .fvs-tray>.fvs-tray-head>.fv-mt-role>.fv-mt-role-label{font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3);white-space:nowrap}
 .fv-studio.fv-create .fvs-tray>.fvs-tray-head>.fv-mt-role>.fv-select{flex:none}
-.fv-studio.fv-create .fvs-tray>.fvs-tray-head>.fv-mt-role select{width:auto!important;min-width:0!important;max-width:none!important;height:32px!important;min-height:32px!important;padding-top:0!important;padding-bottom:0!important;font-size:var(--fv-fs-1)!important;line-height:30px!important}
+.fv-studio.fv-create .fvs-tray>.fvs-tray-head>.fv-mt-role select{width:auto!important;min-width:0!important;max-width:none!important;height:32px!important;min-height:32px!important;padding-top:0!important;padding-bottom:0!important;
+  border-color:transparent!important;background:var(--fv-ctl-bg)!important;font-size:var(--fv-fs-1)!important;line-height:30px!important}
 
-/* ── 1. What is added ── */
-.fvs-tray .fv-mt .fv-card{position:relative;display:flex;flex-direction:column;gap:var(--fv-sp-8);min-width:0;margin:0;padding:0 0 var(--fv-sp-8)!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);box-shadow:none;overflow:hidden}
-.fvs-tray .fv-mt .fv-card>:not(.fv-preview-wrap,.fv-preview,.fv-mt-keys,.fv-shape-note,.fv-edited){margin-inline:var(--fv-sp-8)}
-.fvs-tray .fv-mt .fv-card:not([data-kind=image],[data-kind=video]){padding-top:var(--fv-sp-8)!important}
-.fvs-tray .fv-mt .fv-card[data-enabled=false]>:not(.fv-row){opacity:.45}
-.fvs-tray .fv-mt .fv-card>.fv-preview-wrap,.fvs-tray .fv-mt .fv-card>.fv-preview{order:-1}
-.fvs-tray .fv-mt .fv-card .fv-preview-wrap{position:relative;display:block;aspect-ratio:var(--fv-mt-pic);margin:0;padding:0;border-radius:0;overflow:hidden;background:var(--fv-shell-bg)}
-.fvs-tray .fv-mt .fv-card :is(img,video).fv-preview{display:block;width:100%;height:100%;max-height:none;aspect-ratio:var(--fv-mt-pic);object-fit:cover;border-radius:0;background:var(--fv-shell-bg)}
-.fvs-tray .fv-mt .fv-card .fv-preview-wrap>:is(img,video).fv-preview{position:absolute;inset:0;margin:0;aspect-ratio:auto}
-.fvs-tray .fv-mt .fv-card audio.fv-preview{width:100%;height:32px;min-height:32px}
-/* Use, and the box that turns the tile on or off, on one line under the picture; the name only where there is no picture. */
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type{display:flex;align-items:center;gap:var(--fv-sp-8);min-width:0}
-.fvs-tray .fv-mt .fv-card:is([data-kind=image],[data-kind=video]) .fv-file{display:none}
-.fvs-tray .fv-mt .fv-card .fv-file{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select{flex:1;min-width:0}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select{width:100%!important;height:32px!important;min-height:32px!important;font-size:var(--fv-fs-1)}
-.fvs-tray .fv-mt .fv-select::after{right:var(--fv-sp-8)}
-/* Move and remove: small keys over the tile's corner, shown when the tile is pointed at or holds the focus. */
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys{position:absolute;top:calc(var(--fv-sp-4) + 2px);left:calc(var(--fv-sp-4) + 2px);right:calc(var(--fv-sp-4) + 2px);display:flex;gap:var(--fv-sp-4);pointer-events:none;opacity:0;transition:opacity var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out)}
-.fvs-tray .fv-mt .fv-card:is(:hover,:focus-within)>.fv-mt-keys{opacity:1}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button{pointer-events:auto;flex:none;display:grid;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:hover:not(:disabled){filter:brightness(1.3)}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:disabled{opacity:.4}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
-.fvs-tray .fv-mt .fv-mt-remove{margin-left:auto;--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E")}
-/* Moving earlier or later is in the tile's drop-down; its two keys are not drawn on the picture. */
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none}
-/* The picture is the way into the editor; the separate Edit keys are kept for the keyboard only. */
+/* ── Inside ── */
+.fvs-tray .fv-mt{display:flex;flex-direction:column;gap:var(--fv-sp-12);min-width:0;margin:0;padding:0!important;border:0!important;background:none!important;overflow:visible!important}
+.fvs-tray .fv-mt>*{margin:0;min-width:0}
+.fvs-tray .fv-mt>[hidden]{display:none!important}
+
+/* 1. What is added: squares of one size, five to a row (four in a narrow window); the box scrolls on its own when the
+   window is short. */
+.fvs-tray .fv-mt>.fv-mt-media{order:1;container-type:inline-size;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-auto-rows:auto;gap:var(--fv-sp-8);align-items:start;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+@media (max-width:520px){.fvs-tray .fv-mt>.fv-mt-media{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.fvs-tray .fv-mt .fv-mt-cards{display:contents}
+/* While the tiles scroll, their lower edge fades, so a cut tile reads as more below. */
+.fvs-tray .fv-mt>.fv-mt-media[data-fv-mt-scroll=true]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
+/* A tile: the picture fills the square; along its foot, the box that turns it on or off and its use. */
+.fvs-tray .fv-mt .fv-card{position:relative;box-sizing:border-box;aspect-ratio:1;min-width:0;margin:0!important;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);box-shadow:none;overflow:hidden}
+.fvs-tray .fv-mt .fv-card[data-enabled=false] :is(.fv-preview-wrap,video.fv-preview){opacity:.45}
+.fvs-tray .fv-mt .fv-card .fv-preview-wrap{position:absolute;inset:0;display:block;margin:0!important;padding:0;border-radius:0;overflow:hidden;background:var(--fv-shell-bg)}
+.fvs-tray .fv-mt .fv-card :is(img,video).fv-preview{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-height:none;margin:0!important;aspect-ratio:auto;object-fit:cover!important;object-position:50% 50%;border-radius:0;background:var(--fv-shell-bg)}
 .fvs-tray .fv-mt .fv-card[data-kind=image]:not(.fv-mt-broken) .fv-preview{cursor:pointer}
-.fvs-tray .fv-mt .fv-card .fv-preview-edit{position:absolute;right:var(--fv-sp-4);bottom:var(--fv-sp-4);top:auto;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-8)!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:var(--fv-fs-1)!important;opacity:0;pointer-events:none;transition:opacity var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out)}
+.fvs-tray .fv-mt .fv-card .fv-file{display:none}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type{position:absolute;left:0;right:0;bottom:0;z-index:1;display:flex;align-items:center;gap:0;margin:0;padding:0 0 0 var(--fv-sp-4);
+  background:linear-gradient(to top,rgb(0 0 0 / .62),rgb(0 0 0 / .38) 70%,transparent);color:#fff}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type input[type=checkbox]{flex:none;width:16px;height:16px;min-height:16px;margin:0 var(--fv-sp-2) 0 var(--fv-sp-4)}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select{flex:1;min-width:0;color:#fff}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select::after{right:var(--fv-sp-4);width:14px;height:14px;margin-top:0;translate:0 -50%;color:#fff;-webkit-mask-size:14px;mask-size:14px}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select{width:100%!important;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-20) 0 var(--fv-sp-4)!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:#fff!important;font-size:var(--fv-fs-1)!important;line-height:32px;box-shadow:none!important}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select option{color:var(--fv-fg);background:rgb(var(--fv-solid3))}
+.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:var(--fv-sp-4);left:var(--fv-sp-4);z-index:1;padding:0 var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;pointer-events:none}
+.fvs-tray .fv-mt .fv-card[data-fv-slot]>.fv-preview-wrap::before{content:none}
+/* A tile with more to set (a middle frame's time, a video's depth and sound, audio): three squares, the picture in the
+   first, the settings beside it. */
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]{grid-column:span 3;aspect-ratio:auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);grid-template-rows:auto;align-content:start;column-gap:var(--fv-sp-8);row-gap:0;padding:0 var(--fv-sp-8) 0 0!important}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>:is(.fv-preview-wrap,video.fv-preview){position:relative;inset:auto;grid-column:1;grid-row:1 / span 8;aspect-ratio:1;height:auto!important}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>audio.fv-preview{position:static;grid-column:1 / -1;grid-row:auto;width:calc(100% - var(--fv-sp-8))!important;height:32px!important;aspect-ratio:auto;margin:var(--fv-sp-8) var(--fv-sp-8) 0!important}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type{position:static;grid-column:2;padding:var(--fv-sp-4) 0 0;background:none;color:var(--fv-fg)}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type input[type=checkbox]{margin-left:0}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type :is(.fv-select,select){color:var(--fv-fg)!important}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type .fv-select::after{color:var(--fv-fg2)}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>:is(.fv-time,.fv-depth-only,.fv-sound,.fv-note,.fv-audio-use-note,.fv-time-error){grid-column:2;margin:0}
+.fvs-tray .fv-mt .fv-card :is(.fv-note,.fv-audio-use-note,.fv-time-error){padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
+.fvs-tray .fv-mt .fv-card :is(.fv-depth-only,.fv-sound){display:flex;align-items:center;gap:var(--fv-sp-4);min-height:32px;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);white-space:normal}
+.fvs-tray .fv-mt .fv-card :is(.fv-depth-only,.fv-sound) input{flex:none;margin:0}
+.fvs-tray .fv-mt .fv-card .fv-time{display:flex;align-items:center;gap:var(--fv-sp-4);font-size:var(--fv-fs-1);color:var(--fv-fg2)}
+.fvs-tray .fv-mt .fv-card .fv-time input{flex:1;min-width:0;width:auto!important;height:32px;min-height:32px;font-size:var(--fv-fs-2)!important}
+.fvs-tray .fv-mt .fv-card :is(.fv-error,.fv-time-error){color:var(--fv-warning)}
+/* In a three-square tile the reason a reference is held back sits on its picture, not over its settings. */
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-mt-held-note{right:calc(66.6% + var(--fv-sp-4))}
+/* Audio has no picture: its use along the top, the player under it, both across the tile. */
+.fvs-tray .fv-mt .fv-card[data-kind=audio]{display:flex!important;flex-direction:column;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) var(--fv-sp-8)!important}
+.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-row:first-of-type{padding:0}
+.fvs-tray .fv-mt .fv-card[data-kind=audio]>audio.fv-preview{width:100%!important;margin:0!important}
+.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-mt-held-note{position:static;translate:none;align-self:flex-start}
+/* Remove (and crop, for a frame of another shape): small keys on the picture's top corners, shown when the tile is
+   pointed at or holds the focus; the crop key always, since it says the frame will be cropped. */
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);z-index:2;display:flex;gap:var(--fv-sp-4);pointer-events:none;opacity:0;transition:opacity .16s ease-out}
+.fvs-tray .fv-mt .fv-card:is(:hover,:focus-within)>.fv-mt-keys{opacity:1}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{pointer-events:auto;flex:none;display:grid;place-items:center;width:24px!important;height:24px!important;min-height:24px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::after,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::after{content:"";position:absolute;inset:-4px}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{position:relative}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:hover:not(:disabled),.fvs-tray .fv-mt .fv-card .fv-shape-note>button:hover{filter:brightness(1.3)}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:disabled{opacity:.4}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::before,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::before{content:"";width:14px;height:14px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/14px no-repeat;mask:var(--fv-mt-icon) center/14px no-repeat}
+.fvs-tray .fv-mt .fv-mt-remove{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E")}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none}
+.fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:var(--fv-sp-4);left:var(--fv-sp-4);z-index:2;display:block;margin:0!important;padding:0;border:0;background:none}
+.fvs-tray .fv-mt .fv-card .fv-shape-note>span{display:none}
+.fvs-tray .fv-mt .fv-card .fv-shape-note>button{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 1.5v10h10M1.5 4.5h10v10'/%3E%3C/svg%3E")}
+/* The picture is the way into the editor; the separate Edit keys are kept for the keyboard only. */
+.fvs-tray .fv-mt .fv-card .fv-preview-edit{position:absolute;left:50%;top:var(--fv-sp-4);translate:-50% 0;z-index:2;height:24px!important;min-height:24px!important;padding:0 var(--fv-sp-8)!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:var(--fv-fs-1)!important;opacity:0;pointer-events:none}
 .fvs-tray .fv-mt .fv-card .fv-preview-edit:focus-visible{opacity:1;pointer-events:auto}
 .fvs-tray .fv-mt .fv-card :is(.fv-mt-edit,.fv-mt-original){display:none}
-.fvs-tray .fv-mt .fv-card>.fv-row.fv-mt-rest{display:flex;flex-wrap:wrap;gap:var(--fv-sp-4)}
-.fvs-tray .fv-mt .fv-card>.fv-row.fv-mt-rest:empty{display:none}
-.fvs-tray .fv-mt .fv-card>.fv-row.fv-mt-rest>button{height:32px;min-height:32px;padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1)}
-/* A tile's own options and remarks: one quiet line each. */
-.fvs-tray .fv-mt .fv-card :is(.fv-note,.fv-audio-use-note,.fv-time-error){margin:0;padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
-.fvs-tray .fv-mt .fv-card :is(.fv-depth-only,.fv-sound){display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
-.fvs-tray .fv-mt .fv-card .fv-time{display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-1);color:var(--fv-fg2)}
-.fvs-tray .fv-mt .fv-card .fv-time input{flex:1;min-width:0;height:32px;min-height:32px}
-.fvs-tray .fv-mt .fv-card :is(.fv-error,.fv-time-error){color:var(--fv-warning)}
-/* A picture whose shape differs from the video's: a small crop key on its corner says so and opens the crop. */
-.fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:calc(var(--fv-sp-4) + 2px);right:calc(var(--fv-sp-4) + 2px);z-index:1;display:block;margin:0!important;padding:0;border:0;background:none}
-.fvs-tray .fv-mt .fv-card .fv-shape-note>span{display:none}
-.fvs-tray .fv-mt .fv-card .fv-shape-note>button{display:grid;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
-.fvs-tray .fv-mt .fv-card .fv-shape-note>button:hover{filter:brightness(1.3)}
-.fvs-tray .fv-mt .fv-card .fv-shape-note>button::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-crop) center/16px no-repeat;mask:var(--fv-mt-crop) center/16px no-repeat;
-  --fv-mt-crop:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 1.5v10h10M1.5 4.5h10v10'/%3E%3C/svg%3E")}
-.fvs-tray .fv-mt .fv-card.fv-mt-crop>.fv-mt-keys{right:calc(var(--fv-sp-32) + var(--fv-sp-8) + 2px)}
-/* Tags on the picture: which frame it is, and that it was edited. */
-.fvs-tray .fv-mt .fv-card[data-fv-slot]>.fv-preview-wrap::before{content:attr(data-fv-slot-name);position:absolute;left:var(--fv-sp-4);bottom:var(--fv-sp-4);z-index:1;padding:0 var(--fv-sp-8);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:20px;pointer-events:none}
-.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:calc(var(--fv-sp-4) + 2px);left:calc(var(--fv-sp-4) + 2px);z-index:1;padding:0 var(--fv-sp-8);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:20px;pointer-events:none}
+.fvs-tray .fv-mt .fv-card>.fv-row.fv-mt-rest{display:none}
 /* A picture that cannot be shown: the tile's own ground and a small picture mark. */
 .fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview{visibility:hidden}
 .fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview-wrap{background:var(--fv-shell-bg)}
-.fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview-wrap::after{content:"";position:absolute;inset:0;margin:auto;width:24px;height:24px;background:var(--fv-fg3);
+.fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview-wrap::after{content:"";position:absolute;inset:0;margin:auto auto calc(50% - 4px);width:24px;height:24px;background:var(--fv-fg3);
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='4.5' width='17' height='15' rx='2'/%3E%3Ccircle cx='9' cy='10' r='1.5'/%3E%3Cpath d='m4 17 5-4 4 3 3-2.5 4 3.5'/%3E%3C/svg%3E") center/24px no-repeat;
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='4.5' width='17' height='15' rx='2'/%3E%3Ccircle cx='9' cy='10' r='1.5'/%3E%3Cpath d='m4 17 5-4 4 3 3-2.5 4 3.5'/%3E%3C/svg%3E") center/24px no-repeat}
 .fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview-edit{display:none}
-/* References held back while a frame is on: dimmed, with the reason on the picture. */
-.fvs-tray .fv-mt .fv-card.fv-mt-held>.fv-preview-wrap>.fv-preview,.fvs-tray .fv-mt .fv-card.fv-mt-held>.fv-preview{opacity:.4}
-.fvs-tray .fv-mt .fv-mt-held-note{position:absolute;left:var(--fv-sp-4);right:var(--fv-sp-4);bottom:var(--fv-sp-4);padding:2px var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;text-align:center;pointer-events:none}
+/* References held back while a frame is on: dimmed, the reason across the picture. */
+.fvs-tray .fv-mt .fv-card.fv-mt-held .fv-preview{opacity:.4}
+.fvs-tray .fv-mt .fv-mt-held-note{position:absolute;left:var(--fv-sp-4);right:var(--fv-sp-4);top:var(--fv-sp-8);padding:2px var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;text-align:center;pointer-events:none}
 .fvs-tray .fv-mt .fv-card.fv-mt-held .fv-preview-edit{display:none}
 
-/* An empty frame slot: a dashed tile of the same size that takes a picture. */
-.fvs-tray .fv-mt .fv-mt-slot-empty{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--fv-sp-8);align-self:stretch;min-width:0;min-height:88px;padding:var(--fv-sp-8);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);color:var(--fv-fg2)}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow] .fv-mt-slot-empty{min-height:72px}
+/* An empty frame slot: a dashed square that takes a picture; its name, and two small picture keys (this computer, the
+   works), named in their hover cards. */
+.fvs-tray .fv-mt .fv-mt-slot-empty{box-sizing:border-box;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--fv-sp-4);min-width:0;padding:var(--fv-sp-4);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);color:var(--fv-fg2)}
 .fvs-tray .fv-mt .fv-mt-slot-empty[data-over=true]{border-color:var(--fv-accent-line);background:var(--fv-accent-soft)}
-.fvs-tray .fv-mt .fv-mt-slot-name{font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-2,500);color:var(--fv-fg)}
-.fvs-tray .fv-mt .fv-mt-slot-keys{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--fv-sp-4)}
-.fvs-tray .fv-mt .fv-mt-slot-keys>button{height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-8)!important;font-size:var(--fv-fs-1)}
-.fvs-tray .fv-mt .fv-mt-slot-keys>button[aria-pressed=true]{background:var(--fv-accent-soft)!important;color:var(--fv-accent-ink)!important}
+.fvs-tray .fv-mt .fv-mt-slot-name{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
+.fvs-tray .fv-mt .fv-mt-slot-keys{display:flex;justify-content:center;gap:var(--fv-sp-4)}
+.fvs-tray .fv-mt .fv-mt-slot-keys>button{display:grid!important;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg2)!important;font-size:0!important;line-height:0}
+.fvs-tray .fv-mt .fv-mt-slot-keys>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+.fvs-tray .fv-mt .fv-mt-slot-keys>button::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
+.fvs-tray .fv-mt .fv-mt-computer{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='12' height='8' rx='1.5'/%3E%3Cpath d='M6 13.5h4M8 11v2.5'/%3E%3C/svg%3E")}
+.fvs-tray .fv-mt .fv-mt-saved,.fvs-tray .fv-mt .fv-mt-browse{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='2.5' y='9' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='9' width='4.5' height='4.5' rx='1'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-mt-cards:has(>.fv-mt-slot-empty)>.fv-empty{display:none}
 /* Nothing can be added here (the list comes from connected inputs, or the panel has no node): one quiet line. */
-.fvs-tray .fv-mt :is(.fv-empty,.fv-connected-card){display:grid;place-items:center;min-height:48px;margin:0;padding:var(--fv-sp-12);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);background:none;color:var(--fv-fg3);font-size:var(--fv-fs-2);line-height:20px;text-align:center}
+.fvs-tray .fv-mt :is(.fv-empty,.fv-connected-card){grid-column:1 / -1;display:grid;place-items:center;min-height:48px;margin:0;padding:var(--fv-sp-12);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);background:none;color:var(--fv-fg3);font-size:var(--fv-fs-2);line-height:20px;text-align:center}
 
-/* The add tile: the panel's own tool row, dashed like a frame slot, taking the rest of the last row of tiles. What it
-   holds follows its width (media_tray.js names it): the drop line and the keys on one line when it has room, on two
-   lines in a tile-sized space; in the narrowest, "+ Add" over two small picture keys (Generate with AI, Reference
-   audio), each named in its hover card. */
-.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar{box-sizing:border-box;align-self:stretch;display:flex;flex-wrap:wrap;align-content:center;align-items:center;gap:var(--fv-sp-8);min-height:56px;margin:0;padding:var(--fv-sp-8) var(--fv-sp-12);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm)}
-.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar[data-over=true]{border-color:var(--fv-accent-line);background:var(--fv-accent-soft)}
-.fvs-tray .fv-mt .fv-toolbar>.fv-mt-drop{flex:0 0 100%;font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg2)}
-.fvs-tray .fv-mt .fv-toolbar>button{flex:none;height:32px!important;min-height:32px!important}
-.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key::before{content:"+";font-weight:var(--fv-fw-1,400)}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=line]>.fv-mt-drop{flex:0 1 auto;margin-right:var(--fv-sp-8)}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]{justify-content:center;padding:var(--fv-sp-8)}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]>.fv-mt-drop{display:none}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]>.fv-mt-add-key{flex:0 0 100%}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]>:is(.fv-mt-ai,.fv-mt-audio){display:grid;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;font-size:0!important;line-height:0}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]>:is(.fv-mt-ai,.fv-mt-audio)[hidden]{display:none}
-.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=stack]>:is(.fv-mt-ai,.fv-mt-audio)::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
-.fvs-tray .fv-mt .fv-toolbar>.fv-mt-ai{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M7 2.5 8.2 6 11.5 7.2 8.2 8.4 7 12 5.8 8.4 2.5 7.2 5.8 6z'/%3E%3Cpath d='M12 10.5v3M10.5 12h3' stroke-linecap='round'/%3E%3C/svg%3E")}
-.fvs-tray .fv-mt .fv-toolbar>.fv-mt-audio{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 11.5V3.5l6.5-1.5v8'/%3E%3Ccircle cx='4.25' cy='11.75' r='1.75'/%3E%3Ccircle cx='10.75' cy='10.25' r='1.75'/%3E%3C/svg%3E")}
+/* The add tile: the panel's own tool row, dashed like a frame slot, taking what is left of the last row. Its key fills it:
+   "+ Add", and with room the line about dropping under it. */
+.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar{order:9;align-self:stretch;position:relative;box-sizing:border-box;display:block;min-height:0;aspect-ratio:auto;margin:0;padding:0;border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm)}
+.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar[data-fv-mt-fit=one]{aspect-ratio:1}
+.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar:not([data-fv-mt-fit=one]){min-height:var(--fv-mt-square,80px)}
+.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar:is([data-over=true],:hover){border-color:var(--fv-accent-line);background:var(--fv-ctl-bg)}
+.fvs-tray .fv-mt .fv-mt-media>.fv-toolbar>:not(.fv-mt-add-key){display:none!important}
+.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key{position:absolute;inset:0;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:var(--fv-sp-4);width:100%!important;height:100%!important;min-height:0!important;margin:0;padding:var(--fv-sp-8)!important;
+  border:0!important;border-radius:var(--fv-r-sm)!important;background:none!important;box-shadow:none!important;color:var(--fv-fg)!important;font-size:var(--fv-fs-2)!important;line-height:20px;font-weight:var(--fv-fw-1,400)!important}
+.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key::before{content:"";width:20px;height:20px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M8 3.5v9M3.5 8h9'/%3E%3C/svg%3E") center/20px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M8 3.5v9M3.5 8h9'/%3E%3C/svg%3E") center/20px no-repeat;color:var(--fv-fg2)}
+.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key::after{content:attr(data-fv-mt-hint);max-width:100%;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fvs-tray .fv-mt .fv-toolbar[data-fv-mt-fit=one]>.fv-mt-add-key::after{content:none}
+.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key:disabled{opacity:.45}
+.fvs-tray .fv-mt .fv-toolbar>.fv-mt-add-key:focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:-2px}
 
-/* ── 2. A remark about the whole set: one quiet line; when it is a problem, a caution mark in front, the words in the
-   normal ink, and its key at the right end of the same line. ── */
-.fvs-tray .fv-mt>.fv-mt-remark{order:2;display:flex;align-items:center;gap:var(--fv-sp-12);min-height:32px}
+/* 2. A remark about the whole set: one quiet line; when it is a problem, a caution mark in front, the words in the
+   normal ink, and its key at the right end of the same line. */
+.fvs-tray .fv-mt>.fv-mt-remark{order:2;display:flex;align-items:center;gap:var(--fv-sp-12);min-height:32px;margin-top:calc(-1 * var(--fv-sp-4))}
 .fvs-tray .fv-mt .fv-mt-remark>.fv-note{flex:1;display:flex;align-items:center;gap:var(--fv-sp-8);min-width:0;margin:0;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
 .fvs-tray .fv-mt .fv-mt-remark>.fv-note[hidden]{display:none}
 .fvs-tray .fv-mt .fv-mt-remark>.fv-note.fv-error::before{content:"";flex:none;width:16px;height:16px;background:var(--fv-caution,var(--fv-warning));
@@ -139,60 +138,90 @@
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2.5 14 13H2zM8 6.5v3M8 11.2v.1'/%3E%3C/svg%3E") center/16px no-repeat}
 .fvs-tray .fv-mt .fv-mt-remark>.fv-mt-mix{flex:none;display:flex;margin-left:auto}
 .fvs-tray .fv-mt .fv-mt-remark>.fv-mt-mix[hidden]{display:none}
-.fvs-tray .fv-mt .fv-mt-mix>button{height:32px;min-height:32px;font-size:var(--fv-fs-1)}
-.fvs-tray .fv-mt>.fv-connected{order:6;display:flex;flex-wrap:wrap;gap:var(--fv-sp-8)}
+.fvs-tray .fv-mt .fv-mt-mix>button{height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-12)!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg)!important;font-size:var(--fv-fs-1)!important}
+.fvs-tray .fv-mt .fv-mt-mix>button:hover{background:var(--fv-ctl-hover)!important}
+.fvs-tray .fv-mt>.fv-connected{order:4;display:flex;flex-wrap:wrap;gap:var(--fv-sp-8)}
 .fvs-tray .fv-mt>.fv-connected:empty{display:none}
 
-/* ── 3. Recent works: one row of pictures on the tiles' columns; a press adds one. ── */
-.fvs-tray .fv-mt>.fv-mt-recent{order:5;display:grid;gap:var(--fv-sp-8)}
-.fvs-tray .fv-mt .fv-mt-title{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
-.fvs-tray .fv-mt>.fv-mt-recent[data-armed]:not([data-armed=""]) .fv-mt-title{color:var(--fv-accent-ink)}
-.fvs-tray .fv-mt .fv-mt-recent-list{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--fv-sp-8) var(--fv-mt-gap)}
-.fvs-tray .fv-mt .fv-mt-recent-item{grid-column:span 2;position:relative;display:block;aspect-ratio:var(--fv-mt-pic);width:100%;height:auto!important;min-height:0!important;padding:0!important;border:0;border-radius:var(--fv-r-xs)!important;overflow:hidden;background:var(--fv-ctl-bg);cursor:pointer}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow] .fv-mt-recent-item{grid-column:span 3}
-.fvs-tray .fv-mt .fv-mt-recent-item>:is(img,video){position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0;border-radius:0;object-fit:cover!important;object-position:50% 50%!important;opacity:0;pointer-events:none;transition:opacity var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out)}
-.fvs-tray .fv-mt .fv-mt-recent-item[data-frame=true]>video{opacity:1}
-.fvs-tray .fv-mt .fv-mt-recent-item[data-shown=true]>img{opacity:1}
-.fvs-tray .fv-mt .fv-mt-recent-item[data-shown=true]:hover:not(:disabled)>:is(img,video){opacity:.8}
-.fvs-tray .fv-mt .fv-mt-recent-item:disabled{opacity:.4;cursor:default}
-.fvs-tray .fv-mt .fv-mt-recent-item[data-kind=video]::after{content:"";position:absolute;right:var(--fv-sp-4);bottom:var(--fv-sp-4);width:16px;height:16px;border-radius:var(--fv-r-xs);background:var(--fv-on-pic) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4.5v7l5.5-3.5z' fill='white'/%3E%3C/svg%3E") center/16px no-repeat}
+/* 3. One line of keys: Choose from works (the works page), then AI and Reference audio at the right end. */
+.fvs-tray .fv-mt>.fv-mt-actions{order:3;display:flex;align-items:center;gap:var(--fv-sp-8);min-height:32px}
+.fvs-tray .fv-mt .fv-mt-actions-gap{flex:1}
+.fvs-tray .fv-mt .fv-mt-actions>button{flex:none;display:inline-flex!important;align-items:center;gap:var(--fv-sp-8);height:32px!important;min-height:32px!important;margin:0;padding:0 var(--fv-sp-12)!important;border:0!important;border-radius:var(--fv-r-sm)!important;
+  background:var(--fv-ctl-bg)!important;box-shadow:none!important;color:var(--fv-fg)!important;font-size:var(--fv-fs-2)!important;line-height:20px;font-weight:var(--fv-fw-1,400)!important;white-space:nowrap}
+.fvs-tray .fv-mt .fv-mt-actions>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important}
+.fvs-tray .fv-mt .fv-mt-actions>button:disabled{opacity:.45}
+.fvs-tray .fv-mt .fv-mt-actions>button[hidden]{display:none!important}
+.fvs-tray .fv-mt .fv-mt-actions>button::before{content:"";flex:none;width:16px;height:16px;background:currentColor;color:var(--fv-fg2);-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
+.fvs-tray .fv-mt .fv-mt-actions>.fv-mt-browse::after{content:"";flex:none;width:12px;height:12px;margin-right:calc(-1 * var(--fv-sp-4));background:var(--fv-fg3);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat}
+.fvs-tray .fv-mt .fv-mt-actions>.fv-mt-ai{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M7 2.5 8.2 6 11.5 7.2 8.2 8.4 7 12 5.8 8.4 2.5 7.2 5.8 6z'/%3E%3Cpath d='M12 10.5v3M10.5 12h3' stroke-linecap='round'/%3E%3C/svg%3E")}
+.fvs-tray .fv-mt .fv-mt-actions>.fv-mt-audio{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 11.5V3.5l6.5-1.5v8'/%3E%3Ccircle cx='4.25' cy='11.75' r='1.75'/%3E%3Ccircle cx='10.75' cy='10.25' r='1.75'/%3E%3C/svg%3E")}
+/* A narrow window: the AI and audio keys show their pictures only (their names are in the hover cards). */
+@media (max-width:520px){
+  .fvs-tray .fv-mt .fv-mt-actions>:is(.fv-mt-ai,.fv-mt-audio){width:32px;padding:0!important;justify-content:center;font-size:0!important}
+  .fvs-tray .fv-mt .fv-mt-actions>:is(.fv-mt-ai,.fv-mt-audio)::before{color:var(--fv-fg)}
+}
 
-/* ── 4. Characters, scenes and props: a third of the width each, on the tiles' columns; the group title, then its
-   pictures (40 px squares, the picture filling and cropped) and its add key on one line (on a narrow tray, the add key
-   under the pictures, as wide as the group). ── */
-.fvs-tray .fv-mt>.fv-cast-libraries{order:7;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-8) var(--fv-mt-gap);align-items:start;padding-top:var(--fv-sp-12);border-top:1px solid var(--fv-line)}
-.fvs-tray .fv-mt .fv-cast-library{display:flex;flex-wrap:wrap;align-items:center;align-content:start;gap:var(--fv-sp-8);min-width:0;padding:0}
+/* 4. Characters, scenes and props: a third of the width each; the group's title, then its small square pictures and its
+   "+ New" key. */
+.fvs-tray .fv-mt>.fv-cast-libraries{order:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-8) var(--fv-sp-12);align-items:start;padding-top:var(--fv-sp-12);border-top:1px solid var(--fv-line)}
+.fvs-tray .fv-mt .fv-cast-library{display:flex;flex-wrap:wrap;align-items:center;align-content:start;gap:var(--fv-sp-4);min-width:0;padding:0;margin:0}
 .fvs-tray .fv-mt .fv-cast-library[hidden]{display:none}
-.fvs-tray .fv-mt .fv-cast-heading{flex:0 0 100%;font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}
+.fvs-tray .fv-mt .fv-cast-heading{flex:0 0 100%;margin:0 0 var(--fv-sp-4);font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}
 .fvs-tray .fv-mt .fv-cast-avatars{display:contents}
-.fvs-tray .fv-mt .fv-cast-library :is(.fv-cast-avatar,.fv-cast-add){flex:none;height:40px;min-height:0;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);overflow:hidden}
-.fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar{display:block;width:40px!important;min-width:0!important;max-width:40px;flex:0 0 40px}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar{display:block;flex:0 0 32px;width:32px!important;height:32px!important;min-width:0!important;min-height:0!important;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);overflow:hidden}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar>img{display:block;width:100%!important;height:100%!important;max-width:none;object-fit:cover!important;object-position:50% 25%!important;object-view-box:none!important;border-radius:0}
 .fvs-tray .fv-mt .fv-cast-library:not([data-kind=character]) .fv-cast-avatar>img{object-position:50% 50%!important}
-.fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar>.fv-cast-initial{display:grid;place-items:center;width:100%;height:100%;font-size:var(--fv-fs-2);color:var(--fv-fg2)}
-.fvs-tray .fv-mt .fv-cast-library .fv-cast-add{height:32px!important;min-height:32px!important;flex:1 1 112px;min-width:0;display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);width:auto;padding:0 var(--fv-sp-12)!important;color:var(--fv-fg2);font-size:var(--fv-fs-3);line-height:16px;font-weight:var(--fv-fw-1,400)}
-.fvs-tray .fv-mt .fv-cast-library .fv-cast-add::after{content:attr(aria-label);font-size:var(--fv-fs-2);line-height:20px;white-space:nowrap}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar>.fv-cast-initial{display:grid;place-items:center;width:100%;height:100%;font-size:var(--fv-fs-1);color:var(--fv-fg2)}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-add{flex:1 1 56px;min-width:0;display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-4);width:auto;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-8)!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);color:var(--fv-fg2);font-size:var(--fv-fs-2);line-height:16px;font-weight:var(--fv-fw-1,400)}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-add::after{content:attr(data-fv-mt-short);font-size:var(--fv-fs-1);line-height:16px;white-space:nowrap}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-add:not([data-fv-mt-short])::after{content:attr(aria-label)}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-add:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 .fvs-tray .fv-mt>.fv-cast-libraries>:not(.fv-cast-library){grid-column:1/-1}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow] .fv-cast-heading{order:-2}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow] .fv-cast-library .fv-cast-add{order:-1;flex:1 1 100%;padding:0 var(--fv-sp-8)!important;gap:var(--fv-sp-4)}
-.fvs-tray .fv-mt[data-fv-mt-size=narrow] .fv-cast-library .fv-cast-add::after{white-space:normal;line-height:16px;text-align:center}
 
 /* Replace a person: its own quiet row under the groups (it stays on top while it is on, because the groups are away then). */
 .fv-studio.fv-create .fvs-tray[data-tray=media]>.fv-expand{display:flex;flex-direction:column;gap:var(--fv-sp-12)}
 .fv-studio.fv-create .fvs-tray[data-tray=media]>.fv-expand>*{margin:0}
 .fv-studio.fv-create .fvs-tray[data-tray=media]>.fv-expand:not(.fv-swap-on)>.fv-replace-person{order:9;padding-top:var(--fv-sp-8);border-top:1px solid var(--fv-line)}
 
-/* A short window: the pictures a little flatter and the gaps closer, so every part is still in the tray. */
-@media (max-height:820px) and (min-width:641px){
-  .fvs-tray .fv-mt{--fv-mt-pic:2/1;gap:var(--fv-sp-8)}
-  .fvs-tray .fv-mt>.fv-mt-media{row-gap:var(--fv-sp-8)}
-  .fvs-tray .fv-mt>.fv-cast-libraries{padding-top:var(--fv-sp-8)}
-  .fv-studio.fv-create .fvs-tray[data-tray=media]>.fv-expand{gap:var(--fv-sp-8)}
-  .fvs-tray .fv-mt .fv-mt-recent-item{aspect-ratio:5/2}
-}
-/* The strip of the stage around the open tray fades into the page (wide windows only). */
-.fv-mt-scrim{display:none}
-@media (min-width:641px){
-  .fv-studio.fv-create .fv-mt-scrim:has(+.fvs-tray[data-tray=media][open]){display:block;position:absolute;bottom:100%;z-index:5;background:linear-gradient(to top,var(--fv-shell-bg) calc(100% - 32px),transparent)}
-}
+/* ── The works page: in place of everything above, the same window. A back key and the page's name, the choice of
+   all / videos / pictures (one strip, the chosen one a lighter block that slides, as in the other windows); then the
+   works, squares of one size, four to a row, each cropped about its centre; the grid scrolls on its own. ── */
+.fv-studio.fv-create .fvs-tray[data-tray=media][data-fv-mt-page=works]>:not(.fv-mt-works,summary){display:none!important}
+.fvs-tray .fv-mt-works{display:grid;gap:var(--fv-sp-12);min-width:0}
+.fvs-tray .fv-mt-works[hidden]{display:none!important}
+.fvs-tray .fv-mt-works-head{display:flex;align-items:center;gap:var(--fv-sp-8);min-height:32px;margin-bottom:calc(-1 * var(--fv-sp-4))}
+.fvs-tray .fv-mt-works .fv-mt-back{flex:none;display:grid;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;margin:0 0 0 calc(-1 * var(--fv-sp-8));padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:none!important;color:var(--fv-fg2)!important}
+.fvs-tray .fv-mt-works .fv-mt-back:hover{background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+.fvs-tray .fv-mt-works .fv-mt-back::before{content:"";width:16px;height:16px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9.5 3.5-4.5 4.5 4.5 4.5'/%3E%3C/svg%3E") center/16px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9.5 3.5-4.5 4.5 4.5 4.5'/%3E%3C/svg%3E") center/16px no-repeat}
+.fvs-tray .fv-mt-works-title{flex:1;min-width:0;font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fvs-tray .fv-mt-works[data-armed]:not([data-armed=""]) .fv-mt-works-title{color:var(--fv-fg)}
+.fvs-tray .fv-mt-filter{position:relative;flex:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(48px,auto);gap:0;padding:var(--fv-sp-2);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fvs-tray .fv-mt-filter>button{position:relative;height:28px!important;min-height:28px!important;margin:0;padding:0 var(--fv-sp-12)!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:none!important;box-shadow:none!important;color:var(--fv-fg2)!important;font-size:var(--fv-fs-1)!important;font-weight:var(--fv-fw-1,400)!important}
+.fvs-tray .fv-mt-filter>button[aria-checked=true]{color:var(--fv-fg)!important}
+.fvs-tray .fv-mt-filter>button:hover:not(:disabled,[aria-checked=true]){color:var(--fv-fg)!important}
+.fvs-tray .fv-mt-filter>button:disabled{opacity:.4;cursor:default}
+.fvs-tray .fv-mt-filter>button:focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:-2px}
+.fvs-tray .fv-mt-glide{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:var(--fv-r-xs);background:var(--fv-ctl-press);pointer-events:none;opacity:0;transition:transform .16s ease-out,width .16s ease-out,opacity .16s ease-out}
+.fvs-tray .fv-mt-glide[data-on=true]{opacity:1}
+:root[data-theme=light] .fvs-tray .fv-mt-glide{background:rgb(var(--fv-solid2));box-shadow:0 1px 2px rgb(20 30 50 / .12)}
+.fvs-tray .fv-mt-works-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--fv-sp-8);align-content:start;max-height:352px;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+@media (max-width:520px){.fvs-tray .fv-mt-works-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.fvs-tray .fv-mt-works[data-loading=true] .fv-mt-works-grid:empty{min-height:106px;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fvs-tray .fv-mt-work{position:relative;display:block;aspect-ratio:1;width:100%!important;height:auto!important;min-height:auto!important;margin:0;padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;overflow:hidden;background:var(--fv-ctl-bg)!important;box-shadow:none!important;cursor:pointer}
+.fvs-tray .fv-mt-work>:is(img,video){position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0;border-radius:0;object-fit:cover!important;object-position:50% 50%!important;opacity:0;pointer-events:none;transition:opacity .16s ease-out}
+.fvs-tray .fv-mt-work[data-shown=true]>img,.fvs-tray .fv-mt-work[data-frame=true]>video{opacity:1}
+.fvs-tray .fv-mt-work:hover:not(:disabled)>:is(img,video){filter:brightness(1.1)}
+.fvs-tray .fv-mt-work:hover:not(:disabled){box-shadow:inset 0 0 0 2px var(--fv-accent-line)!important}
+.fvs-tray .fv-mt-work:focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:2px}
+.fvs-tray .fv-mt-work:disabled{cursor:default}
+.fvs-tray .fv-mt-work:disabled:not([data-used])>:is(img,video){opacity:.4}
+.fvs-tray .fv-mt-work[data-kind=video]::after{content:"";position:absolute;right:var(--fv-sp-4);bottom:var(--fv-sp-4);z-index:1;width:20px;height:20px;border-radius:var(--fv-r-xs);background:var(--fv-on-pic) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4.5v7l5.5-3.5z' fill='white'/%3E%3C/svg%3E") center/16px no-repeat}
+/* A work already added: a small check on it. */
+.fvs-tray .fv-mt-work[data-used]::before{content:"";position:absolute;left:var(--fv-sp-4);top:var(--fv-sp-4);z-index:1;width:20px;height:20px;border-radius:var(--fv-r-pill);background:var(--fv-on-pic) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 8.5 2.5 2.5 5.5-6'/%3E%3C/svg%3E") center/14px no-repeat}
+.fvs-tray .fv-mt-works-empty{margin:0;padding:var(--fv-sp-24) var(--fv-sp-12);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg3);text-align:center}
+.fvs-tray .fv-mt-works-empty[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.fvs-tray :is(.fv-mt-glide,.fv-mt-work>img,.fv-mt-work>video,.fv-mt .fv-card>.fv-mt-keys){transition:none}}

@@ -1,0 +1,65 @@
+/* Media, LoRA and Advanced as small windows beside their toolbar buttons (tray_pop.js places them with frame_picker.js
+   placePop, which writes left, top and, when the window does not fit, max-height; media_tray.css and advanced_tray.css
+   lay out what is inside those two). The same window as Frame & size, Duration and Quality (frame_picker.css .fvp-pop):
+   a solid ground, one 1 px edge, the medium corners, one shadow, 16 px inside; it fades and rises 4 px in 160 ms (out
+   in 120 ms, at once with reduced motion), and it floats over the stage, which stays put. The window's name is a quiet
+   line at its top; Escape or a press outside puts it away, as for the other windows. */
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open]{position:fixed!important;right:auto!important;bottom:auto!important;z-index:var(--fv-z-pop,60);box-sizing:border-box;
+  width:min(480px,calc(100vw - 32px))!important;max-width:none!important;max-height:none;margin:0!important;
+  padding:var(--fv-sp-16)!important;border:1px solid var(--fv-edge)!important;border-radius:var(--fv-r-md)!important;background:rgb(var(--fv-solid3))!important;
+  box-shadow:0 16px 40px -16px rgb(0 0 0 / .5)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;color:var(--fv-fg);
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;transform-origin:left bottom;animation:fv-pop-in .16s ease-out}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=advanced][open]{width:min(560px,calc(100vw - 32px))!important}
+@media (max-width:520px){.fv-studio.fv-create .fvs-tray[data-fv-pop][open]{width:calc(100vw - 24px)!important}}
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-align=end]{transform-origin:right bottom}
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-side=below]{transform-origin:left top;animation-name:fv-pop-in-below}
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-side=below][data-align=end]{transform-origin:right top}
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-closing=true]{animation:fv-pop-out .12s ease-out forwards;pointer-events:none}
+.fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-side=below][data-closing=true]{animation-name:fv-pop-out-below}
+@keyframes fv-pop-in{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes fv-pop-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(4px) scale(.98)}}
+@keyframes fv-pop-in-below{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes fv-pop-out-below{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-4px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-tray[data-fv-pop][open]{animation:none!important}}
+@media (max-width:520px){.fv-studio.fv-create .fvs-tray[data-fv-pop][open]{padding:var(--fv-sp-12)!important}}
+/* The title row: the window's name as a quiet line (like 画幅, 质量), what belongs with it at the right; no close key. */
+.fv-studio.fv-create .fvs-tray[data-fv-pop]>.fvs-tray-head{position:static;z-index:auto;display:flex;align-items:center;gap:var(--fv-sp-8);min-height:20px;margin:0 0 var(--fv-sp-8);padding:0;
+  border:0;border-radius:0;background:none!important;box-shadow:none!important;-webkit-backdrop-filter:none;backdrop-filter:none}
+.fv-studio.fv-create .fvs-tray[data-fv-pop]>.fvs-tray-head>.fvs-tray-title{flex:1;min-width:0;font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3);white-space:nowrap}
+.fv-studio.fv-create .fvs-tray[data-fv-pop]>.fvs-tray-head>.fvs-tray-close{display:none!important}
+.fv-studio.fv-create .fvs-tray[data-fv-pop]>.fv-expand{margin:0;padding:0}
+/* A window is over the stage, not instead of it: the bar under the picture and the play bar stay as they are. */
+.fv-studio.fv-create .fv-body:has(.fvs-tray[data-fv-pop][open]) :is(.fvs-stagebar,.fvs-player){opacity:1;pointer-events:auto}
+/* While a window is open, no hover tip is drawn over it (as for the other windows). */
+:root:has(.fvs-tray[data-fv-pop][open]:hover) .fv-tip{display:none!important}
+
+/* ── LoRA: one row a model (drag grip, on/off, the model, its strength, remove), its trigger words under it; then the
+   add key across the window, and Clear beside it once there are two or more. ── */
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-list{display:grid;gap:var(--fv-sp-12);margin:0}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-list:empty{display:none}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row{grid-template-columns:16px minmax(0,1fr) 64px 32px;column-gap:var(--fv-sp-8);row-gap:var(--fv-sp-8);padding:0}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row[data-sortable=true]{grid-template-columns:12px 16px minmax(0,1fr) 64px 32px}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row :is(select,input[type=number],.fv-lora-trigger){box-sizing:border-box;height:32px!important;min-height:32px!important;margin:0;border:1px solid transparent;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-2)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row select{padding:0 var(--fv-sp-32) 0 var(--fv-sp-12)!important}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row .fv-select::after{right:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row input[type=number]{width:64px!important;padding:0 var(--fv-sp-8)!important;text-align:center}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row .fv-lora-trigger{padding:0 var(--fv-sp-12)!important;font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row :is(select,input):focus{border-color:var(--fv-accent-line)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row>button{display:grid;place-items:center;width:32px;height:32px!important;min-height:32px!important;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:none;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row>button:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-row input[type=checkbox]{margin:0}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-grip{height:32px;background-position:3px 6px}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] :is(.fv-lora-range,.fv-lora-off,.fv-lora-problem){font-size:var(--fv-fs-1);line-height:16px}
+/* Adding: a dashed key across the window, as the Media window's add tile; Clear a plain key at its end. */
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add{display:flex;margin:var(--fv-sp-12) 0 0}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-list:empty+.fv-lora-add{margin-top:0}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add>button{flex:1;display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);height:40px!important;min-height:40px!important;padding:0 var(--fv-sp-12)!important;
+  border:1px dashed var(--fv-line2)!important;border-radius:var(--fv-r-sm)!important;background:none!important;color:var(--fv-fg2)!important;font-size:var(--fv-fs-2);font-weight:var(--fv-fw-1,400)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add>button:hover{border-color:var(--fv-accent-line)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg)!important}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add>button:first-child::before{content:"+"}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add{gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add>button+button{flex:none;border-style:solid!important;border-color:transparent!important;background:var(--fv-ctl-bg)!important}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-add>button+button::before{content:none}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-note{margin:var(--fv-sp-8) 0 0;text-align:left}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] .fv-lora-note:empty{display:none}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=lora] :is(.fv-legacy,.fv-field){margin:0}
