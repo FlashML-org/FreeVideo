@@ -83,7 +83,6 @@ export function noteView(next, {nodes} = {}) {
     if (next) syncTabs();
     guardTitle();
     if (changed) {
-        if (!switching) scheduleLearn(view);
         globalThis.requestAnimationFrame?.(raiseOverlays);
         for (const listener of [...listeners]) try { listener(view); } catch (error) { console.warn('FreeVideo shell listener:', error); }
         globalThis.dispatchEvent?.(new CustomEvent('freevideo-view', {detail: {view}}));
@@ -278,86 +277,10 @@ export function holdWhile(open, {ready = null} = {}) {
     return token.transition.updateCallbackDone.then(() => result, () => result);
 }
 
-// ── The target view's skeleton, in the picture held at a press ──────────────────────────────────────
-// A press lights its tab at once (no slide) and, under the bar, shows the target view's skeleton: its panels and
-// pictures as plain blocks, nothing in them. That is the picture held while the view fills in; the real view then
-// rises over it. A view already seen in this window size is drawn from where its parts were (learnLayout); a view
-// not seen yet gets the outline of its usual layout (shell.css). The node view's skeleton is its empty ground.
-const layouts = new Map();
-const PAINT_MIN = 1500, BOX_MAX = 48, VISIT_MAX = 5000;
-function learnLayout(name, tries = 0) {
-    const dialog = name === 'nodes' ? null : viewDialog(name);
-    if (!dialog || view !== name || switching) return;
-    // Its first screen and content drawn first (a few more tries), so the outline is the finished one.
-    if ((dialog.dataset.fvReady === 'false' || dialog.dataset.fvLoaded === 'false') && tries < 5) { scheduleLearn(name, tries + 1); return; }
-    const bar = dialog.querySelector(':scope > .fv-header');
-    const top = Math.round(bar?.getBoundingClientRect().bottom || 0);
-    const ground = getComputedStyle(dialog).backgroundColor;
-    const boxes = [];
-    let visited = 0;
-    const walk = element => {
-        for (const child of element.children) {
-            if (++visited > VISIT_MAX) return;
-            if (child === bar || child.matches('dialog,[popover],.fv-tip,.fv-switch-skeleton,script,style,template')) continue;
-            const box = child.getBoundingClientRect();
-            if (box.width < 24 || box.height < 24 || box.bottom <= top || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) continue;
-            const style = getComputedStyle(child);
-            if (style.visibility === 'hidden' || Number(style.opacity) === 0) continue;
-            const media = child.matches('img,video,canvas'), fill = style.backgroundColor;
-            const painted = media || (fill && fill !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(fill) && fill !== ground);
-            const left = Math.max(0, box.left), right = Math.min(innerWidth, box.right), upper = Math.max(top, box.top), lower = Math.min(innerHeight, box.bottom);
-            if (painted && (right - left) * (lower - upper) >= PAINT_MIN) {
-                // Neutral blocks only: a coloured fill (the accent of a primary button) is drawn as a plain one.
-                const [red, green, blue] = (fill.match(/[\d.]+/g) || []).map(Number);
-                const plain = !media && Math.max(red, green, blue) - Math.min(red, green, blue) < 40;
-                boxes.push({x: left, y: upper - top, w: right - left, h: lower - upper, r: style.borderTopLeftRadius, fill: plain ? fill : ''});
-            }
-            if (!media) walk(child);
-        }
-    };
-    walk(dialog);
-    boxes.sort((a, b) => b.w * b.h - a.w * a.h);
-    layouts.set(name, {width: innerWidth, height: innerHeight, top, ground, boxes: boxes.slice(0, BOX_MAX)});
-}
-function scheduleLearn(name, tries = 0) {
-    const run = () => learnLayout(name, tries);
-    setTimeout(() => (globalThis.requestIdleCallback ? requestIdleCallback(run, {timeout: 1500}) : run()), 600);
-}
-let skeleton = null;
-function removeSkeleton() {
-    const layer = skeleton; skeleton = null;
-    if (!layer) return;
-    try { layer.hidePopover?.(); } catch { /* Not shown as a popover. */ }
-    layer.remove();
-}
-function paintSkeleton(target) {
-    removeSkeleton();
-    const bar = frontBar();
-    if (!bar || reduced()) return;
-    const top = Math.round(bar.getBoundingClientRect().bottom);
-    const layer = document.createElement('div');
-    layer.className = 'fv-switch-skeleton'; layer.dataset.view = target; layer.setAttribute('aria-hidden', 'true');
-    layer.style.setProperty('--fv-sk-top', `${top}px`);
-    const known = layouts.get(target);
-    if (target !== 'nodes' && known && known.width === innerWidth && known.height === innerHeight && known.top === top && known.boxes.length) {
-        layer.dataset.learned = 'true';
-        if (known.ground) layer.style.backgroundColor = known.ground;
-        // Largest first, so a picture or button lies on the panel that holds it.
-        for (const {x, y, w, h, r, fill} of known.boxes) {
-            const block = document.createElement('div'); block.className = 'fv-sk-block';
-            block.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;border-radius:${r || '0px'}${fill ? `;background:${fill}` : ''}`;
-            layer.append(block);
-        }
-    } else {
-        for (const part of ['main', 'side', 'aside', 'bottom', 'strip']) { const block = document.createElement('div'); block.className = `fv-sk-block fv-sk-${part}`; layer.append(block); }
-    }
-    // Over a view: inside its dialog (the top layer), under its bar. Over the node view: a popover under its bar.
-    const host = view === 'nodes' ? document.body : viewDialog(view);
-    if (!host) return;
-    if (host === document.body && layer.showPopover) { layer.popover = 'manual'; host.append(layer); try { layer.showPopover(); } catch { /* Fixed and on top still. */ } }
-    else host.append(layer);
-    skeleton = layer;
-}
+// ── No placeholder at a press ─────────────────────────────────────────────────────────────────────
+// A press lights its tab at once (no slide); the picture held while the view comes to the front is the view the user
+// was on, never a placeholder. A view comes back as it was left (the views are kept, or draw from what they kept), so
+// it is ready within a few frames and rises over the held picture at once; what is new arrives in place afterwards.
 
 export function switchView(target, run) {
     if (switching && !switching.animating && typeof document.startViewTransition === 'function') return retarget(switching, target);
@@ -387,14 +310,10 @@ export function switchView(target, run) {
     });
     nameBar(frontBar());
     uniqueNames();
-    // The picture taken next frame shows the pressed tab lit and the target's skeleton; the skeleton leaves the page
-    // as soon as the picture is taken.
-    paintSkeleton(target);
     try {
         // Phase 1 (frames held by the browser): the old picture is taken, the switch runs, the new view comes to the front.
         token.transition = document.startViewTransition(async () => {
             at('captured');
-            removeSkeleton();
             for (const restore of afterCapture.splice(0)) restore();
             try { token.result = run(); } catch (error) { token.result = Promise.reject(error); }
             await Promise.race([arrived(), refused(), sleep(SWITCH_HOLD)]);
@@ -420,11 +339,10 @@ export function switchView(target, run) {
         }, () => {});
         token.transition.ready.catch(() => at('skipped'));
         token.transition.finished.then(() => at('shown'), () => at('skipped'));
-    } catch (error) { switching = null; delete root.dataset.fvSwitching; nameBar(null); removeSkeleton(); unmark(); throw error; }
+    } catch (error) { switching = null; delete root.dataset.fvSwitching; nameBar(null); unmark(); throw error; }
     const done = () => {
-        if (switching === token) { switching = null; delete root.dataset.fvSwitching; nameBar(null); removeSkeleton(); for (const restore of afterCapture.splice(0)) restore(); }
+        if (switching === token) { switching = null; delete root.dataset.fvSwitching; nameBar(null); for (const restore of afterCapture.splice(0)) restore(); }
         unmark();
-        if (switching === null && view === token.target) scheduleLearn(view);
         // A switch that did not happen (or was overtaken) leaves the tabs showing where the user is.
         if (switching === null) {
             const actual = frontView();

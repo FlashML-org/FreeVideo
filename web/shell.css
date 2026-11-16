@@ -71,44 +71,6 @@ html[data-fv-shell] .p-dialog-mask{background:rgb(6 8 12 / .72)!important}
 /* At a press the pressed tab is lit in the picture taken next frame: no slide or colour fade to catch half way.
    (A pseudo-element cannot sit inside :is(), so the capsule has its own selector.) */
 :root[data-fv-switching] .fv-view-switch[data-fv-tb-ink]::before,:root[data-fv-switching] .fv-view-switch button{transition:none!important}
-/* The target view's skeleton in that picture (shell.js paintSkeleton): under the bar, its panels as plain blocks. A
-   view not seen yet in this window size gets the outline of its usual layout below. */
-.fv-switch-skeleton,.fv-switch-skeleton:popover-open{position:fixed;inset:var(--fv-sk-top,56px) 0 0 0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;
-  overflow:hidden;background:var(--fv-bg,var(--fv-shell-bg));z-index:2147483000;pointer-events:none;contain:strict}
-.fv-switch-skeleton[data-view=nodes]{background:var(--fv-shell-bg)}
-.fv-switch-skeleton .fv-sk-block{position:absolute;box-sizing:border-box;background:var(--fv-raised);border-radius:var(--fv-r-lg)}
-.fv-switch-skeleton:not([data-learned]) .fv-sk-block{display:none;background:var(--fv-card)}
-.fv-switch-skeleton[data-view=studio]:not([data-learned]) .fv-sk-main{display:block;top:20px;left:max(16px,calc(50% - 480px));right:max(16px,calc(50% - 480px));bottom:276px}
-.fv-switch-skeleton[data-view=studio]:not([data-learned]) .fv-sk-bottom{display:block;left:max(12px,calc(50% - 416px));right:max(12px,calc(50% - 416px));bottom:20px;height:176px}
-@media(min-width:1280px){.fv-switch-skeleton[data-view=studio]:not([data-learned]) .fv-sk-strip{display:block;right:16px;top:64px;width:68px;height:min(420px,calc(100% - 340px))}}
-.fv-switch-skeleton[data-view=image]:not([data-learned]) .fv-sk-main{display:block;top:56px;left:306px;right:332px;bottom:56px}
-.fv-switch-skeleton[data-view=image]:not([data-learned]) :is(.fv-sk-side,.fv-sk-aside){display:block;top:12px;bottom:16px;width:274px}
-.fv-switch-skeleton[data-view=image]:not([data-learned]) .fv-sk-side{left:16px}
-.fv-switch-skeleton[data-view=image]:not([data-learned]) .fv-sk-aside{right:16px;width:300px}
-.fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-main{display:block;top:56px;left:274px;right:274px;bottom:calc(38% + 64px)}
-.fv-switch-skeleton[data-view=editor]:not([data-learned]) :is(.fv-sk-side,.fv-sk-aside){display:block;top:12px;bottom:calc(38% + 8px);width:250px}
-.fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-side{left:8px}
-.fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-aside{right:8px}
-.fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-bottom{display:block;left:0;right:0;bottom:0;height:38%;border-radius:0}
-.fv-switch-skeleton[data-view=autopilot]:not([data-learned]) .fv-sk-main{display:block;top:56px;left:max(330px,calc(50% - 360px));right:max(356px,calc(50% - 360px));bottom:136px}
-.fv-switch-skeleton[data-view=autopilot]:not([data-learned]) .fv-sk-bottom{display:block;left:max(330px,calc(50% - 360px));right:max(356px,calc(50% - 360px));bottom:16px;height:88px}
-.fv-switch-skeleton[data-view=autopilot]:not([data-learned]) :is(.fv-sk-side,.fv-sk-aside){display:block;top:12px;bottom:16px;width:274px}
-.fv-switch-skeleton[data-view=autopilot]:not([data-learned]) .fv-sk-side{left:16px}
-.fv-switch-skeleton[data-view=autopilot]:not([data-learned]) .fv-sk-aside{right:16px;width:300px}
-@media(max-width:1023px){
-  .fv-switch-skeleton:is([data-view=image],[data-view=editor],[data-view=autopilot]):not([data-learned]) :is(.fv-sk-side,.fv-sk-aside){display:none}
-  .fv-switch-skeleton:is([data-view=image],[data-view=editor],[data-view=autopilot]):not([data-learned]) :is(.fv-sk-main,.fv-sk-bottom){left:16px;right:16px}
-  .fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-bottom{left:0;right:0}
-}
-@media(max-width:719px){
-  .fv-switch-skeleton[data-view=studio]:not([data-learned]) .fv-sk-main{top:12px;left:12px;right:12px;bottom:auto;height:40%}
-  .fv-switch-skeleton[data-view=studio]:not([data-learned]) .fv-sk-bottom{left:12px;right:12px;bottom:12px;height:160px}
-  .fv-switch-skeleton[data-view=image]:not([data-learned]) .fv-sk-main{top:12px;left:12px;right:12px;bottom:200px}
-  .fv-switch-skeleton[data-view=image]:not([data-learned]) .fv-sk-bottom{display:block;left:12px;right:12px;bottom:12px;height:176px}
-  .fv-switch-skeleton[data-view=editor]:not([data-learned]) .fv-sk-main{top:12px;left:12px;right:12px;bottom:auto;height:32%}
-  .fv-switch-skeleton[data-view=autopilot]:not([data-learned]) :is(.fv-sk-main,.fv-sk-bottom){left:12px;right:12px}
-  .fv-switch-skeleton[data-view=autopilot]:not([data-learned]) .fv-sk-main{top:12px}
-}
 ::view-transition-group(root){animation:fv-vt-hold 2s linear both}
 @keyframes fv-vt-hold{from{opacity:1}to{opacity:1}}
 ::view-transition-image-pair(root){isolation:auto}
