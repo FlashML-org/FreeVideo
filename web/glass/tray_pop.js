@@ -1,7 +1,7 @@
 // Media, LoRA and Advanced: the creation panel's last three trays shown as small windows beside their toolbar buttons,
-// the same kind of window as Frame & size, Duration and Quality, placed by the same rule (frame_picker.js placePop): its
-// lower edge 8 px above the console, so the description and Generate stay in sight; never over the top bar; when it
-// does not fit, it scrolls inside. A window that would run past the console's right edge keeps within its width.
+// the same kind of window as Frame & size, Duration and Quality, placed by the same rule (frame_picker.js placePop):
+// right at its button, its lower edge 8 px above it, on the button's left edge (its right edge for LoRA and Advanced, at
+// the right of the row); never over the button, Generate or the top bar; when it does not fit, it scrolls inside.
 // Neither the stage nor the toolbar moves. Presentation only: each tray stays studio_console.js's <details>, with its
 // open state, Escape, the press outside that puts it away, and every control's own handlers. A tray marked data-fv-pop
 // is left out of studio.js's own tray placement (no docking beside the picture, no room made on the stage); if this
@@ -24,11 +24,6 @@ function place(tray) {
     tray.fvPopBefore?.();
     placePop(chip, tray);
     tray.fvPopAfter?.();
-    // The buttons at the right of the row (LoRA, Advanced): the window keeps within the console's width instead of
-    // running out over the history rail; its right edge then lines up with the console's.
-    // (Its laid-out box, not the opening motion's slightly smaller one.)
-    const shelf = chip.closest('.fvs-console')?.getBoundingClientRect(), left = parseFloat(tray.style.left), width = tray.offsetWidth;
-    if (shelf && left + width > shelf.right + .5 && width <= shelf.width) tray.style.left = `${Math.round(shelf.right - width)}px`;
     // The window grows out of its button: from the button's side of it.
     const a = chip.getBoundingClientRect(), b = tray.getBoundingClientRect();
     const align = a.left + a.width / 2 > b.left + b.width / 2 ? 'end' : 'start';

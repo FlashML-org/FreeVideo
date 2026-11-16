@@ -202,26 +202,35 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         dispose() { element.remove(); }};
 }
 
-// Where a panel goes. A button in the creation console opens its panel above the whole console (the panel's lower edge
-// 8 px over the console's upper edge), so the description and Generate stay in sight at every width; elsewhere the
-// panel goes above or under its button. Never over the top bar: where the room is too short, the panel takes the room
-// there is and scrolls inside. (Exported for the other panels of the console's row, so they all open the same way.)
+// Where a panel goes: right at the button that opened it. Its lower edge 8 px over the button (its upper edge 8 px under
+// it when there is more room there, or when asked 'below'); its left edge on the button's (moved left where the window
+// ends), or, for the keys at the right end of the console's row, its right edge on the button's; kept 16 px inside the
+// window (12 on a phone). It may cover the description, never the button itself or a Generate key (a panel that would
+// reach over one ends 8 px above it), and never the top bar: where the room is too short, the panel takes the room there
+// is and scrolls inside. (Exported for every panel of the console's row, the trays shown as panels and the image view,
+// so they all open the same way.)
 export function placePop(element, pop, placement = 'auto') {
     const a = element.getBoundingClientRect(), edge = innerWidth <= 520 ? 12 : 16, gap = 8;
-    const bar = (element.closest('dialog') || document).querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
+    const scope = element.closest('dialog') || document;
+    const bar = scope.querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
     pop.style.maxHeight = '';
-    const w = pop.offsetWidth, h = pop.offsetHeight, left = `${Math.round(Math.max(edge, Math.min(a.left, innerWidth - edge - w)))}px`;
-    const shelf = placement === 'below' ? null : element.closest('.fvs-console')?.getBoundingClientRect();
-    if (shelf && shelf.top - gap - roof >= Math.min(h, 160)) {
-        const bottom = shelf.top - gap, height = Math.min(h, bottom - roof);
-        if (height < h) pop.style.maxHeight = `${Math.floor(height)}px`;
-        pop.dataset.side = 'above'; pop.style.left = left; pop.style.top = `${Math.round(bottom - height)}px`;
-        return;
-    }
-    const above = a.top - gap - h >= roof && (placement === 'above' || (placement === 'auto' && innerHeight - a.bottom < h + gap + edge));
-    pop.dataset.side = above ? 'above' : 'below';
-    pop.style.left = left;
-    pop.style.top = `${Math.round(above ? Math.max(edge, a.top - gap - h) : Math.max(roof, Math.min(innerHeight - edge - h, a.bottom + gap)))}px`;
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    // The keys after the row's spacer (LoRA and Advanced, at the right of the console's row) line up their right edges.
+    const spacer = element.closest('[role=toolbar]')?.querySelector(':scope > .fvs-chip-spacer');
+    const end = Boolean(spacer && spacer.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const x = Math.round(Math.max(edge, Math.min(end ? a.right - w : a.left, innerWidth - edge - w)));
+    // The Generate keys the panel must leave in sight (the console's, the image view's), other than the button itself.
+    const keys = [...scope.querySelectorAll('.fv-runrow .fv-primary, .fv-iv-go, [data-fv-pop-keep]')].filter(key => key !== element && !key.contains(element))
+        .map(key => key.getBoundingClientRect()).filter(k => k.width && k.left < x + w && k.right > x);
+    let bottom = a.top - gap;
+    for (const k of keys) if (k.top < bottom && k.bottom > bottom - h) bottom = Math.min(bottom, k.top - gap);
+    const above = bottom - roof, below = innerHeight - edge - (a.bottom + gap);
+    const up = placement === 'below' ? below < Math.min(h, 160) && above > below : above >= h || above >= below || placement === 'above' && above >= 160;
+    const height = Math.max(0, Math.min(h, up ? above : below));
+    if (height < h) pop.style.maxHeight = `${Math.floor(height)}px`;
+    pop.dataset.side = up ? 'above' : 'below';
+    pop.style.left = `${x}px`;
+    pop.style.top = `${Math.round(up ? bottom - height : a.bottom + gap)}px`;
 }
 // Text fields in a panel show their focus by their frame, for the keyboard only: a focus that follows a press marks the
 // panel as used by pointer; a focus that comes without one (Tab) clears the mark. (In a view, keys reach only the
