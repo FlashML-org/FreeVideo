@@ -665,11 +665,11 @@
 .fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease}
 .fv-studio.fv-create .fv-preview-space{transition:height .2s ease,margin-top .2s ease}
 .fv-studio.fv-create .fvs-tray .fvp{margin-bottom:var(--fv-sp-16)}
-/* An unsaved-draft note in the prompt's tools is a small warning mark there (its words are in the hover card and for
-   screen readers), so it never covers the description. */
-.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{position:relative;width:var(--fv-ctl);min-width:var(--fv-ctl);padding:0;font-size:0;line-height:0;overflow:hidden;color:var(--fv-warn)}
-.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note::before{content:"!";display:inline-grid;place-items:center;width:16px;height:16px;border:1.5px solid currentColor;border-radius:var(--fv-r-pill,999px);
-  font:700 var(--fv-fs-1)/1 var(--fv-font);color:var(--fv-warn)}
+/* An unsaved-draft note in the prompt's tools is a small plain dot there, no warning colour (its words are in the hover
+   card and for screen readers: what happened, and that a click retries), so it never covers the description. */
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{position:relative;width:var(--fv-ctl);min-width:var(--fv-ctl);padding:0;font-size:0;line-height:0;overflow:hidden;color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note::before{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;translate:-50% -50%;border-radius:var(--fv-r-pill,999px);background:currentColor}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note:hover:not(:disabled){color:var(--fv-fg)}
 /* (Phones too: a mark, a finger's size, never words that squeeze the description.) */
 @media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{width:var(--fv-touch);min-width:var(--fv-touch);height:var(--fv-touch)}}
 /* A text box inside a frame that already lights up when focused (:focus-within: the creation console, the editor's

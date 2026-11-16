@@ -875,10 +875,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const showDraftTrouble = ({save, restore}) => {
         if (draftNote.disabled) return;
         draftNote.hidden = !save && !restore;
-        draftNote.textContent = save ? t('Prompt not saved · retry', '描述没能保存 · 重试') : t('Last prompt not loaded · retry', '上次的描述没能读取 · 重试');
-        // On a wide window the note is a small mark; its hover card says what happened and what a click does.
+        draftNote.textContent = save ? t('Prompt not saved. Click to retry', '描述没能保存，点此重试') : t('Last prompt not loaded. Click to retry', '上次的描述没能读取，点此重试');
+        // The note is a small plain dot; its hover card says what happened and what a click does.
         draftNote.dataset.fvTipName = save ? t('Prompt not saved', '描述没能保存') : t('Last prompt not loaded', '上次的描述没能读取');
-        draftNote.dataset.fvTipUse = save ? t('Click to save it again', '点一下重新保存') : t('Click to read it again', '点一下重新读取');
+        draftNote.dataset.fvTipUse = t('Click to retry', '点此重试');
         draftNote.setAttribute('aria-label', draftNote.textContent);
     };
     showDraftTrouble(promptDraftTrouble()); cleanup.push(watchPromptDraftTrouble(showDraftTrouble));
