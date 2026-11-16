@@ -27,38 +27,49 @@ export function renumberMentions(text, before, after, caret = 0) {
 export function mentionsToEngine(text, count) {
     return text.replace(TOKEN, (_, n) => n !== '?' && Number(n) >= 1 && Number(n) <= count ? `<Picture ${n}>` : '').replace(/ {2,}/g, ' ');
 }
-// A picture drawn as a sketch (image editor's sketch mode) is a plan of the picture, not its look: a stick figure is a
-// person, a shape is where a thing goes. The words sent around it say so in plain affirmative sentences (the models
-// follow what is said, and a "do not" can bring about the very thing it names), add no style of their own and name
-// nothing the sketch may not hold (H3 drew boxes and balls that were only named). Measured one picture at a time on
-// the team engine, both models, one person with raised arms and two people face to face:
-// - With no description the subject is real people and real things in a real place; "the scene in the sketch" came
-//   back as a stick figure, the drawing itself.
-// - H3 follows those words with real people every time. A description in front of them (a Chinese one above all)
-//   turned the people into figurines or cartoons, or the English after it into a caption; after them it is followed
-//   (who, where, what they do) and the people stay real. A description that names a look of its own (cartoon,
+// A picture drawn as a sketch (image editor's sketch mode) is a plan of the picture, not its look: each thing drawn in it
+// is the real thing it stands for, in the same place, size, direction and pose. The words sent around it are plain
+// affirmative sentences (the models follow what is said, and a "do not" can bring about the very thing it names), add
+// no style of their own, and name no kind of thing the user did not name. Measured one picture at a time on the team
+// engine, both models, eight sketches (a house and a tree, a cup and an apple, a street in perspective, a cat, a car,
+// a person by a table, one person with raised arms, two people face to face):
+// - Both models add whatever the words name: "a drawn person is a real person" or "any stick figure is a person" put
+//   people (or stick figures) into an empty street. So people are named only when the description names them; then
+//   its stick figures are said to be those real people.
+// - Without words naming people, a stick figure stays a stick figure (a sculpture of one): what is drawn is known only
+//   from the description, and the picture page asks for one beside a sketch (image_view.js).
+// - "the scene in the sketch" as the subject came back as the drawing itself; "real things in a real place" does not.
+// - H3: a description in front of the layout words (a Chinese one above all) made figurines or cartoons, or turned the
+//   English after it into a caption; after them it is followed. A description that names a look of its own (cartoon,
 //   watercolour, ...) leads instead, with short layout words, and the picture takes its look.
 // - Qwen redraws its input: it keeps the plain paper and the look of simple lines unless the whole frame is said to be
-//   filled and each mark, one by one, to become a real thing as it is in life; it reads the description first.
+//   filled and what is drawn is said to become real things as they are in life; it reads the description first.
 // `numbers`: the sketches' places (1-based) in the reference list; `text`: the engine text with <Picture N>.
 const STYLE_WORDS = /卡通|动漫|动画|二次元|漫画|插画|手绘|水彩|油画|国画|水墨|素描|线稿|像素|剪纸|黏土|粘土|三维|渲染|Q版|赛博|风格|画风|cartoon|anime|manga|comic|illustrat|watercolou?r|oil paint|ink wash|pixel art|claymation|\b3d\b|render|chibi|style/i;
+// A description that names people (a stick figure then stands for them).
+const PEOPLE_WORDS = /人|男|女|孩|童|他|她|爸|妈|爷|奶|哥|姐|弟|妹|夫|妻|侣|娃|宝宝|士兵|学生|老师|医生|警察|运动员|舞者|\b(?:people|persons?|man|men|woman|women|girls?|boys?|child|children|kids?|baby|babies|couple|family|friends?|players?|dancers?|soldiers?|students?|someone|he|she|they)\b/i;
 const SKETCH_LEAD = /^\s*(?:按\s*<Picture (\d+)>\s*的构图[，,]?|Following the layout of <Picture (\d+)>,?)\s*/;
-const REAL = 'Real people and real things in a real place';
+const REAL = 'Real things in a real place';
+// Whether a prompt holds a description beside its sketch (more than the layout words the page writes).
+export const sketchDescribed = text => !!String(text || '').replace(SKETCH_LEAD, '').replace(/<Picture \d+>/g, '').trim();
 export function sketchPrompt(text, numbers, model) {
     if (!numbers?.length) return text;
     const desc = String(text || '').replace(SKETCH_LEAD, '').trim().replace(/[。.]+$/, '');
-    const pics = numbers.map(n => `<Picture ${n}>`).join(' and '), many = numbers.length > 1, its = many ? 'their' : 'its';
+    const pics = numbers.map(n => `<Picture ${n}>`).join(' and '), many = numbers.length > 1, them = many ? 'them' : 'it', its = many ? 'their' : 'its';
+    const people = desc && PEOPLE_WORDS.test(desc);
     const style = desc ? ' The style follows the description.' : '';
     if (model === 'qwen-image-2.1-turbo') return `Redraw ${pics} as a finished, fully coloured and detailed image that fills the whole frame with a complete scene. ${desc || REAL}. `
-        + `${pics} ${many ? 'are layout sketches' : 'is a layout sketch'} drawn with simple lines; ${many ? 'they show' : 'it shows'} where everything goes and how each person stands. `
-        + `Each stick figure in ${pics} becomes a real person${desc ? ', or the character the description names' : ''}, with a whole natural body, a face, hair and clothing as in life, in the figure's place and pose. `
-        + `Each shape becomes a real object at its place and size.${style} `
-        + 'Every part of the picture, from edge to edge, shows the scene around and behind the people and objects: its ground, its surroundings and its light.';
-    if (desc && STYLE_WORDS.test(desc)) return `${desc}. A finished, fully coloured and detailed image. The composition, positions and poses match ${pics}. `
+        + `${pics} ${many ? 'are layout sketches' : 'is a layout sketch'} drawn with simple lines; ${many ? 'they show' : 'it shows'} where each thing goes, how big it is and which way it faces. `
+        + `Each thing drawn in ${them} becomes the real thing it stands for, whole and natural as it is in life, in its place, size, direction and pose`
+        + (people ? `, and ${its} stick figures become the real people of the description, each with a whole natural body, a face, hair and clothing` : '') + `.${style} `
+        + 'Every part of the picture, from edge to edge, shows the scene around and behind them: its ground, its surroundings and its light.';
+    if (desc && STYLE_WORDS.test(desc)) return `${desc}. A finished, fully coloured and detailed image. The composition, places, sizes and poses match ${pics}; `
+        + `each thing drawn in ${them} is the thing it stands for${people ? `, and ${its} stick figures are the people of the description` : ''}. `
         + 'The style follows the description. The background is a complete scene that fits the content.';
     const real = `${REAL}. A finished, fully coloured and detailed image. ${pics} ${many ? 'are rough plans' : 'is a rough plan'} of the picture: `
-        + `${its} stick figures are real people, each whole with a natural body, face, hair and clothing, and ${its} shapes are real objects, each in the same place, size and pose. `
-        + 'The background is a complete scene that fits the content.';
+        + `each thing drawn in ${them} is the real thing it stands for, whole and natural, in the same place, size, direction and pose`
+        + (people ? `, and ${its} stick figures are the real people of the description, each with a natural body, face, hair and clothing` : '') + '. '
+        + 'The whole picture is a real scene, its ground, its surroundings and its light from edge to edge.';
     return desc ? `${real} ${desc}${/[\u3400-\u9fff]$/.test(desc) ? '。' : '.'}` : real;
 }
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
