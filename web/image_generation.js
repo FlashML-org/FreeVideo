@@ -428,7 +428,8 @@ export function discardSegmentUploads(client) {
 }
 export async function segmentAt(renderer, client, doc, layer, point, again = false) {
     const look = JSON.stringify([layer.ops.map(o => o.id), layer.adjust, layer.src, layer.mask?.ops.map(o => o.id)]);
-    const send = async () => {
+    let known = segmentUploads.get(layer);
+    if (known?.look !== look) {
         await renderer.preload(doc);
         const raster = renderer.layerImage(doc, layer, 1, true);
         const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
