@@ -138,7 +138,8 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
 }
 
 // The duration chip: minus, the seconds, plus. It edits the panel's own seconds field and lets that field's handlers run.
-export function durationStepper(t, seconds, {onOpen}) {
+// max: () => the longest length; + stops there (the field's own handlers bring a typed length back within it).
+export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
     const element = el('div', 'fvs-stepper'); element.setAttribute('role', 'group'); element.setAttribute('aria-label', t('Duration', '时长'));
     const minus = el('button', 'fvs-step'); minus.type = 'button'; minus.append(glyph('minus', 14));
     const plus = el('button', 'fvs-step'); plus.type = 'button'; plus.append(glyph('plus', 14));
@@ -151,7 +152,7 @@ export function durationStepper(t, seconds, {onOpen}) {
     const step = delta => {
         if (seconds.disabled) return;
         const now = Number(seconds.value) || 0;
-        const next = Math.max(2, Math.round(now) + delta);
+        const next = Math.min(Math.max(2, Math.round(now) + delta), Math.max(2, max()));
         if (next === now) return;
         seconds.value = String(next);
         seconds.dispatchEvent(new Event('input', {bubbles: true}));
@@ -159,9 +160,11 @@ export function durationStepper(t, seconds, {onOpen}) {
     };
     minus.onclick = () => step(-1); plus.onclick = () => step(1);
     // The number is edited where it is: Enter or leaving the field applies it, Escape keeps the old one.
-    value.onclick = () => {
+    value.onclick = event => {
         if (seconds.disabled || element.querySelector('.fvs-step-input')) return;
         const input = el('input', 'fvs-step-input'); input.type = 'text'; input.inputMode = 'decimal';
+        // Opened from the keyboard (a click with no pointer): the field shows its focus line.
+        if (!event?.detail) input.dataset.fvKeyboard = 'true';
         input.value = String(Number(seconds.value) || ''); input.setAttribute('aria-label', t('Duration in seconds', '时长（秒）'));
         let done = false;
         const finish = apply => {
@@ -188,6 +191,7 @@ export function durationStepper(t, seconds, {onOpen}) {
         value.textContent = t(`${shown} s`, `${shown} 秒`);
         minus.disabled = plus.disabled = seconds.disabled;
         minus.disabled ||= n <= 2;
+        plus.disabled ||= n >= max();
     }
     seconds.addEventListener('input', sync); seconds.addEventListener('change', sync);
     sync();

@@ -1080,7 +1080,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         set(node, 'upscale_factor', String(tier.upscale));
         syncSamplingSteps();
     };
-    const effort = createSamplingEffort(t, {onChange: chooseEffort, onPreview: tier => tier ? showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale) : showEffortEstimate()});
+    // (effortPointed: the quality panel's line on what the pointed-at level gives; set with that panel.)
+    let effortPointed = () => {};
+    const effort = createSamplingEffort(t, {onChange: chooseEffort, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
     // What the quality control shows now; the editor's generation bar shows the same control from this.
     const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
         twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
@@ -2546,7 +2548,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         stageBar.setNext(false);
     }
     // One button in the console's row ([▭ 16:9 · 1M]) with a small panel beside it: Frame, Size, and a typed width × height.
-    framePicker = createFrameChip({t, placement: 'auto',
+    // Under them, what the frame tray held besides (canvas): a long length's notes and the first-frame switch, each
+    // only while it applies.
+    framePicker = createFrameChip({t, placement: 'auto', host: dialog, extra: canvas,
         // A panel closing gives the stage back to the work that was on it.
         // The panel floats over the page; the stage stays as it is until a frame or size is pointed at or chosen.
         onClose: () => { if (result?.video && !busy) { leaveNext(); fitPreview(); } },
@@ -2802,78 +2806,43 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // above the console; temporary lines go to fixed slots (status slot above the console, the bar under the picture).
     runbar.replaceChildren(runrow);
     stageBar.end.append(queueActions);
-    const stepper = durationStepper(t, seconds, {});
-    // Duration and quality are buttons in the console's row like Frame & size, each with a small panel beside it.
-    // Duration: a scale to drag (2–60 s) and the number to type beside it; what else belongs to the length (how a long
-    // one is made in parts, the notes) sits under them.
-    const durationChip = createPopChip({host: dialog, kind: 'duration', name: t('Duration', '时长'), icon: 'M8 4.5V8l2.5 1.5M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0Z'});
-    const durationSaid = el('div', null, 'fvp-said'); durationSaid.hidden = true; durationSaid.setAttribute('role', 'status');
-    const durationParts = el('div', null, 'fvp-parts'); durationParts.hidden = true;
-    const durationTicks = el('div', null, 'fvp-ticks'); durationTicks.setAttribute('aria-hidden', 'true');
-    // The longest this computer makes: what one run holds (the planner's figure) times the parts a video may have; 60 s until that is known.
+    // Duration: the − 5 s + stepper in the console's row (its number is typed in place). It stops at the shortest and
+    // at the longest this computer makes (what one run holds, the planner's figure, times the 8 parts a video may
+    // have; 60 s until that is known); a typed length beyond either becomes that end. Its hover card says when the
+    // length is made in parts.
     const longest = () => { try { const one = lengthControl?.absent ? null : lengthControl?.options().singleLimit; return one > 0 ? Math.max(5, Math.floor(one) * 8) : 60; } catch { return 60; } };
-    {
-        const scale = el('div', null, 'fvp-scale'), number = el('label', null, 'fvp-number'), row = el('div', null, 'fvp-duration');
-        scale.append(durationSlider, durationTicks);
-        number.append(seconds, el('span', t('s', '秒'))); row.append(scale, number);
-        durationChip.body.append(row, durationSaid, durationParts, canvas);
-        // A typed length outside what can be made becomes the nearest that can, and the line under the scale says so.
-        seconds.addEventListener('change', () => {
-            const n = Number(seconds.value), most = longest(), least = Math.ceil(Number(seconds.min) || 2);
-            let said = '';
-            if (seconds.value !== '' && Number.isFinite(n)) {
-                if (most > 0 && n > most) { seconds.value = String(most); said = t(`The longest on this computer is ${most} s; ${most} s is used.`, `本机最长 ${most} 秒，已按 ${most} 秒。`); }
-                else if (n < least) { seconds.value = String(least); said = t(`The shortest is ${least} s; ${least} s is used.`, `最短 ${least} 秒，已按 ${least} 秒。`); }
-            }
-            durationSaid.textContent = said; durationSaid.hidden = !said;
-        }, true);
-        seconds.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); seconds.dispatchEvent(new Event('change', {bubbles: true})); } });
-    }
+    const stepper = durationStepper(t, seconds, {max: longest});
+    seconds.addEventListener('change', () => {
+        const n = Number(seconds.value), most = longest(), least = 2;
+        if (seconds.value === '' || !Number.isFinite(n) || seconds.disabled) return;
+        if (most > 0 && n > most) seconds.value = String(most); else if (n < least) seconds.value = String(least);
+    }, true);
+    const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {
-        const n = Number(seconds.value), shown = Number.isFinite(n) && seconds.value !== '' ? (Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/0+$/, '').replace(/\.$/, '')) : '—';
-        durationChip.setLabel(t(`${shown} s`, `${shown} 秒`)); durationChip.element.disabled = false; durationChip.place();
-        // The scale ends at the longest this computer makes; five marks along it.
-        const most = longest();
-        if (durationSlider.max !== String(most)) {
-            durationSlider.max = String(most);
-            const nice = v => v <= 10 ? Math.round(v) : Math.round(v / 5) * 5;
-            durationTicks.replaceChildren(...[...new Set([5, nice(most / 4), nice(most / 2), nice(most * 3 / 4), most])].filter(v => v >= 2 && v <= most).map(v => { const mark = el('span', String(v)); mark.style.setProperty('--at', String((v - 2) / (most - 2))); return mark; }));
-        }
-        durationSlider.style.setProperty('--fvs-fill', String((Math.min(most, Math.max(2, n || 5)) - 2) / (most - 2)));
-        // One line, only when this length is made in parts.
         const plan = lengthControl?.plan, parts = plan?.count > 1 ? plan.count : 0;
-        durationParts.textContent = parts ? t(`${shown} s this time · made in ${parts} parts and joined`, `这次 ${shown} 秒 · 分 ${parts} 段生成后接起来`) : ''; durationParts.hidden = !parts;
+        stepValue.dataset.fvTipUse = parts ? t(`Made in ${parts} parts and joined`, `分 ${parts} 段生成并拼接`) : t('Click to type an exact length', '点一下输入精确时长');
+        stepper.sync();
     };
     seconds.addEventListener('input', paintDuration); seconds.addEventListener('change', paintDuration);
-    // Quality: the levels as rows, each with a few words on what it gives (no times); the two-pass choice under them.
+    // Quality: a button with a small panel beside it, like Frame & size. In the panel, the levels' slider (the thick
+    // track with the knob inside, as before), one line under it on what the level gives (no times), and the two-pass
+    // choice.
     const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => paintQuality(), name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
     const LEVEL_WORDS = {Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
-    const levelList = el('div', null, 'fvp-levels'), levelGlide = el('span', null, 'fvp-glide'); levelList.setAttribute('role', 'radiogroup'); levelList.setAttribute('aria-label', t('Quality', '质量'));
-    levelGlide.setAttribute('aria-hidden', 'true'); qualityChip.body.append(levelList, samplingSettings);
-    let levelRows = [];
+    const levelUse = el('p', '', 'fvp-level-use'); levelUse.setAttribute('aria-live', 'polite');
+    effort.element.after(levelUse); qualityChip.body.append(samplingSettings);
+    const qualityLevel = () => effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
+    const sayLevel = tier => { levelUse.textContent = tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); };
+    effortPointed = tier => sayLevel(tier || qualityLevel());
     const paintQuality = () => {
-        const levels = effort.levels();
-        if (levelRows.length !== levels.length || levelRows.some((row, i) => row.tier !== levels[i])) {
-            levelRows = levels.map(tier => {
-                const b = el('button', null, 'fvp-level'); b.type = 'button'; b.setAttribute('role', 'radio');
-                b.append(el('span', effortName(t, tier), 'fvp-level-name'), el('span', t(...(LEVEL_WORDS[tier.name] || ['', ''])), 'fvp-level-use'));
-                b.onclick = () => { if (!b.disabled) { chooseEffort(tier); paintQuality(); } };
-                b.onkeydown = event => { const step = {ArrowUp: -1, ArrowDown: 1}[event.key]; if (step && levelRows[levelRows.indexOf(row) + step]) { event.preventDefault(); levelRows[levelRows.indexOf(row) + step].b.focus(); } };
-                const row = {tier, b}; return row;
-            });
-            levelList.replaceChildren(levelGlide, ...levelRows.map(row => row.b));
-        }
-        const level = effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), levels, upscaleNow());
-        for (const row of levelRows) { row.b.setAttribute('aria-checked', String(row.tier === level)); row.b.disabled = baseSteps.disabled; }
-        const on = levelRows.find(row => row.tier === level)?.b;
-        levelGlide.dataset.on = String(Boolean(on));
-        if (on) Object.assign(levelGlide.style, {width: `${on.offsetWidth}px`, height: `${on.offsetHeight}px`, transform: `translate(${on.offsetLeft}px, ${on.offsetTop}px)`});
+        const level = qualityLevel();
+        // (While the knob is dragged, the line follows the knob.)
+        if (!effort.element.querySelector('.fv-effort-rail[data-dragging]')) sayLevel(level);
         qualityChip.setLabel(level ? effortName(t, level) : t('Custom', '自定义'));
     };
-    cleanup.push(() => { durationChip.dispose(); qualityChip.dispose(); });
+    cleanup.push(() => qualityChip.dispose());
     durationField.hidden = true;
-    durationChip.element.dataset.fvGuide = 'seconds'; delete seconds.dataset.fvGuide;
-    tip(durationChip.element, t('Duration', '时长'), t('Drag or type the length', '拖动或输入时长'));
+    stepper.element.dataset.fvGuide = 'seconds'; delete seconds.dataset.fvGuide;
     tip(qualityChip.element, t('Quality', '质量'), t('Finer levels take longer', '越细用时越长'));
     // The chip shows the current frame drawn the same way as in the tray (dashed when it follows an image).
     const shapeIcon = createFrameIcon(16), shapeGlyph = shapeIcon.element;
@@ -2898,7 +2867,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }},
             {element: mention},
             {element: framePicker.element},
-            {element: durationChip.element}, {element: qualityChip.element},
+            {element: stepper.element}, {element: qualityChip.element},
             {spacer: true},
             {id: 'lora', tray: 'lora', icon: 'lora', read: () => {
                 const n = loraCount();
@@ -3055,7 +3024,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         {id: 'studio.generate', title: ['Generate video', '生成视频'], key: 'Mod+Enter', icon: 'spark',
             why: () => generate.disabled ? [generate.dataset.fvTipWhy || 'Not available right now', generate.dataset.fvTipWhy || '现在不能开始'] : '', run: () => generate.click()},
         {id: 'studio.tray.size', title: ['Frame & size', '画幅与尺寸'], group: ['Settings', '设置'], run: () => framePicker.element.click()},
-        {id: 'studio.tray.duration', title: ['Duration', '时长'], group: ['Settings', '设置'], run: () => durationChip.show()},
+        {id: 'studio.tray.duration', title: ['Duration', '时长'], group: ['Settings', '设置'], run: () => stepValue.click()},
         {id: 'studio.tray.quality', title: ['Quality', '质量'], group: ['Settings', '设置'], run: () => qualityChip.show()},
         ...[['media', ['Media', '素材']], ['lora', ['LoRA', 'LoRA']], ['advanced', ['Advanced', '高级选项']]]
             .map(([id, title]) => ({id: `studio.tray.${id}`, title, group: ['Settings', '设置'], run: () => consoleUI.toggle(id, true)})),

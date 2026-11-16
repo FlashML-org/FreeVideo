@@ -696,9 +696,12 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 /* With the next generation's empty frame on the stage, the bar names it ("Next · 768 × 1344"); the work's details,
    history and actions are hidden until a work is shown again. */
 .fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone,.fvs-stagebar-end){visibility:hidden}
-/* The duration's number edits in place. */
+/* The duration's number edits in place: one frame, the field's own, and its focus line for the keyboard only (a click
+   shows the field and the caret). */
 .fv-studio.fv-create .fvs-step-input{box-sizing:border-box;width:56px;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-4);border:0;border-radius:var(--fv-r-sm);
-  background:var(--fv-ctl-hover);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);text-align:center;font-variant-numeric:tabular-nums;outline:none;box-shadow:inset 0 0 0 1px var(--fv-accent-line)}
+  background:var(--fv-ctl-hover);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);text-align:center;font-variant-numeric:tabular-nums;outline:none;box-shadow:none}
+html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:focus,:focus-visible){outline:none!important}
+.fv-studio.fv-create .fvs-step-input[data-fv-keyboard]{box-shadow:inset 0 0 0 1px var(--fv-focus,var(--fv-accent-line))}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fv-stage{transition:none}}
 /* The frame tray holds frame and size only: the duration's notes live with the duration in the console. */
 .fv-studio.fv-create .fvs-tray[data-tray=size] :is(.fv-length-hint,.fv-canvas-note,.fv-range){display:none}
