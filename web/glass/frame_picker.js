@@ -202,16 +202,49 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         dispose() { element.remove(); }};
 }
 
+// Where a panel goes. A button in the creation console opens its panel above the whole console (the panel's lower edge
+// 8 px over the console's upper edge), so the description and Generate stay in sight at every width; elsewhere the
+// panel goes above or under its button. Never over the top bar: where the room is too short, the panel takes the room
+// there is and scrolls inside. (Exported for the other panels of the console's row, so they all open the same way.)
+export function placePop(element, pop, placement = 'auto') {
+    const a = element.getBoundingClientRect(), edge = innerWidth <= 520 ? 12 : 16, gap = 8;
+    const bar = (element.closest('dialog') || document).querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
+    pop.style.maxHeight = '';
+    const w = pop.offsetWidth, h = pop.offsetHeight, left = `${Math.round(Math.max(edge, Math.min(a.left, innerWidth - edge - w)))}px`;
+    const shelf = placement === 'below' ? null : element.closest('.fvs-console')?.getBoundingClientRect();
+    if (shelf && shelf.top - gap - roof >= Math.min(h, 160)) {
+        const bottom = shelf.top - gap, height = Math.min(h, bottom - roof);
+        if (height < h) pop.style.maxHeight = `${Math.floor(height)}px`;
+        pop.dataset.side = 'above'; pop.style.left = left; pop.style.top = `${Math.round(bottom - height)}px`;
+        return;
+    }
+    const above = a.top - gap - h >= roof && (placement === 'above' || (placement === 'auto' && innerHeight - a.bottom < h + gap + edge));
+    pop.dataset.side = above ? 'above' : 'below';
+    pop.style.left = left;
+    pop.style.top = `${Math.round(above ? Math.max(edge, a.top - gap - h) : Math.max(roof, Math.min(innerHeight - edge - h, a.bottom + gap)))}px`;
+}
+// Text fields in a panel show their focus by their frame, for the keyboard only: a focus that follows a press marks the
+// panel as used by pointer; a focus that comes without one (Tab) clears the mark. (In a view, keys reach only the
+// handlers it routes to, so the mark follows focus, not keys.)
+function pointerMarks(pop) {
+    let pressed = 0;
+    pop.addEventListener('pointerdown', () => { pressed = performance.now(); pop.dataset.pointer = 'true'; }, true);
+    pop.addEventListener('focusin', () => { if (performance.now() - pressed > 150) delete pop.dataset.pointer; });
+}
+
 // The control the views show: one button that says the frame and the size ([▭ 16:9 · 1M]) and opens a small panel
 // beside it with both: Frame (every shape in one segmented strip), Size (the sizes in another), and under them a
 // quiet row for a typed width × height with the ratio lock.
 //
-//   const chip = createFrameChip({...the picker's options, placement: 'above' | 'below' | 'auto', onClose});
+//   const chip = createFrameChip({...the picker's options, placement: 'above' | 'below' | 'auto', host, extra, onClose});
 //   row.append(chip.element); chip.set({...as the picker});
+//
+// host:  where the panel lives from the start (else it is added to the view when first opened).
+// extra: an element shown under the size row (what else the view keeps with the frame; its empty parts take no room).
 //
 // A press outside or Escape closes the panel and gives the button the focus back; the arrow keys move between the
 // options of a strip. In each strip one highlight slides to the chosen option.
-export function createFrameChip({placement = 'auto', onOpen = () => {}, onClose = () => {}, onChange = () => {}, onPreview = () => {}, ...options} = {}) {
+export function createFrameChip({placement = 'auto', host = null, extra = null, onOpen = () => {}, onClose = () => {}, onChange = () => {}, onPreview = () => {}, ...options} = {}) {
     const t = options.t || (en => en);
     let open = false, timer = 0;
     const picker = createFramePicker({...options, onPreview, onChange, onPaint: () => queueMicrotask(sync)});
@@ -224,6 +257,8 @@ export function createFrameChip({placement = 'auto', onOpen = () => {}, onClose 
     const sizeRow = el('div', 'fvp-size-row'); sizeRow.append(picker.parts.size); if (custom) sizeRow.append(custom);
     pop.append(el('span', 'fvp-title', t('Frame', '画幅')), picker.parts.frame, el('span', 'fvp-title', t('Size', '尺寸')), sizeRow);
     if (picker.parts.status) pop.append(picker.parts.status);
+    if (extra) { const more = el('div', 'fvp-extra'); more.append(extra); pop.append(more); }
+    pointerMarks(pop); if (host) host.append(pop);
     picker.element.remove();
     // The highlight sits behind the chosen option of each strip, and slides there.
     function glide() {
@@ -233,15 +268,7 @@ export function createFrameChip({placement = 'auto', onOpen = () => {}, onClose 
             if (on) Object.assign(strip.glide.style, {width: `${on.offsetWidth}px`, height: `${on.offsetHeight}px`, transform: `translate(${on.offsetLeft}px, ${on.offsetTop}px)`});
         }
     }
-    function place() {
-        const a = element.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, edge = innerWidth <= 520 ? 12 : 16, gap = 8;
-        // Above the button where it is asked for or where there is no room under it; never over the top bar.
-        const bar = (element.closest('dialog') || document).querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
-        const above = a.top - gap - h >= roof && (placement === 'above' || (placement === 'auto' && innerHeight - a.bottom < h + gap + edge));
-        pop.dataset.side = above ? 'above' : 'below';
-        pop.style.left = `${Math.round(Math.max(edge, Math.min(a.left, innerWidth - edge - w)))}px`;
-        pop.style.top = `${Math.round(above ? Math.max(edge, a.top - gap - h) : Math.min(innerHeight - edge - h, a.bottom + gap))}px`;
-    }
+    const place = () => placePop(element, pop, placement);
     function close(refocus = false) {
         if (!open) return; open = false;
         element.setAttribute('aria-expanded', 'false'); pop.dataset.open = 'false';
@@ -256,20 +283,22 @@ export function createFrameChip({placement = 'auto', onOpen = () => {}, onClose 
     const outside = event => { if (open && !pop.contains(event.target) && !element.contains(event.target)) close(); };
     function show() {
         if (open) { close(true); return; }
-        (element.closest('dialog') || document.body).append(pop);
-        clearTimeout(timer); pop.hidden = false; place(); glide();
+        if (!host) (element.closest('dialog') || document.body).append(pop);
+        clearTimeout(timer); pop.hidden = false; delete pop.dataset.pointer; place(); glide();
         void pop.offsetWidth; pop.dataset.open = 'true'; element.setAttribute('aria-expanded', 'true'); open = true;
         document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true); document.addEventListener('cancel', escape, true);
-        (picker.parts.frame.querySelector('[aria-checked=true]:not(:disabled)') || pop.querySelector('button:not(:disabled)'))?.focus({preventScroll: true});        onOpen();
+        (picker.parts.frame.querySelector('[aria-checked=true]:not(:disabled)') || pop.querySelector('button:not(:disabled)'))?.focus({preventScroll: true});
+        onOpen();
     }
     element.onclick = () => { if (!element.disabled) show(); };
-    pop.addEventListener('keydown', event => {
+    // (A property, so the view's key routing reaches it.)
+    pop.onkeydown = event => {
         const step = {ArrowLeft: -1, ArrowRight: 1}[event.key];
         if (!step || !event.target.matches?.('[role=radio]')) return;
         const all = [...event.target.parentElement.querySelectorAll('[role=radio]')];
         let next = all.indexOf(event.target) + step; while (all[next] && all[next].disabled) next += step;
         if (all[next]) { event.preventDefault(); all[next].focus(); }
-    });
+    };
     globalThis.addEventListener?.('resize', () => { if (open) { place(); glide(); } });
     function sync() {
         const state = picker.state, shape = picker.shapes.find(s => s.id === state.shape);
@@ -283,12 +312,12 @@ export function createFrameChip({placement = 'auto', onOpen = () => {}, onClose 
         glide(); if (open) place();
     }
     sync();
-    return {element, pop, state: picker.state, picker, close,
+    return {element, pop, state: picker.state, picker, close, place: () => { if (open) place(); },
         set(next) { picker.set(next); },
         dispose() { close(); clearTimeout(timer); pop.remove(); element.remove(); picker.dispose(); }};
 }
 
-// The same kind of button and panel for another setting (duration, quality): the button says the current value after
+// The same kind of button and panel for another setting (quality): the button says the current value after
 // a small drawing; the panel beside it holds whatever the caller puts in `body`. It lives in `host` from the start (so
 // what is in it is always part of the page) and is shown or hidden; a press outside or Escape closes it.
 //
@@ -302,16 +331,8 @@ export function createPopChip({host = null, name = '', icon = '', placement = 'a
     const label = el('span', 'fvp-chip-label fvs-chip-label'); element.append(label);
     const pop = el('div', 'fvp fvp-pop fvp-pop-plain'); pop.dataset.open = 'false'; pop.dataset.kind = kind; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', name);
     const body = el('div', 'fvp-pop-body'); pop.append(el('span', 'fvp-title', name), body);
-    (host || document.body).append(pop);
-    function place() {
-        const a = element.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, edge = innerWidth <= 520 ? 12 : 16, gap = 8;
-        // Above the button where it is asked for or where there is no room under it; never over the top bar.
-        const bar = (element.closest('dialog') || document).querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
-        const above = a.top - gap - h >= roof && (placement === 'above' || (placement === 'auto' && innerHeight - a.bottom < h + gap + edge));
-        pop.dataset.side = above ? 'above' : 'below';
-        pop.style.left = `${Math.round(Math.max(edge, Math.min(a.left, innerWidth - edge - w)))}px`;
-        pop.style.top = `${Math.round(above ? Math.max(edge, a.top - gap - h) : Math.min(innerHeight - edge - h, a.bottom + gap))}px`;
-    }
+    (host || document.body).append(pop); pointerMarks(pop);
+    const place = () => placePop(element, pop, placement);
     function close(refocus = false) {
         if (!open) return; open = false;
         element.setAttribute('aria-expanded', 'false'); pop.dataset.open = 'false';
@@ -324,11 +345,12 @@ export function createPopChip({host = null, name = '', icon = '', placement = 'a
     const outside = event => { if (open && !pop.contains(event.target) && !element.contains(event.target)) close(); };
     function show() {
         if (open) { close(true); return; }
-        clearTimeout(timer); pop.hidden = false; place();
+        clearTimeout(timer); pop.hidden = false; delete pop.dataset.pointer; place();
         void pop.offsetWidth; pop.dataset.open = 'true'; element.setAttribute('aria-expanded', 'true'); open = true;
         onOpen(); place();
         document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true); document.addEventListener('cancel', escape, true);
-        (pop.querySelector('[aria-checked=true]:not(:disabled)') || pop.querySelector('input:not(:disabled):not([hidden]),button:not(:disabled)'))?.focus({preventScroll: true});
+        // The control that holds the value takes the focus (a slider, a chosen option), else the first that can.
+        (pop.querySelector('[role=slider][tabindex="0"],[aria-checked=true]:not(:disabled)') || pop.querySelector('input:not(:disabled):not([hidden]),button:not(:disabled)'))?.focus({preventScroll: true, focusVisible: false});
     }
     element.onclick = () => { if (!element.disabled) show(); };
     globalThis.addEventListener?.('resize', () => { if (open) place(); });
