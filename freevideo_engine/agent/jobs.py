@@ -46,23 +46,25 @@ def image_reference(port, relative):
     """The name the image service reads an input picture by.
 
     It takes files in the input folder itself and its own results as they are, and checks them itself;
-    a picture anywhere else under input is copied next to them once, named by its contents."""
+    a picture anywhere else under input is copied for this request into the folder the service keeps the
+    pictures a request sends, under a random name, and the service removes the copy when the job ends."""
     folder, _, leaf = relative.rpartition('/')
     if folder in ('', 'freevideo-image'):
         return relative
     try:
         source = port.input_path(relative)
-        with open(source, 'rb') as stream:
-            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-        name = 'agent-image-' + digest[:16] + source.suffix.lower()
+        suffix = {'.jpeg': '.jpg', '.jpg': '.jpg', '.webp': '.webp'}.get(source.suffix.lower(), '.png')
+        name = 'freevideo-image-ref/%s%s' % (uuid.uuid4(), suffix)
         target = port.input_root / name
-        if not target.exists():
-            part = target.with_name('%s.%s.part' % (name, uuid.uuid4().hex[:8]))
-            try:
-                shutil.copyfile(source, part)
-                os.replace(part, target)
-            finally:
-                part.unlink(missing_ok=True)
+        target.parent.mkdir(exist_ok=True)
+        if target.parent.is_symlink():
+            raise OSError('The request folder is a link')
+        part = target.with_name('%s.%s.part' % (target.name, uuid.uuid4().hex[:8]))
+        try:
+            shutil.copyfile(source, part)
+            os.replace(part, target)
+        finally:
+            part.unlink(missing_ok=True)
         return name
     except OSError:
         raise JobError('invalid_media', IMAGE_ERRORS['invalid_media']) from None
@@ -758,6 +760,107 @@ class Jobs:
         if save:
             self.save(row)
 
+    # Privacy: a conversation's finished jobs go with it, and the prompt and pictures of a job whose work was deleted
+    # for good go with the work. Running and waiting jobs are never touched.
+    PROMPT_FIELDS = ('prompt', 'negative_prompt', 'scene', 'text', 'lines', 'description')
+    MEDIA_FIELDS = ('media', 'images', 'people', 'scene_image', 'image', 'source', 'edit', 'mask')
+
+    def _rewrite_batches(self, change):
+        """Apply ``change(row) -> row or None`` to the first copy of each job kept in the batch files; a batch left
+        empty goes."""
+        for path in sorted(self.directory.glob('b*.json')):
+            if not re.fullmatch(r'b[0-9a-f]{32}', path.stem):
+                continue
+            try:
+                batch = json.loads(path.read_text(encoding='utf-8'))
+                rows = batch.get('jobs') if isinstance(batch, dict) else None
+                if not isinstance(rows, list):
+                    continue
+                kept = [changed for changed in (change(deepcopy(row)) if isinstance(row, dict) else row for row in rows)
+                        if changed is not None]
+                if kept == rows:
+                    continue
+                if not kept:
+                    path.unlink(missing_ok=True)
+                    continue
+                temporary = path.with_name(path.name + '.' + uuid.uuid4().hex[:8] + '.tmp')
+                try:
+                    with temporary.open('x', encoding='utf-8') as stream:
+                        json.dump(dict(batch, jobs=kept), stream, allow_nan=False)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            except (OSError, ValueError, TypeError):
+                logging.getLogger(__name__).warning('Could not update a batch file for a deletion')
+
+    def forget_session(self, sid):
+        """After its conversation is deleted: remove the finished jobs that ran in it, unless a film still names them.
+        Returns their ids."""
+        with self.lock:
+            films = json.dumps(list(self.productions.records.values()), default=str)
+            gone = {identity for identity, row in self.jobs.items()
+                    if row.get('session') == sid and row['status'] in DONE and not row.get('resume_pending')
+                    and identity not in films}
+            for identity in gone:
+                self.jobs.pop(identity, None)
+                for path in [self.directory / (identity + '.json'), *self.directory.glob(identity + '.*.pending')]:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            if gone:
+                self._rewrite_batches(lambda row: None if row.get('id') in gone else row)
+        return sorted(gone)
+
+    def forget_works(self, names):
+        """Blank the prompt and reference pictures of finished jobs whose result names a work deleted for good (a run
+        id or a picture's file name); the job stays as a record that it ran. Returns the ids changed."""
+        names = [name for name in names if isinstance(name, str) and len(name) >= 8]
+        if not names:
+            return []
+
+        def blank(row):
+            spec = row.get('spec') if isinstance(row.get('spec'), dict) else None
+            if spec is None:
+                return False
+            changed = False
+            for key in self.PROMPT_FIELDS:
+                if isinstance(spec.get(key), str) and spec[key]:
+                    spec[key] = ''
+                    changed = True
+            for key in self.MEDIA_FIELDS:
+                value = spec.get(key)
+                if value:
+                    spec[key] = {} if isinstance(value, dict) else [] if isinstance(value, list) else None
+                    changed = True
+            if changed:
+                row['work_deleted'] = True
+            return changed
+
+        changed = []
+        with self.lock:
+            for identity, row in self.jobs.items():
+                if row['status'] not in DONE or row.get('work_deleted'):
+                    continue
+                text = json.dumps(row.get('result'), default=str)
+                if any(name in text for name in names) and blank(row):
+                    changed.append(identity)
+                    try:
+                        self.save(row)
+                    except OSError:
+                        logging.getLogger(__name__).warning('Could not update a job for a deleted work')
+            if changed:
+                wanted = set(changed)
+
+                def redact(row):
+                    if row.get('id') in wanted:
+                        blank(row)
+                    return row
+                self._rewrite_batches(redact)
+        return changed
+
     def save_batch(self, rows):
         self.retry_pending()
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -793,7 +896,7 @@ class Jobs:
                 if receipt['key'] == key and receipt.get('client') == client:
                     if receipt['digest'] != digest:
                         raise JobError('idempotency_conflict', 'Key already used')
-                    return receipt, [self.jobs[i] for i in receipt['jobs']]
+                    return receipt, [self.jobs[i] for i in receipt['jobs'] if i in self.jobs]
         return dict(key=key, digest=digest, scope=scope, **({'client': client} if client else {})), None
 
     def submit(self, value, *, client=None, takes=1, parent=None, editor=None):

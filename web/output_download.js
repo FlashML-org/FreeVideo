@@ -1,8 +1,24 @@
+// Whether a video or picture that leaves this machine carries its prompt and ComfyUI workflow (which also names
+// the files it read). Off unless the user turns it on; the library's own file always keeps both.
+const WORKFLOW_KEY = 'freevideo.export.workflow';
+export function exportKeepsWorkflow() { try { return localStorage.getItem(WORKFLOW_KEY) === '1'; } catch { return false; } }
+export function setExportKeepsWorkflow(on) {
+    try { if (on) localStorage.setItem(WORKFLOW_KEY, '1'); else localStorage.removeItem(WORKFLOW_KEY); } catch { /* this page only */ }
+}
+export function workflowToggle(t, onChange = () => {}) {
+    const label = document.createElement('label'), box = document.createElement('input');
+    label.className = 'fv-export-workflow'; box.type = 'checkbox'; box.checked = exportKeepsWorkflow();
+    box.onchange = () => { setExportKeepsWorkflow(box.checked); onChange(box.checked); };
+    label.append(box, t('Include prompt and workflow', '包含提示词和工作流（便于在 ComfyUI 中还原）'));
+    label.input = box;
+    return label;
+}
+
 // The server supplies the download name and streams the existing file, keeping
 // large videos out of a browser-side Blob and preserving playback/asset paths.
 export function outputDownloadPath(file) {
     const saved = /^FreeVideo\/(\d{4}-\d{2}-\d{2}\/[a-f0-9]{32})\/video\.mp4$/.exec(file);
-    if (saved) return '/freevideo/library/download?' + new URLSearchParams({id: saved[1]});
+    if (saved) return '/freevideo/library/download?' + new URLSearchParams({id: saved[1], ...(exportKeepsWorkflow() ? {workflow: '1'} : {})});
     const split = file.lastIndexOf('/');
     return '/view?' + new URLSearchParams({filename: file.slice(split + 1), subfolder: split < 0 ? '' : file.slice(0, split), type: 'output'});
 }

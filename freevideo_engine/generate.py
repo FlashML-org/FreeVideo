@@ -378,6 +378,34 @@ def _runtime_libraries(error, record):
         pass
 
 
+def cache_receipts(report):
+    """Every input-cache receipt this request read or wrote, here or in its encoder, as <kind>/<identity>/<receipt>.json."""
+    from .input_cache import used
+    found = list(used())
+
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == 'cache_receipt' and isinstance(item, str):
+                    found.append(item)
+                elif key == 'cache_receipts' and isinstance(item, list):
+                    found.extend(row for row in item if isinstance(row, str))
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    walk({key: value for key, value in report.items() if key != 'input_cache'})
+    rows = []
+    for row in found:
+        parts = Path(row).parts
+        if len(parts) >= 3:
+            relative = '/'.join(parts[-3:])
+            if relative not in rows:
+                rows.append(relative)
+    return rows[:256]
+
+
 def encoder_size_mismatch(encoding):
     # Cache hits retain the checkpoint with the original request's metrics.
     checkpoint = encoding.get('checkpoint') or (encoding.get('cache_source_metrics') or {}).get('checkpoint') or {}
@@ -1323,6 +1351,9 @@ def _run(args):
     finally:
         processes.restore_handlers(previous)
         report['request_seconds'] = time.perf_counter() - started
+        receipts = cache_receipts(report)
+        if receipts:
+            report.setdefault('input_cache', {})['receipts'] = receipts
         diagnostic = write_debug(destination, report)
         if diagnostic:
             report['diagnostic_file'] = diagnostic.name

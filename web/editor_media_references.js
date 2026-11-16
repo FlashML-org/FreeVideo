@@ -2,7 +2,7 @@
 import {api} from '../../scripts/api.js';
 import {openImageEditor} from './image_editor.js';
 import {imageGenerationSupported} from './image_generation.js';
-import {uploadMedia} from './media_upload.js';
+import {mediaName, uploadMedia} from './media_upload.js';
 import {middleNotice} from './middle_frames.js';
 export const MAX_REFERENCES = 32;
 const IMAGE = /\.(png|jpe?g|webp|bmp|tiff?)$/i;
@@ -68,13 +68,13 @@ export function mediaReferences(node) {
         async newImage({target, t}) {
             const rows = read();
             if (inUse(rows) >= MAX_REFERENCES) return null;
-            const library = rows.filter(row => isImageFile(row.file)).map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+            const library = rows.filter(row => isImageFile(row.file)).map(row => ({file: row.file, label: mediaName(row)}));
             const outcome = await openImageEditor({target, role: 'reference', t, resolve: file => this.url(file), upload: file => this.upload(file), library});
             if (!outcome?.blob) return null;
             const result = await this.upload(new File([outcome.blob], outcome.name, {type: outcome.blob.type}));
             const latest = read();
             if (inUse(latest) >= MAX_REFERENCES) return null;
-            latest.push({file: result.file, role: 'reference', enabled: true, edit: outcome.edit}); this.write(latest);
+            latest.push({file: result.file, name: outcome.name, role: 'reference', enabled: true, edit: outcome.edit}); this.write(latest);
             return result.file;
         },
         subscribe(listener) {

@@ -403,9 +403,9 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
-        let reportId = null, stepSerial = 0;
+        let reportId = null, stepSerial = 0; const names = [];
         try {
-            const names = []; for (const r of references.slice(0, cap(model))) names.push(await client.upload(r.file));
+            for (const r of references.slice(0, cap(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
             const usedModel = model.id;
@@ -435,7 +435,10 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         } catch (error) {
             if (alive && !mine.cancelled) { failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
                 renderFailure(); }
-        } finally { level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
+        } finally {
+            // Pictures sent for a request that never became a job; a job's own go when it ends.
+            if (!mine.job && names.length) void client.discardUploads(names).catch(() => {});
+            level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
     }
     function renderFailure() {
         renderImageFailure(failHost, {...failure, info}, t, {retry: {

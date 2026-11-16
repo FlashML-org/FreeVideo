@@ -644,6 +644,10 @@ def contracts(*, local=False):
     routes['GET', '/freevideo/agent/chat/attachment'] = route(
         'Read a saved chat image using the page cookie.', query=obj({'name': CHAT_ATTACHMENT_NAME}, ('name',)),
         auth=False, local=True, page_cookie=True)
+    routes['POST', '/freevideo/agent/chat/attachment/release'] = route(
+        'Remove a chat image the page uploaded and then took out before sending, when no conversation, job, card or '
+        'open page names it; requires a page cookie and CSRF.', body=obj({'name': CHAT_ATTACHMENT_NAME}, ('name',)),
+        auth=False, local=True)
     routes['GET', '/freevideo/agent/chat']['query'] = obj({'after': number(0, integer=True), 'session': SESSION})
     routes['GET', '/freevideo/agent/chat/video']['query'] = obj({'id': string(43, pattern=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9a-f]{32}$')}, ('id',))
     for method, suffix, summary, extra in (

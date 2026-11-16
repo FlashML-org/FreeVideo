@@ -9,6 +9,8 @@ import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
 
+// The folder of the input directory that holds the pictures a request sends (image_gen/service.py PAGE_FOLDER).
+export const PAGE_UPLOAD_FOLDER = 'freevideo-image-ref';
 export const IMAGE_GEN_PROTOCOL = Object.freeze({
     root: '/freevideo/image-gen', header: 'X-FreeVideo-Image', upload: '/upload/image',
     installed: 'ready', phase: 'phase', bytes: 'bytes', downloading: 'downloading', checking: 'checking',
@@ -131,13 +133,14 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         // The prompts and sizes of a new character's five pictures (the Agent's cards use the same ones).
         castViews: async (description, kind = 'character') => (await post('cast-views', {description, kind})).views,
         async upload(file) {
-            // ComfyUI's existing image upload stores this at input/<unique name>.
-            // FreeVideo's media upload uses subdirectories the image worker rejects.
-            const body = new FormData(); body.append('image', file);
-            body.append('type', 'input'); body.append('overwrite', 'false');
+            // Every picture a request sends is a copy under a random name in FreeVideo's own folder: never the
+            // user's file name, not in ComfyUI's Load Image list, and removed by the service when the job ends.
+            const ext = {'image/jpeg': 'jpg', 'image/webp': 'webp'}[file.type] || 'png';
+            const body = new FormData(); body.append('image', new File([file], `${crypto.randomUUID()}.${ext}`, {type: file.type || 'image/png'}));
+            body.append('type', 'input'); body.append('subfolder', PAGE_UPLOAD_FOLDER); body.append('overwrite', 'false');
             const value = await request(p.upload, {method: 'POST', body});
-            if (!value[p.name] || value[p.subfolder] || /[/\\:]/.test(value[p.name])) throw failure('invalid_media');
-            return value[p.name];
+            if (!value[p.name] || value[p.subfolder] !== PAGE_UPLOAD_FOLDER || /[/\\:]/.test(value[p.name])) throw failure('invalid_media');
+            return `${PAGE_UPLOAD_FOLDER}/${value[p.name]}`;
         },
     };
 }
@@ -394,19 +397,26 @@ export async function uploadGenerationMask(renderer, client, context, alive = ()
 
 // The object under a click, as the name of a black and white picture the size of the layer's pixels.
 // The layer is uploaded once for as long as it looks the same.
+// The engine removes that copy a while after its last use, so a later click sends the layer again.
 const segmentUploads = new WeakMap();
 export async function segmentAt(renderer, client, doc, layer, point) {
     const look = JSON.stringify([layer.ops.map(o => o.id), layer.adjust, layer.src, layer.mask?.ops.map(o => o.id)]);
-    let known = segmentUploads.get(layer);
-    if (known?.look !== look) {
+    const send = async () => {
         await renderer.preload(doc);
         const raster = renderer.layerImage(doc, layer, 1, true);
         const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
-        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
-        segmentUploads.set(layer, known);
-    }
+        const sent = {look, name: await client.upload(new File([blob], 'layer.png', {type: 'image/png'})), width: raster.width, height: raster.height};
+        segmentUploads.set(layer, sent); return sent;
+    };
+    let known = segmentUploads.get(layer);
+    if (known?.look !== look) known = await send();
     const x = Math.min(known.width - 1, Math.max(0, Math.floor(point[0] * known.width))), y = Math.min(known.height - 1, Math.max(0, Math.floor(point[1] * known.height)));
-    const value = await client.segment({image: known.name, points: [[x, y, 1]]});
+    let value;
+    try { value = await client.segment({image: known.name, points: [[x, y, 1]]}); }
+    catch (error) {
+        if (error?.code !== 'invalid_media') throw error;
+        known = await send(); value = await client.segment({image: known.name, points: [[x, y, 1]]});
+    }
     if (typeof value?.mask !== 'string') throw failure();
     const image = await renderer.image(value.mask);
     renderer.images.get(value.mask).value = image;

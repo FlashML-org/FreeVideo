@@ -3,7 +3,9 @@
 One JSON file per card under <jobs>/cast, written atomically under Jobs' lock,
 the same way films are kept. Pictures and voices enter a card only as input
 references (a file under ComfyUI input, or a saved library video); a card never
-stores or shows a local path. Deleting moves the file to cast/.deleted.
+stores or shows a local path. Deleting leaves only a tombstone in cast/.deleted:
+the card's id, when it went and its operation receipts, never its name,
+description, pictures or voice.
 """
 from copy import deepcopy
 import hashlib
@@ -28,6 +30,9 @@ EDITABLE = ('name', 'description', 'images', 'voice')
 MAX_IMAGES = 6
 MAX_CANDIDATES = 6
 MAX_RECEIPTS = 64
+# The FreeVideo input files that cards the user deleted named, by private_store token, with the time noted.
+RELEASED = 'released.json'
+RELEASED_LIMIT = 10000
 VOICE_SECONDS = (2, 15)
 FINISHED = ('finished', 'cancelled')
 LIST_NEXT = 'GET /freevideo/agent/v1/cast to find an existing card ID.'
@@ -144,6 +149,33 @@ def _plain(item):
     return None
 
 
+def tombstone(record):
+    """What stays of a deleted card: its id, when it went, and the keys and digests of its operation receipts, so a
+    repeated request is answered and not taken for a new one. A receipt's result is reduced to the deletion."""
+    card = record['card']
+    identity = card['id']
+    receipts = [dict(key=old['key'], digest=old['digest'], result=dict(id=identity, deleted=True),
+                     **({'client': old['client']} if old.get('client') else {})) for old in record.get('receipts', [])]
+    return dict(card=dict(id=identity, tombstone=True, deleted_at=card.get('deleted_at')), receipts=receipts)
+
+
+def _check_tombstone(record, stem):
+    """A tombstone, or an older one that still holds the whole card; returns (tombstone, files the older one named)."""
+    card = record['card']
+    if card.get('id') != stem or not CARD.fullmatch(stem):
+        raise ValueError('Invalid card identity')
+    record['receipts'] = operation_receipts.load(record['receipts'])
+    if card.get('tombstone') is True and set(card) <= {'id', 'tombstone', 'deleted_at'}:
+        return record, []
+    files = [row['media']['file'] for key in ('images', 'candidates') for row in card.get(key) or []
+             if isinstance(row, dict) and isinstance(row.get('media'), dict) and isinstance(row['media'].get('file'), str)]
+    voice = card.get('voice')
+    if isinstance(voice, dict):
+        files += [value['file'] for value in (voice.get('clip'), voice.get('media'))
+                  if isinstance(value, dict) and isinstance(value.get('file'), str)]
+    return tombstone(record), files
+
+
 def _check(record, stem):
     card = record['card']
     if (card['id'] != stem or not CARD.fullmatch(stem) or card['kind'] not in KINDS
@@ -207,12 +239,22 @@ class Cast:
 
     # Records ------------------------------------------------------------------------------------------
     def load(self):
+        released = []
         for folder, target in ((self.directory / '.deleted', self.deleted), (self.directory, self.records)):
             for path in sorted(folder.glob('*.json')):
                 if not CARD.fullmatch(path.stem):
                     continue
                 try:
                     record = json.loads(path.read_text(encoding='utf-8'))
+                    if target is self.deleted:
+                        slim, files = _check_tombstone(record, path.stem)
+                        if files or slim != record:
+                            # An older tombstone kept the whole card: keep only what a tombstone holds, and let the
+                            # files it named go once nothing else uses them.
+                            self._write(folder, slim)
+                            released += files
+                        target[path.stem] = slim
+                        continue
                     _check(record, path.stem)
                     if target is self.records and path.stem in self.deleted:
                         # A deletion stopped after its tombstone was written: the deletion wins.
@@ -230,6 +272,53 @@ class Cast:
                         if target is self.records:
                             self._unreadable.add(path)
                     logging.getLogger(__name__).warning('Isolated an invalid cast card; other cards remain available')
+        if released:
+            self._released(released)
+
+    def _released(self, files, *, immediate=False):
+        """Note the input files a card the user deleted named, for the cleanup to remove without waiting once nothing
+        else uses them. Only FreeVideo's own names are noted; never anything else in the input folder."""
+        from ..private_store import classify
+        tokens = sorted({'%s:%s' % found for found in map(classify, files) if found})
+        if not tokens:
+            return
+        path = self.directory / '.deleted' / RELEASED
+        try:
+            value = json.loads(path.read_text(encoding='utf-8'))
+            value = value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            value = {}
+        now = self.jobs.clock()
+        for token in tokens:
+            value[token] = now
+        rows = sorted(value.items(), key=lambda row: row[1] if isinstance(row[1], (int, float)) else 0)[-RELEASED_LIMIT:]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+        try:
+            temporary.write_text(json.dumps(dict(rows)), encoding='utf-8')
+            os.replace(temporary, path)
+        except OSError:
+            logging.getLogger(__name__).warning('Could not note the pictures of a deleted card for cleanup')
+        finally:
+            temporary.unlink(missing_ok=True)
+        if immediate:
+            # The user deleted the card: its own files go now, once nothing else (another card, a job, a work, an open
+            # page) names them. The scan reads every record, so it runs beside the request.
+            threading.Thread(target=self._release_now, args=(tokens,), name='freevideo-card-files', daemon=True).start()
+
+    def _release_now(self, tokens):
+        try:
+            from ..private_refs import release_tokens, user_directory
+            try:
+                from server import PromptServer
+                queue = PromptServer.instance.prompt_queue
+            except (ImportError, AttributeError):
+                queue = None
+            port = self.jobs.port
+            release_tokens(dict(input_root=port.input_root, output_root=port.output_root, user_root=user_directory(),
+                                queue=queue, roots=[self.jobs.directory]), tokens)
+        except Exception:
+            logging.getLogger(__name__).warning('Could not remove the files of a deleted card', exc_info=True)
 
     def _write(self, folder, record):
         folder.mkdir(parents=True, exist_ok=True)
@@ -305,6 +394,13 @@ class Cast:
             item = {k: v for k, v in item.items() if k != 'url'}
         source = spec.media_item(item, '/media', image=True)
         relative = self.jobs.media_file(dict(id=identity), source, 'image-' + uuid.uuid4().hex[:8])
+        from ..private_store import adopt, classify
+        if (classify(relative) or ('',))[0] == 'draft':
+            # A picture made for this card before it was saved becomes the card's own file; the draft goes.
+            try:
+                relative = adopt(self.jobs.port.input_root, relative)
+            except (OSError, ValueError):
+                raise CastError('invalid_media', 'A card picture must be a readable image.', 'Make the picture again.') from None
         try:
             kind = media_kind(relative)
         except ValueError:
@@ -575,10 +671,12 @@ class Cast:
             card.update(deleted_at=self._now(), deleted_by=by)
             result = dict(id=card['id'], deleted=True)
             self._remember(record, ref, digest, result, client)
-            self._write(self.directory / '.deleted', record)
+            slim, files = _check_tombstone(deepcopy(record), card['id'])
+            self._write(self.directory / '.deleted', slim)
             (self.directory / (card['id'] + '.json')).unlink(missing_ok=True)
             self.records.pop(card['id'], None)
-            self.deleted[card['id']] = record
+            self.deleted[card['id']] = slim
+            self._released(files, immediate=True)
             self.changed.notify_all()
             return result
 

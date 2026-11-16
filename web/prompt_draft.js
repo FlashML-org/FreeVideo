@@ -38,8 +38,9 @@ export function promptDraft(node) {
     const text = node?.widgets?.find(w => w.name === 'text')?.value;
     if (typeof text !== 'string') return null;
     const versions = node.properties?.freevideo_prompt_versions;
+    // A cleared prompt leaves no copy in the draft file: its original and rewritten versions go with it.
     const draft = {schema: 1, text: node.freevideoStarterPrompt && text === node.freevideoStarterPrompt ? null : text,
-        versions: versions && typeof versions === 'object' ? clone(versions) : null};
+        versions: text.trim() && versions && typeof versions === 'object' ? clone(versions) : null};
     const widgets = Object.fromEntries((node.widgets || []).filter(w => SAVED_WIDGETS.includes(w.name)).map(w => [w.name, w.value]));
     const properties = Object.fromEntries(PROPERTIES.filter(key => Object.hasOwn(node.properties || {}, key)).map(key => [key, node.properties[key]]));
     if (Object.keys(widgets).length) draft.widgets = clone(widgets);

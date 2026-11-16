@@ -48,7 +48,7 @@ ssh -N -L 8188:127.0.0.1:8188 用户名@服务器
 freevideo server --listen 0.0.0.0
 ```
 
-这会打印一个带访问令牌的链接和对应的二维码（可用手机相机扫描），持有链接的人都可以使用这台服务器上的 FreeVideo；用 `freevideo server --listen 0.0.0.0 --new-token` 可以换一个新链接，`freevideo status` 可以再次查看。ComfyUI 本身仍然只监听服务器本机，前面的访问代理会拒绝所有不带令牌的请求。连接没有加密，请只在可信的网络中使用，或加上 `--tls-cert cert.pem --tls-key key.pem` 使用 HTTPS。
+这会打印一个带访问令牌的链接和对应的二维码（可用手机相机扫描），持有链接的人都可以使用这台服务器上的 FreeVideo；用 `freevideo server --listen 0.0.0.0 --new-token` 可以换一个新链接，`freevideo status` 可以再次查看。ComfyUI 本身仍然只监听服务器本机，前面的访问代理会拒绝所有不带令牌的请求。连接没有加密，请只在可信的网络中使用，或加上 `--tls-cert cert.pem --tls-key key.pem` 使用 HTTPS。通过链接只能打开 ComfyUI 输入文件夹中 FreeVideo 自己子文件夹里的图片。
 
 如需随服务器启动，加上 `--enable`，FreeVideo 会注册为 systemd 用户服务；若要在注销后保持运行、开机自动启动，还需运行一次 `sudo loginctl enable-linger $USER`。`freevideo server --disable` 会移除这个服务。
 

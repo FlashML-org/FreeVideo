@@ -135,7 +135,7 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
             const grid = el('div', 'fv-ed-ref-spare');
             for (const {row, index} of spare) {
                 const b = el('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
-                b.title = (row.source || row.file).split('/').pop(); b.append(thumb(row.file, 'fv-ed-ref-thumb'));
+                b.title = row.name || (row.source || row.file).split('/').pop(); b.append(thumb(row.file, 'fv-ed-ref-thumb'));
                 b.onclick = () => choose(() => { const latest = source.rows(); if (latest[index]?.file === row.file) { latest[index] = {...latest[index], enabled: true}; write(latest); } });
                 grid.append(b); entries.push(b);
             }

@@ -129,3 +129,10 @@
 .fv-setup .fv-storage-end{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-left:auto;min-width:0}
 .fv-setup .fv-storage-end>[role=status]{min-width:0;text-align:right}
 .fv-setup .fv-storage-end>button{flex:none;height:36px;min-height:36px;padding:0 14px;white-space:nowrap}
+.fv-setup .fv-private-old{margin-top:10px}
+.fv-setup .fv-private-size{white-space:nowrap}
+.fv-setup .fv-private-limit{width:auto;flex:none}
+.fv-setup .fv-private-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:8px}
+.fv-setup .fv-private-cell{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0}
+.fv-setup .fv-private-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:var(--fv-surface-2,#0002)}
+.fv-setup .fv-private-cell figcaption{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

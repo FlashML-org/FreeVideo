@@ -1,7 +1,8 @@
 """Stream browser media to ComfyUI input without buffering a clip in RAM."""
 import asyncio
 import json
-from pathlib import Path, PureWindowsPath
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import uuid
 
@@ -17,7 +18,7 @@ class UploadError(ValueError):
         self.code = code
 
 
-async def receive(reader, input_directory):
+async def receive(reader, input_directory, *, store_root=None):
     part = await reader.next()
     if part is None or part.name != 'file' or not part.filename:
         raise UploadError('Choose a media file', 'unsupported')
@@ -28,14 +29,18 @@ async def receive(reader, input_directory):
         media_kind(name)
     except ValueError as error:
         raise UploadError(str(error), 'unsupported') from error
+    from . import private_store
     base = Path(input_directory).resolve()
-    folder = base / 'freevideo' / uuid.uuid4().hex
-    folder.resolve().relative_to(base)
-    folder.mkdir(parents=True, exist_ok=False)
+    # One copy per content: the folder is a keyed hash of the bytes and the file has a plain name, so neither
+    # says what the user called it. The page keeps that name with the item that uses the file.
+    suffix = PurePosixPath(name).suffix.lower()
+    staging = base / 'freevideo' / uuid.uuid4().hex
+    staging.resolve().relative_to(base)
+    staging.mkdir(parents=True, exist_ok=False)
     # An upload that fails or is interrupted leaves nothing behind.
     try:
-        temporary = folder / (name + '.partial')
-        destination = folder / name
+        temporary = staging / ('media' + suffix + '.partial')
+        digest = private_store.hasher('upload' + suffix, root=store_root)
         size = 0
         with temporary.open('xb') as output:
             while True:
@@ -46,16 +51,36 @@ async def receive(reader, input_directory):
                 if size > MAX_BYTES:
                     raise UploadError('Media file exceeds 2 GiB; trim the clip before uploading', 'too_large')
                 output.write(chunk)
+                digest.update(chunk)
         if size == 0:
             raise UploadError('Media file is empty', 'empty')
         if await reader.next() is not None:
             raise UploadError('Upload one media file at a time', 'multiple')
+        folder = base / 'freevideo' / digest.hexdigest()[:32]
+        destination = folder / ('media' + suffix)
         from .file_ops import publish
-        publish(temporary, destination)
-    except BaseException:
-        shutil.rmtree(folder, ignore_errors=True)
-        raise
-    result = {'file': destination.relative_to(base).as_posix(), 'bytes': size}
+        with private_store.LOCK:
+            existing, _ = private_store.check(base, destination.relative_to(base).as_posix())
+            if existing is not None and existing[1].st_size == size:
+                # The same bytes are already here: keep that one copy, newly used.
+                os.utime(destination)
+            else:
+                if os.path.lexists(destination) or (os.path.lexists(folder) and not folder.is_dir()):
+                    # Something FreeVideo would not reuse holds that name: this upload gets a folder of its own.
+                    folder = base / 'freevideo' / uuid.uuid4().hex
+                    destination = folder / ('media' + suffix)
+                folder.mkdir(exist_ok=True)
+                try:
+                    publish(temporary, destination)
+                except BaseException:
+                    try:
+                        folder.rmdir()
+                    except OSError:
+                        pass
+                    raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    result = {'file': destination.relative_to(base).as_posix(), 'bytes': size, 'name': name}
     if media_kind(name) == 'video':
         # Whether the clip has a sound track; the Replace person option is greyed out without one.
         try:
@@ -137,5 +162,32 @@ def register():
         except (OSError, ValueError) as error:
             return web.json_response({'error': str(error)}, status=400)
         return web.json_response(result, headers={'Cache-Control': 'no-store'})
+
+    from . import private_refs, private_store
+
+    @server.routes.post('/freevideo/private/pin')
+    async def private_pin(request):
+        # The files an open page shows: only the page knows them, and they stay while it has them.
+        try:
+            value = await request.json()
+            if not isinstance(value, dict):
+                raise ValueError('A JSON object is required')
+            count = await asyncio.to_thread(private_store.pin, value.get('page'), value.get('files'))
+        except (OSError, ValueError, TypeError) as error:
+            return web.json_response({'error': str(error)}, status=400)
+        return web.json_response({'pinned': count}, headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/private/cleanup')
+    async def private_cleanup(request):
+        result = await asyncio.to_thread(private_store.last_sweep)
+        return web.json_response(dict(result, enabled=private_store.deletion_enabled()), headers={'Cache-Control': 'no-store'})
+
+    def sweep_context():
+        image = getattr(server, '_freevideo_image_gen', None)
+        return dict(input_root=folder_paths.get_input_directory(), output_root=folder_paths.get_output_directory(),
+                    user_root=folder_paths.get_user_directory(), queue=getattr(server, 'prompt_queue', None),
+                    extra=image.held_tokens() if image is not None and hasattr(image, 'held_tokens') else ())
+    private_refs.start_sweeps(sweep_context)
+    private_refs.register_routes(server, web, folder_paths, sweep_context)
 
     server._freevideo_upload_registered = True

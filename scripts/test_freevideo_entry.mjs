@@ -5,7 +5,7 @@ import * as modules from 'node:module';
 import {resolve} from './editor_test_hooks.mjs';
 if (modules.registerHooks) modules.registerHooks({resolve});
 else modules.register('./editor_test_hooks.mjs', import.meta.url);
-import {uploadMedia} from '../web/media_upload.js';
+import {mediaName, uploadMedia} from '../web/media_upload.js';
 import {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} from '../web/output_download.js';
 import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
@@ -64,7 +64,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, mediaName, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
             // notice: the could-not-read line the real library returns for the page to place.
             const cast = {element: new Element('cast'), notice: new Element('notice'), options, destroyed: false, destroy() { this.destroyed = true; }};
@@ -141,6 +141,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
             .replace("import { openReferenceMenu } from './image_library.js';", 'const openReferenceMenu = () => {};')
+            .replace("import { pinSoon } from './private_pin.js';", 'const pinSoon = () => {};')
             .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
             .replace("import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';", 'const {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
@@ -157,7 +158,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { isLaunchVisit } from './launch_visit.js';", 'const isLaunchVisit = () => false;')
             .replace("import { openFreeVideoWorkflow } from './launcher.js';", 'const openFreeVideoWorkflow = (...args) => globalThis.__freevideoEntryTest.openFreeVideoWorkflow?.(...args);')
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
-            .replace("import { uploadMedia } from './media_upload.js';", 'const {uploadMedia} = globalThis.__freevideoEntryTest;')
+            .replace("import { mediaName, uploadMedia } from './media_upload.js';", 'const {mediaName, uploadMedia} = globalThis.__freevideoEntryTest;')
             .replace("import { createCastLibrary } from './cast_library.js';", 'const {createCastLibrary} = globalThis.__freevideoEntryTest;')
             .replace("import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body, peopleOf = () => [];')
             .replace("import { swapMissingText } from './replace_person.js';", 'const swapMissingText = () => "";')
@@ -558,11 +559,12 @@ test('main browser entry registers both views and preserves node hooks', async t
         api.fetchApi = async (url, options) => {
             assert.equal(url, '/freevideo/media/upload');
             assert.equal(options.body.get('file').name, 'voice.wav');
-            return {ok: true, json: async () => ({file: 'voice.wav'})};
+            return {ok: true, json: async () => ({file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav'})};
         };
         audioPicker.files = [new File(['wave'], 'voice.wav', {type: 'audio/wav'})];
         await audioPicker.onchange();
-        assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'voice.wav', role: 'reference', enabled: true}]);
+        // The stored file has a plain name; the item keeps the name the user's file had, for the label.
+        assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav', role: 'reference', enabled: true}]);
         assert.equal(media.isUploading, false);
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
         assert.match(note.textContent, /Choose keyframes or references/);

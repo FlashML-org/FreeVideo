@@ -61,6 +61,8 @@ engine-gpu-*.lock
 /tools/
 /tuning/
 /input-cache/
+# This installation's salt, who holds which private file, and the cleanup's log.
+/private-store/
 /comfyui.json
 # ComfyUI that ./setup.sh installs beside the engine, and the service that runs it.
 /ComfyUI/

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import secrets
 import threading
 import time
@@ -236,10 +237,17 @@ class Sessions:
         with self.lock:
             self._closing.discard(sid)
 
-    def delete(self, sid) -> None:
-        """Forget a conversation and remove its file. A wait in it ends empty; anything later says not_found."""
+    def delete(self, sid) -> list:
+        """Forget a conversation and remove its file. A wait in it ends empty; anything later says not_found.
+
+        Returns the chat pictures it named, for the caller to remove when nothing else names them."""
         with self.lock:
             self._get(sid)
+            try:
+                named = sorted(set(re.findall(r'(?<![0-9a-f])[0-9a-f]{64}\.(?:png|jpg|jpeg|webp)',
+                                              self._path(sid).read_text(encoding='utf-8', errors='replace'))))
+            except OSError:
+                named = []
             self._path(sid).unlink(missing_ok=True)
             self._closing.discard(sid)
             waiters = self._waiters.pop(sid, ())
@@ -254,6 +262,7 @@ class Sessions:
                 loop.call_soon_threadsafe(signal.set)
             except RuntimeError:
                 pass  # A closed client loop no longer needs notification.
+        return named
 
     def list(self, *, limit=50, before=None) -> dict:
         _check(schema.session_schema('list'), dict(limit=limit, **({'before': before} if before is not None else {})))

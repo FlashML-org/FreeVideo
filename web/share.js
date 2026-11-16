@@ -5,6 +5,7 @@ import {fontCSS as bundledFontCSS, fontLoaded, loadFont} from './fonts.js';
 import {shareLayout} from './share_layout.js';
 import {videoUnavailableText} from './studio_extend.js';
 import {issueButton} from './issue_button.js';
+import {exportKeepsWorkflow, workflowToggle} from './output_download.js';
 
 const css=document.createElement('link'); css.rel='stylesheet'; css.href=new URL('./share.css',import.meta.url).href; document.head.append(css);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -118,7 +119,9 @@ export async function openShare(record,t){
     const say=(text,fault=false)=>{message.textContent=text;problem.hidden=!fault||!text;if(fault&&text)dialog.dataset.error='true';else delete dialog.dataset.error;};
     const save=button(t('Save image','保存分享图'),download,'fv-primary');save.disabled=true;
     const cancel=button(t('Cancel','取消'),()=>exportRequest?.abort());cancel.hidden=true;
-    footer.append(message,problem,cancel,save);heading.append(title,tabs,close);dialog.append(heading,panel,footer);
+    // Off by default: the prompt and workflow stay on this machine unless the user asks for them.
+    const keep=workflowToggle(t,()=>{exported=null;});
+    footer.append(message,problem,keep,cancel,save);heading.append(title,tabs,close);dialog.append(heading,panel,footer);
     const videoError=()=>{
         if(disposed)return;
         videoFailed=true;
@@ -148,7 +151,7 @@ export async function openShare(record,t){
     };
     async function download(){
         if(!ready||busy)return;
-        busy=true;save.disabled=true;cancel.hidden=kind==='image';tabs.querySelectorAll('button').forEach(b=>b.disabled=true);
+        busy=true;save.disabled=true;keep.input.disabled=true;cancel.hidden=kind==='image';tabs.querySelectorAll('button').forEach(b=>b.disabled=true);
         say(kind==='image'?t('Saving the share image…','正在保存分享图…'):t('Exporting the share video…','正在导出分享视频…'));
         dialog.dataset.busy='true';delete dialog.dataset.error;
         exportRequest=new AbortController();
@@ -158,7 +161,7 @@ export async function openShare(record,t){
                     canvas.toBlob(value=>value?resolve(value):reject(new Error('image_encoding_failed')),'image/png');
                 });
                 if(disposed)return;
-                blob=await withGraph(blob,metadata?.graph);
+                if(exportKeepsWorkflow())blob=await withGraph(blob,metadata?.graph);
                 if(disposed)return;
                 const url=URL.createObjectURL(blob),a=el('a');
                 a.href=url;a.download=`FreeVideo_share_${id.split('/')[1].slice(0,12)}.png`;a.click();
@@ -173,7 +176,7 @@ export async function openShare(record,t){
                     if(busy&&!disposed)say(exportingText(latest,(Date.now()-started)/1000,t));
                 },500);
                 const response=await api.fetchApi('/freevideo/share/video',{method:'POST',headers:{'Content-Type':'application/json'},signal:exportRequest.signal,
-                    body:JSON.stringify({id,template,rect:shape.rect})});
+                    body:JSON.stringify({id,template,rect:shape.rect,workflow:exportKeepsWorkflow()})});
                 if(response.status===409)throw Object.assign(new Error(t('Another export is running. Try again shortly.','已有分享视频正在导出，请稍后再试。')),{reportable:false});
                 if(response.status===507)throw Object.assign(new Error(t('Exporting the share video failed: the disk is full. Free some space, then export again.','导出分享视频时出错：磁盘空间不够，空出空间后再导出。')),{reportable:false});
                 if(!response.ok)throw new Error(t('Export could not complete. Try again.','分享视频导出未完成，请重试。'));
@@ -184,7 +187,7 @@ export async function openShare(record,t){
         }catch(error){if(!disposed){
             say(error.name==='AbortError'?'':kind==='image'?t('Could not save the share image. Try again.','分享图没有保存成功，请重试。'):error.message,error.reportable!==false);
         }}
-        finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
+        finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;keep.input.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }
     dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog(dialog);});
     dialog.onclose=()=>{disposed=true;clearInterval(watch);abort.abort();exportRequest?.abort();player.pause();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};

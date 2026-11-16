@@ -14,6 +14,7 @@
 .fv-share-preview video{position:absolute;object-fit:contain;background:#000}.fv-share-preview video[hidden]{display:none}
 .fv-share-footer{display:flex;flex-wrap:wrap;flex-shrink:0;align-items:center;justify-content:flex-end;gap:12px;padding:18px 26px;border-top:1px solid var(--fv-border)}
 .fv-share-status{font-size:12px;color:var(--fv-muted);margin-right:auto;max-width:65%}
+.fv-share-footer .fv-export-workflow{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fv-muted);cursor:pointer}
 .fv-share[data-busy=true] .fv-share-status:before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border:1.5px solid #fff3;border-top-color:var(--fv-accent);border-radius:50%;animation:fv-share-spin .8s linear infinite}
 .fv-share[data-error=true] .fv-share-status{color:var(--fv-danger)}
 .fv-studio .fv-share-footer .fv-primary{border:0;background:linear-gradient(135deg,#3dd6b5,#4ea8ff);color:#06121c;font-weight:650;box-shadow:0 4px 14px #4ea8ff40;transition:transform .2s cubic-bezier(.25,1.18,.45,1),box-shadow .2s,filter .2s}

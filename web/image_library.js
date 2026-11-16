@@ -1,7 +1,6 @@
 // Pictures made in the image view live in the asset library as one-picture cards of kind "image": saved when a
 // generation succeeds, offered again wherever a reference picture is added.
 import { agentGet, agentPost, agentSend } from './agent_session.js';
-import { uploadMedia } from './media_upload.js';
 
 const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
 const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
@@ -10,15 +9,12 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const LIMIT = 200;
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./image_library.css', import.meta.url).href; document.head.append(css);
 
-// One finished picture (an output file) becomes a card named after its prompt; the card's description keeps the output file,
-// so deleting the work deletes its card too.
-export async function saveGeneratedImage(api, {url, file, prompt = ''}) {
-    const response = await fetch(url); if (!response.ok) throw new Error('image_unreadable');
-    const blob = await response.blob();
-    const uploaded = await uploadMedia(api, new File([blob], file.slice(file.lastIndexOf('/') + 1), {type: blob.type || 'image/png'}));
+// One finished picture (an output file) becomes a card named after its prompt. The card names the picture itself, so
+// there is one copy, and its description keeps the output file, so deleting the work deletes its card too.
+export async function saveGeneratedImage(api, {file, prompt = ''}) {
     const typed = Array.from(String(prompt).replace(/\s+/g, ' ').trim()).slice(0, 16).join('').trim();
     const name = typed || t(`Image ${(await imageCards(api)).length + 1}`, `图片 ${(await imageCards(api)).length + 1}`);
-    const answer = await agentPost(api, '/freevideo/agent/cast', {kind: 'image', name, description: file, images: [{media: uploaded.file, label: 'other'}]});
+    const answer = await agentPost(api, '/freevideo/agent/cast', {kind: 'image', name, description: file, images: [{media: file, label: 'other'}]});
     if (!answer.ok) throw new Error('save_failed');
     return answer.json();
 }
@@ -72,7 +68,8 @@ export function openReferenceMenu({api, viewURL, anchor, host = document.body, o
                 try {
                     const blob = await (await fetch(viewURL(card.thumbnail.file))).blob();
                     const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-                    onPick(new File([blob], `${card.id}.${ext}`, {type: blob.type || 'image/png'}), card.id);
+                    // The card's own input file goes along, so a place that reads input files uses it without a copy.
+                    onPick(new File([blob], `${card.id}.${ext}`, {type: blob.type || 'image/png'}), card.id, card.thumbnail.file);
                 } catch { /* the picture stays available for another click */ }
                 refresh();
             };

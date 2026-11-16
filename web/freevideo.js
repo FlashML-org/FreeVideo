@@ -21,6 +21,7 @@ import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
+import { pinSoon } from './private_pin.js';
 import { openReferenceMenu } from './image_library.js';
 import { requestText } from './prompt_sections.js';
 import { timedText } from './timed_prompt.js';
@@ -34,7 +35,7 @@ import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
-import { uploadMedia } from './media_upload.js';
+import { mediaName, uploadMedia } from './media_upload.js';
 import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemText, middleNotice, middleInfo, labels as middleLabels, shown as shownTime } from './middle_frames.js';
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
@@ -154,7 +155,8 @@ function mediaPanel(node, mount = null) {
     const add = button(text("Add", "添加"), text("Add images, video or audio", "添加图片、视频或音频"), () => {
         if (libraryMenu?.box.isConnected) { libraryMenu.close(); return; }
         libraryMenu = openReferenceMenu({api, viewURL, anchor: add, host: panel, onComputer: () => picker.click(),
-            onPick: (file, id) => upload([file]).then(() => { picked.add(id); libraryMenu?.refresh(); }),
+            // A saved picture is already an input file: the row names it, so no second copy is made.
+            onPick: (file, id, source) => (source ? addInput(source) : upload([file])).then(() => { picked.add(id); libraryMenu?.refresh(); }),
             state: () => ({used: picked, full: read().length >= 32})});
     });
     let libraryMenu = null; const picked = new Set();
@@ -181,7 +183,7 @@ function mediaPanel(node, mount = null) {
         return rows;
     };
     const message = (value, error = false) => { note.textContent = value; note.hidden = !value; note.classList.toggle("fv-error", error); };
-    const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
+    const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); pinSoon(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
     const changed = event => { if (String(event.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-media', changed);
     // The video this panel feeds: its canvas is the natural shape for a keyframe crop.
@@ -229,7 +231,7 @@ function mediaPanel(node, mount = null) {
         const source = original.source || agent?.source || original.file;
         // Other pictures in this panel can be placed on the image as layers.
         const library = read().filter(row => row.file !== file && mediaKind(row.file) === 'image')
-            .map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+            .map(row => ({file: row.file, label: mediaName(row)}));
         let outcome;
         try {
             outcome = await openImageEditor({source, name: source, target: videoSize(), edit: original.edit || agent?.edit || null, role: original.role,
@@ -262,7 +264,7 @@ function mediaPanel(node, mount = null) {
         if (node.isUploading) return;
         if (read().length >= 32) { message(text('The media list is full (32 items, including disabled ones). Remove some to add more.', '素材已满 32 个（含未启用的），请先移除不用的素材。'), true); return; }
         const library = read().filter(row => mediaKind(row.file) === 'image')
-            .map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+            .map(row => ({file: row.file, label: mediaName(row)}));
         let outcome;
         try {
             outcome = await openImageEditor({target: videoSize(), role: role.value, t: text,
@@ -277,7 +279,7 @@ function mediaPanel(node, mount = null) {
                 fraction => message(text('Saving the image', '正在保存图片') + percent(fraction)));
             message('');
             const latest = read();
-            latest.push({file: result.file, role: role.value, enabled: true, edit: outcome.edit});
+            latest.push({file: result.file, name: outcome.name, role: role.value, enabled: true, edit: outcome.edit});
             update(latest);
         } catch (error) { message(error.message, true); }
         finally { node.isUploading = false; add.disabled = addAudio.disabled = generateImage.disabled = false; }
@@ -387,7 +389,7 @@ function mediaPanel(node, mount = null) {
                 }
                 rows[index].enabled = enabled.checked; update(rows);
             };
-            const label = el("span", row.cast?.name || (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
+            const label = el("span", mediaName(row), "fv-file"); label.title = mediaName(row);
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             // One width for every role, whatever the options say in the current state: "Middle frame" is the longest usual one.
             select.style.width = cn ? '7.5em' : '10em';
@@ -523,6 +525,11 @@ function mediaPanel(node, mount = null) {
         if (blocked) throw new Error(blocked);
         try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range, seconds}) => ({file, role, enabled, ...(role === 'middle' && Number.isFinite(seconds) ? {seconds} : {}), ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
     };
+    async function addInput(file) {
+        const rows = read();
+        if (rows.length >= 32) { message(text("Use at most 32 media items", "最多使用 32 个素材"), true); return; }
+        rows.push({file, role: mediaKind(file) === "image" ? role.value : "reference", enabled: true}); update(rows);
+    }
     async function upload(files) {
         if (node.isUploading || !files.length) return;
         const chosen = Array.from(files);
@@ -538,7 +545,7 @@ function mediaPanel(node, mount = null) {
                 const result = await uploadOne(file, fraction => message(heading + percent(fraction)));
                 // Read again after the wait: another place may have changed the list meanwhile.
                 const rows = read(); if (rows.length >= 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
-                rows.push({file: result.file, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);
+                rows.push({file: result.file, name: result.name || file.name, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);
             }
             if (skipped.length) message(skippedNote(skipped), !usable.length);
         } catch (error) { message(error.message, true); }
@@ -1004,6 +1011,7 @@ app.registerExtension({
     },
     afterConfigureGraph() {
         syncPrompts(true);
+        pinSoon();
         configuringGraph = false;
         for (const node of app.graph?._nodes || []) {
             if (node.comfyClass !== 'FreeVideoGenerate' && node.type !== 'FreeVideoGenerate') continue;

@@ -6,6 +6,7 @@ import { animateDetails, closeDialog } from './motion.js';
 import { createGuideReplayEntry } from './first_run_guide.js';
 import { issueButton } from './issue_button.js';
 import { agentConfirmSettings } from './agent_confirm_settings.js';
+import { privacySettings } from './private_settings.js';
 import { previewStyle, loadPreviewStyle, applyPreviewStyle, onPreviewStyle } from './preview_style.js';
 import { monitorShown, setMonitorShown, onMonitorShown } from './monitor_panel.js';
 
@@ -245,6 +246,7 @@ export async function openSetup(options) {
     const storageEnd = node('div'); storageEnd.className = 'fv-storage-end'; storageEnd.append(storageSize, storageClear);
     storageRow.append(storageName, storageEnd); storage.append(storageRow);
     const agentConfirm = agentConfirmSettings(t, api);
+    const privacy = privacySettings(t, api);
     // The preview while generating is a frame sheet; this switch plays it as a loop of the video in progress instead.
     // It applies to the preview on screen at once, on this page and on the phone page.
     const preview = node('section'); preview.dataset.section = 'preview';
@@ -314,7 +316,7 @@ export async function openSetup(options) {
         loopSwitch.focus({preventScroll: true});
     };
     dialog.addEventListener('fv-setup-section', event => showSection(event.detail));
-    dialog.append(heading, installation, downloads, preview, output, status, storage, agentConfirm.element, advanced, guideReplay);
+    dialog.append(heading, installation, downloads, preview, output, status, storage, privacy.element, agentConfirm.element, advanced, guideReplay);
     const motions = [...dialog.querySelectorAll('details')].map(animateDetails);
     dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(dialog); });
     document.body.append(dialog); dialog.showModal();

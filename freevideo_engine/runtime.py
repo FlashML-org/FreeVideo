@@ -1068,7 +1068,8 @@ class Engine:
             self.device_backend.empty_cache()
             empty_host_cache(torch)
         return {'seconds': time.perf_counter() - started, 'shape': list(text.shape),
-                'refiner_weights_released': self.refiner_released, 'offload': stats, 'cache_hit': False, 'cache_saved': saved, 'cache_note': note}
+                'refiner_weights_released': self.refiner_released, 'offload': stats, 'cache_hit': False, 'cache_saved': saved, 'cache_note': note,
+                **({'cache_receipt': str(cache.receipt(cache_key))} if saved else {})}
 
     def device_tensors(self):
         """The registered tensors this engine keeps on the GPU, or None.

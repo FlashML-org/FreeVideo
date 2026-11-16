@@ -121,6 +121,32 @@ This FreeVideo server opens from its access link</h1><p style="margin:0 0 18px;c
 <p style="margin:0;color:#a5b3c6">请在启动器的“设置 → 偏好 → 局域网”中复制链接。Linux 服务器上运行 <code>freevideo status</code> 可以看到链接。</p></main></body></html>"""
 
 
+# Through this proxy a device on the network reads ComfyUI's input folder only in FreeVideo's own folders: the
+# input folder itself and any other folder there may hold the user's own pictures.
+INPUT_FOLDERS = ('freevideo', 'freevideo-image', 'freevideo-image-ref', 'freevideo-draft')
+
+
+def input_allowed(request):
+    """False for a /view request that would read from ComfyUI's input folder outside FreeVideo's own folders."""
+    if request.path not in ('/view', '/api/view'):
+        return True
+    query = request.rel_url.query
+    filename = query.get('filename', '')
+    if filename.startswith('blake3:'):
+        return False
+    if filename.endswith('[input]'):
+        kind = 'input'
+    elif filename.endswith(('[output]', '[temp]')):
+        return True
+    else:
+        kind = query.get('type', 'output')
+    if kind != 'input':
+        return True
+    folder = query.get('subfolder', '').replace('\\', '/').strip('/')
+    parts = [part for part in folder.split('/') if part not in ('', '.')]
+    return bool(parts) and '..' not in parts and parts[0] in INPUT_FOLDERS
+
+
 def matches(value, token):
     return bool(value) and hmac.compare_digest(value.encode(), token.encode())
 
@@ -333,6 +359,8 @@ def create(upstream, token, engine=None):
             return browser_headers(response, request)
         if request.headers.get('Upgrade', '').lower() == 'websocket':
             return await websocket(request)
+        if not input_allowed(request):
+            return browser_headers(web.Response(status=403, headers={'Cache-Control': 'no-store'}), request)
         return await forward(request)
 
     app = web.Application(client_max_size=0)
