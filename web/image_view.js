@@ -1380,7 +1380,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (event.key.toLowerCase() === 'f' && shownFile && !selecting) favBtn.click();
         else if (event.key.toLowerCase() === 'i') infoBtn.click();
         else if (event.key === '?') keysBtn.click();
-        else if ((event.key === 'Delete' || event.key === 'Backspace') && (selecting ? picked.size : shownFile && !running)) { event.preventDefault(); deleteFiles(selecting ? [...picked] : [shownFile]); }
+        // Only the Delete key deletes (as the delete buttons do); Backspace never deletes a picture.
+        else if (event.key === 'Delete' && (selecting ? picked.size : shownFile && !running)) { event.preventDefault(); deleteFiles(selecting ? [...picked] : [shownFile]); }
     };
     listenDialogKey(dialog, 'keydown', onKeys);
     // A click that moves the focus off a control leaves it on the page body; the page's keys still work then.
