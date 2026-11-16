@@ -452,14 +452,15 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The whole stage, bar included: its empty right end above the picture is the least covering place when the picture fills the canvas.
     stage.dataset.floatBounds = ''; stage.id = stage.id || 'fv-image-stage';
 
-    // The status line: what is here, receipts with undo, and the page's own settings. It never holds progress.
+    // The status line: what is here and the page's own settings. It never holds progress. A delete is not announced:
+    // the picture is in recently deleted, where it can be put back.
     const sbar = el('div', 'fv-iv-sbar');
-    const sbarState = el('span', 'fv-iv-sbar-state'), receipt = el('span', 'fv-iv-receipt');
+    const sbarState = el('span', 'fv-iv-sbar-state');
     const densityBtn = button('fv-iv-icon-btn', {iconName: 'sliders'}), themeBtn = button('fv-iv-icon-btn', {iconName: 'info'}), keysBtn = button('fv-iv-icon-btn', {iconName: 'doc', name: t('Shortcuts', '快捷键'), use: t('Every key this page answers to', '这个页面的全部快捷键'), key: '?'});
     const keysPop = el('div', 'fv-iv-menu fv-iv-keys fv-glass fv-g3'); keysPop.hidden = true; keysPop.setAttribute('role', 'dialog');
     const keysHost = el('span', 'fv-iv-more-host'); keysHost.append(keysBtn, keysPop);
-    sbar.append(sbarState, receipt, el('span', 'fv-iv-grow'), densityBtn, themeBtn, keysHost);
-    // Held back for now: the shell settles one status area for all five views. The receipts live in the slot meanwhile.
+    sbar.append(sbarState, el('span', 'fv-iv-grow'), densityBtn, themeBtn, keysHost);
+    // Held back for now: the shell settles one status area for all five views.
     void sbar;
     let density = readStore('freevideo.imageView.density', 'comfortable');
     function paintSettings() {
@@ -476,19 +477,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (globalThis.FreeVideoShell?.setTheme) globalThis.FreeVideoShell.setTheme(next); else document.documentElement.dataset.theme = next;
         paintSettings();
     });
-    const KEYS = [[`${mod}+Enter`, t('Generate', '生成')], ['← →', t('Previous / next picture', '上一张 / 下一张')], ['F', t('Star or unstar', '收藏 / 取消收藏')], [`${mod} / Shift`, t('Pick several works to compare', '多选作品即可对比')], ['I', t('Picture facts', '图片信息')], ['Delete', t('Delete (undo for a few seconds)', '删除（几秒内可撤销）')],
+    const KEYS = [[`${mod}+Enter`, t('Generate', '生成')], ['← →', t('Previous / next picture', '上一张 / 下一张')], ['F', t('Star or unstar', '收藏 / 取消收藏')], [`${mod} / Shift`, t('Pick several works to compare', '多选作品即可对比')], ['I', t('Picture facts', '图片信息')], ['Delete', t('Delete (to recently deleted)', '删除（移到最近删除）')],
         [`${mod}+F`, t('Search works', '搜索作品')], [`${mod}+A`, t('Select all while selecting', '多选时全选')], ['Esc', t('Close the top layer', '关闭最上层')]];
     keysPop.append(...KEYS.map(([k, what]) => { const r = el('div', 'fv-iv-key-row'); r.append(el('span', '', what), el('kbd', 'fv-iv-kbd', k)); return r; }));
     keysBtn.addEventListener('click', () => { keysPop.hidden = !keysPop.hidden; keysBtn.setAttribute('aria-pressed', String(!keysPop.hidden)); });
     function paintStatus() {
         const live = rows.filter(r => !isGone(r.file)).length;
         sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t(`Ready · ${live} pictures`, `就绪 · ${live} 张`) : t('Connecting…', '正在连接…')));
-        receipt.replaceChildren();
-        if (undoNote) {
-            const undo = button('fv-iv-text-btn fv-iv-receipt-act', {label: t('Undo', '撤销'), name: t('Undo delete', '撤销删除'), use: t('Put the pictures back', '把图片放回去'), key: `${mod}+Z`});
-            undo.addEventListener('click', () => { restoreWorks(undoNote.files); undoNote = null; drawWorks(); render(); });
-            receipt.append(icon('trash'), el('span', '', t(`Deleted ${undoNote.files.length}`, `已删除 ${undoNote.files.length} 张`)), undo);
-        }
     }
     paintSettings();
 
@@ -836,7 +831,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // One fixed-height line above Generate: the most pressing thing there is to say.
         const s = modelState(info, model.id), tooMany = over() > 0;
         let kind = '', parts = [];
-        const action = (text, name, use, onClick) => { const b = button('fv-iv-text-btn fv-iv-slot-act', {label: text, name, use}); b.addEventListener('click', onClick); return b; };
         if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
             kind = 'warn';
@@ -845,11 +839,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (brokenMentions(prompt.value, references.length)) {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
         }
-        else if (undoNote) {
-            kind = 'info';
-            parts = [icon('trash'), el('span', 'fv-iv-slot-tx', t(`Deleted ${undoNote.files.length}`, `已删除 ${undoNote.files.length} 张`)),
-                action(t('Undo', '撤销'), t('Undo delete', '撤销删除'), t('Put the pictures back', '把图片放回去'), () => { restoreWorks(undoNote.files); undoNote = null; drawWorks(); render(); })];
-        } else if (s.state === 'failed') {
+        else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
         } else if (s.state === 'downloading') {
             kind = 'info'; parts = [icon('down'), el('span', 'fv-iv-slot-tx', pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
@@ -1121,7 +1111,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     }
     function rememberView() { keepView({shownFile, rows: rows.slice(0, 120), scroll: works.element.querySelector('.fv-iv-works-body')?.scrollTop || 0,
         info: info?.models ? {models: info.models, sizes: info.sizes, max_images: info.max_images, ...(info.unified_memory ? {unified_memory: true} : {})} : viewCache?.info || null}); }
-    // Delete goes to recently deleted first: gone from the works at once, undoable from the status slot or the bin.
+    // Delete goes to recently deleted: gone from the works at once, with nothing said; it is put back from recently deleted
+    // (or with Ctrl+Z while it is still held there).
     function deleteFiles(files) {
         const list = files.filter(Boolean); if (!list.length) return;
         // The engine's key is fetched now, so a delete sent while the page goes away needs one request only.
@@ -1129,7 +1120,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         trash.remove(list.map(f => rows.find(r => r.file === f) || {file: f, name: f.slice(f.lastIndexOf('/') + 1)}));
         announce('freevideo-works-removed', list, {undoable: true});
         const mine = undoNote = {files: list, at: Date.now()};
-        setTimeout(() => { if (undoNote === mine) { undoNote = null; if (alive) paintSlot(); } }, trash.holdMs);
+        setTimeout(() => { if (undoNote === mine) undoNote = null; }, trash.holdMs);
         if (list.includes(shownFile)) { const rest = visible(); shownFile = rest[0]?.file || ''; }
         picked.clear(); selecting = false; drawWorks(); render();
     }
