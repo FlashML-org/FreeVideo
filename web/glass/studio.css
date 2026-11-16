@@ -687,13 +687,16 @@
 .fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease}
 .fv-studio.fv-create .fv-preview-space{transition:height .2s ease,margin-top .2s ease}
 .fv-studio.fv-create .fvs-tray .fvp{margin-bottom:var(--fv-sp-16)}
-/* An unsaved-draft note in the prompt's tools is a small plain dot there, no warning colour (its words are in the hover
-   card and for screen readers: what happened, and that a click retries), so it never covers the description. */
-.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{position:relative;width:var(--fv-ctl);min-width:var(--fv-ctl);padding:0;font-size:0;line-height:0;overflow:hidden;color:var(--fv-fg2)}
+/* An unsaved-draft note is a small plain dot on the top-right corner of the history key (the first key of the prompt's
+   tools), so the row keeps its three keys evenly spaced; no warning colour. Its words are in the hover card and for
+   screen readers: what happened, and that a click retries. (--fvs-key: the keys' size; the dot sits on the 16 px
+   drawing's corner.) */
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{--fvs-key:var(--fv-ctl);position:absolute;left:calc(var(--fvs-key) / 2 - 1px);top:calc(var(--fvs-key) / 2 - 15px);z-index:1;
+  box-sizing:border-box;width:16px;min-width:16px;height:16px;min-height:16px;margin:0;padding:0;border:0;border-radius:var(--fv-r-pill,999px);background:none;box-shadow:none;font-size:0;line-height:0;overflow:visible;color:var(--fv-fg)}
 .fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note::before{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;translate:-50% -50%;border-radius:var(--fv-r-pill,999px);background:currentColor}
-.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note:hover:not(:disabled){color:var(--fv-fg)}
 /* (Phones too: a mark, a finger's size, never words that squeeze the description.) */
-@media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{width:var(--fv-touch);min-width:var(--fv-touch);height:var(--fv-touch)}}
+@media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-prompt-tools{position:relative}
+  .fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{--fvs-key:var(--fv-touch);width:16px;min-width:16px;height:16px;min-height:16px}}
 /* A text box inside a frame that already lights up when focused (:focus-within: the creation console, the editor's
    description box) draws no ring of its own; the frame shows the focus, also for keys. (The image view's prompt is its
    own field, so its ring is its edge.) */
@@ -719,12 +722,18 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 /* With the next generation's empty frame on the stage, the bar names it ("Next · 768 × 1344"); the work's details,
    history and actions are hidden until a work is shown again. */
 .fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone,.fvs-stagebar-end){visibility:hidden}
-/* The duration's number edits in place: one frame, the field's own, and its focus line for the keyboard only (a click
-   shows the field and the caret). */
-.fv-studio.fv-create .fvs-step-input{box-sizing:border-box;width:56px;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-4);border:0;border-radius:var(--fv-r-sm);
-  background:var(--fv-ctl-hover);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);text-align:center;font-variant-numeric:tabular-nums;outline:none;box-shadow:none}
-html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:focus,:focus-visible){outline:none!important}
-.fv-studio.fv-create .fvs-step-input[data-fv-keyboard]{box-shadow:inset 0 0 0 1px var(--fv-focus,var(--fv-accent-line))}
+/* The duration's number edits in place (studio_console.js): a field as wide as the number it replaces, with the unit
+   kept after it, so nothing beside the stepper moves; one frame, the field's own, and its focus line for the keyboard
+   only (a click shows the field and the caret). */
+.fv-studio.fv-create .fvs-step-edit{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:var(--fv-sp-2);height:var(--fv-ctl-s);padding:0 var(--fv-sp-4);
+  border-radius:var(--fv-r-sm);background:var(--fv-ctl-hover);color:var(--fv-fg);font-size:var(--fv-fs-2);font-variant-numeric:tabular-nums}
+.fv-studio.fv-create .fvs-step-edit[data-fv-keyboard]{box-shadow:inset 0 0 0 1px var(--fv-focus,var(--fv-accent-line))}
+.fv-studio.fv-create .fvs-step-edit .fvs-step-input{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:100%;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;
+  color:inherit;font:inherit;text-align:right;font-variant-numeric:tabular-nums}
+html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
+/* The number and its unit side by side in the key. */
+.fv-studio.fv-create .fvs-stepper .fvs-step-value{grid-auto-flow:column}
+.fv-studio.fv-create .fvs-step-value .fvs-step-unit{margin-left:.25em}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fv-stage{transition:none}}
 /* The frame tray holds frame and size only: the duration's notes live with the duration in the console. */
 .fv-studio.fv-create .fvs-tray[data-tray=size] :is(.fv-length-hint,.fv-canvas-note,.fv-range){display:none}
@@ -764,6 +773,24 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
   .fv-studio.fv-create .fvs-chips{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
     -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);padding-right:var(--fv-sp-24)}
   .fv-studio.fv-create .fvs-chips>*{flex:none}
+  /* (A ring there is drawn inside its key, so the row's sideways scroll does not cut it.) */
+  html body .fv-studio.fv-create .fvs-console .fvs-chips :is(button,[role=button]):focus-visible{outline-offset:-2px!important}
+}
+/* Narrow phones (about 400 px): the chips wrap inside the console instead of scrolling sideways; LoRA and Advanced
+   go to the second line together, at its right end (what does not fit on the first line goes before them); the
+   duration stepper is narrower and shows the number alone (its name and hover card say the unit); the quality key
+   shows its level without its drawing. */
+@media(max-width:520px){
+  .fv-studio.fv-create .fvs-console .fvs-chips{flex-wrap:wrap;overflow:visible;row-gap:var(--fv-sp-4);column-gap:var(--fv-sp-4);padding-right:0;-webkit-mask-image:none;mask-image:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>.fvs-chip-spacer{display:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>[data-chip=lora]{margin-left:auto}
+  .fv-studio.fv-create .fvs-console .fvs-chips>.fvs-stepper{padding:0 var(--fv-sp-2)}
+  .fv-studio.fv-create .fvs-console .fvs-stepper .fvs-step{width:32px;min-width:32px}
+  .fv-studio.fv-create .fvs-console .fvs-stepper .fvs-step-value{min-width:28px;padding:0 var(--fv-sp-4)}
+  .fv-studio.fv-create .fvs-console .fvs-stepper .fvs-step-unit{display:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>.fvp-chip{padding:0 var(--fv-sp-8);gap:var(--fv-sp-4)}
+  .fv-studio.fv-create .fvs-console .fvs-chips>.fvp-chip>.fvp-chip-glyph{display:none}
+  html body .fv-studio.fv-create .fvs-console .fvs-chips :is(button,[role=button]):focus-visible{outline-offset:2px!important}
 }
 /* The play bar under the stage video: as wide as the picture, 8 px under it (the column's gap); hidden (its row kept)
    while the stage shows the next frame, a run's progress or a comparison; it steps back with the bar while a tray is open. */

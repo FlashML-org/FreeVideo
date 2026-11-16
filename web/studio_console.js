@@ -160,11 +160,15 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
     };
     minus.onclick = () => step(-1); plus.onclick = () => step(1);
     // The number is edited where it is: Enter or leaving the field applies it, Escape keeps the old one.
+    // The number is typed in a field as wide as the number it replaces, with the unit kept after it, so nothing beside
+    // the stepper moves.
     value.onclick = event => {
         if (seconds.disabled || element.querySelector('.fvs-step-input')) return;
+        const edit = el('span', 'fvs-step-edit'); edit.style.width = `${value.offsetWidth}px`;
         const input = el('input', 'fvs-step-input'); input.type = 'text'; input.inputMode = 'decimal';
         // Opened from the keyboard (a click with no pointer): the field shows its focus line.
-        if (!event?.detail) input.dataset.fvKeyboard = 'true';
+        if (!event?.detail) edit.dataset.fvKeyboard = 'true';
+        edit.append(input, el('span', 'fvs-step-unit', t('s', '秒')));
         input.value = String(Number(seconds.value) || ''); input.setAttribute('aria-label', t('Duration in seconds', '时长（秒）'));
         let done = false;
         const finish = apply => {
@@ -174,7 +178,7 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
                 seconds.value = String(n);
                 seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
             }
-            input.replaceWith(value); sync(); value.focus({preventScroll: true});
+            edit.replaceWith(value); sync(); value.focus({preventScroll: true});
         };
         // (The view routes keys to its controls' on… handlers, so this one is a property.)
         input.onkeydown = event => {
@@ -182,13 +186,15 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
             else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
         };
         input.addEventListener('blur', () => finish(true));
-        value.replaceWith(input); input.focus(); input.select();
+        value.replaceWith(edit); input.focus(); input.select();
     };
     void onOpen;
     function sync() {
         const n = Number(seconds.value);
         const shown = Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/0+$/, '').replace(/\.$/, '')) : '—';
-        value.textContent = t(`${shown} s`, `${shown} 秒`);
+        // The number and its unit apart, so a narrow row can show the number alone; the name says both.
+        const unit = el('span', 'fvs-step-unit', t('s', '秒')); value.replaceChildren(el('span', 'fvs-step-number', shown), unit);
+        value.setAttribute('aria-label', t(`${shown} s`, `${shown} 秒`));
         minus.disabled = plus.disabled = seconds.disabled;
         minus.disabled ||= n <= 2;
         plus.disabled ||= n >= max();
