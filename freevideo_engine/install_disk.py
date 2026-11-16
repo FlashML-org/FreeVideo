@@ -74,14 +74,14 @@ def frontend_in_place(root, comfy):
         return False
 
 
-def frontend_gib(root, comfy, mac):
+def frontend_gib(root, comfy, mac, linux=False):
     """Disk for a separate ComfyUI environment: a new one, or packages added to the existing one."""
-    gib = disk_space.frontend_gib(mac)
+    gib = disk_space.frontend_gib(mac, linux)
     return min(gib, FRONTEND_IN_PLACE_GIB) if frontend_in_place(root, comfy) else gib
 
 
 def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend=None, keep_extreme=False,
-           frontend_gib=12):
+           frontend_gib=12, cache=None, cache_gib=0):
     """Estimate each volume for the selected installation strategy."""
     frontend = frontend or {}
     def estimate(extreme):
@@ -89,7 +89,13 @@ def budget(groups, root, normal_extra, *, eligible, environments_ready, frontend
         for group in groups.values():
             add(disks, group['path'], group['needed_bytes'] - (group.get('resume_bytes', 0) if extreme else 0))
         extra = (1 if environments_ready else 6) if extreme else normal_extra
-        add(disks, root, extra * GiB)
+        if cache is not None and disk_space.disk_key(existing(cache)) != disk_space.disk_key(existing(root)):
+            # Linked on one volume the package cache and the environment are one copy.
+            # Across volumes (a cache folder that is a link to another disk) each holds its own.
+            add(disks, cache, cache_gib * GiB)
+            add(disks, root, extra * GiB)
+        else:
+            add(disks, root, extra * GiB)
         if frontend.get('separate') and not (extreme and frontend_ready(root, frontend)):
             add(disks, root, (3 if extreme else frontend_gib) * GiB)
         if frontend.get('download') and not Path(frontend['root']).exists():

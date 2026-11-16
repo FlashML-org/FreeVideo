@@ -290,7 +290,10 @@ def environment_in_place(row, python_version):
     return bool(found) and found.group(1) == python_version
 
 
-def environment_allowance_gib(dependencies, *, mac, layout, python_version):
+ENVIRONMENT_MARGIN_GIB = 5
+
+
+def environment_allowance_gib(dependencies, *, mac, layout, python_version, linux=False):
     """Disk for the Python environments, by what setup will actually install."""
     ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     if mac:
@@ -304,7 +307,15 @@ def environment_allowance_gib(dependencies, *, mac, layout, python_version):
         # Windows PyTorch as a copy (cuDNN repair) is a 1.78 GiB wheel plus
         # about 4.5 GB installed; a Linux unified environment is 5.3 GiB in all.
         return 10
-    # New environments, or a new PyTorch stack or Python: downloaded afresh.
+    # New environments, or a new PyTorch stack or Python: downloaded afresh. A
+    # Linux unified environment measured 5.4 GiB installed (the package cache is
+    # hard linked to it, not a second copy) and about 7.5 GiB at its peak with
+    # tools and the largest wheel in flight; Windows PyTorch alone is a 1.78 GiB
+    # wheel plus about 4.5 GB installed. Two separate environments need twice.
+    # Only Linux, where the cache is hard linked, uses the measured figure.
+    if linux:
+        return 12 if layout == 'unified' else 24
+    # Windows copies PyTorch into each environment (the cache keeps its own copy): not yet measured down.
     return 30 if layout == 'unified' else 45
 
 
@@ -795,8 +806,10 @@ def plan(args, *, local_progress=None, stage=None):
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     python_version = None if mac_target else bootstrap_versions(
         json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system)['python']
-    environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version)
-    extra = (0 if reuse_cache or prepared else 52) + environment_gib + 10
+    linux_target = not mac_target and not windows_target
+    environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version,
+                                                linux=linux_target)
+    extra = (0 if reuse_cache or prepared else 52) + environment_gib + (ENVIRONMENT_MARGIN_GIB if linux_target else 10)
     frontend = None
     if getattr(args, 'frontend_root', None):
         frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
@@ -809,7 +822,8 @@ def plan(args, *, local_progress=None, stage=None):
                       and getattr(args, 'model_downloader', 'auto') != 'xet'),
         environments_ready=environments_ready, frontend=frontend,
         keep_extreme=reviewed.get('disk_mode') == 'extreme',
-        frontend_gib=frontend_allowance_gib(root, frontend['root'], mac_target) if frontend else disk_space.frontend_gib(mac_target))
+        frontend_gib=frontend_allowance_gib(root, frontend['root'], mac_target, linux_target) if frontend else disk_space.frontend_gib(mac_target, linux_target),
+        cache=root / 'downloads' / 'uv-cache', cache_gib=environment_gib)
     extra = disk_plan['environment_cache_safety_gib']
     errors.extend(disk_plan['errors'])
     # A repair also reinstalls what is damaged in the ComfyUI environment the launcher made.
