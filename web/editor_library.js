@@ -219,7 +219,6 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     // What a card shows, for reusing it: everything card() reads except the picture's address (a picture already
     // decoded is kept), plus the removal question when one is open.
     const cards = new Map();
-    let importTile = null;
     function cardSignature(row, kind) {
         const value = kind === 'work' ? store.sources.get(`work:${row.id}`) : null;
         return JSON.stringify([kind, row.id, row.name, row.text, row.created_at, row.state, row.reason, row.fraction, row.sending, row.started, row.kind,
@@ -238,13 +237,13 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const control = ['fv-ed-source-remove', 'fv-ed-source-add'].find(name => held?.className === name);
         const owner = control ? held.closest?.('.fv-ed-source-card')?.querySelector('.fv-ed-source')?.dataset.key : null;
         const keep = !held || !grid.contains?.(held) ? null : strip ? {button: held.className, id: strip.dataset.id}
-            : owner ? {control, card: owner} : held.dataset?.key ? {card: held.dataset.key} : held.className === 'fv-ed-import' ? {add: true} : null;
+            : owner ? {control, card: owner} : held.dataset?.key ? {card: held.dataset.key} : null;
         const term = search.value.trim().toLocaleLowerCase();
         const shown = tab === 'work' ? rows.filter(row => row.video && (!term || [row.name, row.text, row.created_at, row.id].some(value => String(value || '').toLocaleLowerCase().includes(term)))) : [...imported, ...uploading.values()];
         // A redraw (the list and the imports are read again every few seconds) keeps every card whose content is the same,
         // and a picture already shown stays as it is: only cards that changed are made again, nothing goes blank or fades in.
+        // One way to import: the Import button beside the search, on both tabs (the grid has no Import tile of its own).
         const nodes = [];
-        if (tab === 'import') nodes.push(importTile ||= (() => { const add = el('button', 'fv-ed-import', t('Import', '导入')); add.type = 'button'; add.onclick = () => file.click(); return add; })());
         const kept = new Set();
         for (const row of shown) {
             const key = `${tab}:${row.id}`, signature = cardSignature(row, tab);
@@ -278,7 +277,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             const node = target.control ? card(target.control.card)?.parentNode?.querySelector('.' + target.control.control)
                 : target.again ? [...grid.querySelectorAll('.fv-ed-source-confirm')].find(box => box.dataset.id === target.again.id)?.querySelector('.' + target.again.button)
                 : target.cancel ? [...grid.querySelectorAll('.fv-ed-source-confirm')].find(strip => strip.dataset.id === target.cancel)?.querySelector('.fv-ed-source-confirm-no')
-                : target.card ? card(target.card) : (target.next && card(target.next)) || grid.querySelector('.fv-ed-import');
+                : target.card ? card(target.card) : (target.next && card(target.next)) || (tab === 'import' ? importButton : null);
             node?.focus?.();
         }
         globalThis.requestAnimationFrame?.(() => { if (!disposed) host.dataset.atEnd = String(host.scrollTop + host.clientHeight >= host.scrollHeight - 2); });
