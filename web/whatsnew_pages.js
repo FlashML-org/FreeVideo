@@ -26,9 +26,9 @@ export const PAGES = [
     // The 0.6.0 page: the creation panel, a work playing on the stage and earlier works open from Media; one picture per language.
     {id: 'interface', kind: 'still', since: '0.6.0', seen: ['freevideo.whatsnew-seen-interface', '1'], title: ['0.6.0: A new interface', '0.6.0 全新界面'],
         poster: {src: ['assets/whatsnew/interface-en.webp', 'assets/whatsnew/interface-zh.webp']},
-        list: [['See every running and queued task at any time, and move one to the front or cancel it', '所有生成和排队的任务随时可见，可以插队或取消'],
+        list: [['See and manage every running and queued video and picture from any page', '在任何页面都能看到和管理所有生成中、排队的视频和图片'],
             ['Switching pages keeps generation running, along with your prompt and references', '切换页面不会中断生成，描述和参考图都还在'],
-            ['Use earlier videos and pictures directly as references', '以前生成的视频和图片可以直接用作参考'],
+            ['Use earlier videos directly as references', '以前生成的视频也能直接用作参考'],
             ['Hand-drawn sketches give finer control over image generation', '可以通过手绘草图更精细地控制生成']]},
     {id: 'overview', since: '0.5.0', seen: ['freevideo.whatsnew-seen', '0.5'], title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
         ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text description', '替换配乐：根据文字描述重新生成'],
