@@ -2320,7 +2320,8 @@ export function openLibrary(t, options = {}) {
         if (typing) return;
         if (event.key === '/' && !event.metaKey && !event.ctrlKey) { event.preventDefault(); search.focus(); }
         else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && !trash) { event.preventDefault(); if (!selecting) setSelecting(true); selectAll(); }
-        else if ((event.key === 'Delete' || event.key === 'Backspace') && selecting && picked.size) { event.preventDefault(); confirmDelete(); }
+        // Only the Delete key deletes (as the delete button does); Backspace never deletes a work.
+        else if (event.key === 'Delete' && selecting && picked.size) { event.preventDefault(); confirmDelete(); }
         else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !undoBar.hidden && undoBar.querySelector('button')) { event.preventDefault(); undoBar.querySelector('button').click(); }
         else if (event.key === ' ' && !selecting && event.target.closest?.('.fv-library-card,.fv-library-detail') && !event.target.closest('video,.fv-library-player,.fv-library-player-big')) { const key = event.target.closest('.fv-library-card')?.dataset.key || selected; if (key) { event.preventDefault(); openViewer(key); } }
         else if (event.key.toLowerCase() === 'm' && player && !event.metaKey && !event.ctrlKey) { event.preventDefault(); player.muted = !player.muted; }
