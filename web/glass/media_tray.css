@@ -170,6 +170,9 @@
 /* 4. Characters, scenes and props: a third of the width each, each column's content centred in it; the group's title,
    then its small square pictures and its "+ New" key. */
 .fvs-tray .fv-mt>.fv-cast-libraries{order:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-8) var(--fv-sp-12);align-items:start;padding-top:var(--fv-sp-12);border-top:1px solid var(--fv-line)}
+/* Characters, scenes and props live with the Agent interface: where it is off they are not offered (as before), and
+   their row, with its line, is not drawn at all (no empty strip). */
+.fvs-tray .fv-mt>.fv-cast-libraries:not(:has(>:not([hidden]))){display:none}
 .fvs-tray .fv-mt .fv-cast-library{display:flex;flex-wrap:wrap;align-items:center;align-content:start;justify-content:center;gap:var(--fv-sp-4);min-width:0;padding:0;margin:0;text-align:center}
 .fvs-tray .fv-mt .fv-cast-library[hidden]{display:none}
 .fvs-tray .fv-mt .fv-cast-heading{flex:0 0 100%;text-align:center;margin:0 0 var(--fv-sp-4);font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}
