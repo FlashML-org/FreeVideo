@@ -88,6 +88,43 @@ def git_unavailable(error):
     return GIT_UNAVAILABLE + '\nCause: ' + text
 
 
+CODESIGN, XATTR = '/usr/bin/codesign', '/usr/bin/xattr'
+MACHO_MAGIC = {bytes.fromhex(value) for value in ('cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe')}
+
+
+def resign_environment(prefix, run=subprocess.run):
+    """Re-sign every executable and library of a conda environment with an ad-hoc signature.
+
+    Returns one short line saying what was found and done, for the failure message.
+    """
+    prefix = Path(prefix)
+    files = []
+    for path in sorted(prefix.rglob('*')):
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            with path.open('rb') as stream:
+                if stream.read(4) in MACHO_MAGIC:
+                    files.append(str(path))
+        except OSError:
+            continue
+
+    def call(command):
+        try:
+            return run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as error:
+            return subprocess.CompletedProcess(command, 127, type(error).__name__, None)
+    git = prefix / 'bin' / 'git'
+    before = call([CODESIGN, '--verify', '--strict', str(git)]).returncode if git.is_file() else None
+    call([XATTR, '-dr', 'com.apple.quarantine', str(prefix)])
+    failed = 0
+    for start in range(0, len(files), 50):
+        if call([CODESIGN, '--force', '--sign', '-', *files[start:start + 50]]).returncode:
+            failed += 1
+    return 'Git was stopped at launch; signature check before re-signing: exit %s; re-signed %d files, %d batches failed.' % (
+        before, len(files), failed)
+
+
 def available_git():
     executable = shutil.which('git')
     if not executable:

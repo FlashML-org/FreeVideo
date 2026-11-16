@@ -2188,8 +2188,11 @@ class Installer:
             (links / 'git').unlink(missing_ok=True)
             (links / 'git').symlink_to(executable)
         self.env['PATH'] = str(links) + os.pathsep + self.env['PATH']
-        self.command('portable-git-check', [links / 'git', '--version'])
+        self.check_portable_git(links / 'git', prefix)
         self.env['FREEVIDEO_GIT'] = str(links / 'git')
+
+    def check_portable_git(self, git, prefix):
+        self.command('portable-git-check', [git, '--version'])
 
     def fetch_git_linux(self, spec):
         """micromamba and the locked packages, verified by SHA-256, as one step."""
