@@ -194,6 +194,9 @@
 .fv-studio.fv-create .fvs-chip.fv-enhance-chip svg{flex:none}
 /* Lit while on, under the pointer too (the console's hover rule would otherwise grey it). */
 .fv-studio.fv-create .fvs-console .fvs-chip.fv-enhance-chip[aria-pressed=true]{background:var(--fv-accent-soft);color:var(--fv-accent-ink)}
+/* Under the look layer an on chip is its raised grey block (look_lux.css); the sparkle itself turns blue as well, so
+   on reads at a glance. */
+.fv-studio.fv-create .fvs-console .fvs-chip.fv-enhance-chip[aria-pressed=true] svg{color:var(--fv-accent-ink)}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar{display:flex;align-items:center;flex:none;gap:var(--fv-sp-4);min-height:0;height:var(--fvs-row,36px);padding:0;border:0}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-toggle,.fv-studio.fv-create .fvs-chips>.fv-enhance-bar[data-enabled=false]:not([data-busy=true]){display:none}
 /* Nothing in it (an empty box has nothing to rewrite): no gap is left for it in the row. */
