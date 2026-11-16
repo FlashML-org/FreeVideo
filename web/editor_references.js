@@ -2,6 +2,7 @@
 // A part that continues the one before keeps its reference pictures (people stay the same) but not its first or last frame.
 // `source` is the media rows of the creative panel (editor_media_references.js); `size()` is the video's shape.
 import {MAX_MIDDLE, middleInfo, secondsOf, defaultTime, timeProblems, timeRange, problemText, labels as middleLabels, shown as shownTime} from './middle_frames.js';
+import {tip} from './editor_tips.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const IMAGE = /\.(png|jpe?g|webp|bmp|tiff?)$/i;
 const MAX = 32;
@@ -234,11 +235,12 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
         add.disabled = working;
         add.dataset.uploading = String(uploading);
         add.setAttribute('aria-disabled', String(busy || isFull));
-        add.title = uploading ? t('Uploading reference image…', '正在上传参考图…') : busy ? waitText() : isFull ? fullText() : t('Reference image', '参考图');
+        tip(add, {name: t('Reference image', '参考图'), use: t('Guide this part with a picture: first frame, last frame or a person', '用图片指定首帧、尾帧或人物'),
+            why: uploading ? t('Uploading reference image…', '正在上传参考图…') : busy ? waitText() : isFull ? fullText() : ''});
         chips.replaceChildren(...used().map(entry => {
             const chip = el('button', 'fv-ed-ref-chip'); chip.type = 'button'; chip.disabled = working; chip.setAttribute('aria-disabled', String(busy));
             chip.dataset.role = entry.row.role || 'reference';
-            chip.title = busy ? waitText() : label(entry.row.role, entry.row); chip.setAttribute('aria-haspopup', 'menu');
+            tip(chip, {name: label(entry.row.role, entry.row), use: t('Change its role or remove it', '换个用途或移除'), why: busy ? waitText() : ''}); chip.setAttribute('aria-haspopup', 'menu');
             chip.setAttribute('aria-label', label(entry.row.role, entry.row));
             chip.append(thumb(entry.row.file, 'fv-ed-ref-thumb'));
             if (entry.row.role === 'middle' && Number.isFinite(secondsOf(entry.row))) {

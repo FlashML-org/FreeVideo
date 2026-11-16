@@ -19,7 +19,18 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
     'toolbar_position.js', 'updates.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
-    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js'];
+    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
+    'shell.js', 'tooltip.js', 'tooltip_copy.js',
+    'library_meta.js', 'cast_room.js',
+    'editor_tracks_tips.js',
+    'task_store.js', 'task_float.js',
+    'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js',
+    'palette.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
+    'studio_console.js', 'studio_stage.js', 'prompt_library.js',
+    'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_ambient.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
+    'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
+    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js',
+    'private_pin.js', 'private_settings.js', 'private_offers.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {
@@ -268,7 +279,10 @@ async function diagnoseModules() {
     return found;
 }
 
+// The shell's theme sets a probe token on :root for this check, so a material that changes the colours never reads as
+// "styles do not apply". Without the token (an older theme), the panel colour is compared as before.
 function themeApplied() {
+    if (getComputedStyle(document.documentElement).getPropertyValue('--fv-theme-canary').trim() === 'ok') return true;
     const probe = document.createElement('div'); probe.className = 'fv-panel'; probe.hidden = true;
     document.body.append(probe);
     const value = getComputedStyle(probe).getPropertyValue('--fv-bg').trim();
@@ -401,6 +415,15 @@ function sheetLoaded(name) {
     try { return link.sheet.cssRules.length > 0; } catch { return false; }
 }
 
+// The shell is between pictures: a view switch or a held panel (holdWhile), the first-open cover, or a view
+// dialog fading out. Nothing is judged then.
+function inTransition() {
+    return !!(window.FreeVideoShell?.switching?.() || document.documentElement.dataset.fvSwitching
+        || document.querySelector('.fv-shell-cover') || document.querySelector('dialog[open][data-closing="true"]'));
+}
+// A FreeVideo surface is in front: any view (kept-alive ones underneath do not matter), Settings, Creations or another
+// FreeVideo sheet that is on screen.
+const surfaceOnScreen = () => [...document.querySelectorAll('dialog[open]')].some(dialog => /(^|\s)fv-/.test(dialog.className) && onScreen(dialog));
 function workspaceProblem(app) {
     // Scripts that never started are already named by the load check.
     if (!window.FreeVideoUI?.ready || !hasGenerate(app.graph)) return null;
@@ -408,6 +431,8 @@ function workspaceProblem(app) {
     if (opening && onScreen(opening)) return null;
     // The editor shares the studio shell; either view replaces the floating toolbar.
     const studio = document.querySelector('dialog.fv-editor[open]') || document.querySelector('dialog.fv-studio[open]');
+    // Views stay open underneath the one in front (Create under Autopilot, for example); one on screen is enough.
+    if (inTransition() || surfaceOnScreen()) return null;
     if (studio) return onScreen(studio) ? null
         : {text: t('The creative workspace is open but cannot be seen on the page.', '创作面板已经打开，但页面上看不到。'), advice: 'reload',
             state: `${nameOf(studio)}: ${whyOffScreen(studio)}`};
@@ -455,7 +480,8 @@ function reportText(item) {
         progress: t('Live progress could not start', '生成进度无法更新'),
         updates: t('Update checks could not start', '更新检查无法启动'),
         launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流没有打开')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
-    return {text: `${where}${cn ? '：' : ': '}${describe(item.error)}`, error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload'};
+    // The script's own words go to the technical details and the report, not into the sentence the card shows.
+    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload'};
 }
 
 function extensionProblem(problem) {
@@ -478,7 +504,7 @@ function extensionProblem(problem) {
         || extensionUI.detectBrowserExtension(problem.error || problem.text, options);
 }
 
-const distinct = problems => problems.filter((problem, index) => problems.findIndex(other => other.text === problem.text) === index);
+const distinct = problems => problems.filter((problem, index) => problems.findIndex(other => other.text === problem.text && other.detail === problem.detail) === index);
 // Opening from the launcher: once the page has taken 3 s, it says it is opening and counts the seconds,
 // in the look of the workspace's own opening screen, until FreeVideo is in front or a problem is shown.
 export const openingText = (s, words = t) => {
@@ -517,7 +543,7 @@ function details(problems) {
         `ComfyUI frontend: ${window.__COMFYUI_FRONTEND_VERSION__ || 'unknown'}`,
         `FreeVideo UI: ${JSON.stringify(window.FreeVideoUI || {})}`,
         `Automatic reload: ${retried ? new Date(Number(retryRecord.at)).toISOString() : retryRecord ? 'not needed' : 'unavailable (no session storage)'}`,
-        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : [])]),
+        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.detail ? [`  error: ${p.detail}`] : []), ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : [])]),
         ...(checks.length ? ['', 'Load check:', ...checks.map(row => `- ${row}`)] : []),
         ...(cache.length ? ['', 'Browser cache:', ...cache.map(row => `- ${row}`)] : []),
         ...(before.length ? ['', 'Browser cache before the automatic reload:', ...before.map(row => `- ${row}`)] : []),
@@ -535,7 +561,7 @@ const forgetPlaces = text => String(text)
 function issueAddress(problems) {
     const summary = forgetPlaces(details(problems)).split('\n').filter(line => !line.startsWith('Page:')).join('\n');
     const feedback = ['FreeVideo showed an error.', 'Where: Page check',
-        `Error: ${forgetPlaces(problems[0]?.text || '').slice(0, 300)}`].join('\n');
+        `Error: ${forgetPlaces([problems[0]?.text, problems[0]?.detail].filter(Boolean).join(': ')).slice(0, 300)}`].join('\n');
     const build = text => `${ISSUE_FORM}?${new URLSearchParams({template: 'feedback.yml', title: '[Feedback] Page check',
         feedback, diagnostics: text})}`;
     let text = summary.slice(0, 2500);
@@ -570,9 +596,22 @@ function addQuoteFaces() {
     }
 }
 
+const dismissKey = problems => 'freevideo.health.closed:' + problems.map(p => p.text).sort().join('|');
+const dismissed = problems => { try { return sessionStorage.getItem(dismissKey(problems)) === '1'; } catch { return false; } };
+function dismiss() {
+    try { if (lastProblems.length) sessionStorage.setItem(dismissKey(lastProblems), '1'); } catch { /* Shown again after a reload. */ }
+    card?.remove(); card = null;
+}
+// On the window in the capture phase, registered before any view opens: a view's key routing (dialog_keys) stops the
+// event there, and the card's Esc must not close the view under it.
+window.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !card?.isConnected) return;
+    event.preventDefault(); event.stopImmediatePropagation(); dismiss();
+}, true);
 function show(problems) {
     opening?.finish(); opening = null;
     lastProblems = problems;
+    if (dismissed(problems)) { card?.remove(); card = null; return; }
     addQuoteFaces();
     card?.remove();
     card = document.createElement('section');
@@ -628,7 +667,7 @@ function show(problems) {
         copy.textContent = t('Copied', '已复制');
     });
     action(t('Report a problem', '提交问题'), () => window.open(issueAddress(problems), '_blank', 'noopener'));
-    action(t('Close', '关闭'), () => { card?.remove(); card = null; });
+    action(t('Close', '关闭'), dismiss);
     if (extensionAdvice) {
         const first = document.createElement('p'); first.textContent = extensionAdvice.summary;
         const choose = document.createElement('p'); choose.textContent = extensionAdvice.action;
@@ -637,8 +676,17 @@ function show(problems) {
         technical.style.margin = '12px 0';
         // Full URLs/IDs and the blocked filename remain in technical details.
         card.append(title, first, choose, extensionUI.extensionSteps(extensionAdvice), technical, advice, actions);
-    } else card.append(title, list, advice, actions);
-    document.body.append(card);
+    } else {
+        const raw = problems.map(p => p.detail).filter(Boolean);
+        if (raw.length) {
+            const technical = document.createElement('details'), label = document.createElement('summary'), pre = document.createElement('pre');
+            label.textContent = t('Technical details', '技术详情'); pre.textContent = [...new Set(raw)].join('\n');
+            Object.assign(pre.style, {margin: '6px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: '12px/1.5 ui-monospace,Consolas,monospace', color: '#a5b3c6', userSelect: 'text', webkitUserSelect: 'text'});
+            technical.append(label, pre); technical.style.margin = '0 0 12px'; label.style.cursor = 'pointer'; label.style.color = '#a5b3c6';
+            card.append(title, list, technical, advice, actions);
+        } else card.append(title, list, advice, actions);
+    }
+    cardHost().append(card);
     if (typeof card.showPopover === 'function') {
         card.popover = 'manual';
         Object.assign(card.style, {right: 'auto', bottom: 'auto', margin: '0'});
@@ -649,14 +697,22 @@ function show(problems) {
 // A modal such as an unstyled workspace sits in the top layer; a manual
 // popover joins it and returns to the front whenever a dialog opens. Not in
 // front of a video watched full screen: the card waits until it is left.
+// The top view dialog when it is on screen (a modal makes the rest of the page inert); when that dialog is the thing
+// that cannot be seen, the page itself, so the card is not hidden with it.
+function cardHost() {
+    const host = window.FreeVideoShell?.overlayHost?.();
+    return host && host !== document.body && onScreen(host) ? host : document.body;
+}
 function raise() {
     if (!card?.isConnected || typeof card.showPopover !== 'function' || fullscreenOver(card)) return;
     try {
         if (card.matches(':popover-open')) card.hidePopover();
+        const host = cardHost();
+        if (card.parentElement !== host) host.append(card);
         card.showPopover();
     } catch { /* Shown below the dialog instead. */ }
 }
-new MutationObserver(() => { if (document.querySelector('dialog[open]')) raise(); })
+new MutationObserver(() => raise())
     .observe(document.documentElement, {subtree: true, attributeFilter: ['open']});
 for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, raise);
 
@@ -667,7 +723,7 @@ function send(state, problems) {
     // 'loading' tells ComfyUI this page runs FreeVideo's scripts before the check ends.
     latest = {state, problems};
     if (state === 'error' && document.hidden) return;
-    const body = JSON.stringify({state, problems: problems.map(p => p.text), errors: seen.map(row => `[${row.kind}] ${row.text}`),
+    const body = JSON.stringify({state, problems: problems.map(p => p.detail ? `${p.text}: ${p.detail}` : p.text), errors: seen.map(row => `[${row.kind}] ${row.text}`),
         ready: !!window.FreeVideoUI?.ready, launch: launchVisit, view: preferredView() || '',
         agent: navigator.userAgent, frontend: String(window.__COMFYUI_FRONTEND_VERSION__ || ''), page: location.pathname,
         client: String(comfyApi()?.clientId || '')});
@@ -691,7 +747,7 @@ async function check() {
     send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
-        const problems = [{text: t('The ComfyUI page did not finish loading within a minute.', 'ComfyUI 页面在一分钟内没有加载完成。'), advice: 'reload'}];
+        const problems = [{text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The ComfyUI page did not finish loading within a minute.', advice: 'reload'}];
         show(problems); send('error', problems); return;
     }
     // A restarted ComfyUI has not heard from this page; tell it again.
@@ -714,7 +770,7 @@ async function check() {
     // FreeVideo's delays it. Give it the rest of the minute before naming it.
     if (!window.FreeVideoUI?.ready && !problems.length) await waitFor(() => window.FreeVideoUI?.ready, 50000);
     opening?.finish(); opening = null;
-    const notStarted = {text: t('FreeVideo’s scripts loaded, but ComfyUI did not start them.', 'FreeVideo 的脚本已下载，但 ComfyUI 没有启动它们。'), advice: 'reload'};
+    const notStarted = {text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'FreeVideo’s scripts loaded, but ComfyUI did not start them.', advice: 'reload'};
     if (!window.FreeVideoUI?.ready && !problems.length) {
         problems.push(notStarted);
         // A start later than that clears the card instead of leaving it up.
@@ -729,17 +785,16 @@ async function check() {
     if (!problems.length) problems.push(...await diagnoseStyles());
     let checkStudio = false;
     if (launchVisit && !problems.length) {
-        if (!launched) problems.push({text: t('The FreeVideo workflow did not open: launcher.js did not report back.', 'FreeVideo 工作流没有打开：launcher.js 没有响应。'), advice: 'reload'});
+        if (!launched) problems.push({text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The FreeVideo workflow did not open: launcher.js did not report back.', advice: 'reload'});
         else if (launched.error) problems.push(reportText(launched));
-        else if (!studioWorkflow(app.graph)) problems.push({text: t('ComfyUI shows another workflow; the FreeVideo workflow is in another tab.', 'ComfyUI 显示的是另一个工作流，FreeVideo 工作流在别的标签页里。'), advice: 'relaunch'});
+        else if (!studioWorkflow(app.graph)) problems.push({text: t('The interface opened another workspace; FreeVideo is in another tab.', '界面打开了另一个工作区，FreeVideo 在其他标签页中。'), detail: 'ComfyUI shows another workflow.', advice: 'relaunch'});
         else checkStudio = true;
     }
     for (const item of reports) if (item.type === 'error') problems.push(reportText(item));
     const copies = await freevideoFolders();
     if (copies.length > 1 || seen.some(row => /already registered/i.test(row.text) && /FreeVideo\./.test(row.text))) {
         const named = copies.map(name => `custom_nodes/${name}`).join(cn ? '、' : ', ');
-        problems.push({text: copies.length > 1 ? t(`ComfyUI loaded FreeVideo more than once: ${named}.`, `ComfyUI 加载了多份 FreeVideo：${named}。`)
-            : t('ComfyUI loaded FreeVideo more than once.', 'ComfyUI 加载了多份 FreeVideo。'), advice: 'duplicate'});
+        problems.push({text: t('FreeVideo was loaded more than once.', 'FreeVideo 被加载了多份。'), ...(copies.length > 1 ? {detail: `ComfyUI loaded FreeVideo from: ${named}`} : {}), advice: 'duplicate'});
     }
     // Later failures, such as the workspace failing to open from a node.
     listener = item => {
@@ -754,7 +809,9 @@ async function check() {
         show(found); send('error', found);
     }
     await waitForVisible();
-    if (checkStudio && studioWorkflow(app.graph) && preferredView() !== 'nodes' && !['dialog.fv-workspace-opening[open]', 'dialog.fv-editor[open]', 'dialog.fv-studio[open]'].some(selector => document.querySelector(selector))
+    // A view kept open but hidden still counts as opened (it did open); a switch, a held panel or the node view in front is not a miss.
+    if (checkStudio && studioWorkflow(app.graph) && preferredView() !== 'nodes' && window.FreeVideoShell?.view?.() !== 'nodes' && !inTransition() && !surfaceOnScreen()
+        && !['dialog.fv-workspace-opening[open]', 'dialog.fv-editor[open]', 'dialog.fv-studio[open]'].some(selector => document.querySelector(selector))
         && !reports.some(item => item.type === 'error' && item.where === 'studio'))
         problems.unshift({text: t('The creative workspace did not open.', '创作面板没有打开。'), advice: 'reload'});
     problems.push(...lastProblems);

@@ -1,5 +1,6 @@
-// Whether a video or picture that leaves this machine carries its prompt and ComfyUI workflow (which also names
-// the files it read). Off unless the user turns it on; the library's own file always keeps both.
+// Whether a video or picture that leaves this machine carries its prompt and ComfyUI workflow (which also names the
+// files it read). Off unless the user turns it on; the library's own file always keeps both. An engine older than this
+// page ignores the choice and sends the file as it is.
 const WORKFLOW_KEY = 'freevideo.export.workflow';
 export function exportKeepsWorkflow() { try { return localStorage.getItem(WORKFLOW_KEY) === '1'; } catch { return false; } }
 export function setExportKeepsWorkflow(on) {

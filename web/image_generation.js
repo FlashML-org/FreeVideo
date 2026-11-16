@@ -9,7 +9,7 @@ import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
 
-// The folder of the input directory that holds the pictures a request sends (image_gen/service.py PAGE_FOLDER).
+// The folder of the input directory that holds the pictures a request sends (the engine's PAGE_FOLDER).
 export const PAGE_UPLOAD_FOLDER = 'freevideo-image-ref';
 export const IMAGE_GEN_PROTOCOL = Object.freeze({
     root: '/freevideo/image-gen', header: 'X-FreeVideo-Image', upload: '/upload/image',
@@ -86,17 +86,26 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
             return post(action, value, true);
         }
     }
+    // The engine's last answer to info: what it offers (history_trash, history_save, purposes) decides the newer calls.
+    let known = null;
     async function info() {
         const value = await request(p.root, {cache: 'no-store'});
         token = value[p.token];
+        known = value;
         return {...value, installed: value.installed ?? value[p.installed] ?? false};
     }
+    async function offers(flag) {
+        try { if (!known) await info(); } catch { return false; }
+        return known?.[flag] === true || (flag === 'request_folder' && (known?.history_trash === true || Array.isArray(known?.purposes)));
+    }
     return {
-        info,
-        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view, model, remember}) {
+        info, offers,
+        // purpose: what the picture is for (for example 'cast-draft'), passed through as given.
+        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view, model, remember, purpose}) {
             const value = await post('generate', {...(model ? {model} : {}), [p.prompt]: prompt, [p.width]: width, [p.height]: height,
                 [p.images]: images, ...(mask ? {[p.mask]: mask} : {}), ...(seed === undefined ? {} : {[p.seed]: seed}),
-                ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {}), ...(remember === true ? {remember} : {})});
+                ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {}), ...(remember === true ? {remember} : {}),
+                ...(typeof purpose === 'string' && purpose ? {purpose} : {})});
             return {...value, job: value[p.job]};
         },
         async status(job, model) {
@@ -109,7 +118,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
                 ...(phase === 'cancelled' ? {error: 'cancelled'} : {})};
         },
         cancel: job => post('cancel', {[p.job]: job}),
-        // Pictures this page uploaded for a request that never became a job; the service removes only its own temporary names.
+        // Pictures this page uploaded for a request that never became a job, or for an editor left without saving;
+        // the service removes only its own temporary names (an engine without it answers with an error, ignored).
         discardUploads: images => post('discard-uploads', {images}),
         // The running job's newest step picture (a small JPEG of what the model predicts so far), or null.
         async previewImage(job) {
@@ -130,17 +140,28 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         async historyDelete(file) { return (await post('history-delete', {file})).items || []; },
         async historyDeleteMany(files) { const answer = await post('history-delete-many', {files}); return {items: answer.items || [], failed: answer.failed || []}; },
         historyOpen: () => post('history-open', {}),
+        // An uploaded picture (an edit saved in the editor) filed in the works under the engine's own name and clock;
+        // the engine removes the uploaded copy. Only when the engine says it offers it (info.history_save).
+        historySave: value => post('history-save', value),
+        // Deleting with the engine's own undo time (info.history_trash): the pictures move aside at once and go for good
+        // after it, even when the page is closed; history-undo brings a batch back.
+        async historyTrash(files) { const answer = await post('history-trash', {files}); return {items: answer.items || [], failed: answer.failed || [], batch: answer.batch || null}; },
+        historyUndo: batch => post('history-undo', {batch}),
         // The prompts and sizes of a new character's five pictures (the Agent's cards use the same ones).
         castViews: async (description, kind = 'character') => (await post('cast-views', {description, kind})).views,
         async upload(file) {
-            // Every picture a request sends is a copy under a random name in FreeVideo's own folder: never the
-            // user's file name, not in ComfyUI's Load Image list, and removed by the service when the job ends.
-            const ext = {'image/jpeg': 'jpg', 'image/webp': 'webp'}[file.type] || 'png';
-            const body = new FormData(); body.append('image', new File([file], `${crypto.randomUUID()}.${ext}`, {type: file.type || 'image/png'}));
-            body.append('type', 'input'); body.append('subfolder', PAGE_UPLOAD_FOLDER); body.append('overwrite', 'false');
+            // Never under the user's own file name: a random name the service knows as a temporary page upload, removed
+            // when the job ends. An engine that keeps these in their own folder (not in ComfyUI's Load Image list) gets
+            // them there; an older one takes them in the input folder itself, named so it still removes them.
+            const folder = await offers('request_folder');
+            const ext = folder ? ({'image/jpeg': 'jpg', 'image/webp': 'webp'}[file.type] || 'png') : 'png';
+            const body = new FormData();
+            body.append('image', new File([file], folder ? `${crypto.randomUUID()}.${ext}` : `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: file.type || 'image/png'}));
+            body.append('type', 'input'); body.append('overwrite', 'false');
+            if (folder) body.append('subfolder', PAGE_UPLOAD_FOLDER);
             const value = await request(p.upload, {method: 'POST', body});
-            if (!value[p.name] || value[p.subfolder] !== PAGE_UPLOAD_FOLDER || /[/\\:]/.test(value[p.name])) throw failure('invalid_media');
-            return `${PAGE_UPLOAD_FOLDER}/${value[p.name]}`;
+            if (!value[p.name] || /[/\\:]/.test(value[p.name]) || (folder ? value[p.subfolder] !== PAGE_UPLOAD_FOLDER : value[p.subfolder])) throw failure('invalid_media');
+            return folder ? `${PAGE_UPLOAD_FOLDER}/${value[p.name]}` : value[p.name];
         },
     };
 }
@@ -399,23 +420,31 @@ export async function uploadGenerationMask(renderer, client, context, alive = ()
 // The layer is uploaded once for as long as it looks the same.
 // The engine removes that copy a while after its last use, so a later click sends the layer again.
 const segmentUploads = new WeakMap();
-export async function segmentAt(renderer, client, doc, layer, point) {
+// The pictures click select uploaded (one per look of a layer); the editor lets them go when it closes.
+const segmentNames = new Set();
+export function discardSegmentUploads(client) {
+    const names = [...segmentNames]; segmentNames.clear();
+    if (names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
+}
+export async function segmentAt(renderer, client, doc, layer, point, again = false) {
     const look = JSON.stringify([layer.ops.map(o => o.id), layer.adjust, layer.src, layer.mask?.ops.map(o => o.id)]);
     const send = async () => {
         await renderer.preload(doc);
         const raster = renderer.layerImage(doc, layer, 1, true);
         const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
-        const sent = {look, name: await client.upload(new File([blob], 'layer.png', {type: 'image/png'})), width: raster.width, height: raster.height};
-        segmentUploads.set(layer, sent); return sent;
-    };
-    let known = segmentUploads.get(layer);
-    if (known?.look !== look) known = await send();
+        // The layer's previous look is not needed any more: its upload goes.
+        if (known?.name) { segmentNames.delete(known.name); Promise.resolve().then(() => client.discardUploads?.([known.name])).catch(() => {}); }
+        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
+        segmentUploads.set(layer, known); segmentNames.add(known.name);
+    }
     const x = Math.min(known.width - 1, Math.max(0, Math.floor(point[0] * known.width))), y = Math.min(known.height - 1, Math.max(0, Math.floor(point[1] * known.height)));
     let value;
     try { value = await client.segment({image: known.name, points: [[x, y, 1]]}); }
     catch (error) {
-        if (error?.code !== 'invalid_media') throw error;
-        known = await send(); value = await client.segment({image: known.name, points: [[x, y, 1]]});
+        // The engine lets a point selection's picture go a while after its last use: send the layer again once.
+        if (error?.code !== 'invalid_media' || again) throw error;
+        segmentUploads.delete(layer); segmentNames.delete(known.name);
+        return segmentAt(renderer, client, doc, layer, point, true);
     }
     if (typeof value?.mask !== 'string') throw failure();
     const image = await renderer.image(value.mask);
@@ -496,8 +525,8 @@ export function imageRemainingText(seconds, t) {
 export function createImageGenSession({client, prepare, apply, onChange = () => {},
     beforeGenerate = async () => {},
     schedule = setTimeout, unschedule = clearTimeout, store = null,
-    visible = () => globalThis.document?.visibilityState !== 'hidden'}) {
-    let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null;
+    visible = () => globalThis.document?.visibilityState !== 'hidden', tasks = null}) {
+    let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null, unwatch = null;
     let state = {info: null, checking: false, running: false, job: null, fraction: 0, remaining: null, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
@@ -524,6 +553,41 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             finally { checking = null; if (!disposed) { emit({checking: false}); scheduleInfo(); } }
         })();
         return checking;
+    }
+    // With the page's job store (tasks): the store polls the engine and keeps the job when the editor closes; the
+    // session only follows its row. Done: the result is placed (when this editor is still the one that asked);
+    // the store files the picture in the works either way.
+    function follow(current, id, context) {
+        const alive = () => current === epoch && !disposed;
+        unwatch?.(); let ended = false, off = null;
+        const stop = () => { ended = true; off?.(); off = null; if (unwatch === stop) unwatch = null; };
+        unwatch = stop;
+        off = tasks.jobs.subscribe(() => {
+            if (ended || !alive()) return;
+            const row = tasks.jobs.get(id);
+            if (!row) { stop(); forget(); emit({running: false, job: null, fraction: 0, stage: '', waiting: '', stopping: false}); return; }
+            if (tasks.ACTIVE.has(row.status)) {
+                emit({job: id, fraction: Math.max(state.fraction, Number.isFinite(row.percent) ? row.percent : 0),
+                    stage: row.phase === 'waiting' ? '' : row.phase || '', waiting: row.status === 'queued' ? row.meta?.waiting || 'image' : '',
+                    remaining: Number.isFinite(row.eta_seconds) ? row.eta_seconds : null, report_id: row.meta?.report_id || state.report_id,
+                    fitted: row.meta?.fitted || state.fitted, stopping: row.status === 'cancelling'});
+                return;
+            }
+            stop();
+            if (row.status === 'done' && row.result?.file) {
+                void Promise.resolve(apply({file: row.result.file, fitted: row.meta?.fitted || null}, context, alive)).then(() => {
+                    if (!alive()) return;
+                    forget(); tasks.placed?.(row);
+                    emit({running: false, job: null, fraction: 1, stage: '', waiting: '', stopping: false, ...(row.meta?.fitted ? {fitted: row.meta.fitted} : {})});
+                }, error => { if (alive()) { forget(); emit({running: false, job: null, waiting: '', stopping: false, ...failed(error)}); } });
+                return;
+            }
+            forget(); tasks.placed?.(row);
+            if (row.status === 'cancelled') emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false, error: '', report_id: null, memory: ''});
+            else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed'})}); }
+        }, {id});
+        // The row may have ended before subscribe returned.
+        if (ended) { off(); off = null; }
     }
     // One job from its first status to the result. A job taken up again after the page was
     // reloaded (``resumed``) that the service no longer knows ends quietly: there is nothing to say.
@@ -564,22 +628,34 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         // A picture that is edited sends its reference images first; there is no job to report on yet.
         emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
-        // What this request uploads, so that pictures the service never received as a job are removed again.
-        const sent = [];
-        const sender = {upload: async file => { const name = await client.upload(file); sent.push(name); return name; }};
-        let job = null;
+        let sent = [], submitted = false;
         try {
-            const {context, images = [], mask} = await prepare(request, alive, sender);
+            const {context, images = [], mask} = await prepare(request, alive);
+            sent = [...images, ...(mask ? [mask] : [])];
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
             const withImages = images.length > 0;
             await beforeGenerate({kind: 'image', width: context.width, height: context.height, image_references: images.length});
             if (!alive()) return;
-            const row = await client.generate({prompt: request.prompt, width: context.width, height: context.height, images, mask,
+            const request_ = {prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
-                ...(request.loras === undefined ? {} : {loras: request.loras})});
-            job = row.job || null;
+                ...(request.loras === undefined ? {} : {loras: request.loras})};
+            if (tasks) {
+                tasks.startJobSources?.();
+                const {id} = await tasks.jobs.submit('image', request_, {view: tasks.view || 'image-editor',
+                    meta: {...(tasks.meta?.(request, context) || {}), text: request.text ?? request.prompt, withImages, width: context.width, height: context.height},
+                    ...(tasks.client ? {client: tasks.client} : {})});
+                submitted = true;
+                if (!alive()) return;
+                emit({job: id});
+                try { store?.save({job: id, context, withImages, task: true}); } catch { /* the job is only not picked up again here */ }
+                follow(current, id, context);
+                return;
+            }
+            const row = await client.generate(request_);
+            const {job} = row;
             if (!job) throw failure(row.error, row);
+            submitted = true;
             if (row.fitted) emit({fitted: row.fitted});
             if (!alive()) { await cancelJob(job); return; }
             emit({job});
@@ -588,19 +664,36 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         } catch (error) {
             if (alive()) emit({running: false, job: null, ...failed(error)});
         } finally {
-            // Turned away, stopped or failed before the service took the request: a job removes its own pictures when it ends.
-            if (!job && sent.length && client.discardUploads) client.discardUploads(sent).catch(() => {});
+            // Stopped, turned away or failed before the service took the request: its pictures go now (a job removes
+            // its own when it ends).
+            if (!submitted && sent.length) Promise.resolve().then(() => client.discardUploads?.(sent)).catch(() => {});
         }
     }
     // The page was reloaded while a picture was being made: follow the same job and place its result.
-    function resume({job, context, withImages = false}) {
+    function resume({job, context, withImages = false, task = false}) {
         if (state.running || disposed || !job || !context) return false;
+        if (tasks) {
+            // Only a job of the store is followed again; a record from before (an engine key) is let go.
+            tasks.startJobSources?.();
+            if (!task || !tasks.jobs.get(job)) { forget(); return false; }
+            const current = ++epoch;
+            emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
+            follow(current, job, context);
+            return true;
+        }
         const current = ++epoch;
         emit({running: true, job, fraction: 0, stage: '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         track(current, job, context, withImages, true);
         return true;
     }
     function cancel() {
+        if (tasks) {
+            const id = state.job;
+            if (!state.running) return Promise.resolve();
+            if (!id) { ++epoch; forget(); emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false}); return Promise.resolve(); }
+            emit({stopping: true});
+            return Promise.resolve(tasks.jobs.cancel(id)).catch(() => { emit({stopping: false}); });
+        }
         ++epoch; unschedule(timer); timer = null;
         const job = state.job;
         forget();
@@ -614,7 +707,9 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         finally { if (!disposed) scheduleInfo(); }
     }
     return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null, memory: ''}), state: () => state,
-        dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; return cancel(); }};
+        // Closing the editor only stops watching: the picture keeps going on the engine, and the job record stays so
+        // opening the same picture again picks it up (resume). Only Stop cancels.
+        dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; ++epoch; unschedule(timer); timer = null; unwatch?.(); unwatch = null; return Promise.resolve(); }};
 }
 
 // The job being made, kept for this tab only so that a reloaded page can follow it and place the
@@ -623,11 +718,11 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
 export const IMAGE_JOB_KEEP_MS = 30 * 60 * 1000;
 export function imageJobStore(key, storage = globalThis.sessionStorage, now = Date.now, name = 'freevideo.imageGenJob') {
     return {
-        save({job, context, withImages}) {
+        save({job, context, withImages, task = false}) {
             const {layer, selection} = context;
             const keep = layer && {id: layer.id, cx: layer.cx, cy: layer.cy, w: layer.w, h: layer.h,
                 rotation: layer.rotation, flipX: layer.flipX, flipY: layer.flipY};
-            storage.setItem(name, JSON.stringify({key, job, withImages: !!withImages, at: now(), context: {
+            storage.setItem(name, JSON.stringify({key, job, withImages: !!withImages, at: now(), ...(task ? {task: true} : {}), context: {
                 mode: context.mode, doc: {width: context.doc.width, height: context.doc.height},
                 layer: keep || null, selection: selection || null, canvas: context.canvas || null}}));
         },
@@ -651,9 +746,9 @@ export function imageJobStore(key, storage = globalThis.sessionStorage, now = Da
 }
 
 export function createImageGeneration({client, renderer, t, getDoc, getSelection, commit, el, button, segmented,
-    library = [], resolve = file => file, icon = () => '', onRatioChange, onNewCanvas, onPlace, productVersion, fetchApi, resumeKey = null}) {
-    let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', past = [], pendingRatio = null;
-    let promptRequired = false, attentionTimer = null;
+    library = [], resolve = file => file, icon = () => '', onRatioChange, onNewCanvas, onPlace, productVersion, fetchApi, resumeKey = null, tasks = null}) {
+    let mode = 'edit', prompt = '', mounted = null, references = [], loras = null, tier = 'standard', pendingRatio = null;
+    let promptRequired = false, attentionTimer = null, wantFocus = false;
     // A reference is sent no larger than the largest picture the service makes.
     async function referencePNG(file) {
         const image = await renderer.image(file);
@@ -664,7 +759,9 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     }
     let store = null;
     try { if (resumeKey != null && globalThis.sessionStorage) store = imageJobStore(resumeKey); } catch { /* no storage */ }
-    const session = createImageGenSession({client, store,
+    // A result placed (or a failure shown) here needs no card in the floating window.
+    const placed = row => { tasks.jobs.markSeen(row.id); tasks.jobs.dismiss(row.id); if (row.status === 'done' && row.result?.file) tasks.onResult?.(row.result.file); };
+    const session = createImageGenSession({client, store, tasks: tasks && {...tasks, placed},
         beforeGenerate: query => mounted?.otherUsage.check(query),
         prepare: async (request, alive, sender = client) => {
             const context = generationContext(getDoc(), getSelection(), request.mode, request.canvas);
@@ -759,120 +856,35 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             const picture = el('img'); picture.src = resolve(item.file); picture.alt = ''; picture.loading = 'lazy';
             choice.append(picture, el('span', item.label)); choices.append(choice);
         }
-        menu.append(summary, choices); refs.append(menu);
+        menu.append(summary, choices); refs.append(menu); closeOutside(menu);
     }
-    // Every picture made on this machine: place one on the canvas, use it as a reference, delete it,
-    // or show the folder that holds them.
-    function historyMenu() {
-        const menu = el('details', null, 'fv-ie-menu fv-ie-gen-history');
-        const summary = el('summary'); summary.innerHTML = icon('history', 16);
-        summary.title = t('History', '历史'); summary.setAttribute('aria-label', summary.title);
-        const list = el('div', null, 'fv-ie-menu-list');
-        menu.append(summary, list);
-        // Choosing several: the ticked files, the reason each one that stayed gives, and the two-step confirm of the delete button.
-        let selecting = false, armed = null, failed = false, unopened = null;
-        const chosen = new Set(), stayed = new Map();
-        const reasons = {busy: t('In use', '被占用'), missing: t('Already gone', '已不存在'), invalid: t('Not deleted', '未删除')};
-        const disarm = () => { clearTimeout(armed); armed = null; };
-        const draw = () => {
-            list.replaceChildren();
-            if (failed) list.append(el('div', t('Could not delete this image', '无法删除这张图片'), 'fv-ie-menu-label'));
-            if (unopened) {
-                list.append(el('div', t('The folder could not be opened automatically. Open it in a file manager.', '无法自动打开该文件夹，请在文件管理器中手动打开'), 'fv-ie-menu-label'));
-                if (unopened.folder) list.append(el('div', unopened.folder, 'fv-ie-menu-label fv-ie-gen-history-path'));
-            }
-            if (!past.length) { list.append(el('div', t('No images generated yet', '还没有生成过图片'), 'fv-ie-menu-label')); return; }
-            const grid = el('div', null, 'fv-ie-gen-history-grid');
-            for (const item of past) {
-                const tile = el('div', null, 'fv-ie-gen-history-tile');
-                const ticked = chosen.has(item.file);
-                const place = button('', item.name, () => {
-                    if (!selecting) { menu.open = false; onPlace?.(item.file, item.name); return; }
-                    if (chosen.has(item.file)) chosen.delete(item.file); else chosen.add(item.file);
-                    stayed.delete(item.file); disarm(); draw();
-                }, 'fv-ie-gen-history-pick' + (ticked ? ' fv-ie-gen-history-ticked' : ''));
-                if (selecting) place.setAttribute('aria-pressed', String(ticked));
-                const picture = el('img'); picture.src = resolve(item.file); picture.alt = item.name; picture.loading = 'lazy';
-                place.append(picture); tile.append(place);
-                if (selecting) {
-                    tile.append(el('span', ticked ? '✓' : '', 'fv-ie-gen-history-tick' + (ticked ? ' fv-ie-gen-history-on' : '')));
-                    if (stayed.has(item.file)) tile.append(el('span', stayed.get(item.file), 'fv-ie-gen-history-why'));
-                    grid.append(tile);
-                    continue;
-                }
-                if (mode === 'edit' && getDoc().layers.length && limit() > 1) {
-                    const use = button('+', t('Use as reference', '用作参考图'), () => {
-                        references = addReference(references, {file: item.file, label: item.name}, limit()); menu.open = false; update();
-                    }, 'fv-ie-gen-history-use');
-                    use.setAttribute('aria-label', use.title); tile.append(use);
-                }
-                let single = null;
-                const remove = button('×', t('Delete', '删除'), async () => {
-                    if (!single) {
-                        remove.textContent = t('Delete', '删除'); remove.classList.add('fv-ie-gen-history-confirm');
-                        single = setTimeout(() => { single = null; remove.textContent = '×'; remove.classList.remove('fv-ie-gen-history-confirm'); }, 3000);
-                        return;
-                    }
-                    clearTimeout(single);
-                    try { past = await client.historyDelete(item.file); failed = false; } catch {
-                        // Read the folder again: a picture that is gone just leaves the list, one that is still there is named as kept.
-                        failed = true;
-                        try { past = await client.history(); failed = past.some(row => row.file === item.file); } catch { /* keep the list shown */ }
-                    }
-                    draw();
-                }, 'fv-ie-gen-ref-remove fv-ie-gen-history-delete');
-                remove.setAttribute('aria-label', remove.title); tile.append(remove);
-                grid.append(tile);
-            }
-            list.append(grid);
-            const foot = el('div', null, 'fv-ie-gen-history-foot');
-            if (selecting) {
-                const all = button(chosen.size === past.length ? t('Deselect all', '全不选') : t('Select all', '全选'), null, () => {
-                        if (chosen.size === past.length) chosen.clear(); else for (const row of past) chosen.add(row.file);
-                        stayed.clear(); disarm(); draw();
-                    }, 'fv-ie-button');
-                const del = button(armed ? t('Confirm delete', '确认删除') : t('Delete ' + chosen.size, '删除 ' + chosen.size + ' 张'), null, async () => {
-                        if (!chosen.size) return;
-                        if (!armed) { armed = setTimeout(() => { armed = null; draw(); }, 3000); draw(); return; }
-                        disarm();
-                        let answer;
-                        try { answer = await client.historyDeleteMany([...chosen]); } catch { answer = null; }
-                        stayed.clear(); failed = false;
-                        if (!answer) {
-                            try { past = await client.history(); } catch { /* keep the list shown */ }
-                            for (const file of chosen) if (past.some(row => row.file === file)) stayed.set(file, reasons.invalid);
-                        } else {
-                            past = answer.items;
-                            for (const row of answer.failed) if (row.reason !== 'missing') stayed.set(row.file, reasons[row.reason] || reasons.invalid);
-                        }
-                        for (const file of [...chosen]) if (!stayed.has(file)) chosen.delete(file);
-                        draw();
-                    }, 'fv-ie-button fv-ie-danger fv-ie-gen-history-delete-all' + (armed ? ' fv-ie-gen-history-confirm' : '') + (chosen.size ? '' : ' fv-ie-gen-history-idle'));
-                const cancel = button(t('Cancel', '取消'), null, () => { selecting = false; chosen.clear(); stayed.clear(); disarm(); draw(); }, 'fv-ie-button');
-                foot.append(all, el('span', null, 'fv-ie-gen-history-foot-end'));
-                foot.lastChild.append(cancel, del);
-            } else {
-                foot.append(button(t('Select', '选择'), null, () => { selecting = true; failed = false; draw(); }, 'fv-ie-menu-item'));
-                if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname))
-                    foot.append(button(t('Open folder', '打开文件夹'), null, async () => {
-                        let answer; try { answer = await client.historyOpen(); } catch { answer = {opened: false}; }
-                        unopened = answer.opened === false ? {folder: answer.folder || ''} : null; draw();
-                    }, 'fv-ie-menu-item'));
-            }
-            list.append(foot);
+    // A menu of the AI row closes on a click anywhere else (the description field too), as every tray does.
+    function closeOutside(menu) {
+        const away = event => { if (!menu.isConnected) document.removeEventListener('pointerdown', away, true); else if (!menu.contains(event.target)) menu.open = false; };
+        menu.addEventListener('toggle', () => { if (menu.open) document.addEventListener('pointerdown', away, true); else document.removeEventListener('pointerdown', away, true); });
+    }
+    // The works (the works library's own list): the button opens the shared works picker under it. A picture is placed
+    // on the canvas, or used as a reference of this edit; deleting, choosing several and the folder are in the picker too.
+    function worksButton() {
+        const open = el('button', null, 'fv-ie-button fv-ie-gen-works'); open.type = 'button';
+        open.innerHTML = icon('image', 16); open.append(el('span', t('Works', '作品库')));
+        open.dataset.fvTipName = t('Works', '作品库');
+        open.dataset.fvTipUse = t('Place a picture from the works, or use it as a reference', '从作品库放入一张图，或用作参考图');
+        open.setAttribute('aria-haspopup', 'dialog'); open.setAttribute('aria-expanded', 'false');
+        let picker = null;
+        open.onclick = async () => {
+            if (picker) { picker.close(); return; }
+            const {openWorksPicker} = await import('./image_library.js');
+            open.setAttribute('aria-expanded', 'true');
+            picker = openWorksPicker({anchor: open, t,
+                canReference: () => mode === 'edit' && getDoc().layers.length > 0 && limit() > 1,
+                onPlace: (file, name) => onPlace?.(file, name),
+                onReference: (file, name) => { references = addReference(references, {file, label: name}, limit()); update(); },
+                // Over the editor's side panel, so the picture stays in view.
+                over: open.closest('dialog')?.querySelector('.fv-ie-panel') || null,
+                onClose: () => { picker = null; open.setAttribute('aria-expanded', 'false'); }});
         };
-        menu.ontoggle = async () => {
-            if (!menu.open) return;
-            try { past = await client.history(); } catch { past = []; }
-            selecting = false; chosen.clear(); stayed.clear(); disarm(); failed = false; unopened = null;
-            draw();
-            // Open upward when the list does not fit below, and keep it inside the window.
-            list.classList.remove('fv-ie-gen-history-up'); list.style.right = '';
-            const box = list.getBoundingClientRect();
-            if (box.bottom > innerHeight - 8 && menu.getBoundingClientRect().top > box.height) list.classList.add('fv-ie-gen-history-up');
-            if (box.left < 8) list.style.right = (box.left - 8) + 'px';
-        };
-        return menu;
+        return open;
     }
     function update() {
         if (!mounted?.bar.isConnected) return;
@@ -904,12 +916,14 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             b.disabled = disabled || (empty && b.dataset.value === 'edit');
             b.setAttribute('aria-pressed', String(b.dataset.value === mode));
         }); input.disabled = disabled;
+        // Asked to take the focus on opening: as soon as the field can be typed in (the engine has answered).
+        if (wantFocus && !disabled) { wantFocus = false; input.focus({preventScroll: true}); }
         if (loras) { if (state.running) loras.element.setAttribute('inert', ''); else loras.element.removeAttribute('inert'); }
         renderReferences(refs, disabled);
         input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the picture', '描述画面');
         input.setAttribute('aria-label', input.placeholder);
         const pack = missing ? packView(state.info, t) : null;
-        action.textContent = pack ? pack.button : state.running ? t('Stop', '停止') : t('Generate', '生成');
+        action.textContent = pack ? pack.button : state.running ? state.stopping ? t('Stopping', '正在停止') : t('Stop', '停止') : t('Generate', '生成');
         action.classList.toggle('fv-ie-primary', !state.running);
         action.setAttribute('aria-disabled', String(!pack && !state.running && (disabled || !prompt.trim())));
         action.title = !pack && !state.running && !prompt.trim() ? t('Enter a prompt first', '请先填写提示词') : '';
@@ -976,13 +990,20 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         box.append(input, fold);
         loras ||= createImageLoras({t, fetchApi, el, onChange: () => mounted && update(), getPrompt: () => prompt,
             setPrompt: value => { prompt = value; if (mounted) { mounted.input.value = value; mounted.grow(); } }});
-        field.append(refs, box, historyMenu(), loras.element);
+        if (!loras.element.fvCloseOutside) { loras.element.fvCloseOutside = true; closeOutside(loras.element); }
+        field.append(refs, box, worksButton(), loras.element);
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
             if (pack) void session.pack(pack.loading ? 'cancel' : 'install');
-            else if (now.running) void session.cancel(); else void start();
+            else if (now.running) void stop(); else void start();
         }, 'fv-ie-button fv-ie-primary');
+        // Stop asks first (the same glass confirm as everywhere); leaving the editor never stops the job.
+        async function stop() {
+            const now = session.state(); if (now.stopping) return;
+            if (tasks?.confirmStop && !await tasks.confirmStop(action, {kind: 'image', queued: !!now.waiting})) return;
+            if (session.state().running) void session.cancel();
+        }
         const meter = el('div', null, 'fv-ie-gen-meter'), fill = el('i'); meter.append(fill);
         meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-label', t('Generate with AI', 'AI 生成'));
         meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
@@ -1016,8 +1037,11 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     }
     return {mount, drawsSelection: () => mode === 'edit' && getDoc().layers.length > 0, unmount() { clearAttention(); promptRequired = false; mounted?.otherUsage.dispose(); mounted = null; },
         selected: () => session.check(), cancel: session.cancel,
+        focusPrompt() { wantFocus = true; update(); },
         // The blank canvas a reloaded generation was started on, to be set again by the editor.
         resumedCanvas: resumed?.context?.mode === 'new'
             ? {width: resumed.context.doc.width, height: resumed.context.doc.height} : null,
+        // Closing only stops watching: a job still running goes on; its picture is a draft that opening the same picture
+        // again takes back (and that is deleted if no editor does).
         dispose() { clearAttention(); loras?.dispose(); mounted?.otherUsage.dispose(); return session.dispose(); }, state: session.state};
 }

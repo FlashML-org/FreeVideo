@@ -33,8 +33,8 @@ function sendWithProgress(api, body, onProgress, timeoutMs) {
         xhr.send(body);
     });
 }
-// What a media item is called on screen: its card's name, the name the user's file had (kept with the item, since the
-// stored file has a plain name), or the stored file's own name for items from before.
+// What a media item is called on screen: its card's name, the name the user's file had (kept with the item, since an
+// engine that stores one copy per content gives the file a plain name), or the stored file's own name.
 export const mediaName = row => row?.cast?.name || row?.name || String(row?.source || row?.file || '').split('/').pop();
 export async function uploadMedia(api, file, {onProgress = null, timeoutMs = uploadTimeoutMs(file.size)} = {}) {
     const found = failures();
