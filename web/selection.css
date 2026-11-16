@@ -1,0 +1,41 @@
+/* Text selection: the interface is not selectable, content people copy out is (the shell's entry loads this sheet;
+   a11y.js loads it too if it is not there yet).
+   Not selectable: buttons, tabs, titles, group names, hints, tips, empty states, progress text, time codes, track names,
+   menu items, badges. A drag (a clip, a range handle, a picture, the floating window) or a double click on any of them
+   never paints text blue, and a long press on a phone does not open the copy/look-up callout.
+   Selectable: typing fields and editable areas, and text marked .fv-copyable. The classes after .fv-copyable are the
+   copyable texts of the current views (failure reasons, report text, prompts and parameters in an info layer, file
+   names and paths, the version, the phone address and the assistant sentence, chat messages); new ones use .fv-copyable.
+   Ctrl/Cmd+A selects only inside a typing field (a11y.js).
+   The root is html.fv-app while FreeVideo is in front (shell.js); each FreeVideo surface on its own covers the rest. */
+:is(.fv-app,dialog.fv-studio,.fv-view-navigation,.fv-setup,.fv-panel,.fv-failure-dialog,.fv-whatsnew,.fv-tutorial-book,.fv-release-notes,.fv-image-editor,
+    .fv-cast-dialog,.fv-lan,.fv-phone,.fv-feature-tour,.fv-prompt-guide,.fv-reference-picker,.fv-generation-progress,.fv-library,.fv-tip,.sgf,[data-fv-tip-scope]){
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+:is(.fv-app,dialog.fv-studio,.fv-view-navigation,.fv-setup,.fv-panel,.fv-failure-dialog,.fv-whatsnew,.fv-tutorial-book,.fv-release-notes,.fv-image-editor,
+    .fv-cast-dialog,.fv-lan,.fv-phone,.fv-feature-tour,.fv-prompt-guide,.fv-reference-picker,.fv-generation-progress,.fv-library,.sgf,[data-fv-tip-scope])
+  :is(input:not([type=button],[type=checkbox],[type=radio],[type=range],[type=submit],[type=reset],[type=file],[type=color],[type=image]),textarea,
+      [contenteditable=""],[contenteditable=true],[contenteditable=plaintext-only],
+      .fv-copyable,.fv-copyable *,
+      .fv-error,.fv-image-failure-reason,.fv-ed-failure-reason,.fv-ed-clip-failure-reason,.fv-chat-error,.fv-lan-reason,.fv-error-detail,.fv-error-panel pre,
+      .fv-failure-reason,.fv-failure-fold pre,.fv-report-preview,.fv-health-detail,
+      .fv-image-info,.fv-library-detail,.fv-queue-details .fv-queue-text,
+      .fv-folder-path,.fv-model-repair-path,.fv-encoder-path,.fv-ie-gen-history-path,.fv-file-path,
+      .fv-version-number,.fv-lan-url,.fv-lan-address,.fv-agent-sentence,
+      .fv-chat-text,.fv-chat-message-text){
+  -webkit-user-select:text;user-select:text;-webkit-touch-callout:default;cursor:auto}
+/* Typing fields keep the text cursor; copyable text inside a button stays part of the button. */
+:is(.fv-app,dialog.fv-studio) :is(input:not([type=button],[type=checkbox],[type=radio],[type=range],[type=submit],[type=reset],[type=file],[type=color],[type=image]),textarea,[contenteditable=""],[contenteditable=true]){cursor:text}
+:is(.fv-app,dialog.fv-studio) :is(button,[role=button],summary,a) :is(.fv-copyable.fv-copyable,.fv-copy-text.fv-copy-text){-webkit-user-select:none;user-select:none;cursor:inherit}
+/* The assistant sentence is copied whole. */
+.fv-agent-sentence{-webkit-user-select:all;user-select:all}
+
+/* Pictures and icons are not dragged out of the window by accident; ones meant to be dragged carry .fv-draggable or
+   draggable=true. */
+:is(.fv-app,dialog.fv-studio,.fv-view-navigation,.sgf) :is(img,svg,video):not(.fv-draggable,[draggable=true]){-webkit-user-drag:none}
+
+/* While something is being dragged, nothing selects anywhere (views set html.fv-dragging for the drag). */
+html.fv-dragging,html.fv-dragging *{-webkit-user-select:none!important;user-select:none!important}
+
+/* FreeVideo's own selection colour. */
+:is(.fv-app,dialog.fv-studio,.fv-view-navigation,.fv-setup,.fv-library) ::selection{background:var(--fv-selection,var(--fv-accent-soft,rgb(79 140 255 / .3)));color:inherit}

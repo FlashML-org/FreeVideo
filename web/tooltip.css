@@ -1,0 +1,30 @@
+/* The hover tip (tooltip.js): a small glass card, no arrow, top layer, never part of the layout.
+   It fades in (160 ms, eased out, 2 px towards its place) and out; under reduced motion it only appears. */
+.fv-tip{position:fixed;inset:auto;left:0;top:0;margin:0;box-sizing:border-box;width:max-content;max-width:min(320px,calc(100vw - 16px));
+  padding:var(--fv-sp-8,8px) var(--fv-sp-12,12px);border:1px solid var(--fv-edge);border-radius:var(--fv-rad-ctl,12px);
+  background:rgb(var(--fv-tint) / var(--fv-a3));color:var(--fv-fg);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  font:var(--fv-fs-1,12px)/var(--fv-lh,1.45) var(--fv-font,system-ui,sans-serif);white-space:normal;overflow-wrap:anywhere;
+  text-align:left;pointer-events:none;-webkit-user-select:none;user-select:none;z-index:var(--fv-z-tip,3000);overflow:visible;
+  opacity:0;transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),translate var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
+.fv-tip:not([data-open]){display:none}
+.fv-tip[data-open]{opacity:1;translate:0 0}
+@starting-style{.fv-tip[data-open]{opacity:0;translate:var(--fv-tip-from,0 -2px)}}
+.fv-tip[data-side=above]{--fv-tip-from:0 2px}.fv-tip[data-side=left]{--fv-tip-from:2px 0}.fv-tip[data-side=right]{--fv-tip-from:-2px 0}
+.fv-tip[data-motion=none]{transition:none;translate:none}
+@media(prefers-reduced-motion:reduce){.fv-tip{transition:none!important;translate:none!important}}
+.fv-tip-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--fv-sp-12,12px)}
+.fv-tip-name{font-weight:600;font-size:var(--fv-fs-2,13px);color:var(--fv-fg)}
+.fv-tip-key{flex:none;padding:0 var(--fv-sp-4,4px);border:1px solid var(--fv-line2);border-radius:var(--fv-r-xs);font:inherit;font-size:var(--fv-fs-1,12px);
+  font-variant-numeric:tabular-nums;color:var(--fv-fg2);background:var(--fv-ctl-bg)}
+.fv-tip-key{display:inline-flex;align-items:center;gap:1px}
+.fv-tip-glyph{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.fv-tip-use{margin-top:var(--fv-sp-2,2px);color:var(--fv-fg2)}
+/* A disabled control: why, and what to do; calm, not an error. */
+.fv-tip-off{margin-top:var(--fv-sp-2,2px);color:var(--fv-caution,var(--fv-fg))}
+.fv-tip[data-state=off] .fv-tip-name{color:var(--fv-fg2)}
+/* Solid when glass is off, unsupported, or transparency is reduced. */
+:is(:root[data-glass=solid],:root.lite) .fv-tip{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-tip{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))!important}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.fv-tip{background:rgb(var(--fv-solid3))}}
+@media (forced-colors:active){.fv-tip{border-color:CanvasText;background:Canvas;color:CanvasText}}

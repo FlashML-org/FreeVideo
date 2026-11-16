@@ -2,6 +2,7 @@ import {longGeneration} from './phone_model.js';
 import {agentGet, agentPost} from './agent_session.js';
 import {qrcodegen} from './qrcodegen.js';
 import {listenDialogKey} from './dialog_keys.js';
+import { skin } from './glass/library.js';
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./lan_access.css', import.meta.url).href; document.head.append(css);
 const seenKey = 'freevideo.phone.opened';
 export function qrMatrix(link) { return qrcodegen.QrCode.encodeText(link, qrcodegen.QrCode.Ecc.MEDIUM); }
@@ -13,8 +14,10 @@ function drawQr(canvas, link) {
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const button = (cls, label, action) => { const b = el('button', cls, label); b.type = 'button'; b.onclick = action; return b; };
 export function createLanAccess(t, api) {
+    skin();
     const element = el('div', 'fv-lan'), trigger = button('fv-lan-trigger', t('Phone', '手机'), toggle), panel = el('section', 'fv-lan-panel');
-    const label = t('Phone access', '手机连接'); trigger.setAttribute('aria-label', label); trigger.setAttribute('aria-expanded', 'false'); trigger.setAttribute('aria-haspopup', 'dialog');
+    const label = t('Phone access', '手机连接'); trigger.setAttribute('aria-label', label);
+    trigger.dataset.fvTipName = label; trigger.dataset.fvTipUse = t('Open FreeVideo on a phone on this network', '在同一网络的手机上打开 FreeVideo'); trigger.setAttribute('aria-expanded', 'false'); trigger.setAttribute('aria-haspopup', 'dialog');
     const dot = el('i', 'fv-lan-dot'); dot.hidden = true; dot.setAttribute('aria-hidden', 'true'); trigger.append(dot);
     panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', label);
     const head = el('div', 'fv-lan-heading'), toggleButton = button('fv-lan-switch', '', changeEnabled);
@@ -44,7 +47,7 @@ export function createLanAccess(t, api) {
     problem.append(problemText, retry); problem.hidden = true; problemText.setAttribute('role', 'status');
     const reasons = {
         ports_in_use: t('The ports for phone access are in use or reserved by the system.', '手机连接所需的端口已被占用或被系统保留。'),
-        comfy_on_network: t('This ComfyUI is already open to the network. Restart it on this computer only, then try again.', 'ComfyUI 已直接对网络开放。请改为仅在本机打开后重试。'),
+        comfy_on_network: t('FreeVideo is already open to the whole network. Start it for this computer only, then try again.', 'FreeVideo 已直接对整个网络开放。请改为只在本机运行后重试。'),
         no_address: t('No LAN address found. Connect to Wi-Fi or a wired network first.', '未找到局域网地址，请先连接 Wi-Fi 或有线网络。'),
         failed: t('Phone access could not be opened.', '手机连接无法打开。'),
         late: t('Phone access has not opened yet. Make sure the FreeVideo launcher is running.', '手机连接尚未打开。请确认 FreeVideo 启动器正在运行。'),

@@ -1,0 +1,278 @@
+/* The one top bar (topbar.js; spec design-jia-glass/work-glob/TOPBAR.md). The same parts, sizes and order in every
+   view and in the node view's bar. Three columns, the outer two always equal, so the tabs sit on the window's centre
+   whatever the sides hold; both sides have the same padding. No ground and no rule under the bar: only the tabs and the
+   status capsule are glass. data-fv-fit: 0 full · 1 links as icons · 2 capsule keeps icon and number · 3 phone.
+   Selectors start with "html body" and repeat the class so the bar wins over every view's older header rules. */
+
+html body .fv-topbar.fv-topbar.fv-topbar{
+  --fv-tb-pad:calc(var(--fv-sp-16) + max(env(safe-area-inset-left,0px),env(safe-area-inset-right,0px)));
+  box-sizing:border-box;position:relative;display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)!important;
+  grid-template-rows:minmax(0,1fr)!important;align-items:center;column-gap:var(--fv-sp-16);row-gap:0;
+  height:calc(var(--fv-header-h) + env(safe-area-inset-top,0px))!important;min-height:0!important;max-height:none;
+  margin:0;padding:env(safe-area-inset-top,0px) var(--fv-tb-pad) 0!important;flex:none;overflow:visible;
+  border:0!important;background:transparent!important;box-shadow:none!important;
+  font:400 var(--fv-fs-2)/1.5 var(--fv-font);color:var(--fv-fg);-webkit-user-select:none;user-select:none}
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]){column-gap:var(--fv-sp-8)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{--fv-tb-pad:calc(var(--fv-sp-12) + max(env(safe-area-inset-left,0px),env(safe-area-inset-right,0px)));column-gap:var(--fv-sp-8)}
+/* The node view: the toolbar is a full-width strip across the top of the window (moved here from shell.css), and the
+   bar is its top row; the toolbar has no padding or rule of its own. */
+html[data-fv-shell=nodes] body .fv-view-navigation{box-sizing:border-box;top:0!important;left:0!important;right:0!important;transform:none!important;width:auto!important;max-width:none;
+  border:0;border-radius:0;box-shadow:none;cursor:default;touch-action:auto;animation:none;background:var(--fv-bg,var(--fv-shell-bg));z-index:var(--fv-z-view)}
+html[data-fv-shell=nodes] body .fv-view-navigation:has(>.fv-topbar){padding:0!important;height:auto!important;min-height:0!important;border-bottom:0!important}
+/* The node view's bar has a solid ground of its own: no blur behind it (only the tabs and capsule are glass). */
+html body .fv-view-navigation:has(>.fv-topbar){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html body .fv-view-navigation .fv-topbar.fv-topbar.fv-topbar{width:100%}
+
+/* Shared control look inside the bar */
+html body .fv-topbar.fv-topbar.fv-topbar :is(button,.fv-lan-trigger){font-family:var(--fv-font);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;outline-offset:2px}
+html body .fv-topbar.fv-topbar.fv-topbar :is(button,.fv-lan-trigger):focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:2px}
+
+/* ── Logo ── */
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-tb-logo{grid-column:1!important;grid-row:1!important;justify-self:start;display:flex;align-items:center;gap:0;
+  box-sizing:border-box;height:var(--fv-ctl-l);min-width:0;max-width:100%;margin:0;padding:0 var(--fv-sp-4);border:0;border-radius:var(--fv-rad-ctl);
+  background:transparent;box-shadow:none;cursor:pointer;transition:background-color var(--fv-dur-1) var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-tb-logo:hover{background:var(--fv-ctl-hover)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-tb-logo:active{scale:.98}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-topbar-logo{display:block!important;width:120px!important;height:20px!important;max-width:none!important;flex:none;object-fit:contain;-webkit-user-drag:none;pointer-events:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-topbar-logo{width:96px!important;height:16px!important}
+/* Phone width and touch screens: the logo's pressable box is 44 px tall; a 2 px transparent border does it, so the
+   logo (96×16 / 120×20) and its hover ground (40 px) look the same. */
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-tb-logo{height:var(--fv-touch);border:2px solid transparent;background-clip:padding-box}
+@media(pointer:coarse){html body .fv-topbar.fv-topbar.fv-topbar>.fv-tb-logo{height:var(--fv-touch);border:2px solid transparent;background-clip:padding-box}}
+
+/* ── The tabs: one glass pill; a lighter capsule slides under the current tab ── */
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch{grid-column:2!important;grid-row:1!important;justify-self:center;position:relative;display:flex!important;
+  align-items:center;gap:0;box-sizing:border-box;width:auto!important;min-width:0;height:var(--fv-ctl-l);margin:0;padding:var(--fv-sp-4);
+  border:0;border-radius:var(--fv-rad-pill);background:rgb(var(--fv-tint) / var(--fv-a1));
+  box-shadow:inset 0 0 0 1px var(--fv-edge),inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{content:"";position:absolute;top:var(--fv-sp-4);bottom:var(--fv-sp-4);left:0;right:0;
+  border-radius:var(--fv-rad-pill);background:var(--fv-ctl-hover);box-shadow:inset 0 1px 0 var(--fv-edge-hi);pointer-events:none;
+  clip-path:inset(0 calc(100% - var(--fv-tb-r,0px)) 0 var(--fv-tb-l,0px) round var(--fv-rad-pill))}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch[data-fv-tb-ink]::before{transition:clip-path var(--fv-dur-2) var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button{position:relative;z-index:1;display:grid;grid-template-columns:auto;align-items:center;justify-items:center;
+  box-sizing:border-box;height:var(--fv-ctl);min-height:var(--fv-ctl);margin:0;padding:0 var(--fv-sp-16);border:0;border-radius:var(--fv-rad-pill);
+  background:transparent!important;box-shadow:none!important;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:500;line-height:var(--fv-ctl);white-space:nowrap;cursor:pointer;
+  transition:color var(--fv-dur-1) var(--fv-ease-out),scale 100ms var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button[hidden]{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button:hover{color:var(--fv-fg)}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button:active{scale:.97}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button[aria-pressed=true]{color:var(--fv-fg);font-weight:600}
+/* The bold label's width is reserved (view_navigation.css), so the current tab never changes the pill's width. */
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button>span,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button::after{grid-area:1/1}
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"])>.fv-view-switch>button{padding:0 var(--fv-sp-12)}
+/* Phone: only the current tab shows, as a picker with a chevron; pressing it lists the views. */
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch{height:var(--fv-touch);padding:0}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch::before{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button:not([aria-pressed=true]){display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]{height:var(--fv-touch);min-height:var(--fv-touch);grid-template-columns:auto 16px;column-gap:var(--fv-sp-4);
+  padding:0 var(--fv-sp-12) 0 var(--fv-sp-16);line-height:var(--fv-touch)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]::before{content:"";grid-area:1/2;width:16px;height:16px;background:currentColor;opacity:.7;
+  -webkit-mask:var(--fv-tb-chevron) center/16px 16px no-repeat;mask:var(--fv-tb-chevron) center/16px 16px no-repeat}
+
+/* ── The right side: status capsule, search, a rule, then the five links (text; icons when they do not fit) ── */
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-tb-right{grid-column:3!important;grid-row:1!important;justify-self:end;display:flex!important;flex-wrap:nowrap;align-items:center;
+  gap:var(--fv-sp-8);min-width:0;height:auto;margin:0;padding:0;container:none!important}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-links{display:flex;align-items:center;gap:0;flex:none}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-sep{display:block;width:1px;height:var(--fv-sp-16);flex:none;background:var(--fv-line2)}
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-sep{margin:0 calc(-1 * var(--fv-sp-4))}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-links .fv-lan{display:inline-flex;flex:none;position:relative;font:inherit}
+html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn){position:relative;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);
+  width:auto;min-width:0;height:var(--fv-ctl);min-height:var(--fv-ctl);margin:0;padding:0 var(--fv-sp-8);border:0;border-radius:var(--fv-rad-ctl);
+  background:transparent;box-shadow:none;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:400;line-height:1;white-space:nowrap;cursor:pointer;text-decoration:none;
+  transition:background-color var(--fv-dur-1) var(--fv-ease-out),color var(--fv-dur-1) var(--fv-ease-out),scale 100ms var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn):hover,html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn)[aria-expanded=true]{background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn):active{scale:.96}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-ctl);padding:0}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-menu{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ico::before{content:"";display:none;width:16px;height:16px;flex:none;background:currentColor;
+  -webkit-mask:var(--fv-tb-icon) center/16px 16px no-repeat;mask:var(--fv-tb-icon) center/16px 16px no-repeat}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn.fv-tb-ico::before{display:block}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-search svg{display:none}
+/* Dots: a new version, a phone link not yet seen */
+html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-version-dot,.fv-lan-dot){position:absolute;top:4px;right:2px;width:6px;height:6px;margin:0;border:0;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);box-sizing:border-box}
+/* fit 1–2: the links become 32 px icon buttons; their tips give the name */
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-link{width:var(--fv-ctl);padding:0;font-size:0;gap:0}
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-links .fv-tb-link::before{display:block}
+html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-links .fv-tb-lbl{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-link{width:var(--fv-ctl-s)}
+/* fit 3: one menu button for search and the links */
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right{gap:var(--fv-sp-4)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right>:is(.fv-tb-links,.fv-tb-search,.fv-tb-sep){display:none!important}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-menu{display:inline-flex;width:var(--fv-touch);height:var(--fv-touch);min-height:var(--fv-touch);border-radius:var(--fv-r-pill)}
+
+/* ── The status capsule: glass, a fixed width so a late or changing state never moves the bar ── */
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap{position:relative;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);flex:none;
+  width:auto;min-width:0;height:var(--fv-ctl-l);overflow:hidden;margin:0;padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-pill);
+  background:rgb(var(--fv-tint) / var(--fv-a1));box-shadow:inset 0 0 0 1px var(--fv-edge),inset 0 1px 0 var(--fv-edge-hi);color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:400;line-height:1;white-space:nowrap;cursor:pointer;
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);
+  transition:color var(--fv-dur-1) var(--fv-ease-out),background-color var(--fv-dur-1) var(--fv-ease-out),scale 100ms var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap:hover,html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap[aria-expanded=true]{color:var(--fv-fg);background:var(--fv-ctl-hover)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap:active{scale:.98}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap-txt{display:inline-flex;align-items:baseline;white-space:pre;font-variant-numeric:tabular-nums}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap b{font-weight:600;color:var(--fv-fg)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-num{display:inline-block;text-align:right;font-variant-numeric:tabular-nums}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-num.is-warn{color:var(--fv-warn)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-sepdot{color:var(--fv-fg3)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-warn,html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-warn b{color:var(--fv-warn)}
+/* The count: one quiet small number after the words (no filled badge). */
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-n,html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap .fv-tb-n.is-warn{min-width:0;height:auto;margin:0;padding:0;background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-1);font-weight:500;font-variant-numeric:tabular-nums}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:var(--fv-r-pill);background:var(--fv-ok,var(--fv-success,#3fb950));box-shadow:0 0 0 3px var(--fv-ok-soft,color-mix(in srgb,var(--fv-success,#3fb950) 22%,transparent))}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-dot:is(.is-warn,.is-off){background:var(--fv-warn);box-shadow:0 0 0 3px var(--fv-warn-soft)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-dot[hidden]{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ring{width:16px;height:16px;flex:none;rotate:-90deg}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ring circle{fill:none;stroke-width:2.4}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ring .bg{stroke:var(--fv-line2)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ring .fg{stroke:var(--fv-accent-ink);stroke-linecap:round;transition:stroke-dashoffset var(--fv-dur-3) var(--fv-ease-out)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-n{margin-right:calc(-1 * var(--fv-sp-4));display:inline-grid;place-items:center;box-sizing:border-box;min-width:20px;height:20px;padding:0 var(--fv-sp-4);border-radius:var(--fv-rad-pill);
+  background:var(--fv-ctl-hover);color:var(--fv-fg);font-size:var(--fv-fs-1);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-n.is-warn{background:var(--fv-warn-fill,#c42f35);color:#fff}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-n[hidden]{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-wide{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-cap .fv-tb-more{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-cap .fv-tb-n{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-cap.has-n::after{content:"";position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);box-shadow:0 0 0 2px rgb(var(--fv-solid2))}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-cap.is-warn.has-n::after{background:var(--fv-warn)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap{width:auto;min-width:var(--fv-touch);height:var(--fv-touch);padding:0 var(--fv-sp-12) 0 var(--fv-sp-8);gap:var(--fv-sp-4)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap:not([data-state=run],[data-state=dl],[data-state=wait]){width:var(--fv-touch);padding:0}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap :is(.fv-tb-wide,.fv-tb-n){display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap:not([data-state=run],[data-state=dl],[data-state=wait]) .fv-tb-cap-txt{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.has-n::after{content:"";position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);box-shadow:0 0 0 2px rgb(var(--fv-solid2))}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.is-warn.has-n::after{display:none}
+
+/* ── Menus from the bar (phone menu, view picker): glass, in the top layer, under their button ── */
+.fv-tb-pop{position:fixed;inset:auto;margin:0;box-sizing:border-box;min-width:220px;max-width:calc(100vw - 16px);padding:var(--fv-sp-8);display:none;flex-direction:column;align-items:stretch;gap:var(--fv-sp-2);
+  border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);color:var(--fv-fg);background:rgb(var(--fv-tint) / var(--fv-a3));
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);-webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  font:400 var(--fv-fs-3)/1.4 var(--fv-font);z-index:var(--fv-z-tip);-webkit-user-select:none;user-select:none}
+.fv-tb-pop:popover-open,.fv-tb-pop:not([popover]):not([hidden]){display:flex}
+.fv-tb-pop .fv-tb-links{display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-2)}
+.fv-tb-pop .fv-tb-links .fv-lan{display:flex;position:relative}
+.fv-tb-pop.fv-tb-pop :is(.fv-tb-link,.fv-tb-btn,.fv-tb-item){position:relative;box-sizing:border-box;display:flex;align-items:center;justify-content:flex-start;gap:var(--fv-sp-12);
+  width:100%;height:var(--fv-touch);min-height:var(--fv-touch);margin:0;padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-ctl);background:transparent;box-shadow:none;
+  color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-3);text-align:left;white-space:nowrap;cursor:pointer}
+.fv-tb-pop :is(.fv-tb-link,.fv-tb-btn,.fv-tb-item):hover,.fv-tb-pop .fv-tb-item[aria-checked=true]{background:var(--fv-ctl-hover)}
+.fv-tb-pop .fv-tb-item[aria-checked=true]{font-weight:600}
+.fv-tb-pop .fv-tb-ico::before{content:"";display:block;width:20px;height:20px;flex:none;background:currentColor;opacity:.8;
+  -webkit-mask:var(--fv-tb-icon) center/20px 20px no-repeat;mask:var(--fv-tb-icon) center/20px 20px no-repeat}
+.fv-tb-pop .fv-tb-search svg{display:none}
+.fv-tb-pop :is(.fv-version-dot,.fv-lan-dot){position:absolute;top:12px;left:28px;width:6px;height:6px;border:0;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink)}
+.fv-tb-pop :is(button,.fv-lan-trigger):focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:-2px}
+
+/* ── The status panel (work-stu NOTES "运行状态：唯一设计"): top right over every view, 16 from the right and under the
+   bar, 320 wide, down to 16 above the bottom; g2 glass, radius 20, padding 16. Tasks → this computer → notices → foot. ── */
+.fv-tb-pop.fv-tb-act:focus{outline:none}
+.fv-tb-pop.fv-tb-act{position:fixed;width:var(--fv-panel-w,320px);max-width:calc(100vw - 24px);padding:0;gap:0;overflow:hidden;border-radius:var(--fv-rad-dock,20px);font-size:var(--fv-fs-2);
+  background:rgb(var(--fv-tint) / var(--fv-a2));-webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%)}
+.fv-tb-act-h{display:flex;align-items:flex-start;gap:var(--fv-sp-8);padding:var(--fv-sp-16) var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-16);flex:none}
+.fv-tb-act-titles{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:var(--fv-sp-2);padding-top:var(--fv-sp-4)}
+.fv-tb-act-titles h2{flex:none}
+.fv-tb-act-h h2{margin:0;font-size:var(--fv-fs-3);line-height:24px;font-weight:600;color:var(--fv-fg)}
+/* The graphics card on its own second line, in full (it wraps rather than being cut). */
+.fv-tb-act-card{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3);white-space:normal;overflow-wrap:anywhere}
+.fv-tb-act-card[hidden]{display:none}
+.fv-tb-pop .fv-tb-act-x{display:grid;place-items:center;flex:none;width:var(--fv-ctl);height:var(--fv-ctl);margin:0;padding:0;border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg2);cursor:pointer}
+.fv-tb-pop .fv-tb-act-x::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-tb-icon) center/16px 16px no-repeat;mask:var(--fv-tb-icon) center/16px 16px no-repeat}
+.fv-tb-pop .fv-tb-act-x:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-tb-grow{flex:1}
+.fv-tb-act-b{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 var(--fv-sp-8) var(--fv-sp-8)}
+.fv-tb-act-sec[hidden]{display:none}
+.fv-tb-act-title{display:flex;align-items:flex-end;justify-content:space-between;height:var(--fv-sp-32);padding:0 var(--fv-sp-8) var(--fv-sp-4);box-sizing:border-box;font-size:var(--fv-fs-1);font-weight:600;color:var(--fv-fg3)}
+.fv-tb-act-empty,.fv-tb-act-note{margin:0;padding:var(--fv-sp-4) var(--fv-sp-8);font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-tb-act-note.is-quiet{color:var(--fv-fg3);padding-left:0}
+/* Task rows: thumbnail 48×27, title, "view · state", a 2 px progress line while it runs; stop on hover */
+.fv-tb-job{position:relative;display:flex;align-items:center;border-radius:var(--fv-rad-ctl)}
+.fv-tb-job:hover,.fv-tb-job:focus-within{background:var(--fv-ctl-hover)}
+.fv-tb-pop .fv-tb-job-go{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-start;gap:var(--fv-sp-12);min-height:var(--fv-touch);margin:0;padding:var(--fv-sp-8);border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg);font:inherit;text-align:left;cursor:pointer}
+.fv-tb-job-th{position:relative;flex:none;width:48px;height:27px;border-radius:var(--fv-r-sm);overflow:hidden;background:var(--fv-ctl-bg);display:grid;place-items:center}
+.fv-tb-job-th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.fv-tb-job-th>i{width:6px;height:6px;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink)}
+.fv-tb-job.is-wait .fv-tb-job-th{filter:saturate(.2);opacity:.8}.fv-tb-job.is-wait .fv-tb-job-th>i{background:var(--fv-fg3)}
+.fv-tb-job-tx{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-2);min-width:0;text-align:left}
+.fv-tb-job-line{display:flex;align-items:baseline;gap:var(--fv-sp-8);min-width:0}
+.fv-tb-job-line .fv-tb-job-t2{flex:1;min-width:0}
+.fv-tb-job-n{flex:none;margin-left:auto;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fv-tb-job-n.is-warn{color:var(--fv-warn)}
+.fv-tb-job-t1{font-size:var(--fv-fs-2);line-height:20px;font-weight:500;color:var(--fv-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-tb-job-t2{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.fv-tb-job-bar{position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);bottom:2px;height:2px;border-radius:var(--fv-r-xs);background:var(--fv-line2);overflow:hidden;pointer-events:none}
+.fv-tb-job-bar::after{content:"";position:absolute;inset:0;background:var(--fv-accent-ink);transform-origin:0 50%;transform:scaleX(var(--p,0));transition:transform var(--fv-dur-3) var(--fv-ease-out)}
+.fv-tb-pop .fv-tb-job-stop{flex:none;display:grid;place-items:center;width:var(--fv-ctl);height:var(--fv-ctl);margin:0 var(--fv-sp-4) 0 0;padding:0;border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-warn);cursor:pointer;opacity:0}
+.fv-tb-pop .fv-tb-job-stop::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-tb-icon) center/16px 16px no-repeat;mask:var(--fv-tb-icon) center/16px 16px no-repeat}
+.fv-tb-job:hover .fv-tb-job-stop,.fv-tb-job:focus-within .fv-tb-job-stop{opacity:1}
+.fv-tb-pop .fv-tb-job-stop:hover{background:var(--fv-warn-soft)}
+@media(hover:none){.fv-tb-pop .fv-tb-job-stop{opacity:1}}
+/* This computer: video memory in large figures, then meters with right-aligned values */
+.fv-tb-mem{display:flex;align-items:baseline;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) 0}
+.fv-tb-mem-v{font-size:var(--fv-fs-4);line-height:28px;font-weight:600;color:var(--fv-fg);font-variant-numeric:tabular-nums}
+.fv-tb-mem-u{font-size:var(--fv-fs-1);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+.fv-tb-bar{position:relative;display:block;height:4px;margin:var(--fv-sp-8) var(--fv-sp-8) 0;border-radius:var(--fv-r-xs);background:var(--fv-line2);overflow:hidden}
+.fv-tb-bar>i{position:absolute;inset:0;border-radius:inherit;background:var(--fv-accent-ink);transform-origin:0 50%;transform:scaleX(var(--p,0));transition:transform var(--fv-dur-3) var(--fv-ease-out)}
+.fv-tb-bar.is-warn>i{background:var(--fv-warn)}
+.fv-tb-meters{display:flex;flex-direction:column;margin-top:var(--fv-sp-8)}
+.fv-tb-meter{display:flex;align-items:center;justify-content:space-between;height:var(--fv-sp-24);padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);color:var(--fv-fg2)}
+.fv-tb-meter b{font-weight:600;color:var(--fv-fg);font-variant-numeric:tabular-nums}
+.fv-tb-meter.is-warn b{color:var(--fv-warn)}
+.fv-tb-act-notes{display:flex;flex-direction:column;gap:var(--fv-sp-2)}
+/* Foot: what runs, how many wait, Stop (confirmed in place) or Resume */
+.fv-tb-act-f{display:flex;flex-wrap:wrap;align-items:center;gap:var(--fv-sp-4);min-height:var(--fv-sp-48);padding:var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-8);box-sizing:border-box;flex:none;box-shadow:inset 0 1px 0 var(--fv-line)}
+.fv-tb-act-f[hidden]{display:none}
+.fv-tb-act-f.is-asking{flex-direction:column;align-items:stretch}
+.fv-tb-act-ask{margin:0;padding:var(--fv-sp-4) var(--fv-sp-8);font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg)}
+.fv-tb-act-row{display:flex;align-items:center;gap:var(--fv-sp-8);padding:var(--fv-sp-4) 0 0}
+.fv-tb-pop .fv-tb-act-stop{height:var(--fv-ctl);padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-warn);font:inherit;font-size:var(--fv-fs-2);font-weight:500;cursor:pointer}
+.fv-tb-pop .fv-tb-act-stop:hover{background:var(--fv-warn-soft)}
+.fv-tb-pop .fv-tb-act-btn{height:var(--fv-ctl);padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);cursor:pointer;white-space:nowrap}
+.fv-tb-pop .fv-tb-act-btn:hover{background:var(--fv-ctl-hover)}
+.fv-tb-pop .fv-tb-act-btn.is-armed{background:var(--fv-warn-fill,#c42f35);color:#fff}
+.fv-tb-pop .fv-tb-act-btn:disabled{opacity:.45;cursor:default}
+.fv-tb-pop :is(.fv-tb-act-x,.fv-tb-job-go,.fv-tb-job-stop,.fv-tb-act-stop,.fv-tb-act-btn):focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:-2px}
+:is(:root[data-glass=solid],:root.lite) .fv-tb-pop.fv-tb-act{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid2))}
+@media(prefers-reduced-transparency:reduce){.fv-tb-pop.fv-tb-act{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid2))}}
+
+/* Phone sheets (TOPBAR §3b): under the bar, 12 px from both edges, radius 20, padding 8, 44 px rows with 18 px icons
+   and 16 px words; the app menu starts with a search field; Version says "Update" when there is one. */
+.fv-tb-pop.is-sheet{min-width:0;width:auto;max-width:none;padding:var(--fv-sp-8);border-radius:var(--fv-rad-dock,20px)}
+.fv-tb-pop.is-sheet .fv-tb-ico::before{width:18px;height:18px;-webkit-mask-size:18px 18px;mask-size:18px 18px}
+.fv-tb-pop.fv-tb-pop .fv-tb-search{margin-bottom:var(--fv-sp-4);background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg3)}
+.fv-tb-pop.fv-tb-pop .fv-tb-search::after{content:attr(data-fv-field)}
+.fv-tb-pop.fv-tb-pop .fv-tb-search:hover{background:var(--fv-ctl-hover)}
+.fv-tb-pop .fv-version-info:has(.fv-version-dot)::after{content:attr(data-fv-new);margin-left:auto;padding:0 var(--fv-sp-8);height:20px;line-height:20px;border-radius:var(--fv-rad-pill);background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-size:var(--fv-fs-1);font-weight:600}
+.fv-tb-pop .fv-version-info:has(.fv-version-dot) .fv-version-dot{display:none}
+/* Menus come in with a fade and a 4 px rise, 200 ms, eased out; at once with reduced motion. */
+@keyframes fv-tb-pop-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.fv-tb-pop:popover-open{animation:fv-tb-pop-in var(--fv-dur-2) var(--fv-ease-out)}
+@media(prefers-reduced-motion:reduce){.fv-tb-pop:popover-open{animation:none}}
+
+/* The one-time hint inside the bar, right of the capsule and over the bar's own entries, pointing at the capsule. */
+html body .fv-topbar.fv-topbar.fv-topbar.fv-tb-hinting>.fv-tb-right>:not(.fv-tb-cap){visibility:hidden}
+.fv-tb-hint{position:fixed;inset:auto;margin:0;display:none;align-items:center;gap:var(--fv-sp-8);box-sizing:border-box;height:var(--fv-ctl-l);padding:0 var(--fv-sp-4) 0 var(--fv-sp-12);
+  border:0;border-radius:var(--fv-rad-pill);background:rgb(var(--fv-tint) / var(--fv-a3));box-shadow:inset 0 0 0 1px var(--fv-edge),inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  color:var(--fv-fg);font:500 var(--fv-fs-2)/1 var(--fv-font);white-space:nowrap;z-index:var(--fv-z-tip);-webkit-user-select:none;user-select:none}
+.fv-tb-hint:popover-open,.fv-tb-hint:not([popover]){display:flex}
+.fv-tb-hint::before{content:"";position:absolute;left:-4px;top:50%;width:8px;height:8px;margin-top:-4px;rotate:45deg;background:inherit;box-shadow:-1px 1px 0 0 var(--fv-edge)}
+.fv-tb-hint-dot{width:8px;height:8px;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink)}
+.fv-tb-hint .fv-tb-hint-ok{height:var(--fv-ctl);padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-accent-ink);font:inherit;cursor:pointer}
+.fv-tb-hint .fv-tb-hint-ok:hover{background:var(--fv-ctl-hover)}
+.fv-tb-hint .fv-tb-hint-ok:focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:-2px}
+@media(prefers-reduced-motion:no-preference){.fv-tb-hint:popover-open{animation:fv-tb-pop-in var(--fv-dur-2) var(--fv-ease-out)}}
+:is(:root[data-glass=solid],:root.lite) .fv-tb-hint{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-tb-hint{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+
+/* ── Material fallbacks: solid layers when glass is off, unsupported, or transparency is reduced ── */
+:is(:root[data-glass=solid],:root.lite) body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,:is(:root[data-glass=solid],:root.lite) body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid1))}
+:is(:root[data-glass=solid],:root.lite) .fv-tb-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid1))}
+  .fv-tb-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap{background:rgb(var(--fv-solid1))}
+  .fv-tb-pop{background:rgb(var(--fv-solid3))}}
+/* A finger needs 44 px */
+@media(pointer:coarse){
+  html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn,.fv-tb-cap){height:var(--fv-touch);min-height:var(--fv-touch)}
+  html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-touch)}}
+@media(prefers-reduced-motion:reduce){
+  html body .fv-topbar.fv-topbar.fv-topbar *,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{transition:none!important}
+  html body .fv-topbar.fv-topbar.fv-topbar :is(button,.fv-lan-trigger):active{scale:none}}

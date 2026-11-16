@@ -1,0 +1,58 @@
+/* One focus ring for every FreeVideo control (a11y.js loads this sheet).
+   Shown on keyboard focus (:focus-visible), and on typing fields whenever they hold the caret. Accent colour, 2 px, 2 px
+   away from the control, following its corners. It is drawn inside the control where an ancestor would cut it off
+   (a11y.js sets data-fv-ring=inset), and for typing fields, menu rows and options, which sit flush in their containers.
+   The scope is FreeVideo's own surfaces (an fv- or sgf- class, or data-fv-tip-scope), so ComfyUI keeps its own rings. */
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope])
+  :is(a[href],button,input:not([type=hidden]),select,textarea,summary,video[controls],audio[controls],[tabindex]:not([tabindex="-1"]),[role=button],[role=tab],[role=switch],[role=checkbox],
+      [role=radio],[role=slider],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],[role=option],[role=link],[contenteditable=""],[contenteditable=true]):focus-visible,
+:where(body) :is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"]):is(a[href],button,input:not([type=hidden]),select,textarea,summary,[tabindex]:not([tabindex="-1"]),
+      [role=button],[role=tab],[role=switch],[role=checkbox],[role=radio],[role=slider],[role=menuitem],[role=menuitemradio],[role=option],[role=link]):focus-visible{
+  outline:2px solid var(--fv-focus,var(--fv-accent,#4f8cff))!important;outline-offset:2px!important}
+
+/* Flush rows and typing fields: the ring sits on the edge, inside. */
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope])
+  :is(input:not([type=button],[type=checkbox],[type=radio],[type=range],[type=submit],[type=reset],[type=file],[type=hidden]),textarea,[contenteditable=""],[contenteditable=true],
+      [role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],[role=option],.fv-select-item):focus-visible,
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) [data-fv-ring=inset]:focus-visible{
+  outline-offset:-2px!important}
+
+/* A switch drawn over a checkbox nobody sees: the ring goes around what you see (a11y.js marks the label). */
+:where(body [class^="fv-"],body [class*=" fv-"]) label[data-fv-ring-host]{
+  outline:2px solid var(--fv-focus,var(--fv-accent,#4f8cff))!important;outline-offset:2px!important;border-radius:var(--fv-rad-ctl,8px)}
+
+/* Big regions that take focus for the keyboard (a timeline, a list, a picture) show the ring inside their edge. */
+:where(body [class^="fv-"],body [class*=" fv-"]) :is(:is([role=region],[role=grid],[role=listbox],[role=list],[role=tabpanel],video,canvas)[tabindex]:not([tabindex="-1"]),video[controls]):focus-visible{
+  outline-offset:-2px!important}
+
+/* Video and sound with built-in controls, reached by Tab (a11y.js marks them; their own controls take the focus). */
+:where(body [class^="fv-"],body [class*=" fv-"]) :is(video,audio)[data-fv-kbd]{outline:2px solid var(--fv-focus,var(--fv-accent,#4f8cff))!important;outline-offset:-2px!important}
+
+/* FreeVideo's node view: the graph canvas, reached by Tab, shows the ring inside its edge. */
+html[data-fv-shell=nodes] canvas[tabindex]:not([tabindex="-1"]):focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent,#4f8cff))!important;outline-offset:-2px!important}
+
+/* A view dialog takes focus itself while it opens; it never wears the ring. */
+:is(dialog.fv-studio,[data-fv-surface=view]):focus-visible{outline:none!important}
+
+/* Windows high contrast: the system colour, always visible. */
+@media (forced-colors:active){
+  :where(body [class^="fv-"],body [class*=" fv-"]) :focus-visible{outline:2px solid Highlight!important}
+}
+
+/* Touch targets on a phone-width window: at least 44 × 44 px (the controls that were smaller at 400 px wide).
+   Most grow for real; the prompt-enhancement switch and the playhead knob keep their drawing and their place and
+   get a transparent rim (border, clipped background, negative margin) that makes the box itself 44 px. */
+@media (max-width:720px){
+  .fv-studio :is(.fvs-library-button,.fv-prompt-tools .fv-ed-expand,.fv-iv-stbar-side .fv-iv-icon-btn){min-width:44px!important;min-height:44px!important}
+  .fv-studio :is(.fvs-console .fvs-chip,.fv-actions .fv-action,.fv-actions summary.fv-action){min-width:44px!important;min-height:44px!important}
+  .fv-studio :is(.fv-iv-sec-toggle,.fv-iv-mode .fv-iv-btn,.fv-ed-add-audio,.fv-agent-connect-actions .fv-primary){min-height:44px!important}
+  .fv-studio .fv-iv-mode .fv-iv-btn{min-width:44px!important}
+  .fv-studio .fv-ed-track-zoom>.fv-ed-fit{min-width:44px!important;min-height:44px!important}
+  .fv-studio .fv-enhance-toggle input:is([role=switch],[type=checkbox]){box-sizing:content-box!important;border-style:solid!important;border-color:transparent!important;
+    border-width:12px 6px!important;margin:-12px -6px!important;background-clip:padding-box!important;border-radius:var(--fv-r-lg) / var(--fv-r-lg)!important}
+  .fv-studio .fv-ed-playhead-handle{box-sizing:content-box!important;border-style:solid!important;border-color:transparent!important;border-width:0 8px 16px!important;
+    margin:0 0 0 -8px!important;background-clip:padding-box!important}
+  /* The rows those controls sit in make room for them, so nothing grows into its neighbours. */
+  .fv-studio .fv-iv-sec-head{height:auto!important;min-height:44px!important}
+  .fv-studio .fv-iv-stbar{height:auto!important;min-height:56px!important}
+}

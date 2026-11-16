@@ -23,9 +23,12 @@ export function createMonitor(t, api) {
     const label = t('System status', '运行状态');
     trigger.type = 'button'; trigger.setAttribute('aria-label', label); trigger.setAttribute('aria-expanded', 'false'); trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.append(svg('M3 12h4l3-8 4 16 3-8h4'), text);
+    trigger.dataset.fvTipName = label; trigger.dataset.fvTipUse = t('Graphics memory, heat, and what is running', '看显存、温度和正在跑的任务');
     panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', label);
     const name = el('strong', 'fv-monitor-name'), rows = el('div', 'fv-monitor-rows'), stop = el('button', 'fv-monitor-stop', t('Stop now', '立即停止'));
     stop.type = 'button';
+    stop.dataset.fvTipName = t('Stop now', '立即停止'); stop.dataset.fvTipUse = t('Stop the running job; asks once more first', '停止正在运行的任务，会再确认一次');
+    stop.dataset.fvTipWhy = t('Nothing is running', '现在没有任务在运行');
     const stopped = el('div', 'fv-monitor-stopped'), stoppedText = el('span', '', t('Stopped. The queue is paused.', '已停止，队列已暂停。')), resume = el('button', 'fv-monitor-resume', t('Resume queue', '继续队列'));
     resume.type = 'button'; stopped.append(stoppedText, resume); stopped.hidden = true;
     panel.append(name, rows, stopped, stop); element.append(trigger, panel); element.hidden = true;
@@ -42,8 +45,11 @@ export function createMonitor(t, api) {
         const memory = state.memory_total ? percent() : null, hot = state.temperature >= temperatureLimit, full = memory != null && memory >= memoryLimit;
         text.replaceChildren();
         const parts = [];
+        const waiting = !state.memory_total && state.temperature == null && !state.read;
+        if (waiting) parts.push([`${t('VRAM', '显存')} `, '—', false], ['', '— °C', false]);
         if (memory != null) parts.push([`${t('VRAM', '显存')} `, `${memory}%`, full]);
         if (state.temperature != null) parts.push(['', `${state.temperature} °C`, hot]);
+        text.dataset.waiting = String(waiting);
         parts.forEach(([label, value, warn], index) => {
             if (index) text.append(document.createTextNode(' · '));
             if (label) text.append(document.createTextNode(label));
@@ -67,7 +73,7 @@ export function createMonitor(t, api) {
         reading = true;
         try {
             const response = await api.fetchApi('/freevideo/monitor', {signal: AbortSignal.timeout(10000)});
-            if (response.ok && !disposed && active) { state = await response.json(); render(); }
+            if (response.ok && !disposed && active) { state = {...await response.json(), read: true}; render(); }
         } catch {}
         finally { reading = false; if (!disposed && active) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
     }
@@ -102,7 +108,7 @@ export function createMonitor(t, api) {
         const wanted = monitorShown();
         if (wanted === active) return;
         active = wanted; element.hidden = !wanted;
-        if (wanted) read(); else { clearTimeout(timer); close(); state = {}; }
+        if (wanted) { render(); read(); } else { clearTimeout(timer); close(); state = {}; }
     }
     const stopWatching = onMonitorShown(apply); apply();
     return {element, dismiss, dispose() { disposed = true; active = false; clearTimeout(timer); revert(); stopWatching(); document.removeEventListener('pointerdown', outside, true); window.removeEventListener('resize', position); }};

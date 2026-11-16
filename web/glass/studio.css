@@ -1,0 +1,764 @@
+/* Creative panel, glass layer (studio.js loads it last). Only dialog.fv-studio.fv-create: the stage in the middle,
+   a glass console at the bottom with the settings in trays above it, the history as a rail at the right edge.
+   Tokens come from theme.css (--fv-fs-*, --fv-sp-*, --fv-rad-*, glass); the panel's older names are mapped onto them
+   here, so every control inside follows the light and dark themes. The root box and the top bar are the shell's. */
+
+.fv-studio.fv-create{
+  --fv-bg:var(--fv-shell-bg);--fv-canvas:rgb(var(--fv-solid1));--fv-card:var(--fv-ctl-bg);--fv-raised:var(--fv-ctl-bg);--fv-hover:var(--fv-ctl-hover);
+  --fv-border:var(--fv-line2);--fv-sheen:var(--fv-line2);--fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg3);--fv-disabled:var(--fv-fg3);
+  --fv-accent:var(--fv-accent-ink);--fv-accent-hover:var(--fv-accent-ink);--fv-selected:var(--fv-accent-soft);--fv-danger:var(--fv-warn);
+  --fv-micro:var(--fv-fs-1);--fv-body:var(--fv-fs-2);--fv-strong:var(--fv-fs-3);--fv-section:var(--fv-fs-4);
+  --fv-h-sm:var(--fv-ctl-s);--fv-h:var(--fv-ctl);--fv-h-lg:var(--fv-ctl-l);
+  /* The dock is never narrower on a wide window than at 1024 (100% there, 992 px), so its chip row stays one line. */
+  --fvs-rail:66px;--fvs-rail-wide:290px;--fvs-edge:var(--fv-sp-16);--fvs-dock-w:992px;
+  --fvs-pic-sh:0 2px 6px rgb(0 0 0 / .35),0 40px 90px -20px rgb(0 0 0 / .7);
+  font-size:var(--fv-fs-2);color:var(--fv-fg);
+}
+:root[data-theme=light] .fv-studio.fv-create{--fvs-pic-sh:0 2px 6px rgb(30 40 60 / .1),0 30px 60px -30px rgb(30 40 60 / .3)}
+.fv-studio.fv-create[open]{display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Frame: the stage takes the window above the console; the console and its trays sit at the bottom ── */
+.fv-studio.fv-create .fv-body{position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;flex:1 1 auto;min-height:0;background:none}
+.fv-studio.fv-create .fv-body>.fv-preview-column{grid-row:1;grid-column:1}
+.fv-studio.fv-create .fv-body>.fv-controls{grid-row:2;grid-column:1;z-index:5}
+
+/* ── Stage column ── */
+.fv-studio.fv-create .fv-preview-column{display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-8);min-height:0;overflow:auto;
+  padding:var(--fv-sp-20) calc(var(--fvs-rail) + 2 * var(--fvs-edge)) var(--fv-sp-8);background:none;scrollbar-width:thin;scrollbar-gutter:stable both-edges;
+  transition:padding var(--fv-dur-3) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-body[data-recent=true] .fv-preview-column{padding-inline:calc(var(--fvs-rail-wide) + 2 * var(--fvs-edge))}
+.fv-studio.fv-create .fv-preview-column>*{flex-shrink:0}
+.fv-studio.fv-create .fv-preview-head{display:none}
+.fv-studio.fv-create .fv-preview-space{flex:0 0 auto;min-height:0;max-height:none;margin-top:0;display:grid;place-items:center;
+  transition:height var(--fv-dur-3) var(--fv-ease-out),margin-top var(--fv-dur-3) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-preview-end{display:none}
+.fv-studio.fv-create .fv-stage{border:0;border-radius:var(--fv-rad-pic);background:rgb(var(--fv-solid1));box-shadow:var(--fvs-pic-sh);outline:1px solid var(--fv-line);outline-offset:-1px;
+  transition:width var(--fv-dur-3) var(--fv-ease-out),height var(--fv-dur-3) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-stage[data-empty=true]{background:var(--fv-ctl-bg);outline:1px dashed var(--fv-line2);box-shadow:none}
+.fv-studio.fv-create .fv-stage video,.fv-studio.fv-create .fv-stage img{background:rgb(var(--fv-solid1))}
+.fv-studio.fv-create .fv-body.fv-recent-resizing .fv-stage,.fv-studio.fv-create .fv-body.fv-recent-resizing .fv-preview-space{transition:none}
+.fv-studio.fv-create .fv-preview-badge{top:var(--fv-sp-12);left:var(--fv-sp-12);padding:var(--fv-sp-2) var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill);
+  color:#fff;background:rgb(10 12 16 / .62);border:0;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+
+/* The bar under the picture: details, what it is and the history on the left; one primary action, the next
+   steps and More on the right. A report card opens as its own row below, never over the picture. */
+.fv-studio.fv-create .fvs-stagebar{display:flex;flex-wrap:wrap;align-items:center;column-gap:var(--fv-sp-8);min-height:var(--fv-ctl-l);font-size:var(--fv-fs-2);
+  align-self:center;width:max(min(100%,560px),min(100%,var(--fvs-stage-w,100%)));container-type:inline-size}
+/* A narrow bar keeps every action and drops the words of the quiet ones (their names stay in the hover card), so the
+   bar stays one row under the picture. */
+@container (max-width:920px){
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-action-icon):not(.fv-reuse-done):not(.fv-more-item){width:var(--fv-ctl);padding:0}
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-action-icon):not(.fv-reuse-done):not(.fv-more-item)>span:last-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+.fvs-stagebar-start{display:flex;align-items:center;gap:var(--fv-sp-8);flex:1 1 auto;min-width:0;height:var(--fv-ctl-l)}
+/* Wider windows: the left side takes what the actions leave (it never pushes them to a second row); its words shorten
+   instead. Phones keep the actions on their own second row. */
+@media(min-width:761px){.fvs-stagebar-start{flex:1 1 0}}
+.fvs-stagebar-end{display:contents}
+.fv-studio.fv-create .fvs-stagebar .fv-result-links{display:contents}
+.fv-studio.fv-create .fvs-stagebar .fv-actions{flex:none;margin-left:auto;gap:var(--fv-sp-4);flex-wrap:nowrap;justify-content:flex-end}
+.fv-studio.fv-create .fvs-stagebar .fv-report-tip{order:3;flex:1 0 100%}
+.fvs-summary{display:flex;align-items:baseline;gap:var(--fv-sp-8);min-width:0;overflow:hidden;white-space:nowrap}
+/* Two levels: the work's name in the main text colour, the facts quieter and smaller with tabular figures. */
+.fvs-summary-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fv-fg);font-size:var(--fv-fs-2);line-height:20px;font-weight:500}
+.fvs-summary-meta{flex:0 0 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fv-fg3);font-size:var(--fv-fs-1);line-height:16px;font-weight:400;font-variant-numeric:tabular-nums}
+.fvs-summary-name{min-width:min(6em,100%)}
+.fvs-summary-meta[data-tight]{flex-shrink:1}
+.fvs-summary-part+.fvs-summary-part::before{content:"\00a0·\00a0"}
+.fvs-summary-part[hidden]{display:none}
+/* A narrow bar drops the level block whole first; what still does not fit ends in an ellipsis, never a hard cut. */
+@container (max-width:640px){.fvs-summary-part[data-part=level]{display:none}}
+@container (max-width:560px){.fvs-stagebar .fvs-summary-meta{display:none}}
+.fvs-summary>[hidden]{display:none}
+.fvs-history{display:inline-flex;align-items:center;gap:var(--fv-sp-2);flex:none;color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+.fvs-history[hidden]{display:none}
+.fvs-history-place{min-width:44px;text-align:center;font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-icon-button{display:inline-grid;place-items:center;flex:none;width:var(--fv-ctl);height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0;border:0;border-radius:var(--fv-rad-pill);
+  background:transparent;color:var(--fv-fg2);cursor:pointer;list-style:none;transition:background-color var(--fv-dur-1) var(--fv-ease-out),color var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-icon-button::-webkit-details-marker{display:none}
+.fv-studio.fv-create .fvs-icon-button:hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-icon-button:active:not(:disabled){background:var(--fv-ctl-hover);transform:scale(.97)}
+.fv-studio.fv-create .fvs-icon-button:disabled{opacity:.35;cursor:default}
+.fvs-info{position:relative;flex:none}
+.fvs-info>summary[data-note=true]::after{content:'';position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);width:6px;height:6px;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink)}
+.fvs-info[open]>summary{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fvs-info-panel{position:absolute;left:0;bottom:calc(100% + var(--fv-sp-8));z-index:6;width:min(400px,calc(100vw - 32px));max-height:min(60vh,480px);overflow:auto;
+  display:grid;gap:var(--fv-sp-12);padding:var(--fv-sp-16);border-radius:var(--fv-rad-pop);text-align:left;
+  background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);
+  animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+.fvs-info-panel>[hidden]{display:none!important}
+/* Closed, the details are not laid out at all (nothing of them can be measured or hit under the bar). */
+.fvs-info:not([open])>.fvs-info-panel{display:none}
+.fv-studio.fv-create .fvs-info-panel .fv-stats{animation:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--fv-sp-8);margin:0;border:0;background:none;border-radius:0;text-align:left}
+.fv-studio.fv-create .fvs-info-panel .fv-stat{padding:var(--fv-sp-8) var(--fv-sp-12);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-info-panel .fv-stat strong{font-size:var(--fv-fs-3);font-weight:600}
+.fv-studio.fv-create .fvs-info-panel .fv-stat span{margin-top:var(--fv-sp-2);font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-info-panel .fv-budget{margin:0;text-align:left;font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-info-panel .fv-note{margin:0;text-align:left;font-size:var(--fv-fs-1);line-height:1.6;color:var(--fv-fg2);white-space:pre-line}
+.fvs-info-empty{margin:0;color:var(--fv-fg3);font-size:var(--fv-fs-1)}
+
+/* Result actions in the bar: download is the one filled button; the rest are quiet. */
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action{height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-12);gap:var(--fv-sp-8);border:0;border-radius:var(--fv-rad-pill);
+  background:transparent;color:var(--fv-fg2);font:500 var(--fv-fs-2)/1 inherit;font-family:inherit;transition:background-color var(--fv-dur-1) var(--fv-ease-out),color var(--fv-dur-1) var(--fv-ease-out),transform var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action:active:not(:disabled){transform:scale(.97)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary{padding:0 var(--fv-sp-16);background:var(--fv-accent-fill);color:#fff;font-weight:600;box-shadow:inset 0 1px 0 rgb(255 255 255 / .2)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary:hover{background:#1078df;color:#fff}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon{width:var(--fv-ctl);padding:0}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon:not([data-state])>span:last-child:not(.fv-icon){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon[data-state]{width:auto;padding:0 var(--fv-sp-12)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-more[open]>summary{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fv-actions .fv-menu{border-radius:var(--fv-rad-pop);padding:var(--fv-sp-4);background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-actions .fv-more-menu{min-width:200px;display:grid;gap:var(--fv-sp-2)}
+.fv-studio.fv-create .fv-actions .fv-more-menu .fv-action{justify-content:flex-start;width:100%;border-radius:var(--fv-rad-ctl);height:var(--fv-ctl);color:var(--fv-fg)}
+
+/* The status line under the picture: one line kept free, so a message never pushes the picture. */
+.fv-studio.fv-create .fv-status{min-height:24px;line-height:24px;text-align:center;font-size:var(--fv-fs-1);color:var(--fv-fg3);align-self:center;width:min(100%,max(560px,var(--fvs-stage-w,100%)))}
+.fv-studio.fv-create .fv-status:empty{display:block}
+.fv-studio.fv-create .fv-status[data-error=true]{color:var(--fv-warn)}
+.fv-studio.fv-create .fv-status>.fv-issue-button{display:inline-flex;margin:0 0 0 var(--fv-sp-8);vertical-align:middle;min-height:var(--fv-ctl-s);height:var(--fv-ctl-s)}
+.fv-studio.fv-create .fv-reuse-result{font-size:var(--fv-fs-1);gap:var(--fv-sp-8)}
+.fv-studio.fv-create :is(.fv-prewarm,.fv-budget){font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fv-preview-column>.fv-failure,.fv-studio.fv-create .fv-preview-column>.fv-chain-parts{margin-top:var(--fv-sp-4)}
+.fv-studio.fv-create .fv-chain-parts{margin-top:0}
+
+/* Running: the queue's buttons take the place of the result actions in the same bar. */
+.fv-studio.fv-create .fvs-stagebar .fv-queue-actions{position:relative;flex:none;margin:0 0 0 auto;gap:var(--fv-sp-4);flex-wrap:nowrap}
+.fv-studio.fv-create .fvs-stagebar .fv-queue-actions:not([hidden])~.fv-result-links .fv-actions{margin-left:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-stagebar .fv-queue-actions button,.fv-studio.fv-create .fvs-stagebar .fv-queue-details>summary{height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-12);
+  border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-2);display:inline-flex;align-items:center}
+.fv-studio.fv-create .fvs-stagebar .fv-queue-actions button:hover,.fv-studio.fv-create .fvs-stagebar .fv-queue-details>summary:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-stagebar .fv-queue-list{bottom:calc(100% + var(--fv-sp-8));left:auto;right:0;width:360px;border-radius:var(--fv-rad-pop);
+  background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%)}
+
+/* ── Dock: trays over the console, centred under the picture ── */
+.fv-studio.fv-create .fv-controls{position:relative;justify-self:center;width:min(var(--fvs-console-w,var(--fvs-dock-w)),calc(100% - 2 * var(--fvs-edge)));display:flex;flex-direction:column;gap:var(--fv-sp-8);
+  min-height:0;overflow:visible;padding:var(--fv-sp-24) 0 var(--fv-sp-16);border:0;background:none;scrollbar-width:auto}
+.fvs-trays{display:contents}
+.fv-studio.fv-create .fvs-tray{margin:0;padding:0;border:0}
+.fv-studio.fv-create .fvs-tray:not([open]){display:none}
+.fv-studio.fv-create .fvs-tray[open]{display:block;position:absolute;left:0;bottom:100%;z-index:6;width:100%;max-height:min(400px,35vh);overflow:auto;overscroll-behavior:contain;padding:0 var(--fv-sp-20) var(--fv-sp-20);border-radius:var(--fv-rad-dock);
+  background:rgb(var(--fv-tint) / var(--fv-a2));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  scrollbar-width:thin;animation:fvs-tray-in var(--fv-dur-2) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-tray>summary{display:none}
+.fv-studio.fv-create .fvs-tray>.fv-expand{padding-top:0}
+.fv-studio.fv-create .fvs-tray>section.fv-section,.fv-studio.fv-create .fvs-tray .fv-sampling-settings{margin:0}
+.fv-studio.fv-create .fvs-tray>section.fv-section>.fv-label{display:none}
+.fvs-tray-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:var(--fv-sp-8);min-height:52px;margin:0 calc(-1 * var(--fv-sp-20)) var(--fv-sp-4);padding:0 var(--fv-sp-12) 0 var(--fv-sp-20);
+  background:linear-gradient(rgb(var(--fv-tint) / var(--fv-a2)) 70%,transparent)}
+.fvs-tray-title{flex:1;display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-3);font-weight:600;color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray-close{display:inline-grid;place-items:center;width:var(--fv-ctl);height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0;border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray-close:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray .fv-canvas-lock{margin:0}
+
+/* The console itself: prompt on top, chips below, Generate at the right. */
+.fv-studio.fv-create .fvs-console{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:var(--fv-sp-16);row-gap:var(--fv-sp-4);
+  padding:var(--fv-sp-12) var(--fv-sp-12) var(--fv-sp-12) var(--fv-sp-16);border-radius:var(--fv-rad-console);
+  background:rgb(var(--fv-tint) / var(--fv-a1));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);
+  transition:border-color var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-console:focus-within{border-color:var(--fv-accent-line);transition:none}
+.fvs-console-prompt{grid-column:1;grid-row:1;min-width:0}
+.fv-studio.fv-create .fvs-chips{grid-column:1;grid-row:2}
+.fv-studio.fv-create .fvs-console>.fv-runbar{grid-column:2;grid-row:1/span 2}
+/* A fixed slot above the console for the one-line notes (downloads first, other programs, enhancement progress):
+   it floats in the gap between the picture's bar and the console, so a note never changes the console's height. */
+.fvs-console-status{position:absolute;left:var(--fv-sp-20);right:var(--fv-sp-20);bottom:calc(100% + var(--fv-sp-4));height:20px;display:flex;align-items:center;gap:var(--fv-sp-12);
+  overflow:hidden;font-size:var(--fv-fs-1);line-height:20px;color:var(--fv-fg3);pointer-events:none}
+.fvs-console-status>*{pointer-events:auto;min-width:0;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fvs-console-status>[hidden]{display:none!important}
+.fvs-console-status .fv-request-assets{display:flex;gap:var(--fv-sp-12);font-size:var(--fv-fs-1);line-height:20px}
+.fvs-console-status .fv-request-assets>div{overflow:hidden;text-overflow:ellipsis}
+.fvs-console-status .fv-add-video-note{text-align:left;font-size:var(--fv-fs-1)}
+.fvs-console-status .fv-enhance-status{display:flex!important;align-items:center;gap:var(--fv-sp-8);padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:20px}
+.fvs-console-status .fv-enhance-status:not([data-state=progress]):not([data-state=error]):not([data-state=note]){display:none!important}
+.fvs-console-status .fv-enhance-status[data-state=error]{color:var(--fv-warn)}
+.fvs-console-status .fv-enhance-meter{width:72px;flex:none;margin:0}
+.fvs-console-status .fv-enhance-status .fv-issue-button{margin:0;min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
+
+/* Prompt in the console: three lines, the tools at its right; enhancement on its own row below the text. */
+.fv-studio.fv-create .fvs-console-prompt>.fv-section{margin:0}
+.fv-studio.fv-create .fvs-console-prompt .fv-label{display:none}
+.fv-studio.fv-create .fvs-console .fv-enhance{display:flex;flex-direction:column;border:0;border-radius:0;background:none;overflow:visible;font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-console .fv-enhance>.fv-enhance-bar{order:2;min-height:var(--fv-ctl);padding:0;border:0;gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-console .fv-enhance>:is(.fv-prompt-editor,textarea){order:1}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle{font-size:var(--fv-fs-2);color:var(--fv-fg2);gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input{width:32px;height:20px;min-height:20px;border-radius:var(--fv-rad-pill);background:var(--fv-line2)}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input::before{top:2px;left:2px;width:16px;height:16px;box-shadow:0 1px 2px rgb(0 0 0 / .25)}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input:checked{background:var(--fv-accent-fill)}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input:checked::before{transform:translateX(12px)}
+.fv-studio.fv-create .fvs-console .fv-enhance-tabs{background:var(--fv-ctl-bg);border-radius:var(--fv-rad-pill);padding:var(--fv-sp-2)}
+.fv-studio.fv-create .fvs-console .fv-enhance-tabs button{min-height:24px;padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-console .fv-enhance-tabs button[aria-pressed=true]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-console .fv-enhance-bar>.fv-quiet{min-height:var(--fv-ctl-s);height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill)}
+.fv-studio.fv-create .fvs-console .fv-enhance-bar>.fv-enhance-redo{width:var(--fv-ctl-s)}
+/* The consent to download the rewrite model opens above the console, without pushing anything. */
+.fv-studio.fv-create .fvs-console .fv-enhance-install{position:absolute;left:0;right:0;bottom:calc(100% + var(--fv-sp-8));z-index:7;padding:var(--fv-sp-16);border-radius:var(--fv-rad-pop);font-size:var(--fv-fs-2);line-height:1.6;color:var(--fv-fg2);
+  background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-console .fv-enhance-install-actions :is(button,a){min-height:var(--fv-ctl);font-size:var(--fv-fs-2);padding:0 var(--fv-sp-12)}
+.fv-studio.fv-create .fvs-console .fv-prompt-editor{position:relative;display:flex;flex-direction:row;align-items:flex-start;gap:var(--fv-sp-8);height:auto;min-height:0;max-height:none;resize:none;overflow:visible;background:none}
+.fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{display:block;flex:1 1 auto;width:auto;min-width:0;height:68px;min-height:68px;max-height:none;padding:var(--fv-sp-4) 0;resize:none;border:0;border-radius:0;
+  background:transparent;color:var(--fv-fg);font-size:var(--fv-fs-2);line-height:20px;box-shadow:none;outline:none;overflow:auto;scrollbar-width:thin}
+.fv-studio.fv-create .fvs-console .fv-prompt-editor textarea::placeholder{color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static;flex:none;height:var(--fv-ctl);padding:0;gap:var(--fv-sp-4);display:flex;align-items:center}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>:is(button,a){display:inline-grid;place-items:center;width:var(--fv-ctl);height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0;border:0;border-radius:var(--fv-rad-pill);
+  background:transparent;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>:is(button,a):hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools .fv-ed-expand{position:static;right:auto;bottom:auto}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools .fv-ed-expand svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{width:auto;margin:0;padding:0 var(--fv-sp-8);color:var(--fv-warn);font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>[hidden]{display:none}
+
+/* Chips: each opens its tray; the badge counts what is in it. */
+.fv-studio.fv-create .fvs-chips{display:flex;flex-wrap:wrap;align-items:center;gap:var(--fv-sp-4);min-width:0;min-height:var(--fv-ctl);margin-left:calc(-1 * var(--fv-sp-8));container-type:inline-size}
+.fv-studio.fv-create .fvs-chips::-webkit-scrollbar{display:none}
+.fvs-chip-spacer{flex:1 1 0;min-width:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-chip{position:relative;display:inline-flex;align-items:center;gap:var(--fv-sp-8);flex:none;height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-8);
+  border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:500;white-space:nowrap;
+  transition:background-color var(--fv-dur-1) var(--fv-ease-out),color var(--fv-dur-1) var(--fv-ease-out),transform var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-chip:hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-chip:active:not(:disabled){transform:scale(.97)}
+.fv-studio.fv-create .fvs-chip[aria-expanded=true]{background:var(--fv-ctl-hover);color:var(--fv-fg);box-shadow:inset 0 1px 0 var(--fv-edge-hi)}
+.fv-studio.fv-create .fvs-chip:disabled{opacity:.45}
+.fvs-chip-extra{color:var(--fv-fg3);font-weight:400;font-variant-numeric:tabular-nums}
+.fvs-chip-extra[hidden],.fvs-chip-label:empty{display:none}
+.fv-studio.fv-create .fvs-chip[data-badge]::after{content:attr(data-badge);display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 var(--fv-sp-4);border-radius:var(--fv-rad-pill);
+  background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-size:var(--fv-fs-1);font-weight:600;line-height:1}
+.fv-studio.fv-create .fvs-chip.fv-reference-trigger{width:var(--fv-ctl);padding:0;justify-content:center;font-size:var(--fv-fs-3);color:var(--fv-fg2)}
+.fvs-glyph{display:inline-grid;place-items:center;flex:none}
+.fvs-shape-glyph{--fvs-ratio:1.7778;display:inline-block;flex:none;box-sizing:border-box;border:1.5px solid currentColor;border-radius:var(--fv-r-xs);
+  width:calc(14px * min(var(--fvs-ratio),1.4));height:calc(14px / max(var(--fvs-ratio),.72))}
+.fvs-shape-glyph[data-ratio=input]{border-style:dashed}
+/* Duration: minus · seconds · plus in one capsule. */
+.fv-studio.fv-create .fvs-stepper{display:inline-flex;align-items:center;flex:none;height:var(--fv-ctl);padding:0 var(--fv-sp-2);border-radius:var(--fv-rad-pill);background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-stepper.fvs-chip{gap:0}
+.fv-studio.fv-create .fvs-stepper.fvs-chip:hover{background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-step,.fv-studio.fv-create .fvs-step-value{display:inline-grid;place-items:center;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg2);padding:0}
+.fv-studio.fv-create .fvs-step{width:var(--fv-ctl-s)}
+.fv-studio.fv-create .fvs-step-value{min-width:56px;padding:0 var(--fv-sp-4);color:var(--fv-fg);font-size:var(--fv-fs-2);font-variant-numeric:tabular-nums}
+.fv-studio.fv-create :is(.fvs-step,.fvs-step-value):hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-step:disabled{opacity:.35}
+
+/* Generate: the one filled button on the screen; the run mode sits under it. */
+.fv-studio.fv-create .fvs-console .fv-runbar{position:static;display:flex;flex-direction:column;justify-content:flex-end;padding:0;background:none;z-index:auto;min-width:156px}
+.fv-studio.fv-create .fvs-console .fv-runrow{display:flex;flex-direction:column;gap:var(--fv-sp-4);align-items:stretch}
+.fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary{flex:none;width:100%;min-height:52px;height:52px;padding:0 var(--fv-sp-20);border:0;border-radius:var(--fv-rad-dock);
+  background:var(--fv-accent-fill);color:#fff;font-size:var(--fv-fs-3);font-weight:600;letter-spacing:.01em;box-shadow:inset 0 1px 0 rgb(255 255 255 / .22),0 8px 20px -8px rgb(13 109 204 / .7);
+  transition:background-color var(--fv-dur-1) var(--fv-ease-out),transform var(--fv-dur-1) var(--fv-ease-out),opacity var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary:hover:not(:disabled){background:#1078df}
+.fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary:active:not(:disabled){transform:scale(.98);filter:none}
+.fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary:disabled{opacity:.5}
+.fv-studio.fv-create .fvs-console .fv-run-options{position:relative;flex:none}
+.fv-studio.fv-create .fvs-console .fv-run-options>summary{display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);width:100%;height:var(--fv-ctl);border:0;border-radius:var(--fv-rad-pill);
+  background:transparent;color:var(--fv-fg3);font-size:var(--fv-fs-2)}
+.fv-studio.fv-create .fvs-console .fv-run-options>summary:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-console .fv-run-options .fv-chevron{width:6px;height:6px;margin-top:calc(-1 * var(--fv-sp-4))}
+.fv-studio.fv-create .fvs-console .fv-run-menu{right:0;bottom:calc(100% + var(--fv-sp-8));width:260px;padding:var(--fv-sp-8);border-radius:var(--fv-rad-pop);
+  background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-console .fv-run-menu>button{border-radius:var(--fv-rad-ctl);height:var(--fv-ctl);min-height:var(--fv-ctl)}
+
+/* ── Controls inside the trays: the same controls as before, on the glass scale ── */
+.fv-studio.fv-create .fvs-tray :is(button,a,select,input){min-height:var(--fv-ctl);border-radius:var(--fv-rad-ctl)}
+.fv-studio.fv-create .fvs-tray :is(button,a):not(.fvs-tray-close):not(.fv-length-link):not(.fv-effort-name){border-color:transparent;background:var(--fv-ctl-bg);color:var(--fv-fg);padding:0 var(--fv-sp-12);font-weight:500}
+.fv-studio.fv-create .fvs-tray :is(button,a):not(.fvs-tray-close):not(.fv-length-link):not(.fv-effort-name):hover:not(:disabled){background:var(--fv-ctl-hover)}
+.fv-studio.fv-create .fvs-tray :is(textarea,select,input[type=number],input[type=text]){border:1px solid transparent;background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray :is(textarea,select,input):focus{border-color:var(--fv-accent-line)}
+.fv-studio.fv-create .fvs-tray .fv-field>span{font-size:var(--fv-fs-1);color:var(--fv-fg3);margin:0 0 var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray .fv-fields{gap:var(--fv-sp-12)}
+.fv-studio.fv-create .fvs-tray .fv-muted{font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fv-shapes{gap:var(--fv-sp-8);margin-bottom:var(--fv-sp-16)}
+.fv-studio.fv-create .fvs-tray .fv-shapes::before{border-color:var(--fv-accent-line);background:var(--fv-accent-soft);border-radius:var(--fv-rad-ctl);transition:transform var(--fv-dur-3) var(--fv-ease-out),opacity var(--fv-dur-1)}
+.fv-studio.fv-create .fvs-tray .fv-shape{min-height:64px;padding:var(--fv-sp-8) var(--fv-sp-4);gap:var(--fv-sp-8);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);color:var(--fv-fg2);font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-tray .fv-shape:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray .fv-shape[aria-pressed=true]{background:transparent;color:var(--fv-accent-ink)}
+.fv-studio.fv-create .fvs-tray .fv-canvas-note{margin-top:var(--fv-sp-12);font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fv-length-hint,.fv-studio.fv-create .fvs-tray .fv-length-plan{margin:var(--fv-sp-12) 0 0;font-size:var(--fv-fs-1);line-height:1.6;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fv-length-link{color:var(--fv-accent-ink)}
+.fv-studio.fv-create .fvs-tray .fv-first-frame{margin-top:var(--fv-sp-12);font-size:var(--fv-fs-2)}
+/* Tray switches: 32 x 20 drawn inside a clear 4 px edge, a 40 x 28 target like the prompt's switch; the edge takes no room. */
+.fv-studio.fv-create .fvs-tray .fv-first-frame input{box-sizing:content-box;width:32px;height:20px;min-height:20px;border:4px solid transparent;margin:-4px;border-radius:var(--fv-rad-pill);background:var(--fv-line2);background-clip:padding-box}
+.fv-studio.fv-create .fvs-tray .fv-first-frame input::before{top:2px;left:2px;width:16px;height:16px}
+.fv-studio.fv-create .fvs-tray .fv-first-frame input:checked{background:var(--fv-accent-fill)}
+.fv-studio.fv-create .fvs-tray .fv-first-frame input:checked::before{transform:translateX(12px)}
+.fv-studio.fv-create .fvs-tray .fv-legacy,.fv-studio.fv-create .fvs-tray .fv-lora-note{font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+/* Quality tray: the slider on the glass; no overshoot, no pop larger than 3 %. */
+.fv-studio.fv-create .fvs-tray .fv-sampling-settings{padding:0;border:0;background:none;border-radius:0}
+.fv-studio.fv-create .fvs-tray .fv-effort{--fv-move:var(--fv-ease-out);--fv-tone:var(--fv-accent-ink)}
+.fv-studio.fv-create .fvs-tray .fv-effort-heading{font-size:var(--fv-fs-2);color:var(--fv-fg2);margin-bottom:var(--fv-sp-12)}
+.fv-studio.fv-create .fvs-tray .fv-effort-estimate{font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fv-effort-track{background:var(--fv-ctl-bg);box-shadow:inset 0 1px 2px rgb(0 0 0 / .2)}
+.fv-studio.fv-create .fvs-tray .fv-effort-names{height:24px;margin-top:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray .fv-effort .fv-effort-name{font-size:var(--fv-fs-1);min-height:24px;line-height:24px;background:none}
+.fv-studio.fv-create .fvs-tray .fv-effort-knob.fv-effort-pop{animation:none}
+.fv-studio.fv-create .fvs-tray .fv-effort-rail[data-dragging=true] .fv-effort-knob{transform:scale(1.03)}
+.fv-studio.fv-create .fvs-tray .fv-sampling-settings .fv-two-pass{margin-top:var(--fv-sp-16);min-height:var(--fv-ctl)}
+.fv-studio.fv-create .fvs-tray .fv-sampling-settings .fv-two-pass>span{font-size:var(--fv-fs-2);color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-tray .fv-pass-mode{background:var(--fv-ctl-bg);border:0;border-radius:var(--fv-rad-pill);padding:var(--fv-sp-2)}
+.fv-studio.fv-create .fvs-tray .fv-pass-mode button{min-height:var(--fv-ctl-s);height:var(--fv-ctl-s);padding:0 var(--fv-sp-12);border-radius:var(--fv-rad-pill);font-size:var(--fv-fs-1);background:transparent;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fv-pass-mode button[aria-checked=true]{background:var(--fv-ctl-hover);color:var(--fv-fg);box-shadow:inset 0 1px 0 var(--fv-edge-hi)}
+.fv-studio.fv-create .fvs-tray .fv-pass-row .fv-two-pass-status{font-size:var(--fv-fs-1)}
+
+/* ── History rail: thumbnails at the right edge, centred on the stage; it widens into a list with dates ── */
+.fv-studio.fv-create .fv-recent.fvs-rail{position:absolute;right:var(--fvs-edge);top:var(--fv-sp-16);bottom:calc(var(--fvs-dock-h,200px) + var(--fv-sp-8));z-index:4;
+  display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-4);width:var(--fvs-rail);height:min(calc(100% - var(--fvs-dock-h,200px) - var(--fv-sp-24)),620px);margin-block:auto;
+  padding:var(--fv-sp-8);border-radius:var(--fv-rad-dock);overflow:hidden;
+  background:rgb(var(--fv-tint) / var(--fv-a1));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);
+  transition:width var(--fv-dur-3) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-recent.fvs-rail[data-expanded=true]{width:var(--fvs-rail-wide)}
+.fv-studio.fv-create .fvs-rail .fv-recent-head{display:none}
+.fv-studio.fv-create .fvs-rail :is(.fv-works-entry,.fv-recent-toggle){display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-8);flex:none;width:100%;height:var(--fv-ctl-l);min-height:var(--fv-ctl-l);padding:0;
+  border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-rail :is(.fv-works-entry,.fv-recent-toggle):hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-rail .fv-works-label{display:none;font-size:var(--fv-fs-2);font-weight:500}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-works-entry{justify-content:flex-start;padding:0 var(--fv-sp-12)}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-works-label{display:inline}
+.fv-studio.fv-create .fvs-rail .fv-recent-toggle .fv-icon{transform:rotate(90deg);transition:transform var(--fv-dur-2) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-toggle .fv-icon{transform:rotate(-90deg)}
+.fv-studio.fv-create .fvs-rail .fv-recent-list{flex:1 1 auto;min-height:0;padding:0;gap:var(--fv-sp-4);overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.fv-studio.fv-create .fvs-rail .fv-recent-list::-webkit-scrollbar{display:none}
+.fv-studio.fv-create .fvs-rail .fv-recent-card{display:block;width:100%;min-height:0;padding:0;border:0;border-radius:var(--fv-rad-ctl);background:transparent}
+.fv-studio.fv-create .fvs-rail .fv-recent-card .fv-library-picture{width:100%;height:48px;aspect-ratio:auto;border-radius:var(--fv-rad-ctl);overflow:hidden;background:var(--fv-ctl-bg);box-shadow:none}
+.fv-studio.fv-create .fvs-rail .fv-recent-card .fv-library-picture img{width:100%;height:100%;object-fit:cover;display:block}
+.fv-studio.fv-create .fvs-rail .fv-recent-card>:is(span,small){display:none}
+.fv-studio.fv-create .fvs-rail .fv-recent-card:hover{background:var(--fv-ctl-hover)}
+.fv-studio.fv-create .fvs-rail .fv-recent-card[aria-pressed=true] .fv-library-picture{box-shadow:0 0 0 2px var(--fv-accent-ink)}
+.fv-studio.fv-create .fvs-rail .fv-recent-card.fv-task-member{margin-left:0}
+.fv-studio.fv-create .fvs-rail .fv-recent-card.fv-task-head:not(.fv-task-open) .fv-library-picture{box-shadow:3px -3px 0 0 var(--fv-line2)}
+.fv-studio.fv-create .fvs-rail .fv-recent-card.fv-task-head[aria-pressed=true]:not(.fv-task-open) .fv-library-picture{box-shadow:0 0 0 2px var(--fv-accent-ink),3px -3px 0 0 var(--fv-line2)}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card{display:grid;grid-template-columns:64px minmax(0,1fr);grid-template-rows:auto auto;column-gap:var(--fv-sp-12);align-items:center;text-align:left;padding:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card .fv-library-picture{grid-row:1/3;height:40px}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card>span{display:block;align-self:end;font-size:var(--fv-fs-2);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card>small{display:block;align-self:start;font-size:var(--fv-fs-1);color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-rail .fv-library-message{margin:var(--fv-sp-8) var(--fv-sp-4);font-size:var(--fv-fs-1);color:var(--fv-fg3);text-align:center}
+.fv-studio.fv-create .fvs-rail:not([data-expanded=true]) .fv-library-message{display:none}
+
+/* Update bar: floats under the top bar instead of pushing the whole panel down. */
+.fv-studio.fv-create>.fv-update-notice{position:absolute;z-index:8;top:calc(var(--fv-header-h) + var(--fv-sp-8));left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);
+  border-radius:var(--fv-rad-pill);background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%)}
+
+@keyframes fvs-tray-in{from{opacity:0;transform:translateY(var(--fv-sp-8))}to{opacity:1;transform:none}}
+@keyframes fvs-pop{from{opacity:0;transform:translateY(var(--fv-sp-4))}to{opacity:1;transform:none}}
+
+/* ── Solid fallback: same layers, opaque ── */
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create :is(.fvs-console,.fvs-tray[open],.fv-recent.fvs-rail,.fvs-info-panel,.fv-actions .fv-menu,.fv-run-menu,.fv-queue-list,.fv-enhance-install,.fv-update-notice){
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create :is(.fvs-console,.fv-recent.fvs-rail){background:rgb(var(--fv-solid1))}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create .fvs-tray[open],:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create .fvs-tray-head{background:rgb(var(--fv-solid2))}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create :is(.fvs-info-panel,.fv-actions .fv-menu,.fv-run-menu,.fv-queue-list,.fv-enhance-install,.fv-update-notice){background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){
+  .fv-studio.fv-create :is(.fvs-console,.fvs-tray[open],.fv-recent.fvs-rail,.fvs-info-panel,.fv-actions .fv-menu,.fv-run-menu,.fv-queue-list,.fv-enhance-install,.fv-update-notice){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .fv-studio.fv-create :is(.fvs-console,.fv-recent.fvs-rail){background:rgb(var(--fv-solid1))!important}
+  .fv-studio.fv-create :is(.fvs-tray[open],.fvs-tray-head){background:rgb(var(--fv-solid2))!important}
+  .fv-studio.fv-create :is(.fvs-info-panel,.fv-actions .fv-menu,.fv-run-menu,.fv-queue-list,.fv-enhance-install,.fv-update-notice){background:rgb(var(--fv-solid3))!important}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .fv-studio.fv-create :is(.fvs-console,.fv-recent.fvs-rail){background:rgb(var(--fv-solid1))}
+  .fv-studio.fv-create :is(.fvs-tray[open],.fvs-tray-head){background:rgb(var(--fv-solid2))}
+}
+@media(prefers-reduced-motion:reduce){
+  .fv-studio.fv-create :is(.fvs-tray[open],.fvs-info-panel,.fv-run-menu,.fv-menu,.fv-enhance-install){animation:none}
+  .fv-studio.fv-create :is(.fv-stage,.fv-preview-space,.fv-preview-column,.fv-recent.fvs-rail){transition:none}
+}
+
+/* ── Narrower windows ── */
+@media(max-width:1100px){.fv-studio.fv-create{--fvs-dock-w:100%}}
+@media(max-width:760px){
+  .fv-studio.fv-create{--fvs-edge:var(--fv-sp-12)}
+  .fv-studio.fv-create .fv-preview-column,.fv-studio.fv-create .fv-body[data-recent=true] .fv-preview-column{padding:var(--fv-sp-12) var(--fvs-edge) var(--fv-sp-4)}
+  .fv-studio.fv-create .fv-recent.fvs-rail{display:none}
+  .fv-studio.fv-create .fv-controls{padding-bottom:calc(var(--fv-sp-8) + env(safe-area-inset-bottom,0px))}
+  .fv-studio.fv-create .fvs-console{column-gap:var(--fv-sp-8);padding:var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-12);border-radius:var(--fv-rad-dock)}
+  .fv-studio.fv-create .fvs-console .fv-runbar{min-width:96px}
+  .fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary{min-height:var(--fv-touch);height:var(--fv-touch);padding:0 var(--fv-sp-12);font-size:var(--fv-fs-2);border-radius:var(--fv-rad-ctl)}
+  .fv-studio.fv-create .fvs-chip .fvs-chip-extra{display:none}
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{height:88px;min-height:88px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-tools{flex-direction:column;height:auto}
+  .fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-help{display:none}
+  .fv-studio.fv-create .fvs-stagebar .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-action-icon):not(.fv-more-item)>span:last-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .fv-studio.fv-create .fvs-stagebar .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-more-item){width:var(--fv-ctl);padding:0}
+  .fv-studio.fv-create .fvs-tray[open]{max-height:52vh;padding:0 var(--fv-sp-16) var(--fv-sp-16)}
+  .fvs-tray-head{margin-inline:calc(-1 * var(--fv-sp-16));padding-left:var(--fv-sp-16)}
+  .fvs-history-place{display:none}
+}
+@media(pointer:coarse){.fv-studio.fv-create :is(.fvs-chip,.fvs-icon-button,.fvs-tray-close){min-height:var(--fv-touch);height:var(--fv-touch)}}
+
+/* ── Frame & duration tray: continuous resolution and duration ── */
+.fv-studio.fv-create .fvs-tray .fvs-size-fields{grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-16)}
+.fvs-res{display:grid;gap:var(--fv-sp-8)}
+.fvs-res-value{font-size:var(--fv-fs-1);color:var(--fv-fg2);font-variant-numeric:tabular-nums}
+.fv-studio.fv-create .fvs-res .fv-resolution-select{display:none}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]{--fvs-fill:0;appearance:none;-webkit-appearance:none;width:100%;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);margin:0;padding:0;border:0;background:transparent;cursor:pointer}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:var(--fv-rad-pill);
+  background:linear-gradient(to right,var(--fv-accent-fill) calc(var(--fvs-fill) * 100%),var(--fv-line2) 0)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]::-moz-range-track{height:4px;border-radius:var(--fv-rad-pill);background:linear-gradient(to right,var(--fv-accent-fill) calc(var(--fvs-fill) * 100%),var(--fv-line2) 0)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-8px;border:0;border-radius:var(--fv-r-pill);background:#fff;
+  box-shadow:0 1px 3px rgb(0 0 0 / .35),0 0 0 .5px rgb(0 0 0 / .12);transition:transform var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]::-moz-range-thumb{width:20px;height:20px;border:0;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 3px rgb(0 0 0 / .35)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]:active::-webkit-slider-thumb{transform:scale(1.03)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]:focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:2px;border-radius:var(--fv-rad-pill)}
+.fv-studio.fv-create :is(.fvs-res,.fvs-duration) input[type=range]:disabled{opacity:.45;cursor:default}
+/* The usual sizes as marks under the track, at their place on it (the thumb's travel is the track less 20 px). */
+.fvs-res-ticks{position:relative;height:var(--fv-ctl-s);margin:calc(-1 * var(--fv-sp-4)) var(--fv-sp-8) 0}
+.fv-studio.fv-create .fvs-tray .fvs-res-tick{position:absolute;top:0;left:calc(var(--fvs-at) * 100%);transform:translateX(-50%);height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);
+  border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg3);font-size:var(--fv-fs-1);font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fv-studio.fv-create .fvs-tray .fvs-res-tick:hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-tray .fvs-res-tick[aria-pressed=true]{color:var(--fv-accent-ink);font-weight:600}
+.fv-studio.fv-create .fvs-tray .fvs-wh{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:end;gap:var(--fv-sp-8);margin-top:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-tray .fvs-keep-shape{width:var(--fv-ctl);padding:0;justify-content:center;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray .fvs-keep-shape[aria-pressed=true]{color:var(--fv-accent-ink);background:var(--fv-accent-soft)}
+.fvs-duration{display:grid;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:var(--fv-sp-16)}
+
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle{flex:1 1 auto;margin:0}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input{margin:0}
+/* Keyboard focus is always visible: the prompt rings the console (an outline, so the material's own shadow, or none,
+   stays as it is), the video rings itself. A press in the console only lights its edge (data-pointer, studio_console.js). */
+.fv-studio.fv-create .fvs-console:not([data-pointer]):has(textarea:focus-visible){border-color:var(--fv-accent-line);outline:2px solid var(--fv-accent-line);outline-offset:1px}
+.fv-studio.fv-create .fv-stage video:focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:-2px}
+/* A picked work's video takes the stage in one step once its first frame is decoded (studio.js showResult): until then
+   it waits unseen under the last clear picture, in the same cell; no fade, so nothing soft shows on the way. */
+.fv-studio.fv-create .fv-stage-media>video{grid-area:1/1;animation:none}
+.fv-studio.fv-create .fv-stage-media>video[data-pending]{opacity:0;pointer-events:none}
+.fv-studio.fv-create .fv-actions .fv-action,.fv-studio.fv-create .fv-actions .fv-action *{-webkit-user-select:none;user-select:none}
+
+/* Phones: Generate beside the prompt, the chips on their own full row; every target at least 44 px. */
+@media(max-width:760px){
+  .fv-studio.fv-create .fvs-console{grid-template-rows:auto auto}
+  .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1;grid-column:2;justify-content:flex-start}
+  .fv-studio.fv-create .fvs-chips{grid-column:1/-1;grid-row:2;margin-left:0}
+  .fv-studio.fv-create :is(.fvs-chip,.fvs-icon-button,.fvs-tray-close,.fvs-step,.fvs-step-value,.fv-prompt-tools>button,.fv-prompt-tools>a){min-height:var(--fv-touch);height:var(--fv-touch)}
+  .fv-studio.fv-create :is(.fvs-icon-button,.fvs-tray-close,.fvs-step,.fv-prompt-tools>button,.fv-prompt-tools>a,.fvs-chip.fv-reference-trigger){width:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-stepper{height:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-run-options>summary{height:var(--fv-touch)}
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action{height:var(--fv-touch);min-height:var(--fv-touch)}
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-more-item){width:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-enhance-toggle{min-height:var(--fv-touch)}
+}
+
+/* ── Prompt history, templates and presets: a popover over the console's right half ── */
+.fv-studio.fv-create .fvs-library{position:absolute;right:0;bottom:calc(100% + var(--fv-sp-8));z-index:7;width:min(520px,100%);max-height:min(56vh,520px);display:flex;flex-direction:column;
+  border-radius:var(--fv-rad-pop);overflow:hidden;background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fvs-library[hidden]{display:none}
+.fvs-library-head{display:flex;align-items:center;gap:var(--fv-sp-8);padding:var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-12);border-bottom:1px solid var(--fv-line)}
+.fvs-library-tabs{display:inline-flex;gap:var(--fv-sp-2);padding:var(--fv-sp-2);border-radius:var(--fv-rad-pill);background:var(--fv-ctl-bg);flex:none}
+.fv-studio.fv-create .fvs-library-tab{height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg3);font-size:var(--fv-fs-2)}
+.fv-studio.fv-create .fvs-library-tab[aria-selected=true]{background:var(--fv-ctl-hover);color:var(--fv-fg);font-weight:600;box-shadow:inset 0 1px 0 var(--fv-edge-hi)}
+.fv-studio.fv-create .fvs-library-search{flex:1;min-width:0;height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-12);border:1px solid transparent;border-radius:var(--fv-rad-pill);
+  background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-2);outline:none}
+.fv-studio.fv-create .fvs-library-search:focus{border-color:var(--fv-accent-line)}
+.fv-studio.fv-create .fvs-library-search[hidden]{visibility:hidden;display:block}
+.fvs-library-list{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--fv-sp-4);display:grid;align-content:start;gap:var(--fv-sp-2);scrollbar-width:thin}
+.fvs-library-row{display:flex;align-items:center;gap:var(--fv-sp-4);border-radius:var(--fv-rad-ctl)}
+.fvs-library-row:hover{background:var(--fv-ctl-hover)}
+.fv-studio.fv-create .fvs-library-use{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-2);justify-items:start;justify-content:start;height:auto;min-height:var(--fv-ctl-l);padding:var(--fv-sp-8) var(--fv-sp-12);
+  border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg);text-align:left;font-weight:400}
+.fvs-library-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:var(--fv-fs-2);line-height:20px}
+.fvs-library-meta{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+.fvs-library-text.fvs-library-name{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.fv-studio.fv-create .fvs-library-remove{opacity:0;margin-right:var(--fv-sp-4)}
+.fvs-library-row:hover .fvs-library-remove,.fv-studio.fv-create .fvs-library-remove:focus-visible{opacity:1}
+.fvs-library-empty{margin:var(--fv-sp-16);color:var(--fv-fg3);font-size:var(--fv-fs-2);text-align:center}
+.fvs-library-foot:empty{display:none}
+.fvs-library-foot{padding:var(--fv-sp-8) var(--fv-sp-12) var(--fv-sp-12);border-top:1px solid var(--fv-line)}
+.fvs-preset-form{display:flex;flex-wrap:wrap;align-items:center;gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-preset-name{flex:1 1 160px;min-width:0;height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-12);border:1px solid transparent;border-radius:var(--fv-rad-ctl);
+  background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-2);outline:none}
+.fv-studio.fv-create .fvs-preset-name:focus{border-color:var(--fv-accent-line)}
+.fvs-preset-check{display:inline-flex;align-items:center;gap:var(--fv-sp-4);font-size:var(--fv-fs-1);color:var(--fv-fg2);cursor:pointer}
+.fv-studio.fv-create .fvs-preset-check input{width:16px;height:16px;min-height:16px;margin:0;accent-color:var(--fv-accent-fill)}
+.fv-studio.fv-create .fvs-preset-save{height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0 var(--fv-sp-16);border:0;border-radius:var(--fv-rad-pill);background:var(--fv-accent-fill);color:#fff;font-weight:600}
+.fvs-console-notice{display:flex;align-items:center;gap:var(--fv-sp-4);color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-notice-undo{display:inline;height:20px;min-height:20px;padding:0 var(--fv-sp-4);border:0;background:none;color:var(--fv-accent-ink);font-size:var(--fv-fs-1);text-decoration:underline;text-underline-offset:2px}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-create .fvs-library{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio.fv-create .fvs-library{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))!important}}
+@media(max-width:760px){.fv-studio.fv-create .fvs-library{left:0;width:auto}.fv-studio.fv-create .fvs-library-remove{opacity:1}}
+
+/* Size tray, compact: shapes as one row of pills (icon beside the name), the readout on the label's line. */
+.fv-studio.fv-create .fvs-tray .fv-shapes{margin-bottom:var(--fv-sp-12)}
+.fv-studio.fv-create .fvs-tray .fv-shape{flex-direction:row;min-height:var(--fv-ctl-l);height:var(--fv-ctl-l);gap:var(--fv-sp-8);font-size:var(--fv-fs-2)}
+.fv-studio.fv-create .fvs-tray .fv-shape .fv-shape-icon{margin:0;transform:scale(.75)}
+.fv-studio.fv-create .fvs-tray .fvs-field-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray .fv-canvas-note>span:first-child{display:none}
+.fv-studio.fv-create .fvs-tray .fv-canvas-note{justify-content:flex-end;margin-top:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-tray .fvs-res-tick:last-child{transform:translateX(-100%)}
+.fv-studio.fv-create .fvs-tray .fvs-keep-shape .fv-icon{width:16px;height:16px}
+
+/* ── Compare: two videos on the stage, side by side or split by a divider ── */
+.fv-studio.fv-create .fvs-compare{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:#0b0e13}
+.fv-studio.fv-create .fvs-compare[hidden]{display:none}
+.fvs-compare-panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:2px;--fvs-split:50%}
+.fvs-compare-pane{position:relative;min-width:0;min-height:0;background:#0b0e13}
+.fv-studio.fv-create .fvs-compare-pane video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0e13}
+.fvs-compare-tag{position:absolute;left:var(--fv-sp-8);top:var(--fv-sp-8);max-width:calc(100% - 16px);padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-rad-pill);
+  background:rgb(10 12 16 / .62);color:#fff;font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.fvs-compare-divider{display:none}
+.fvs-compare[data-mode=slider] .fvs-compare-panes{display:block;cursor:ew-resize;touch-action:none}
+.fvs-compare[data-mode=slider] .fvs-compare-pane{position:absolute;inset:0}
+.fvs-compare[data-mode=slider] .fvs-compare-b{clip-path:inset(0 0 0 var(--fvs-split))}
+.fvs-compare[data-mode=slider] .fvs-compare-b .fvs-compare-tag{left:auto;right:var(--fv-sp-8)}
+.fvs-compare[data-mode=slider] .fvs-compare-divider{display:block;position:absolute;top:0;bottom:0;left:var(--fvs-split);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
+.fvs-compare[data-mode=slider] .fvs-compare-divider::after{content:'';position:absolute;top:50%;left:50%;width:28px;height:28px;transform:translate(-50%,-50%);border-radius:var(--fv-r-pill);background:#fff;
+  box-shadow:0 2px 8px rgb(0 0 0 / .4)}
+.fvs-compare[data-mode=slider] .fvs-compare-divider:focus-visible::after{box-shadow:0 0 0 3px var(--fv-accent-line),0 2px 8px rgb(0 0 0 / .4)}
+.fvs-compare-bar{display:flex;align-items:center;gap:var(--fv-sp-8);padding:var(--fv-sp-8);background:rgb(10 12 16 / .72);color:#fff}
+.fvs-compare-modes{display:inline-flex;gap:var(--fv-sp-2);padding:var(--fv-sp-2);border-radius:var(--fv-rad-pill);background:rgb(255 255 255 / .1)}
+.fv-studio.fv-create .fvs-compare-mode{height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-rad-pill);background:transparent;color:rgb(255 255 255 / .75);font-size:var(--fv-fs-1)}
+.fv-studio.fv-create .fvs-compare-mode[aria-checked=true]{background:rgb(255 255 255 / .2);color:#fff;font-weight:600}
+.fvs-compare-hint{flex:1;min-width:0;font-size:var(--fv-fs-1);color:rgb(255 255 255 / .7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-studio.fv-create .fvs-compare-bar .fvs-icon-button{color:#fff}
+.fv-studio.fv-create .fvs-compare-bar .fvs-icon-button:hover{background:rgb(255 255 255 / .16);color:#fff}
+.fv-studio.fv-create .fvs-compare-open[aria-pressed=true]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-studio.fv-create .fv-stage[data-comparing=true] .fv-preview-badge{display:none}
+
+/* The port notice floats at the top of the stage area instead of pushing the picture down. */
+.fv-studio.fv-create .fv-preview-column>.fv-update-notice{position:absolute;z-index:5;top:var(--fv-sp-8);left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);border-radius:var(--fv-rad-pop);
+  background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2)}
+
+/* Size tray on wider windows: resolution and duration side by side, so the picture keeps more room. */
+@container (min-width:640px){
+  .fv-studio.fv-create .fvs-tray .fvs-size-fields{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);column-gap:var(--fv-sp-24);align-items:start}
+  .fv-studio.fv-create .fvs-tray .fvs-duration{grid-template-columns:72px minmax(0,1fr)}
+}
+/* A narrow tray (docked beside the picture) puts the four shapes in two rows. */
+@container (max-width:420px){
+  .fv-studio.fv-create .fvs-tray .fv-shapes{grid-template-columns:repeat(2,1fr)}
+  .fv-studio.fv-create .fvs-tray .fv-shapes::before{display:none}
+  .fv-studio.fv-create .fvs-tray .fv-shape[aria-pressed=true]{background:var(--fv-accent-soft);box-shadow:inset 0 0 0 1px var(--fv-accent-line)}
+  .fv-studio.fv-create .fvs-tray .fvs-wh{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+  .fv-studio.fv-create .fvs-tray .fv-shape{flex-direction:column;height:auto;min-height:56px;gap:var(--fv-sp-4);font-size:var(--fv-fs-1)}
+  .fv-studio.fv-create .fvs-tray .fvs-res-tick:not([data-pixels="0.5"]):not([data-recommended=true]):not(:last-child){display:none}
+  .fv-studio.fv-create .fvs-tray .fvs-wh input{padding:0 var(--fv-sp-8)}
+  .fv-studio.fv-create .fvs-tray .fvs-field-head{flex-wrap:wrap}
+}
+/* The failure card on the stage: a solid sheet over the earlier picture, scrolling inside when it is long. */
+.fv-studio.fv-create .fvs-failure-layer{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:var(--fv-sp-16);overflow:auto;background:rgb(var(--fv-solid1) / .86)}
+.fv-studio.fv-create .fvs-failure-layer[hidden]{display:none}
+.fv-studio.fv-create .fvs-failure-layer>.fv-failure{width:min(560px,100%);max-height:100%;overflow:auto;margin:0;text-align:left}
+.fv-studio.fv-create .fvs-failure-close{position:absolute;top:var(--fv-sp-8);right:var(--fv-sp-8);color:var(--fv-fg2)}
+/* Light theme: the letterbox around a picture of another shape is a quiet light grey, not a black slab. */
+:root[data-theme=light] .fv-studio.fv-create :is(.fv-stage,.fv-stage video,.fv-stage img,.fvs-compare,.fvs-compare-pane,.fvs-compare-pane video){background:#dde1e8}
+.fv-studio.fv-create .fvs-tray .fvs-res-tick[data-recommended=true]::after{content:'';display:inline-block;width:4px;height:4px;margin-left:var(--fv-sp-4);border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);vertical-align:middle}
+/* The quality tray's title already names it; the slider's own heading keeps only the estimate. */
+.fv-studio.fv-create .fvs-tray .fv-effort-heading>span:first-child{display:none}
+.fv-studio.fv-create .fvs-tray .fv-effort-heading{justify-content:flex-end}
+.fv-studio.fv-create .fvs-tray .fv-effort-estimate{margin-left:0}
+/* An empty history (nothing made yet) keeps the rail small; it grows only after a generation, which the user started. */
+.fv-studio.fv-create .fv-recent.fvs-rail[data-empty=true]{height:fit-content}
+.fv-studio.fv-create .fvs-works-phone{display:none}
+@media(max-width:760px){.fv-studio.fv-create .fvs-works-phone{display:inline-grid}}
+.fv-studio.fv-create .fv-controls>.fvs-console-status{top:var(--fv-sp-2);bottom:auto;left:var(--fv-sp-20);right:var(--fv-sp-20)}
+/* The picture and its bar settle once, without animation, while the panel opens; later changes ease. */
+.fv-studio.fv-create[data-fv-loaded=false] :is(.fv-stage,.fv-preview-space,.fv-preview-column,.fv-recent.fvs-rail){transition:none!important}
+.fv-studio.fv-create .fvs-stagebar{min-height:var(--fv-ctl-l)}
+@media(max-width:760px){.fv-studio.fv-create .fvs-stagebar{min-height:88px;align-content:center}}
+/* The progress over the picture is always light on its dark scene, in both themes. */
+.fv-studio.fv-create .fv-stage .fv-generation-progress{--fv-ink:#edf5ff;--fv-muted:#c3d3e3;--fv-fg:#edf5ff;--fv-fg2:#d0deeb;--fv-fg3:#bdd0e2;color:#edf5ff}
+.fv-studio.fv-create .fv-stage .fv-generation-progress :is(.fv-generation-label,.fv-generation-times,.fv-chain-position){color:#d0deeb}
+/* Check boxes in the trays stay square (the trays round their text fields). */
+.fv-studio.fv-create .fvs-tray input[type=checkbox]:not([role=switch]){width:16px;height:16px;min-height:16px;margin:0 var(--fv-sp-8) 0 0;padding:0;border-radius:var(--fv-r-xs);accent-color:var(--fv-accent-fill);vertical-align:middle}
+/* Empty stage: the frame's icon and one line; the bar under it keeps its room but shows nothing that does not apply yet. */
+.fv-studio.fv-create .fv-stage[data-empty=true]::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-16);right:var(--fv-sp-16);top:calc(50% + var(--fv-sp-24));
+  text-align:center;font-size:var(--fv-fs-2);color:var(--fv-fg3);pointer-events:none}
+.fv-studio.fv-create .fvs-stagebar[data-empty=true] :is(.fvs-info,.fvs-compare-open){visibility:hidden}
+/* While a tray docks beside the picture, the history rail under it steps aside. */
+.fv-studio.fv-create .fv-body[data-tray-side=true] .fv-recent.fvs-rail{opacity:0;pointer-events:none;transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-body[data-tray-side=true] .fvs-tray[open]{bottom:100%}
+/* Phone-only entries (the writing guide under More, where the prompt tools have no room for it). */
+.fv-studio.fv-create .fvs-phone-only{display:none!important}
+@media(max-width:760px){.fv-studio.fv-create .fvs-phone-only{display:inline-flex!important}}
+.fv-studio.fv-create .fvs-library-guide{display:inline-flex;align-items:center;min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);margin-left:calc(-1 * var(--fv-sp-8));border:0;border-radius:var(--fv-rad-pill);background:none;color:var(--fv-accent-ink);font-size:var(--fv-fs-2);text-decoration:none}
+.fv-studio.fv-create .fvs-library-guide:hover{text-decoration:underline;background:none}
+.fv-studio.fv-create .fvs-tray[open]{container-type:inline-size}
+
+/* The chip row never runs under Generate: a narrow row drops the estimates and sizes (they stay in the hover card and
+   the trays), a narrower one the names beside icons, and what still does not fit wraps to a second line. */
+@container (max-width:680px){.fv-studio.fv-create .fvs-chip[data-chip=size] .fvs-chip-extra{display:none}}
+@container (max-width:560px){.fv-studio.fv-create .fvs-chip .fvs-chip-extra{display:none}}
+@container (max-width:460px){.fv-studio.fv-create .fvs-chip:is([data-chip=media],[data-chip=lora]) .fvs-chip-label{display:none}.fv-studio.fv-create .fvs-chip-spacer{display:none}}
+/* Menus with text lists read on an opaque sheet in every theme and over any picture (contrast ≥ 4.5:1). */
+.fv-studio.fv-create :is(.fvs-console .fv-run-menu,.fv-actions .fv-menu){background:rgb(var(--fv-solid3))}
+.fv-studio.fv-create .fvs-console .fv-run-menu>strong{color:var(--fv-fg2);font-size:var(--fv-fs-1);font-weight:600}
+.fv-studio.fv-create .fvs-console .fv-run-menu>button{color:var(--fv-fg)}
+.fv-studio.fv-create .fvs-console .fv-run-menu>button[aria-pressed=true]{background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-weight:600}
+.fv-studio.fv-create .fvs-console .fv-run-menu>button:disabled{opacity:1;color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-console .fv-run-menu .fv-muted{color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-console .fv-run-options>summary{color:var(--fv-fg2)}
+.fv-studio.fv-create .fv-actions .fv-more-menu .fv-action{color:var(--fv-fg)}
+/* The More menu opens in the top layer (liftMenu), so its button keeps the bar's own level and an open tray covers it. */
+.fv-studio.fv-create .fvs-stagebar .fv-action-more{position:relative;z-index:auto}
+/* Half steps on the 4 px grid. */
+.fv-studio.fv-create .fvs-console .fv-enhance-tabs,.fvs-library-tabs,.fvs-compare-modes{padding:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-stepper{padding:0 var(--fv-sp-4)}
+/* Menus lifted into the top layer (liftMenu): fixed at the place the script gives, opaque, the same look as in place. */
+.fv-studio.fv-create :is(.fv-run-menu,.fv-menu).fv-lifted:popover-open{position:fixed;inset:auto;right:auto;bottom:auto;margin:0;z-index:auto;color:var(--fv-fg);overflow:visible}
+/* The enhancement switch: the same 32 × 20 track, its box widened to 28 px high by a transparent border. */
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input[role=switch]{box-sizing:content-box;border:4px solid transparent;background-clip:padding-box;margin:0}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input[role=switch]::before{top:2px;left:2px}
+.fv-studio.fv-create .fvs-console .fv-enhance-toggle input[role=switch]:is(:checked,:not(:checked)){background-clip:padding-box}
+
+/* ── The console on a desktop window: one 4 px grid, the same 16 px inset on all four sides.
+   Left column: the prompt, the enhancement switch, the chips (one left edge for all three).
+   Right column: the prompt's tools on top (right edge = the Generate block's), then one Generate block — the key with
+   its time over the run mode, joined — whose top meets the switch row and whose bottom meets the chip row. ── */
+@media(min-width:761px){
+  .fv-studio.fv-create{--fvs-row:36px;--fvs-mode-h:32px;--fvs-key-w:160px}
+  .fv-studio.fv-create .fvs-console{grid-template-columns:minmax(0,1fr) var(--fvs-key-w);grid-template-rows:auto var(--fvs-row) minmax(var(--fvs-row),auto);
+    column-gap:var(--fv-sp-16);row-gap:var(--fv-sp-8);padding:var(--fv-sp-16)}
+  .fv-studio.fv-create .fvs-console-prompt{grid-column:1;grid-row:1/span 2}
+  .fv-studio.fv-create .fvs-console .fv-enhance{gap:var(--fv-sp-8)}
+  .fv-studio.fv-create .fvs-console .fv-enhance>.fv-enhance-bar{height:var(--fvs-row);min-height:var(--fvs-row);align-items:center}
+  /* The switch's track (not its wider hit box) starts on the column's edge. */
+  .fv-studio.fv-create .fvs-console .fv-enhance-toggle{margin-left:calc(-1 * var(--fv-sp-4))}
+  /* Two lines when short, growing with the text up to five. */
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:56px;max-height:128px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:absolute;top:0;right:calc(-1 * (var(--fvs-key-w) + var(--fv-sp-16)));height:var(--fv-ctl);gap:var(--fv-sp-4)}
+  /* Chips: one shape, one height, 8 px apart; icon-only chips are square. */
+  .fv-studio.fv-create .fvs-chips{grid-column:1;grid-row:3;align-self:end;margin-left:0;gap:var(--fv-sp-8);min-height:var(--fvs-row)}
+  .fv-studio.fv-create .fvs-chip{height:var(--fvs-row);min-height:var(--fvs-row);padding:0 var(--fv-sp-12);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg)}
+  .fv-studio.fv-create .fvs-chip:is(.fv-reference-trigger,[data-chip=advanced]){width:var(--fvs-row);padding:0;justify-content:center}
+  .fv-studio.fv-create .fvs-stepper.fvs-chip,.fv-studio.fv-create .fvs-stepper.fvs-chip:hover{padding:0 var(--fv-sp-4);background:var(--fv-ctl-bg)}
+  .fv-studio.fv-create :is(.fvs-step,.fvs-step-value){height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);border-radius:var(--fv-rad-ctl)}
+  .fv-studio.fv-create .fvs-step{width:var(--fv-ctl-s)}
+  .fv-studio.fv-create .fvs-step-value{min-width:48px}
+  /* The Generate block. */
+  .fv-studio.fv-create .fvs-console>.fv-runbar{grid-column:2;grid-row:2/span 2;align-self:end;min-width:0}
+  .fv-studio.fv-create .fvs-console .fv-runrow{gap:0}
+  .fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+    height:calc(2 * var(--fvs-row) + var(--fv-sp-8) - var(--fvs-mode-h));min-height:0;padding:0 var(--fv-sp-12);
+    border-radius:var(--fv-rad-ctl) var(--fv-rad-ctl) var(--fv-r-xs) var(--fv-r-xs)}
+  .fv-studio.fv-create .fvs-console .fv-run-options>summary{height:var(--fvs-mode-h);min-height:var(--fvs-mode-h);border-radius:var(--fv-r-xs) var(--fv-r-xs) var(--fv-rad-ctl) var(--fv-rad-ctl);
+    background:var(--fv-ctl-bg);color:var(--fv-fg2)}
+}
+@media(min-width:761px) and (pointer:coarse){.fv-studio.fv-create{--fvs-row:44px;--fvs-mode-h:44px}}
+.fvs-key-label{display:block;font-size:var(--fv-fs-3);line-height:24px;font-weight:600;white-space:nowrap}
+/* The two lines differ by size and weight only: the time keeps the key's full text colour (contrast on the fill). */
+.fvs-key-eta{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1);line-height:16px;font-weight:400}
+/* The time line keeps its place when it has nothing to say (before the estimate arrives, while adding), so the label
+   never moves; a phone shows the label alone. */
+.fvs-key-eta{min-height:16px}
+.fvs-key-eta[data-empty=true]{visibility:hidden}
+@media(max-width:760px){.fvs-key-eta{display:none!important}}
+@media(min-width:761px){
+  /* The picture's bar: Download is its accent text action, the same shape as its neighbours. */
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary{padding:0 var(--fv-sp-12);background:transparent;color:var(--fv-accent-ink);box-shadow:none}
+  .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary:hover{background:var(--fv-ctl-hover);color:var(--fv-accent-ink)}
+  /* One 32 px band between the picture's bar and the console; the notes line (and the run's status) reads in it,
+     on the console's text edge. */
+  .fv-studio.fv-create .fvs-console-status{top:0;bottom:auto;left:calc(var(--fv-sp-16) + 1px);right:calc(var(--fv-sp-16) + 1px)}
+  .fvs-console-status>.fv-status{width:auto;min-height:0;line-height:20px;text-align:left;align-self:auto}
+  .fvs-console-status .fv-status-issue{min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
+  /* The history rail: centred on the picture and never taller than it; the selected card's ring has room. */
+  .fv-studio.fv-create .fv-recent.fvs-rail{top:calc(var(--fvs-stage-top,16px) + var(--fvs-stage-h,600px) / 2);bottom:auto;height:auto;max-height:var(--fvs-stage-h,620px);margin-block:0;translate:0 -50%}
+  .fv-studio.fv-create .fvs-rail .fv-recent-list{padding:var(--fv-sp-4)}
+  /* Short: at most six cards show (the rest scroll), so the rail stays a small strip beside the picture. */
+  .fv-studio.fv-create .fvs-rail:not([data-expanded=true]) .fv-recent-list{max-height:calc(6 * 48px + 7 * var(--fv-sp-4))}
+}
+/* A new frame reshapes the empty stage in 200 ms (none with reduced motion, above). */
+.fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease}
+.fv-studio.fv-create .fv-preview-space{transition:height .2s ease,margin-top .2s ease}
+.fv-studio.fv-create .fvs-tray .fvp{margin-bottom:var(--fv-sp-16)}
+/* An unsaved-draft note in the prompt's tools is a small warning mark there (its words are in the hover card and for
+   screen readers), so it never covers the description. */
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{position:relative;width:var(--fv-ctl);min-width:var(--fv-ctl);padding:0;font-size:0;line-height:0;overflow:hidden;color:var(--fv-warn)}
+.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note::before{content:"!";display:inline-grid;place-items:center;width:16px;height:16px;border:1.5px solid currentColor;border-radius:var(--fv-r-pill,999px);
+  font:700 var(--fv-fs-1)/1 var(--fv-font);color:var(--fv-warn)}
+/* (Phones too: a mark, a finger's size, never words that squeeze the description.) */
+@media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-draft-note{width:var(--fv-touch);min-width:var(--fv-touch);height:var(--fv-touch)}}
+/* A text box inside a frame that already lights up when focused (:focus-within: the creation console, the editor's
+   description box) draws no ring of its own; the frame shows the focus, also for keys. (The image view's prompt is its
+   own field, so its ring is its edge.) */
+html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-description-box) :is(textarea,[contenteditable]):is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
+/* A tray put away plays its opening in reverse (160 ms; studio_console.js closes it after), and takes no presses meanwhile. */
+.fv-studio.fv-create .fvs-tray[open][data-closing=true]{animation:fvs-tray-out .16s var(--fv-ease-out) forwards;pointer-events:none}
+@keyframes fvs-tray-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(var(--fv-sp-8))}}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-tray[open][data-closing=true]{animation:none}}
+/* The next generation's empty frame: pointing at or choosing a frame or size shows it in place of the work (the same
+   frame Generate fills with its progress), at the new shape, with its pixels at the corner. */
+.fv-studio.fv-create .fv-stage[data-next=true]{background:var(--fv-ctl-bg);outline:1px dashed var(--fv-line2);box-shadow:none}
+.fv-studio.fv-create .fv-stage[data-next=true] .fv-stage-media{opacity:0;visibility:hidden}
+.fv-studio.fv-create .fvs-next-size{position:absolute;left:var(--fv-sp-12);top:var(--fv-sp-12);z-index:3;display:none;padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-r-xs);
+  background:rgb(var(--fv-solid1));color:var(--fv-fg2);font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums}
+.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:block}
+.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
+  text-align:center;color:var(--fv-fg3);font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A frame too narrow for the hint on one line shows none; the pixels badge shows only while the tray covers the bar. */
+.fv-studio.fv-create .fv-stage[data-next=true][data-narrow=true]::after{content:none}
+.fv-studio.fv-create .fv-body[data-tray=""] .fvs-next-size{display:none!important}
+.fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease,translate .2s ease}
+/* With the next generation's empty frame on the stage, the bar names it ("Next · 768 × 1344"); the work's details,
+   history and actions are hidden until a work is shown again. */
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone,.fvs-stagebar-end){visibility:hidden}
+/* The duration's number edits in place. */
+.fv-studio.fv-create .fvs-step-input{box-sizing:border-box;width:56px;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-4);border:0;border-radius:var(--fv-r-sm);
+  background:var(--fv-ctl-hover);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);text-align:center;font-variant-numeric:tabular-nums;outline:none;box-shadow:inset 0 0 0 1px var(--fv-accent-line)}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fv-stage{transition:none}}
+/* The frame tray holds frame and size only: the duration's notes live with the duration in the console. */
+.fv-studio.fv-create .fvs-tray[data-tray=size] :is(.fv-length-hint,.fv-canvas-note,.fv-range){display:none}
+/* "Next · 768 × 1344", centred under the empty frame, at every width. */
+.fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-end{display:none}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-start{justify-content:center}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-summary{flex:0 1 auto}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone){display:none}
+/* Rail: two videos picked together compare on the stage. Each card has a small check (shown on hover, and on every card
+   while picking); a picked card is outlined and numbered in the order picked. */
+.fv-studio.fv-create .fvs-rail .fv-recent-card{position:relative}
+.fv-studio.fv-create .fvs-rail .fv-recent-card>span.fv-recent-check{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);z-index:1;display:inline-grid;place-items:center;box-sizing:border-box;width:16px;height:16px;
+  border:1.5px solid #fff;border-radius:var(--fv-r-pill);background:rgb(0 0 0 / .4);color:#fff;font-size:var(--fv-fs-1);font-weight:600;line-height:1;opacity:0;
+  transition:opacity var(--fv-dur-1) var(--fv-ease-out);cursor:pointer}
+.fv-studio.fv-create .fvs-rail :is(.fv-recent-card:hover,.fv-recent-card:focus-visible) .fv-recent-check,.fv-studio.fv-create .fvs-rail[data-picking=true] .fv-recent-check{opacity:1}
+.fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked] .fv-recent-check{border-color:var(--fv-accent-fill);background:var(--fv-accent-fill)}
+.fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="1"] .fv-recent-check::after{content:"1"}
+.fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="2"] .fv-recent-check::after{content:"2"}
+.fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked] .fv-library-picture{box-shadow:0 0 0 2px var(--fv-accent-fill)}
+/* The description box draws nothing of its own in any browser: no native field look (Safari, iPad), no tap flash, and
+   none of its wrappers outlines itself while it has the caret; the console's frame alone shows the focus. */
+html body .fv-studio.fv-create .fvs-console textarea{-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;border:0!important;border-radius:0}
+html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,.fv-enhance,.fv-prompt-editor):is(:focus,:focus-visible,:focus-within){outline:none!important;box-shadow:none!important}
+/* CEO-eyes pass. The bar under the picture: no page counter or arrows (the rail and ← → turn the pages). */
+.fv-studio.fv-create .fvs-stagebar .fvs-history{display:none!important}
+/* An open tray: the bar under the picture steps back (the stage video's own controls are turned off by the script). */
+.fv-studio.fv-create .fvs-stagebar{transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-body:not([data-tray=""]) .fvs-stagebar{opacity:0;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-stagebar{transition:none}}
+/* Heights: 32 in trays, 36 on bars, 48 for Generate. */
+.fv-studio.fv-create .fvs-rail :is(.fv-works-entry,.fv-recent-toggle){height:var(--fvs-row,36px);min-height:var(--fvs-row,36px)}
+/* LoRA tray: an empty list is just a left-aligned Add; no standing note; the tray is as tall as what it holds. */
+.fv-studio.fv-create .fvs-tray .fv-lora-add{justify-content:flex-start}
+.fv-studio.fv-create .fvs-tray :is(.fv-lora-note,.fv-lora-list):empty{display:none}
+/* Phones: the chips stay one row (no chip left alone on a line); the row scrolls sideways and fades at its end. */
+@media(max-width:760px){
+  .fv-studio.fv-create .fvs-chips{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);padding-right:var(--fv-sp-24)}
+  .fv-studio.fv-create .fvs-chips>*{flex:none}
+}
+/* The play bar under the stage video: as wide as the picture, 8 px under it (the column's gap); hidden (its row kept)
+   while the stage shows the next frame, a run's progress or a comparison; it steps back with the bar while a tray is open. */
+.fv-studio.fv-create .fvs-player{align-self:center;box-sizing:border-box;width:var(--fvs-stage-w,100%);max-width:100%;min-height:32px;transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
+.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-next=true],.fv-stage[data-comparing=true],.fv-stage .fv-generation-progress:not([hidden])) .fvs-player{visibility:hidden}
+.fv-studio.fv-create .fv-body:not([data-tray=""]) .fvs-player{opacity:0;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-player{transition:none}}
+/* Phones: the play bar's buttons and track are 44 px touch targets (the row's room in fitPreview follows). */
+@media(max-width:760px){.fv-studio.fv-create .fvs-player{min-height:44px}
+  .fv-studio.fv-create .fvs-player .fv-player-bar{height:44px}
+  .fv-studio.fv-create .fvs-player :is(.fv-player-button,.fv-player-track){height:44px;min-height:44px}
+  .fv-studio.fv-create .fvs-player .fv-player-button{width:44px}}
+/* From the first frame: the run mode is in the Advanced tray (advanced_tray.js moves it), so the key alone is the
+   Generate block, from the enhancement row to the chip row (the same rules as advanced_tray.css, which loads later). */
+.fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-run-options{display:none}
+@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-primary{height:calc(2 * var(--fvs-row) + var(--fv-sp-8));border-radius:var(--fv-rad-ctl)}}
+/* Control heights: three tiers in the Create panel (desktop). 36 (--fvs-row): what sits in the console row and the
+   picture's bar, painted or not: the chips, the prompt's tools, the bar's icon keys, Download and the queue keys, the
+   history rail's keys. 32: controls inside trays and panels (fields, selects, buttons, segmented tracks, whose thumbs sit
+   2 px inside). 80: Generate, the one tall key. Coarse pointers keep 44 (--fvs-row is 44 there). */
+@media(min-width:761px){
+  .fv-studio.fv-create :is(.fvs-stagebar,.fvs-console .fv-prompt-tools){--fv-ctl:var(--fvs-row)}
+  .fv-studio.fv-create .fvs-rail{--fv-ctl-l:var(--fvs-row)}
+}

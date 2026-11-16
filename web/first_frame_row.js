@@ -8,6 +8,8 @@ export function firstFrameRow(t, className) {
     input.setAttribute('aria-label', t('First-frame reference', '首帧参考'));
     row.append(input);
     const purpose = row.title;
+    row.dataset.fvTipName = t('First-frame reference', '首帧参考');
+    row.dataset.fvTipUse = t('Each part starts from the first frame: less drift', '每段参照首帧，减小画面漂移');
     return {row, input, setDisabled(disabled) {
         input.disabled = disabled;
         input.title = '';

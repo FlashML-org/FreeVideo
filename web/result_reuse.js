@@ -25,6 +25,19 @@ export async function savedSettings(api, record) {
     } catch { return null; }
 }
 
+// The prompt a saved creation was made from ('' when it kept none, or is not a saved creation). Asked once per video.
+const prompts = new Map();
+export function savedPrompt(api, record) {
+    const id = IDENTITY.exec(record?.video || '')?.[1];
+    if (!id) return Promise.resolve('');
+    if (!prompts.has(id)) {
+        prompts.set(id, api.fetchApi('/freevideo/library/prompt?' + new URLSearchParams({id}), {cache: 'no-store'})
+            .then(reply => reply.ok ? reply.json() : null).then(body => typeof body?.prompt === 'string' ? body.prompt.trim() : '')
+            .catch(() => { prompts.delete(id); return ''; }));
+    }
+    return prompts.get(id);
+}
+
 // Whether filling the saved settings would change anything the panel can still change.
 export function differs(saved, now) {
     return saved.text !== now.text || saved.width !== now.width || saved.height !== now.height

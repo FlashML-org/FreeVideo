@@ -8,10 +8,13 @@ const plainListen = (target, type, handler) => {
 export function createPassMode({t, onChoose, listen = plainListen}) {
     const element = document.createElement('div');
     element.className = 'fv-pass-mode'; element.setAttribute('role', 'radiogroup');
-    element.setAttribute('aria-label', t('Two-pass sampling', '二次采样'));
+    element.setAttribute('aria-label', t('Two-pass sampling', '二采加速'));
     const options = [['off', t('Off', '关闭')], ['on', t('On', '开启')], ['preview', t('Preview first', '先出预览')]].map(([mode, label]) => {
         const option = document.createElement('button');
         option.type = 'button'; option.textContent = label; option.dataset.mode = mode; option.setAttribute('role', 'radio');
+        option.dataset.fvTipName = label;
+        option.dataset.fvTipUse = {off: t('Sample once at full size', '直接按成片尺寸采样一遍'), on: t('Draft small, then refine: usually faster', '先小后精，通常更快'),
+            preview: t('Stop at a half-size preview first', '先出半分辨率预览，满意再继续')}[mode];
         option.onclick = () => onChoose(mode);
         return option;
     });

@@ -1,3 +1,4 @@
+@import url("./tokens.css");
 /* One token table for the web views, mirroring freevideo_engine/branding.py so
    a control looks the same in the launcher and in ComfyUI. Scope the tokens to
    our own views; never change ComfyUI's theme. */
@@ -22,7 +23,7 @@
      a control (sm), a card or tile (md), a sheet (lg). */
   --fv-micro:12px;--fv-body:13px;--fv-strong:16px;--fv-section:20px;--fv-hero:29px;
   --fv-regular:400;--fv-medium:500;--fv-semibold:600;
-  --fv-r-xs:3px;--fv-r-sm:8px;--fv-r-md:12px;--fv-r-lg:16px;
+  --fv-r-xs:4px;--fv-r-sm:8px;--fv-r-md:12px;--fv-r-lg:16px;--fv-r-pill:999px;
   --fv-h-sm:32px;--fv-h:36px;--fv-h-lg:44px;
   /* Motion: things arriving ease out; state changes use the standard curve. */
   --fv-ease-out:cubic-bezier(.22,1,.36,1);--fv-ease:cubic-bezier(.4,0,.2,1);
@@ -40,10 +41,10 @@
 :where(.fv-studio,.fv-setup,.fv-panel) :focus-visible{outline:2px solid var(--fv-accent);outline-offset:3px}
 /* A modal takes focus itself while it fills; its controls carry the ring. */
 :where(.fv-studio,.fv-setup,.fv-failure-dialog):focus-visible{outline:none}
-:where(.fv-studio,.fv-setup,.fv-panel) progress{accent-color:var(--fv-accent);appearance:none;height:6px;border:0;border-radius:999px;overflow:hidden;background:var(--fv-raised)}
-:where(.fv-studio,.fv-setup,.fv-panel) progress::-webkit-progress-bar{background:var(--fv-raised);border-radius:999px}
-:where(.fv-studio,.fv-setup,.fv-panel) progress::-webkit-progress-value{background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-ramp));border-radius:999px;transition:width .5s var(--fv-ease-out)}
-:where(.fv-studio,.fv-setup,.fv-panel) progress::-moz-progress-bar{background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-ramp));border-radius:999px}
+:where(.fv-studio,.fv-setup,.fv-panel) progress{accent-color:var(--fv-accent);appearance:none;height:6px;border:0;border-radius:var(--fv-r-pill);overflow:hidden;background:var(--fv-raised)}
+:where(.fv-studio,.fv-setup,.fv-panel) progress::-webkit-progress-bar{background:var(--fv-raised);border-radius:var(--fv-r-pill)}
+:where(.fv-studio,.fv-setup,.fv-panel) progress::-webkit-progress-value{background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-ramp));border-radius:var(--fv-r-pill);transition:width .5s var(--fv-ease-out)}
+:where(.fv-studio,.fv-setup,.fv-panel) progress::-moz-progress-bar{background:linear-gradient(90deg,var(--fv-accent),var(--fv-accent-ramp));border-radius:var(--fv-r-pill)}
 
 /* Shared, brief transitions keep the two workspaces and settings coherent. */
 :where(.fv-studio,.fv-setup)[open]{animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}
@@ -62,15 +63,103 @@
 .fv-select-menu-host>.fv-select-trigger{display:flex;align-items:center;width:100%;max-width:100%;min-height:var(--fv-h-sm,32px);padding:4px 34px 4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
 .fv-select-menu-host>.fv-select-trigger:hover:not(:disabled){background:var(--fv-hover)}.fv-select-menu-host>.fv-select-trigger:disabled{opacity:.5;cursor:default}
 .fv-select-face{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:8px;font:13px var(--fv-font)}
+.fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
 .fv-select-menu[hidden]{display:none}
 .fv-select-menu [role=separator]{height:1px;margin:5px 4px;background:var(--fv-border)}
 .fv-select-group{padding:6px 10px 2px;color:var(--fv-muted);font-size:12px}
-.fv-select-menu .fv-select-item{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;height:32px;min-height:32px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:var(--fv-ink);font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
+.fv-select-menu .fv-select-item{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;height:32px;min-height:32px;padding:0 10px;border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-ink);font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
 .fv-select-menu .fv-select-item:hover,.fv-select-menu .fv-select-item:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
 .fv-select-label{overflow:hidden;text-overflow:ellipsis}
 .fv-select-mark{flex:none;width:14px;height:14px;color:var(--fv-accent);visibility:hidden}.fv-select-mark svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .fv-select-item[aria-selected=true] .fv-select-mark{visibility:visible}
-:is(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) input[type=checkbox]:not([role=switch]){appearance:none;-webkit-appearance:none;flex:none;box-sizing:border-box;width:16px;height:16px;min-height:16px;margin:0;padding:0;border:1px solid color-mix(in srgb,var(--fv-ink) 45%,transparent);border-radius:4px;background:var(--fv-card) center/12px no-repeat;cursor:pointer;vertical-align:middle;transition:background-color .15s,border-color .15s}
+:is(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) input[type=checkbox]:not([role=switch]){appearance:none;-webkit-appearance:none;flex:none;box-sizing:border-box;width:16px;height:16px;min-height:16px;margin:0;padding:0;border:1px solid color-mix(in srgb,var(--fv-ink) 45%,transparent);border-radius:var(--fv-r-xs);background:var(--fv-card) center/12px no-repeat;cursor:pointer;vertical-align:middle;transition:background-color .15s,border-color .15s}
 :is(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) input[type=checkbox]:not([role=switch]):checked{border-color:var(--fv-accent);background-color:var(--fv-accent);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E")}
 :is(.fv-studio,.fv-setup,.fv-panel,.fv-image-editor) input[type=checkbox]:not([role=switch]):disabled{opacity:.45;cursor:default}
+
+/* tokens.css names the dark scheme on :root for FreeVideo; the user's own ComfyUI page keeps ComfyUI's choice. */
+:root:not([data-fv-shell]),:root[data-theme]:not([data-fv-shell]){color-scheme:normal}
+/* ── Shell tokens: web/tokens.css (the designers' single source, imported above) ──────────────
+   Spacing on the 8 px grid (--fv-sp-*), four text sizes (--fv-fs-1..4), radii, heights, the top bar (--fv-header-h),
+   motion (--fv-dur-*, --fv-ease-out), layers (--fv-z-*), colours for both themes and the glass material
+   (.fv-glass .fv-g1..3 with solid fallbacks). tests/shell_token_lint.mjs lists styles off the grid or the four sizes. */
+/* Motion inside the views follows the same limits: arrivals ease out, nothing lasts past 260 ms. */
+:where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-ease-out:cubic-bezier(.2,.8,.2,1);--fv-quick:.16s;--fv-base:.2s;--fv-slow:.26s;
+}
+
+/* The older view tokens in the light theme (html[data-theme=light]): same names, light values, AA contrast. */
+:root[data-theme=light] :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-bg:#e7eaef;--fv-canvas:#eef0f4;--fv-card:#ffffff;--fv-raised:#f4f6f9;--fv-hover:#e6e9ee;
+  --fv-border:rgb(20 24 32 / .13);--fv-sheen:rgb(20 24 32 / .2);
+  --fv-ink:#14161b;--fv-muted:#4a5160;--fv-disabled:#5f6675;
+  --fv-accent:#0759ab;--fv-accent-hover:#0b4f94;--fv-accent-ramp:#0b7f74;--fv-accent-dim:#8db8e4;--fv-selected:#dcebfb;
+  --fv-success:#086b3f;--fv-success-subtle:#e2f3ea;--fv-warning:#8a5200;--fv-danger:#a82b25;--fv-danger-subtle:#fbe8e8;
+  color-scheme:light;
+}
+
+/* ── Material: calm (default) or glass (html[data-fv-material=glass]) ───────────────────────────
+   Calm: panels and cards are solid (three fills: ground, surface, raised); only what floats over the work keeps
+   frosted glass: the top bar, the floating task window, menus, popovers, hover tips and toasts. No coloured light or
+   blurred picture behind the views, no inner highlights or doubled edges, shadows only on floating layers,  no glow on the primary button. Glass: the earlier material, unchanged. */
+:root:not([data-fv-material=glass]){
+  --fv-shell-bg:#0c0d10;--fv-tint:23 25 30;--fv-solid1:23 25 30;--fv-solid2:23 25 30;--fv-solid3:32 35 41;
+  --fv-a1:1;--fv-a2:1;--fv-a3:1;--fv-edge:rgb(255 255 255 / .07);--fv-edge-hi:transparent;--fv-sh1:none;--fv-sh2:none;
+}
+:root[data-theme=light]:not([data-fv-material=glass]){
+  --fv-shell-bg:#f3f4f6;--fv-tint:255 255 255;--fv-solid1:255 255 255;--fv-solid2:255 255 255;--fv-solid3:236 238 242;
+  --fv-edge:rgb(20 24 32 / .09);--fv-sh1:none;--fv-sh2:none;
+}
+/* The older view tokens follow the same three fills. */
+:root:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-bg:#0c0d10;--fv-canvas:#0c0d10;--fv-card:#17191e;--fv-raised:#202329;--fv-hover:#2a2d34;--fv-border:rgb(255 255 255 / .08);--fv-sheen:rgb(255 255 255 / .12);
+}
+:root[data-theme=light]:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-bg:#f3f4f6;--fv-canvas:#f3f4f6;--fv-card:#ffffff;--fv-raised:#eceef2;--fv-hover:#e3e6eb;--fv-border:rgb(20 24 32 / .1);--fv-sheen:rgb(20 24 32 / .16);
+}
+/* What floats keeps its glass: translucent, blurred, with a shadow. */
+:root:not([data-fv-material=glass]) :is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,.fv-cm-item,[popover]:popover-open,[role=menu]){
+  --fv-a1:.62;--fv-a2:.74;--fv-a3:.86;
+  --fv-sh1:0 1px 1px rgb(0 0 0 / .25),0 10px 30px -6px rgb(0 0 0 / .45);--fv-sh2:0 1px 2px rgb(0 0 0 / .3),0 22px 54px -10px rgb(0 0 0 / .55);
+}
+:root[data-theme=light]:not([data-fv-material=glass]) :is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,.fv-cm-item,[popover]:popover-open,[role=menu]){
+  --fv-a1:.78;--fv-a2:.86;--fv-a3:.92;
+  --fv-sh1:0 1px 1px rgb(30 40 60 / .06),0 10px 28px -8px rgb(30 40 60 / .16);--fv-sh2:0 1px 2px rgb(30 40 60 / .07),0 22px 50px -12px rgb(30 40 60 / .22);
+}
+/* Nothing else blurs what is behind it. */
+:root:not([data-fv-material=glass]) :is([class*="fv-"],[class*="fv-"] *):not(:is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]),:is(.fv-topbar,.fv-tb-pop,.sgf,.fv-tip,.fv-toasts,.fv-pal,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]) *){
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+/* No coloured light or blurred picture behind the views; no glow on the primary button. */
+/* Off by default, not removed: a look (html[data-fv-look], e.g. polish.css for "stage") may turn them back on with a
+   more specific rule. */
+:root:not([data-fv-material=glass]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none}
+:root:not([data-fv-material=glass]) .fv-studio .fv-preview-column{background:none}
+:root:not([data-fv-material=glass]) :is(.fv-primary,.fv-image-go,[class*="-primary"],.fv-iv-go,.fvs-go){box-shadow:none!important}
+/* The probe that says theme.css (and tokens.css) took effect; independent of colours, so a palette change never
+   looks like missing styles. health.js reads it. */
+:root{--fv-theme-canary:ok}
+
+/* ── The radius ladder: four steps and the pill, every border-radius in web/ uses these (token lint --strict) ─────
+   xs 4 tags and badges · sm 8 controls (buttons, fields, chips, drop-downs, thumbnails, icon buttons as rounded
+   squares) · md 12 cards and panels · lg 16 large containers and dialogs · pill only for segmented-control shells,
+   switches, status capsules and round dots. Nested corners are concentric: inner = outer − padding (at least 4).
+   The design system's own names point at the same four steps. */
+:root{
+  --fv-r-xs:4px;--fv-r-sm:8px;--fv-r-md:12px;--fv-r-lg:16px;--fv-r-pill:999px;
+  --fv-rad-xs:var(--fv-r-xs);--fv-rad-sm:var(--fv-r-sm);--fv-rad-ctl:var(--fv-r-sm);--fv-rad-pic:var(--fv-r-sm);
+  --fv-rad-pop:var(--fv-r-md);--fv-rad-dock:var(--fv-r-md);--fv-rad-console:var(--fv-r-lg);--fv-rad-pill:var(--fv-r-pill);
+}
+
+/* ── The stage look's fills (html[data-fv-look=stage], the default look over calm): the designs' warm dark grey
+   instead of calm's neutral one; light keeps a warm off-white. One set, here: polish.css only reads them. */
+:root[data-fv-look=stage]:not([data-fv-material=glass]){
+  --fv-shell-bg:#141518;--fv-tint:28 29 32;--fv-solid1:28 29 32;--fv-solid2:28 29 32;--fv-solid3:38 39 43;
+}
+:root[data-fv-look=stage]:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-bg:#141518;--fv-canvas:#141518;--fv-card:#1c1d20;--fv-raised:#26272b;--fv-hover:#303135;
+}
+:root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]){
+  --fv-shell-bg:#f4f3f1;--fv-tint:255 255 255;--fv-solid1:255 255 255;--fv-solid2:255 255 255;--fv-solid3:238 237 234;
+}
+:root[data-fv-look=stage][data-theme=light]:not([data-fv-material=glass]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-bg:#f4f3f1;--fv-canvas:#f4f3f1;--fv-card:#ffffff;--fv-raised:#eeedea;--fv-hover:#e5e4e0;
+}

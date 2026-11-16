@@ -1,6 +1,6 @@
 import {showHowTo} from './first_run_guide.js';
 
-// Short walk-throughs played over the live interface (the same ring and bubble as the first-run guide).
+// Short walk-throughs played over the live interface (the shared anchored layer, as the first-run guide uses).
 // A step names its control; when that control is not on screen (nothing generated yet, say) `image` stands in for it.
 const shown = node => Boolean(node?.isConnected && node.getClientRects().length);
 
@@ -98,6 +98,6 @@ export async function startHowTo(id, {openWorkspace = async () => (await import(
         }
         await document.fonts.ready;
         await wait(250);
-        return await showHowTo(howTo.steps);
+        return await showHowTo(howTo.steps, {title: howTo.title});
     } finally { if (!--opening) delete document.body.dataset.fvHowTo; }
 }

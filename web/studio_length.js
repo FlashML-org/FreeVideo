@@ -35,11 +35,14 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     single.setAttribute('aria-label', t('Force a single run', '强制单次生成'));
     single.style.minHeight = '0'; single.style.marginRight = '8px';
     const toggle = el('label'); toggle.append(single, document.createTextNode(t('Force a single run', '强制单次生成')));
+    toggle.dataset.fvTipName = t('Force a single run', '强制单次生成');
+    toggle.dataset.fvTipUse = t('Make it in one run, even past 30 seconds', '超过 30 秒也一次生成，不分段');
     const explanation = el('p', 'fv-muted', t('Generate in one run, even beyond 30 seconds.', '超过 30 秒时也一次生成。'));
     const unavailable = el('p', 'fv-muted'); unavailable.hidden = true;
     const block = el('input'); block.type = 'number'; block.min = '5'; block.step = '1'; block.required = true;
     block.dataset.fvLength = 'block'; block.setAttribute('aria-label', t('Part length · seconds', '每段时长 · 秒'));
     const reset = el('button', 'fv-quiet', t('Restore default', '恢复默认')); reset.type = 'button';
+    reset.dataset.fvTipName = t('Restore default', '恢复默认'); reset.dataset.fvTipUse = t('Part length back to the automatic choice', '每段时长回到自动选择');
     controls.append(toggle, explanation, unavailable, field(t('Part length · seconds', '每段时长 · 秒'), block), reset); advanced.append(controls);
     const note = el('div', 'fv-muted fv-length-plan');
     note.hidden = true; fields.after(note); note.setAttribute('role', 'status');
@@ -112,6 +115,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
                 ? t(`Up to ${Math.floor(maximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(maximum)}\u00a0秒。`) : '';
         unavailable.hidden = absent || !reason; unavailable.textContent = reason;
         single.title = single.disabled ? reason : ''; toggle.title = single.title;
+        if (single.disabled && reason) toggle.dataset.fvTipWhy = reason; else delete toggle.dataset.fvTipWhy;
         if (positive(maximum)) block.max = String(maximum); else block.removeAttribute('max');
         if (!edited) block.value = Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(maximum), maximum || Infinity);
         block.disabled = absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 5); controls.hidden = absent;

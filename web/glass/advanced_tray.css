@@ -1,0 +1,132 @@
+/* The studio's Advanced tray (advanced_tray.js marks the parts; the controls stay studio.js's own).
+   One family with the Media and Frame & size trays: the same shell and quiet group titles. Inside, four sections in
+   two columns (one under the other in a narrow tray); each row is a name on the left and a control on one right edge,
+   every row 32 px high, every boxed control one width. One look per kind: segmented controls for two or three choices,
+   the shared drop-down face for lists, − / + number fields. Help is in the hover cards. */
+.fv-studio.fv-create .fvs-tray[data-tray=advanced]{max-height:min(480px,var(--fv-at-room,calc(100dvh - 320px)))!important}
+
+/* The Generate block keeps only the key and its time: the run mode is in this tray now. The key takes the whole block,
+   its top on the enhancement row and its bottom on the chip row, four even corners. */
+.fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-run-options{display:none}
+@media(min-width:761px){
+  .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-primary{height:calc(2 * var(--fvs-row) + var(--fv-sp-8));border-radius:var(--fv-rad-ctl)}
+}
+
+.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-h:32px;--fv-at-w:184px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--fv-sp-32);row-gap:var(--fv-sp-20);align-items:start;padding-top:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body>:not(.fv-at-group){grid-column:1/-1}
+/* One column in a narrow tray; the sections sit closer, so a phone shows all four whole above the console. */
+@container (max-width:600px){
+  .fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{grid-template-columns:minmax(0,1fr);row-gap:var(--fv-sp-12);padding-top:0}
+  .fv-studio.fv-create .fvs-tray.fv-at .fv-at-group>.fv-at-title{margin-bottom:calc(-1 * var(--fv-sp-4))}
+}
+@container (max-width:380px){.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-w:160px}}
+@media(pointer:coarse){.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-h:44px}}
+.fv-studio.fv-create .fvs-tray.fv-at [hidden]{display:none!important}
+/* Parts that the tray shows another way (the run-in-one-go box as two choices, a caption replaced by a shorter name) and
+   rows that do not apply to the current choice. */
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-off,.fv-at-gone){display:none!important}
+/* The count row keeps its place in every mode (studio.js hides it outside Batch; here it is greyed instead). */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-at-keep[hidden]{display:flex!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row:has(input:disabled)>.fv-at-name,.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-at-keep:has(input:disabled)>span:first-child{color:var(--fv-fg3)!important}
+/* The field boxes are spans inside the field's label: the label's own caption rule (.fv-field>span) does not reach them. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-field>:is(.fv-at-num,.fv-at-seed){margin:0!important}
+
+/* A section: its quiet title, then its rows 8 px apart. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-group{display:grid;gap:var(--fv-sp-8);min-width:0;margin:0;padding:0}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-title{margin:0;font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3);letter-spacing:0}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-rows{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-8);margin:0!important;padding:0;min-width:0}
+
+/* A row: the name on the left (body text, second ink), the control on the right edge. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row{display:flex;align-items:center;gap:var(--fv-sp-8);min-width:0;min-height:var(--fv-at-h);margin:0;padding:0;
+  font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row>span:first-child{flex:1 1 auto;min-width:0;margin:0!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fv-fs-2)!important;line-height:20px;color:var(--fv-fg2)!important}
+
+/* Choices: one segmented control across the column: the run mode and how a long video is made. The chosen block is a
+   fill only, the others are plain; no edges. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--fv-sp-2);height:var(--fv-at-h);padding:var(--fv-sp-2);box-sizing:border-box;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button{min-width:0;height:calc(var(--fv-at-h) - 4px)!important;min-height:0!important;margin:0;padding:0 var(--fv-sp-8)!important;border:0!important;border-radius:var(--fv-r-xs)!important;
+  background:transparent!important;color:var(--fv-fg2)!important;font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-2,500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button[aria-pressed=true]{background:var(--fv-accent-soft)!important;color:var(--fv-fg)!important;box-shadow:none}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button:disabled{opacity:.45;cursor:default}
+
+/* Number fields: − value + in one box of the row's width; the native spin keys are not drawn. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num{flex:none;display:grid;grid-template-columns:var(--fv-at-h) minmax(0,1fr) var(--fv-at-h);align-items:center;width:var(--fv-at-w);height:var(--fv-at-h);box-sizing:border-box;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input{width:100%;min-width:0;height:var(--fv-at-h)!important;min-height:0!important;margin:0;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;
+  color:var(--fv-fg);font-size:var(--fv-fs-2);text-align:center;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input:is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input::-webkit-inner-spin-button,.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input:disabled{color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-step,.fv-at-reroll,.fv-at-unset){display:grid;place-items:center;flex:none;width:var(--fv-at-h);height:var(--fv-at-h)!important;min-height:0!important;margin:0;padding:0!important;border:0!important;
+  border-radius:var(--fv-r-sm)!important;background:transparent!important;color:var(--fv-fg2)!important;font-size:0!important;line-height:0;box-shadow:none}
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-step,.fv-at-reroll,.fv-at-unset):hover:not(:disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-step,.fv-at-reroll,.fv-at-unset):disabled{opacity:.35;cursor:default}
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-step,.fv-at-reroll,.fv-at-unset)::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-at-icon) center/16px no-repeat;mask:var(--fv-at-icon) center/16px no-repeat}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-less{--fv-at-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E")}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-more{--fv-at-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8M8 4v8'/%3E%3C/svg%3E")}
+/* A unit after the number, inside the same box ("15 s"): number and unit centred together. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-mid{display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-4);min-width:0;height:var(--fv-at-h)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-mid>input{flex:none;width:4ch;text-align:right}
+@supports (field-sizing:content){.fv-studio.fv-create .fvs-tray.fv-at .fv-at-mid>input{field-sizing:content;width:auto;min-width:1ch}}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-unit{flex:none;font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg2)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num:has(input:disabled) .fv-at-unit{color:var(--fv-fg3)}
+/* Back to the automatic part length: a small key in front of the field while a length of its own is set. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-unset{--fv-at-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8a4.5 4.5 0 1 0 1.4-3.3'/%3E%3Cpath d='M4.5 2.5v2.5H7'/%3E%3C/svg%3E")}
+
+/* Seed: one field as wide as the drop-down under it; the key that draws a new number sits at its right end, where the
+   drop-down has its arrow. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed{flex:none;display:grid;grid-template-columns:minmax(0,1fr) var(--fv-at-h);align-items:center;width:var(--fv-at-w);height:var(--fv-at-h);box-sizing:border-box;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input{width:100%;min-width:0;height:var(--fv-at-h)!important;min-height:0!important;margin:0;padding:0 0 0 var(--fv-sp-12)!important;box-sizing:border-box;border:0!important;border-radius:0!important;background:transparent!important;
+  color:var(--fv-fg);font-size:var(--fv-fs-2);font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:disabled{color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input::-webkit-inner-spin-button,.fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-reroll{--fv-at-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='11' height='11' rx='2.5'/%3E%3Ccircle cx='5.6' cy='5.6' r='1.1' fill='black' stroke='none'/%3E%3Ccircle cx='10.4' cy='10.4' r='1.1' fill='black' stroke='none'/%3E%3Ccircle cx='8' cy='8' r='1.1' fill='black' stroke='none'/%3E%3C/svg%3E")}
+
+/* Lists: the shared drop-down face, as wide as the other controls. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row>.fv-select{flex:none;width:var(--fv-at-w)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row>.fv-select>select{height:var(--fv-at-h)!important;min-height:0!important;margin:0;padding:0 var(--fv-sp-32) 0 var(--fv-sp-12)!important;border-radius:var(--fv-r-sm)!important;font-size:var(--fv-fs-2)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row>.fv-select::after{right:var(--fv-sp-8)}
+
+/* Lines: a sentence that is always true is in the hover card and stays in the page for screen readers only; a reason
+   or a caution is one quiet line (the steps' caution only while the steps are set by hand). */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-said{position:absolute!important;width:1px;height:1px;margin:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-note{margin:0!important;font-size:var(--fv-fs-1)!important;line-height:16px!important;color:var(--fv-fg3)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-group:not(.fv-at-custom) .fv-at-caution{display:none}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-caution{color:var(--fv-fg2)!important}
+
+/* Reset to defaults: a text key in the title row, only while something differs from the defaults. */
+.fv-studio.fv-create .fvs-tray.fv-at>.fvs-tray-head>.fv-at-reset{flex:none;height:var(--fv-ctl)!important;min-height:0!important;margin:0;padding:0 var(--fv-sp-8)!important;border:0!important;border-radius:var(--fv-r-sm)!important;
+  background:transparent!important;color:var(--fv-accent-ink)!important;font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-2,500);white-space:nowrap}
+.fv-studio.fv-create .fvs-tray.fv-at>.fvs-tray-head>.fv-at-reset:hover{background:var(--fv-ctl-hover)!important}
+.fv-studio.fv-create .fvs-tray.fv-at>.fvs-tray-head>.fv-at-reset[hidden]{display:none}
+
+/* More settings: a quiet line with a chevron where a group title would be; the steps fold out under it. Its press area
+   is 24 px high around the 16 px line. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose{display:inline-flex;align-items:center;justify-self:start;gap:var(--fv-sp-4);height:auto!important;min-height:0!important;margin:calc(-1 * var(--fv-sp-4)) 0!important;padding:var(--fv-sp-4) 0!important;
+  border:0!important;border-radius:var(--fv-r-xs)!important;background:transparent!important;color:var(--fv-fg3)!important;font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);cursor:pointer}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose:hover{color:var(--fv-fg)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose::after{content:"";width:12px;height:12px;background:currentColor;transition:transform .14s cubic-bezier(.2,.8,.2,1);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose[aria-expanded=true]::after{transform:rotate(90deg)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-fold-body{display:grid;gap:var(--fv-sp-8);min-width:0}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose::after{transition:none}}
+
+/* Longest part, while this duration fits in one part: the field is greyed and takes no presses. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-part.fv-at-idle>.fv-at-name{color:var(--fv-fg3)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-part.fv-at-idle .fv-at-num{opacity:.45}
+
+/* A problem that stops Generate: the row it concerns in the warning ink, and one line saying why. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-bad>.fv-at-name{color:var(--fv-warn)!important}
+.fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-bad .fv-at-num,.fv-at-segments.fv-at-bad){box-shadow:inset 0 0 0 1px var(--fv-warn)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-problem{color:var(--fv-warn)!important}
+
+/* The strip of the stage around the open tray fades into the page (wide windows only), as for the Media tray. */
+.fv-at-scrim{display:none}
+@media (min-width:641px){
+  .fv-studio.fv-create .fv-at-scrim:has(+.fvs-tray[data-tray=advanced][open]){display:block;position:absolute;bottom:100%;z-index:5;background:linear-gradient(to top,var(--fv-shell-bg) calc(100% - 32px),transparent)}
+}

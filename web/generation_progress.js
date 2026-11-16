@@ -205,7 +205,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
         if (!ranOnePass(plan)) return named('prepare');
         const n = plan.base_steps;
         return {key: 'prepare', text: t(`Two-pass acceleration needs 8 first-pass steps. This video uses a single ${n}-step pass.`,
-            `只有一采为 8 步时才会使用二次采样加速，这次按 ${n} 步只采样一遍。`)};
+            `只有一采为 8 步时才会使用二采加速，这次按 ${n} 步只采样一遍。`)};
     }
     if (phase === 'recovery') return message.retry?.reuse_sampling === true ? named('decode')
         : message.retry?.reuse_first_pass === true ? steps('pass2', 'pass2') : named('prepare');
@@ -229,7 +229,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
         if (twoPass && plan.preview) return steps('preview', 'preview', step, count);
         const sampling = steps('pass1', twoPass ? 'first' : 'single', step, count);
         if (!twoPass && ranOnePass(plan))
-            sampling.text += t(' (single pass; two-pass acceleration needs 8 first-pass steps)', '（只采样一遍；二次采样加速需一采 8 步）');
+            sampling.text += t(' (single pass; two-pass acceleration needs 8 first-pass steps)', '（只采样一遍；二采加速需一采 8 步）');
         return sampling;
     }
     const key = labelActivities.get(message.label) || {
@@ -316,8 +316,8 @@ export function encoderFileText(file, t) {
         ' Select "Repair" in the launcher under Settings > Environment to restore the tested file; the current file is kept.',
         '可在启动器“设置 → 环境”中点“修复”恢复已验证的文件，原文件会保留。');
     else message += t(
-        ' In the page settings, select "Detect & review", then "Install / repair" to restore the tested file; the current file is kept.',
-        '可在页面设置中先点“检测并预览”，再点“安装／修复”恢复已验证的文件，原文件会保留。');
+        ' In Settings, under Models, select "Check installation", then "Install" to restore the tested file; the current file is kept.',
+        '可在设置的“模型”页先点“检查安装”，再点“安装”恢复已验证的文件，原文件会保留。');
     return message;
 }
 

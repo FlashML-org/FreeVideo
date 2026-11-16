@@ -218,6 +218,15 @@ export function pushOp(doc, layerId, op) {
     return replace(doc, layerId, mask ? {mask: {ops: [...layer.mask.ops, entry]}} : {ops: [...layer.ops, entry]});
 }
 export function fillSelection(doc, id, color, selection) { return pushOp(doc, id, {type: 'fill', color, selection}); }
+// The eraser over a vector shape: the stroke hides that part through the shape's own mask (made on first use), so the
+// shape stays a shape (it can still be moved, resized, recoloured) and the erased part goes with it.
+export function maskStroke(doc, id, op) {
+    const layer = layerOf(doc, id);
+    if (layer.locked) fail('locked', 'Layer is locked');
+    if (op?.type !== 'stroke') fail('unsupported', 'A stroke is required');
+    const mask = layer.mask || {ops: []};
+    return replace(doc, id, {mask: {ops: [...mask.ops, {id: uid('o'), ...op, tool: 'hide'}]}});
+}
 export function clearSelection(doc, id, selection) {
     pixelLayer(doc, id); requireSelection(selection);
     return pushOp(doc, id, {type: 'clear', selection});
@@ -253,12 +262,15 @@ export function updateText(doc, id, patch, measure) {
     const sx = l.w / l.nw, sy = l.h / l.nh;
     return replace(doc, id, {text, ...size, w: size.nw * sx, h: size.nh * sy});
 }
+export const SHAPES = Object.freeze(['rect', 'ellipse', 'line', 'arrow', 'triangle']), LINE_SHAPES = Object.freeze(['line', 'arrow']);
 export function addShapeLayer(doc, {from, to, shape, name}) {
     if (from?.length !== 2 || to?.length !== 2 || ![...from, ...to].every(finite)) fail('range', 'Invalid shape points');
-    if (!['rect', 'ellipse', 'line'].includes(shape.type)) fail('unsupported', 'Unsupported shape');
+    // A shape is a vector object (type, fill, stroke, width) that stays editable; lines and arrows run along their box.
+    if (!SHAPES.includes(shape.type)) fail('unsupported', 'Unsupported shape');
     if (!positive(shape.width)) fail('range', 'Invalid stroke width');
     const dx = to[0] - from[0], dy = to[1] - from[1], point = centre(doc, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]);
-    const line = shape.type === 'line', w = line ? Math.hypot(dx, dy) : Math.max(4, Math.abs(dx)), h = line ? Math.max(shape.width * 2, 8) : Math.max(4, Math.abs(dy));
+    const line = LINE_SHAPES.includes(shape.type), w = line ? Math.hypot(dx, dy) : Math.max(4, Math.abs(dx));
+    const h = line ? Math.max(shape.width * (shape.type === 'arrow' ? 4 : 2), shape.type === 'arrow' ? 16 : 8) : Math.max(4, Math.abs(dy));
     dimensions(w, h);
     const angle = line ? Math.atan2(dy, dx) * 180 / Math.PI : 0;
     return insertLayer(doc, {...newLayer(doc, 'shape', name, point, w, h, angle),

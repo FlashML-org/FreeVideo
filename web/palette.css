@@ -1,0 +1,141 @@
+/* The command palette (palette.js), after glob's spec (glob.css §6): one modal glass surface (g3) with a field, the
+   scope chips, a list of actions and results (one line, or two with a picture), the newest creations as a grid and
+   a footer that says what the marked row does. Fixed height, so it never jumps while results arrive. */
+dialog.fv-palette {
+  top: max(80px, 14vh); width: min(var(--fv-palette-w, 640px), calc(100vw - 2 * var(--fv-sp-16, 16px)));
+  height: min(560px, calc(100vh - max(80px, 14vh) - var(--fv-sp-40, 40px))); border-radius: var(--fv-rad-console, 24px);
+}
+dialog.fv-palette::backdrop { background: var(--fv-scrim, rgb(3 4 6 / .52)); }
+:root[data-theme=light] dialog.fv-palette::backdrop { background: var(--fv-scrim, rgb(20 24 32 / .28)); }
+.fv-pal-field { flex: none; display: flex; align-items: center; gap: var(--fv-sp-12, 12px); height: var(--fv-sp-56, 56px); padding: 0 var(--fv-sp-16, 16px) 0 var(--fv-sp-20, 20px); color: var(--fv-fg3, #99a1ae); }
+.fv-pal-lead { display: grid; place-items: center; }
+.fv-pal-field input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; padding: 0;
+  color: var(--fv-fg, #f3f5f8); font: 400 var(--fv-fs-3, 16px)/var(--fv-lh-3, 24px) var(--fv-font, system-ui, sans-serif); caret-color: var(--fv-accent-ink, #66b6ff);
+}
+.fv-pal-field input::placeholder { color: var(--fv-fg3, #99a1ae); }
+.fv-pal-esc { flex: none; }
+.fv-pal-scopes { flex: none; display: flex; gap: var(--fv-sp-4, 4px); padding: 0 var(--fv-sp-16, 16px) var(--fv-sp-12, 12px); box-shadow: inset 0 -1px 0 var(--fv-line, rgb(255 255 255 / .08)); overflow-x: auto; scrollbar-width: none; }
+.fv-pal-scopes::-webkit-scrollbar { display: none; }
+.fv-pal-scopes[hidden] { display: none; }
+.fv-pal-chip {
+  flex: none; height: var(--fv-ctl-s, 28px); padding: 0 var(--fv-sp-12, 12px); border: 0; border-radius: var(--fv-rad-pill, 999px); cursor: pointer;
+  background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg2, #c3c9d3); font: 500 var(--fv-fs-2, 13px)/1 var(--fv-font, system-ui, sans-serif); white-space: nowrap;
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out), color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-pal-chip:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
+.fv-pal-chip.is-on { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); color: var(--fv-accent-ink, #66b6ff); font-weight: 600; }
+.fv-pal-chip:active { transform: scale(.98); transition-duration: 0s; }
+.fv-pal-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: var(--fv-sp-8, 8px); }
+.fv-pal-list[hidden] { display: none; }
+.fv-pal-group {
+  display: flex; align-items: center; justify-content: space-between; height: var(--fv-sp-32, 32px); padding: var(--fv-sp-4, 4px) var(--fv-sp-12, 12px) 0; box-sizing: border-box;
+  font-size: var(--fv-fs-1, 12px); font-weight: 600; color: var(--fv-fg3, #99a1ae);
+}
+.fv-pal-more { height: var(--fv-sp-24, 24px); padding: 0 var(--fv-sp-4, 4px); border: 0; border-radius: var(--fv-rad-xs, 4px); background: transparent; color: var(--fv-accent-ink, #66b6ff); font: 500 var(--fv-fs-1, 12px)/1 var(--fv-font, system-ui, sans-serif); cursor: pointer; }
+.fv-pal-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+.fv-pal-option {
+  display: grid; grid-template-columns: var(--fv-sp-32, 32px) minmax(0, 1fr) auto; align-items: center; column-gap: var(--fv-sp-12, 12px);
+  min-height: var(--fv-sp-40, 40px); padding: var(--fv-sp-4, 4px) var(--fv-sp-12, 12px) var(--fv-sp-4, 4px) var(--fv-sp-8, 8px); box-sizing: border-box;
+  border-radius: var(--fv-rad-ctl, 12px); color: var(--fv-fg, #f3f5f8); cursor: default; scroll-margin: var(--fv-sp-8, 8px);
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-pal-option.is-two { min-height: var(--fv-row-2, 48px); }
+.fv-pal-option[aria-selected=true] { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); }
+.fv-pal-option:active { background: color-mix(in srgb, var(--fv-accent-ink, #66b6ff) 24%, transparent); transition-duration: 0s; }
+.fv-pal-option[aria-disabled=true] { color: var(--fv-fg3, #99a1ae); }
+.fv-pal-option[aria-disabled=true][aria-selected=true] { background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); }
+.fv-pal-icon, .fv-pal-thumb {
+  display: grid; place-items: center; width: var(--fv-sp-32, 32px); height: var(--fv-sp-32, 32px); border-radius: var(--fv-rad-sm, 8px); overflow: hidden;
+  background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg2, #c3c9d3);
+}
+.fv-pal-thumb.is-round { border-radius: var(--fv-r-pill); }
+.fv-pal-option[aria-selected=true] :is(.fv-pal-icon, .fv-pal-thumb) { color: var(--fv-fg, #f3f5f8); }
+.fv-pal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fv-pal-text { display: flex; flex-direction: column; min-width: 0; }
+.fv-pal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fv-fs-2, 13px); line-height: var(--fv-lh-2, 20px); }
+.fv-pal-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fv-fs-1, 12px); line-height: var(--fv-lh-1, 16px); color: var(--fv-fg3, #99a1ae); font-variant-numeric: tabular-nums; }
+.fv-pal-title mark { background: transparent; color: var(--fv-accent-ink, #66b6ff); font-weight: 600; }
+.fv-pal-option[aria-disabled=true] .fv-pal-title mark { color: inherit; }
+.fv-pal-tail { display: flex; align-items: center; gap: var(--fv-sp-8, 8px); color: var(--fv-fg3, #99a1ae); font-size: var(--fv-fs-1, 12px); }
+.fv-pal-go { display: none; color: var(--fv-fg2, #c3c9d3); }
+.fv-pal-option[aria-selected=true]:not([aria-disabled=true]) .fv-pal-go { display: grid; }
+.fv-pal-option .fv-keys kbd { background: transparent; box-shadow: inset 0 0 0 1px var(--fv-line2, rgb(255 255 255 / .14)); color: var(--fv-fg3, #99a1ae); }
+.fv-pal-option[aria-selected=true] .fv-keys kbd { color: var(--fv-fg2, #c3c9d3); }
+/* The newest creations as a grid; a marked tile gets the accent ring. */
+.fv-pal-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--fv-sp-8, 8px); padding: var(--fv-sp-4, 4px) var(--fv-sp-8, 8px) var(--fv-sp-8, 8px); }
+.fv-pal-tile { position: relative; aspect-ratio: 1; border-radius: var(--fv-rad-sm, 8px); overflow: hidden; cursor: default; background: rgb(var(--fv-tint, 20 23 30)); transition: box-shadow var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out); }
+.fv-pal-tile-pic { display: grid; place-items: center; width: 100%; height: 100%; color: var(--fv-fg3, #99a1ae); }
+.fv-pal-tile-pic img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--fv-dur-2, 200ms) var(--fv-ease-out, ease-out); }
+.fv-pal-tile[aria-selected=true] { box-shadow: 0 0 0 2px var(--fv-accent-ink, #66b6ff); }
+.fv-pal-tile[aria-selected=true] img { transform: scale(1.03); }
+.fv-pal-badge { position: absolute; right: var(--fv-sp-4, 4px); bottom: var(--fv-sp-4, 4px); height: 16px; padding: 0 var(--fv-sp-4, 4px); border-radius: var(--fv-rad-xs, 4px); background: var(--fv-on-pic, rgb(0 0 0 / .55)); color: #fff; font: 600 var(--fv-fs-1, 12px)/16px var(--fv-font, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
+.fv-pal-empty { display: grid; justify-items: center; gap: var(--fv-sp-8, 8px); padding: var(--fv-sp-40, 40px) var(--fv-sp-24, 24px) var(--fv-sp-24, 24px); text-align: center; color: var(--fv-fg3, #99a1ae); }
+.fv-pal-empty-art { display: grid; place-items: center; width: var(--fv-sp-48, 48px); height: var(--fv-sp-48, 48px); border-radius: var(--fv-r-pill); background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg2, #c3c9d3); }
+.fv-pal-empty b { color: var(--fv-fg, #f3f5f8); font-size: var(--fv-fs-3, 16px); font-weight: 600; line-height: var(--fv-lh-3, 24px); }
+/* Search results on their way: three quiet dots in a fixed-height row, so nothing moves when they land. */
+.fv-pal-wait { display: flex; align-items: center; gap: var(--fv-sp-4, 4px); height: var(--fv-sp-40, 40px); padding: 0 var(--fv-sp-16, 16px); }
+.fv-pal-wait i { width: 6px; height: 6px; border-radius: var(--fv-r-pill); background: var(--fv-fg3, #99a1ae); opacity: .3; animation: fv-pal-wait 1s var(--fv-ease-out, ease-out) infinite; }
+.fv-pal-wait i:nth-child(2) { animation-delay: .15s; } .fv-pal-wait i:nth-child(3) { animation-delay: .3s; }
+@keyframes fv-pal-wait { 40% { opacity: .9; } }
+.fv-pal-confirm { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: var(--fv-sp-20, 20px); padding: var(--fv-sp-24, 24px) var(--fv-sp-32, 32px); }
+.fv-pal-confirm[hidden] { display: none; }
+.fv-pal-ask { margin: 0; color: var(--fv-fg, #f3f5f8); font-size: var(--fv-fs-3, 16px); line-height: var(--fv-lh-3, 24px); text-wrap: balance; max-width: 34em; }
+.fv-pal-ask-actions { display: flex; gap: var(--fv-sp-8, 8px); justify-content: flex-end; }
+.fv-pal-btn {
+  height: var(--fv-ctl, 32px); padding: 0 var(--fv-sp-16, 16px); border: 0; border-radius: var(--fv-rad-sm, 8px); cursor: pointer;
+  background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg, #f3f5f8); font: 500 var(--fv-fs-2, 13px)/1 var(--fv-font, system-ui, sans-serif);
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-pal-btn:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); }
+.fv-pal-btn.is-primary { background: var(--fv-accent-fill, #0d6dcc); color: #fff; }
+.fv-pal-btn.is-primary:hover { background: color-mix(in srgb, var(--fv-accent-fill, #0d6dcc) 88%, #fff); }
+.fv-pal-btn:active { transform: scale(.98); transition-duration: 0s; }
+.fv-pal-foot {
+  flex: none; display: flex; align-items: center; gap: var(--fv-sp-16, 16px); height: var(--fv-sp-40, 40px); padding: 0 var(--fv-sp-16, 16px) 0 var(--fv-sp-20, 20px);
+  box-shadow: inset 0 1px 0 var(--fv-line, rgb(255 255 255 / .08)); font-size: var(--fv-fs-1, 12px); color: var(--fv-fg3, #99a1ae);
+}
+.fv-pal-about { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fv-fg2, #c3c9d3); }
+.fv-pal-about.is-why { color: var(--fv-caution, #f2b54b); }
+:root[data-theme=light] .fv-pal-about.is-why { color: #8a5a00; }
+.fv-pal-hints { flex: none; display: flex; gap: var(--fv-sp-12, 12px); }
+.fv-pal-hint { display: inline-flex; align-items: center; gap: var(--fv-sp-4, 4px); white-space: nowrap; }
+.fv-pal-hint .fv-keys-or { display: none; }
+@media (max-width: 719px) {
+  dialog.fv-palette { top: calc(var(--fv-header-h, 56px) + var(--fv-sp-8, 8px)); height: calc(100vh - var(--fv-header-h, 56px) - var(--fv-sp-24, 24px)); }
+  .fv-pal-hints { display: none; }
+  .fv-pal-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .fv-pal-option { min-height: var(--fv-touch, 44px); }
+}
+@media (max-width: 520px) { dialog.fv-palette { border-radius: var(--fv-rad-dock, 20px); width: calc(100vw - 2 * var(--fv-sp-8, 8px)); } .fv-pal-field { padding-left: var(--fv-sp-16, 16px); } }
+
+/* The search and bell entries in the top bar: quiet 32 px icon buttons like the rest of the bar's right side. */
+.fv-cmd-entry {
+  position: relative; display: inline-grid; place-items: center; flex: none; box-sizing: border-box;
+  width: var(--fv-ctl, 32px); height: var(--fv-ctl, 32px); min-width: var(--fv-ctl, 32px); padding: 0 !important; border: 0; border-radius: var(--fv-rad-sm, 8px);
+  background: transparent; color: var(--fv-fg2, #c3c9d3); cursor: pointer;
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out), color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-cmd-entry:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
+.fv-cmd-entry:active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); transition-duration: 0s; }
+.fv-cmd-entry:focus-visible { outline: 2px solid var(--fv-accent-ink, #66b6ff); outline-offset: 2px; }
+.fv-cmd-entry[aria-expanded=true] { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
+
+/* "Generate" from the palette in a view that has not taken it yet: the button is focused and ringed for a moment. */
+.fv-cmd-pulse { outline: 2px solid var(--fv-accent-ink, #66b6ff) !important; outline-offset: 3px !important; box-shadow: 0 0 0 6px var(--fv-accent-soft, rgb(27 148 252 / .16)) !important; transition: outline-color var(--fv-dur-2, 200ms) var(--fv-ease-out, ease-out), box-shadow var(--fv-dur-2, 200ms) var(--fv-ease-out, ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fv-pal-option, .fv-pal-chip, .fv-pal-btn, .fv-cmd-entry, .fv-pal-tile, .fv-pal-tile-pic img { transition: none; }
+  .fv-pal-tile[aria-selected=true] img { transform: none; }
+  .fv-pal-wait i { animation: none; opacity: .6; }
+  .fv-cmd-pulse { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  dialog.fv-palette::backdrop { background: rgb(3 4 6 / .72); }
+  :root[data-theme=light] dialog.fv-palette::backdrop { background: rgb(20 24 32 / .45); }
+}
+
+/* The field is the palette's only typing place and always holds the caret, so the shared ring (a11y.css) would just
+   frame the header row; the search glyph turning accent says it has focus instead. */
+dialog.fv-palette .fv-pal-field input:focus-visible, dialog.fv-palette .fv-pal-field input:focus { outline: none !important; }
+.fv-pal-field:focus-within .fv-pal-lead { color: var(--fv-accent-ink, #66b6ff); }
