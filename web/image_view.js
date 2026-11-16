@@ -27,7 +27,7 @@ import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } fro
 import { IMAGE_MODELS, modelPicker, modelState } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchDescribed, sketchPrompt } from './image_view_mentions.js';
+import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
@@ -664,12 +664,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         mentions.paint();
     }
-    // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them listed.
+    // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
+    // listed, all but the sketches: the words around the description name those.
     function engineText() {
         const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`);
-        const listed = references.length && !/<Picture \d+>/.test(swapped) ? references.map((_, at) => `<Picture ${at + 1}>`).join(' ') + ' ' + swapped : swapped;
-        // A sketch among the references: the words around the description say it gives the layout only.
         const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
+        const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
+        const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
         return sketchPrompt(listed, sketches, model.id);
     }
     // A reference opens in the image editor; the edited picture takes its place (marked), and the original is kept to put back.
@@ -695,12 +696,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // A sketch is made into a picture with H3 Image when it is there (the user may still choose the other model).
         const h3 = IMAGE_MODELS.find(m => m.id === 'minimax-h3-image');
         if (h3 && model.id !== h3.id && modelState(info, h3.id).state === 'ready') chooseModel(h3);
-        // The prompt says once that Image 1 gives the layout.
-        if (!/@(?:图|Image) ?1(?!\d)/.test(prompt.value)) {
-            prompt.value = t('Following the layout of @Image1, ', '按 @图1 的构图，') + prompt.value;
-            prompt.dispatchEvent(new Event('input', {bubbles: true}));
-        }
-        promptGroup.open(true); render();
+        // The box is left to say what the sketch shows (its placeholder asks for that while it is empty); the words around
+        // the description already say the sketch gives the layout.
+        promptGroup.open(true); render(); prompt.focus({preventScroll: true});
     }
     async function editReference(record) {
         if (record.sketch) { void drawSketch(record); return; }
@@ -850,10 +848,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (brokenMentions(prompt.value, references.length)) {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
         }
-        // A sketch shows where things go; what they are comes from the words (a stick figure is a person only when said).
-        else if (references.some((r, at) => r.sketch && at < cap_(model)) && !sketchDescribed(mentionsToEngine(prompt.value, references.length))) {
-            kind = 'info'; parts = [icon('edit'), el('span', 'fv-iv-slot-tx', t('Say what the sketch shows, for example "a person raising both hands"', '请写下草图画的是什么，例如“一个人举起双手”'))];
-        }
         else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
         } else if (s.state === 'downloading') {
@@ -964,8 +958,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         loraRow.paint(model.id);
         drawReferences();
         const tooMany = over() > 0, busy = !!running;
-        // No words inside the empty box (the group says what it is for); the name stays for screen readers.
-        prompt.placeholder = '';
+        // No words inside the empty box (the group says what it is for), except beside a sketch: what it shows is known only
+        // from the words (a stick figure is a person when the words say so), so the empty box asks for them.
+        prompt.placeholder = references.some((r, at) => r.sketch && at < cap_(model))
+            ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
         prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
