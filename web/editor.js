@@ -2203,6 +2203,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function hide() {
         closing = false; closePromise = null; handle.kept = true;
         player.pause(); lineStop?.();
+        // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
+        recording.hide();
         if (element.open) element.close();
         element.inert = true;
         resumeCanvasPointer(); resumeCanvasPointer = () => {};

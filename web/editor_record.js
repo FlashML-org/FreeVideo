@@ -87,12 +87,14 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     }
     function open() {
         if (disposed || !bar.hidden) return;
-        bar.hidden = false; denied = false; say(''); paint(); probe();
+        bar.hidden = false; denied = false; leaving = false; say(''); paint(); probe();
     }
     // Closing the bar mid-take keeps what was recorded: it lands on the track as a stop would, and one undo takes it back.
+    // A take that ends up empty still closes the bar it was asked to close, so the microphone goes in every case.
+    let leaving = false;
     function hide() {
-        if (phase === 'recording') { stop(); return; }
-        if (phase === 'saving') return;
+        if (phase === 'recording') { leaving = true; stop(); return; }
+        if (phase === 'saving') { leaving = true; return; }
         if (phase !== 'idle') abort();
         session++; bar.hidden = true; release(); paint();
     }
@@ -148,7 +150,8 @@ export function createEditorRecord({state, player, library, t, error = () => {},
         } catch (value) { error(value); }
         if (disposed || mine !== session) return;
         phase = 'idle'; say(''); paint();
-        if (!file) { notify(t('Nothing was recorded.', '没有录到声音。')); return; }
+        const asked = leaving; leaving = false;
+        if (!file) { notify(t('Nothing was recorded.', '没有录到声音。')); if (asked) { bar.hidden = true; release(); paint(); } return; }
         bar.hidden = true; release(); paint();
         const before = new Set(state.record.tracks.flatMap(item => item.clips.map(clip => clip.id)));
         const track = landingTrack(state.record, selection, range.start, frames) ?? undefined, replace = track === 'a3' && replacesTake(state.record, range.start, frames);
