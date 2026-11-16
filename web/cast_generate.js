@@ -38,11 +38,13 @@ const WHO_AND_FRONT = '<Picture 1> is the original photo of this person, <Pictur
 const BODY_SAME = 'The body shape and appearance are the same as the person in <Picture 1>.';
 const PHOTO_END = 'A real photograph of one person, sharp focus.';
 export const PHOTO_PROMPTS = Object.freeze({
-    face: 'Turn <Picture 1> into a close-up front portrait of the same person: the head turned to face the camera straight on, '
-        + 'both eyes and both ears equally visible, the nose in the middle of the face, the eyes looking into the lens; from the '
-        + 'top of the head to the chin with a little of the shoulders. The face shape, eyes, eyebrows, nose, mouth, skin tone, '
-        + 'age, hairstyle, hairline and expression are the same as the person in <Picture 1>. Clean light grey background, soft '
-        + 'even light, sharp facial features and skin texture, a real photograph.',
+    // From the whole photo these words keep the likeness best with Qwen (the edit words that turn the head to the front
+    // score lower); kept as measured, "Image 1" included.
+    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
+        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
+        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
+        + 'hairstyle, glasses and accessories match image 1. On a plain light grey studio backdrop with soft even light. One '
+        + 'photograph of one person.',
     face_h3: '把<Picture 1>改成同一个人的近景正面特写照片：画面从头顶到下巴，再带一点肩膀，人物正对镜头，眼睛平视镜头。'
         + '脸型、眼睛、眉毛、鼻子、嘴巴、肤色、年龄、发型、发际线、表情和光线都与<Picture 1>中的人一致。'
         + '背景是干净的浅灰色，五官和皮肤纹理清晰，真实照片。',
