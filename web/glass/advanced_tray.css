@@ -1,9 +1,9 @@
-/* The studio's Advanced tray (advanced_tray.js marks the parts; the controls stay studio.js's own).
-   One family with the Media and Frame & size trays: the same shell and quiet group titles. Inside, four sections in
-   two columns (one under the other in a narrow tray); each row is a name on the left and a control on one right edge,
-   every row 32 px high, every boxed control one width. One look per kind: segmented controls for two or three choices,
-   the shared drop-down face for lists, − / + number fields. Help is in the hover cards. */
-.fv-studio.fv-create .fvs-tray[data-tray=advanced]{max-height:min(480px,var(--fv-at-room,calc(100dvh - 320px)))!important}
+/* The studio's Advanced window (advanced_tray.js marks the parts; the controls stay studio.js's own; tray_pop.js/.css
+   place it and give it the window's ground, edge, corners, shadow and motion, as Frame & size and Quality). Inside,
+   four sections in two columns, every one in sight (one under the other on a phone); each row is a name on the left and
+   a control on one right edge, every row 32 px high, every boxed control one width. One look per kind: segmented
+   strips for two or three choices (the chosen one a lighter block, as in the other windows), the shared drop-down face
+   for lists, − / + number fields. Help is in the hover cards. */
 
 /* The Generate block keeps only the key and its time: the run mode is in this tray now. The key takes the whole block,
    its top on the enhancement row and its bottom on the chip row, four even corners. */
@@ -12,14 +12,16 @@
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-primary{height:calc(2 * var(--fvs-row) + var(--fv-sp-8));border-radius:var(--fv-rad-ctl)}
 }
 
-.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-h:32px;--fv-at-w:184px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--fv-sp-32);row-gap:var(--fv-sp-20);align-items:start;padding-top:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-h:32px;--fv-at-w:168px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--fv-sp-24);row-gap:var(--fv-sp-20);align-items:start;padding-top:var(--fv-sp-4)}
 .fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body>:not(.fv-at-group){grid-column:1/-1}
-/* One column in a narrow tray; the sections sit closer, so a phone shows all four whole above the console. */
-@container (max-width:600px){
+/* One column in a narrow window; the sections sit closer, so a phone shows all four whole above the console. */
+@container (max-width:440px){
   .fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{grid-template-columns:minmax(0,1fr);row-gap:var(--fv-sp-12);padding-top:0}
   .fv-studio.fv-create .fvs-tray.fv-at .fv-at-group>.fv-at-title{margin-bottom:calc(-1 * var(--fv-sp-4))}
 }
 @container (max-width:380px){.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-w:160px}}
+/* The window's own padding: the sections start at its top line, under the title. */
+.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fv-at-body{padding-top:0}
 @media(pointer:coarse){.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-h:44px}}
 .fv-studio.fv-create .fvs-tray.fv-at [hidden]{display:none!important}
 /* Parts that the tray shows another way (the run-in-one-go box as two choices, a caption replaced by a shorter name) and
@@ -47,8 +49,9 @@
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--fv-sp-2);height:var(--fv-at-h);padding:var(--fv-sp-2);box-sizing:border-box;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button{min-width:0;height:calc(var(--fv-at-h) - 4px)!important;min-height:0!important;margin:0;padding:0 var(--fv-sp-8)!important;border:0!important;border-radius:var(--fv-r-xs)!important;
   background:transparent!important;color:var(--fv-fg2)!important;font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-2,500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button[aria-pressed=true]{background:var(--fv-accent-soft)!important;color:var(--fv-fg)!important;box-shadow:none}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button:hover:not(:disabled,[aria-pressed=true]){background:var(--fv-ctl-bg)!important;color:var(--fv-fg)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button[aria-pressed=true]{background:var(--fv-ctl-press)!important;color:var(--fv-fg)!important;box-shadow:none}
+:root[data-theme=light] .fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button[aria-pressed=true]{background:rgb(var(--fv-solid2))!important;box-shadow:0 1px 2px rgb(20 30 50 / .12)}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-segments>button:disabled{opacity:.45;cursor:default}
 
 /* Number fields: − value + in one box of the row's width; the native spin keys are not drawn. */
@@ -104,18 +107,6 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-vis
 .fv-studio.fv-create .fvs-tray.fv-at>.fvs-tray-head>.fv-at-reset:hover{background:var(--fv-ctl-hover)!important}
 .fv-studio.fv-create .fvs-tray.fv-at>.fvs-tray-head>.fv-at-reset[hidden]{display:none}
 
-/* More settings: a quiet line with a chevron where a group title would be; the steps fold out under it. Its press area
-   is 24 px high around the 16 px line. */
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose{display:inline-flex;align-items:center;justify-self:start;gap:var(--fv-sp-4);height:auto!important;min-height:0!important;margin:calc(-1 * var(--fv-sp-4)) 0!important;padding:var(--fv-sp-4) 0!important;
-  border:0!important;border-radius:var(--fv-r-xs)!important;background:transparent!important;color:var(--fv-fg3)!important;font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);cursor:pointer}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose:hover{color:var(--fv-fg)!important}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose::after{content:"";width:12px;height:12px;background:currentColor;transition:transform .14s cubic-bezier(.2,.8,.2,1);
-  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat;
-  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose[aria-expanded=true]::after{transform:rotate(90deg)}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-fold-body{display:grid;gap:var(--fv-sp-8);min-width:0}
-@media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-tray.fv-at .fv-at-disclose::after{transition:none}}
-
 /* Longest part, while this duration fits in one part: the field is greyed and takes no presses. */
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-part.fv-at-idle>.fv-at-name{color:var(--fv-fg3)!important}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-part.fv-at-idle .fv-at-num{opacity:.45}
@@ -124,9 +115,8 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-vis
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-bad>.fv-at-name{color:var(--fv-warn)!important}
 .fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-bad .fv-at-num,.fv-at-segments.fv-at-bad){box-shadow:inset 0 0 0 1px var(--fv-warn)}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-problem{color:var(--fv-warn)!important}
-
-/* The strip of the stage around the open tray fades into the page (wide windows only), as for the Media tray. */
-.fv-at-scrim{display:none}
-@media (min-width:641px){
-  .fv-studio.fv-create .fv-at-scrim:has(+.fvs-tray[data-tray=advanced][open]){display:block;position:absolute;bottom:100%;z-index:5;background:linear-gradient(to top,var(--fv-shell-bg) calc(100% - 32px),transparent)}
-}
+/* As in Frame & size, the sections' own titles name what is in the window: no window title above them. Reset to
+   defaults (only while something differs) sits at the right end of the first titles' line. */
+.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head{position:absolute;top:var(--fv-sp-8);right:var(--fv-sp-8);min-height:0;margin:0}
+.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fvs-tray-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fv-at-reset{height:32px!important;margin:0!important}

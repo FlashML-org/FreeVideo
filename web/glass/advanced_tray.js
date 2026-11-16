@@ -1,11 +1,14 @@
-// The studio's Advanced tray: groups the panel's own advanced controls (and the run mode from under Generate) into
-// quiet sections that advanced_tray.css lays out as rows: the name on the left, the control on one right edge.
+// The studio's Advanced window: groups the panel's own advanced controls (and the run mode from under Generate) into
+// quiet sections that advanced_tray.css lays out as rows: the name on the left, the control on one right edge. It is a
+// small window beside the toolbar's settings key, like Frame & size and Quality (tray_pop.js places it); every section
+// is in sight, the sampling steps too, and nothing folds.
 // Presentation only: every control stays studio.js's own node, with its handlers, values and states. What is added:
 // a group title per section, − / + keys around number fields (they press the field's own step and send its events),
 // a key that draws a new seed into the seed field, and Reset to defaults in the title row (it presses the panel's own
 // controls back to their defaults). If this module does not load, the panel is exactly as studio.js built it.
 import {TIPS} from '../tooltip_copy.js';
 import {randomSeed} from '../studio_queue.js';
+import './tray_pop.js';
 
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
 const say = (tray, en, zh) => tray.fvAtChinese ? zh : en;
@@ -106,13 +109,9 @@ function markSeed(tray, fields) {
     return section;
 }
 
-// More settings: the sampling steps, folded away by default (open while the steps are set by hand).
+// Sampling steps: a section like the others, always in sight. The caution line shows only while the steps are set by hand.
 function markSteps(tray, fields, warning) {
-    const section = make('section', 'fv-at-group fv-at-fold'); section.dataset.at = 'steps';
-    const head = make('button', 'fv-at-disclose', say(tray, 'More settings', '更多设置')); head.type = 'button'; head.setAttribute('aria-expanded', 'false');
-    const body = make('div', 'fv-at-fold-body'); body.id = `fv-at-steps-${Math.random().toString(36).slice(2, 8)}`; body.hidden = true;
-    head.setAttribute('aria-controls', body.id);
-    head.onclick = () => fold(tray, head.getAttribute('aria-expanded') !== 'true');
+    const section = group(tray, 'steps', 'Sampling steps', '采样步数');
     fields.classList.add('fv-at-rows'); fields.style.marginTop = '';
     const names = [say(tray, 'First-pass steps', '一采步数'), say(tray, 'Second-pass steps', '二采步数')];
     const caution = say(tray, 'Changing steps may lower quality.', '改步数可能降低质量。');
@@ -122,17 +121,11 @@ function markSteps(tray, fields, warning) {
         const name = make('span', 'fv-at-name', names[index] || caption?.textContent || ''); label.prepend(name);
         if (input) tipOn(label, name.textContent, caution);
     }
-    body.append(fields);
+    section.append(fields);
     // One short caution, only while the steps are set by hand; the panel's longer line stays for screen readers.
-    if (warning) { warning.classList.add('fv-at-off'); body.append(warning); }
-    body.append(make('p', 'fv-at-note fv-at-caution', caution));
-    section.append(head, body);
+    if (warning) { warning.classList.add('fv-at-off'); section.append(warning); }
+    section.append(make('p', 'fv-at-note fv-at-caution', caution));
     return section;
-}
-function fold(tray, open) {
-    const head = tray.querySelector('.fv-at-disclose'), body = tray.querySelector('.fv-at-fold-body'); if (!head || !body) return;
-    if (head.getAttribute('aria-expanded') !== String(open)) head.setAttribute('aria-expanded', String(open));
-    if (body.hidden === open) body.hidden = !open;
 }
 
 // Long video: two choices, Auto parts or One run (One run is the panel's own "Force a single run" box, pressed through
@@ -225,7 +218,9 @@ function state(tray, dialog) {
     const single = tray.querySelector('.fv-at-group[data-at=length] input[type=checkbox]');
     const unset = tray.querySelector('.fv-at-unset');
     const seedMode = tray.querySelector('.fv-at-group[data-at=seed] select');
-    const quality = dialog.querySelector('.fvs-chip[data-chip=quality] .fvs-chip-label')?.textContent.trim() || '';
+    // The Quality key in the console's row says Custom while the steps are set by hand (its small window, or the older tray chip).
+    const quality = (dialog.querySelector(`.fvs-chips .fvp-chip[aria-label="${say(tray, 'Quality', '质量')}"] .fvp-chip-label`)
+        || dialog.querySelector('.fvs-chip[data-chip=quality] .fvs-chip-label'))?.textContent.trim() || '';
     return {
         mode: mode !== 'single',
         single: Boolean(single && single.checked && !single.disabled),
@@ -263,31 +258,6 @@ function resetAll(tray, dialog) {
     requestAnimationFrame(() => { paintReset(tray, dialog); if (byKeys && tray.fvAtReset.hidden) tray.querySelector('.fvs-tray-close')?.focus({preventScroll: true}); });
 }
 
-// The room above the console, under the top bar: the tray grows to show its sections whole, never over the top bar
-// (its bottom sits on the console, so its height does not move what is measured).
-function room(tray) {
-    const bottom = tray.getBoundingClientRect().bottom; if (!bottom) return;
-    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fv-header-h')) || 56;
-    const value = `${Math.max(160, Math.floor(bottom - top - 8))}px`;
-    if (tray.style.getPropertyValue('--fv-at-room') !== value) tray.style.setProperty('--fv-at-room', value);
-}
-
-// While the tray is open on a wide window, the strip of the stage beside and above it fades into the page (as for the
-// Media tray), so none of the stage's controls peek out around it. It is outside the tray: a press on it closes the
-// tray the way any press outside does.
-function placeScrim(tray) {
-    const scrim = tray.fvAtScrim, stage = tray.closest('dialog')?.querySelector('.fv-stage'), home = tray.offsetParent;
-    if (!scrim || !stage || !home || !tray.open) return;
-    const s = stage.getBoundingClientRect(), h = home.getBoundingClientRect(), t = tray.getBoundingClientRect();
-    scrim.style.left = `${Math.round(s.left - h.left)}px`; scrim.style.width = `${Math.round(s.width)}px`;
-    scrim.style.height = `${Math.max(0, Math.round(h.top - Math.max(s.top, t.top - 32)))}px`;
-}
-function scrimFor(tray) {
-    if (tray.fvAtScrim) return;
-    const scrim = tray.fvAtScrim = make('div', 'fv-at-scrim'); scrim.setAttribute('aria-hidden', 'true'); tray.before(scrim);
-    if (globalThis.ResizeObserver) new ResizeObserver(() => placeScrim(tray)).observe(tray);
-}
-
 function mark(tray) {
     const dialog = tray.closest('dialog') || document;
     const body = tray.querySelector(':scope > .fv-expand'); if (!body) return;
@@ -320,15 +290,8 @@ function mark(tray) {
         tray.addEventListener('toggle', () => {
             if (!tray.open) return;
             for (const input of tray.querySelectorAll('.fv-at-num input')) input.fvAtPaint?.();
-            if (state(tray, dialog).steps) fold(tray, true);
-            repaint(); requestAnimationFrame(() => { room(tray); placeScrim(tray); });
+            repaint();
         });
-        scrimFor(tray);
-        // The console under it can grow while the tray is open (a status line, a longer prompt): measure again then.
-        const fit = () => { if (tray.open && tray.isConnected) { room(tray); placeScrim(tray); } };
-        window.addEventListener('resize', fit);
-        const dock = tray.closest('.fvs-trays')?.parentElement;
-        if (dock && globalThis.ResizeObserver) new ResizeObserver(fit).observe(dock);
         new MutationObserver(repaint).observe(tray, {subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'hidden', 'disabled']});
     }
     paintReset(tray, dialog);
