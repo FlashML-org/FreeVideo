@@ -9,7 +9,7 @@
 //
 // A window whose inside keeps its own scrolling part (Media's tiles) sets tray.fvPopBefore (let that part take its full
 // height) and tray.fvPopAfter (fit it again to the window's height); both run around each placement, in one go.
-import {placePop} from './frame_picker.js';
+import {ASKING, placePop} from './frame_picker.js';
 
 function sheet() {
     if (document.querySelector('link[data-fv-sheet="tray-pop"]')) return;
@@ -54,5 +54,7 @@ if (!globalThis.FreeVideoTrayPop) {
     sheet();
     let timer = 0;
     new MutationObserver(() => { if (!timer) timer = setTimeout(() => { timer = 0; scanPops(); }, 120); }).observe(document.body, {childList: true, subtree: true});
+    // A bar that asks before going on (frame_picker.js ASKING) puts every tray window away, as the other panels close.
+    document.addEventListener(ASKING, () => { for (const tray of document.querySelectorAll('.fvs-tray[data-fv-pop][open]')) tray.open = false; });
     scanPops();
 }

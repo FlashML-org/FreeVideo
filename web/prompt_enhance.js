@@ -145,7 +145,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         if (fraction === null) { meter.removeAttribute('aria-valuenow'); fill.style.width = ''; }
         else { const percent = Math.round(100 * Math.max(0, Math.min(1, fraction))); meter.setAttribute('aria-valuenow', String(percent)); fill.style.width = percent + '%'; }
     }
-    const install = el('div', null, 'fv-enhance-install'); install.hidden = true;
+    const install = el('div', null, 'fv-enhance-install'); install.hidden = true; install.tabIndex = -1;
     const detail = el('p');
     const agree = el('button', t('Download and enable', '下载并启用'), 'fv-primary'); agree.type = 'button';
     const decline = el('button', t('Not now', '暂不启用'), 'fv-quiet'); decline.type = 'button';
@@ -385,7 +385,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
             `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
         agree.textContent = downloadOnly ? t('Download', '下载') : t('Download and enable', '下载并启用');
+        // The open panels of the toolbars close for the question (glass/frame_picker.js ASKING), so none covers it; one
+        // that held the keyboard (its Download prompt model) hands it to the question.
+        const held = globalThis.document?.activeElement?.closest?.('.fvp-pop,[data-fv-pop]');
         install.hidden = false; render();
+        if (typeof CustomEvent === 'function') element.dispatchEvent?.(new CustomEvent('freevideo-asking', {bubbles: true}));
+        if (held) install.focus?.({preventScroll: true});
         if (downloadOnly) install.scrollIntoView({block: 'nearest'});
         const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
         consent = null; install.hidden = true; render();

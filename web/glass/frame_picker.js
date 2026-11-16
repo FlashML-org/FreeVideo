@@ -232,6 +232,10 @@ export function placePop(element, pop, placement = 'auto') {
     pop.style.left = `${x}px`;
     pop.style.top = `${Math.round(up ? bottom - height : a.bottom + gap)}px`;
 }
+// A bar that asks before going on (a download, a licence: prompt_enhance.js's consent) sends this event from where it
+// shows; every open panel of the toolbars closes for it (these, and the trays shown as panels: tray_pop.js), so none
+// covers the question.
+export const ASKING = 'freevideo-asking';
 // Text fields in a panel show their focus by their frame, for the keyboard only: a focus that follows a press marks the
 // panel as used by pointer; a focus that comes without one (Tab) clears the mark. (In a view, keys reach only the
 // handlers it routes to, so the mark follows focus, not keys.)
@@ -283,6 +287,7 @@ export function createFrameChip({placement = 'auto', host = null, extra = null, 
         element.setAttribute('aria-expanded', 'false'); pop.dataset.open = 'false';
         clearTimeout(timer); timer = setTimeout(() => { pop.hidden = true; }, 130);
         document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true); document.removeEventListener('cancel', escape, true);
+        document.removeEventListener(ASKING, asked);
         onPreview(null); onClose();
         if (refocus) element.focus({preventScroll: true});
     }
@@ -290,12 +295,14 @@ export function createFrameChip({placement = 'auto', host = null, extra = null, 
     // send the dialog's cancel instead of the key, so both are caught before the view's own handlers.
     const escape = event => { if (open && (event.key === 'Escape' || event.type === 'cancel')) { event.preventDefault(); event.stopImmediatePropagation(); close(true); } };
     const outside = event => { if (open && !pop.contains(event.target) && !element.contains(event.target)) close(); };
+    const asked = () => close();
     function show() {
         if (open) { close(true); return; }
         if (!host) (element.closest('dialog') || document.body).append(pop);
         clearTimeout(timer); pop.hidden = false; delete pop.dataset.pointer; place(); glide();
         void pop.offsetWidth; pop.dataset.open = 'true'; element.setAttribute('aria-expanded', 'true'); open = true;
         document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true); document.addEventListener('cancel', escape, true);
+        document.addEventListener(ASKING, asked);
         (picker.parts.frame.querySelector('[aria-checked=true]:not(:disabled)') || pop.querySelector('button:not(:disabled)'))?.focus({preventScroll: true});
         onOpen();
     }
@@ -347,17 +354,20 @@ export function createPopChip({host = null, name = '', icon = '', placement = 'a
         element.setAttribute('aria-expanded', 'false'); pop.dataset.open = 'false';
         clearTimeout(timer); timer = setTimeout(() => { pop.hidden = true; }, 130);
         document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true); document.removeEventListener('cancel', escape, true);
+        document.removeEventListener(ASKING, asked);
         onClose();
         if (refocus) element.focus({preventScroll: true});
     }
     const escape = event => { if (open && (event.key === 'Escape' || event.type === 'cancel')) { event.preventDefault(); event.stopImmediatePropagation(); close(true); } };
     const outside = event => { if (open && !pop.contains(event.target) && !element.contains(event.target)) close(); };
+    const asked = () => close();
     function show() {
         if (open) { close(true); return; }
         clearTimeout(timer); pop.hidden = false; delete pop.dataset.pointer; place();
         void pop.offsetWidth; pop.dataset.open = 'true'; element.setAttribute('aria-expanded', 'true'); open = true;
         onOpen(); place();
         document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true); document.addEventListener('cancel', escape, true);
+        document.addEventListener(ASKING, asked);
         // The control that holds the value takes the focus (a slider, a chosen option), else the first that can.
         (pop.querySelector('[role=slider][tabindex="0"],[aria-checked=true]:not(:disabled)') || pop.querySelector('input:not(:disabled):not([hidden]),button:not(:disabled)'))?.focus({preventScroll: true, focusVisible: false});
     }
