@@ -31,6 +31,8 @@ from ..monitoring import save
 from ..failure_details import Redactor, image_pack_busy_lock, image_pack_error_code, redacted_launcher_error
 
 H3_TIERS = ('int8',)
+MOSS_GROUP = 'moss-image'
+MOSS_ONLY_COMPONENTS = ('transformer', 'tokenizer', 'scheduler', 'license')
 H3_GROUPS = ('h3-image-core', 'h3-text-encoder') + tuple('h3-image-dit-' + tier for tier in H3_TIERS)
 LEDGER = 'download-verified.json'
 OWNERSHIP = 'owned-files.json'
@@ -144,16 +146,19 @@ def validate_catalog(spec):
         # A group of its own holds only its own component; the image group holds neither.
         own = {group: spec['groups'].get(group, []) for group in ('segment', 'music', 'stems')}
         h3 = {group: spec['groups'].get(group, []) for group in H3_GROUPS}
-        found = image_rows + [row for found in own.values() for row in found] + [row for found in h3.values() for row in found]
-        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own, *h3}
+        moss = spec['groups'].get(MOSS_GROUP, [])
+        found = image_rows + [row for found in own.values() for row in found] + [row for found in h3.values() for row in found] + moss
+        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own, *h3, MOSS_GROUP}
                 or any(row['component'] in own for row in image_rows)
-                or any(row['component'] != group for group, found in own.items() for row in found)):
+                or any(row['component'] != group for group, found in own.items() for row in found)
+                or any(row['component'] in MOSS_ONLY_COMPONENTS for row in found if row not in moss)):
             raise PackError('invalid_catalog')
         for row in found:
             _relative(row['file'])
             if (type(row['bytes']) is not int or row['bytes'] <= 0
                     or not re.fullmatch('[0-9a-f]{64}', row['sha256'])
-                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'config', 'segment', 'music', 'stems')
+                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'config', 'segment', 'music', 'stems',
+                                            *MOSS_ONLY_COMPONENTS)
                     or row.get('shared', 'video-encoder') != 'video-encoder'):
                 raise PackError('invalid_catalog')
             ids = [s['id'] for s in row['sources']]
@@ -283,9 +288,12 @@ STEMS_NOTICE_TEXT = (b'Bandit Plus (cocktail-party separation model). Weights: W
                      b'https://github.com/kwatcharasupat/source-separation\n')
 H3_NOTICE_TEXT = (b'MiniMax-H3-Image is licensed under the MiniMax-H3-Image Community License Agreement, '
                   b'Copyright \xc2\xa9 2026 MiniMax. All Rights Reserved.\n')
+MOSS_NOTICE_TEXT = (b'MOSS-Image is licensed under the Apache License, Version 2.0 (the LICENSE file in this folder); '
+                    b'its VAE is the FLUX.2 small decoder, also Apache-2.0. The weights are published by the OpenMOSS Team.\n')
 NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'h3-image': ('MINIMAX-H3-IMAGE-NOTICE.txt', H3_NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
            'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT),
-           'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT)}
+           'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT),
+           'moss-image': ('MOSS-IMAGE-NOTICE.txt', MOSS_NOTICE_TEXT)}
 
 
 def _notice():
@@ -1042,7 +1050,7 @@ def main(argv=None):
     download = commands.add_parser('download')
     download.add_argument('--background', action='store_true')
     download.add_argument('--group', default='image',
-                          type=lambda name: name if name in ('image', 'segment', 'music', 'stems') or (
+                          type=lambda name: name if name in ('image', 'segment', 'music', 'stems', MOSS_GROUP) or (
                               name.startswith('h3-image:') and name[9:] in H3_TIERS) else
                           parser.error('unknown group ' + name))
     download.add_argument('--root', type=Path)
