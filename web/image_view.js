@@ -918,6 +918,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             tip(go, t('Generate', '生成'), t(`Makes a ${sizeText(now)} picture`, `生成一张 ${sizeText(now)} 的图片`), `${mod}+Enter`);
             if (!prompt.value.trim() && !references.length) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
         }
+        // With no time (or size) to say beside it, the word sits alone in the middle of the key.
+        go.dataset.eta = String(!!goSub.textContent);
         railGen.replaceChildren(icon(busy ? 'stop' : 'gen')); tip(railGen, goLabel.textContent, go.dataset.fvTipUse, `${mod}+Enter`);
     }
 

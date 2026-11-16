@@ -162,7 +162,8 @@
 .fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;height:28px;margin-top:4px}
 .fv-iv .fv-iv-prompt-bar .fv-ed-expand{position:static;right:auto;bottom:auto;flex:none;width:28px;height:28px;min-width:28px;min-height:28px}
 .fv-iv .fv-iv-prompt-bar .fv-iv-text-btn{height:28px;padding:0 8px;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
-.fv-iv .fv-iv-prompt-count{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+/* The count (shown from 1600 characters) stays on one line at its full width; the empty space before it gives way first. */
+.fv-iv .fv-iv-prompt-count{flex:none;white-space:nowrap;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
 
 /* references */
 .fv-iv .fv-iv-refs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:8px}
@@ -267,6 +268,8 @@
 .fv-iv .fv-iv-go[data-state=running] .fv-iv-go-icon{display:none}
 .fv-iv .fv-iv-go-label{position:relative;letter-spacing:.02em;white-space:nowrap}
 .fv-iv .fv-iv-go-sub{position:relative;flex:1;text-align:right;font-size:var(--fv-fs-1,12px);font-weight:500;opacity:.92;white-space:nowrap}
+.fv-studio .fv-iv .fv-iv-go[data-eta=false]{justify-content:center}
+.fv-iv .fv-iv-go[data-eta=false] .fv-iv-go-sub{display:none}
 
 /* ── stage ── */
 .fv-iv .fv-iv-canvas{position:relative;flex:1;min-height:0;margin-top:var(--iv-gut);container-type:size}
