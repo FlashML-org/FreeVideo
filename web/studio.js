@@ -2579,15 +2579,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function leaveNext() {
         if (!nextShown) return; nextShown = false; delete stage.dataset.next; stage.style.translate = '';
-        stageBar.setNext(false); fitPreview();
+        // The stage takes back the shape of what it shows: the work's own, or the chosen frame when it is empty.
+        const g = stageMedia.querySelector('video, img') && result?.geometry?.width > 0 && result.geometry.height > 0 ? result.geometry
+            : {width: Number(value(node, 'width')), height: Number(value(node, 'height'))};
+        stageBar.setNext(false); previewSize(g.width, g.height); fitPreview();
     }
     // One button in the console's row ([▭ 16:9 · 1M]) with a small panel beside it: Frame, Size, and a typed width × height.
     // Under them, what the frame tray held besides (canvas): a long length's notes and the first-frame switch, each
     // only while it applies.
     framePicker = createFrameChip({t, placement: 'auto', host: dialog, extra: canvas,
-        // A panel closing gives the stage back to the work that was on it.
+        // A panel closing gives the stage back to the work that was on it, or to the empty stage (at the chosen frame).
         // The panel floats over the page; the stage stays as it is until a frame or size is pointed at or chosen.
-        onClose: () => { if (result?.video && !busy) { leaveNext(); fitPreview(); } },
+        onClose: () => { if (!busy) { leaveNext(); fitPreview(); } },
         shapes: [...studioShapes(t).map(([id, label, r]) => ({id, label, ratio: r})), {id: 'input', label: t('Match image', '跟随图片'), ratio: null}],
         // Standard and High; any other size (the earlier 0.5, 0.75 and 1.5 MP steps too) is typed as width × height.
         // Named by their megapixels (1M, 2M), so they are not mistaken for the quality levels.
@@ -2602,7 +2605,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             else if (change.source === 'dimensions') { const input = change.side === 'height' ? height : width; input.value = String(change[change.side === 'height' ? 'height' : 'width']); input.onchange(); }
             updateCanvas(); showNext();
         },
-        onPreview: frame => showNext(frame)});
+        // Only while the panel is open: its options lose the pointer or the focus as it closes, after onClose.
+        onPreview: frame => { if (framePicker?.pop.dataset.open === 'true') showNext(frame); }});
     shapes.hidden = true; sizeTicks.hidden = true;
     resolutionField.hidden = true;
     mp.onchange = () => { try { pixels = Number(mp.value); applySize(); if (pixels !== 1) legacyOption?.remove(); } catch (error) { status.dataset.error = 'true'; status.textContent = error.message; } };

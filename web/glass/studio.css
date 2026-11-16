@@ -755,7 +755,8 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
   background:rgb(var(--fv-solid1));color:var(--fv-fg2);font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums}
 /* The next frame's pixels are not written on it: the console's Frame & size key says them. */
 .fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:none}
-.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
+/* (An empty stage keeps its own icon and the line under it, empty-stage rule above, while a frame is pointed at.) */
+.fv-studio.fv-create .fv-stage[data-next=true]:not([data-empty=true]):not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
   text-align:center;color:var(--fv-fg3);font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A frame too narrow for the hint on one line shows none; the pixels badge shows only while the tray covers the bar. */
 .fv-studio.fv-create .fv-stage[data-next=true][data-narrow=true]::after{content:none}
