@@ -27,6 +27,8 @@ html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=sol
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-ambient{
   display:block!important;opacity:var(--fv-light-op);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-veil{display:none!important}
+/* The image view draws the picture as it is (64 x 40, stretched); softened here so no shape of it can be made out. */
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-ambient canvas{filter:blur(28px) saturate(1.15)}
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient{
   display:block!important;opacity:calc(var(--fv-light-op) / .55);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient::after{content:none}
