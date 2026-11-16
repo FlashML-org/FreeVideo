@@ -24,7 +24,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'library_meta.js', 'cast_room.js',
     'editor_tracks_tips.js',
     'task_store.js', 'task_float.js',
-    'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js',
+    'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js',
     'palette.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
     'studio_console.js', 'studio_stage.js', 'prompt_library.js',
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_ambient.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
