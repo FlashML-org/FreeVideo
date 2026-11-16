@@ -70,7 +70,7 @@ import { topDialog, isolateDialogKeys, listenDialogKey, routeDialogKey } from '.
 import { createPassMode } from './pass_mode.js';
 import { createConsole, durationStepper, tip, glyph } from './studio_console.js';
 import { createStageBar } from './studio_stage.js';
-import { confirmStop } from './task_float.js';
+import { confirmStop, startJobSources } from './task_float.js';
 import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
@@ -685,6 +685,8 @@ export async function openExtendEditor(record, node = current?.node || app.graph
 }
 
 export function openStudio(node, {extendFrom = null} = {}) {
+    // The page-wide task list (the top bar's status and its panel) follows this panel's videos, waiting ones included.
+    try { startJobSources(); } catch (error) { console.warn('FreeVideo tasks:', error); }
     if (current?.node === node && current.dialog.open) {
         if (extendFrom) current.enterExtend(extendFrom); else current.dialog.focus();
         viewChanged('studio', node); return current.dialog;

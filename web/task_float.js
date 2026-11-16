@@ -4,7 +4,7 @@
 // manual popover that lives inside the topmost open modal dialog (or the body) and moves along as views change.
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
-import { jobs, imageSource, progressSource, chainSource, ACTIVE, FINAL } from './task_store.js';
+import { jobs, imageSource, progressSource, chainSource, queueSource, ACTIVE, FINAL } from './task_store.js';
 import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
 import { saveGeneratedImage } from './image_library.js';
 
@@ -26,9 +26,26 @@ export function startJobSources() {
     if (sourcesStarted) return; sourcesStarted = true;
     let storage = null; try { storage = globalThis.localStorage; } catch { /* Private windows keep jobs in memory only. */ }
     imageSource(jobs, {client: createImageGenClient(), storage});
-    const video = progressSource(jobs, {target: window, cancel: row => api.fetchApi('/freevideo/cancel', post({prompt_id: row.prompt_id, node_id: String(row.node)})).then(sent)});
-    // The page's own progress connection may have read the snapshot before this module loaded; read it once more here.
-    void api.fetchApi('/freevideo/progress', {cache: 'no-store'}).then(response => response.ok ? response.json() : null).then(value => {
+    // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
+    // names no request, so this keeps every queued video a row of its own (task_store.js progressSource).
+    const runningOn = new Map();
+    api.addEventListener('executing', event => {
+        const detail = event.detail, prompt = detail && typeof detail === 'object' ? detail.prompt_id : null;
+        if (!prompt) return;
+        if (detail.node != null) runningOn.set(String(detail.node), prompt);
+        else for (const [node, id] of [...runningOn]) if (id === prompt) runningOn.delete(node);
+    });
+    let queue = null;
+    const video = progressSource(jobs, {target: window, promptOf: node => runningOn.get(String(node)) || queue?.runningOn(node) || null,
+        cancel: row => api.fetchApi('/freevideo/cancel', post({prompt_id: row.prompt_id, node_id: String(row.node)})).then(sent)});
+    // Videos waiting in the engine's queue (this page's own requests): listed with their place; read again whenever the
+    // engine says its queue changed, and every 3 s while one waits or runs.
+    queue = queueSource(jobs, {clientId: () => api.clientId || api.initialClientId || null,
+        fetchJson: async path => { const response = await api.fetchApi(path, {cache: 'no-store'}); if (!response.ok) throw new Error('queue'); return response.json(); }});
+    for (const type of ['status', 'promptQueued', 'execution_start', 'execution_success', 'execution_interrupted', 'execution_error']) api.addEventListener(type, () => { void queue.refresh(); });
+    // The page's own progress connection may have read the snapshot before this module loaded; read it once more here,
+    // after the queue (so a video already running is keyed by its request).
+    void queue.refresh().then(() => api.fetchApi('/freevideo/progress', {cache: 'no-store'})).then(response => response.ok ? response.json() : null).then(value => {
         // Only this workflow's generate nodes, as the live stream (the Agent's own runs show in its view).
         const ours = message => !app.graph?._nodes?.length || Boolean(app.graph.getNodeById?.(message.node));
         for (const message of value?.progress || []) if (message && ours(message) && !message.result && !['complete', 'failed', 'cancelled'].includes(message.phase))

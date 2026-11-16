@@ -74,12 +74,18 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
     // force: the store itself puts a row back (a cancel the engine refused).
     function upsert(patch, {revive = false, force = false} = {}) {
         if (!patch?.id) throw new Error('job_id_required');
-        const previous = rows.get(patch.id);
+        let previous = rows.get(patch.id);
+        const before = previous;
         if (previous && FINAL.has(previous.status) && patch.status && ACTIVE.has(patch.status) && !revive) return previous;
         // A stop on its way: reports sent before the engine took it do not bring the row back to running.
         if (previous?.status === 'cancelling' && ['running', 'queued'].includes(patch.status) && !revive && !force) patch = {...patch, status: 'cancelling'};
         const mine = local[patch.id] || {};
         const at = now();
+        // A new run on the same key starts from nothing: the last run's percent, time, result or failure is not its own.
+        if (previous && revive) {
+            const {percent, eta_seconds, started_at, finished_at, result, failure, ...rest} = previous;
+            previous = {...rest, meta: Object.fromEntries(Object.entries(previous.meta || {}).filter(([key]) => !['frames', 'report_id'].includes(key)))};
+        }
         const row = {cancellable: true, origin: 'page', ...previous, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)),
             view: patch.view ?? mine.view ?? previous?.view ?? null, meta: {...(previous?.meta || {}), ...(patch.meta || {})},
             seen: mine.seen ?? previous?.seen ?? false};
@@ -89,11 +95,11 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         if (FINAL.has(row.status)) { row.finished_at ??= at; row.cancellable = false; } else if (ACTIVE.has(row.status)) delete row.finished_at;
         // Progress never goes backwards within one run; a new run (revive) starts again.
         if (previous && !revive && finite(previous.percent) && finite(row.percent) && row.status === previous.status && row.percent < previous.percent) row.percent = previous.percent;
-        const ended = FINAL.has(row.status) && !FINAL.has(previous?.status);
+        const ended = FINAL.has(row.status) && !FINAL.has(before?.status);
         rows.set(row.id, Object.freeze(FINAL.has(row.status) ? withoutText(row) : row));
         if (patch.view != null) { local[row.id] = plain({...mine, at, view: patch.view}); saveLocal(); }
         const frozen = rows.get(row.id);
-        publish({type: previous ? 'update' : 'add', row: frozen, previous});
+        publish({type: before ? 'update' : 'add', row: frozen, previous: before});
         if (ended && row.status === 'done') fire('done', Object.freeze({...row}));
         if (ended && row.status === 'failed') fire('failed', Object.freeze({...row}));
         return frozen;
@@ -279,10 +285,14 @@ const pick = value => value && typeof value === 'object' ? Object.fromEntries(['
 
 // ---------- Videos: the progress stream the page already receives (freevideo.js turns it into window events) ----------
 // A part of a long video reports under its chain; the chain itself ends in chainSource.
-export function progressSource(store, {target = globalThis, now = store.now, cancel = null, framePath = id => `/freevideo/frame-preview/${id}`} = {}) {
-    // A plain run carries no request id; its node runs one video at a time, and a new one says new_request.
+export function progressSource(store, {target = globalThis, now = store.now, cancel = null, framePath = id => `/freevideo/frame-preview/${id}`,
+    promptOf = () => null} = {}) {
+    // A plain run carries no request id: promptOf(node) names the request the engine runs on that node now (the page
+    // reads it from the engine's own events), so each queued video is its own row with its own percent. Without it the
+    // node runs one video at a time, and a new one says new_request.
     const identity = message => message.chain?.id ? 'chain:' + message.chain.id
         : message.task_id ? 'video:' + message.task_id : message.prompt_id ? 'video:' + message.prompt_id
+        : message.node != null && promptOf(message.node) ? 'video:' + promptOf(message.node)
         : message.node != null ? 'video:node:' + message.node : null;
     function receive(message) {
         if (!message || typeof message !== 'object') return;
@@ -300,8 +310,9 @@ export function progressSource(store, {target = globalThis, now = store.now, can
         const preview = reportId && frames && Number.isInteger(frames.serial) && frames.serial > 0 && Number.isInteger(frames.frames) && frames.frames > 0
             ? {url: framePath(reportId) + '?serial=' + frames.serial, frames: frames.frames, serial: frames.serial} : undefined;
         const patch = {id, kind: chain ? 'chain' : 'video', source: chain ? 'chain' : 'video', status: terminal || (message.phase === 'cancelling' ? 'cancelling' : 'running'),
-            phase: message.phase || message.stage || '', node: message.node ?? undefined, prompt_id: message.prompt_id || undefined,
-            cancellable: chain || Boolean(message.prompt_id || store.get(id)?.prompt_id),
+            phase: message.phase || message.stage || '', node: message.node ?? undefined,
+            prompt_id: message.prompt_id || (!chain && !message.task_id && message.node != null ? promptOf(message.node) : null) || undefined,
+            cancellable: chain || Boolean(message.prompt_id || (!chain && message.node != null && promptOf(message.node)) || store.get(id)?.prompt_id),
             percent: finite(overall.fraction) ? overall.fraction : undefined,
             eta_seconds: finite(overall.remaining_seconds) ? overall.remaining_seconds : undefined,
             started_at: elapsed != null && !store.get(id)?.started_at ? now() - elapsed * 1000 : undefined,
@@ -321,6 +332,77 @@ export function progressSource(store, {target = globalThis, now = store.now, can
         dispose() { target.removeEventListener?.('freevideo-progress', listener); },
     };
     store.addSource('video', source);
+    return source;
+}
+
+// ---------- Videos waiting in the engine's queue: this page's own requests (ComfyUI's GET /queue) ----------
+// A waiting video is a row from the moment the engine takes it (status queued, its place as `position`), so the top bar
+// lists it and it can be removed. The running one becomes a row before its first progress message; the progress
+// stream (progressSource, keyed by the same request id) then owns its percent and its end. A waiting row that leaves the
+// queue without having run (removed here or elsewhere) is dropped; a running one that leaves without an ending is
+// closed from its history (stopped, or not finished).
+export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
+    let known = new Map(), reading = null, again = false, timer = 0, disposed = false;
+    const generateOf = row => Object.entries(row?.[2] || {}).find(([, node]) => node?.class_type === 'FreeVideoGenerate');
+    const ours = row => Boolean(generateOf(row)) && (!clientId() || row?.[3]?.client_id === clientId());
+    const text = row => String(generateOf(row)?.[1]?.inputs?.text ?? '').replace(/\s+/g, ' ').trim();
+    async function close(id, promptId) {
+        let entry = null;
+        try { entry = (await fetchJson('/history/' + encodeURIComponent(promptId)))?.[promptId] || null; } catch { return; }
+        const row = store.get(id);
+        if (!row || !ACTIVE.has(row.status)) return;
+        if (entry?.status?.status_str === 'success') {
+            // The result normally arrives on the progress stream; a run whose ending was missed is closed from its history.
+            const summary = Object.values(entry.outputs || {}).map(output => output?.freevideo_summary?.[0]).find(Boolean);
+            store.upsert({id, status: 'done', ...(summary?.video ? {result: {video: summary.video, report_id: summary.report_id || null, preview: Boolean(summary.preview)}} : {})});
+            return;
+        }
+        const messages = entry?.status?.messages || [];
+        const stopped = !entry || row.status === 'cancelling' || messages.some(message => message?.[0] === 'execution_interrupted');
+        store.upsert(stopped ? {id, status: 'cancelled'} : {id, status: 'failed', failure: {code: 'generation_failed', message: ''}});
+    }
+    async function read() {
+        const queue = await fetchJson('/queue');
+        const allRunning = queue?.queue_running || [], running = allRunning.filter(ours);
+        const pending = (queue?.queue_pending || []).filter(ours).sort((a, b) => a[0] - b[0]);
+        const now = new Map();
+        for (const row of running) {
+            const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'running', node: String(generateOf(row)[0])});
+            if (previous && !['queued', 'submitting'].includes(previous.status)) continue;
+            store.upsert({id, kind: 'video', source: 'video', status: 'running', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
+                position: 0, prompt: previous?.prompt || text(row)}, {revive: Boolean(previous)});
+        }
+        pending.forEach((row, index) => {
+            const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'queued'});
+            if (previous && !['queued', 'submitting'].includes(previous.status)) return;
+            store.upsert({id, kind: 'video', source: 'video', status: 'queued', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
+                position: index + allRunning.length, prompt: previous?.prompt || text(row)});
+        });
+        for (const [id, was] of known) {
+            if (now.has(id)) continue;
+            const row = store.get(id);
+            if (!row || !ACTIVE.has(row.status)) continue;
+            if (row.status === 'queued' && was.status === 'queued') store.drop(id);
+            else void close(id, was.promptId);
+        }
+        known = now;
+    }
+    function schedule() {
+        clearTimer(timer); timer = 0;
+        if (!disposed && known.size) timer = setTimer(() => { void refresh(); }, interval);
+    }
+    function refresh() {
+        if (disposed) return Promise.resolve();
+        if (reading) { again = true; return reading; }
+        reading = (async () => { do { again = false; await read(); } while (again && !disposed); })()
+            .catch(() => { /* The next status event or poll reads again. */ })
+            .finally(() => { reading = null; schedule(); });
+        return reading;
+    }
+    // The request this page has running on a node, as the last read saw it (for a page opened while it runs).
+    const runningOn = node => [...known.values()].find(item => item.status === 'running' && item.node === String(node))?.promptId || null;
+    const source = {refresh, runningOn, dispose() { disposed = true; clearTimer(timer); }};
+    store.addSource('video-queue', source);
     return source;
 }
 
